@@ -25,8 +25,16 @@ struct shukrApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            CombinedView()
+                .preferredColorScheme(.light)
+            
+//            ContentView()
+//                .preferredColorScheme(.light)
+            
+//            ShukrTimer()
+//                .preferredColorScheme(.light)
         }
         .modelContainer(sharedModelContainer)
+        
     }
 }
