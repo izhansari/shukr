@@ -8,6 +8,7 @@
 import WidgetKit
 import SwiftUI
 import AppIntents
+import UIKit
 
 struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ShukrEntry {
@@ -150,7 +151,7 @@ struct AddIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
             var count = store.integer(forKey: "count")
-            count = min(count + 1, 100)
+            count = min(count + 1, 10000)
             store.setValue(count, forKey: "count")
             WidgetCenter.shared.reloadAllTimelines()
             return .result()

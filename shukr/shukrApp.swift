@@ -26,7 +26,7 @@ struct shukrApp: App {
     var body: some Scene {
         WindowGroup {
             CombinedView()
-                .preferredColorScheme(.light)
+//                .preferredColorScheme(.light)
             
 //            ContentView()
 //                .preferredColorScheme(.light)

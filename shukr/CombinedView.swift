@@ -1,6 +1,8 @@
 import SwiftUI
 import WidgetKit
 import SwiftData
+import UIKit
+import AudioToolbox
 
 struct CombinedView: View {
     
@@ -18,12 +20,47 @@ struct CombinedView: View {
     @State private var endTime: Date? = nil
     @State private var isHolding = false
     
+    let feedbackTypes: [UINotificationFeedbackGenerator.FeedbackType] = [.success, .error, .warning]
+    @State private var feedbackIndex = 0
+    @State private var vibrationChoice: HapticFeedbackType = .light
+    
+    @State private var autoStop = true
+    @State private var vibrateToggle = true
+    @State private var modeToggle = false
+
+    
+    private enum HapticFeedbackType: String, CaseIterable, Identifiable {
+        case light = "Light"
+        case medium = "Medium"
+        case heavy = "Heavy"
+        case soft = "Soft"
+        case rigid = "Rigid"
+        case success = "Success"
+        case warning = "Warning"
+        case error = "Error"
+        case vibrate = "Vibrate"
+        
+        var id: String { self.rawValue }
+    }
+
+    
     var body: some View {
         ZStack {
             VStack(spacing: 40) {
                 ZStack {
                     CircularProgressView(progress: timerProgress())
                         .contentShape(Circle()) // Only the circle is tappable
+                        .onTapGesture {
+                            if timerIsActive {
+                                decrementTasbeeh()
+                            }
+                        }
+                        .onLongPressGesture(minimumDuration: 2) { _ in
+                        } perform: {
+                            if timerIsActive {
+                                resetTasbeeh()
+                            }
+                        }
                     
                     if timerIsActive {
                         TasbeehCountView(tasbeeh: tasbeeh)
@@ -45,14 +82,47 @@ struct CombinedView: View {
             VStack {
                 Spacer()
                 
+//                Picker("vibration type", selection: $vibrationChoice) {
+//                    ForEach(HapticFeedbackType.allCases) { type in
+//                        Text(type.rawValue).tag(type)
+//                    }
+//                }
+//                .pickerStyle(.palette)
+                
+                
                 if(!timerIsActive){
+                    HStack{
+                        Toggle(autoStop ? "✓ AutoStop":"✗ AutoStop", isOn: $autoStop)
+                            .toggleStyle(.button)
+                            .tint(.mint)
+
+                        Toggle(vibrateToggle ? "✓ Vibrate":"✗ Vibrate", isOn: $vibrateToggle)
+                            .toggleStyle(.button)
+                            .tint(.yellow)
+                            .onChange(of: vibrateToggle) { _, newValue in
+                                if newValue {
+                                    // Trigger vibration when the toggle is turned on
+                                    triggerSomeVibration(type: .heavy)
+                                }
+                            }
+
+                        Toggle(modeToggle ? "🌙":"☀️", isOn: $modeToggle)
+                            .toggleStyle(.button)
+                            .tint(.white)
+                    }
+                }
+
+
+                
+                //start button at the bottom
+                if(!timerIsActive || currentTime >= endTime ?? Date()){ // YO YO YO I JUST ADDED THIS BUT ITLL NEVER HIT CUZ WE STOPTIMER WHEN SECOND CONDITION IS MET... NVM i added autostop toggle.
                     Button(action: toggleTimer, label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20)
                                 .foregroundStyle(.gray.opacity(0.2))
                             RoundedRectangle(cornerRadius: 20)
-                                .foregroundStyle(.blue.opacity(0.5))
-                            Text("start")
+                                .foregroundStyle(timerIsActive ? .green.opacity(0.5) : .blue.opacity(0.5))
+                            Text(timerIsActive ? "complete" : "start")
                                 .foregroundStyle(.white)
                                 .font(.title3)
                                 .fontDesign(.rounded)
@@ -68,8 +138,9 @@ struct CombinedView: View {
                 Spacer()
                 
                 if timerIsActive {
-                    Text("Hold to stop the timer...")
-                        .font(.headline)
+                    Text("hold to stop the timer...")
+                        .font(.title3)
+                        .fontDesign(.rounded)
                         .foregroundColor(.gray)
                         .padding(.bottom, isHolding ? 30 : 0)
                         .opacity(isHolding ? 1 : 0)
@@ -86,7 +157,7 @@ struct CombinedView: View {
                         incrementTasbeeh()
                     }
                 }
-                .onLongPressGesture(minimumDuration: 3) { isPressing in
+                .onLongPressGesture(minimumDuration: 2.5) { isPressing in
                     isHolding = isPressing
                 } perform: {
                     if timerIsActive {
@@ -97,6 +168,7 @@ struct CombinedView: View {
         )
         .onAppear(perform: setupTimer)
         .onDisappear(perform: stopTimer)
+        .preferredColorScheme(modeToggle ? .dark : .light)
     }
     
     private func toggleTimer() {
@@ -111,22 +183,18 @@ struct CombinedView: View {
         timerIsActive = true
         startTime = Date()
         endTime = Calendar.current.date(byAdding: .minute, value: selectedMinutes, to: startTime!)
+        triggerSomeVibration(type: .success)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             withAnimation {
                 currentTime = Date()
             }
             if let endTime = endTime, currentTime >= endTime {
-                stopTimer()
-                streak += 1 // Increment the streak
+                if(autoStop){
+                    stopTimer()
+                    streak += 1 // Increment the streak
+                }
             }
         }
-    }
-    
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-        timerIsActive = false
-        endTime = nil
     }
     
     private func timerProgress() -> CGFloat {
@@ -145,9 +213,78 @@ struct CombinedView: View {
         }
     }
     
+    private func stopTimer() {
+        timer?.invalidate()
+        triggerSomeVibration(type: .vibrate)
+        timer = nil
+        timerIsActive = false
+        endTime = nil
+    }
+    
     private func incrementTasbeeh() {
+        triggerSomeVibration(type: .light)
         tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
+        onFinishTasbeeh()
         WidgetCenter.shared.reloadAllTimelines()
+    }
+    
+    private func onFinishTasbeeh(){
+        if(tasbeeh % 100 == 0 && tasbeeh != 0){
+            triggerSomeVibration(type: .heavy)
+        }
+    }
+    
+    private func decrementTasbeeh() {
+        triggerSomeVibration(type: .rigid)
+        tasbeeh = max(tasbeeh - 1, 0) // Adjust minimum value as needed
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+    
+    private func resetTasbeeh() {
+        triggerSomeVibration(type: .error)
+        tasbeeh = 0
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    private func triggerSomeVibration(type: HapticFeedbackType) {
+        if(vibrateToggle){
+            switch type {
+            case .light:
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.impactOccurred()
+                
+            case .medium:
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                
+            case .heavy:
+                let generator = UIImpactFeedbackGenerator(style: .heavy)
+                generator.impactOccurred()
+            
+            case .soft:
+                let generator = UIImpactFeedbackGenerator(style: .soft)
+                generator.impactOccurred()
+                
+            case .rigid:
+                let generator = UIImpactFeedbackGenerator(style: .rigid)
+                generator.impactOccurred()
+                
+            case .success:
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.success)
+                
+            case .warning:
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.warning)
+                
+            case .error:
+                let generator = UINotificationFeedbackGenerator()
+                generator.notificationOccurred(.error)
+                
+            case .vibrate:
+                AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+            }
+        }
     }
     
     // Subviews integrated into CombinedView
@@ -205,6 +342,9 @@ struct CombinedView: View {
                 Text("\(tasbeeh % 100)")
                     .font(.largeTitle)
                     .bold()
+                    .fontDesign(.rounded)
+//                    .transition(.scale) // Built-in slide transition
+//                    .animation(.snappy, value: tasbeeh) // Spring animation for smoothness
             }
         }
     }
@@ -214,3 +354,20 @@ struct CombinedView: View {
     CombinedView()
         .modelContainer(for: Item.self, inMemory: true)
 }
+
+
+
+
+//okay game plan
+/*
+ get rid of hold down functions... i dont like em.
+ 
+ insteam when you hold down, it shows the settings
+ 
+ - night mode
+ - vibrations on/off
+ - shows time passed
+ - reset count button
+ - shows presses/min
+ - stop button at bottom. slide to stop early...?
+ */
