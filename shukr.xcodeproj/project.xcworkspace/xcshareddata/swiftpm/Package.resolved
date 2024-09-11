@@ -1,0 +1,15 @@
+{
+  "originHash" : "e69a35eba21b5503f08b958319bab8a7387b788e5e1a1174f4e39063c654a8eb",
+  "pins" : [
+    {
+      "identity" : "jpsvolumebuttonhandler",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/jpsim/JPSVolumeButtonHandler.git",
+      "state" : {
+        "branch" : "master",
+        "revision" : "f0606143c3d9fa687eaed2f7a9ecca0e5960b5a3"
+      }
+    }
+  ],
+  "version" : 3
+}

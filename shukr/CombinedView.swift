@@ -10,6 +10,15 @@ struct CombinedView: View {
     @AppStorage("count", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var tasbeeh: Int = 10
     @AppStorage("streak") var streak = 0
+    @AppStorage("autoStop", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    var autoStop = true
+    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    var vibrateToggle = true
+    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    var modeToggle = false
+    
+
+
     
     // State properties
     @State private var timerIsActive = false
@@ -24,9 +33,11 @@ struct CombinedView: View {
     @State private var feedbackIndex = 0
     @State private var vibrationChoice: HapticFeedbackType = .light
     
-    @State private var autoStop = true
-    @State private var vibrateToggle = true
-    @State private var modeToggle = false
+    @State private var lastClick: Date? = nil
+    @State private var newClick: Date? = nil
+    @State private var timePerClick: TimeInterval? = nil
+    @State private var currentSessionTime: TimeInterval? = nil
+
 
     
     private enum HapticFeedbackType: String, CaseIterable, Identifiable {
@@ -48,6 +59,7 @@ struct CombinedView: View {
         ZStack {
             VStack(spacing: 40) {
                 ZStack {
+                    //1. the outside
                     CircularProgressView(progress: timerProgress())
                         .contentShape(Circle()) // Only the circle is tappable
                         .onTapGesture {
@@ -62,8 +74,14 @@ struct CombinedView: View {
                             }
                         }
                     
+                    //2. the inside (picker or count)
                     if timerIsActive {
                         TasbeehCountView(tasbeeh: tasbeeh)
+                            .onDisappear{
+                                lastClick = nil
+                                newClick = nil
+                                timePerClick = nil
+                            }
                     } else {
                         Picker("Minutes", selection: $selectedMinutes) {
                             ForEach(1..<60) { minute in
@@ -78,20 +96,23 @@ struct CombinedView: View {
                 .padding(.horizontal)
             }
             
-            // Floating Start/Stop Button
+            // Floating Settings & Start/Stop
             VStack {
                 Spacer()
                 
-//                Picker("vibration type", selection: $vibrationChoice) {
-//                    ForEach(HapticFeedbackType.allCases) { type in
-//                        Text(type.rawValue).tag(type)
-//                    }
-//                }
-//                .pickerStyle(.palette)
+                //0. debug info on current session time stats
+                HStack{
+                    Text("\((String(format: "%.2f", timePerClick ?? 0.0)))")
+                    Text("\(selectedMinutes)m")
+                    Text("\(formattedSessionTime())")
+                }
                 
-                
+
+                // 1. setting toggles
                 if(!timerIsActive){
                     HStack{
+                        
+//                        toggleButton("AutoStop", isOn: $autoStop, color: .mint)
                         Toggle(autoStop ? "✓ AutoStop":"✗ AutoStop", isOn: $autoStop)
                             .toggleStyle(.button)
                             .tint(.mint)
@@ -113,9 +134,8 @@ struct CombinedView: View {
                 }
 
 
-                
-                //start button at the bottom
-                if(!timerIsActive || currentTime >= endTime ?? Date()){ // YO YO YO I JUST ADDED THIS BUT ITLL NEVER HIT CUZ WE STOPTIMER WHEN SECOND CONDITION IS MET... NVM i added autostop toggle.
+                //2. start/stop button
+                if(!timerIsActive || currentTime >= endTime ?? Date()){
                     Button(action: toggleTimer, label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20)
@@ -183,10 +203,15 @@ struct CombinedView: View {
         timerIsActive = true
         startTime = Date()
         endTime = Calendar.current.date(byAdding: .minute, value: selectedMinutes, to: startTime!)
+        newClick = Date()
+        lastClick = Date()
         triggerSomeVibration(type: .success)
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             withAnimation {
                 currentTime = Date()
+            }
+            if let startTime = startTime {
+                currentSessionTime = currentTime.timeIntervalSince(startTime)
             }
             if let endTime = endTime, currentTime >= endTime {
                 if(autoStop){
@@ -206,8 +231,18 @@ struct CombinedView: View {
         return 0.0
     }
     
+    private func elapsedTimeMethod(){
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            if let startTime = startTime {
+                currentSessionTime = currentTime.timeIntervalSince(startTime)
+            }
+            else {currentSessionTime = 0}
+        }
+    }
+    
     private func setupTimer() {
         currentTime = Date()
+//        elapsedTimeMethod()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
             currentTime = Date()
         }
@@ -219,18 +254,43 @@ struct CombinedView: View {
         timer = nil
         timerIsActive = false
         endTime = nil
+        startTime = nil
+        currentSessionTime = 0
     }
     
     private func incrementTasbeeh() {
-        triggerSomeVibration(type: .light)
-        tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
-        onFinishTasbeeh()
-        WidgetCenter.shared.reloadAllTimelines()
+        if(Date().timeIntervalSince(newClick ?? Date()) > 0.08){
+            print("valid")
+            triggerSomeVibration(type: .light)
+            tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
+            lastClick = newClick
+            newClick = Date()
+            timePerClick = newClick?.timeIntervalSince(lastClick ?? Date())
+            print(String(format: "%.3f", timePerClick ?? "error unwrapping..."))
+            onFinishTasbeeh()
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+        else{
+            print("xxxxxxx no go baby xxxxxxxx")
+        }
+    }
+    
+    private func formattedSessionTime() -> String {
+        let sessionTime = currentSessionTime ?? 0.0
+
+        let minutes = Int(sessionTime) / 60
+        let seconds = Int(sessionTime) % 60
+
+        if minutes > 0 {
+            return "\(minutes)m \(seconds)s"
+        } else {
+            return "\(seconds)s"
+        }
     }
     
     private func onFinishTasbeeh(){
         if(tasbeeh % 100 == 0 && tasbeeh != 0){
-            triggerSomeVibration(type: .heavy)
+            triggerSomeVibration(type: .error)
         }
     }
     
@@ -244,6 +304,14 @@ struct CombinedView: View {
         triggerSomeVibration(type: .error)
         tasbeeh = 0
         WidgetCenter.shared.reloadAllTimelines()
+    }
+    
+    private func toggleButton(_ label: String, isOn: Binding<Bool>, color: Color) -> some View {
+        Toggle(isOn: isOn) {
+            Text(isOn.wrappedValue ? "✓ \(label)" : "✗ \(label)")
+        }
+        .toggleStyle(.button)
+        .tint(color)
     }
 
     private func triggerSomeVibration(type: HapticFeedbackType) {
