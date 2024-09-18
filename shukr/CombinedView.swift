@@ -1,8 +1,17 @@
 import SwiftUI
+import AVFAudio
 import WidgetKit
 import SwiftData
 import UIKit
 import AudioToolbox
+import MediaPlayer
+
+// to get rid of keyboard
+extension UIApplication {
+    func endEditing(_ force: Bool) {
+        self.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
 
 struct CombinedView: View {
     
@@ -16,8 +25,11 @@ struct CombinedView: View {
     var vibrateToggle = true
     @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var modeToggle = false
+    @AppStorage("paused", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var paused = false
     
     // State properties
+    @FocusState private var isNumberEntryFocused
+    
     @State private var timerIsActive = false
     @State private var timer: Timer? = nil
     
@@ -27,7 +39,6 @@ struct CombinedView: View {
     @State private var endTime: Date? = nil
     
     // used during pause
-    @State private var paused = false
     @State private var pauseStartTime: Date? = nil
     
     // used outside of pause on click.
@@ -35,6 +46,7 @@ struct CombinedView: View {
     @State private var totalPauseInSession: TimeInterval = 0
     
     @State private var totalTimePerClick: TimeInterval = 0
+    @State private var timePerClick: TimeInterval = 0
     private var avgTimePerClick: TimeInterval{
         tasbeeh > 0 ? totalTimePerClick / Double(tasbeeh) : 0
     }
@@ -65,6 +77,15 @@ struct CombinedView: View {
         if minutes > 0 { return "\(minutes)m \(seconds)s"}
         else { return "\(seconds)s" }
     }
+    private var showStartStopCondition: Bool{
+        (
+            !paused &&
+         (
+            progressFraction >= 1 /*secondsLeft <= 0*/ ||
+            (!timerIsActive && selectedPage != 2) ||
+            (!timerIsActive && selectedPage == 2 && Int(targetCount) ?? 0 > 0))
+         )
+    }
     
     @State private var progressFraction: CGFloat = 0
         
@@ -75,12 +96,16 @@ struct CombinedView: View {
     @State private var holdTimer: Timer? = nil
     @State private var holdDuration: Double = 0
     
+    @State private var selectedPage = 1 // Default to page 2 (index 1)
+    @State private var targetCount: String = ""
+    
+    
     private var debug: Bool = false
     @State private var debug_AddingToPausedTimeString : String = ""
     private var debug_secLeft_secPassed_progressFraction: String{
         "time left: \(roundToTwo(val: secondsLeft)) | secPassed: \(roundToTwo(val: secondsPassed)) | proFra: \(roundToTwo(val: progressFraction))"
     }
-    
+        
     // Reusable haptic feedback generators
     let impactFeedbackGenerator = UIImpactFeedbackGenerator()
     let notificationFeedbackGenerator = UINotificationFeedbackGenerator()
@@ -100,46 +125,118 @@ struct CombinedView: View {
         return ((val * 100.0).rounded() / 100.0)
     }
 
+    private func simulateTasbeehClicks(times: Int) {
+        // Simulate multiple tasbeeh clicks
+        for _ in 1...times {
+            incrementTasbeeh()
+        }
+    }
+
     //--------------------------------------view--------------------------------------
     
     var body: some View {
         ZStack {
             // the middle
             ZStack {
-                //1. the circle
-                CircularProgressView(progress: (progressFraction))
-                    .contentShape(Circle()) // Only the circle is tappable
-                    .onTapGesture {incrementTasbeeh()}
-                
                 //2. the circle's inside (picker or count)
                 if timerIsActive {
                     TasbeehCountView(tasbeeh: tasbeeh)
+//                        .onAppear { simulateTasbeehClicks(times: 199) }
                 } else {
-                    MinuteWheelPicker(selectedMinutesBinding: $selectedMinutes)
+//                    MinuteWheelPicker(selectedMinutesBinding: $selectedMinutes)
+                    // the middle with a scrollable view
+                    TabView (selection: $selectedPage) {
+                        // Page 1
+                        Text(Image(systemName: "infinity"))
+                            .font(.title)
+                            .fontDesign(.rounded)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .tag(0)
+                        
+                        // Page 2 with MinuteWheelPicker
+                        MinuteWheelPicker(selectedMinutesBinding: $selectedMinutes)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .tag(1)
+                        
+                        // Page 3
+                        VStack {
+                            Text(Image(systemName: "number"))
+                                .font(.title)
+                                .fontDesign(.rounded)
+                            TextField("", text: $targetCount)
+                                .focused($isNumberEntryFocused)
+                                .padding()
+                                .keyboardType(.numberPad) // Limits input to numbers only
+                                .frame(width: 75)
+                                .background(Color.gray.opacity(0.2))
+                                .cornerRadius(15)
+                                .fontDesign(.rounded)
+                                .multilineTextAlignment(.center) // Align text in the center
+                                .onTapGesture {
+                                    isNumberEntryFocused = true
+                                }
+                        }
+                        .tag(2)
+                    }
+                    .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
+                    .frame(width: 200, height: 200) // Match the CircularProgressView size
+                    .onChange(of: selectedPage) {_, newPage in
+//                        UIApplication.shared.endEditing(true) // Dismiss keyboard when switching pages
+                        isNumberEntryFocused = false
+                        print("User is on page: \(newPage) | paused = \(paused)")
+                    }
                 }
+                
+                //1. the circle
+                CircularProgressView(progress: (progressFraction))
+                    .contentShape(Circle()) // Only the circle is tappable
+                    .onTapGesture {
+//                        incrementTasbeeh()
+//                        print("okay taped")
+                    }
+//                    .gesture(holdToStopGesture())
+                    .onLongPressGesture(minimumDuration: 0.2) {
+                        timerIsActive ? simulateTasbeehClicks(times: 100) : ()
+                    }
+
             }
             .padding(.horizontal)
             
-            
             // stats and settings - this part handles the pause overlay
             ZStack {
-                // Background blur effect
-                Color.black.opacity(paused ? 0.5 : 0.0)
+                Color("pauseColor")
                     .edgesIgnoringSafeArea(.all)
-                    .animation(.easeInOut, value: paused)
+                    .animation(.easeOut(duration: 0.3), value: paused)
                     .onTapGesture { togglePause() }
+                    .opacity(paused ? 1 : 0.0)
 
                 // Centered stats
                 VStack(spacing: 20) {
                     if paused {
-                        Text("\(selectedMinutes)m Session")
-                            .font(.title2)
+                        if(selectedPage == 0) {
+                            Text("Freestyle Session")
+                                .font(.title2)
                             .bold()
+                        } else if(selectedPage == 1) {
+                            Text("\(selectedMinutes)m Session")
+                                .font(.title2)
+                            .bold()
+                        } else if(selectedPage == 2) {
+                            Text("\(targetCount) Target Session")
+                                .font(.title2)
+                            .bold()
+                        }
 
+                        Text("Count: \(tasbeeh)")
+                            .font(.title3)
+                        
                         Text("Time Passed: \(timePassedAtPause)")
                             .font(.title3)
 
-                        Text("Click Rate: \((String(format: "%.2f", avgTimePerClick)))s")
+                        Text("Last Time / Click: \((String(format: "%.2f", timePerClick)))s")
+                            .font(.title3)
+                        
+                        Text("Avg Time / Click: \((String(format: "%.2f", avgTimePerClick)))s")
                             .font(.title3)
 
                         Text("Tasbeeh Rate: \(tasbeehRate)")
@@ -156,6 +253,7 @@ struct CombinedView: View {
 
                 // Settings toggles pinned to the bottom
                 VStack {
+                    
                     Spacer()
 
                     HStack {
@@ -185,11 +283,23 @@ struct CombinedView: View {
                     .opacity(paused ? 1.0 : 0.0)
                     .animation(.easeInOut, value: paused)
                 }
+            }.animation(.easeInOut, value: paused)
+
+
+
+            VStack {
+                Spacer()
+                
+                if timerIsActive {
+                    Text("hold to stop the timer...")
+                        .font(.title3)
+                        .fontDesign(.rounded)
+                        .foregroundColor(.gray)
+                        .padding(.bottom, isHolding ? 30 : 0)
+                        .opacity(isHolding ? 1 : 0)
+                        .animation(isHolding ? .easeInOut(duration: 1) : .easeOut(duration: 0.5), value: isHolding)
+                }
             }
-
-
-
-
 
             
             // Floating Settings & Start/Stop
@@ -236,11 +346,12 @@ struct CombinedView: View {
                         toggleButton("Vibrate", isOn: $vibrateToggle, color: .yellow, checks: true)
                         toggleButton(modeToggle ? "🌙":"☀️", isOn: $modeToggle, color: .white, checks: false)
                     }
+                    .padding(.bottom)
                 }
 
 
                 //2. start/stop button
-                if((!timerIsActive || secondsLeft <= 0) && !paused){
+                if(showStartStopCondition){
                     Button(action: toggleTimer, label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20)
@@ -252,43 +363,37 @@ struct CombinedView: View {
                                 .font(.title3)
                                 .fontDesign(.rounded)
                         }
-                        .frame(height: 50)
+                        .frame(width: 300,height: 50)
                         .shadow(radius: 5)
                     })
-                    .padding()
+                    .padding([.leading, .bottom, .trailing])
                 }
             }
             
-            VStack {
-                Spacer()
-                
-                if timerIsActive {
-                    Text("hold to stop the timer...")
-                        .font(.title3)
-                        .fontDesign(.rounded)
-                        .foregroundColor(.gray)
-                        .padding(.bottom, isHolding ? 30 : 0)
-                        .opacity(isHolding ? 1 : 0)
-                        .animation(isHolding ? .easeInOut(duration: 1) : .easeOut(duration: 0.5), value: isHolding)
-                }
-            }
         }
         .frame(maxWidth: .infinity) // makes the whole thing tappable. otherwise tappable area shrinks to width of CircularProgressView
+//        .background(Color(.gray)) // This will use your custom color for both light and dark mode
         .background(
-            Color.clear // Makes the background tappable
-                .contentShape(Rectangle())
+            Color.init("bgColor") // Makes the background tappable
+                .contentShape(Rectangle()).edgesIgnoringSafeArea(.all)
                 .onTapGesture {
+//                    UIApplication.shared.endEditing(true) // Dismiss keyboard when tapping outside
+                    isNumberEntryFocused = false
                     if timerIsActive {
                         incrementTasbeeh()
                     }
                 }
                 .gesture(holdToStopGesture())
         )
-        .onDisappear(perform: stopTimer)
+        .onDisappear {
+            stopTimer() // i think this is useless since this view is the main app and it NEVER disappears...
+        }
         .preferredColorScheme(modeToggle ? .dark : .light)
     }
     
 //--------------------------------------functions--------------------------------------
+    
+
     
     private func toggleTimer() {
         if timerIsActive {
@@ -316,10 +421,25 @@ struct CombinedView: View {
             withAnimation {
 
                 if(!paused){
-                    progressFraction = CGFloat(Int(secondsPassed))/TimeInterval(totalTime)
+                    if(selectedPage == 0){
+                        //made it so that it never actually gets to 100/100 or else it can auto stop if toggled on.
+                        let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
+                        progressFraction = CGFloat(Int(numerator))/CGFloat(Int(100))
+//                        print("0: \(selectedPage) profra: \(progressFraction)")
+//                        print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
+                    } else if(selectedPage == 1){
+                        progressFraction = CGFloat(Int(secondsPassed))/TimeInterval(totalTime)
+//                        print("0: \(selectedPage) profra: \(progressFraction)")
+//                        print("top: \(CGFloat(Int(secondsPassed))) bot: \(TimeInterval(totalTime))")
+                    } else if (selectedPage == 2){
+                        progressFraction = CGFloat(tasbeeh)/CGFloat(Int(targetCount) ?? 0)
+//                        print("2: \(selectedPage) profra: \(progressFraction)")
+//                        print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(targetCount) ?? 0))")
+
+                    }
                 }
             }
-            if (secondsLeft <= 0 && !paused) {
+            if ((/*secondsLeft <= 0 || */progressFraction >= 1) && !paused) {
                 if(autoStop){
                     stopTimer()
                     print("homeboy auto stopped....")
@@ -327,6 +447,9 @@ struct CombinedView: View {
                 }
             }
         }
+        
+        WidgetCenter.shared.reloadAllTimelines() // Ensure widget reflects this change
+
     }
     
     private func stopTimer() {
@@ -341,6 +464,7 @@ struct CombinedView: View {
         startTime = nil
         
         totalTimePerClick = 0
+        timePerClick = 0
         
         pauseSinceLastInc = 0
         totalPauseInSession = 0
@@ -349,12 +473,15 @@ struct CombinedView: View {
         
         paused = false
         
+        targetCount = ""
+        
         triggerSomeVibration(type: .vibrate)
 
     }
     
     private func togglePause() {
-        paused = !paused
+        paused.toggle()
+        WidgetCenter.shared.reloadAllTimelines() // Ensure widget reflects this change
         triggerSomeVibration(type: .medium)
         if(paused){
             pauseStartTime = Date()
@@ -392,6 +519,7 @@ struct CombinedView: View {
         ) - pauseSinceLastInc
         
         totalTimePerClick += timePerClick
+        self.timePerClick = timePerClick
         
         /// debug text to demonstrate how paused time is accounted for
         if(debug){
@@ -408,11 +536,11 @@ struct CombinedView: View {
         
         pauseSinceLastInc = 0
         
-        print("inc")
-        print(clickStats)
+//        print("inc")
+//        print(clickStats)
         
         tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
-        triggerSomeVibration(type: .light)
+        triggerSomeVibration(type: .medium)
         
         onFinishTasbeeh()
         WidgetCenter.shared.reloadAllTimelines()
@@ -437,8 +565,8 @@ struct CombinedView: View {
                 }
             }
             
-            print("dec")
-            print(clickStats)
+//            print("dec")
+//            print(clickStats)
             triggerSomeVibration(type: .rigid)
             tasbeeh = max(tasbeeh - 1, 0) // Adjust minimum value as needed
             
@@ -540,7 +668,7 @@ struct CombinedView: View {
                 Circle()
                     .stroke(lineWidth: 24)
                     .frame(width: 200, height: 200)
-                    .foregroundColor(.white)
+                    .foregroundColor(Color("wheelColor"))
                     .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
                 
                 Circle()
@@ -568,28 +696,116 @@ struct CombinedView: View {
         }
     }
     
+    // YEHSIRRR we got purples doing same thing from top down now. No numbers. Clean.
     struct TasbeehCountView: View {
         let tasbeeh: Int
-        
+        let circleSize: CGFloat = 10 // Circle size
+        let arcRadius: CGFloat = 40 // Distance of the grey circles from the number (radius of the arc)
+        let purpleArcRadius: CGFloat = 60 // Distance of the purple circles from the center (larger radius)
+
+        @State private var rotationAngle: Double = 0 // State variable to handle grey circle rotation
+        @State private var purpleRotationAngle: Double = 0 // State variable to handle purple circle rotation
+
+        private var justReachedToA1000: Bool {
+            tasbeeh % 1000 == 0
+        }
+        private var showPurpleCircle: Bool {
+            tasbeeh >= 1000
+        }
+
         var body: some View {
             ZStack {
-                HStack(spacing: 5) {
-                    let circlesCount = tasbeeh / 100
-                    ForEach(0..<circlesCount, id: \.self) { _ in
-                        Circle()
-                            .fill(Color.gray.opacity(0.5))
-                            .frame(width: 10, height: 10)
-                    }
-                }
-                .offset(y: 40) // Position the circles below the text
-
+                // Display the number in the center
                 Text("\(tasbeeh % 100)")
                     .font(.largeTitle)
                     .bold()
                     .fontDesign(.rounded)
+
+                // GeometryReader to help position circles
+                GeometryReader { geometry in
+                    let circlesCount = tasbeeh / 100
+                    let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+
+                    // Purple circles at the top, further from the center
+                    ZStack {
+                        ForEach(0..<min(circlesCount / 10, 10), id: \.self) { index in
+                            Circle()
+                                .fill(Color.purple)
+                                .frame(width: circleSize, height: circleSize)
+                                .position(purpleClockPosition(for: index, center: center)) // Purple circles further out
+                        }
+                    }
+                    .rotationEffect(.degrees(purpleRotationAngle)) // Rotate purple circles
+                    .opacity(showPurpleCircle ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.5), value: showPurpleCircle)
+
+                    // Grey circles in a clock pattern for 1-9 tasbeehs
+                    ZStack {
+                        ForEach(0..<max(circlesCount % 10, justReachedToA1000 ? 9 : 0), id: \.self) { index in
+                            Circle()
+                                .fill(Color.gray.opacity(0.5))
+                                .frame(width: circleSize, height: circleSize)
+                                .position(clockPosition(for: index, center: center)) // Grey circles at default radius
+                                .opacity(justReachedToA1000 ? 0 : 1)
+                                .animation(.easeInOut(duration: 0.5), value: justReachedToA1000)
+                        }
+                    }
+                    .rotationEffect(.degrees(rotationAngle)) // Rotate based on grey tasbeeh count
+                    .onChange(of: circlesCount % 10) {_, newValue in
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            if newValue > 1 && newValue % 10 != 0 {
+                                rotationAngle = Double(18 * (newValue - 1)) // Rotate by 18 degrees for each grey circle added
+                            } else if newValue == 1 {
+                                rotationAngle = 0 // Reset grey circle rotation for a new cycle
+                            }
+                        }
+                    }
+                    
+                    // Update purple circle rotation logic
+                    .onChange(of: circlesCount / 10) {_, newValue in
+                        withAnimation(.easeInOut(duration: 0.5)) {
+                            if newValue > 1 && newValue % 10 != 0 {
+                                purpleRotationAngle = Double(18 * (newValue - 1)) // Rotate by 18 degrees for each purple circle added
+                            } else if newValue == 1 {
+                                purpleRotationAngle = 0 // Reset purple circle rotation for a new cycle
+                            }
+                        }
+                    }
+                }
+                .frame(height: 100) // Adjust frame height to ensure there's enough space
             }
         }
+
+        // Function to calculate the position of each grey circle like clock positions (now with 10 hands)
+        func clockPosition(for index: Int, center: CGPoint) -> CGPoint {
+            let angle = angleForClockPosition(at: index)
+            let x = center.x + arcRadius * cos(angle) // X position using cosine
+            let y = center.y + arcRadius * sin(angle) // Y position using sine
+            return CGPoint(x: x, y: y)
+        }
+
+        // Function to calculate the position of each purple circle, placed further out and rotated
+        func purpleClockPosition(for index: Int, center: CGPoint) -> CGPoint {
+            let angle = angleForClockPosition(at: index) // Same angle logic
+            let x = center.x + purpleArcRadius * cos(angle - .pi) // Push further out and flip vertically
+            let y = center.y + purpleArcRadius * sin(angle - .pi) // Flip vertically for top positioning
+            return CGPoint(x: x, y: y)
+        }
+
+        // Function to calculate the angle corresponding to the clock positions (starting from 6 o'clock and going backward, now with 10 even spots)
+        func angleForClockPosition(at index: Int) -> CGFloat {
+            let stepAngle: CGFloat = 2 * .pi / 10 // Divide the circle into 10 positions (like a clock with 10 hands)
+            let startAngle: CGFloat = .pi / 2 // Start at 6 o'clock position (bottom center)
+            return startAngle - stepAngle * CGFloat(index)
+        }
     }
+
+
+
+
+
+
+
     
     struct MinuteWheelPicker: View {
         @Binding var selectedMinutesBinding: Int
@@ -605,6 +821,7 @@ struct CombinedView: View {
             .padding()
         }
     }
+
     
     struct BlurView: UIViewRepresentable {
         var style: UIBlurEffect.Style
@@ -615,8 +832,27 @@ struct CombinedView: View {
 
         func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
     }
-
+    
+    struct GlassMorphicView: View {
+        var body: some View {
+            ZStack {
+                // The frosted glass effect
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(Color.white.opacity(0.1))  // Base color with transparency
+                    .background(
+                        Color.white.opacity(0.4) // Adds a translucent layer
+                            .blur(radius: 10) // Creates a blur effect
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 1) // Subtle white border
+                    )
+                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 10) // Adds depth with shadow
+            }
+        }
+    }
 }
+
 
 #Preview {
     CombinedView()
@@ -631,10 +867,16 @@ struct CombinedView: View {
  
  next stuff to tackle
  
- - get average timePerClick during session.
- - reset count button
- - during active timer, hold down for settings (autostop, vibrate, modetoggle, selectedMinutes, formattedSessionTime, average timePerClick, reset count button, stop button)
+ TODO:
+ - fix widget to work with code. (currently goes out of bounds on clickStats[])
+ - Make a max on the number entry to be 10k.
  - CRUD historical session cards: store each session as its own card to see session data.
  - add notes section to the historical session card
- - slide to stop early...?
+ 
+ DONE:
+ - make it so every 5 tasbeehs make a purple circle instead of gray. otherwise it goes out of the view when theres like 10...
+ - Swipe to use different tasbeeh modes.
+    > right now its a time based mode. (progressFraction out of target time)
+    > add count target mode (progressFraction out of target count)
+    > add freestyle mode. (progressFraction out of 100)
  */

@@ -2,7 +2,7 @@
 //  shukrWidget.swift
 //  shukrWidget
 //
-//  Created by Izhan S Ansari on 8/3/24.
+//  Created by me on 8/3/24.
 //
 
 import WidgetKit
@@ -12,37 +12,67 @@ import UIKit
 
 struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ShukrEntry {
-        ShukrEntry(date: Date(), tasbeeh: 1, configuration: ConfigurationAppIntent())
+        ShukrEntry(date: Date(), tasbeeh: 1, isPaused: false, configuration: ConfigurationAppIntent())
     }
 
     func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> ShukrEntry {
-        ShukrEntry(date: Date(), tasbeeh: 1, configuration: configuration)
+        ShukrEntry(date: Date(), tasbeeh: 1, isPaused: false, configuration: configuration)
     }
+    
+//    func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<ShukrEntry> {
+//        var entries: [ShukrEntry] = []
+//        
+//        let userDefaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+//        let currentNumber = userDefaults?.integer(forKey: "count") ?? 0
+//        let isPaused = userDefaults?.bool(forKey: "paused") ?? false
+//
+//
+//         //Generate a timeline consisting of 7 entries a day apart, starting from the current date.
+//        let currentDate = Date()
+//        for dayOffset in 0 ..< 7 {
+//            let entryDate = Calendar.current.date(byAdding: .day, value: dayOffset, to: currentDate)!
+//            let startOfDate =  Calendar.current.startOfDay(for: entryDate)
+//            let entry = ShukrEntry(date: startOfDate, tasbeeh: currentNumber, configuration: configuration)
+//            entries.append(entry)
+//        }
+//
+//        return Timeline(entries: entries, policy: .atEnd)
+//    }
     
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<ShukrEntry> {
         var entries: [ShukrEntry] = []
         
         let userDefaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         let currentNumber = userDefaults?.integer(forKey: "count") ?? 0
+        let isPaused = userDefaults?.bool(forKey: "paused") ?? false // Get isPaused value from UserDefaults
 
         // Generate a timeline consisting of 7 entries a day apart, starting from the current date.
         let currentDate = Date()
         for dayOffset in 0 ..< 7 {
             let entryDate = Calendar.current.date(byAdding: .day, value: dayOffset, to: currentDate)!
             let startOfDate =  Calendar.current.startOfDay(for: entryDate)
-            let entry = ShukrEntry(date: startOfDate, tasbeeh: currentNumber, configuration: configuration)
+            let entry = ShukrEntry(date: startOfDate, tasbeeh: currentNumber, isPaused: isPaused, configuration: configuration) // Pass isPaused
             entries.append(entry)
         }
 
         return Timeline(entries: entries, policy: .atEnd)
     }
+
 }
+
+//struct ShukrEntry: TimelineEntry {
+//    let date: Date
+//    let tasbeeh: Int
+//    let configuration: ConfigurationAppIntent
+//}
 
 struct ShukrEntry: TimelineEntry {
     let date: Date
     let tasbeeh: Int
+    let isPaused: Bool // Add isPaused state
     let configuration: ConfigurationAppIntent
 }
+
 
 struct ShukrEntryView : View {
     var entry: ShukrEntry
@@ -80,16 +110,21 @@ struct ShukrEntryView : View {
             Spacer()
             
             VStack {
-                Button(intent: AddIntent()){
-                    Image(systemName: "plus").bold().font(.title2)
-                        .frame(width: 40, height: 80)
+                if entry.isPaused {
+                    // Show play button
+                    Button(intent: ResumeIntent()) {
+                        Image(systemName: "play.fill").bold().font(.title2)
+                            .frame(width: 40, height: 80)
+                    }
+                } else {
+                    // Show plus button
+                    Button(intent: AddIntent()) {
+                        Image(systemName: "plus").bold().font(.title2)
+                            .frame(width: 40, height: 80)
+                    }
                 }
-                
-//                Button(intent: SubtractIntent()){
-//                    Image(systemName: "minus").bold().font(.title2)
-//                        .frame(width: 60, height: 30)
-//                }
             }
+
         }
         .padding(.horizontal)
         .padding(.horizontal)
@@ -129,7 +164,7 @@ extension ConfigurationAppIntent {
 #Preview(as: .systemMedium) {
     shukrWidget()
 } timeline: {
-    ShukrEntry(date: .now, tasbeeh: 10, configuration: .smiley)
+    ShukrEntry(date: .now, tasbeeh: 10, isPaused: false, configuration: .smiley)
 }
 
 
@@ -174,3 +209,17 @@ struct SubtractIntent: AppIntent {
         return .result()
     }
 }
+
+struct ResumeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Resume"
+
+    func perform() async throws -> some IntentResult {
+        if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
+            store.setValue(false, forKey: "paused")
+            WidgetCenter.shared.reloadAllTimelines()
+            return .result()
+        }
+        return .result()
+    }
+}
+

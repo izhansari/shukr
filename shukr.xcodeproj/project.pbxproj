@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		360A104D2C98B86100ACA18C /* Old_TasbeehCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */; };
+		360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104E2C98C72C00ACA18C /* VolumeTesting.swift */; };
 		360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85912C600EC5000385F3 /* ShukrTimer.swift */; };
 		360B85962C7112A2000385F3 /* CombinedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* CombinedView.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
@@ -25,7 +27,6 @@
 		369A06052C5E8635002CD697 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06042C5E8635002CD697 /* AppIntent.swift */; };
 		369A06072C5E8636002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A06062C5E8636002CD697 /* Assets.xcassets */; };
 		369A060B2C5E8636002CD697 /* shukrWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 369A05F72C5E8635002CD697 /* shukrWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		36F4711B2C8FFE060077DB22 /* JPSVolumeButtonHandler in Frameworks */ = {isa = PBXBuildFile; productRef = 36F4711A2C8FFE060077DB22 /* JPSVolumeButtonHandler */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,6 +68,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Old_TasbeehCountView.swift; sourceTree = "<group>"; };
+		360A104E2C98C72C00ACA18C /* VolumeTesting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeTesting.swift; sourceTree = "<group>"; };
 		360B85912C600EC5000385F3 /* ShukrTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShukrTimer.swift; sourceTree = "<group>"; };
 		360B85932C6E1D62000385F3 /* shukrWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukrWidgetExtension.entitlements; sourceTree = "<group>"; };
 		360B85942C6E1F61000385F3 /* shukr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukr.entitlements; sourceTree = "<group>"; };
@@ -102,7 +105,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				36F4711B2C8FFE060077DB22 /* JPSVolumeButtonHandler in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -168,6 +170,8 @@
 				369A05CB2C5E8616002CD697 /* Item.swift */,
 				369A05CD2C5E8617002CD697 /* Assets.xcassets */,
 				369A05CF2C5E8617002CD697 /* Preview Content */,
+				360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */,
+				360A104E2C98C72C00ACA18C /* VolumeTesting.swift */,
 			);
 			path = shukr;
 			sourceTree = "<group>";
@@ -249,7 +253,6 @@
 			);
 			name = shukr;
 			packageProductDependencies = (
-				36F4711A2C8FFE060077DB22 /* JPSVolumeButtonHandler */,
 			);
 			productName = shukr;
 			productReference = 369A05C42C5E8616002CD697 /* shukr.app */;
@@ -344,7 +347,6 @@
 			);
 			mainGroup = 369A05BB2C5E8616002CD697;
 			packageReferences = (
-				36F471192C8FFE060077DB22 /* XCRemoteSwiftPackageReference "JPSVolumeButtonHandler" */,
 			);
 			productRefGroup = 369A05C52C5E8616002CD697 /* Products */;
 			projectDirPath = "";
@@ -399,9 +401,11 @@
 			files = (
 				360B85962C7112A2000385F3 /* CombinedView.swift in Sources */,
 				369A05CA2C5E8616002CD697 /* ContentView.swift in Sources */,
+				360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */,
 				360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */,
 				369A05CC2C5E8616002CD697 /* Item.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
+				360A104D2C98B86100ACA18C /* Old_TasbeehCountView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -818,25 +822,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		36F471192C8FFE060077DB22 /* XCRemoteSwiftPackageReference "JPSVolumeButtonHandler" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/jpsim/JPSVolumeButtonHandler.git";
-			requirement = {
-				branch = master;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		36F4711A2C8FFE060077DB22 /* JPSVolumeButtonHandler */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 36F471192C8FFE060077DB22 /* XCRemoteSwiftPackageReference "JPSVolumeButtonHandler" */;
-			productName = JPSVolumeButtonHandler;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 369A05BC2C5E8616002CD697 /* Project object */;
 }
