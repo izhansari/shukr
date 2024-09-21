@@ -5,6 +5,9 @@ import SwiftData
 import UIKit
 import AudioToolbox
 import MediaPlayer
+import Foundation
+
+
 
 // to get rid of keyboard
 extension UIApplication {
@@ -14,7 +17,7 @@ extension UIApplication {
 }
 
 struct CombinedView: View {
-    
+
     // AppStorage properties
     @AppStorage("count", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var tasbeeh: Int = 10
@@ -54,12 +57,13 @@ struct CombinedView: View {
     private var formatTimePassed: String{
         let minutes = Int(secondsPassed) / 60
         let seconds = Int(secondsPassed) % 60
-
+        
         if minutes > 0 { return "\(minutes)m \(seconds)s"}
         else { return "\(seconds)s" }
     }
+    
     @State private var timePassedAtPause: String = ""
-
+    
     private var totalTime:  Int {
         selectedMinutes*60
     }
@@ -73,22 +77,23 @@ struct CombinedView: View {
         let to100 = avgTimePerClick*100
         let minutes = Int(to100) / 60
         let seconds = Int(to100) % 60
-
+        
         if minutes > 0 { return "\(minutes)m \(seconds)s"}
         else { return "\(seconds)s" }
     }
     private var showStartStopCondition: Bool{
         (
             !paused &&
-         (
-            progressFraction >= 1 /*secondsLeft <= 0*/ ||
-            (!timerIsActive && selectedPage != 2) ||
-            (!timerIsActive && selectedPage == 2 && Int(targetCount) ?? 0 > 0))
-         )
+            selectedPage != 3 &&
+            (
+                progressFraction >= 1 /*secondsLeft <= 0*/ ||
+                (!timerIsActive && selectedPage != 2) ||
+                (!timerIsActive && selectedPage == 2 && (1...10000) ~= Int(targetCount) ?? 0 ))
+        )
     }
     
     @State private var progressFraction: CGFloat = 0
-        
+    
     typealias newClickData = (date: Date, pauseTime: TimeInterval, tpc: TimeInterval)
     @State private var clickStats: [newClickData] = []
     
@@ -102,6 +107,20 @@ struct CombinedView: View {
     @State private var offsetY: CGFloat = 0
     @State private var dragToIncrementBool: Bool = true
     @State private var dragSetting: Bool = true
+    @State private var showDragColor: Bool = false
+    @State private var myStringOffsetInput: String = ""
+    private var InputOffsetY: Double{
+        Double(myStringOffsetInput) ?? 60.0
+    }
+    
+    @State private var sessions: [SessionData] = []
+    
+    // Detect scene phase changes (active, inactive, background)
+    @Environment(\.scenePhase) var scenePhase
+    
+    @State private var showNotesModal: Bool = false
+    @State private var noteModalText = ""
+    @State private var takingNotes: Bool = false
     
     
     private var debug: Bool = false
@@ -109,18 +128,18 @@ struct CombinedView: View {
     private var debug_secLeft_secPassed_progressFraction: String{
         "time left: \(roundToTwo(val: secondsLeft)) | secPassed: \(roundToTwo(val: secondsPassed)) | proFra: \(roundToTwo(val: progressFraction))"
     }
-        
+    
     // Reusable haptic feedback generators
     let impactFeedbackGenerator = UIImpactFeedbackGenerator()
     let notificationFeedbackGenerator = UINotificationFeedbackGenerator()
-
-
-    private enum HapticFeedbackType: String, CaseIterable, Identifiable {
+    
+    
+    enum HapticFeedbackType: String, CaseIterable, Identifiable {
         case light = "Light"; case medium = "Medium"
         case heavy = "Heavy"; case soft = "Soft"
         case rigid = "Rigid"; case success = "Success"
         case warning = "Warning"; case error = "Error"
-        case vibrate = "Vibrate"
+        case vibrate = "Vibrate"; case off = ""
         
         var id: String { self.rawValue }
     }
@@ -128,37 +147,157 @@ struct CombinedView: View {
     func roundToTwo(val: Double) -> Double{
         return ((val * 100.0).rounded() / 100.0)
     }
-
+    
     private func simulateTasbeehClicks(times: Int) {
         // Simulate multiple tasbeeh clicks
         for _ in 1...times {
             incrementTasbeeh()
         }
     }
+    
+    @State private var toggleInactivityTimer: Bool = false
+    @State private var inactivityTimer: Timer? = nil
+    @State private var timeSinceLastInteraction: TimeInterval = 0
+    var inactivityLimit: TimeInterval{
+//        if tasbeeh > 10{
+//            var lastFiveMovingAvg = 0.0
+//            ForEach(clickStats.count...clickStats.count-5){ index in
+//                lastFiveMovingAvg += clickStats[index].tpc
+//            }
+//            return max (avgTimePerClick * 2, 15)
+//        } else { return 20 }
+        if tasbeeh > 10 && clickStats.count >= 5 {
+                let lastFiveClicks = clickStats.suffix(5) // Get the last 5 elements
+                let lastFiveMovingAvg = lastFiveClicks.reduce(0.0) { sum, stat in
+                    sum + stat.tpc
+                } / Double(lastFiveClicks.count) // Calculate the average
 
+                return max(lastFiveMovingAvg * 3, 15) // Triple the moving average or 15, whichever is larger
+            } else {
+                return 20
+            }
+    } // 5 seconds for now
+    @State private var showInactivityAlert = false
+    @State private var countDownForAlert = 0
+    @State private var stoppedDueToInactivity: Bool = false
+
+    
+    func inactivityTimerHandler(run: String) {
+        if(toggleInactivityTimer){
+            switch run{
+            case "restart": do {
+                print("start inactivity timer with limit of \(inactivityLimit)")
+                inactivityTimer?.invalidate() // Invalidate any existing timer
+                showInactivityAlert = false // set it to false just to be sure.
+                timeSinceLastInteraction = 0 // Reset time since last interaction
+//                var debugSetInactivityLimitForDemo = inactivityLimit
+                //            showDragColor ? debugSetInactivityLimitForDemo = 5 : ()
+                var localCountDown = 11
+                
+                inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+                    timeSinceLastInteraction += 1.0
+                    if(offsetY != 0) {
+//                        inactivityTimerHandler(run: "restart")
+                        print("holding screen dow -- reset timeSinceLastInteraction from \(timeSinceLastInteraction) to 0.")
+                        timeSinceLastInteraction = 0
+                    }
+                    if timeSinceLastInteraction >= inactivityLimit { // run if tasbeeh hasnt changed for span of our limit
+                        showInactivityAlert = true // Show the alert after 5 minutes
+                        localCountDown -= 1
+                        countDownForAlert = localCountDown
+                    }
+                    if localCountDown <= 0 {
+                        stoppedDueToInactivity = true
+                        stopTimer()
+                    }
+                    
+                }
+            }
+            case "stop": do {
+                print("stopping inactivity timer")
+                inactivityTimer?.invalidate()
+            }
+            default:
+                print("yo bro invalid use of inactivityTimerHandler func")
+            }
+        }
+        else{
+            print("Not tracking inactivity cuz Bool set to \(toggleInactivityTimer)")
+        }
+    }
+
+    
+//    // Function to start the inactivity timer
+//    func startInactivityTimer() {
+//        print("start inactivity timer")
+//        inactivityTimer?.invalidate() // Invalidate any existing timer
+//        
+//        inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+//            timeSinceLastInteraction += 1.0
+//            if timeSinceLastInteraction >= inactivityLimit {
+//                showInactivityAlert = true // Show the alert after 5 minutes
+//                inactivityTimer?.invalidate() // Stop the timer once the alert is shown
+//            }
+//        }
+//    }
+//    
+//    // Function to reset the inactivity timer
+//    func resetInactivityTimer() {
+//        print("reset inactivity timer")
+//        timeSinceLastInteraction = 0 // Reset time since last interaction
+//        startInactivityTimer() // Restart the timer
+//    }
+    
     //--------------------------------------view--------------------------------------
     
     var body: some View {
-        ZStack {
+        NavigationView{
+            ZStack {
             // the middle
             ZStack {
                 //2. the circle's inside (picker or count)
                 if timerIsActive {
                     TasbeehCountView(tasbeeh: tasbeeh)
-                        .onTapGesture {
-                            incrementTasbeeh()
-                            print("okay taped")
+                        .onAppear {
+                            inactivityTimerHandler(run: "restart") // Monitor inactivity when countview appears
                         }
-//                        .gesture(holdToStopGesture())
-//                        .onAppear { simulateTasbeehClicks(times: 199) }
+                        .onChange(of: tasbeeh){_, newTasbeeh in
+                            inactivityTimerHandler(run: "restart") // Reset inactivity timer on any change to tasbeeh
+                        }
+                        .onDisappear{
+                            inactivityTimerHandler(run: "stop") // no more montioring if view gone
+                        }
+                        .onChange(of: scenePhase) {_, newScenePhase in
+                            print("scenePhase: \(newScenePhase)")
+                            if newScenePhase == .inactive || newScenePhase == .background {
+                                // App went to background or inactive state (e.g., home screen or call)
+                                !paused ? togglePause() : ()
+                                print("scenePhase: \(newScenePhase) (session paused? \(paused) \(isHolding)")
+                            }
+                        }
+                    //                        .gesture(holdToStopGesture())
+                    //                        .onAppear { simulateTasbeehClicks(times: 199) }
                     GeometryReader { geometry in
                         VStack {
                             ScrollView(.vertical, showsIndicators: false) {
                                 ZStack {
-                                    Color("bgColor").opacity(0.001) // doesnt like clear, so looks clear
-                                        .frame(width: geometry.size.width, height: 1000) // Set height larger than the screen
+                                    
+                                    if(!showDragColor){
+                                        Color("bgColor").opacity(0.001) // doesnt like clear, so looks clear
+                                            .frame(width: geometry.size.width, height: 1000) // Set height larger than the screen
+                                    }else{
+                                        //for testing
+                                        if(offsetY > CGFloat(InputOffsetY)){
+                                            Color.green.opacity(0.1)
+                                                .frame(width: geometry.size.width, height: 1000)
+                                        } else{
+                                            Color.red.opacity(0.1)
+                                                .frame(width: geometry.size.width, height: 1000)
+                                        }
+                                    }
                                 }
                                 .onTapGesture {
+                                    print("tapped on drag rectangle")
                                     incrementTasbeeh()
                                 }
                                 .offset(y: offsetY)
@@ -167,12 +306,12 @@ struct CombinedView: View {
                                         offsetY = value.translation.height
                                         
                                         // Trigger increment when user swipes down more than 50 points
-                                        if offsetY > 60 {
+                                        if offsetY > CGFloat(InputOffsetY) {
                                             dragToIncrementBool && dragSetting ? incrementTasbeeh() : ()
                                             dragToIncrementBool = false
                                         }
-                                        else{
-                                            dragToIncrementBool = true
+                                        else {
+                                            dragToIncrementBool = true // keep this if you want continuous dragging
                                         }
                                     }
                                     .onEnded { _ in
@@ -185,7 +324,20 @@ struct CombinedView: View {
                         .frame(height: geometry.size.height)
                         .background(Color.clear)
                     }
+                    .alert(isPresented: $showInactivityAlert) {
+                        Alert(
+                            title: Text("Are you still there?"),
+                            message: Text("It seems like you've been inactive for a while. (autostopping in \(countDownForAlert))"),
+                            primaryButton: .default(Text("🙋‍♂️ I'm here"), action: {
+                                inactivityTimerHandler(run: "restart") // Reset timer if user confirms they're still there
+                            }),
+                            secondaryButton: .cancel(Text("😴 Exit"), action: {
+                                stopTimer() // Reset timer if user confirms they're still there
+                            })
+                        )
+                    }
 
+                    
                 } else {
                     // the middle with a scrollable view
                     TabView (selection: $selectedPage) {
@@ -197,72 +349,81 @@ struct CombinedView: View {
                         
                         countTargetMode(targetCount: $targetCount, isNumberEntryFocused: _isNumberEntryFocused)
                             .tag(2)
+                        
+                        inputOffsetSubView(targetCount: $myStringOffsetInput, isNumberEntryFocused: _isNumberEntryFocused)
+                            .tag(3)
                     }
                     .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
                     .frame(width: 200, height: 200) // Match the CircularProgressView size
                     .onChange(of: selectedPage) {_, newPage in
                         isNumberEntryFocused = false //Dismiss keyboard when switching pages
-//                        debug ? print("User is on page: \(newPage)") : ()
+                        //                        debug ? print("User is on page: \(newPage)") : ()
                     }
                     .onTapGesture {
                         isNumberEntryFocused = false //Dismiss keyboard when tapping on tabview
-//                        debug ? print("hit tab view. isnef = \(isNumberEntryFocused)") : ()
-
+                        //                        debug ? print("hit tab view. isnef = \(isNumberEntryFocused)") : ()
+                        
                     }
                 }
                 
                 //1. the circle
                 CircularProgressView(progress: (progressFraction))
             }
-//            .padding(.horizontal)
+            //            .padding(.horizontal)
             
             // Pause Screen (background overlay, stats & settings)
             ZStack {
-                    pauseStatsAndBG(
-                        paused: paused, selectedPage: selectedPage,
-                        selectedMinutes: selectedMinutes, targetCount: targetCount,
-                        tasbeeh: tasbeeh, timePassedAtPause: timePassedAtPause,
-                        timePerClick: timePerClick, avgTimePerClick: avgTimePerClick,
-                        tasbeehRate: tasbeehRate, togglePause: { togglePause() }
-                    )
+                pauseStatsAndBG(
+                    paused: paused, selectedPage: selectedPage,
+                    selectedMinutes: selectedMinutes, targetCount: targetCount,
+                    tasbeeh: tasbeeh, timePassedAtPause: timePassedAtPause,
+                    timePerClick: timePerClick, avgTimePerClick: avgTimePerClick,
+                    tasbeehRate: tasbeehRate, togglePause: { togglePause() }, takingNotes: takingNotes
+                )
                 VStack {
                     Spacer()
                     // bottom bar in the pause view (pause settings)
                     HStack {
                         // settings which can be toggled
-                        toggleButton("AutoStop", isOn: $autoStop, color: .mint, checks: true).foregroundColor(!modeToggle ? .white : .none)
-                        toggleButton("Vibrate", isOn: $vibrateToggle, color: .yellow, checks: true).foregroundColor(!modeToggle ? .white : .none)
-                        toggleButton("Drag", isOn: $dragSetting, color: .green, checks: true).foregroundColor(!modeToggle ? .white : .none)
+                        toggleButton("dbug", isOn: $showDragColor, color: .red, checks: false).foregroundColor(!modeToggle ? .white : .none)
+                        
+                        AutoStopToggleButton(autoStop: $autoStop)
 
-                        toggleButton(modeToggle ? "🌙" : "☀️", isOn: $modeToggle, color: .white, checks: false)
-
-                        // square x button to stop timer
-                        Button(action: { stopTimer() }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(.red)
-                                .padding()
+                        VStack{
+                            SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer)
+                            VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
                         }
-                        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
-                        .cornerRadius(15)
-                        .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+                        VStack{
+                            ColorSchemeModeToggleButton(modeToggle: $modeToggle)
+                            
+                            // square x button to stop timer
+                            Button(action: { stopTimer() }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.red)
+                                    .padding()
+                            }
+                            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+                            .cornerRadius(15)
+                            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+                        }
                     }
                     .padding()
                     .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for settings
                     .cornerRadius(20)
-                    .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
-                    .padding(.horizontal, 20)
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
+//                    .padding(.horizontal, 20)
                     .padding(.bottom, 40)
                     .opacity(paused ? 1.0 : 0.0)
                 }
             }
             .animation(.easeInOut, value: paused)
-
-            VStack {
-                Spacer()
-                holdToStopFloatingText(isHolding: isHolding, timerIsActive: timerIsActive)
-            }
-
+            
+//            VStack {
+//                Spacer()
+//                holdToStopFloatingText(isHolding: isHolding, timerIsActive: timerIsActive)
+//            }
+            
             
             // Floating Settings & Start/Stop
             VStack {
@@ -288,21 +449,47 @@ struct CombinedView: View {
                                 .opacity(paused ? 0 : 1.0)
                         }
                         
-                        // Minus Button
-                        Image(systemName: "infinity")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.gray.opacity(0.3))
-                            .frame(width: 20, height: 20)
-                            .padding()
-                            .background(paused ? .clear : .gray.opacity(0.08))
-                            .cornerRadius(100)
-                            .opacity(paused ? 0 : 1.0)
-                            .onTapGesture {
-                                timerIsActive ? simulateTasbeehClicks(times: 100) : ()
-                            }
+                        // Plus 100 Button (for testing)
+                        Button(action: paused ? togglePause : {simulateTasbeehClicks(times: 100)}) {
+                            Image(systemName: "infinity")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.gray.opacity(0.3))
+                                .frame(width: 20, height: 20)
+                                .padding()
+                                .background(paused ? .clear : .gray.opacity(0.08))
+                                .cornerRadius(100)
+                                .opacity(paused ? 0 : 1.0)
+                        }
+//                        Image(systemName: "infinity")
+//                            .font(.system(size: 20, weight: .bold))
+//                            .foregroundColor(.gray.opacity(0.3))
+//                            .frame(width: 20, height: 20)
+//                            .padding()
+//                            .background(paused ? .clear : .gray.opacity(0.08))
+//                            .cornerRadius(100)
+//                            .opacity(paused ? 0 : 1.0)
+//                            .onTapGesture {
+//                                timerIsActive ? simulateTasbeehClicks(times: 100) : ()
+//                            }
+//                        
+                        // Add Note Button (new feature coming soon)
+                        Button(action: paused ? togglePause : {showNotesModal = true}) {
+                            Image(systemName: "note")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.gray.opacity(0.3))
+                                .frame(width: 20, height: 20)
+                                .padding()
+                                .background(paused ? .clear : .gray.opacity(0.08))
+                                .cornerRadius(100)
+                                .opacity(paused ? 0 : 1.0)
+                        }.sheet(isPresented: $showNotesModal) {
+                            NoteModalView(savedText: $noteModalText, showSheet: $showNotesModal, takingNotes: $takingNotes)
+                        }
+
+                        
                         
                         Spacer()
-
+                        
                         // Play Button
                         Button(action: togglePause) {
                             Image(systemName: paused ? "play.fill" : "pause.fill")
@@ -316,21 +503,43 @@ struct CombinedView: View {
                     .animation(paused ? .easeOut : .easeIn, value: paused)
                     .padding()
                 }
+                else{
+                    VStack {
+                        HStack {
+                            Spacer()
+                            NavigationLink(destination: historyPageView(sessions: sessions)) {
+                                Image(systemName: "rectangle.stack")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.gray)
+                                    .padding()
+                            }
+                        }
+                        Spacer()
+                    }
+                }
                 
                 Spacer()
-
+                
                 // 1. setting toggles on home screen
                 if(!timerIsActive){
                     HStack{
-                        toggleButton("AutoStop", isOn: $autoStop, color: .mint, checks: true)
-                        toggleButton("Vibrate", isOn: $vibrateToggle, color: .yellow, checks: true)
-                        toggleButton("Drag", isOn: $dragSetting, color: .green, checks: true)
-                        toggleButton(modeToggle ? "🌙":"☀️", isOn: $modeToggle, color: .white, checks: false)
+//                        toggleButton("AutoStop", isOn: $autoStop, color: .mint, checks: true)
+                        AutoStopToggleButton(autoStop: $autoStop)
+//                        toggleButton("Vibrate", isOn: $vibrateToggle, color: .yellow, checks: true)
+//                        toggleButton("Sleep", isOn: $toggleInactivityTimer, color: .green, checks: true)
+                        SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer)
+//                        toggleButton(modeToggle ? "🌙":"☀️", isOn: $modeToggle, color: .white, checks: false)
+                        VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
+                        ColorSchemeModeToggleButton(modeToggle: $modeToggle)
+
+                    }
+                    .onChange(of: currentVibrationMode){
+                        triggerSomeVibration(type: currentVibrationMode)
                     }
                     .padding(.bottom)
                 }
-
-
+                
+                
                 //2. start/stop button. (both - Home Screen & In Session)
                 if(showStartStopCondition){
                     Button(action: toggleTimer, label: {
@@ -359,20 +568,21 @@ struct CombinedView: View {
                 .onTapGesture {
                     isNumberEntryFocused = false // Dismiss keyboard when tapping on background
                 }
-                .gesture(holdToStopGesture())
+//                .gesture(holdToStopGesture())
         )
         .onAppear{
             paused = false // sometimes appstorage had paused = true. so clear it.
         }
         .onDisappear {
-            stopTimer() // i think this is useless since this view is the main app and it NEVER disappears...
+//            stopTimer() // i think this is useless since this view is the main app and it NEVER disappears...
         }
-        .preferredColorScheme(modeToggle ? .dark : .light)
-    }
-    
+        .navigationBarHidden(true) // Hides the default navigation bar
+
+    }        .preferredColorScheme(modeToggle ? .dark : .light)
+
+}
 //--------------------------------------functions--------------------------------------
     
-
     
     private func toggleTimer() {
         if timerIsActive {
@@ -432,6 +642,32 @@ struct CombinedView: View {
     }
     
     private func stopTimer() {
+        // Generate session data after the timer stops
+        let placeholderTitle: String = "(placeholder)"
+//        if(!stoppedDueToInactivity){
+////            let placeholderTitleForInactiveSesh: String = "???"
+//            stoppedDueToInactivity = false // toggle it back to false
+//        }
+        if(tasbeeh > 0){
+            let newSession = generateSessionData(
+                tasbeeh: tasbeeh,
+                startTime: startTime ?? Date(),
+                secondsPassed: secondsPassed,
+                formatTimePassed: formatTimePassed,
+                selectedPage: selectedPage,
+                avgTimePerClick: avgTimePerClick,
+                tasbeehRate: tasbeehRate,
+                targetCount: targetCount,
+                selectedMinutes: selectedMinutes,
+                clickStats: clickStats,
+                title: placeholderTitle
+            )
+            
+            // Add the new session to the list
+            print("adding a session card")
+            sessions.append(newSession)
+        }
+        
         // Stop and invalidate the timer
         timer?.invalidate()
         timer = nil
@@ -454,7 +690,9 @@ struct CombinedView: View {
         
         targetCount = ""
         
-        triggerSomeVibration(type: .vibrate)
+        noteModalText = ""
+        
+        stoppedDueToInactivity ? () : triggerSomeVibration(type: .vibrate)
 
     }
     
@@ -463,9 +701,11 @@ struct CombinedView: View {
         WidgetCenter.shared.reloadAllTimelines() // Ensure widget reflects this change
         triggerSomeVibration(type: .medium)
         if(paused){
+            inactivityTimerHandler(run: "stop")
             pauseStartTime = Date()
             timePassedAtPause = formatTimePassed // cant use calculated var cuz it keeps changing if view ever updated
         }else{
+            inactivityTimerHandler(run: "restart")
             let thisPauseSesh = Date().timeIntervalSince(pauseStartTime ?? Date())
             pauseSinceLastInc += thisPauseSesh
             totalPauseInSession += thisPauseSesh
@@ -487,10 +727,9 @@ struct CombinedView: View {
     
     private func incrementTasbeeh() {
         
-        if(paused){return}
+        if(paused){return} // shouldnt happen but just to be safe.
         
         let rightNow = Date()
-        
     
         let timePerClick = rightNow.timeIntervalSince(
             (tasbeeh > 0) ?
@@ -519,7 +758,10 @@ struct CombinedView: View {
 //        print(clickStats)
         
         tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
-        triggerSomeVibration(type: .medium)
+        
+            
+//        triggerSomeVibration(type: .medium)
+        triggerSomeVibration(type: currentVibrationMode)
         
         onFinishTasbeeh()
         WidgetCenter.shared.reloadAllTimelines()
@@ -567,7 +809,7 @@ struct CombinedView: View {
         
     private func onFinishTasbeeh(){
         if(tasbeeh % 100 == 0 && tasbeeh != 0){
-            triggerSomeVibration(type: .vibrate)
+            triggerSomeVibration(type: .error)
         }
     }
 
@@ -611,7 +853,7 @@ struct CombinedView: View {
         }
     }
     
-    private func triggerSomeVibration(type: HapticFeedbackType) {
+    func triggerSomeVibration(type: HapticFeedbackType) {
             if vibrateToggle {
                 switch type {
                 case .light:
@@ -632,6 +874,8 @@ struct CombinedView: View {
                     notificationFeedbackGenerator.notificationOccurred(.error)
                 case .vibrate:
                     AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+                case .off:
+                    ()
                 }
             }
         }
@@ -794,6 +1038,7 @@ struct CombinedView: View {
         let avgTimePerClick: TimeInterval
         let tasbeehRate: String
         let togglePause: () -> Void // Closure for the togglePause function
+        let takingNotes: Bool
         
         var body: some View {
             
@@ -804,7 +1049,7 @@ struct CombinedView: View {
                 .opacity(paused ? 1 : 0.0)
             
             VStack(spacing: 20){
-                if paused{
+                if paused && !takingNotes {
                     if(selectedPage == 0) {
                         Text("Freestyle Session")
                             .font(.title2)
@@ -845,6 +1090,33 @@ struct CombinedView: View {
         }
     }
     
+    struct freestyleMode: View {
+        var body: some View {
+            Text(Image(systemName: "infinity"))
+                .font(.title)
+                .fontDesign(.rounded)
+                .fontWeight(.thin)
+        }
+    }
+    
+    struct timeTargetMode: View {
+        @Binding var selectedMinutesBinding: Int
+
+        var body: some View {
+            Picker("Minutes", selection: $selectedMinutesBinding) {
+                ForEach(1..<60) { minute in
+                    Text("\(minute)m").tag(minute)
+                        .fontWeight(.thin)
+                        .fontDesign(.rounded)
+
+                }
+            }
+            .pickerStyle(WheelPickerStyle())
+            .frame(width: 100)
+            .padding()
+        }
+    }
+    
     struct countTargetMode: View {
         @Binding var targetCount: String
         @FocusState var isNumberEntryFocused: Bool
@@ -857,9 +1129,11 @@ struct CombinedView: View {
                     .fontWeight(.thin)
                 TextField("", text: $targetCount)
                     .focused($isNumberEntryFocused)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
                     .padding()
                     .keyboardType(.numberPad) // Limits input to numbers only
-                    .frame(width: 75)
+                    .frame(width: 90)
                     .background(Color.gray.opacity(0.2))
                     .cornerRadius(15)
                     .fontDesign(.rounded)
@@ -870,54 +1144,150 @@ struct CombinedView: View {
             }
         }
     }
-
-
-
     
-    struct timeTargetMode: View {
-        @Binding var selectedMinutesBinding: Int
-
+    struct inputOffsetSubView: View {
+        @Binding var targetCount: String
+        @FocusState var isNumberEntryFocused: Bool
+        
         var body: some View {
-            Picker("Minutes", selection: $selectedMinutesBinding) {
-                ForEach(1..<60) { minute in
-                    Text("\(minute)m").tag(minute)
-                }
-            }
-            .pickerStyle(WheelPickerStyle())
-            .frame(width: 100)
-            .padding()
-        }
-    }
-
-    
-    struct BlurView: UIViewRepresentable {
-        var style: UIBlurEffect.Style
-
-        func makeUIView(context: Context) -> UIVisualEffectView {
-            return UIVisualEffectView(effect: UIBlurEffect(style: style))
-        }
-
-        func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
-    }
-    
-    struct GlassMorphicView: View {
-        var body: some View {
-            ZStack {
-                // The frosted glass effect
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(Color.white.opacity(0.1))  // Base color with transparency
-                    .background(
-                        Color.white.opacity(0.4) // Adds a translucent layer
-                            .blur(radius: 10) // Creates a blur effect
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1) // Subtle white border
-                    )
-                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 10) // Adds depth with shadow
+            VStack {
+                Text(Image(systemName: "gear"))
+                    .font(.title)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                TextField("", text: $targetCount)
+                    .focused($isNumberEntryFocused)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .padding()
+                    .keyboardType(.numberPad) // Limits input to numbers only
+                    .frame(width: 75)
+                    .background(Color.gray.opacity(0.2))
+                    .cornerRadius(15)
+                    .multilineTextAlignment(.center) // Align text in the center
+                    .onTapGesture {
+                        isNumberEntryFocused = true
+                    }
             }
         }
     }
+
+//    // Define the vibration modes
+//    enum VibrationModes {
+//        case high, medium, low, off
+//    }
+
+    @State private var currentVibrationMode: HapticFeedbackType = .medium
+
+    struct VibrationModeToggleButton: View {
+        @Binding var currentVibrationMode: CombinedView.HapticFeedbackType
+
+        // Function to toggle between vibration modes
+        private func toggleVibrationMode() {
+            switch currentVibrationMode {
+            case .off:
+                currentVibrationMode = .light
+            case .light:
+                currentVibrationMode = .medium
+            case .medium:
+                currentVibrationMode = .heavy
+            case .heavy:
+                currentVibrationMode = .off
+            default:
+                currentVibrationMode = .medium
+            }
+        }
+
+        // Function to get the appropriate SF Symbol based on the mode
+        private func getIconForVibrationMode() -> String {
+            switch currentVibrationMode {
+            case .heavy:
+                return "speaker.wave.3.fill"  // High mode icon
+            case .medium:
+                return "speaker.wave.2.fill"  // Medium mode icon
+            case .light:
+                return "speaker.wave.1.fill"  // Low mode icon
+            case .off:
+                return "speaker.slash.fill"   // Off mode icon
+            default:
+                return "speaker.wave.2.fill"  // Medium mode icon
+            }
+        }
+        
+        var body: some View {
+            Button(action: {
+                toggleVibrationMode()
+            }) {
+                Image(systemName: getIconForVibrationMode())
+                    .font(.system(size: 24))
+                    .foregroundColor(currentVibrationMode == .off ? .gray : .blue)
+                    .padding()
+            }
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+            .cornerRadius(15)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+        }
+    }
+    
+    
+    
+    struct SleepModeToggleButton: View {
+        @Binding var toggleInactivityTimer: Bool
+        
+        var body: some View {
+            Button(action: {
+                toggleInactivityTimer.toggle()
+            }) {
+                Image(systemName: toggleInactivityTimer ? "bed.double.fill" : "bed.double")
+                    .font(.system(size: 24))
+                    .foregroundColor(toggleInactivityTimer ? .orange : .gray)
+                    .padding()
+            }
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+            .cornerRadius(15)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+        }
+    }
+    
+    
+    struct ColorSchemeModeToggleButton: View {
+        @Binding var modeToggle: Bool
+        
+        var body: some View {
+            Button(action: {
+                modeToggle.toggle()
+            }) {
+                Image(systemName: modeToggle ? "moon.fill" : "sun.max.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.yellow)
+                    .padding()
+            }
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+            .cornerRadius(15)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+        }
+    }
+    
+    
+    struct AutoStopToggleButton: View {
+        @Binding var autoStop: Bool
+        
+        var body: some View {
+            Button(action: {
+                autoStop.toggle()
+            }) {
+                Image(systemName: autoStop ? "arrow.clockwise.circle" : "arrow.clockwise.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(autoStop ? .gray : .green)
+                    .padding()
+            }
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+            .cornerRadius(15)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+        }
+    }
+    
+    
 }
 
 
@@ -948,15 +1318,41 @@ struct CombinedView: View {
     > add freestyle mode. (progressFraction out of 100)
  */
 
-
-
-struct freestyleMode: View {
+struct GlassMorphicView: View {
     var body: some View {
-        Text(Image(systemName: "infinity"))
-            .font(.title)
-            .fontDesign(.rounded)
-            .fontWeight(.thin)
+        ZStack {
+            // The frosted glass effect
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.white.opacity(0.1))  // Base color with transparency
+                .background(
+                    Color.white.opacity(0.4) // Adds a translucent layer
+                        .blur(radius: 10) // Creates a blur effect
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1) // Subtle white border
+                )
+                .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 10) // Adds depth with shadow
+        }
     }
+}
+
+struct BlurView: UIViewRepresentable {
+    var style: UIBlurEffect.Style
+
+    func makeUIView(context: Context) -> UIVisualEffectView {
+        return UIVisualEffectView(effect: UIBlurEffect(style: style))
+    }
+
+    func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
+}
+
+func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
+    let minutes = Int(totalSeconds) / 60
+    let seconds = Int(totalSeconds) % 60
+    
+    if minutes > 0 { return "\(minutes)m \(seconds)s"}
+    else { return "\(seconds)s" }
 }
 
 struct holdToStopFloatingText: View {
@@ -971,5 +1367,295 @@ struct holdToStopFloatingText: View {
             .padding(.bottom, isHolding ? 30 : 0)
             .opacity(timerIsActive && isHolding ? 1 : 0)
             .animation(isHolding ? .easeInOut(duration: 1) : .easeOut(duration: 0.5), value: isHolding)
+    }
+}
+
+
+struct historyPageView: View {
+    let sessions: [SessionData]
+    @State private var showSheet: Bool = false
+    @State private var selectedMantra = ""
+    @State private var inputMantra = ""
+    @State private var predefinedMantras = ["Alhamdulillah", "Subhanallah", "Astaghfirullah", "add new recitation"]
+    
+    var body: some View {
+        if(sessions.isEmpty){
+            VStack{
+                Spacer()
+                Text("No sessions yet buddy...")
+                    .font(.title)
+                    .fontWeight(.thin)
+                    .padding()
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .background(Color("bgColor"))
+        }
+        else{
+            ScrollView {
+                VStack {
+                    ForEach(sessions, id: \.sessionTime) { session in
+                        SessionCardView(
+                            title: session.title,
+                            sessionMode: session.sessionMode,
+                            totalCount: session.totalCount,
+                            sessionDuration: session.sessionDuration,
+                            sessionTime: formatDate(session.sessionTime),
+                            tasbeehRate: session.tasbeehRate,
+                            targetMin: session.targetMin,
+                            targetCount: session.targetCount
+                        )
+                        .onTapGesture {
+                            showSheet = true // Show the sheet to edit the title
+                        }
+                        .sheet(isPresented: $showSheet) {
+                            VStack {
+                                Text("Select or Enter a Mantra")
+                                    .font(.headline)
+                                // Mantra Picker
+                                Picker("Select a Mantra", selection: $selectedMantra) {
+                                    ForEach(predefinedMantras, id: \.self) { mantra in
+                                        Text(mantra)
+                                    }
+                                }
+                                .pickerStyle(WheelPickerStyle())
+                                
+                                // Or enter a custom mantra
+                                if(selectedMantra == "add new recitation"){
+                                    TextField("Or type a custom mantra", text: $inputMantra)
+                                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                                        .padding()
+                                }
+                                
+                                Button("Save") {
+//                                    if (inputMantra != ""){
+//                                        session.title = inputMantra
+//                                        predefinedMantras.append(inputMantra)
+//                                        inputMantra = ""
+//                                    }
+//                                    else{
+//                                        session.title = selectedMantra
+//                                    }
+                                    showSheet = false // Close the sheet
+                                }.disabled(selectedMantra == "add new recitation" && inputMantra == "")
+                                .padding()
+                            }
+                            .presentationDetents([.medium])
+                            .padding()
+                        }
+                    }
+                }
+            }
+            .background(Color("bgColor"))
+        }
+    }
+
+    // Function to format date into a readable string for the session time
+    func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+}
+
+
+struct SessionData {
+    let title: String
+    let sessionMode: Int
+    let totalCount: Int
+    let sessionDuration: String
+    let sessionTime: Date
+    let tasbeehRate: String
+    let targetMin: Int
+    let targetCount: String
+}
+
+func generateSessionData(
+    tasbeeh: Int,
+    startTime: Date,
+    secondsPassed: TimeInterval,
+    formatTimePassed: String,
+    selectedPage: Int,
+    avgTimePerClick: TimeInterval,
+    tasbeehRate: String,
+    targetCount: String,
+    selectedMinutes: Int,
+    clickStats: [(date: Date, pauseTime: TimeInterval, tpc: TimeInterval)],
+    title: String
+) -> SessionData {
+    
+    // Populate the title with "Alhamdulillah" for now
+    let title = title
+    
+    // Use selectedPage for session mode
+    let sessionMode = selectedPage
+    
+    // Use tasbeeh for the total count
+    let totalCount = tasbeeh
+    
+    // Use formatTimePassed for session duration
+//    let sessionDuration = formatTimePassed
+    let newFormulaForSessionDuration = formatSecToMinAndSec(clickStats.last?.date.timeIntervalSince(startTime) ?? 0)
+    
+    // Use startTime for session time (formatting done in the card view)
+    let sessionTime = startTime
+    
+    let tasbeehRate = tasbeehRate
+    
+    // Return the new session data
+    return SessionData(
+        title: title,
+        sessionMode: sessionMode,
+        totalCount: totalCount,
+        sessionDuration: newFormulaForSessionDuration /*sessionDuration*/,
+        sessionTime: sessionTime,
+        tasbeehRate: tasbeehRate,
+        targetMin: selectedMinutes,
+        targetCount: targetCount
+    )
+}
+
+struct SessionCardView: View {
+    let title: String
+    let sessionMode: Int // 0 for freestyle, 1 for timed, 2 for count target mode
+    let totalCount: Int
+    let sessionDuration: String
+    let sessionTime: String
+    let tasbeehRate: String
+    let targetMin: Int
+    let targetCount: String
+    
+    @Environment(\.colorScheme) var colorScheme
+
+
+    var sessionModeIcon: String {
+        switch sessionMode {
+        case 0: return "infinity"  // Freestyle
+        case 1: return "timer"     // Timed mode
+        case 2: return "number"    // Count target mode
+        default: return "questionmark" // Fallback
+        }
+    }
+    
+    var textForTarget: String{
+        switch sessionMode {
+        case 0: return ""  // Freestyle
+        case 1: return "\(targetMin)m"     // Timed mode
+        case 2: return targetCount    // Count target mode
+        default: return "?!*" // Fallback
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            
+            // Top Section: Title and Mode Icon
+            HStack {
+                VStack(alignment: .leading){
+                    Text(title)
+                        .font(.title2)
+                        .bold()
+                    Text(sessionTime)
+                        .font(.footnote)
+                        .foregroundColor(.gray)
+                }
+                
+                Spacer()
+                
+                Image(systemName: sessionModeIcon)
+                    .font(.title3)
+                    .foregroundColor(.gray)
+                Text(sessionMode != 0 ? textForTarget : "")
+                    .font(.headline)
+                    .bold()
+            }
+            
+
+            // Middle Section: Count, Duration, (Optional Section)
+            HStack {
+                Spacer()
+                
+                // First Section (Count)
+                VStack{
+                    Text("Count:")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("\(totalCount)")
+                        .font(.subheadline)
+                }
+                
+                Spacer()
+
+                // Second Section (Session Duration)
+                VStack{
+                    Text("Duration:")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("\(sessionDuration)")
+                        .font(.subheadline)
+                }
+
+                Spacer()
+                
+                // Third Section (Session Duration)
+                VStack{
+                    Text("Rate:")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                    Text("\(tasbeehRate)")
+                        .font(.subheadline)
+                }
+                
+                Spacer()
+            }
+            .padding(.vertical, 5)
+            .padding(.horizontal)
+        }
+        .padding()
+//        .background(
+//            RoundedRectangle(cornerRadius: 12)
+//                .fill(colorScheme == .dark ? Color.black : Color.white)
+//                .shadow(color: Color.black.opacity(0.1), radius: 5, x: 0, y: 5)
+//        )
+        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+        .cornerRadius(15)
+        .padding(.horizontal)
+    }
+}
+
+struct NoteModalView: View {
+    @Binding var savedText: String
+    @Binding var showSheet: Bool
+    @Binding var takingNotes: Bool
+    @State private var tempText = ""
+    
+    var body: some View {
+        NavigationView {
+            TextEditor(text: $tempText)
+                .padding()
+                .navigationTitle("Edit Text")
+                .navigationBarItems(
+                    leading: Button("Cancel") {
+                        showSheet = false
+                    },
+                    trailing: Button("Save") {
+                        if !tempText.isEmpty {
+                            savedText = tempText
+                            showSheet = false
+                        }
+                    }
+                    .disabled(tempText.isEmpty)
+                )
+        }
+        .presentationDetents([.medium])
+
+        .onAppear {
+            takingNotes = true
+            tempText = savedText
+        }
+        .onDisappear{
+            takingNotes = false
+        }
     }
 }

@@ -1,57 +1,68 @@
 import SwiftUI
-import WidgetKit
 
 class CombinedViewModel: ObservableObject {
     @AppStorage("count", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var tasbeeh: Int = 10
-    @AppStorage("streak") var streak = 0
-    @AppStorage("autoStop", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var autoStop = true
-    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var vibrateToggle = true
-    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var modeToggle = false
-    @AppStorage("paused", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var paused = false
 
-    // State properties
-    @Published var timerIsActive = false
-    @Published var timer: Timer? = nil
-    @Published var selectedMinutes = 1
-    @Published var startTime: Date? = nil
-    @Published var endTime: Date? = nil
-    @Published var pauseStartTime: Date? = nil
-    @Published var pauseSinceLastInc: TimeInterval = 0
-    @Published var totalPauseInSession: TimeInterval = 0
-    @Published var totalTimePerClick: TimeInterval = 0
-    @Published var timePerClick: TimeInterval = 0
-    @Published var progressFraction: CGFloat = 0
-    @Published var clickStats: [newClickData] = []
-    @Published var isHolding = false
-    @Published var selectedPage = 1
-    @Published var targetCount: String = ""
-    @Published var offsetY: CGFloat = 0
-    @Published var dragToIncrementBool: Bool = true
-    @Published var showInactivityAlert = false
-    @Published var showNotesModal: Bool = false
-    @Published var sessions: [SessionData] = []
+    @Published var inactivityTimer: Timer? = nil
     @Published var timeSinceLastInteraction: TimeInterval = 0
+    @Published var showInactivityAlert = false
+    @Published var countDownForAlert = 0
+    @Published var stoppedDueToInactivity: Bool = false
+    @Published var toggleInactivityTimer: Bool = false
+    @Published var offsetY: CGFloat = 0
 
-    let impactFeedbackGenerator = UIImpactFeedbackGenerator()
-    let notificationFeedbackGenerator = UINotificationFeedbackGenerator()
+    var inactivityLimit: TimeInterval {
+        // Use the existing logic for inactivity limit
+        if tasbeeh > 10 && clickStats.count >= 5 {
+            let lastFiveClicks = clickStats.suffix(5)
+            let lastFiveMovingAvg = lastFiveClicks.reduce(0.0) { sum, stat in
+                sum + stat.tpc
+            } / Double(lastFiveClicks.count)
 
-    // Your other business logic (timers, tasbeeh increment, etc.) goes here.
-    
-    func incrementTasbeeh() {
-        // Increment tasbeeh logic here
+            return max(lastFiveMovingAvg * 3, 15)
+        } else {
+            return 20
+        }
     }
 
-    func startTimer() {
-        // Start timer logic
-    }
+    typealias newClickData = (date: Date, pauseTime: TimeInterval, tpc: TimeInterval)
+    @Published var clickStats: [newClickData] = []
 
-    func stopTimer() {
-        // Stop timer logic
+    func inactivityTimerHandler(run: String, stopTimer: @escaping () -> Void) {
+        if toggleInactivityTimer {
+            switch run {
+            case "restart":
+                print("start inactivity timer with limit of \(inactivityLimit)")
+                inactivityTimer?.invalidate()
+                showInactivityAlert = false
+                timeSinceLastInteraction = 0
+                var localCountDown = 11
+                
+                inactivityTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { timer in
+                    self.timeSinceLastInteraction += 1.0
+                    if self.offsetY != 0 {
+                        print("holding screen down -- reset timeSinceLastInteraction from \(self.timeSinceLastInteraction) to 0.")
+                        self.timeSinceLastInteraction = 0
+                    }
+                    if self.timeSinceLastInteraction >= self.inactivityLimit {
+                        self.showInactivityAlert = true
+                        localCountDown -= 1
+                        self.countDownForAlert = localCountDown
+                    }
+                    if localCountDown <= 0 {
+                        self.stoppedDueToInactivity = true
+                        stopTimer()
+                    }
+                }
+            case "stop":
+                print("stopping inactivity timer")
+                inactivityTimer?.invalidate()
+            default:
+                print("yo bro invalid use of inactivityTimerHandler func")
+            }
+        } else {
+            print("Not tracking inactivity cuz Bool set to \(toggleInactivityTimer)")
+        }
     }
-
-    // Add other business logic here
 }

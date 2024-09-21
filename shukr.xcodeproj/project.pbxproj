@@ -11,6 +11,11 @@
 		360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104E2C98C72C00ACA18C /* VolumeTesting.swift */; };
 		360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85912C600EC5000385F3 /* ShukrTimer.swift */; };
 		360B85962C7112A2000385F3 /* CombinedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* CombinedView.swift */; };
+		36867E332C9ADF5200A981EB /* sessioncard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E322C9ADF4F00A981EB /* sessioncard.swift */; };
+		36867E372C9BE7DF00A981EB /* MantraSelectionDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */; };
+		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
+		36867E3B2C9E923F00A981EB /* VibrationModeToggleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */; };
+		36867E3D2C9EB1EC00A981EB /* CombinedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
 		369A05CA2C5E8616002CD697 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C92C5E8616002CD697 /* ContentView.swift */; };
 		369A05CC2C5E8616002CD697 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05CB2C5E8616002CD697 /* Item.swift */; };
@@ -74,6 +79,11 @@
 		360B85932C6E1D62000385F3 /* shukrWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukrWidgetExtension.entitlements; sourceTree = "<group>"; };
 		360B85942C6E1F61000385F3 /* shukr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukr.entitlements; sourceTree = "<group>"; };
 		360B85952C7112A2000385F3 /* CombinedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombinedView.swift; sourceTree = "<group>"; };
+		36867E322C9ADF4F00A981EB /* sessioncard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sessioncard.swift; sourceTree = "<group>"; };
+		36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MantraSelectionDemo.swift; sourceTree = "<group>"; };
+		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
+		36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibrationModeToggleButton.swift; sourceTree = "<group>"; };
+		36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombinedViewModel.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		369A05C72C5E8616002CD697 /* shukrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrApp.swift; sourceTree = "<group>"; };
 		369A05C92C5E8616002CD697 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -162,6 +172,11 @@
 		369A05C62C5E8616002CD697 /* shukr */ = {
 			isa = PBXGroup;
 			children = (
+				36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */,
+				36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */,
+				36867E382C9DE3ED00A981EB /* Utils.swift */,
+				36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */,
+				36867E322C9ADF4F00A981EB /* sessioncard.swift */,
 				360B85942C6E1F61000385F3 /* shukr.entitlements */,
 				369A05C72C5E8616002CD697 /* shukrApp.swift */,
 				369A05C92C5E8616002CD697 /* ContentView.swift */,
@@ -399,13 +414,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36867E372C9BE7DF00A981EB /* MantraSelectionDemo.swift in Sources */,
 				360B85962C7112A2000385F3 /* CombinedView.swift in Sources */,
 				369A05CA2C5E8616002CD697 /* ContentView.swift in Sources */,
+				36867E332C9ADF5200A981EB /* sessioncard.swift in Sources */,
 				360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */,
+				36867E3B2C9E923F00A981EB /* VibrationModeToggleButton.swift in Sources */,
+				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */,
 				369A05CC2C5E8616002CD697 /* Item.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
 				360A104D2C98B86100ACA18C /* Old_TasbeehCountView.swift in Sources */,
+				36867E3D2C9EB1EC00A981EB /* CombinedViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
