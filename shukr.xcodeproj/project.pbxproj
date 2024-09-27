@@ -3,22 +3,16 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
 		360A104D2C98B86100ACA18C /* Old_TasbeehCountView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */; };
-		360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104E2C98C72C00ACA18C /* VolumeTesting.swift */; };
 		360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85912C600EC5000385F3 /* ShukrTimer.swift */; };
 		360B85962C7112A2000385F3 /* CombinedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* CombinedView.swift */; };
-		36867E332C9ADF5200A981EB /* sessioncard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E322C9ADF4F00A981EB /* sessioncard.swift */; };
-		36867E372C9BE7DF00A981EB /* MantraSelectionDemo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */; };
 		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
-		36867E3B2C9E923F00A981EB /* VibrationModeToggleButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */; };
-		36867E3D2C9EB1EC00A981EB /* CombinedViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
 		369A05CA2C5E8616002CD697 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C92C5E8616002CD697 /* ContentView.swift */; };
-		369A05CC2C5E8616002CD697 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05CB2C5E8616002CD697 /* Item.swift */; };
 		369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		369A05D12C5E8617002CD697 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05D02C5E8617002CD697 /* Preview Assets.xcassets */; };
 		369A05DB2C5E8617002CD697 /* shukrTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05DA2C5E8617002CD697 /* shukrTests.swift */; };
@@ -32,6 +26,8 @@
 		369A06052C5E8635002CD697 /* AppIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A06042C5E8635002CD697 /* AppIntent.swift */; };
 		369A06072C5E8636002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A06062C5E8636002CD697 /* Assets.xcassets */; };
 		369A060B2C5E8636002CD697 /* shukrWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 369A05F72C5E8635002CD697 /* shukrWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9232CA48B88003A58B7 /* HistoryPageView.swift */; };
+		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -74,20 +70,14 @@
 
 /* Begin PBXFileReference section */
 		360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Old_TasbeehCountView.swift; sourceTree = "<group>"; };
-		360A104E2C98C72C00ACA18C /* VolumeTesting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeTesting.swift; sourceTree = "<group>"; };
 		360B85912C600EC5000385F3 /* ShukrTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShukrTimer.swift; sourceTree = "<group>"; };
 		360B85932C6E1D62000385F3 /* shukrWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukrWidgetExtension.entitlements; sourceTree = "<group>"; };
 		360B85942C6E1F61000385F3 /* shukr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukr.entitlements; sourceTree = "<group>"; };
 		360B85952C7112A2000385F3 /* CombinedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombinedView.swift; sourceTree = "<group>"; };
-		36867E322C9ADF4F00A981EB /* sessioncard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = sessioncard.swift; sourceTree = "<group>"; };
-		36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MantraSelectionDemo.swift; sourceTree = "<group>"; };
 		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
-		36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VibrationModeToggleButton.swift; sourceTree = "<group>"; };
-		36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CombinedViewModel.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		369A05C72C5E8616002CD697 /* shukrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrApp.swift; sourceTree = "<group>"; };
 		369A05C92C5E8616002CD697 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		369A05CB2C5E8616002CD697 /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
 		369A05CD2C5E8617002CD697 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		369A05D02C5E8617002CD697 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		369A05D62C5E8617002CD697 /* shukrTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = shukrTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -104,11 +94,18 @@
 		369A06042C5E8635002CD697 /* AppIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntent.swift; sourceTree = "<group>"; };
 		369A06062C5E8636002CD697 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		369A06082C5E8636002CD697 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		369BE9232CA48B88003A58B7 /* HistoryPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPageView.swift; sourceTree = "<group>"; };
+		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		36F4710A2C8FF7CB0077DB22 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 		36F4710C2C8FF7DA0077DB22 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		36F471132C8FF9220077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		369BE9272CA49384003A58B7 /* Models */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Models; sourceTree = "<group>"; };
+		369BE9282CA4944E003A58B7 /* Experiments */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Experiments; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		369A05C12C5E8616002CD697 /* Frameworks */ = {
@@ -172,31 +169,30 @@
 		369A05C62C5E8616002CD697 /* shukr */ = {
 			isa = PBXGroup;
 			children = (
-				36867E3C2C9EB1EC00A981EB /* CombinedViewModel.swift */,
-				36867E3A2C9E923B00A981EB /* VibrationModeToggleButton.swift */,
-				36867E382C9DE3ED00A981EB /* Utils.swift */,
-				36867E362C9BE7DA00A981EB /* MantraSelectionDemo.swift */,
-				36867E322C9ADF4F00A981EB /* sessioncard.swift */,
-				360B85942C6E1F61000385F3 /* shukr.entitlements */,
-				369A05C72C5E8616002CD697 /* shukrApp.swift */,
-				369A05C92C5E8616002CD697 /* ContentView.swift */,
-				360B85952C7112A2000385F3 /* CombinedView.swift */,
-				360B85912C600EC5000385F3 /* ShukrTimer.swift */,
-				369A05CB2C5E8616002CD697 /* Item.swift */,
+				369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */,
+				369BE93C2CA4D160003A58B7 /* Preview Content */,
 				369A05CD2C5E8617002CD697 /* Assets.xcassets */,
-				369A05CF2C5E8617002CD697 /* Preview Content */,
-				360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */,
-				360A104E2C98C72C00ACA18C /* VolumeTesting.swift */,
+				369A05D02C5E8617002CD697 /* Preview Assets.xcassets */,
+				360B85952C7112A2000385F3 /* CombinedView.swift */,
+				36867E382C9DE3ED00A981EB /* Utils.swift */,
+				369BE9232CA48B88003A58B7 /* HistoryPageView.swift */,
+				369A05C72C5E8616002CD697 /* shukrApp.swift */,
+				360B85942C6E1F61000385F3 /* shukr.entitlements */,
+				369BE9272CA49384003A58B7 /* Models */,
+				369BE9282CA4944E003A58B7 /* Experiments */,
+				369A05CF2C5E8617002CD697 /* OLD */,
 			);
 			path = shukr;
 			sourceTree = "<group>";
 		};
-		369A05CF2C5E8617002CD697 /* Preview Content */ = {
+		369A05CF2C5E8617002CD697 /* OLD */ = {
 			isa = PBXGroup;
 			children = (
-				369A05D02C5E8617002CD697 /* Preview Assets.xcassets */,
+				369A05C92C5E8616002CD697 /* ContentView.swift */,
+				360A104C2C98B86100ACA18C /* Old_TasbeehCountView.swift */,
+				360B85912C600EC5000385F3 /* ShukrTimer.swift */,
 			);
-			path = "Preview Content";
+			path = OLD;
 			sourceTree = "<group>";
 		};
 		369A05D92C5E8617002CD697 /* shukrTests */ = {
@@ -242,6 +238,13 @@
 			path = shukrWidget;
 			sourceTree = "<group>";
 		};
+		369BE93C2CA4D160003A58B7 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
 		B8BEABC67E75C3463BADF18F /* Pods */ = {
 			isa = PBXGroup;
 			children = (
@@ -265,6 +268,10 @@
 			);
 			dependencies = (
 				369A060A2C5E8636002CD697 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				369BE9272CA49384003A58B7 /* Models */,
+				369BE9282CA4944E003A58B7 /* Experiments */,
 			);
 			name = shukr;
 			packageProductDependencies = (
@@ -334,7 +341,7 @@
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1540;
-				LastUpgradeCheck = 1540;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					369A05C32C5E8616002CD697 = {
 						CreatedOnToolsVersion = 15.4;
@@ -414,18 +421,14 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				36867E372C9BE7DF00A981EB /* MantraSelectionDemo.swift in Sources */,
 				360B85962C7112A2000385F3 /* CombinedView.swift in Sources */,
 				369A05CA2C5E8616002CD697 /* ContentView.swift in Sources */,
-				36867E332C9ADF5200A981EB /* sessioncard.swift in Sources */,
-				360A104F2C98C72C00ACA18C /* VolumeTesting.swift in Sources */,
-				36867E3B2C9E923F00A981EB /* VibrationModeToggleButton.swift in Sources */,
+				369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				360B85922C600EC5000385F3 /* ShukrTimer.swift in Sources */,
-				369A05CC2C5E8616002CD697 /* Item.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
+				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,
 				360A104D2C98B86100ACA18C /* Old_TasbeehCountView.swift in Sources */,
-				36867E3D2C9EB1EC00A981EB /* CombinedViewModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -600,7 +603,6 @@
 		369A05EB2C5E8617002CD697 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = shukr/shukr.entitlements;
@@ -632,7 +634,6 @@
 		369A05EC2C5E8617002CD697 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = shukr/shukr.entitlements;
@@ -664,7 +665,6 @@
 		369A05EE2C5E8617002CD697 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -684,7 +684,6 @@
 		369A05EF2C5E8617002CD697 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -704,7 +703,6 @@
 		369A05F12C5E8617002CD697 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
@@ -722,7 +720,6 @@
 		369A05F22C5E8617002CD697 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
