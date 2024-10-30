@@ -1,12 +1,12 @@
 
-
-import SwiftUI
-
-struct Old_TasbeehCountView: View {
-    var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
-    }
-}
+//
+//import SwiftUI
+//
+//struct Old_TasbeehCountView: View {
+//    var body: some View {
+//        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+//    }
+//}
 
 // OG one
 //    struct TasbeehCountView: View {
@@ -450,8 +450,6 @@ struct Old_TasbeehCountView: View {
 //            return startAngle - stepAngle * CGFloat(index)
 //        }
 //    }
-
-
 
 //#Preview {
 //    Old_TasbeehCountView()

@@ -1,5 +1,6 @@
 import SwiftUI
 import AudioToolbox
+import MediaPlayer
 
 /// Utility Functions ----------------------------------------------------------------------------------------------------
 func roundToTwo(val: Double) -> Double {
@@ -13,6 +14,116 @@ func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
     if minutes > 0 { return "\(minutes)m \(seconds)s"}
     else { return "\(seconds)s" }
 }
+
+let MSPMTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "mm:ss.SSS a" // Displays in 12-hour format with AM or PM
+    return formatter
+}()
+
+let shortTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "h:mm a" // Displays in 12-hour format with AM or PM
+    return formatter
+}()
+
+let hmmTimeFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "h:mm" // Displays the time as 4:50
+    return formatter
+}()
+
+// Function to format remaining time as minutes
+func mLeftTimeFormatter(from timeInterval: TimeInterval) -> String {
+    let totalSeconds = Int(timeInterval)
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+    let seconds = totalSeconds % 60
+
+    // Building the formatted string
+    var components: [String] = []
+
+    if hours > 0 {
+        components.append("\(hours)h")
+    }
+    
+    if minutes > 0 {
+        components.append("\(minutes)m")
+    }
+    
+    // Only show seconds if less than a minute
+    if totalSeconds < 60 {
+        components.append("\(seconds)s")
+    }
+
+    // If no time left, return "0s left"
+    if components.isEmpty {
+        return "0s left"
+    }
+
+    // Join components with a space and append "left"
+    return components.joined(separator: " ") + " left"
+}
+//func mLeftTimeFormatter(from timeInterval: TimeInterval) -> String {
+//    let minutesLeft = Int(timeInterval / 60)
+//    if (timeInterval < 60){
+//        return "\(Int(timeInterval))s left"
+//    }
+//    return "\(minutesLeft)m left"
+//}
+
+func todayAt(hour: Int, minute: Int) -> Date {
+    Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date())!
+}
+
+// Function to format remaining time as hours, minutes, or seconds
+func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
+    let totalSeconds = Int(timeInterval)
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+    let seconds = totalSeconds % 60
+
+    // Building the formatted string
+    var components: [String] = []
+
+    if hours > 0 {
+        components.append("\(hours)h")
+    }
+    
+    if minutes > 0 {
+        components.append("\(minutes)m")
+    }
+    
+    // Only show seconds if less than a minute
+    if totalSeconds < 60 {
+        components.append("\(seconds)s")
+    }
+
+    // Join components with a space and prepend "in "
+    return "in " + components.joined(separator: " ")
+}
+//func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
+//    let totalSeconds = Int(timeInterval)
+//    let hours = totalSeconds / 3600
+//    let minutes = (totalSeconds % 3600) / 60
+//    let seconds = totalSeconds % 60
+//
+//    if hours > 0 {
+//        return "in \(hours)h \(minutes)m"
+//    } else if minutes > 0 {
+//        return "in \(minutes)m"
+//    } else {
+//        return "in \(seconds)s"
+//    }
+//}
+//// Function to format remaining time as minutes
+//func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
+//    let minutesLeft = Int(timeInterval / 60)
+//    if (timeInterval < 60){
+//        return "in \(Int(timeInterval))s"
+//    }
+//    return "in \(minutesLeft)m"
+//}
 
 
 /// Vibration Feedback ---------------------------------------------------------------------------------------------------
@@ -30,10 +141,13 @@ let impactFeedbackGenerator = UIImpactFeedbackGenerator()
 let notificationFeedbackGenerator = UINotificationFeedbackGenerator()
 
 func triggerSomeVibration(type: HapticFeedbackType) {
+//    impactFeedbackGenerator.prepare()
+    
     let userDefaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
-    let vibrateToggle = userDefaults?.bool(forKey: "vibrateToggle") ?? false // Get vibrateToggle value from UserDefaults
+//    let vibrateToggle = userDefaults?.bool(forKey: "vibrateToggle") ?? false // Get vibrateToggle value from UserDefaults
 
-    if vibrateToggle {
+//    print("should do it", vibrateToggle)
+//    if vibrateToggle {
         switch type {
         case .light:
             impactFeedbackGenerator.impactOccurred(intensity: 0.5)
@@ -56,10 +170,8 @@ func triggerSomeVibration(type: HapticFeedbackType) {
         case .off:
             ()
         }
-    }
+//    }
 }
-
-
 
 
 
@@ -132,10 +244,10 @@ struct SleepModeToggleButton: View {
 }
 
 struct ColorSchemeModeToggleButton: View {
-    @Binding var modeToggle: Bool
+    @Binding var colorModeToggle: Bool
     var body: some View {
         twoModeToggleButton(
-            boolToToggle: $modeToggle,
+            boolToToggle: $colorModeToggle,
             onSymbol: "moon.fill",
             onColor: .yellow,
             offSymbol: "sun.max.fill",
@@ -224,7 +336,7 @@ struct PlayPauseButton: View {
     }
 }
 
-struct ExitButon: View{
+struct ExitButton: View{
     let stopTimer: () -> Void
     
     var body: some View{
@@ -265,10 +377,12 @@ struct TopOfSessionButton: View{
 /// Mode Selection Views ---------------------------------------------------------------------------------------------------
 struct freestyleMode: View {
     var body: some View {
-        Text(Image(systemName: "infinity"))
+        Text(Image(systemName: "circle.fill"))
             .font(.title)
             .fontDesign(.rounded)
             .fontWeight(.thin)
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.2), radius: 6, x: 3, y: 3)
     }
 }
 
@@ -277,7 +391,8 @@ struct timeTargetMode: View {
 
     var body: some View {
         Picker("Minutes", selection: $selectedMinutesBinding) {
-            ForEach(1..<60) { minute in
+//            Text("")
+            ForEach(0..<60) { minute in
                 Text("\(minute)m").tag(minute)
                     .fontWeight(.thin)
                     .fontDesign(.rounded)
@@ -496,6 +611,7 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
 struct pauseStatsAndBG: View {
     let paused: Bool
     let selectedPage: Int
+    let mantra: String
     let selectedMinutes: Int
     let targetCount: String
     let tasbeeh: Int
@@ -530,16 +646,21 @@ struct pauseStatsAndBG: View {
                         .bold()
                 }
                 
+                if(mantra != ""){
+                    Text("\(mantra)")
+                        .font(.title3)
+                }
+                
                 Text("Count: \(tasbeeh)")
                     .font(.title3)
                 
                 Text("Time Passed: \(timePassedAtPause)")
                     .font(.title3)
                 
-                Text("Last Time / Click: \((String(format: "%.2f", timePerClick)))s")
-                    .font(.title3)
+//                Text("Last Time / Click: \((String(format: "%.2f", timePerClick)))s")
+//                    .font(.title3)
                 
-                Text("Avg Time / Click: \((String(format: "%.2f", avgTimePerClick)))s")
+                Text("Avg Click Rate: \((String(format: "%.2f", avgTimePerClick)))s")
                     .font(.title3)
                 
                 Text("Tasbeeh Rate: \(tasbeehRate)")
@@ -573,8 +694,7 @@ struct inactivityAlert: View {
         .background(.gray.opacity(0.08))
         .cornerRadius(10)
         .onTapGesture {
-            print("tapped")
-            action()
+            action() //to dismiss and not increment... i think lol
         }
         .opacity(showOn ? 1 : 0.0)
         .padding(.bottom)
@@ -675,3 +795,1289 @@ struct BlurView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UIVisualEffectView, context: Context) {}
 }
+
+
+
+
+
+struct RingStyle0 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+    
+    var body: some View {
+        ZStack {
+            // Pulsing outer circle for current prayer
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15, lineCap: .square))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: .white.opacity(1), radius: 10, x: 0, y: 0)
+            } else {
+                // Placeholder circle to maintain size consistency
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+            
+            // Main colored ring
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            if isCurrentPrayer {
+                // Progress arc that changes size over time
+                CustomArc(progress: progress)
+                    .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(0))
+                    .foregroundColor(.white.opacity(colorScheme == .dark ? progressColor == .yellow ? 0.9 : 0.75 : 0.85))
+                    .overlay(
+                        // Small circle indicator at the end of the progress arc
+                        Circle()
+                            .frame(width: 24, height: 24)
+                            .foregroundColor(.white.opacity(colorScheme == .dark ? progressColor == .yellow ? 0.9 : 0.75 : 0.85))
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                            )
+                            .offset(x: 100 * cos(2 * .pi * progress - .pi / 2),
+                                   y: 100 * sin(2 * .pi * progress - .pi / 2))
+                            .animation(.smooth, value: progress)
+                            .animation(.smooth, value: progressColor)
+                    )
+                    .animation(.smooth, value: progress)
+                    .animation(.smooth, value: progressColor)
+            }
+            
+            // Inner gradient circle for depth effect
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    // Blurred inner circle border for additional depth
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Add Qibla indicator at the top
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+    }
+}
+
+struct RingStyle1 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+    
+    var body: some View {
+        ZStack {
+            // Pulsing outer circle for current prayer
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15, lineCap: .square))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: .white.opacity(1), radius: 10, x: 0, y: 0)
+            } else {
+                // Placeholder circle to maintain size consistency
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+            
+            // Main colored ring
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            if isCurrentPrayer {
+                // Progress arc that changes size over time
+                CustomArc(progress: progress)
+                    .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .butt))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(0))
+                    .foregroundColor(.white.opacity(colorScheme == .dark ? progressColor == .yellow ? 0.9 : 0.75 : 0.85))
+                    .overlay(
+                        // Small circle indicator at the end of the progress arc
+                        Circle()
+                            .frame(width: 24, height: 24)
+                            .foregroundStyle(progressColor)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.black.opacity(0.1), lineWidth: 1)
+                            )
+                            .offset(x: 100 * cos(2 * .pi * progress - .pi / 2),
+                                   y: 100 * sin(2 * .pi * progress - .pi / 2))
+                            .animation(.smooth, value: progress)
+                            .animation(.smooth, value: progressColor)
+                    )
+                    .animation(.smooth, value: progress)
+                    .animation(.smooth, value: progressColor)
+            }
+            
+            // Inner gradient circle for depth effect
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    // Blurred inner circle border for additional depth
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Add Qibla indicator at the top
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+    }
+}
+
+struct RingStyle2 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+    
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle (only for current prayer)
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
+            } else {
+                // Placeholder circle for non-current prayers
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+
+            // Base ring (background)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+
+//                .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            // Progress arc (only for current prayer)
+            if isCurrentPrayer {
+                CustomArc(progress: progress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round,
+                        lineJoin: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .foregroundStyle(
+                        AngularGradient(
+                            gradient: Gradient(stops: [
+                                .init(color: progressColor.opacity(0.8), location: 0),
+                                .init(color: progressColor, location: progress)
+                            ]),
+                            center: .center,
+                            startAngle: .degrees(-90),
+                            endAngle: .degrees(-90 + (360 * progress))
+                        )
+                    )
+                    .shadow(color: progressColor.opacity(0.3), radius: 5, x: 0, y: 0)
+            }
+            
+            // Inner gradient circle for depth effect
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    // Blurred inner circle border for additional depth
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // White circle indicator at the top for Qibla
+            Circle()
+                .frame(width: 8, height: 8) // Adjust size as needed
+                .offset(y: -100) // Half of the ring's width (200/2) to position at top
+                .foregroundStyle(progressColor == .white ? .gray : .white) // Only show if Qibla is aligned
+                .opacity(isQiblaAligned ? 0.5 : 0) // Only show if Qibla is aligned
+
+        }
+    }
+}
+
+struct RingStyle3 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+    
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 4
+    }
+    
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+    
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            // Convert remaining time to 0-1 range with dramatic acceleration
+            let progress = 1 - (timeRemaining-1 / 3)
+            return pow(progress, 5) // Quartic easing for dramatic effect
+        }
+        return 0
+    }
+    
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle (only for current prayer)
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
+            } else {
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+
+            // Base ring (background)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                // .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            // Progress arc (only for current prayer)
+            if isCurrentPrayer {
+                // Layer 1: Dynamic trailing background piece
+                if clockwiseProgress > 0.1  {
+                    Circle()
+                        .trim(from: isInFinalSeconds ?
+                              max(clockwiseProgress * finalAnimation, 0) :
+                                0, to: isInFinalSeconds ?  1 : clockwiseProgress-0.05)
+                        .stroke(style: StrokeStyle(
+                            lineWidth: 24,
+                            lineCap: .round
+                        ))
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(-90))
+//                        .foregroundStyle(progressColor)
+                        .foregroundStyle(isInFinalSeconds ? .blue.opacity(0.3) : progressColor)
+                }
+                
+                // Layer 2: Small shadow segment
+                Circle()
+                    .trim(from: isInFinalSeconds ?
+                          max(clockwiseProgress - (0.08 * (1 - finalAnimation)), 0) :
+                          max(clockwiseProgress - 0.08, 0),
+                          to: clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+//                    .foregroundStyle(progressColor)
+                    .foregroundStyle(isInFinalSeconds ? .green.opacity(0.3) : progressColor)
+                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 0)
+                    .opacity(clockwiseProgress)
+                
+                // Layer 3: Main progress arc
+                Circle()
+                    .trim(from: isInFinalSeconds ?
+                          max(clockwiseProgress * finalAnimation, 0.1) :
+                          (clockwiseProgress > 0.15 ? 0.1 : 0),
+                          to: clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+//                    .foregroundStyle(progressColor)
+                    .foregroundStyle(isInFinalSeconds ? .orange.opacity(0.3) : progressColor)
+            }
+            
+            // Inner gradient circle for depth effect
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Qibla indicator at the top
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+        // .id(timeRemaining) // Forces view to update as time changes
+        // .animation(.easeOut(duration: 0.2), value: finalAnimation)
+    }
+}
+
+struct RingStyle4 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3
+    }
+
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+
+    private var startPoint: Double {
+        if isInFinalSeconds {
+            // Convert the remaining time to a 0-1 progress
+            let finalProgress = 1 - (timeRemaining / 3)
+
+            // Apply cubic-bezier easing for acceleration
+            let easedProgress = pow(finalProgress, 3) // Cubic easing
+            // or for even more dramatic acceleration:
+            // let easedProgress = pow(finalProgress, 4) // Quartic easing
+
+            // Calculate the start point position
+            return clockwiseProgress * easedProgress
+        }
+        return clockwiseProgress > 0.85 ? 0.25 : 0  // Changed from 0.75
+    }
+
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle (only for current prayer)
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
+            } else {
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+
+            // Base ring (background)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                // .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+
+            // Progress arc (only for current prayer)
+            if isCurrentPrayer {
+                // Only show overlap pieces when not in final seconds
+                if clockwiseProgress > 0.85 && !isInFinalSeconds {  // Changed from 0.75
+                    // Layer 1: Static background piece
+                    Circle()
+                        .trim(from: 0, to: 0.25)
+                        .stroke(style: StrokeStyle(
+                            lineWidth: 24,
+                            lineCap: .round
+                        ))
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(-90))
+                        .foregroundStyle(progressColor)
+
+                    // Layer 2: Overlap effect piece
+                    Circle()
+                        .trim(from: 0.15, to: 0.3)
+                        .stroke(style: StrokeStyle(
+                            lineWidth: 24,
+                            lineCap: .round
+                        ))
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(-90))
+                        .foregroundStyle(progressColor)
+                        .shadow(color: progressColor.opacity(0.3), radius: 5, x: 0, y: 0)
+                }
+
+                // Main progress arc with animated start point
+                Circle()
+                    .trim(from: startPoint, to: clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+
+                // Shadow segment
+                if !isInFinalSeconds {
+                    Circle()
+                        .trim(from: max(clockwiseProgress - 0.05, 0), to: clockwiseProgress)
+                        .stroke(style: StrokeStyle(
+                            lineWidth: 24,
+                            lineCap: .round
+                        ))
+                        .frame(width: 200, height: 200)
+                        .rotationEffect(.degrees(-90))
+                        .foregroundStyle(progressColor)
+                        .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 0)
+                        .opacity(clockwiseProgress)
+                }
+            }
+
+            // Inner gradient circle for depth effect
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+
+            // White circle indicator at the top for Qibla
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+        .animation(.easeInOut(duration: 0.2), value: startPoint)
+    }
+}
+
+//struct RingStyle3OldSimple {
+//    let prayer: Prayer
+//    let progress: Double
+//    let progressColor: Color
+//    let isCurrentPrayer: Bool
+//    let isAnimating: Bool
+//    let colorScheme: ColorScheme
+//    let isQiblaAligned: Bool
+//
+//    init(prayer: Prayer,
+//         progress: Double,
+//         progressColor: Color,
+//         isCurrentPrayer: Bool,
+//         isAnimating: Bool,
+//         colorScheme: ColorScheme,
+//         isQiblaAligned: Bool) {
+//        self.prayer = prayer
+//        self.progress = progress
+//        self.progressColor = progressColor
+//        self.isCurrentPrayer = isCurrentPrayer
+//        self.isAnimating = isAnimating
+//        self.colorScheme = colorScheme
+//        self.isQiblaAligned = isQiblaAligned
+//    }
+//
+//    // Convert countdown progress to clockwise progress
+//    private var clockwiseProgress: Double {
+//        1 - progress // Invert the progress
+//    }
+//
+//    var body: some View {
+//        ZStack {
+//            // Outer pulsing circle (only for current prayer)
+//            if isCurrentPrayer {
+//                Circle()
+//                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+//                    .frame(width: 224, height: 224)
+//                    .rotationEffect(.degrees(-90))
+//                    .scaleEffect(isAnimating ? 1.15 : 1)
+//                    .opacity(isAnimating ? -0.05 : 0.7)
+//                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+//                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
+//            } else {
+//                Circle()
+//                    .frame(width: 224, height: 224)
+//                    .opacity(0)
+//            }
+//
+//            // Base ring (background)
+//            Circle()
+//                .stroke(lineWidth: 24)
+//                .frame(width: 200, height: 200)
+//                // .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
+//                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+//                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+//
+//            // Progress arc (only for current prayer)
+//            if isCurrentPrayer {
+//                // Layer 1: Small shadow segment that follows the progress
+//                Circle()
+//                    .trim(from: max(clockwiseProgress - 0.05, 0), to: clockwiseProgress)
+//                    .stroke(style: StrokeStyle(
+//                        lineWidth: 24,
+//                        lineCap: .round
+//                    ))
+//                    .frame(width: 200, height: 200)
+//                    .rotationEffect(.degrees(-90))
+//                    .foregroundStyle(progressColor)
+//                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 0)
+//                    .opacity(clockwiseProgress)
+//
+//                // Layer 2: Main progress arc
+//                Circle()
+//                    .trim(from: 0, to: clockwiseProgress)
+//                    .stroke(style: StrokeStyle(
+//                        lineWidth: 24,
+//                        lineCap: .round
+//                    ))
+//                    .frame(width: 200, height: 200)
+//                    .rotationEffect(.degrees(-90))
+//                    .foregroundStyle(progressColor)
+//            }
+//
+//            // Inner gradient circle for depth effect
+//            Circle()
+//                .stroke(lineWidth: 0.34)
+//                .frame(width: 175, height: 175)
+//                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+//                .overlay {
+//                    Circle()
+//                        .stroke(.black.opacity(0.1), lineWidth: 2)
+//                        .blur(radius: 5)
+//                        .mask {
+//                            Circle()
+//                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+//                        }
+//                }
+//
+//            // Qibla indicator
+//            Circle()
+//                .frame(width: 8, height: 8)
+//                .offset(y: -100)
+//                .foregroundStyle(progressColor == .white ? .gray : .white)
+//                .opacity(isQiblaAligned ? 0.5 : 0)
+//        }
+//    }
+//}
+
+struct RingStyle5 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    init(prayer: Prayer,
+         progress: Double,
+         progressColor: Color,
+         isCurrentPrayer: Bool,
+         isAnimating: Bool,
+         colorScheme: ColorScheme,
+         isQiblaAligned: Bool) {
+        self.prayer = prayer
+        self.progress = progress
+        self.progressColor = progressColor
+        self.isCurrentPrayer = isCurrentPrayer
+        self.isAnimating = isAnimating
+        self.colorScheme = colorScheme
+        self.isQiblaAligned = isQiblaAligned
+    }
+    
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+    
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3
+    }
+    
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - (timeRemaining / 3)
+            return pow(progress, 5)
+        }
+        return 0
+    }
+    
+    private var ringTipShadowOffset: CGPoint {
+        let ringTipPosition = tipPosition(progress: clockwiseProgress, radius: 100) // 200/2 for radius
+        let shadowPosition = tipPosition(progress: clockwiseProgress + 0.0075, radius: 100)
+        return CGPoint(
+            x: shadowPosition.x - ringTipPosition.x,
+            y: shadowPosition.y - ringTipPosition.y
+        )
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .rotationEffect(.degrees(-90))
+                    .scaleEffect(isAnimating ? 1.15 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
+            } else {
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .opacity(0)
+            }
+            
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(Color.white)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+
+            // Base ring
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            if isCurrentPrayer {
+                // Main progress arc
+                Circle()
+                    .trim(from: isInFinalSeconds ?
+                          (clockwiseProgress * finalAnimation) : 0,
+                          to: clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundColor(progressColor)
+                
+                // Tip shadow as trimmed circle
+                Circle()
+//                    .trim(from: max(clockwiseProgress - 0.05, 0), to: clockwiseProgress)
+            
+//                .trim(from: isInFinalSeconds ?
+//                  (clockwiseProgress * finalAnimation) :
+//                    clockwiseProgress,
+//                  to:
+//                    isInFinalSeconds ?
+//                  (clockwiseProgress * finalAnimation - 0.003) : // Just a tiny segment
+//                  (clockwiseProgress - 0.003))
+            
+                .trim(from: clockwiseProgress - 0.001, // 0.001 = about 0.36 degrees (360° * 0.001)
+                  to: clockwiseProgress)            // Difference of just 0.36° creates a dot
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundColor(progressColor)
+                    .shadow(
+                        color: .black.opacity(0.3),
+                        radius: 2.5,
+                        x: ringTipShadowOffset.x,
+                        y: ringTipShadowOffset.y
+                    )
+                .opacity(clockwiseProgress)
+            }
+            
+            // Inner gradient circle for depth
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+        .animation(.easeOut(duration: 0.2), value: finalAnimation)
+    }
+}
+
+struct RingStyle6 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+    
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3  // Changed from 6 to 4 (total time needed)
+    }
+
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - ((timeRemaining - 0.4) / 3)  // Changed from (timeRemaining - 2) / 4
+            return min(max(pow(progress, 7), 0), 1)
+        }
+        return 0
+    }
+    
+    private var ringTipShadowOffset: CGPoint {
+        let ringTipPosition = tipPosition(progress: clockwiseProgress, radius: 100)
+        let shadowPosition = tipPosition(progress: clockwiseProgress + 0.0075, radius: 100)
+        return CGPoint(
+            x: shadowPosition.x - ringTipPosition.x,
+            y: shadowPosition.y - ringTipPosition.y
+        )
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .scaleEffect(isAnimating ? 1.2 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor.opacity(0.7) : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: .white.opacity(1), radius: 10, x: 0, y: 0)
+
+                //this is so pulse gets hidden behind the other transparent layers.
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .foregroundStyle(Color("bgColor"))
+            }
+
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.15) : Color.white)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+            
+            // uncomment this if you want the unprogressed part of the track to be colored instead of clear
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+            
+            if isCurrentPrayer {
+                // Main progress arc with gradient
+                Circle()
+                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(
+                         AngularGradient(
+                             gradient: Gradient(colors: [
+                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
+                                 progressColor
+                             ]),
+                             center: .center,
+                             startAngle: .degrees(0),
+                             endAngle: .degrees((360 * clockwiseProgress))
+                        )
+                    )
+                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+                
+                // Ring tip with shadow
+                Circle()
+                    .trim(from: finalAnimation >= 1 ?  0 :     clockwiseProgress - 0.001,
+                          to:   finalAnimation >= 1 ?   0 :     clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .shadow(
+                        color: .black.opacity(isInFinalSeconds ? 0.3*(1-finalAnimation*2) : min(0.5 * clockwiseProgress, 0.3)),
+                        radius: 2.5,
+                        x: ringTipShadowOffset.x,
+                        y: ringTipShadowOffset.y
+                    )
+                    .opacity(finalAnimation > 0.05 ? 1 - finalAnimation : 1) // Fade out tip
+                    .zIndex(1)
+                
+                // dot at the top for the animation so we can make everything opacity 0 and keep animation crisp.
+                Circle()
+                    .trim(from:  0,
+                          to:   0.001)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(clockwiseProgress >= 0.99 || clockwiseProgress <= 0.01 ? 1 : 0)
+            }
+            
+            // Inner gradient circle for depth
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+struct ToggleText: View {
+    let originalText: String
+    let toggledText: String
+    let font: Font?
+    let fontDesign: Font.Design?
+    let fontWeight: Font.Weight?
+    let hapticFeedback: Bool
+    
+    @State private var showOriginal = true
+    @State private var timer: Timer?
+    
+    init(
+        originalText: String,
+        toggledText: String,
+        font: Font? = nil,
+        fontDesign: Font.Design? = .rounded,
+        fontWeight: Font.Weight? = .thin,
+        hapticFeedback: Bool = true
+    ) {
+        self.originalText = originalText
+        self.toggledText = toggledText
+        self.font = font
+        self.fontDesign = fontDesign
+        self.fontWeight = fontWeight
+        self.hapticFeedback = hapticFeedback
+    }
+    
+    var body: some View {
+        Text(showOriginal ? originalText : toggledText)
+            .font(font)
+            .fontDesign(fontDesign)
+            .fontWeight(fontWeight)
+            .onTapGesture {
+                handleTap()
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
+    }
+    
+    private func handleTap() {
+        timer?.invalidate()
+        
+        if hapticFeedback {
+            triggerSomeVibration(type: .light)
+        }
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showOriginal.toggle()
+        }
+        
+        if !showOriginal {
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showOriginal = true
+                }
+            }
+        }
+    }
+}
+
+
+struct ExternalToggleText: View {
+    let originalText: String
+    let toggledText: String
+    let font: Font?
+    let fontDesign: Font.Design?
+    let fontWeight: Font.Weight?
+    let hapticFeedback: Bool
+    
+    @State private var showOriginal = true
+    @State private var timer: Timer?
+    @Binding var externalTrigger: Bool
+    
+    init(
+        originalText: String,
+        toggledText: String,
+        externalTrigger: Binding<Bool> = .constant(false), // Default to constant false if not provided
+        font: Font? = nil,
+        fontDesign: Font.Design? = .rounded,
+        fontWeight: Font.Weight? = .thin,
+        hapticFeedback: Bool = true
+    ) {
+        self.originalText = originalText
+        self.toggledText = toggledText
+        self._externalTrigger = externalTrigger
+        self.font = font
+        self.fontDesign = fontDesign
+        self.fontWeight = fontWeight
+        self.hapticFeedback = hapticFeedback
+    }
+    
+    var body: some View {
+        Text(showOriginal ? originalText : toggledText)
+            .font(font)
+            .fontDesign(fontDesign)
+            .fontWeight(fontWeight)
+            .onTapGesture {
+                handleTap()
+            }
+            .onChange(of: externalTrigger) { _, _ in
+                handleTap()
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
+    }
+    
+    private func handleTap() {
+        timer?.invalidate()
+        
+        if hapticFeedback {
+            triggerSomeVibration(type: .light)
+        }
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showOriginal.toggle()
+        }
+        
+        if !showOriginal {
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showOriginal = true
+                }
+            }
+        }
+    }
+}
+
+
+struct ToggleTextExample: View {
+//    @State private var showOriginalText1 = true
+//    @State private var showOriginalText2 = true
+    @State private var autoRevertTimer: Timer?
+    @State private var textTrigger = false  // Add this state
+    
+    var body: some View {
+        VStack(spacing: 20) {
+//            Text(showOriginalText1 ? "Original Text1" : "Toggled Text1 (3s)")
+//                .padding()
+//                .background(Color.gray.opacity(0.2))
+//                .cornerRadius(10)
+//                .onTapGesture {
+//                    handleTap(binding: $showOriginalText1)
+//                }
+//            
+//            Text(showOriginalText2 ? "Original Text2" : "Toggled Text2 (3s)")
+//                .padding()
+//                .background(Color.gray.opacity(0.2))
+//                .cornerRadius(10)
+//                .onTapGesture {
+//                    handleTap(binding: $showOriginalText2)
+//                }
+            
+            ToggleText(
+                originalText: "this text is",
+                toggledText: "changed"
+            )
+            ToggleText(
+                originalText: "seperate from this",
+                toggledText: "changed"
+            )
+            ExternalToggleText(
+                originalText: "hit the blue or this",
+                toggledText: "changed",
+                externalTrigger: $textTrigger,  // Pass the binding
+                fontDesign: .rounded,
+                fontWeight: .thin,
+                hapticFeedback: true
+            )
+            Circle()
+                .fill(Color.blue)
+                .frame(width: 200, height: 200)
+                .onTapGesture {
+                    textTrigger.toggle()  // Toggle the trigger
+                }
+        }
+        .onDisappear {
+            autoRevertTimer?.invalidate()
+            autoRevertTimer = nil
+        }
+    }
+    
+//    private func handleTap(binding: Binding<Bool>) {
+//        // Cancel existing timer if any
+//        autoRevertTimer?.invalidate()
+//        
+//        // Toggle the text
+//        withAnimation(.easeInOut(duration: 0.2)) {
+//            binding.wrappedValue.toggle()
+//        }
+//        
+//        // If showing alternate text, start timer
+//        if !binding.wrappedValue {
+//            autoRevertTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+//                withAnimation(.easeInOut(duration: 0.2)) {
+//                    binding.wrappedValue = true
+//                }
+//            }
+//        }
+//    }
+}
+
+
+#Preview {
+    ToggleTextExample()
+}
+
