@@ -39,6 +39,13 @@ struct shukrApp: App {
             PrayerTimesView()
         }
         .modelContainer(sharedModelContainer)
-        .environmentObject(sharedState) // Inject shared state into the environment
+        .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
+        // Inject `sharedState` as an EnvironmentObject at the top level of the app.
+        // This makes `sharedState` globally accessible to any view within the view hierarchy
+        // that starts from `PrayerTimesView`.
+        // All subviews can access it implicitly by declaring
+        // `@EnvironmentObject var sharedState: SharedStateClass`.
+        // NOTE: This injection covers all views in the hierarchy. Additional injections are unnecessary,
+        // unless a view is presented outside this hierarchy, like with a new window or distinct view instance.
     }
 }

@@ -26,6 +26,13 @@ import Foundation
 struct tasbeehView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+    let autoStart: Bool  // New parameter to auto-start the timer
+    @Binding var isPresented: Bool
+    
+    init(isPresented: Binding<Bool>, autoStart: Bool) {
+        self._isPresented = isPresented
+        self.autoStart = autoStart
+    }
     
     @Environment(\.modelContext) private var context
     @Query private var sessionItems: [SessionDataModel]
@@ -53,11 +60,6 @@ struct tasbeehView: View {
     @State private var autoStop = true
     @State private var paused = false
     @State private var tasbeeh = 0
-
-    
-    //    @State private var selectedMinutes = 1
-    //    @State private var selectedPage = 1 // Default to page 2 (index 1)
-    //    @State private var targetCount: String = ""
     
     @State private var startTime: Date? = nil
     @State private var endTime: Date? = nil
@@ -94,12 +96,7 @@ struct tasbeehView: View {
         (endTime?.timeIntervalSince(Date())) ?? 0.0
     }
     private var secondsPassed: TimeInterval{
-        //        print("(1) TotalTime: ", sharedState.selectedMinutes*60)
-        //        print("(2a) endTime: ", (endTime) ?? 0.0)
-        //        print("(2b) secondsLeft: ", secondsLeft)
-        //        print("(1-2) secondsPassed: ", (Double(totalTime) - secondsLeft))
         return timerIsActive ? ((Double(totalTime) - secondsLeft)) : 0
-        //        print(secondsPassed)
     }
     private var tasbeehRate: String{
         let to100 = avgTimePerClick*100
@@ -112,7 +109,6 @@ struct tasbeehView: View {
     private var showStartStopCondition: Bool{
         (
             !paused &&
-//            sharedState.selectedPage != 3 &&
             (
                 progressFraction >= 1 /*secondsLeft <= 0*/ ||
                 (!timerIsActive && sharedState.selectedPage != 2) ||
@@ -122,32 +118,20 @@ struct tasbeehView: View {
     
     @State private var progressFraction: CGFloat = 0
     
-    //    typealias newClickData = (date: Date, pauseTime: TimeInterval, tpc: TimeInterval)
-    //    @State private var old_clickStats: [newClickData] = []
-    
     @State private var clickStats: [ClickDataModel] = []
-    
-    //    @State private var holdTimer: Timer? = nil
-    //    @State private var holdDuration: Double = 0
-    
+        
     @State private var offsetY: CGFloat = 0
     @State private var highestPoint: CGFloat = 0 // Track highest point during drag
     @State private var lowestPoint: CGFloat = 0 // Track lowest point during drag
     let incrementThreshold: CGFloat = 50 // Threshold for tasbeeh increment
-    //    @State private var GoalOffsetY2: CGFloat = 60
-    //    @State private var previousOffsetY: CGFloat = 0
     @State private var dragToIncrementBool: Bool = true
-    //    @State private var lastIncrementPosition: CGFloat = 0 // Track last position to control continuous increment
     
-    //    @State private var allowGoalOffsetChange: Bool = true
-    //    @State private var dragSetting: Bool = true
     @State private var showDragColor: Bool = false
     @State private var myStringOffsetInput: String = ""
     private var GoalOffset: Double{
         Double(myStringOffsetInput) ?? 60.0
     }
     
-    //    @State private var sessions: [SessionData] = []
     
     // Detect scene phase changes (active, inactive, background)
     @Environment(\.scenePhase) var scenePhase
@@ -300,61 +284,6 @@ struct tasbeehView: View {
         return (timeModeCond || countModeCond || freestyleModeCond) && !timerIsActive
     }
     
-//    let prayersOld = [
-//        PrayerModel(
-//            prayerName: "FAJR",
-//            startTimeDate: Date().addingTimeInterval(-3800),
-//            endTimeDate: Date().addingTimeInterval(-2600)
-//        ),
-//        PrayerModel(
-//            prayerName: "ZUHR",
-//            startTimeDate: Date().addingTimeInterval(-60),
-//            endTimeDate: Date().addingTimeInterval(30)
-//        ),
-//        PrayerModel(
-//            prayerName: "ASR",
-//            startTimeDate: Date().addingTimeInterval(30),
-//            endTimeDate: Date().addingTimeInterval(200)
-//        ),
-//        PrayerModel(
-//            prayerName: "MAGHRIB",
-//            startTimeDate: Date().addingTimeInterval(200),
-//            endTimeDate: Date().addingTimeInterval(260)
-//        ),
-//        PrayerModel(
-//            prayerName: "ISHA",
-//            startTimeDate: Date().addingTimeInterval(260),
-//            endTimeDate: Date().addingTimeInterval(300)
-//        )
-//    ]
-//    let prayers = [
-//        PrayerModel(
-//            prayerName: "FAJR",
-//            startTimeDate: todayAt(hour: 6, minute: 23),
-//            endTimeDate: todayAt(hour: 7, minute: 34)
-//        ),
-//        PrayerModel(
-//            prayerName: "ZUHR",
-//            startTimeDate: todayAt(hour: 13, minute: 6),
-//            endTimeDate: todayAt(hour: 16, minute: 56)
-//        ),
-//        PrayerModel(
-//            prayerName: "ASR",
-//            startTimeDate: todayAt(hour: 16, minute: 56),
-//            endTimeDate: todayAt(hour: 18, minute: 37)
-//        ),
-//        PrayerModel(
-//            prayerName: "MAGHRIB",
-//            startTimeDate: todayAt(hour: 18, minute: 37),
-//            endTimeDate: todayAt(hour: 19, minute: 48)
-//        ),
-//        PrayerModel(
-//            prayerName: "ISHA",
-//            startTimeDate: todayAt(hour: 19, minute: 48),
-//            endTimeDate: todayAt(hour: 23, minute: 59)
-//        )
-//    ]
-
 
     
     //--------------------------------------view--------------------------------------
@@ -368,7 +297,7 @@ struct tasbeehView: View {
                     ZStack {
                         // the circle's inside (picker or count)
                         if !timerIsActive {
-                            // the middle with a scrollable view
+                            // tabview mode selection.
                             TabView (selection: $sharedState.selectedPage) {
                                 
                                 timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
@@ -678,7 +607,6 @@ struct tasbeehView: View {
                                 }
                                 .padding()
 
-                                
                                 Spacer()
                             }
                         }
@@ -749,6 +677,11 @@ struct tasbeehView: View {
                 PrayerTimesView()
                 .transition(.blurReplace.animation(.easeInOut(duration: 0.4)))
                     .zIndex(1) // Ensure it appears above other content
+            }
+        }
+        .onAppear {
+            if autoStart && !timerIsActive {
+                startTimer()
             }
         }
         .preferredColorScheme(colorModeToggle ? .dark : .light)
@@ -890,6 +823,9 @@ struct tasbeehView: View {
         inactivityTimerHandler(run: "stop")
         
         toggleInactivityTimer = false
+        
+        isPresented = false // this will change the binding to close the full cover sheet
+
 
     }
     
@@ -1014,10 +950,11 @@ struct tasbeehView: View {
 
 #Preview {
     @Previewable @StateObject var sharedState = SharedStateClass()
+    @Previewable @State var dummyBool: Bool = true
 
-    tasbeehView()
+    tasbeehView(isPresented: $dummyBool, autoStart: true)
         .modelContainer(for: Item.self, inMemory: true)
-        .environmentObject(sharedState) // Inject shared state into the environment
+//        .environmentObject(sharedState) // Inject shared state into the environment
 }
 
 
@@ -1026,6 +963,6 @@ struct tasbeehView: View {
  Current Improvement Focus:
  
  Improvements needed:
+ - break it apart. make it two diff pages.
  - make MantraModel hold all information regarding total count
- - im just
  */

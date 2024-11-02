@@ -252,5 +252,40 @@ extension CGSize {
 }
 
 #Preview {
-    SwipeExperClaude()
+    DragGestureExperiment()
+}
+
+
+import SwiftUI
+
+struct DragGestureExperiment: View {
+    @State var isDragging = false
+    @State var position = CGSize.zero
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .frame(width: 250, height: 200)
+            .offset(x: position.width, y: position.height)
+            .foregroundColor(.blue)
+//            .animation(.spring(), value: position != 0)
+            .animation(.spring, value: position != .zero)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        position = value.translation
+                        print("\(value.translation)")
+                        isDragging = true
+                    }
+                    .onEnded { value in
+                        position = .zero
+                        isDragging = false
+                    }
+            )
+    }
+}
+
+struct DragGestureExperiment_Previews: PreviewProvider {
+    static var previews: some View {
+        DragGestureExperiment()
+    }
 }

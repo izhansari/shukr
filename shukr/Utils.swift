@@ -2081,3 +2081,37 @@ struct ToggleTextExample: View {
     ToggleTextExample()
 }
 
+
+struct DragGestureModifier: ViewModifier {
+    @Binding var dragOffset: CGFloat
+    let onEnd: (CGFloat) -> Void
+    let calculateResistance: (CGFloat) -> CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if value.translation.height != 0 {
+                            dragOffset = calculateResistance(value.translation.height)
+                        }
+                    }
+                    .onEnded { value in
+                        onEnd(value.translation.height)
+                    }
+            )
+        
+    }
+}
+
+func calculateResistance(_ translation: CGFloat) -> CGFloat {
+    let maxOffset: CGFloat = 100
+    let resistance = 7 * log10(abs(translation) + 1)
+    return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
+}
+
+extension View {
+    func applyDragGesture(dragOffset: Binding<CGFloat>, onEnd: @escaping (CGFloat) -> Void, calculateResistance: @escaping (CGFloat) -> CGFloat) -> some View {
+        self.modifier(DragGestureModifier(dragOffset: dragOffset, onEnd: onEnd, calculateResistance: calculateResistance))
+    }
+}

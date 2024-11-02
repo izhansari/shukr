@@ -154,9 +154,9 @@ struct PulseCircleView: View {
         case "dhuhr":
             return "sun.max.fill"
         case "asr":
-            return "sunset.fill"
+            return "sun.haze.fill"
         case "maghrib":
-            return "moon.fill"
+            return "sunset.fill"
         default:
             return "moon.stars.fill"
         }
