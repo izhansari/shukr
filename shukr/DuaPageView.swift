@@ -4,6 +4,7 @@ import SwiftData
 // MARK: - DuaPageView
 
 struct DuaPageView: View {
+    @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.modelContext) private var context
     @Query(sort: \DuaModel.date, order: .reverse) private var duaItems: [DuaModel]
 
@@ -12,7 +13,7 @@ struct DuaPageView: View {
     @State private var selectedDua: DuaModel? = nil
     @State private var initialSearchQueryForEditDuaView: String? = nil
 
-    @Binding var showingDuaPageBool: Bool
+//    @Binding var showingDuaPageBool: Bool
 
     @FocusState private var isSearchFieldFocused: Bool // Added focus state for search field
 
@@ -36,7 +37,7 @@ struct DuaPageView: View {
 
     var body: some View {
         ZStack {
-            NavigationView {
+//            NavigationView {
                 VStack {
                     // Header
                     HStack {
@@ -49,7 +50,9 @@ struct DuaPageView: View {
                             // Close the Dua page and keyboard
                             isSearchFieldFocused = false
                             withAnimation {
-                                showingDuaPageBool = false
+                                sharedState.selectedViewPage = 1
+//                                showingDuaPageBool = false
+                                //// FIXME: need to make it aware instead it changes the tab view page to show the middle
                             }
                             searchText = ""
                         }) {
@@ -170,8 +173,8 @@ struct DuaPageView: View {
                         Spacer()
                     }
                 }
-                .navigationBarHidden(true)
-            }
+//                .navigationBarHidden(true)
+//            }
             .zIndex(0)
         }
         // Apply the fullScreenCover modifier directly to the root view
@@ -593,6 +596,6 @@ struct HighlightingTextView: UIViewRepresentable {
 // MARK: - Preview
 
 #Preview {
-    @Previewable @State var showingDuaPageBool = true
-    DuaPageView(showingDuaPageBool: $showingDuaPageBool)
+//    @Previewable @State var showingDuaPageBool = true
+    DuaPageView(/*showingDuaPageBool: $showingDuaPageBool*/)
 }

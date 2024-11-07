@@ -523,7 +523,8 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
             // Display the number in the center
             Text("\(tasbeeh % 100)")
                 .font(.largeTitle)
-                .bold()
+                .fontWeight(.thin)
+//                .bold()
                 .fontDesign(.rounded)
 
             // GeometryReader to help position circles
@@ -1845,6 +1846,7 @@ struct RingStyle6 {
                 .offset(y: -100)
                 .foregroundStyle(progressColor == .white ? .gray : .white)
                 .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
         }
     }
 }
@@ -2104,14 +2106,31 @@ struct DragGestureModifier: ViewModifier {
     }
 }
 
+//func calculateResistance(_ translation: CGFloat) -> CGFloat {
+//    let maxOffset: CGFloat = 100
+//    let resistance = 7 * log10(abs(translation) + 1)
+//    return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
+//}
+
 func calculateResistance(_ translation: CGFloat) -> CGFloat {
-    let maxOffset: CGFloat = 100
-    let resistance = 7 * log10(abs(translation) + 1)
-    return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
-}
+        let maxResistance: CGFloat = 40
+        let rate: CGFloat = 0.01
+        let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
+        return translation < 0 ? -resistance : resistance
+    }
 
 extension View {
     func applyDragGesture(dragOffset: Binding<CGFloat>, onEnd: @escaping (CGFloat) -> Void, calculateResistance: @escaping (CGFloat) -> CGFloat) -> some View {
         self.modifier(DragGestureModifier(dragOffset: dragOffset, onEnd: onEnd, calculateResistance: calculateResistance))
+    }
+}
+
+
+// Function to open to the left
+private func openLeftPage(proxy: ScrollViewProxy) {
+    print("Clicked to go to id 0")
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    withAnimation{
+        proxy.scrollTo(0, anchor: .center)
     }
 }

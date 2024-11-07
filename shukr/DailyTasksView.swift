@@ -46,10 +46,10 @@ struct DailyTasksView: View {
                                 taskToComplete = task
                                 sharedState.titleForSession = task.mantra
                                 if(task.mode == .count){
-                                    sharedState.selectedPage = 2
+                                    sharedState.selectedMode = 2
                                     sharedState.targetCount = "\(remainingGoal <= 0 ? task.goal : remainingGoal)"
                                 }else{
-                                    sharedState.selectedPage = 1
+                                    sharedState.selectedMode = 1
                                     sharedState.selectedMinutes = remainingGoal <= 0 ? task.goal : remainingGoal
                                 }
                                 self.presentationMode.wrappedValue.dismiss()

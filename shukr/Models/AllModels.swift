@@ -136,7 +136,7 @@ class SessionDataModel: Identifiable {
     var id: String
 
     var title: String                   // (placeHolderTitle for now...)
-    var sessionMode: Int                // selectedPage
+    var sessionMode: Int                // selectedMode
     var targetMin: Int                  // selectedMin
     var targetCount: Int                // targetCount
 

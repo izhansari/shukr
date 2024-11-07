@@ -16,7 +16,7 @@ import Foundation
 ////        self.sessionItems = sessionItems
 ////    }
 //    
-//    @Published var selectedPage: Int = 0
+//    @Published var selectedMode: Int = 0
 //    @Published var selectedMinutes: Int = 0
 //    @Published var targetCount: String = ""
 //    @Published var titleForSession: String = ""
@@ -111,8 +111,8 @@ struct tasbeehView: View {
             !paused &&
             (
                 progressFraction >= 1 /*secondsLeft <= 0*/ ||
-                (!timerIsActive && sharedState.selectedPage != 2) ||
-                (!timerIsActive && sharedState.selectedPage == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0 ))
+                (!timerIsActive && sharedState.selectedMode != 2) ||
+                (!timerIsActive && sharedState.selectedMode == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0 ))
         )
     }
     
@@ -175,8 +175,8 @@ struct tasbeehView: View {
     @State private var showMantraSheetFromHomePage: Bool = false
     @State private var bruhForNow: String? = ""
     
-    @State private var showingDuaPage: Bool = false
-    @State private var showingPrayerPage: Bool = false
+//    @State private var showingDuaPage: Bool = false
+//    @State private var showingPrayerPage: Bool = false
     
     let prayersOld = [
         PrayerModel(
@@ -278,9 +278,9 @@ struct tasbeehView: View {
     }
     
     private var startCondition: Bool{
-        let timeModeCond = (sharedState.selectedPage == 1 && sharedState.selectedMinutes != 0)
-        let countModeCond = (sharedState.selectedPage == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0)
-        let freestyleModeCond = (sharedState.selectedPage == 0)
+        let timeModeCond = (sharedState.selectedMode == 1 && sharedState.selectedMinutes != 0)
+        let countModeCond = (sharedState.selectedMode == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0)
+        let freestyleModeCond = (sharedState.selectedMode == 0)
         return (timeModeCond || countModeCond || freestyleModeCond) && !timerIsActive
     }
     
@@ -298,7 +298,7 @@ struct tasbeehView: View {
                         // the circle's inside (picker or count)
                         if !timerIsActive {
                             // tabview mode selection.
-                            TabView (selection: $sharedState.selectedPage) {
+                            TabView (selection: $sharedState.selectedMode) {
                                 
                                 timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
                                     .tag(1)
@@ -311,7 +311,7 @@ struct tasbeehView: View {
                             }
                             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
                             .frame(width: 200, height: 200) // Match the CircularProgressView size
-                            .onChange(of: sharedState.selectedPage) {_, newPage in
+                            .onChange(of: sharedState.selectedMode) {_, newPage in
                                 isNumberEntryFocused = false //Dismiss keyboard when switching pages
                             }
                             .onTapGesture {
@@ -328,7 +328,7 @@ struct tasbeehView: View {
                                         withAnimation {
 
                                             if(!paused){
-                                                if(sharedState.selectedPage == 1){
+                                                if(sharedState.selectedMode == 1){
                                                     progressFraction = CGFloat(Int(secondsPassed))/TimeInterval(totalTime)
                                                 }
                                             }
@@ -451,7 +451,7 @@ struct tasbeehView: View {
                     ZStack {
                         // middle screen when paused
                         pauseStatsAndBG(
-                            paused: paused, selectedPage: sharedState.selectedPage, mantra: sharedState.titleForSession,
+                            paused: paused, selectedPage: sharedState.selectedMode, mantra: sharedState.titleForSession,
                             selectedMinutes: sharedState.selectedMinutes, targetCount: sharedState.targetCount,
                             tasbeeh: tasbeeh, timePassedAtPause: timePassedAtPauseString,
                             timePerClick: timePerClick, avgTimePerClick: avgTimePerClick,
@@ -494,8 +494,8 @@ struct tasbeehView: View {
                                     Text(debug_AddingToPausedTimeString)
                                     Text(debug_secLeft_secPassed_progressFraction)
                                 }
-                                Text("\(progressFraction)")
-                                Text("\(sharedState.selectedPage)")
+//                                Text("\(progressFraction)")
+//                                Text("\(sharedState.selectedMode)")
                                 
                                 // exit button top left when paused
                                 if paused{
@@ -592,17 +592,17 @@ struct tasbeehView: View {
                                     
                                     Spacer()
                                     // buton for prayer page
-                                    Button(action: {
-                                        triggerSomeVibration(type: .light)
-                                        withAnimation {
-                                            showingPrayerPage = true
-                                        }
-                                    }) {
-                                        Image(systemName: "xmark")
-                                            .font(.system(size: 24))
-                                            .foregroundColor(.gray)
-                                            .padding()
-                                    }
+//                                    Button(action: {
+//                                        triggerSomeVibration(type: .light)
+//                                        withAnimation {
+//                                            showingPrayerPage = true
+//                                        }
+//                                    }) {
+//                                        Image(systemName: "xmark")
+//                                            .font(.system(size: 24))
+//                                            .foregroundColor(.gray)
+//                                            .padding()
+//                                    }
  
                                 }
                                 .padding()
@@ -636,7 +636,7 @@ struct tasbeehView: View {
                     }
                     
                     VStack{
-                        Color.black.opacity(toggleInactivityTimer ? 0.7 : 0)
+                        Color.black.opacity(toggleInactivityTimer ? 0.85 : 0)
                             .allowsHitTesting(false)
                             .edgesIgnoringSafeArea(.all)
                     }
@@ -654,30 +654,30 @@ struct tasbeehView: View {
                 .navigationBarHidden(true) // Hides the default navigation bar
             }
             .onChange(of: tasbeeh){_, newTasbeeh in
-                if(sharedState.selectedPage == 0){
+                if(sharedState.selectedMode == 0){
                     //made it so that it never actually gets to 100% (cuz auto stop ends at 100%)
                     let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
                     progressFraction = CGFloat(Int(numerator))/CGFloat(Int(100))
-                    print("0: \(sharedState.selectedPage) profra: \(progressFraction)")
+                    print("0: \(sharedState.selectedMode) profra: \(progressFraction)")
                         print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
-                } else if (sharedState.selectedPage == 2){
+                } else if (sharedState.selectedMode == 2){
                     print("in 2: \(tasbeeh)")
                     progressFraction = CGFloat(tasbeeh)/CGFloat(Int(sharedState.targetCount) ?? 0)
-                    print("2: \(sharedState.selectedPage) profra: \(progressFraction)")
+                    print("2: \(sharedState.selectedMode) profra: \(progressFraction)")
                     print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(sharedState.targetCount) ?? 0))")
 
                 }
             }
-            if(showingDuaPage){
-                DuaPageView(showingDuaPageBool: $showingDuaPage)
-                    .transition(.move(edge: .leading))
-                    .zIndex(1)
-            }
-            if showingPrayerPage {
-                PrayerTimesView()
-                .transition(.blurReplace.animation(.easeInOut(duration: 0.4)))
-                    .zIndex(1) // Ensure it appears above other content
-            }
+//            if(showingDuaPage){
+//                DuaPageView(/*showingDuaPageBool: $showingDuaPage*/)
+//                    .transition(.move(edge: .leading))
+//                    .zIndex(1)
+//            }
+//            if showingPrayerPage {
+//                PrayerTimesView()
+//                .transition(.blurReplace.animation(.easeInOut(duration: 0.4)))
+//                    .zIndex(1) // Ensure it appears above other content
+//            }
         }
         .onAppear {
             if autoStart && !timerIsActive {
@@ -717,27 +717,27 @@ struct tasbeehView: View {
 //            withAnimation {
 //
 //                if(!paused){
-//                    if(sharedState.selectedPage == 1){
+//                    if(sharedState.selectedMode == 1){
 //                        progressFraction = CGFloat(Int(secondsPassed))/TimeInterval(totalTime)
-////                        print("1: \(selectedPage) profra: \(progressFraction)")
+////                        print("1: \(selectedMode) profra: \(progressFraction)")
 ////                        print("top: \(CGFloat(Int(secondsPassed))) bot: \(TimeInterval(totalTime))")
 //                    }
-////                    if(sharedState.selectedPage == 0){
+////                    if(sharedState.selectedMode == 0){
 ////                        //made it so that it never actually gets to 100/100 or else it can auto stop if toggled on.
 //////                        print("in 0: \(tasbeeh)")
 ////                        let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
 //////                        print("in 0: \(tasbeeh)" + " | numerator: \(numerator)")
 ////                        progressFraction = CGFloat(Int(numerator))/CGFloat(Int(100))
-//////                        print("0: \(selectedPage) profra: \(progressFraction)")
+//////                        print("0: \(selectedMode) profra: \(progressFraction)")
 //////                        print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
-////                    } else if(sharedState.selectedPage == 1){
+////                    } else if(sharedState.selectedMode == 1){
 ////                        progressFraction = CGFloat(Int(secondsPassed))/TimeInterval(totalTime)
-//////                        print("1: \(selectedPage) profra: \(progressFraction)")
+//////                        print("1: \(selectedMode) profra: \(progressFraction)")
 //////                        print("top: \(CGFloat(Int(secondsPassed))) bot: \(TimeInterval(totalTime))")
-////                    } else if (sharedState.selectedPage == 2){
+////                    } else if (sharedState.selectedMode == 2){
 ////                        print("in 2: \(tasbeeh)")
 ////                        progressFraction = CGFloat(tasbeeh)/CGFloat(Int(sharedState.targetCount) ?? 0)
-//////                        print("2: \(selectedPage) profra: \(progressFraction)")
+//////                        print("2: \(selectedMode) profra: \(progressFraction)")
 //////                        print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(targetCount) ?? 0))")
 ////
 ////                    }
@@ -777,7 +777,7 @@ struct tasbeehView: View {
         
         if(tasbeeh > 0){
             let item = SessionDataModel(
-                title: placeholderTitle, sessionMode: sharedState.selectedPage,
+                title: placeholderTitle, sessionMode: sharedState.selectedMode,
                 targetMin: sharedState.selectedMinutes, targetCount: Int(sharedState.targetCount) ?? 0,
                 totalCount: tasbeeh, startTime: startTime ?? Date(),
                 secondsPassed: secondsToReport,
@@ -948,14 +948,14 @@ struct tasbeehView: View {
 }
 
 
-#Preview {
-    @Previewable @StateObject var sharedState = SharedStateClass()
-    @Previewable @State var dummyBool: Bool = true
-
-    tasbeehView(isPresented: $dummyBool, autoStart: true)
-        .modelContainer(for: Item.self, inMemory: true)
+//#Preview {
+//    @Previewable @StateObject var sharedState = SharedStateClass()
+//    @Previewable @State var dummyBool: Bool = true
+//
+//    tasbeehView(isPresented: $dummyBool, autoStart: true)
+//        .modelContainer(for: Item.self, inMemory: true)
 //        .environmentObject(sharedState) // Inject shared state into the environment
-}
+//}
 
 
 

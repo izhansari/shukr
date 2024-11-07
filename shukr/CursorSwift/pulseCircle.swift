@@ -39,6 +39,7 @@ struct PulseCircleView: View {
     
     @State private var showTimeUntilText: Bool = true
     @State private var showEndTime: Bool = true  // Add this line
+    @State private var showQiblaMap: Bool = false
     @State private var isAnimating = false
     @State private var currentTime = Date()
     @Environment(\.colorScheme) var colorScheme
@@ -47,6 +48,12 @@ struct PulseCircleView: View {
     
     // Replace Timer.publish with DisplayLink
     @StateObject private var displayLink = DisplayLink()
+    
+    // Add LocationManager
+    @StateObject private var locationManager = LocationManager()
+    private let meccaLatitude = 21.4225
+    private let meccaLongitude = 39.8262
+
     
     // Timer for updating currentTime
     private let timeUpdateTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -166,12 +173,6 @@ struct PulseCircleView: View {
         currentTime >= prayer.endTime && !prayer.isCompleted
     }
     
-    // Add LocationManager
-    @StateObject private var locationManager = LocationManager()
-    
-    // Mecca coordinates
-    private let meccaLatitude = 21.4225
-    private let meccaLongitude = 39.8262
     
     private func calculateQiblaDirection() -> Double {
         guard let userLocation = locationManager.location else { return 0 }
@@ -207,6 +208,7 @@ struct PulseCircleView: View {
     }
     
     @State private var completedPrayerArcs: [PrayerArc] = []
+    
     
     private func handlePrayerTracking() {
         triggerSomeVibration(type: .success)
@@ -425,24 +427,6 @@ struct PulseCircleView: View {
             }
             
             
-            ZStack {
-                let isAligned = abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-                
-                Image(systemName: "chevron.up")
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-                    .opacity(0.5)
-                    .offset(y: -70)
-                    .rotationEffect(Angle(degrees: isAligned ? 0 : calculateQiblaDirection()))
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: isAligned)
-                    .onChange(of: isAligned) { _, newIsAligned in
-                        if newIsAligned {
-                            triggerSomeVibration(type: .heavy)
-                        }
-                    }
-            }
-            
-            
             // Show current prayer arc if praying
             if isPraying {
                 Circle()
@@ -456,7 +440,6 @@ struct PulseCircleView: View {
             Circle()
                 .fill(Color.white.opacity(0.01))
                 .frame(width: 200, height: 200)
-//                .allowsHitTesting(false)
                 .onTapGesture {
                     textTrigger.toggle()  // Toggle the trigger
                 }
@@ -465,6 +448,54 @@ struct PulseCircleView: View {
                         handlePrayerTracking()
                     }
                 }
+            
+            ZStack {
+                let isAligned = abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
+
+                Image(systemName: "chevron.up")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .background(
+                        Circle()
+                            .fill(Color.white.opacity(0.001)) // Make the background circle white for debugging
+                            .frame(width: 44, height: 44) // Adjust this size to tweak the tappable area
+                    )
+                    .opacity(0.5)
+                    .offset(y: -70)
+                    .rotationEffect(Angle(degrees: isAligned ? 0 : calculateQiblaDirection()))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: isAligned)
+                    .onChange(of: isAligned) { _, newIsAligned in
+                        if newIsAligned {
+                            triggerSomeVibration(type: .heavy)
+                        }
+                    }
+
+                    .onTapGesture {
+                        showQiblaMap = true
+                    }
+                    // Adding a larger tappable area without extra views
+                    .frame(width: 44, height: 44) // Adjust as needed to expand tappable area
+
+                    .fullScreenCover(isPresented: $showQiblaMap) {
+//                        Button(action: {
+//                            showQiblaMap = false
+//                        }) {
+//                            //replace with qiblamapview
+//                            VStack {
+//                                Text("close")
+//                                    .font(.title3)
+//                                    .foregroundColor(.blue)
+//                                    .padding(.vertical, 4)
+//                            }
+//                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+//                            .background(.black)
+//                        }
+                        QiblaMapView(/*isPresented: $showQiblaMap*/)
+                        .onAppear {
+                            print("showqiblamap (from qibla arrow): \(showQiblaMap)")
+                        }
+                    }
+            }
             
             
         }
@@ -505,23 +536,23 @@ struct PulseCircleView: View {
 }
 
 // Simplified preview
-struct PulseCircleView_Previews: PreviewProvider {
-    static var previews: some View {
-        let calendar = Calendar.current
-        let now = Date()
-        let prayer = Prayer(
-            name: "Asr",
-            startTime: calendar.date(byAdding: .second, value: 20, to: now) ?? now,
-            endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
-        )
-        
-        PulseCircleView(
-            prayer: prayer,
-            toggleCompletion: {}
-        )
-//        .background(.black)
-    }
-}
+//struct PulseCircleView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        let calendar = Calendar.current
+//        let now = Date()
+//        let prayer = Prayer(
+//            name: "Asr",
+//            startTime: calendar.date(byAdding: .second, value: 20, to: now) ?? now,
+//            endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
+//        )
+//        
+//        PulseCircleView(
+//            prayer: prayer,
+//            toggleCompletion: {}
+//        )
+////        .background(.black)
+//    }
+//}
 
 extension Prayer {
     func getAverageDuration() -> TimeInterval {
@@ -567,3 +598,378 @@ struct CustomArc: Shape {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import SwiftUI
+import MapKit
+
+
+struct QiblaMapView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @Environment(GlobalLocationManager.self) var globalLocationManager
+    
+    @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262),
+        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    ))
+    @State private var currentRegion: MKCoordinateRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262),
+        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+    )
+    @State private var centerCoordinate: CLLocationCoordinate2D = .init(latitude: 0, longitude: 0)
+    @State private var meccaInisdeRegion: Bool = true
+    @State private var mapHeading: Double = 0
+    @State private var animatedRotation: Double = 0
+    
+    @State private var animationFinish: Bool = false
+    
+    let meccaCoordinate = CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262)
+    
+
+    var body: some View {
+        ZStack {
+            // Display a map centered on the user’s current location
+                Map(position: $cameraPosition) {
+                    UserAnnotation()
+                    Annotation("Mecca", coordinate: meccaCoordinate) {
+                        Text("🕋") // Displaying Kaaba emoji
+                            .font(.largeTitle) // Adjust font size as needed
+                            .padding(5)
+                            .background(Color.white.opacity(0.8)) // Optional background for visibility
+                            .clipShape(Circle())
+                    }
+                }
+                .onMapCameraChange { context in
+                    currentRegion = context.region
+                    centerCoordinate = context.region.center
+                    let latitudeDelta = context.region.span.latitudeDelta
+                    let longitudeDelta = context.region.span.longitudeDelta
+                    print("lationDelta: \(latitudeDelta), longitudeDelta: \(longitudeDelta)")
+                    
+                    mapHeading = context.camera.heading
+                    
+                    // Trigger the qiblaFromMapHeading and coordinateInRegion calculations
+                    let _ = qiblaFromMapHeading
+                    let _ = coordinateInRegion
+
+                    
+                }
+                .mapStyle(.hybrid(elevation: .realistic))
+                .mapControls{
+                    MapUserLocationButton()
+                    MapCompass()
+                }
+                .onAppear {
+                    globalLocationManager.startUpdating()
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        startMapAnimation()
+                    }
+                }
+
+            
+            VStack {
+                withAnimation{
+                    CircleWithArrowOverlay(degrees: $animatedRotation)
+                        .allowsHitTesting(false)
+                        .opacity(animationFinish ? 1 : 0)
+                        .opacity(meccaInisdeRegion ? 0 : 1)
+                }
+            }
+
+            
+            // Close button
+            VStack {
+                HStack {
+                    Button("Close") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .padding()
+                    .background(Color.white.opacity(0.8))
+                    .cornerRadius(8)
+                    .padding()
+                                        
+                    Spacer()
+
+                }
+                Text("mapHeading: \(mapHeading)")
+                    .padding()
+                    .background(Color.white.opacity(0.8))
+                    .cornerRadius(8)
+                    .padding()
+                    .onTapGesture {
+                        updateCameraPosition()
+                    }
+                Spacer()
+            }
+        }
+    }
+    
+    func startMapAnimation() {
+
+        //zoom out of mecca
+        withAnimation(.bouncy(duration: 1)) {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: meccaCoordinate,
+                span: MKCoordinateSpan(latitudeDelta: 60, longitudeDelta: 60)
+            ))
+            print("finished part 2")
+        }
+        
+        // zoom to user location
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            if let userCoordinate = globalLocationManager.userLocation?.coordinate {
+                withAnimation(.bouncy(duration: 1)) {
+                    cameraPosition = .region(MKCoordinateRegion(
+                        center: userCoordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.0001, longitudeDelta: 0.0001)
+                    ))
+                    print("finished part 3")
+                    animationFinish = true
+                }
+            } else {
+                print("User location not available")
+                updateCameraPosition()
+            }
+        }
+    }
+    
+    private var coordinateInRegion: Bool {
+        let coordinate = meccaCoordinate
+        let region = currentRegion
+        let topLeftLatitude = region.center.latitude + (region.span.latitudeDelta / 2.0)
+        let topLeftLongitude = region.center.longitude - (region.span.longitudeDelta / 2.0)
+        
+        let bottomRightLatitude = region.center.latitude - (region.span.latitudeDelta / 2.0)
+        let bottomRightLongitude = region.center.longitude + (region.span.longitudeDelta / 2.0)
+
+        let retrunVal = (coordinate.latitude <= topLeftLatitude && coordinate.latitude >= bottomRightLatitude &&
+                coordinate.longitude >= topLeftLongitude && coordinate.longitude <= bottomRightLongitude)
+        
+        withAnimation{
+            meccaInisdeRegion = retrunVal
+        }
+        return retrunVal
+        
+    }
+        
+    func updateCameraPosition(retryCount: Int = 0) {
+        if let userCoordinate = globalLocationManager.userLocation?.coordinate {
+            let userRegion = MKCoordinateRegion(center: userCoordinate, span: MKCoordinateSpan(latitudeDelta: 0.0001, longitudeDelta: 0.0001))
+            withAnimation {
+                cameraPosition = .region(userRegion)
+                animationFinish = true
+                print("yodeleeeeeeee")
+            }
+        } else {
+            // If user location is not available, retry after a short delay
+            if retryCount < 10 { // Limit the number of retries to avoid infinite loop
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { // 500ms delay
+                    self.updateCameraPosition(retryCount: retryCount + 1)
+                }
+            } else {
+                print("Failed to get user location after multiple attempts")
+            }
+        }
+    }
+    
+    // Function to calculate Qibla direction based on the user's location
+    private func calculateQiblaDirection(turnableStyle: Bool) -> Double {
+        let meccaLatitude = 21.4225
+        let meccaLongitude = 39.8262
+        guard let userLocation = globalLocationManager.userLocation else { return 0 }
+        
+        let userLat = userLocation.coordinate.latitude * .pi / 180
+        let userLong = userLocation.coordinate.longitude * .pi / 180
+        let meccaLat = meccaLatitude * .pi / 180
+        let meccaLong = meccaLongitude * .pi / 180
+        
+        let y = sin(meccaLong - userLong)
+        let x = cos(userLat) * tan(meccaLat) - sin(userLat) * cos(meccaLong - userLong)
+        
+        var qiblaDirection = atan2(y, x) * 180 / .pi
+        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
+//        print("qibla degrees: ", qiblaDirection, "| compass heading: ", globalLocationManager.compassHeading, "| diff heading: ", qiblaDirection-globalLocationManager.compassHeading)
+        if turnableStyle{ return qiblaDirection - globalLocationManager.compassHeading }
+        else{ return qiblaDirection }
+//        return qiblaDirection/* - globalLocationManager.compassHeading*/
+
+    }
+    
+    private var qiblaFromMapHeading: Double {
+        let meccaLatitude = 21.4225
+        let meccaLongitude = 39.8262
+
+        let centerLat = centerCoordinate.latitude * .pi / 180
+        let centerLong = centerCoordinate.longitude * .pi / 180
+        let meccaLat = meccaLatitude * .pi / 180
+        let meccaLong = meccaLongitude * .pi / 180
+        
+        let y = sin(meccaLong - centerLong)
+        let x = cos(centerLat) * tan(meccaLat) - sin(centerLat) * cos(meccaLong - centerLong)
+        
+        var qiblaDirection = atan2(y, x) * 180 / .pi
+        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
+//        return withAnimation{
+        let newRotation = qiblaDirection - mapHeading
+//        }
+        withAnimation{
+            animatedRotation = newRotation
+        }
+        
+//        print("qibla degrees: ", qiblaDirection, "| mapHeading: ", mapHeading, "| diff: ", qiblaDirection-mapHeading, " | animatedRotation: ", animatedRotation, " | new rot:", newRotation)
+
+        
+        return newRotation
+
+    }
+
+}
+
+
+struct CircleWithArrowOverlay: View {
+    @Binding var degrees: Double
+
+    var body: some View {
+        ZStack {
+            let isAligned = abs(degrees) <= QiblaSettings.alignmentThreshold
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundColor(Color.white)
+                .opacity(isAligned ? 1 : 0.5)
+                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+
+            Image(systemName: "arrowtriangle.up")
+                .resizable()
+                .foregroundStyle(isAligned ? .green : .white)
+                .frame(width: 20, height: 20)
+                .offset(y: -100)
+                .rotationEffect(.degrees(degrees/*qiblaFromMapHeading*/))
+        }
+        .frame(width: 200, height: 200)
+    }
+}
+
+#Preview{
+    QiblaMapView()
+        .environment(GlobalLocationManager())
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import SwiftUI
+import CoreLocation
+
+@Observable
+class GlobalLocationManager: NSObject, CLLocationManagerDelegate {
+    @ObservationIgnored let manager = CLLocationManager()
+    var userLocation: CLLocation?
+    var isAuthorized = false
+    var compassHeading: Double = 0
+
+    
+    override init(){
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        startLocationServices()
+    }
+    
+    func startLocationServices(){
+        if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse{
+            manager.startUpdatingLocation()
+            isAuthorized = true
+        } else {
+            isAuthorized = false
+            manager.requestWhenInUseAuthorization()
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        userLocation = locations.last
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            isAuthorized = true
+            manager.requestLocation()
+        case .notDetermined:
+            isAuthorized = false
+            manager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            isAuthorized = false
+            print("denied")
+        default:
+            isAuthorized = true
+            startLocationServices()
+            
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
+        print(error.localizedDescription)
+    }
+    
+    func startUpdating() {
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+        manager.startUpdatingHeading()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        compassHeading = newHeading.magneticHeading
+    }
+}

@@ -298,37 +298,12 @@ class SharedStateClass: ObservableObject {
 //        self.sessionItems = sessionItems
 //    }
     
-    @Published var selectedPage: Int = 0
+    @Published var selectedViewPage: Int = 1
+    @Published var selectedMode: Int = 0
     @Published var selectedMinutes: Int = 0
     @Published var targetCount: String = ""
     @Published var titleForSession: String = ""
 //    @Published var showingOtherPages: Bool = false
-}
-
-
-struct NewPageView: View {
-    @Binding var showNewPage: Bool // Binding to control the dismissal
-
-    var body: some View {
-        VStack {
-            Text("Hello")
-                .font(.largeTitle)
-                .padding()
-
-            Button(action: {
-                showNewPage = false // Dismiss the view
-            }) {
-                Text("Go Back")
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.white.opacity(0.9)) // Optional: Slight transparency
-        .ignoresSafeArea()
-    }
 }
 
 
@@ -346,17 +321,20 @@ struct PrayerTimesView: View {
     @State private var showBottom: Bool = false
     @State private var showTop: Bool = false
     @State private var dragOffset: CGFloat = 0.0
-    @State private var showingDuaPage: Bool = false
-    @State private var showingHistoryPage: Bool = false
-    @State private var showingTasbeehPage: Bool = false
+//    @GestureState private var dragOffset: CGFloat = 0.0
+//    @State private var showingDuaPage: Bool = false
+//    @State private var showingHistoryPage: Bool = false
+//    @State private var showingTasbeehPage: Bool = false
     @State private var showNewPage = false // State to control full-screen cover
     @State private var showMantraSheetFromHomePage: Bool = false
     @State private var bruhForNow: String? = ""
+    @State private var isAnimating: Bool = false
+    
     
     private var startCondition: Bool{
-        let timeModeCond = (sharedState.selectedPage == 1 && sharedState.selectedMinutes != 0)
-        let countModeCond = (sharedState.selectedPage == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0)
-        let freestyleModeCond = (sharedState.selectedPage == 0)
+        let timeModeCond = (sharedState.selectedMode == 1 && sharedState.selectedMinutes != 0)
+        let countModeCond = (sharedState.selectedMode == 2 && (1...10000) ~= Int(sharedState.targetCount) ?? 0)
+        let freestyleModeCond = (sharedState.selectedMode == 0)
         return (timeModeCond || countModeCond || freestyleModeCond)
     }
 
@@ -428,31 +406,112 @@ struct PrayerTimesView: View {
 //        return translation < 0 ? -resistance : resistance
 //    }
     var body: some View {
-        NavigationView {
+//        NavigationView {
             ZStack {
                 
-                Color.white.opacity(0.001)
-                    .onTapGesture {
-                        if isNumberEntryFocused {
-                            isNumberEntryFocused = false
-                        } else{
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                !showBottom ? showTop.toggle() : ()
-                            }
-                        }
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if /*showBottom ? value.translation.height > 0 :*/ value.translation.height != 0 {
-                                    print("\(value.translation.height)")
-                                    dragOffset = calculateResistance(value.translation.height)
+//                Color.white.opacity(0.001)
+//                    .frame(maxWidth: .infinity)
+//                    .padding(.horizontal, 40) // makes it so edges allow us to swipe main tab view at each edge
+//                    .onTapGesture {
+//                        if isNumberEntryFocused {
+//                            isNumberEntryFocused = false
+//                        } else{
+//                            withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
+//                                !showBottom ? showTop.toggle() : (showBottom = false)
+//                            }
+//                        }
+//                    }
+//                    .highPriorityGesture(
+//                        DragGesture()
+//                            .onChanged { value in
+//                                dragOffset = calculateResistance(value.translation.height)
+//                            }
+//                            .onEnded { value in
+//                                handleDragEnd(translation: value.translation.height)
+//                            }
+//                    )
+                VStack(spacing: 0){
+                    Color.white.opacity(0.001)
+//                    Color.red.opacity(0.2)
+                        .frame(maxWidth: .infinity)
+                        .onTapGesture {
+                            if isNumberEntryFocused {
+                                isNumberEntryFocused = false
+                            } else{
+                                withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
+                                    !showBottom ? showTop.toggle() : (showBottom = false)
                                 }
                             }
-                            .onEnded { value in
-                                handleDragEnd(translation: value.translation.height)
+                        }
+                    
+                    Color.white.opacity(0.001)
+//                    Color.green.opacity(0.2)
+                        .frame(maxWidth: .infinity)
+                        .onTapGesture {
+                            if isNumberEntryFocused {
+                                isNumberEntryFocused = false
+                            } else{
+                                withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
+                                    !showTop ? showBottom.toggle() : (showTop = false)
+                                }
                             }
-                    )
+                        }
+                }
+                .padding(.horizontal, 40) // makes it so edges allow us to swipe main tab view at each edge
+                .highPriorityGesture(
+                    DragGesture()
+                        .onChanged { value in
+                            dragOffset = calculateResistance(value.translation.height)
+                        }
+                        .onEnded { value in
+                            handleDragEnd(translation: value.translation.height)
+                        }
+                )
+//                    .gesture(
+//                        DragGesture()
+//                            .updating($dragOffset) { value, state, _ in
+//                                state = calculateResistance(value.translation.height)
+//                            }
+//                            .onEnded { value in
+//                                print("drag on color: \(value.translation.height)")
+//                                handleDragEnd(translation: value.translation.height)
+//                            }
+//                    )
+                
+//                // Left edge detection for horizontal drag to previous page
+//                Color.red.opacity(0.1)
+//                    .frame(width: 30) // Narrow width for left edge
+//                    .onTapGesture {
+//                        // Optional: Add any tap behavior if needed
+//                    }
+//                    .gesture(
+//                        DragGesture()
+//                            .onEnded { value in
+//                                if value.translation.width > 50 {
+//                                    // Trigger navigation to previous TabView page
+//                                    sharedState.selectedViewPage = max(0, sharedState.selectedViewPage - 1)
+//                                }
+//                            }
+//                    )
+//                    .position(x: 15, y: UIScreen.main.bounds.height / 2) // Align it to the left edge
+//
+//                // Right edge detection for horizontal drag to next page
+//                Color.red.opacity(0.1)
+//                    .frame(width: 30) // Narrow width for right edge
+//                    .onTapGesture {
+//                        // Optional: Add any tap behavior if needed
+//                    }
+//                    .gesture(
+//                        DragGesture()
+//                            .onEnded { value in
+//                                if value.translation.width < -50 {
+//                                    // Trigger navigation to next TabView page
+//                                    sharedState.selectedViewPage = min(2, sharedState.selectedViewPage + 1)
+//                                }
+//                            }
+//                    )
+//                    .position(x: UIScreen.main.bounds.width - 15, y: UIScreen.main.bounds.height / 2) // Align to right edge
+
 
                 // This is a zstack with really just the pulseCircle. The roundedrectangle just to push up.
                 ZStack {
@@ -460,7 +519,7 @@ struct PrayerTimesView: View {
                         if showTop {
                             ZStack{
                                 // the middle with a swipable selection
-                                TabView (selection: $sharedState.selectedPage) {
+                                TabView (selection: $sharedState.selectedMode) {
                                     
                                     timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
                                         .tag(1)
@@ -472,12 +531,13 @@ struct PrayerTimesView: View {
                                         .tag(2)
                                 }
                                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
+                                .scrollBounceBehavior(.always)
                                 .frame(width: 200, height: 200) // Match the CircularProgressView size
-                                .onChange(of: sharedState.selectedPage) {_, newPage in
+                                .onChange(of: sharedState.selectedMode) {_, newPage in
                                     isNumberEntryFocused = false //Dismiss keyboard when switching pages
                                 }
 //                                .background(.orange.opacity(0.3))
-                                .onChange(of: sharedState.selectedPage) {_, newPage in
+                                .onChange(of: sharedState.selectedMode) {_, newPage in
                                     isNumberEntryFocused = false //Dismiss keyboard when switching pages
                                 }
                                 .onTapGesture {
@@ -494,7 +554,7 @@ struct PrayerTimesView: View {
                                         .onAppear{
                                             print("showNewPage (from tabview): \(showNewPage)")
                                         }
-                                        .transition(.move(edge: .top)) // Apply fade-in effect
+                                        .transition(.blurReplace) // Apply fade-in effect
                                 }
                                 
                                 // the circles we see
@@ -526,11 +586,11 @@ struct PrayerTimesView: View {
 
                             }
                             .offset(y: dragOffset)
-//                            .transition(.blurReplace)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .top).combined(with: .opacity),
-                                removal: .move(edge: .top).combined(with: .opacity)
-                            ))
+                            .transition(.move(edge: .top).combined(with: .opacity))
+//                            .transition(.asymmetric(
+//                                insertion: .move(edge: .top).combined(with: .opacity),
+//                                removal: .move(edge: .top).combined(with: .opacity)
+//                            ))
                         }
                         
                         if !showTop, let relevantPrayer = viewModel.prayers.first(where: {
@@ -547,9 +607,18 @@ struct PrayerTimesView: View {
 //                            .applyDragGesture(dragOffset: $dragOffset, onEnd: handleDragEnd, calculateResistance: calculateResistance)
                             .transition(.blurReplace)
                             .offset(y: dragOffset)
+                            .highPriorityGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        dragOffset = calculateResistance(value.translation.height)
+                                    }
+                                    .onEnded { value in
+                                        handleDragEnd(translation: value.translation.height)
+                                    }
+                            )
 //                            .transition(.asymmetric(
 //                                insertion: .move(edge: .top),
-//                                removal: .move(edge: .bottom).combined(with: .opacity)
+//                                removal: .move(edge: .top).combined(with: .opacity)
 //                            ))
                         }
                         
@@ -560,17 +629,16 @@ struct PrayerTimesView: View {
                                 .frame(width: 320, height: 250)
                         }
                     }
-                    .gesture(
-                        DragGesture()
-                            .onChanged { value in
-                                if value.translation.height != 0 {
-                                    dragOffset = calculateResistance(value.translation.height)
-                                }
-                            }
-                            .onEnded { value in
-                                handleDragEnd(translation: value.translation.height)
-                            }
-                    )
+//                    .gesture(
+//                        DragGesture()
+//                            .updating($dragOffset) { value, state, _ in
+//                                state = calculateResistance(value.translation.height)
+//                            }
+//                            .onEnded { value in
+//                                print("drag on circle: \(value.translation.height)")
+//                                handleDragEnd(translation: value.translation.height)
+//                            }
+//                    )
                 }
                 
                 Group {
@@ -610,17 +678,25 @@ struct PrayerTimesView: View {
                                         .padding(.top, 50)
                                         .offset(y: dragOffset) // drags with finger
                                         .transition(.move(edge: .top).combined(with: .opacity))
-                                        .gesture(
+                                        .highPriorityGesture(
                                             DragGesture()
                                                 .onChanged { value in
-                                                    if value.translation.height != 0 {
-                                                        dragOffset = calculateResistance(value.translation.height)
-                                                    }
+                                                    dragOffset = calculateResistance(value.translation.height)
                                                 }
                                                 .onEnded { value in
                                                     handleDragEnd(translation: value.translation.height)
                                                 }
                                         )
+//                                        .gesture(
+//                                            DragGesture()
+//                                                .updating($dragOffset) { value, state, _ in
+//                                                    state = calculateResistance(value.translation.height)
+//                                                }
+//                                                .onEnded { value in
+//                                                    print("drag on mantra: \(value.translation.height)")
+//                                                    handleDragEnd(translation: value.translation.height)
+//                                                }
+//                                        )
                                         .onTapGesture {
                                             showMantraSheetFromHomePage = true
                                         }
@@ -635,7 +711,7 @@ struct PrayerTimesView: View {
                                 }
                                 // top bar
                                 
-                                TopBar(viewModel: viewModel, showingDuaPageBool: $showingDuaPage , showingHistoryPageBool: $showingHistoryPage, showingTasbeehPageBool: $showingTasbeehPage, showTop: $showTop, showBottom: $showBottom, dragOffset: $dragOffset)
+                                TopBar(viewModel: viewModel,/* /*showingDuaPageBool: $showingDuaPage , showingHistoryPageBool: $showingHistoryPage, */showingTasbeehPageBool: $showingTasbeehPage, */showTop: $showTop, showBottom: $showBottom, dragOffset: dragOffset)
                                         .transition(.opacity)
                                 
                             }
@@ -683,23 +759,31 @@ struct PrayerTimesView: View {
                                     .shadow(color: .black.opacity(0.1), radius: 10)
                                     .frame(width: 280)
                                     .transition(.move(edge: .bottom).combined(with: .opacity))
-                                    .gesture(
+                                    .highPriorityGesture(
                                         DragGesture()
                                             .onChanged { value in
-                                                if value.translation.height != 0 {
-                                                    dragOffset = calculateResistance(value.translation.height)
-                                                }
+                                                dragOffset = calculateResistance(value.translation.height)
                                             }
                                             .onEnded { value in
                                                 handleDragEnd(translation: value.translation.height)
                                             }
                                     )
+//                                    .gesture(
+//                                        DragGesture()
+//                                            .updating($dragOffset) { value, state, _ in
+//                                                state = calculateResistance(value.translation.height)
+//                                            }
+//                                            .onEnded { value in
+//                                                print("drag on tracker: \(value.translation.height)")
+//                                                handleDragEnd(translation: value.translation.height)
+//                                            }
+//                                    )
                                 }
                                 
                                 // chevron button to pull up the tracker.
                                 if !showTop{
                                     Button(action: {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
                                             !showTop ? showBottom.toggle() : ()
                                         }
                                     }) {
@@ -731,45 +815,28 @@ struct PrayerTimesView: View {
                             .padding()
                         }
                     }
-                    // Supposed to be a loading page... not using it perfectly yet...
-                    else{
-                        ZStack{
-                            Color.red.opacity(0.001)
-                                .edgesIgnoringSafeArea(.all)
-                            CircularProgressView(progress: 0)
-                            Text("shukr")
-                                .font(.headline)
-                                .fontWeight(.thin)
-                                .fontDesign(.rounded)
-                        }
-                        
-//                        Circle()
-//                            .stroke(lineWidth: 24)
-//                            .frame(width: 200, height: 200)
-//                            .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
-                    }
                 }
 
                 
-                if(showingDuaPage){
-                    DuaPageView(showingDuaPageBool: $showingDuaPage)
-                        .transition(.move(edge: .leading))
-                        .zIndex(1)
-                }
-                if showingHistoryPage{
-                    HistoryPageView(showingHistoryPageBool: $showingHistoryPage)
-                        .transition(.move(edge: .trailing))
-                        .zIndex(1)
-                }
-                if showingTasbeehPage {
-                    tasbeehView(isPresented: $showNewPage, autoStart: false)
-//                        .environmentObject(sharedState) // Inject sharedState into the environment
-                        .onAppear{
-                            print("showNewPage (from sidebar ): \(showNewPage)")
-                        }
-                    .transition(.blurReplace.animation(.easeInOut(duration: 0.4)))
-                        .zIndex(1) // Ensure it appears above other content
-                }
+//                if(showingDuaPage){
+//                    DuaPageView(/*showingDuaPageBool: $showingDuaPage*/)
+//                        .transition(.move(edge: .leading))
+//                        .zIndex(1)
+//                }
+//                if showingHistoryPage{
+//                    HistoryPageView(/*showingHistoryPageBool: $showingHistoryPage*/)
+//                        .transition(.move(edge: .trailing))
+//                        .zIndex(1)
+//                }
+//                if showingTasbeehPage {
+//                    tasbeehView(isPresented: $showNewPage, autoStart: false)
+////                        .environmentObject(sharedState) // Inject sharedState into the environment
+//                        .onAppear{
+//                            print("showNewPage (from sidebar ): \(showNewPage)")
+//                        }
+//                    .transition(.blurReplace.animation(.easeInOut(duration: 0.4)))
+//                        .zIndex(1) // Ensure it appears above other content
+//                }
             }
             .onAppear {
 //                sharedState.showingOtherPages = false
@@ -783,9 +850,9 @@ struct PrayerTimesView: View {
                     scheduleNextTransition()
                 }
             }
-            .onChange(of: showingDuaPage || showingHistoryPage || showingTasbeehPage){_, new in
-//                sharedState.showingOtherPages = new
-            }
+//            .onChange(of: showingDuaPage || showingHistoryPage || showingTasbeehPage){_, new in
+////                sharedState.showingOtherPages = new
+//            }
             .onDisappear {
                 relevantPrayerTimer?.invalidate()
                 relevantPrayerTimer = nil
@@ -794,8 +861,8 @@ struct PrayerTimesView: View {
                 timeDisplayTimer = nil
 //                print("--------------hey i dis")
             }
-        }
-        .navigationBarBackButtonHidden()
+        //}
+//        .navigationBarBackButtonHidden()
     }
     
     private func formatTime(_ date: Date) -> String {
@@ -806,8 +873,8 @@ struct PrayerTimesView: View {
     
     private func handleDragEnd(translation: CGFloat) {
         let threshold: CGFloat = 30
-        
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+
+        withAnimation(.bouncy(duration: 0.5)) {
             if !showBottom && !showTop {
                 if translation > threshold {
                     showTop = true
@@ -816,28 +883,90 @@ struct PrayerTimesView: View {
                     showBottom = true
                     triggerSomeVibration(type: .medium)
                 }
-            }
-            else if showBottom && !showTop {
+            } else if showBottom && !showTop {
                 if translation > threshold {
                     showBottom = false
                     triggerSomeVibration(type: .medium)
                 }
-            }
-            else if showTop && !showBottom {
+            } else if showTop && !showBottom {
                 if translation < -threshold {
                     showTop = false
                     triggerSomeVibration(type: .medium)
                 }
             }
-
-//            if translation < -threshold && !showBottom && !showTop {
-//                showBottom = true
-//            } else if translation > threshold && showBottom && !showTop {
-//                showBottom = false
-//            }
-            dragOffset = 0
+            dragOffset = 0 // can't use this with a @GestureState (automatically resets)
         }
+
+        print("translation: \(translation)")
     }
+
+    
+//    private func handleDragEnd(translation: CGFloat) {
+//        let threshold: CGFloat = 30
+//
+//        // Specify the animation in withAnimation
+//        withAnimation(.bouncy(duration: 0.5)) {
+//            if !showBottom && !showTop {
+//                if translation > threshold {
+//                    showTop = true
+//                    triggerSomeVibration(type: .medium)
+//                } else if translation < -threshold {
+//                    showBottom = true
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//            else if showBottom && !showTop {
+//                if translation > threshold {
+//                    showBottom = false
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//            else if showTop && !showBottom {
+//                if translation < -threshold {
+//                    showTop = false
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//        }
+//        dragOffset = 0
+//        print("translation: \(translation)")
+//
+//    }
+//    private func handleDragEnd(translation: CGFloat) {
+//        let threshold: CGFloat = 30
+//        
+//        withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
+//            if !showBottom && !showTop {
+//                if translation > threshold {
+//                    showTop = true
+//                    triggerSomeVibration(type: .medium)
+//                } else if translation < -threshold {
+//                    showBottom = true
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//            else if showBottom && !showTop {
+//                if translation > threshold {
+//                    showBottom = false
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//            else if showTop && !showBottom {
+//                if translation < -threshold {
+//                    showTop = false
+//                    triggerSomeVibration(type: .medium)
+//                }
+//            }
+//
+////            if translation < -threshold && !showBottom && !showTop {
+////                showBottom = true
+////            } else if translation > threshold && showBottom && !showTop {
+////                showBottom = false
+////            }
+//            dragOffset = 0
+//            print("translation: \(translation)")
+//        }
+//    }
 }
 
 struct ContentView3_Previews: PreviewProvider {
@@ -998,17 +1127,17 @@ struct TopBar: View {
     var colorModeToggle = false
 
     let viewModel: PrayerViewModel
-    @Binding var showingDuaPageBool: Bool
-    @Binding var showingHistoryPageBool: Bool
-    @Binding var showingTasbeehPageBool: Bool
+//    @Binding var showingDuaPageBool: Bool
+//    @Binding var showingHistoryPageBool: Bool
+//    @Binding var showingTasbeehPageBool: Bool
     @Binding var showTop: Bool
     @Binding var showBottom: Bool
-    @Binding var dragOffset: CGFloat
+    @GestureState var dragOffset: CGFloat
     
     @State private var expandButtons: Bool = false
     
     private var tasbeehModeName: String {
-        switch sharedState.selectedPage{
+        switch sharedState.selectedMode{
         case 0: return "Freestyle"
         case 1: return "Time Goal"
         case 2: return "Count Goal"
@@ -1207,6 +1336,7 @@ struct TopBar: View {
                     Spacer()
 
                         VStack (spacing: 0){
+                            //// FIXME: eventually need to clean up the side bar since we no longer have the showing page booleans
                             
                             Button(action: {
                                 triggerSomeVibration(type: .light)
@@ -1225,7 +1355,9 @@ struct TopBar: View {
                                 Button(action: {
                                     triggerSomeVibration(type: .light)
                                     withAnimation {
-                                        showingTasbeehPageBool = true
+//                                        showingTasbeehPageBool = true
+                                        showBottom = false
+                                        showTop.toggle()
                                     }
                                 }) {
                                     Image(systemName: "circle.hexagonpath")
@@ -1237,8 +1369,10 @@ struct TopBar: View {
                                 Button(action: {
                                     triggerSomeVibration(type: .light)
                                     withAnimation {
-                                        showingDuaPageBool = true
+//                                        showingDuaPageBool = true
+                                        sharedState.selectedViewPage = 2
                                     }
+//                                    openLeftPage(proxy: proxy)
                                 }) {
                                     Image(systemName: "book")
                                         .font(.system(size: 24))
@@ -1249,7 +1383,8 @@ struct TopBar: View {
                                 Button(action: {
                                     triggerSomeVibration(type: .light)
                                     withAnimation {
-                                        showingHistoryPageBool = true
+//                                        showingHistoryPageBool = true
+                                        sharedState.selectedViewPage = 0
                                     }
                                 }) {
                                     Image(systemName: "rectangle.stack")
