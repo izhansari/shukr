@@ -28,6 +28,7 @@
 		369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9232CA48B88003A58B7 /* HistoryPageView.swift */; };
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
+		36FAF81B2CDDF64800718D73 /* oldTasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +101,7 @@
 		36F4710C2C8FF7DA0077DB22 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		36F471132C8FF9220077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = oldTasbeehView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -193,6 +195,7 @@
 			isa = PBXGroup;
 			children = (
 				360A104C2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift */,
+				36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */,
 			);
 			path = OLD;
 			sourceTree = "<group>";
@@ -429,6 +432,7 @@
 				3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
+				36FAF81B2CDDF64800718D73 /* oldTasbeehView.swift in Sources */,
 				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,
 				369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */,
 				360A104D2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift in Sources */,

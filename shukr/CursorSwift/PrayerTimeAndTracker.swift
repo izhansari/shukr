@@ -158,20 +158,20 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                     DispatchQueue.main.async {
                         let now = Date()
                         let calendar = Calendar.current
-//                        var testPrayers = [
-//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
-//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
-//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
-//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
-//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
-//                        ]
                         var testPrayers = [
-                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
-                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
-                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
-                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
-                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
+                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
+                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
+                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
+                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
+                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
                         ]
+//                        var testPrayers = [
+//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
+//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
+//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
+//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
+//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
+//                        ]
                         var actualPrayers = [
                             Prayer(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
                             Prayer(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
@@ -327,7 +327,7 @@ struct PrayerTimesView: View {
 //    @State private var showingTasbeehPage: Bool = false
     @State private var showNewPage = false // State to control full-screen cover
     @State private var showMantraSheetFromHomePage: Bool = false
-    @State private var bruhForNow: String? = ""
+    @State private var chosenMantra: String? = ""
     @State private var isAnimating: Bool = false
     
     
@@ -548,7 +548,7 @@ struct PrayerTimesView: View {
                                     isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
                                 }
                                 .fullScreenCover(isPresented: $showNewPage) {
-                                    tasbeehView(isPresented: $showNewPage, autoStart: true)
+                                    tasbeehView(isPresented: $showNewPage/*, autoStart: true*/)
 //                                        .environmentObject(sharedState) // Inject sharedState into the environment
 //                                    NewPageView(showNewPage: $showNewPage) // Show new page in full-screen cover
                                         .onAppear{
@@ -647,7 +647,7 @@ struct PrayerTimesView: View {
                         VStack {
                             // This ZStack holds the showTopChevron topbar or the mantra picker.
                             ZStack(alignment: .top) {
-                                // The showTopChevron (only shown when showTop)
+//                                // The showTopChevron (only shown when showTop)
 //                                if showTop{
 //                                    Button(action: {
 //                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -687,30 +687,20 @@ struct PrayerTimesView: View {
                                                     handleDragEnd(translation: value.translation.height)
                                                 }
                                         )
-//                                        .gesture(
-//                                            DragGesture()
-//                                                .updating($dragOffset) { value, state, _ in
-//                                                    state = calculateResistance(value.translation.height)
-//                                                }
-//                                                .onEnded { value in
-//                                                    print("drag on mantra: \(value.translation.height)")
-//                                                    handleDragEnd(translation: value.translation.height)
-//                                                }
-//                                        )
                                         .onTapGesture {
                                             showMantraSheetFromHomePage = true
                                         }
-                                        .onChange(of: bruhForNow){
-                                            if let newSetMantra = bruhForNow{
+                                        .onChange(of: chosenMantra){
+                                            if let newSetMantra = chosenMantra{
                                                 sharedState.titleForSession = newSetMantra
                                             }
                                         }
                                         .sheet(isPresented: $showMantraSheetFromHomePage) {
-                                            MantraPickerView(isPresented: $showMantraSheetFromHomePage, selectedMantra: $bruhForNow, presentation: [.large])
+                                            MantraPickerView(isPresented: $showMantraSheetFromHomePage, selectedMantra: $chosenMantra, presentation: [.large])
                                         }
                                 }
-                                // top bar
                                 
+                                // top bar
                                 TopBar(viewModel: viewModel,/* /*showingDuaPageBool: $showingDuaPage , showingHistoryPageBool: $showingHistoryPage, */showingTasbeehPageBool: $showingTasbeehPage, */showTop: $showTop, showBottom: $showBottom, dragOffset: dragOffset)
                                         .transition(.opacity)
                                 
@@ -1405,6 +1395,13 @@ struct TopBar: View {
                                         .padding(.vertical, 7)
                                 }
                                 
+                                NavigationLink(destination: LocationMapContentView()) {
+                                    Image(systemName: "scribble")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
                                 NavigationLink(destination: SettingsView(viewModel: viewModel)) {
                                     Image(systemName: "gear")
                                         .font(.system(size: 24))
@@ -1413,12 +1410,8 @@ struct TopBar: View {
                                 }
                             }
                         }
-//                        .padding(.trailing)
                         .frame(width: 30)
-//                        .background(.red)
                         .opacity(0.7)
-                    
-                    
                 }
                 Spacer()
             }.padding()
@@ -1451,3 +1444,11 @@ struct BlankCircleCopy: View {
             }
     }
 }
+
+
+/*
+ Things i added:
+ - dimmer slider when inactivity toggle on
+ - select mantra from pause screen
+ -
+ */

@@ -700,9 +700,9 @@ struct QiblaMapView: View {
                 .onAppear {
                     globalLocationManager.startUpdating()
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+//                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                         startMapAnimation()
-                    }
+//                    }
                 }
 
             
@@ -730,14 +730,14 @@ struct QiblaMapView: View {
                     Spacer()
 
                 }
-                Text("mapHeading: \(mapHeading)")
-                    .padding()
-                    .background(Color.white.opacity(0.8))
-                    .cornerRadius(8)
-                    .padding()
-                    .onTapGesture {
-                        updateCameraPosition()
-                    }
+//                Text("mapHeading: \(mapHeading)")
+//                    .padding()
+//                    .background(Color.white.opacity(0.8))
+//                    .cornerRadius(8)
+//                    .padding()
+//                    .onTapGesture {
+//                        updateCameraPosition()
+//                    }
                 Spacer()
             }
         }
@@ -905,9 +905,25 @@ struct CircleWithArrowOverlay: View {
 
 
 
+// MARK: - Model
+struct StoredLocation: Identifiable {
+    let id = UUID()
+    let coordinate: CLLocationCoordinate2D
+    let timestamp: Date
+}
+
+class CustomAnnotation: MKPointAnnotation {
+    var storedLocation: StoredLocation?
+}
+
+// Wrapper for cluster locations
+struct ClusterLocationsWrapper: Identifiable {
+    let id = UUID()
+    let locations: [StoredLocation]
+}
 
 
-
+// MARK: - My Gloabl Location Manager
 
 import SwiftUI
 import CoreLocation
@@ -918,6 +934,7 @@ class GlobalLocationManager: NSObject, CLLocationManagerDelegate {
     var userLocation: CLLocation?
     var isAuthorized = false
     var compassHeading: Double = 0
+    var storedLocations: [StoredLocation] = []
 
     
     override init(){
@@ -956,6 +973,14 @@ class GlobalLocationManager: NSObject, CLLocationManagerDelegate {
             isAuthorized = true
             startLocationServices()
             
+        }
+    }
+    
+    // --> will need to add this
+    func addCurrentLocation() {
+        if let location = manager.location {
+            let newLocation = StoredLocation(coordinate: location.coordinate, timestamp: Date())
+            storedLocations.append(newLocation)
         }
     }
     

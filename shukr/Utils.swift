@@ -232,14 +232,39 @@ struct DebugToggleButton: View {
 }
 
 struct SleepModeToggleButton: View {
+//    @Binding var toggleInactivityTimer: Bool
+////    var body: some View {
+////        twoModeToggleButton(
+////            boolToToggle: $toggleInactivityTimer,
+////            onSymbol: "bed.double.fill",
+////            onColor: .orange,
+////            offSymbol: "bed.double",
+////            offColor: .gray)
+////    }
+    
     @Binding var toggleInactivityTimer: Bool
+    @Binding var colorModeToggle: Bool
+    let onSymbol: String = "bed.double.fill"
+    let onColor: Color = .orange
+    let offSymbol: String = "bed.double"
+    let offColor: Color = .gray
+    
     var body: some View {
-        twoModeToggleButton(
-            boolToToggle: $toggleInactivityTimer,
-            onSymbol: "bed.double.fill",
-            onColor: .orange,
-            offSymbol: "bed.double",
-            offColor: .gray)
+        Button(action: {
+            toggleInactivityTimer.toggle()
+            if toggleInactivityTimer == true && colorModeToggle == false {
+                colorModeToggle.toggle()
+            }
+        }) {
+            Image(systemName: toggleInactivityTimer ? onSymbol : offSymbol)
+                .font(.system(size: 24))
+                .foregroundColor(toggleInactivityTimer ? onColor : offColor)
+                .padding()
+        }
+        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+        .cornerRadius(15)
+        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+        .onChange(of: toggleInactivityTimer, {triggerSomeVibration(type: .medium)})
     }
 }
 
@@ -610,6 +635,11 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
 }
 
 struct pauseStatsAndBG: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+    @State private var showMantraSheetFromPausedPage = false
+    @State private var chosenMantra: String? = ""
+    @State private var rateTextToggle = false  // to control the toggle text in the middle
+    
     let paused: Bool
     let selectedPage: Int
     let mantra: String
@@ -617,7 +647,7 @@ struct pauseStatsAndBG: View {
     let targetCount: String
     let tasbeeh: Int
     let timePassedAtPause: String
-    let timePerClick: TimeInterval
+//    let timePerClick: TimeInterval
     let avgTimePerClick: TimeInterval
     let tasbeehRate: String
     let togglePause: () -> Void // Closure for the togglePause function
@@ -625,47 +655,74 @@ struct pauseStatsAndBG: View {
     
     var body: some View {
         
+        
         Color("pauseColor")
             .edgesIgnoringSafeArea(.all)
             .animation(.easeOut(duration: 0.3), value: paused)
             .onTapGesture { togglePause() }
             .opacity(paused ? 1 : 0.0)
         
+        
         VStack(spacing: 20){
+            
+            //The Mode Text
+            switch selectedPage {
+            case 1:
+                Text("\(selectedMinutes)m Session")
+                    .font(.title2)
+                    .bold()
+            case 2:
+                Text("\(targetCount) Count Session")
+                    .font(.title2)
+                    .bold()
+            default:
+                Text("Freestyle Session")
+                    .font(.title2)
+                    .bold()
+            }
+            
+            //The Mantra Picker
+            Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "No Selected Mantra")")
+                .frame(width: 150)
+                .fontDesign(.rounded)
+                .fontWeight(.thin)
+                .multilineTextAlignment(.center)
+                .padding()
+                .background(.gray.opacity(0.08))
+                .cornerRadius(10)
+                .onTapGesture {
+                    showMantraSheetFromPausedPage = true
+                }
+                .onChange(of: chosenMantra){
+                    if let newSetMantra = chosenMantra{
+                        sharedState.titleForSession = newSetMantra
+                    }
+                }
+                .sheet(isPresented: $showMantraSheetFromPausedPage) {
+                    MantraPickerView(isPresented: $showMantraSheetFromPausedPage, selectedMantra: $chosenMantra, presentation: [.large])
+                }
+            
+            
+            
+            //The Stats
             if paused && !takingNotes {
-                if(selectedPage == 0) {
-                    Text("Freestyle Session")
-                        .font(.title2)
-                        .bold()
-                } else if(selectedPage == 1) {
-                    Text("\(selectedMinutes)m Session")
-                        .font(.title2)
-                        .bold()
-                } else if(selectedPage == 2) {
-                    Text("\(targetCount) Target Session")
-                        .font(.title2)
-                        .bold()
-                }
-                
-                if(mantra != ""){
-                    Text("\(mantra)")
-                        .font(.title3)
-                }
                 
                 Text("Count: \(tasbeeh)")
-                    .font(.title3)
+                    .fontWeight(.thin)
+                    .fontDesign(.rounded)
                 
-                Text("Time Passed: \(timePassedAtPause)")
-                    .font(.title3)
+                Text("Time: \(timePassedAtPause)")
+                    .fontWeight(.thin)
+                    .fontDesign(.rounded)
                 
-//                Text("Last Time / Click: \((String(format: "%.2f", timePerClick)))s")
-//                    .font(.title3)
-                
-                Text("Avg Click Rate: \((String(format: "%.2f", avgTimePerClick)))s")
-                    .font(.title3)
-                
-                Text("Tasbeeh Rate: \(tasbeehRate)")
-                    .font(.title3)
+                ExternalToggleText(
+                    originalText: "Time Per Tasbeeh: \(tasbeehRate)",
+                    toggledText: "Time Per Click: \((String(format: "%.2f", avgTimePerClick)))s",
+                    externalTrigger: $rateTextToggle,  // Pass the binding
+                    fontDesign: .rounded,
+                    fontWeight: .thin,
+                    hapticFeedback: true
+                )
             }
         }
         .padding()
@@ -675,6 +732,7 @@ struct pauseStatsAndBG: View {
         .padding(.horizontal, 30)
         .opacity(paused ? 1.0 : 0.0)
         .animation(.easeInOut, value: paused)
+        
     }
 }
 
@@ -1765,7 +1823,7 @@ struct RingStyle6 {
             Circle()
                 .stroke(lineWidth: 24)
                 .frame(width: 200, height: 200)
-                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
+                .foregroundStyle(progressColor == .white ? progressColor.opacity(0.6) : progressColor.opacity(0.15))
             
             if isCurrentPrayer {
                 // Main progress arc with gradient
@@ -2006,28 +2064,11 @@ struct ExternalToggleText: View {
 
 
 struct ToggleTextExample: View {
-//    @State private var showOriginalText1 = true
-//    @State private var showOriginalText2 = true
     @State private var autoRevertTimer: Timer?
     @State private var textTrigger = false  // Add this state
     
     var body: some View {
         VStack(spacing: 20) {
-//            Text(showOriginalText1 ? "Original Text1" : "Toggled Text1 (3s)")
-//                .padding()
-//                .background(Color.gray.opacity(0.2))
-//                .cornerRadius(10)
-//                .onTapGesture {
-//                    handleTap(binding: $showOriginalText1)
-//                }
-//            
-//            Text(showOriginalText2 ? "Original Text2" : "Toggled Text2 (3s)")
-//                .padding()
-//                .background(Color.gray.opacity(0.2))
-//                .cornerRadius(10)
-//                .onTapGesture {
-//                    handleTap(binding: $showOriginalText2)
-//                }
             
             ToggleText(
                 originalText: "this text is",
@@ -2057,25 +2098,6 @@ struct ToggleTextExample: View {
             autoRevertTimer = nil
         }
     }
-    
-//    private func handleTap(binding: Binding<Bool>) {
-//        // Cancel existing timer if any
-//        autoRevertTimer?.invalidate()
-//        
-//        // Toggle the text
-//        withAnimation(.easeInOut(duration: 0.2)) {
-//            binding.wrappedValue.toggle()
-//        }
-//        
-//        // If showing alternate text, start timer
-//        if !binding.wrappedValue {
-//            autoRevertTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-//                withAnimation(.easeInOut(duration: 0.2)) {
-//                    binding.wrappedValue = true
-//                }
-//            }
-//        }
-//    }
 }
 
 
@@ -2105,12 +2127,6 @@ struct DragGestureModifier: ViewModifier {
         
     }
 }
-
-//func calculateResistance(_ translation: CGFloat) -> CGFloat {
-//    let maxOffset: CGFloat = 100
-//    let resistance = 7 * log10(abs(translation) + 1)
-//    return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
-//}
 
 func calculateResistance(_ translation: CGFloat) -> CGFloat {
         let maxResistance: CGFloat = 40

@@ -37,70 +37,72 @@ struct shukrApp: App {
     var body: some Scene {
         
             WindowGroup {
-                if globalLocationManager.isAuthorized{
-                // v1 mainpage - no prayer times. buttons on top left and right corners for dua / history
-                //            tasbeehView()
-                
-                
-                
-                // v2 mainpage - swipe up down with sidebar buttons
-                //            PrayerTimesView()
-                
-                
-                
-                
-                // v3 mainpage - tabview paging with vertical dragging
-                TabView (selection: $sharedState.selectedViewPage){
-                    // Rightmost page: History page
-                    HistoryPageView()
-                        .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                        .tag(0)
-                        .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                    
-                    
-                    // Middle page: Prayer time tracker
-                    PrayerTimesView()
-                        .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                        .tag(1)
-                        .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-
-                    
-                    // Leftmost page: Dua page
-                    DuaPageView()
-                        .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                        .tag(2)
-                        .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                    
-                    
-                }
-                .tabViewStyle(DefaultTabViewStyle()) // for testing
-                
-//                .onAppear {
-//                    UIScrollView.appearance().bounces = false
-//                }
-                
-                
-                
-                
-                
-                
-                //v4
-                //            SwipeNavView()
-                }
-                else{
-                    ZStack{
-                        Color.red.opacity(0.001)
-                            .edgesIgnoringSafeArea(.all)
-                        CircularProgressView(progress: 0)
-                        Text("shukr")
-                            .font(.headline)
-                            .fontWeight(.thin)
-                            .fontDesign(.rounded)
+                NavigationView{
+                    if globalLocationManager.isAuthorized{
+                        // v1 mainpage - no prayer times. buttons on top left and right corners for dua / history
+                        //            tasbeehView()
+                        
+                        
+                        
+                        // v2 mainpage - swipe up down with sidebar buttons
+                        //            PrayerTimesView()
+                        
+                        
+                        
+                        
+                        // v3 mainpage - tabview paging with vertical dragging
+                        TabView (selection: $sharedState.selectedViewPage){
+                            // Rightmost page: History page
+                            HistoryPageView()
+                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                                .tag(0)
+                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            
+                            
+                            // Middle page: Prayer time tracker
+                            PrayerTimesView()
+                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                                .tag(1)
+                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            
+                            
+                            // Leftmost page: Dua page
+                            DuaPageView()
+                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                                .tag(2)
+                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            
+                            
+                        }
+                        .tabViewStyle(DefaultTabViewStyle()) // for testing
+                        
+                        //                .onAppear {
+                        //                    UIScrollView.appearance().bounces = false
+                        //                }
+                        
+                        
+                        
+                        
+                        
+                        
+                        //v4
+                        //            SwipeNavView()
                     }
-                    VStack{
-                        Spacer()
-                        Text("gimme your location bruh...")
-                            .padding()
+                    else{
+                        ZStack{
+                            Color.red.opacity(0.001)
+                                .edgesIgnoringSafeArea(.all)
+                            CircularProgressView(progress: 0)
+                            Text("shukr")
+                                .font(.headline)
+                                .fontWeight(.thin)
+                                .fontDesign(.rounded)
+                        }
+                        VStack{
+                            Spacer()
+                            Text("gimme your location bruh...")
+                                .padding()
+                        }
                     }
                 }
             }
