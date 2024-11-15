@@ -326,7 +326,7 @@ struct PrayerTimesView: View {
 //    @State private var showingDuaPage: Bool = false
 //    @State private var showingHistoryPage: Bool = false
 //    @State private var showingTasbeehPage: Bool = false
-    @State private var showNewPage = false // State to control full-screen cover
+    @State private var showTasbeehPage = false // State to control full-screen cover
     @State private var showMantraSheetFromHomePage: Bool = false
     @State private var chosenMantra: String? = ""
     @State private var isAnimating: Bool = false
@@ -390,50 +390,12 @@ struct PrayerTimesView: View {
         }
     }
     
-//    private func calculateResistance(_ translation: CGFloat) -> CGFloat {
-//        let maxOffset: CGFloat = 100
-//        let resistance = 7 * log10(abs(translation) + 1)
-//        return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
-//    }
-//    private func calculateResistance(_ translation: CGFloat) -> CGFloat {
-//        let maxOffset: CGFloat = 100
-//        let resistance = 40 * abs(translation) / (30 + abs(translation))
-//        return translation < 0 ? -min(resistance, maxOffset) : min(resistance, maxOffset)
-//    }
-//    private func calculateResistance(_ translation: CGFloat) -> CGFloat {
-//        let maxResistance: CGFloat = 40
-//        let rate: CGFloat = 0.01
-//        let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
-//        return translation < 0 ? -resistance : resistance
-//    }
     var body: some View {
 //        NavigationView {
             ZStack {
                 
-//                Color.white.opacity(0.001)
-//                    .frame(maxWidth: .infinity)
-//                    .padding(.horizontal, 40) // makes it so edges allow us to swipe main tab view at each edge
-//                    .onTapGesture {
-//                        if isNumberEntryFocused {
-//                            isNumberEntryFocused = false
-//                        } else{
-//                            withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
-//                                !showBottom ? showTop.toggle() : (showBottom = false)
-//                            }
-//                        }
-//                    }
-//                    .highPriorityGesture(
-//                        DragGesture()
-//                            .onChanged { value in
-//                                dragOffset = calculateResistance(value.translation.height)
-//                            }
-//                            .onEnded { value in
-//                                handleDragEnd(translation: value.translation.height)
-//                            }
-//                    )
                 VStack(spacing: 0){
                     Color.white.opacity(0.001)
-//                    Color.red.opacity(0.2)
                         .frame(maxWidth: .infinity)
                         .onTapGesture {
                             if isNumberEntryFocused {
@@ -468,16 +430,6 @@ struct PrayerTimesView: View {
                             handleDragEnd(translation: value.translation.height)
                         }
                 )
-//                    .gesture(
-//                        DragGesture()
-//                            .updating($dragOffset) { value, state, _ in
-//                                state = calculateResistance(value.translation.height)
-//                            }
-//                            .onEnded { value in
-//                                print("drag on color: \(value.translation.height)")
-//                                handleDragEnd(translation: value.translation.height)
-//                            }
-//                    )
                 
 //                // Left edge detection for horizontal drag to previous page
 //                Color.red.opacity(0.1)
@@ -517,7 +469,9 @@ struct PrayerTimesView: View {
                 // This is a zstack with really just the pulseCircle. The roundedrectangle just to push up.
                 ZStack {
                     VStack {
+                        // state 1
                         if showTop {
+                            // replace circle with tasbeehSelectionTabView
                             ZStack{
                                 // the middle with a swipable selection
                                 TabView (selection: $sharedState.selectedMode) {
@@ -537,60 +491,49 @@ struct PrayerTimesView: View {
                                 .onChange(of: sharedState.selectedMode) {_, newPage in
                                     isNumberEntryFocused = false //Dismiss keyboard when switching pages
                                 }
-//                                .background(.orange.opacity(0.3))
                                 .onTapGesture {
                                     if(startCondition){
-                                        showNewPage = true // Set to true to show the full-screen cover
+                                        showTasbeehPage = true // Set to true to show the full-screen cover
                                         triggerSomeVibration(type: .medium)
                                     }
                                     isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
                                 }
-                                .fullScreenCover(isPresented: $showNewPage) {
-                                    tasbeehView(isPresented: $showNewPage/*, autoStart: true*/)
-//                                        .environmentObject(sharedState) // Inject sharedState into the environment
-//                                    NewPageView(showNewPage: $showNewPage) // Show new page in full-screen cover
+                                .fullScreenCover(isPresented: $showTasbeehPage) {
+                                    tasbeehView(isPresented: $showTasbeehPage/*, autoStart: true*/)
                                         .onAppear{
-                                            print("showNewPage (from tabview): \(showNewPage)")
+                                            print("showNewPage (from tabview): \(showTasbeehPage)")
                                         }
                                         .transition(.blurReplace) // Apply fade-in effect
                                 }
                                 
                                 // the circles we see
                                 CircularProgressView(progress: (0))
-//                                    .allowsHitTesting(false) //so taps dont get intercepted.
                                 
-        //                        if(startCondition){
-                                    Circle()
-                                        .stroke(lineWidth: 24)
-                                        .frame(width: 200, height: 200)
-        //                                .foregroundStyle(Color.green.opacity(0.30))
-                                        .foregroundStyle(startCondition ?
-                                            LinearGradient(
-                                                gradient: Gradient(colors: colorScheme == .dark ?
-                                                    [.yellow.opacity(0.6), .green.opacity(0.8)] :
-                                                    [.yellow, .green]
-                                                ),
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            ) :
-                                            LinearGradient(
-                                                gradient: Gradient(colors: []),
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-        //                                .animation(.spring(), value: startCondition)
-                                        .animation(.easeInOut(duration: 0.5), value: startCondition)
+                                Circle()
+                                    .stroke(lineWidth: 24)
+                                    .frame(width: 200, height: 200)
+                                    .foregroundStyle(startCondition ?
+                                                     LinearGradient(
+                                                        gradient: Gradient(colors: colorScheme == .dark ?
+                                                                           [.yellow.opacity(0.6), .green.opacity(0.8)] :
+                                                                            [.yellow, .green]
+                                                                          ),
+                                                        startPoint: .topLeading,
+                                                        endPoint: .bottomTrailing
+                                                     ) :
+                                                        LinearGradient(
+                                                            gradient: Gradient(colors: []),
+                                                            startPoint: .topLeading,
+                                                            endPoint: .bottomTrailing
+                                                        )
+                                    )
+                                    .animation(.easeInOut(duration: 0.5), value: startCondition)
 
                             }
-                            .offset(y: dragOffset)
                             .transition(.move(edge: .top).combined(with: .opacity))
-//                            .transition(.asymmetric(
-//                                insertion: .move(edge: .top).combined(with: .opacity),
-//                                removal: .move(edge: .top).combined(with: .opacity)
-//                            ))
                         }
                         
+                        // state 2
                         if !showTop, let relevantPrayer = viewModel.prayers.first(where: {
                             !$0.isCompleted && $0.startTime <= Date() && $0.endTime >= Date()
                         }) ?? viewModel.prayers.first(where: {
@@ -602,9 +545,7 @@ struct PrayerTimesView: View {
                                 viewModel.togglePrayerCompletion(for: relevantPrayer)
                                 scheduleNextTransition()
                             }
-//                            .applyDragGesture(dragOffset: $dragOffset, onEnd: handleDragEnd, calculateResistance: calculateResistance)
                             .transition(.blurReplace)
-                            .offset(y: dragOffset)
                             .highPriorityGesture(
                                 DragGesture()
                                     .onChanged { value in
@@ -614,12 +555,9 @@ struct PrayerTimesView: View {
                                         handleDragEnd(translation: value.translation.height)
                                     }
                             )
-//                            .transition(.asymmetric(
-//                                insertion: .move(edge: .top),
-//                                removal: .move(edge: .top).combined(with: .opacity)
-//                            ))
                         }
                         
+                        // state 3
                         if showBottom {
                             // just for spacing to push it up.
                             RoundedRectangle(cornerSize: CGSize(width: 10, height: 10))
@@ -627,17 +565,9 @@ struct PrayerTimesView: View {
                                 .frame(width: 320, height: 250)
                         }
                     }
-//                    .gesture(
-//                        DragGesture()
-//                            .updating($dragOffset) { value, state, _ in
-//                                state = calculateResistance(value.translation.height)
-//                            }
-//                            .onEnded { value in
-//                                print("drag on circle: \(value.translation.height)")
-//                                handleDragEnd(translation: value.translation.height)
-//                            }
-//                    )
+                    .offset(y: dragOffset)
                 }
+                
                 
                 Group {
                     // in the case of having a valid location (everything except pulsecirlce):
@@ -645,23 +575,6 @@ struct PrayerTimesView: View {
                         VStack {
                             // This ZStack holds the showTopChevron topbar or the mantra picker.
                             ZStack(alignment: .top) {
-//                                // The showTopChevron (only shown when showTop)
-//                                if showTop{
-//                                    Button(action: {
-//                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-//                                            !showBottom ? showTop.toggle() : ()
-//                                        }
-//                                    }) {
-//                                        Image(systemName: /*showBottom ? "chevron.down" :*/ "chevron.up")
-//                                            .font(.title3)
-//                                            .foregroundColor(.gray)
-////                                            .scaleEffect(x: 1, y: dragOffset > 0 || showBottom ? -1 : 1)
-//                                            .padding(.bottom)
-//                                            .padding(.top)
-//                                    }
-//                                    .offset(y: dragOffset) // this tells it to drag accordingly with the finger?
-//
-//                                }
                                 // select mantra button
                                 if showTop{
                                     Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "select mantra")")
@@ -756,16 +669,6 @@ struct PrayerTimesView: View {
                                                 handleDragEnd(translation: value.translation.height)
                                             }
                                     )
-//                                    .gesture(
-//                                        DragGesture()
-//                                            .updating($dragOffset) { value, state, _ in
-//                                                state = calculateResistance(value.translation.height)
-//                                            }
-//                                            .onEnded { value in
-//                                                print("drag on tracker: \(value.translation.height)")
-//                                                handleDragEnd(translation: value.translation.height)
-//                                            }
-//                                    )
                                 }
                                 
                                 // chevron button to pull up the tracker.
@@ -972,7 +875,7 @@ struct PrayerTimesView: View {
 struct ContentView3_Previews: PreviewProvider {
     static var previews: some View {
         PrayerTimesView()
-//            .environmentObject(SharedStateClass()) // Inject the environment object here
+            .environmentObject(SharedStateClass()) // Inject the environment object here
     }
 }
 
@@ -1136,6 +1039,10 @@ struct TopBar: View {
     
     @State private var expandButtons: Bool = false
     
+    private var switchToTopLabel: Bool {
+        ((dragOffset > 0 && !showBottom) || showTop)
+    }
+    
     private var tasbeehModeName: String {
         switch sharedState.selectedMode{
         case 0: return "Freestyle"
@@ -1281,19 +1188,42 @@ struct TopBar: View {
 //                    .offset(y: !showBottom && dragOffset > 0 ? dragOffset : 0)
 //                    .animation(.easeInOut, value: dragOffset)
                     
-                    HStack {
-                        if ((dragOffset > 0 && !showBottom) || showTop){
-                            Image(systemName: "circle.hexagonpath")
-                                .foregroundColor(.secondary)
-//                                .transition(.blurReplace)
-                            Text("Tasbeeh - \(tasbeehModeName)")
-//                                .transition(.blurReplace)
-                        }
-                        else{
-                            Image(systemName: "location.fill")
-                                .foregroundColor(.secondary)
-                            Text(cityName)
-                        }
+                    VStack {
+//                        if ((dragOffset > 0 && !showBottom) || showTop){
+//                            Image(systemName: "circle.hexagonpath")
+//                                .foregroundColor(.secondary)
+////                                .transition(.blurReplace)
+//                            Text("Tasbeeh - \(tasbeehModeName)")
+////                                .transition(.blurReplace)
+//                        }
+//                        else{
+//                            Image(systemName: "location.fill")
+//                                .foregroundColor(.secondary)
+//                            Text(cityName)
+//                        }
+                        
+                        ZStack{
+                                // tasbeeh label
+                                HStack{
+                                    Image(systemName: "circle.hexagonpath")
+                                        .foregroundColor(.secondary)
+                                    Text("Tasbeeh - \(tasbeehModeName)")
+
+                                }
+                                .opacity(switchToTopLabel ? 1 : 0)
+                                .offset(y: switchToTopLabel ? 0 : -10)
+                                
+                                // location label
+                                HStack{
+                                    Image(systemName: "location.fill")
+                                        .foregroundColor(.secondary)
+                                    Text(cityName)
+                                }
+                                .opacity(switchToTopLabel ? 0 : 1)
+                                .offset(y: switchToTopLabel ? 10 : 0)
+                            }
+                        
+                        
                     }
                     .font(.caption)
                     .fontDesign(.rounded)
