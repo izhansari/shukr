@@ -299,10 +299,11 @@ class SharedStateClass: ObservableObject {
 //    }
     
     @Published var selectedViewPage: Int = 1
-    @Published var selectedMode: Int = 0
+    @Published var selectedMode: Int = 2
     @Published var selectedMinutes: Int = 0
     @Published var targetCount: String = ""
     @Published var titleForSession: String = ""
+    @Published var showTopMainOrBottom: Int = 0 // 1 for top, 0 for default, -1 for bottom
 //    @Published var showingOtherPages: Bool = false
 }
 
@@ -524,11 +525,11 @@ struct PrayerTimesView: View {
                                     timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
                                         .tag(1)
                                     
-                                    freestyleMode()
-                                        .tag(0)
-                                    
                                     countTargetMode(targetCount: $sharedState.targetCount, isNumberEntryFocused: _isNumberEntryFocused)
                                         .tag(2)
+
+                                    freestyleMode()
+                                        .tag(0)
                                 }
                                 .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
                                 .scrollBounceBehavior(.always)
@@ -537,9 +538,6 @@ struct PrayerTimesView: View {
                                     isNumberEntryFocused = false //Dismiss keyboard when switching pages
                                 }
 //                                .background(.orange.opacity(0.3))
-                                .onChange(of: sharedState.selectedMode) {_, newPage in
-                                    isNumberEntryFocused = false //Dismiss keyboard when switching pages
-                                }
                                 .onTapGesture {
                                     if(startCondition){
                                         showNewPage = true // Set to true to show the full-screen cover
@@ -839,6 +837,18 @@ struct PrayerTimesView: View {
                 ) { _ in
                     scheduleNextTransition()
                 }
+                switch sharedState.showTopMainOrBottom {
+                    case 1:
+                    showTop = true
+                    showBottom = false
+                case -1:
+                    showTop = false
+                    showBottom = true
+                default:
+                    showTop = false
+                    showBottom = false
+                }
+                sharedState.showTopMainOrBottom = 0
             }
 //            .onChange(of: showingDuaPage || showingHistoryPage || showingTasbeehPage){_, new in
 ////                sharedState.showingOtherPages = new

@@ -16,6 +16,7 @@ struct HistoryPageView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     
     @State private var selectedDateIndex: Int = 0
+    @State private var showAddTaskScreen: Bool = false
     
     private var calendar: Calendar { Calendar.current }
     
@@ -30,16 +31,20 @@ struct HistoryPageView: View {
             .sorted(by: { $0.startTime > $1.startTime })
     }
     
+    private func exitPage() {
+        triggerSomeVibration(type: .light)
+        withAnimation {
+            //                                        showingHistoryPageBool = true
+            sharedState.selectedViewPage = 1
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading) {
             HStack {
                 Spacer()
                 Button(action: {
-                    triggerSomeVibration(type: .light)
-                    withAnimation {
-                        //                                        showingHistoryPageBool = true
-                        sharedState.selectedViewPage = 1
-                    }
+                    exitPage()
                 }) {
                     Image(systemName: "xmark")
                         .font(.system(size: 24))
@@ -48,6 +53,16 @@ struct HistoryPageView: View {
                 }
             }
             
+            
+            Text("Tasks")
+                .font(.title)
+                .fontWeight(.thin)
+                .padding(.leading, 30)
+            
+//            DailyTasksView(showAddTaskScreen: $showAddTaskScreen)
+//                .padding(.bottom, 15)
+
+
             Text("Sessions")
                 .font(.title)
                 .fontWeight(.thin)
@@ -86,6 +101,12 @@ struct HistoryPageView: View {
         .onAppear {
             // Set initial index to the last item (most recent date)
             selectedDateIndex = 0
+        }
+        
+        ZStack{
+            if showAddTaskScreen {
+                AddDailyTaskView(isPresented: $showAddTaskScreen)
+            }
         }
     }
     
@@ -332,7 +353,7 @@ struct SessionCardView: View {
 
                 // Second Section (Session Duration)
                 VStack{
-                    Text("Duration:")
+                    Text("Time:")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                     Text("\(sessionDuration)")

@@ -53,6 +53,11 @@ struct DailyTasksView: View {
                                     sharedState.selectedMinutes = remainingGoal <= 0 ? task.goal : remainingGoal
                                 }
                                 self.presentationMode.wrappedValue.dismiss()
+                                withAnimation {
+                                    //                                        showingHistoryPageBool = true
+                                    sharedState.selectedViewPage = 1
+                                    sharedState.showTopMainOrBottom = 1
+                                }
                             }
                             .onAppear{
                                 task.calculateRunningGoal(from: sessionItems) // not the best way to do this but okay for now... will work on this later.

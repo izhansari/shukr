@@ -15,6 +15,19 @@ func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
     else { return "\(seconds)s" }
 }
 
+func formatSecondsToTimerString(_ totalSeconds: Double) -> String {
+    let roundedSeconds = Int(round(totalSeconds))
+    let hours = roundedSeconds / 3600
+    let minutes = (roundedSeconds % 3600) / 60
+    let seconds = roundedSeconds % 60
+    
+    if hours > 0 {
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        return String(format: "%02d:%02d", minutes, seconds)
+    }
+}
+
 let MSPMTimeFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "mm:ss.SSS a" // Displays in 12-hour format with AM or PM
@@ -639,19 +652,15 @@ struct pauseStatsAndBG: View {
     @State private var showMantraSheetFromPausedPage = false
     @State private var chosenMantra: String? = ""
     @State private var rateTextToggle = false  // to control the toggle text in the middle
-    
+        
     let paused: Bool
-    let selectedPage: Int
-    let mantra: String
-    let selectedMinutes: Int
-    let targetCount: String
     let tasbeeh: Int
     let timePassedAtPause: String
-//    let timePerClick: TimeInterval
     let avgTimePerClick: TimeInterval
     let tasbeehRate: String
     let togglePause: () -> Void // Closure for the togglePause function
     let takingNotes: Bool
+    
     
     var body: some View {
         
@@ -666,13 +675,13 @@ struct pauseStatsAndBG: View {
         VStack(spacing: 20){
             
             //The Mode Text
-            switch selectedPage {
+            switch sharedState.selectedMode {
             case 1:
-                Text("\(selectedMinutes)m Session")
+                Text("\(sharedState.selectedMinutes)m Session")
                     .font(.title2)
                     .bold()
             case 2:
-                Text("\(targetCount) Count Session")
+                Text("\(sharedState.targetCount) Count Session")
                     .font(.title2)
                     .bold()
             default:
@@ -763,19 +772,50 @@ struct inactivityAlert: View {
     }
 }
 
+struct stopButton: View {
+    let stopTimer: () -> Void
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+    
+    var body: some View{
+        Button(action: stopTimer, label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20)
+                    .foregroundStyle(.gray.opacity(0.2))
+                RoundedRectangle(cornerRadius: 20)
+                    .foregroundStyle(
+                                     LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                                     )
+                Text("complete")
+                    .foregroundStyle(.white)
+                    .font(.title3)
+                    .fontDesign(.rounded)
+            }
+            .frame(width: 300,height: 50)
+            .shadow(radius: 5)
+        })
+        .padding([.leading, .bottom, .trailing])
+    }
+}
+
+
 struct startStopButton: View {
     let timerIsActive: Bool
     let toggleTimer: () -> Void
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
     var body: some View{
+
+
         Button(action: toggleTimer, label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 20)
                     .foregroundStyle(.gray.opacity(0.2))
                 RoundedRectangle(cornerRadius: 20)
 //                    .foregroundStyle(timerIsActive ? .green.opacity(0.5) : .blue.opacity(0.5))
-                    .foregroundStyle(timerIsActive ? LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing) : LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.blue.opacity(0.5), .blue.opacity(0.5)] : [.blue.opacity(0.6), .blue.opacity(0.6)]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .foregroundStyle(timerIsActive ?
+                                     LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                                     :
+                                        LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.blue.opacity(0.5), .blue.opacity(0.5)] : [.blue.opacity(0.6), .blue.opacity(0.6)]), startPoint: .topLeading, endPoint: .bottomTrailing))
                 Text(timerIsActive ? "complete" : "start")
                     .foregroundStyle(.white)
                     .font(.title3)

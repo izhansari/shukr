@@ -153,7 +153,7 @@ class SessionDataModel: Identifiable {
     // Use ClickDataModel instead of tuple -- he cant store custom tuples in persistence
 
     
-    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String, clickStats: [ClickDataModel]) {
+    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String) {
         self.id = UUID().uuidString
         self.title = title
         self.sessionMode = sessionMode
@@ -172,7 +172,7 @@ class SessionDataModel: Identifiable {
         self.timeDurationString = formatFromSeconds
         self.avgTimePerClick = avgTimePerClick
         self.tasbeehRate = tasbeehRate
-        self.clickStats = clickStats
+        self.clickStats = []
     }
 }
 
