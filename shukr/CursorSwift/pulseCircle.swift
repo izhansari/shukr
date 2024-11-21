@@ -35,7 +35,7 @@ struct PulseCircleView: View {
 
     let prayer: Prayer
     let toggleCompletion: () -> Void
-    @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 2
+    @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 7
     
     @State private var showTimeUntilText: Bool = true
     @State private var showEndTime: Bool = true  // Add this line
@@ -84,15 +84,15 @@ struct PulseCircleView: View {
     
     private var pulseRate: Double {
         if progress > 0.5 { return 3 }
-        else if progress > 0.25 { return 1.25 }
-        else { return 0.60 }
+        else if progress > 0.25 { return 2 }
+        else { return 1 }
     }
     
     private var progressColor: Color {
         if progress > 0.5 { return .green }
         else if progress > 0.25 { return .yellow }
         else if progress > 0 { return .red }
-        else if isUpcomingPrayer {return .white}
+        else if isUpcomingPrayer {return Color(.secondarySystemBackground)/*.white*/}
         else {return .gray}
     }
     
@@ -104,8 +104,6 @@ struct PulseCircleView: View {
         
         // Only start animation for current prayer
         if isCurrentPrayer {
-            // Initial pulse
-//            triggerPulse()
             
             // Create new timer
             timer = Timer.scheduledTimer(withTimeInterval: pulseRate, repeats: true) { _ in
@@ -117,7 +115,9 @@ struct PulseCircleView: View {
     
     private func triggerPulse() {
         isAnimating = false
-        triggerSomeVibration(type: .medium)
+        if !sharedState.showingOtherPages{
+            triggerSomeVibration(type: .medium)
+        }
         
         withAnimation(.easeOut(duration: pulseRate)) {
             isAnimating = true
@@ -354,6 +354,36 @@ struct PulseCircleView: View {
                 colorScheme: colorScheme,
                 isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
             ).body)
+        case 7:
+            return AnyView(RingStyle7(
+                prayer: prayer,
+                progress: progress,
+                progressColor: progressColor,
+                isCurrentPrayer: isCurrentPrayer,
+                isAnimating: isAnimating,
+                colorScheme: colorScheme,
+                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
+            ).body)
+        case 8:
+            return AnyView(RingStyle8(
+                prayer: prayer,
+                progress: progress,
+                progressColor: progressColor,
+                isCurrentPrayer: isCurrentPrayer,
+                isAnimating: isAnimating,
+                colorScheme: colorScheme,
+                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
+            ).body)
+        case 9:
+            return AnyView(RingStyle9(
+                prayer: prayer,
+                progress: progress,
+                progressColor: progressColor,
+                isCurrentPrayer: isCurrentPrayer,
+                isAnimating: isAnimating,
+                colorScheme: colorScheme,
+                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
+            ).body)
         default:
             return AnyView(RingStyle2(
                 prayer: prayer,
@@ -380,7 +410,7 @@ struct PulseCircleView: View {
                     
                     HStack {
                         Image(systemName: iconName(for: prayer.name))
-                            .foregroundColor(isMissedPrayer ? .gray : .primary)
+                            .foregroundColor(isMissedPrayer ? .gray : .secondary)
                             .font(.title)
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
@@ -388,6 +418,8 @@ struct PulseCircleView: View {
                             .font(.title)
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
+                            .foregroundStyle(.secondary)
+
                     }
                     
                     if isPraying {
@@ -407,6 +439,7 @@ struct PulseCircleView: View {
                             fontWeight: .thin,
                             hapticFeedback: true
                         )
+                        .foregroundStyle(.secondary)
                     } else if isUpcomingPrayer{
                         ExternalToggleText(
                             originalText: "at \(formatTimeWithAMPM(prayer.startTime))",
@@ -416,12 +449,14 @@ struct PulseCircleView: View {
                             fontWeight: .thin,
                             hapticFeedback: true
                         )
+                        .foregroundStyle(.secondary)
                     }
                     
                     if isMissedPrayer {
                         Text("Missed")
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -438,7 +473,7 @@ struct PulseCircleView: View {
             }
                 
             Circle()
-                .fill(Color.white.opacity(0.01))
+                .fill(Color.white.opacity(0.001))
                 .frame(width: 200, height: 200)
                 .onTapGesture {
                     textTrigger.toggle()  // Toggle the trigger
@@ -466,30 +501,20 @@ struct PulseCircleView: View {
                     .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: isAligned)
                     .onChange(of: isAligned) { _, newIsAligned in
                         if newIsAligned {
-                            triggerSomeVibration(type: .heavy)
+                            if !sharedState.showingOtherPages{
+                                triggerSomeVibration(type: .heavy)
+                            }
                         }
                     }
 
                     .onTapGesture {
                         showQiblaMap = true
+                        sharedState.showingOtherPages = true
                     }
                     // Adding a larger tappable area without extra views
                     .frame(width: 44, height: 44) // Adjust as needed to expand tappable area
 
                     .fullScreenCover(isPresented: $showQiblaMap) {
-//                        Button(action: {
-//                            showQiblaMap = false
-//                        }) {
-//                            //replace with qiblamapview
-//                            VStack {
-//                                Text("close")
-//                                    .font(.title3)
-//                                    .foregroundColor(.blue)
-//                                    .padding(.vertical, 4)
-//                            }
-//                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-//                            .background(.black)
-//                        }
                         QiblaMapView(/*isPresented: $showQiblaMap*/)
                         .onAppear {
                             print("showqiblamap (from qibla arrow): \(showQiblaMap)")
@@ -536,23 +561,25 @@ struct PulseCircleView: View {
 }
 
 // Simplified preview
-//struct PulseCircleView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        let calendar = Calendar.current
-//        let now = Date()
-//        let prayer = Prayer(
-//            name: "Asr",
-//            startTime: calendar.date(byAdding: .second, value: 20, to: now) ?? now,
-//            endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
-//        )
-//        
-//        PulseCircleView(
-//            prayer: prayer,
-//            toggleCompletion: {}
-//        )
-////        .background(.black)
-//    }
-//}
+struct PulseCircleView_Previews: PreviewProvider {
+    static var previews: some View {
+        let calendar = Calendar.current
+        let now = Date()
+        let prayer = Prayer(
+            name: "Asr",
+            startTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now,
+            endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
+        )
+        
+        PulseCircleView(
+            prayer: prayer,
+            toggleCompletion: {}
+        )
+        .environmentObject(SharedStateClass())
+
+//        .background(.black)
+    }
+}
 
 extension Prayer {
     func getAverageDuration() -> TimeInterval {
@@ -645,6 +672,7 @@ import MapKit
 struct QiblaMapView: View {
     @Environment(\.presentationMode) var presentationMode
     @Environment(GlobalLocationManager.self) var globalLocationManager
+    @EnvironmentObject var sharedState: SharedStateClass
     
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262),
@@ -721,6 +749,7 @@ struct QiblaMapView: View {
                 HStack {
                     Button("Close") {
                         presentationMode.wrappedValue.dismiss()
+                        sharedState.showingOtherPages = false
                     }
                     .padding()
                     .background(Color.white.opacity(0.8))
@@ -878,7 +907,7 @@ struct CircleWithArrowOverlay: View {
                 .opacity(isAligned ? 1 : 0.5)
                 .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
 
-            Image(systemName: "arrowtriangle.up")
+            Image(systemName: "arrowtriangle.up.fill")
                 .resizable()
                 .foregroundStyle(isAligned ? .green : .white)
                 .frame(width: 20, height: 20)

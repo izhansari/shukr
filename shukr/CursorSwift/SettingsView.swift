@@ -188,6 +188,9 @@ struct SettingsView: View {
                     Text("4").tag(4)
                     Text("5").tag(5)
                     Text("6").tag(6)
+                    Text("7").tag(7)
+                    Text("8").tag(8)
+                    Text("9").tag(9)
                 }
                 .pickerStyle(.segmented)
                 

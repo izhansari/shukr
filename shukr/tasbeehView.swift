@@ -38,6 +38,7 @@ struct tasbeehView: View {
     var vibrateToggle = true
     @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var colorModeToggle = false
+    @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
 
     
     // State properties
@@ -50,7 +51,7 @@ struct tasbeehView: View {
     @State private var endTime: Date? = nil
     @State private var pauseStartTime: Date? = nil
     @State private var autoStop = true
-    @State private var currentVibrationMode: HapticFeedbackType = .medium
+//    @State private var currentVibrationMode: HapticFeedbackType = .medium
 
     @State private var timePassedAtPauseString: String = ""
     @State private var secsPassedAtPause: TimeInterval = 0
@@ -72,7 +73,17 @@ struct tasbeehView: View {
     @State private var secsToReport: TimeInterval = 0
     @State private var showMantraSheetFromResultsPage = false
     @State private var savedSession: SessionDataModel? = nil
-
+    @State private var isCurrentlyDragging = false
+    
+    @State private var sessionSequence: [(title: String, targetCount: Int)] = []
+    @State private var postNamazSequence: [(title: String, targetCount: Int)] = [
+                (title: "Subhanallah", targetCount: 33),
+                (title: "Alhamdulillah", targetCount: 33),
+                (title: "Allahu Akbar", targetCount: 34)
+            ]
+    @State private var currentSessionIndex: Int = 0
+    @State private var isSequentialModeActive: Bool = false
+    @State private var inMiddleOfSequence: Bool = false //use this to hide resultsview
 
     
     private var totalTime:  Int {
@@ -90,17 +101,6 @@ struct tasbeehView: View {
         let seconds = Int(secsPassed) % 60
         if minutes > 0 { return "\(minutes)m \(seconds)s"}
         else { return "\(seconds)s" }
-        
-//        let roundedSeconds = Int(round(secsPassed))
-//        let hours = roundedSeconds / 3600
-//        let minutes = (roundedSeconds % 3600) / 60
-//        let seconds = roundedSeconds % 60
-//        
-//        if hours > 0 {
-//            return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
-//        } else {
-//            return String(format: "%02d:%02d", minutes, seconds)
-//        }
     }
         
     private var tasbeehRate: String{
@@ -124,6 +124,10 @@ struct tasbeehView: View {
     private var incrementThreshold: CGFloat = 50 // Threshold for tasbeeh increment
     
     private var debug: Bool = false
+        
+    private var debug_AutoStopCond : String {
+        "progressFraction: \(progressFraction) | paused: \(paused) | autoStop: \(autoStop) | timerIsActive: \(timerIsActive)"
+    }
     
     private var debug_AddingToPausedTimeString : String {
         "totaltime: \(roundToTwo(val: Double(totalTime))) | secpased: \(roundToTwo(val: secsPassed))"
@@ -141,6 +145,17 @@ struct tasbeehView: View {
         for _ in 1...times {
             incrementTasbeeh()
         }
+    }
+    
+    private var estTimeLeft: String?{
+        // if in targetCount,
+        // get rate of clicks
+        // multiply remaining by avrgtpc
+        if sharedState.selectedMode == 2 {
+            
+        }
+        let timeLeft = Int(roundToTwo(val: Double(totalTime) - secsPassed))
+        return "\(timeLeft)s"
     }
     
     func inactivityTimerHandler(run: String) {
@@ -168,7 +183,7 @@ struct tasbeehView: View {
                     if localCountDown <= 0 {
                         stoppedDueToInactivity = true
                         stopTimer()
-                        isPresented = false
+//                        isPresented = false
                     }
                     
                 }
@@ -182,9 +197,9 @@ struct tasbeehView: View {
                 print("yo bro invalid use of inactivityTimerHandler func")
             }
         }
-        else{
-            print("Not tracking inactivity cuz Bool set to \(toggleInactivityTimer)")
-        }
+//        else{
+//            print("Not tracking inactivity cuz Bool set to \(toggleInactivityTimer)")
+//        }
     }
     
 
@@ -203,23 +218,6 @@ struct tasbeehView: View {
                             .onAppear{
                                 paused = false // sometimes appstorage had paused = true. so clear it.
                                 
-                                timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-                                
-                                    withAnimation {
-                                        if !paused && (sharedState.selectedMode == 1){
-                                            progressFraction = CGFloat(Int(secsPassed))/TimeInterval(totalTime)
-                                        }
-                                    }
-                                   
-                                    // print("progFrac? \(progressFraction >= 1) -- paused? \(paused) -- autoStop? \(autoStop)") // for debugging
-                                    if ((progressFraction >= 1) && !paused) {
-                                        if(autoStop){
-                                            stopTimer()
-                                            print("homeboy auto stopped....")
-                                            streak += 1 // Increment the streak
-                                        }
-                                    }
-                                }
                             }
                             .onDisappear {
                                 timer?.invalidate()
@@ -243,25 +241,16 @@ struct tasbeehView: View {
                         GeometryReader { geometry in
                             VStack {
                                 ZStack {
-//                                    if(showDragColor){
-//                                        VStack {
-//                                            Text("OffsetY: \(offsetY)")
-//                                            Text("Highest Point: \(highestPoint)")
-//                                            Text("Lowest Point: \(lowestPoint)")
-//                                            Text(dragToIncrementBool ? "Condition To Add: \((offsetY - highestPoint) - incrementThreshold)" : "Condition To Set: \((lowestPoint - offsetY) - incrementThreshold/2)")
-//                                            
-//                                            Spacer()
-//                                        }
-//                                    }
                                     Color("bgColor").opacity(0.001) // Simulate clear color
                                         .frame(width: geometry.size.width, height: geometry.size.height) // Fill the entire geometry
                                         .onTapGesture {
-                                            print("Tap gesture detected")
+//                                            print("Tap gesture detected")
                                             incrementTasbeeh() // Increment on tap
                                         }
                                         .gesture(
                                             DragGesture(minimumDistance: 0) // Set to 0 for immediate tracking
                                                 .onChanged { value in
+                                                    
                                                     // Track drag distance
                                                     offsetY = value.translation.height
                                                     
@@ -308,37 +297,17 @@ struct tasbeehView: View {
                         pauseStatsAndBG(
                             paused: paused,
                             tasbeeh: tasbeeh,
-                            timePassedAtPause: timePassedAtPauseString,
+                            secsToReport: secsPassedAtPause,
                             avgTimePerClick: newAvrgTPC,
                             tasbeehRate: tasbeehRate,
                             togglePause: { togglePause() },
-                            takingNotes: takingNotes
+                            takingNotes: takingNotes,
+                            toggleInactivityTimer: $toggleInactivityTimer,
+                            inactivityDimmer: $inactivityDimmer,
+                            autoStop: $autoStop,
+                            colorModeToggle: $colorModeToggle,
+                            currentVibrationMode: $currentVibrationMode
                         )
-                        VStack {
-                            Spacer()
-                            
-                            // bottom settings bar when paused
-                            VStack {
-                                if(toggleInactivityTimer){
-                                    Slider(value: $inactivityDimmer,
-                                           in: 0...1.0)
-                                    .frame(width: 250)
-                                    .padding()
-                                }
-                                HStack{
-                                    AutoStopToggleButton(autoStop: $autoStop)
-                                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, colorModeToggle: $colorModeToggle)
-                                    VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
-                                    ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
-                                }
-                            }
-                            .padding()
-                            .background(BlurView(style: .systemUltraThinMaterial))
-                            .cornerRadius(20)
-                            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
-                            .padding(.bottom, 40)
-                            .opacity(paused ? 1.0 : 0.0)
-                        }
                     }
                     .animation(.easeInOut, value: paused)
                     
@@ -350,23 +319,12 @@ struct tasbeehView: View {
                             // exit button top left when paused
                             if paused{
                                 Button(action: {stopTimer()} ) {
-                                    Image(systemName: "checkmark.circle.fill" /*"xmark.circle.fill"*/)
+                                    Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 26))
                                         .foregroundColor(.green.opacity(0.5))
                                         .padding()
                                         .background(.clear)
                                         .cornerRadius(10)
-    
-//                                    Image(systemName: "checkmark")
-//                                        .font(.system(size: 20, weight: .bold))
-//                                        .foregroundColor(.gray.opacity(0.6))
-//                                        .frame(width: 10, height: 10)
-//                                        .padding()
-//                                        .background(.green.opacity(0.18))
-//                                        .cornerRadius(100)
-//                                        .opacity(1.0)
-//                                        .padding(.leading, 4)
-                                    
                                 }
                                 .opacity(paused ? 1.0 : 0.0)
                             }
@@ -403,6 +361,7 @@ struct tasbeehView: View {
                         
                         // Debug Updating Text In View
                         if(debug){
+                            Text(debug_AutoStopCond)
                             Text(debug_AddingToPausedTimeString)
                             Text(debug_secLeft_secPassed_progressFraction)
                             Text(debug_avgTPC)
@@ -425,6 +384,18 @@ struct tasbeehView: View {
                         
                         // The Bottom Inactivity Alert During Session
                         VStack{
+                            if sharedState.isDoingPostNamazZikr {
+                                Text("\(sharedState.titleForSession)")
+                                    .frame(width: 150, height: 40)
+                                    .font(.footnote)
+                                    .fontDesign(.rounded)
+                                    .fontWeight(.thin)
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                                    .background(.gray.opacity(0.08))
+                                    .cornerRadius(10)
+                                    .padding(.top, 130)
+                            }
                             Spacer()
                             inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
                         }
@@ -434,10 +405,11 @@ struct tasbeehView: View {
                     
                     // results page
                     ZStack{
-                        if let session = savedSession{
+                        if /*!inMiddleOfSequence, */let session = savedSession{
                             ResultsView(
                                 isPresented: $isPresented,
-                                savedSession: session  // Pass the saved session
+                                savedSession: session, // Pass the saved session
+                                startTimer: {startTimer()}
                             )
                         }
                     }
@@ -463,19 +435,23 @@ struct tasbeehView: View {
                     //made it so that it never actually gets to 100% (cuz auto stop ends at 100%)
                     let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
                     progressFraction = CGFloat(Int(numerator))/CGFloat(Int(100))
-                    print("0: \(sharedState.selectedMode) profra: \(progressFraction)")
-                    print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
+//                    print("0: \(sharedState.selectedMode) profra: \(progressFraction)")
+//                    print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
                 } else if (sharedState.selectedMode == 2){
-                    print("in 2: \(tasbeeh)")
+//                    print("in 2: \(tasbeeh)")
                     progressFraction = CGFloat(tasbeeh)/CGFloat(Int(sharedState.targetCount) ?? 0)
-                    print("2: \(sharedState.selectedMode) profra: \(progressFraction)")
-                    print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(sharedState.targetCount) ?? 0))")
+//                    print("2: \(sharedState.selectedMode) profra: \(progressFraction)")
+//                    print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(sharedState.targetCount) ?? 0))")
                     
                 }
             }
         }
         .onAppear {
-            startTimer()
+            if sharedState.isDoingPostNamazZikr {
+                startSequentialSession()
+            } else{
+                startTimer()
+            }
         }
         .onDisappear{
             sharedState.titleForSession = ""
@@ -483,7 +459,29 @@ struct tasbeehView: View {
         .preferredColorScheme(colorModeToggle ? .dark : .light)
     }
 //--------------------------------------functions--------------------------------------
+
+    private func startSequentialSession() {
+        let currentSession = postNamazSequence[currentSessionIndex]
+        sharedState.selectedMode = 2 // Count target mode
+        sharedState.selectedMinutes = 0
+        sharedState.targetCount = String(currentSession.targetCount)
+        sharedState.titleForSession = currentSession.title // should be set as true from outside to enter sequence anyways .onAppear.
+        startTimer() // Start the first sequence session
+    }
     
+    private func handleSessionCompletion() {
+        // Check if there's a next session in the sequence
+        if currentSessionIndex < postNamazSequence.count - 1 {
+            currentSessionIndex += 1
+            startSequentialSession() // Start the next session
+        } else {
+            // Reset state when all sessions are complete
+            currentSessionIndex = 0
+            sharedState.isDoingPostNamazZikr = false
+            isPresented = false
+            sharedState.showingOtherPages = false
+        }
+    }
     
     private func startTimer() {
         // Reset necessary variables for a new session
@@ -495,6 +493,25 @@ struct tasbeehView: View {
         totalPauseInSession = 0
         secsToReport = 0
         timerIsActive = true //this just ensures increment, decrement and reset dont happen outside of session
+        
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+        
+            withAnimation {
+                if !paused && (sharedState.selectedMode == 1){
+                    progressFraction = CGFloat(Int(secsPassed))/TimeInterval(totalTime)
+                }
+            }
+           
+//            print("progFrac? \(progressFraction >= 1) -- paused? \(paused) -- autoStop? \(autoStop)") // for debugging
+            if ((progressFraction >= 1) && !paused) {
+                if(autoStop && timerIsActive){
+                    stopTimer()
+                    print("homeboy auto stopped....")
+                    streak += 1 // Increment the streak
+                }
+            }
+        }
+
         
         triggerSomeVibration(type: .success)
         
@@ -524,61 +541,33 @@ struct tasbeehView: View {
         context.insert(item)
         return item
     }
-    
-//    private func stopTimer() {
-//                
-//        if(tasbeeh > 0){
-//            savedSession = saveSession()  // New function
-//            //add call to make function wait 0.5 seconds before continuing
-//        }
-//                
-//        // Stop and invalidate the timer
-//        timer?.invalidate()
-//        timer = nil
-//        
-//        // allow idle timer again
-//        UIApplication.shared.isIdleTimerDisabled = false
-//        
-//        // Reset all state variables to clean up the session
-//        timerIsActive = false
-//
-//        endTime = nil
-//        startTime = nil
-//        
-//        progressFraction = 0
-//        
-//        sharedState.targetCount = ""
-//        
-//        noteModalText = ""
-//        
-//        !stoppedDueToInactivity ? triggerSomeVibration(type: .vibrate) : ()
-//        
-//        stoppedDueToInactivity = false
-//        
-//        inactivityTimerHandler(run: "stop")
-//        
-//        toggleInactivityTimer = false
-//        
-//        paused = false
-//        
-//        if tasbeeh == 0{
-//            isPresented = false
-//        }
-//
-//    }
-    
+        
     private func stopTimer() {
+        //basically save only if tasbeeh > 0
+        // give time to show resultsview.
+        // skip resultsview if in sequence
+        
+        timerIsActive = false // this so functions only run during a sesh AND so timer checking when to stopTimer doesnt save multiple sessions.
         if tasbeeh > 0 {
-            savedSession = saveSession()  // New function
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.completeStopTimer() // Continue with the rest of the function after the delay
+            savedSession = saveSession()
+            // if in middle of sequence, run stoptimer() asap
+            if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/{
+                self.completeStopTimer()
+            }
+            // else do with wait
+            else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.completeStopTimer()
+                }
             }
         } else {
-            completeStopTimer() // If tasbeeh is 0 or less, continue without delay
+            completeStopTimer()
         }
     }
 
+
     private func completeStopTimer() {
+        
         // Stop and invalidate the timer
         timer?.invalidate()
         timer = nil
@@ -587,7 +576,6 @@ struct tasbeehView: View {
         UIApplication.shared.isIdleTimerDisabled = false
         
         // Reset all state variables to clean up the session
-        timerIsActive = false
         endTime = nil
         startTime = nil
         progressFraction = 0
@@ -605,7 +593,22 @@ struct tasbeehView: View {
         
         if tasbeeh == 0 {
             isPresented = false
+            sharedState.showingOtherPages = false
+            resetSharedState()
         }
+        
+        if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/ {
+            handleSessionCompletion() // Trigger the next session
+        }
+    }
+    
+    func resetSharedState(){
+        sharedState.targetCount = ""
+        sharedState.isDoingPostNamazZikr = false
+        sharedState.targetCount = ""
+        sharedState.selectedMinutes = 0
+        sharedState.titleForSession = ""
+        sharedState.selectedMode = 0
     }
     
     private func togglePause() {
@@ -642,7 +645,7 @@ struct tasbeehView: View {
         if timerIsActive {
             tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
             newAvrgTPC = (tasbeeh > 0 ? (secsPassed / Double(tasbeeh)) : 0)
-            print("tasbeeh on inc:  \(tasbeeh)")
+//            print("tasbeeh on inc:  \(tasbeeh)")
             triggerSomeVibration(type: currentVibrationMode)
             vibrateOnFinishOfTasbeeh()
             WidgetCenter.shared.reloadAllTimelines()
@@ -694,304 +697,3 @@ struct tasbeehView: View {
  - break it apart. make it two diff pages.
  - make MantraModel hold all information regarding total count
  */
-
-
-
-struct ResultsView: View {
-    @Environment(\.modelContext) private var context
-    @EnvironmentObject var sharedState: SharedStateClass
-    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    @Binding var isPresented: Bool
-    let savedSession: SessionDataModel  // Add this
-
-    // UI state
-    private let textSize: CGFloat = 14
-    private let gapSize: CGFloat = 10
-    @State private var countRotation: Double = 0
-    @State private var timerRotation: Double = 0
-    @State private var showingPerCount = false
-    @State private var showMantraSheetFromResultsPage = false
-    @State private var chosenMantraFromResultsPage: String? = ""
-    
-    // Computed properties from savedSession
-    private var tasbeeh: Int { savedSession.totalCount }
-    private var secsToReport: Double { savedSession.secondsPassed }
-    private var tasbeehRate: String { savedSession.tasbeehRate }
-    private var newAvrgTPC: Double { savedSession.avgTimePerClick }
-    
-    var body: some View {
-        ZStack {
-            
-            Color("pauseColor")
-                .edgesIgnoringSafeArea(.all)
-            
-            completionCard
-                .padding(.horizontal, 16)
-            
-            VStack {
-                Spacer()
-                
-                CloseButton(
-                    action: { isPresented = false }
-                )
-                .padding(.bottom)
-            }
-        }
-    }
-    
-    private var completionCard: some View {
-        VStack(alignment: .center, spacing: 12) {
-            // Checkmark circle
-            Circle()
-                .fill(Color(colorScheme == .dark ? .systemGray4 : .white))
-                .frame(width: 40, height: 40)
-                .overlay {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundColor(.green)
-                }
-            
-            // Message
-            Text("Nice! I'll add this to your history!")
-                .font(.system(size: 16, weight: .regular))
-                .multilineTextAlignment(.center)
-            
-            // Boxes
-            VStack(alignment: .center, spacing: gapSize) {
-                // Mantra selector
-                mantraSelector
-                    .transition(.opacity)
-                
-                // Stats Grid
-                HStack(alignment: .top, spacing: gapSize) {
-                    // Left Column
-                    VStack(spacing: gapSize) {
-                        // Count Box
-                        statsBox {
-                            HStack {
-                                Image(systemName: "circle.hexagonpath")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.primary)
-                                    .rotationEffect(.degrees(-countRotation))
-                                    .animation(.spring(duration: 0.5), value: countRotation)
-                                Spacer()
-                                Text("\(tasbeeh)")
-                                    .font(.system(size: textSize, weight: .medium))
-                                Spacer()
-                            }
-                            .padding(.horizontal, 12)
-                        }
-                        .frame(height: 44)  // Fixed height for count
-                        .onTapGesture {
-                            triggerSomeVibration(type: .medium)
-                            countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
-                        }
-
-                        // Timer Box
-                        statsBox {
-                            HStack {
-                                Image(systemName: "gauge.with.needle")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.primary)
-                                    .rotationEffect(.degrees(timerRotation))
-                                    .animation(.spring(duration: 0.3), value: timerRotation)
-                                Spacer()
-                                Text(formatSecondsToTimerString(secsToReport))
-                                    .font(.system(size: textSize, weight: .medium))
-                                    .monospacedDigit()
-                                Spacer()
-                            }
-                            .padding(.horizontal, 12)
-                        }
-                        .frame(height: 44)  // Fixed height for timer
-                        .onTapGesture {
-                            triggerSomeVibration(type: .medium)
-                            timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
-                         }
-
-                    }
-                    
-                    // Rate Box
-                    statsBox {
-                        VStack(spacing: 6) {
-                            Text("Rate")
-                                .font(.system(size: 18, weight: .medium))
-                                .underline()
-                            
-                            ZStack {
-                                // Per tasbeeh view
-                                VStack(spacing: 2) {
-                                    Text(tasbeehRate)
-                                        .font(.system(size: textSize, weight: .medium))
-                                        .monospacedDigit()
-                                    Text("per tasbeeh")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                }
-                                .opacity(showingPerCount ? 0 : 1)
-                                .offset(y: showingPerCount ? -20 : 0)
-                                
-                                // Per count view
-                                VStack(spacing: 2) {
-                                    Text(String(format: "%.2fs", newAvrgTPC))
-                                        .font(.system(size: textSize, weight: .medium))
-                                        .monospacedDigit()
-                                    Text("per count")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                }
-                                .opacity(showingPerCount ? 1 : 0)
-                                .offset(y: showingPerCount ? 0 : 20)
-                            }
-                        }
-                    }
-                    .frame(height: 96)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            triggerSomeVibration(type: .medium)
-                            showingPerCount.toggle()
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 150)
-        }
-        .padding(20)
-        .frame(width: 280)
-        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
-        .cornerRadius(20)
-        .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
-    }
-    
-    private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.vertical, 10)
-            .background(Color(.tertiarySystemBackground))
-            .cornerRadius(12)
-    }
-    
-    private var mantraSelector: some View {
-        Text(sharedState.titleForSession.isEmpty ? "no selected mantra" : sharedState.titleForSession)
-            .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
-            .background(Color(.tertiarySystemBackground))
-            .cornerRadius(12)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                showMantraSheetFromResultsPage = true
-            }
-            .onChange(of: chosenMantraFromResultsPage) {
-                if let newSetMantra = chosenMantraFromResultsPage {
-                    withAnimation {
-                        sharedState.titleForSession = newSetMantra
-                        savedSession.title = newSetMantra  // Update the saved session directly
-                        do {
-                            try context.save()  // Save the context to persist the changes
-                        } catch {
-                            print("Error saving context: \(error)")
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showMantraSheetFromResultsPage) {
-                MantraPickerView(
-                    isPresented: $showMantraSheetFromResultsPage,
-                    selectedMantra: $chosenMantraFromResultsPage,
-                    presentation: [.large]
-                )
-            }
-    }
-    
-    
-    struct CloseButton: View {
-        let action: () -> Void
-        @State private var isPressed = false
-        
-        var body: some View {
-            Button(action: {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                    triggerSomeVibration(type: .success)
-                    isPressed = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    isPressed = false
-                    action()
-                }
-            }) {
-                ZStack {
-                    // Background
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.gray.opacity(0.08))
-                    
-                    // Outline
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
-                    
-                    // Content
-                    Text("close")
-                        .fontDesign(.rounded)
-                        .fontWeight(.thin)
-                        .foregroundColor(.primary)
-                }
-                .frame(width: 100, height: 50)
-                .scaleEffect(isPressed ? 0.95 : 1.0)
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
-    }
-    
-//    struct CloseButton: View {
-//        let action: () -> Void
-//        
-//        var body: some View {
-//            ZStack {
-//                // Background
-//                RoundedRectangle(cornerRadius: 10)
-//                    .fill(Color.gray.opacity(0.08))
-//                
-//                // Progress outline
-//                RoundedRectangle(cornerRadius: 10)
-//                    .stroke(Color.gray, lineWidth: 1.5)
-//                
-//                // Content
-//                VStack(spacing: 4) {
-//                    Text("close")
-//                        .fontDesign(.rounded)
-//                        .fontWeight(.thin)
-//                }
-//            }
-//            .frame(width: 100, height: 50)
-//            .contentShape(Rectangle())
-//            .onTapGesture(perform: action)
-//        }
-//    }
-}
-
-#Preview {
-    ResultsView(
-        isPresented: .constant(true),
-        savedSession: SessionDataModel(
-            title: "yo",
-            sessionMode: 1,
-            targetMin: 1,
-            targetCount: Int(5) ?? 0,
-            totalCount: 66,
-            startTime: Date(),
-            secondsPassed: 72,
-            avgTimePerClick: 0.54,
-            tasbeehRate: "10m 4s"
-        )
-    )
-    .environmentObject(SharedStateClass())
-}
-
-
-//tasbeeh: savedSession.totalCount,
-//secsToReport: savedSession.secondsPassed,
-//tasbeehRate: savedSession.tasbeehRate,
-//newAvrgTPC: savedSession.avgTimePerClick

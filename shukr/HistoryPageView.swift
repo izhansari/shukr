@@ -1127,7 +1127,7 @@ struct MantraPickerView: View {
     var body: some View {
         VStack {
             // Search Bar
-            TextField("Search or Add Mantra", text: $searchQuery)
+            TextField("Search or Add Zikr", text: $searchQuery)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding()
             
@@ -1139,7 +1139,7 @@ struct MantraPickerView: View {
             if filteredMantras.isEmpty {
                 // If no matches, show option to add new mantra
                 Text("No results.")
-                Text(" Add '\(searchQuery)' as a new mantra?")
+                Text(" Add '\(searchQuery)' as a new zikr?")
                     .padding()
             } else {
                 // Show filtered mantras
@@ -1158,7 +1158,7 @@ struct MantraPickerView: View {
                 .scrollContentBackground(.hidden)
             }
             
-            Button("Add Mantra") {
+            Button("Add Zikr") {
                 if !searchQuery.isEmpty {
                     saveToMantraList(searchQuery) // Save the mantra to model
                     if selectedSession != nil {

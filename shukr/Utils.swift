@@ -7,6 +7,28 @@ func roundToTwo(val: Double) -> Double {
     return ((val * 100.0).rounded() / 100.0)
 }
 
+// Updated timeUntilStart function
+func timeUntilStart(_ startTime: Date) -> String {
+    let interval = startTime.timeIntervalSince(Date())
+    let hours = Int(interval) / 3600
+    let minutes = (Int(interval) % 3600) / 60
+    let seconds = Int(interval) % 60
+
+    if hours > 0 {
+        return "in \(hours)h \(minutes)m"
+    } else if minutes > 0 {
+        return "in \(minutes)m"
+    } else {
+        return "in \(seconds)s"
+    }
+}
+
+func formatTime(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "h:mm:ss a"
+    return formatter.string(from: date)
+}
+
 func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
     let minutes = Int(totalSeconds) / 60
     let seconds = Int(totalSeconds) % 60
@@ -415,12 +437,29 @@ struct TopOfSessionButton: View{
 /// Mode Selection Views ---------------------------------------------------------------------------------------------------
 struct freestyleMode: View {
     var body: some View {
-        Text(Image(systemName: "circle.fill"))
-            .font(.title)
-            .fontDesign(.rounded)
-            .fontWeight(.thin)
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.2), radius: 6, x: 3, y: 3)
+//        Text(Image(systemName: "circle.fill"))
+//            .font(.title)
+//            .fontDesign(.rounded)
+//            .fontWeight(.thin)
+//            .foregroundStyle(.white)
+//            .shadow(color: .black.opacity(0.2), radius: 6, x: 3, y: 3)
+        
+        Circle()
+            .frame(width: 30, height: 30)
+//            .foregroundStyle(.white)
+            .foregroundStyle(Color("NeuRing"))
+            .shadow(
+                color: Color("NeuDarkShad"), // shadow top lighter
+                radius: 1,
+                x: 2,
+                y: 2
+            )
+            .shadow(
+                color: Color("NeuLightShad")/*Color(.white).opacity(0.1)*/, // shadow top lighter
+                radius: 1,
+                x: -2,
+                y: -2
+            )
     }
 }
 
@@ -457,13 +496,25 @@ struct countTargetMode: View {
                 .focused($isNumberEntryFocused)
                 .fontDesign(.rounded)
                 .fontWeight(.thin)
+                .multilineTextAlignment(.center) // Align text in the center
                 .padding()
                 .keyboardType(.numberPad) // Limits input to numbers only
                 .frame(width: 90)
-                .background(Color.gray.opacity(0.2))
+//                .background(Color.gray.opacity(0.2))
+                .background(Color("NeuRing"))
                 .cornerRadius(15)
-                .fontDesign(.rounded)
-                .multilineTextAlignment(.center) // Align text in the center
+                .shadow(
+                    color: Color("NeuDarkShad"), // shadow top lighter
+                    radius: 4,
+                    x: 2,
+                    y: 2
+                )
+                .shadow(
+                    color: Color("NeuLightShad"), // shadow top lighter
+                    radius: 4,
+                    x: -3,
+                    y: -3
+                )
                 .onTapGesture {
                     isNumberEntryFocused = true
                 }
@@ -501,39 +552,149 @@ struct inputOffsetSubView: View {
 
 
 /// Main Views -------------------------------------------------------------------------------------------------------------
-struct CircularProgressView: View {
+
+struct oldCircularProgressView: View {
     let progress: CGFloat
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    
+
     var body: some View {
         ZStack {
+            // Outer Circle with Dynamic Shadow
             Circle()
                 .stroke(lineWidth: 24)
                 .frame(width: 200, height: 200)
-                .foregroundColor(Color("wheelColor"))
-                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+                .foregroundColor(colorScheme == .dark ? Color(.secondarySystemBackground) : Color("wheelColor"))
+                .shadow(
+                    color: colorScheme == .dark
+                        ? .white.opacity(0.1) // Light shadow for dark mode
+                        : .black.opacity(0.1), // Dark shadow for light mode
+                    radius: 10,
+                    x: colorScheme == .dark ? -10 : 10,
+                    y: colorScheme == .dark ? -10 : 10
+                )
             
+            // Inner Circle with Dynamic Gradient
             Circle()
                 .stroke(lineWidth: 0.34)
                 .frame(width: 175, height: 175)
-                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .foregroundStyle( colorScheme == .dark ?
+                    LinearGradient(
+                        gradient: Gradient(
+                            colors: [.white.opacity(0.05), .clear]
+                        ),
+                        startPoint: .bottomTrailing,
+                        endPoint: .topLeading
+                    )
+                                  :
+                    LinearGradient(
+                        gradient: Gradient(
+                            colors: [.black.opacity(0.3), .clear]
+                        ),
+                        startPoint: .bottomTrailing,
+                        endPoint: .topLeading
+                    )
+                )
                 .overlay {
                     Circle()
-                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .stroke(
+                            colorScheme == .dark
+                                ? .white.opacity(0.1)
+                                : .black.opacity(0.1),
+                            lineWidth: 2
+                        )
                         .blur(radius: 5)
                         .mask {
                             Circle()
-                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .foregroundStyle(
+                                    LinearGradient(
+                                        gradient: Gradient(
+                                            colors: colorScheme == .dark
+                                                ? [.white, .clear]
+                                                : [.black, .clear]
+                                        ),
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
                         }
                 }
             
+            // Progress Indicator with Dynamic Gradient
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
                 .frame(width: 200, height: 200)
                 .rotationEffect(.degrees(-90))
-                .foregroundStyle(LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                .foregroundStyle(
+                    LinearGradient(
+                        gradient: Gradient(
+                            colors: colorScheme == .dark
+                                ? [.yellow.opacity(0.6), .green.opacity(0.8)]
+                                : [.yellow, .green]
+                        ),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .animation(.spring(), value: progress)
+        }
+    }
+}
+
+
+struct CircularProgressView: View {
+    let progress: CGFloat
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+
+    var body: some View {
+        ZStack {
+            // Outer Circle with Dynamic Shadow
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundColor(Color("NeuRing"))
+                .shadow(
+                    color: Color("NeuDarkShad"), // shadow top lighter
+                    radius: 4,
+                    x: 2,
+                    y: 2
+                )
+                .shadow(
+                    color: Color("NeuLightShad"), // shadow top lighter
+                    radius: 6,
+                    x: -2,
+                    y: -2
+                )
+            
+            // Progress Indicator with Dynamic Gradient
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
+                .frame(width: 200, height: 200)
+                .rotationEffect(.degrees(-90))
+                .foregroundStyle(
+                    LinearGradient(
+                        gradient: Gradient(
+                            colors: colorScheme == .dark
+                                ? [.yellow.opacity(0.6), .green.opacity(0.8)]
+                                : [.yellow, .green]
+                        ),
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .animation(.spring(), value: progress)
+        }
+    }
+}
+
+
+// Preview Provider
+struct NeumorphicProgressRing_Previews: PreviewProvider {
+    static var previews: some View {
+        ZStack{
+            Rectangle().fill(Color("NeuRing")).frame(width: 400, height: 400)
+            CircularProgressView(progress: 0)
         }
     }
 }
@@ -541,8 +702,8 @@ struct CircularProgressView: View {
 struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from top down now. No numbers. Clean.
     let tasbeeh: Int
     let circleSize: CGFloat = 10 // Circle size
-    let arcRadius: CGFloat = 40 // Distance of the grey circles from the number (radius of the arc)
-    let purpleArcRadius: CGFloat = 60 // Distance of the purple circles from the center (larger radius)
+    let arcRadius: CGFloat = 60 // Distance of the grey circles from the number (radius of the arc)
+    let purpleArcRadius: CGFloat = 40 // Distance of the purple circles from the center (larger radius)
     
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
@@ -562,20 +723,32 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
             Text("\(tasbeeh % 100)")
                 .font(.largeTitle)
                 .fontWeight(.thin)
-//                .bold()
                 .fontDesign(.rounded)
 
             // GeometryReader to help position circles
             GeometryReader { geometry in
+                let beadCount = tasbeeh % 100
                 let circlesCount = tasbeeh / 100
                 let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
 
+                ZStack{
+                    // Border circles representing each bed
+                    ForEach(0..<100) { index in
+                        NeumorphicBead()
+                            .opacity(index < beadCount ? 1 : 0)
+//                        Circle()
+//                            .fill(index < beadCount ? Color.green : Color.clear)
+//                            .frame(width: 5, height: 5) // Adjust size as needed
+                            .position(beadPosition(for: index, center: center)) // Purple circles further out
+                    }
+                }
+                .rotationEffect(.degrees(180+(360/100)))
+                
                 // Purple circles at the top, further from the center
                 ZStack {
                     ForEach(0..<min(circlesCount / 10, 10), id: \.self) { index in
                         Circle()
                             .fill(colorScheme == .dark ? Color.green.opacity(0.6) : Color.green)
-//                            .foregroundStyle(LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing))
                             .frame(width: circleSize, height: circleSize)
                             .position(purpleClockPosition(for: index, center: center)) // Purple circles further out
                     }
@@ -594,6 +767,7 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
                             .opacity(justReachedToA1000 ? 0 : 1)
                             .animation(.easeInOut(duration: 0.5), value: justReachedToA1000)
                     }
+                    
                 }
                 .rotationEffect(.degrees(rotationAngle)) // Rotate based on grey tasbeeh count
                 .onChange(of: circlesCount % 10) {_, newValue in
@@ -620,7 +794,16 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
             .frame(height: 100) // Adjust frame height to ensure there's enough space
         }
         .frame(width: 200, height: 200) //i want this to be a circle though
-//            .background(.yellow)
+    }
+    
+    // Function to calculate the position of each grey circle like clock positions (now with 10 hands)
+    func beadPosition(for index: Int, center: CGPoint) -> CGPoint {
+        let stepAngle: CGFloat = 2 * .pi / 100 // Divide the circle into 100 positions (like a clock with 100 hands)
+        let startAngle: CGFloat = .pi / 2 // Start at 6 o'clock position (bottom center)
+        let angle = startAngle + stepAngle * CGFloat(index)
+        let x = center.x + 140 * cos(angle) // X position using cosine
+        let y = center.y + 140 * sin(angle) // Y position using sine
+        return CGPoint(x: x, y: y)
     }
 
     // Function to calculate the position of each grey circle like clock positions (now with 10 hands)
@@ -634,8 +817,8 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
     // Function to calculate the position of each purple circle, placed further out and rotated
     func purpleClockPosition(for index: Int, center: CGPoint) -> CGPoint {
         let angle = angleForClockPosition(at: index) // Same angle logic
-        let x = center.x + purpleArcRadius * cos(angle - .pi) // Push further out and flip vertically
-        let y = center.y + purpleArcRadius * sin(angle - .pi) // Flip vertically for top positioning
+        let x = center.x + purpleArcRadius * cos(angle) // Push further out and flip vertically
+        let y = center.y + purpleArcRadius * sin(angle) // Flip vertically for top positioning
         return CGPoint(x: x, y: y)
     }
 
@@ -647,7 +830,7 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
     }
 }
 
-struct pauseStatsAndBG: View {
+struct old_pauseStatsAndBG: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @State private var showMantraSheetFromPausedPage = false
     @State private var chosenMantra: String? = ""
@@ -660,7 +843,24 @@ struct pauseStatsAndBG: View {
     let tasbeehRate: String
     let togglePause: () -> Void // Closure for the togglePause function
     let takingNotes: Bool
+    @Binding var toggleInactivityTimer: Bool
+    @Binding var inactivityDimmer: Double
+    @Binding var autoStop: Bool
+    @Binding var colorModeToggle: Bool
+    @Binding var currentVibrationMode: HapticFeedbackType
     
+    // Computed variables for est time completion (only for target count mode)
+    private var remainingCount: Int{
+        return (Int(sharedState.targetCount) ?? 0) - Int(tasbeeh)
+    }
+    private var timeLeft : TimeInterval{
+        return avgTimePerClick * Double(remainingCount)
+    }
+    private var finishTime: Date{
+        return Date().addingTimeInterval(timeLeft)
+    }
+
+
     
     var body: some View {
         
@@ -671,79 +871,681 @@ struct pauseStatsAndBG: View {
             .onTapGesture { togglePause() }
             .opacity(paused ? 1 : 0.0)
         
+        VStack{
+            VStack(spacing: 20){
+                
+                //The Mode Text
+                switch sharedState.selectedMode {
+                case 1:
+                    Text("\(sharedState.selectedMinutes)m Session")
+                        .font(.title2)
+                        .bold()
+                case 2:
+                    Text("\(sharedState.targetCount) Count Session")
+                        .font(.title2)
+                        .bold()
+                default:
+                    Text("Freestyle Session")
+                        .font(.title2)
+                        .bold()
+                }
+                
+                //The Mantra Picker
+                Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "No Selected Zikr")")
+                    .frame(width: 150)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .multilineTextAlignment(.center)
+                    .padding()
+                    .background(.gray.opacity(0.08))
+                    .cornerRadius(10)
+                    .onTapGesture {
+                        showMantraSheetFromPausedPage = true
+                    }
+                    .onChange(of: chosenMantra){
+                        if let newSetMantra = chosenMantra{
+                            sharedState.titleForSession = newSetMantra
+                        }
+                    }
+                    .sheet(isPresented: $showMantraSheetFromPausedPage) {
+                        MantraPickerView(isPresented: $showMantraSheetFromPausedPage, selectedMantra: $chosenMantra, presentation: [.large])
+                    }
+                
+                
+                
+                //The Stats
+                if paused && !takingNotes {
+                    VStack(spacing: 20){
+                        
+                        Text("Count: \(tasbeeh)")
+                            .fontWeight(.thin)
+                            .fontDesign(.rounded)
+                        
+                        Text("Time: \(timePassedAtPause)")
+                            .fontWeight(.thin)
+                            .fontDesign(.rounded)
+                        
+                        ExternalToggleText(
+                            originalText: "Time Per Click: \((String(format: "%.2f", avgTimePerClick)))s",
+                            toggledText: "Time Per Tasbeeh: \(tasbeehRate)",
+                            externalTrigger: $rateTextToggle,  // Pass the binding
+                            fontDesign: .rounded,
+                            fontWeight: .thin,
+                            hapticFeedback: true
+                        )
+                    }
+                }
+            }
+            .padding()
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+            .padding(.horizontal, 30)
+            
+            if sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0 {
+                ExternalToggleText(
+                    originalText: "you'll finish \(inMSTimeFormatter(from: timeLeft))",
+                    toggledText: "you'll finish around \(hmmTimeFormatter.string(from: finishTime))",
+                    externalTrigger: $rateTextToggle,  // Pass the binding
+                    font: .caption,
+                    fontDesign: .rounded,
+                    fontWeight: .thin,
+                    hapticFeedback: true
+                )
+                .opacity(0.8)
+                .padding()
+                .background(Color("pauseColor").opacity(0.001))
+
+                
+//                Text("targetCount :\(Int(sharedState.targetCount) ?? 0) | (tasbeeh): \(Int(tasbeeh)) | remaining: \(remainingCount)")
+//                Text("avgTimePerClick: \(avgTimePerClick) | remainingCount: \(remainingCount) | timeLeft: \(timeLeft)")
+//                Text("\(finishTime)")
+
+            }
+        }
+        .opacity(paused ? 1.0 : 0.0)
+        .animation(.easeInOut, value: paused)
         
-        VStack(spacing: 20){
+        VStack {
+            Spacer()
+            
+            // bottom settings bar when paused
+            VStack {
+                if(toggleInactivityTimer){
+                    Slider(value: $inactivityDimmer,
+                           in: 0...1.0)
+                    .tint(.white)
+                    .frame(width: 250)
+                    .padding()
+                }
+                HStack{
+                    AutoStopToggleButton(autoStop: $autoStop)
+                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, colorModeToggle: $colorModeToggle)
+                    VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
+                    ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
+                }
+            }
+            .padding()
+            .background(BlurView(style: .systemUltraThinMaterial))
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
+            .padding(.bottom, 40)
+            .opacity(paused ? 1.0 : 0.0)
+        }
+        
+    }
+}
+
+
+struct pauseStatsAndBG: View {
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+    @EnvironmentObject var sharedState: SharedStateClass
+    @State private var showMantraSheetFromPausedPage = false
+    @State private var chosenMantra: String? = ""
+    @State private var rateTextToggle = false  // to control the toggle text in the middle
+        
+    let paused: Bool
+    let tasbeeh: Int
+    let secsToReport: TimeInterval
+    let avgTimePerClick: TimeInterval
+    let tasbeehRate: String
+    let togglePause: () -> Void // Closure for the togglePause function
+    let takingNotes: Bool
+    @Binding var toggleInactivityTimer: Bool
+    @Binding var inactivityDimmer: Double
+    @Binding var autoStop: Bool
+    @Binding var colorModeToggle: Bool
+    @Binding var currentVibrationMode: HapticFeedbackType
+    
+    // UI state
+    private let textSize: CGFloat = 14
+    private let gapSize: CGFloat = 10
+    @State private var countRotation: Double = 0
+    @State private var timerRotation: Double = 0
+    @State private var showingPerCount = false
+    @State private var showMantraSheetFromResultsPage = false
+    @State private var chosenMantraFromResultsPage: String? = ""
+    
+    // Computed variables for est time completion (only for target count mode)
+    private var remainingCount: Int{
+        return (Int(sharedState.targetCount) ?? 0) - Int(tasbeeh)
+    }
+    private var timeLeft : TimeInterval{
+        return avgTimePerClick * Double(remainingCount)
+    }
+    private var finishTime: Date{
+        return Date().addingTimeInterval(timeLeft)
+    }
+
+
+    
+    var body: some View {
+        
+        
+        Color("pauseColor")
+            .edgesIgnoringSafeArea(.all)
+            .animation(.easeOut(duration: 0.3), value: paused)
+            .onTapGesture { togglePause() }
+            .opacity(paused ? 1 : 0.0)
+        
+        VStack{
+            VStack {
+                completionCard
+                    .padding(.horizontal, 16)
+            }
+            
+            if sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0 {
+                estimatedFinishTime
+            }
+        }
+        .opacity(paused ? 1.0 : 0.0)
+        .animation(.easeInOut, value: paused)
+        
+        VStack {
+            Spacer()
+            
+            // bottom settings bar when paused
+            VStack {
+                if(toggleInactivityTimer){
+                    Slider(value: $inactivityDimmer, in: 0...1.0)
+                    .tint(.white)
+                    .frame(width: 250)
+                    .padding()
+                }
+                HStack{
+                    AutoStopToggleButton(autoStop: $autoStop)
+                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, colorModeToggle: $colorModeToggle)
+                    VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
+                    ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
+                }
+            }
+            .padding()
+//            .background(BlurView(style: .systemUltraThinMaterial))
+//            .cornerRadius(20)
+//            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
+            .padding(.bottom, 40)
+            .opacity(paused ? 1.0 : 0.0)
+        }
+        
+    }
+    
+    
+    private var completionCard: some View {
+        VStack(alignment: .center, spacing: 12) {
             
             //The Mode Text
             switch sharedState.selectedMode {
             case 1:
                 Text("\(sharedState.selectedMinutes)m Session")
-                    .font(.title2)
+                    .font(.title3)
                     .bold()
             case 2:
                 Text("\(sharedState.targetCount) Count Session")
-                    .font(.title2)
+                    .font(.title3)
                     .bold()
             default:
                 Text("Freestyle Session")
-                    .font(.title2)
+                    .font(.title3)
                     .bold()
             }
+
             
-            //The Mantra Picker
-            Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "No Selected Mantra")")
-                .frame(width: 150)
-                .fontDesign(.rounded)
-                .fontWeight(.thin)
-                .multilineTextAlignment(.center)
-                .padding()
-                .background(.gray.opacity(0.08))
-                .cornerRadius(10)
-                .onTapGesture {
-                    showMantraSheetFromPausedPage = true
-                }
-                .onChange(of: chosenMantra){
-                    if let newSetMantra = chosenMantra{
-                        sharedState.titleForSession = newSetMantra
+            // Boxes
+            VStack(alignment: .center, spacing: gapSize) {
+                // Mantra selector
+                mantraSelector
+                    .transition(.opacity)
+                
+                // Stats Grid
+                HStack(alignment: .top, spacing: gapSize) {
+                    // Left Column
+                    VStack(spacing: gapSize) {
+                        // Count Box
+                        statsBox {
+                            HStack {
+                                Image(systemName: "circle.hexagonpath")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.primary)
+                                    .rotationEffect(.degrees(-countRotation))
+                                    .animation(.spring(duration: 0.5), value: countRotation)
+                                Spacer()
+                                Text("\(tasbeeh)")
+                                    .font(.system(size: textSize, weight: .medium))
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                        }
+                        .frame(height: 44)  // Fixed height for count
+                        .onTapGesture {
+                            triggerSomeVibration(type: .medium)
+                            countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
+                        }
+
+                        // Timer Box
+                        statsBox {
+                            HStack {
+                                Image(systemName: "gauge.with.needle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.primary)
+                                    .rotationEffect(.degrees(timerRotation))
+                                    .animation(.spring(duration: 0.3), value: timerRotation)
+                                Spacer()
+                                Text(formatSecondsToTimerString(secsToReport))
+                                    .font(.system(size: textSize, weight: .medium))
+                                    .monospacedDigit()
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                        }
+                        .frame(height: 44)  // Fixed height for timer
+                        .onTapGesture {
+                            triggerSomeVibration(type: .medium)
+                            timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
+                         }
+
+                    }
+                    
+                    // Rate Box
+                    statsBox {
+                        VStack(spacing: 6) {
+                            Text("Rate")
+                                .font(.system(size: 18, weight: .medium))
+                                .underline()
+                            
+                            ZStack {
+                                // Per tasbeeh view
+                                VStack(spacing: 2) {
+                                    Text(String(format: "%.2f", avgTimePerClick))
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Text("per count")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .opacity(showingPerCount ? 0 : 1)
+                                .offset(y: showingPerCount ? -20 : 0)
+                                
+                                // Per count view
+                                VStack(spacing: 2) {
+                                    Text(tasbeehRate)
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Text("per tasbeeh")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .opacity(showingPerCount ? 1 : 0)
+                                .offset(y: showingPerCount ? 0 : 20)
+                            }
+                        }
+                    }
+                    .frame(height: 96)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            triggerSomeVibration(type: .medium)
+                            showingPerCount.toggle()
+                        }
                     }
                 }
-                .sheet(isPresented: $showMantraSheetFromPausedPage) {
-                    MantraPickerView(isPresented: $showMantraSheetFromPausedPage, selectedMantra: $chosenMantra, presentation: [.large])
-                }
-            
-            
-            
-            //The Stats
-            if paused && !takingNotes {
-                
-                Text("Count: \(tasbeeh)")
-                    .fontWeight(.thin)
-                    .fontDesign(.rounded)
-                
-                Text("Time: \(timePassedAtPause)")
-                    .fontWeight(.thin)
-                    .fontDesign(.rounded)
-                
-                ExternalToggleText(
-                    originalText: "Time Per Tasbeeh: \(tasbeehRate)",
-                    toggledText: "Time Per Click: \((String(format: "%.2f", avgTimePerClick)))s",
-                    externalTrigger: $rateTextToggle,  // Pass the binding
-                    fontDesign: .rounded,
-                    fontWeight: .thin,
-                    hapticFeedback: true
-                )
             }
+            .frame(maxHeight: 150)
         }
-        .padding()
+        .padding(20)
+        .frame(width: 280)
         .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
         .cornerRadius(20)
         .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
-        .padding(.horizontal, 30)
-        .opacity(paused ? 1.0 : 0.0)
-        .animation(.easeInOut, value: paused)
+    }
+    
+    private var estimatedFinishTime: some View {
+        ExternalToggleText(
+            originalText: "you'll finish \(inMSTimeFormatter(from: timeLeft))",
+            toggledText: "you'll finish around \(hmmTimeFormatter.string(from: finishTime))",
+            externalTrigger: $rateTextToggle,  // Pass the binding
+            font: .caption,
+            fontDesign: .rounded,
+            fontWeight: .thin,
+            hapticFeedback: true
+        )
+        .opacity(0.8)
+        .padding()
+        .background(Color("pauseColor").opacity(0.001))
+    }
+    
+    private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 10)
+            .background(Color(.tertiarySystemBackground))
+            .cornerRadius(12)
+    }
+    
+    // zikrflag 2
+    private var mantraSelector: some View {
+        Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
+            .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .background(Color(.tertiarySystemBackground))
+            .cornerRadius(12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showMantraSheetFromResultsPage = true
+            }
+            .onChange(of: chosenMantraFromResultsPage) {
+                if let newSetMantra = chosenMantraFromResultsPage {
+                    withAnimation {
+                        sharedState.titleForSession = newSetMantra
+                    }
+                }
+            }
+            .sheet(isPresented: $showMantraSheetFromResultsPage) {
+                MantraPickerView(
+                    isPresented: $showMantraSheetFromResultsPage,
+                    selectedMantra: $chosenMantraFromResultsPage,
+                    presentation: [.large]
+                )
+            }
+    }
+
+}
+
+
+struct ResultsView: View {
+    @Environment(\.modelContext) private var context
+    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+    @Binding var isPresented: Bool
+    let savedSession: SessionDataModel  // Add this
+
+    // UI state
+    private let textSize: CGFloat = 14
+    private let gapSize: CGFloat = 10
+    @State private var countRotation: Double = 0
+    @State private var timerRotation: Double = 0
+    @State private var showingPerCount = false
+    @State private var showMantraSheetFromResultsPage = false
+    @State private var chosenMantraFromResultsPage: String? = ""
+    var startTimer: () -> Void
+    
+    // Computed properties from savedSession
+    private var tasbeeh: Int { savedSession.totalCount }
+    private var secsToReport: Double { savedSession.secondsPassed }
+    private var tasbeehRate: String { savedSession.tasbeehRate }
+    private var newAvrgTPC: Double { savedSession.avgTimePerClick }
+    
+    var body: some View {
+        ZStack {
+            
+            Color("pauseColor")
+                .edgesIgnoringSafeArea(.all)
+            
+            completionCard
+                .padding(.horizontal, 16)
+            
+            VStack {
+                Spacer()
+                
+                CloseButton(
+                    action: {
+                        isPresented = false
+                        sharedState.showingOtherPages = false
+                    }
+                )
+                .padding(.bottom)
+            }
+        }
+    }
+    
+    private var completionCard: some View {
+        VStack(alignment: .center, spacing: 12) {
+            // Checkmark circle
+            Circle()
+                .fill(Color(colorScheme == .dark ? .systemGray4 : .white))
+                .frame(width: 40, height: 40)
+                .overlay {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(.green)
+                }
+            
+            // Message
+            Text("Nice! I'll add this to your history!")
+                .font(.system(size: 16, weight: .regular))
+                .multilineTextAlignment(.center)
+            
+            // Boxes
+            VStack(alignment: .center, spacing: gapSize) {
+                // Mantra selector
+                mantraSelector
+                    .transition(.opacity)
+                
+                // Stats Grid
+                HStack(alignment: .top, spacing: gapSize) {
+                    // Left Column
+                    VStack(spacing: gapSize) {
+                        // Count Box
+                        statsBox {
+                            HStack {
+                                Image(systemName: "circle.hexagonpath")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.primary)
+                                    .rotationEffect(.degrees(-countRotation))
+                                    .animation(.spring(duration: 0.5), value: countRotation)
+                                Spacer()
+                                Text("\(tasbeeh)")
+                                    .font(.system(size: textSize, weight: .medium))
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                        }
+                        .frame(height: 44)  // Fixed height for count
+                        .onTapGesture {
+                            triggerSomeVibration(type: .medium)
+                            countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
+                        }
+
+                        // Timer Box
+                        statsBox {
+                            HStack {
+                                Image(systemName: "gauge.with.needle")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.primary)
+                                    .rotationEffect(.degrees(timerRotation))
+                                    .animation(.spring(duration: 0.3), value: timerRotation)
+                                Spacer()
+                                Text(formatSecondsToTimerString(secsToReport))
+                                    .font(.system(size: textSize, weight: .medium))
+                                    .monospacedDigit()
+                                Spacer()
+                            }
+                            .padding(.horizontal, 12)
+                        }
+                        .frame(height: 44)  // Fixed height for timer
+                        .onTapGesture {
+                            triggerSomeVibration(type: .medium)
+                            timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
+                         }
+
+                    }
+                    
+                    // Rate Box
+                    statsBox {
+                        VStack(spacing: 6) {
+                            Text("Rate")
+                                .font(.system(size: 18, weight: .medium))
+                                .underline()
+                            
+                            ZStack {
+                                // Per tasbeeh view
+                                VStack(spacing: 2) {
+                                    Text(tasbeehRate)
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Text("per tasbeeh")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .opacity(showingPerCount ? 0 : 1)
+                                .offset(y: showingPerCount ? -20 : 0)
+                                
+                                // Per count view
+                                VStack(spacing: 2) {
+                                    Text(String(format: "%.2fs", newAvrgTPC))
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Text("per count")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                }
+                                .opacity(showingPerCount ? 1 : 0)
+                                .offset(y: showingPerCount ? 0 : 20)
+                            }
+                        }
+                    }
+                    .frame(height: 96)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            triggerSomeVibration(type: .medium)
+                            showingPerCount.toggle()
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 150)
+        }
+        .padding(20)
+        .frame(width: 280)
+        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
+        .cornerRadius(20)
+        .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+    }
+    
+    private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 10)
+            .background(Color(.tertiarySystemBackground))
+            .cornerRadius(12)
+    }
+    
+    // zikrflag 3
+    private var mantraSelector: some View {
+        Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
+            .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
+            .lineLimit(1)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .background(Color(.tertiarySystemBackground))
+            .cornerRadius(12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                showMantraSheetFromResultsPage = true
+            }
+            .onChange(of: chosenMantraFromResultsPage) {
+                if let newSetMantra = chosenMantraFromResultsPage {
+                    withAnimation {
+                        sharedState.titleForSession = newSetMantra
+                        savedSession.title = newSetMantra  // Update the saved session directly
+                        do {
+                            try context.save()  // Save the context to persist the changes
+                        } catch {
+                            print("Error saving context: \(error)")
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showMantraSheetFromResultsPage) {
+                MantraPickerView(
+                    isPresented: $showMantraSheetFromResultsPage,
+                    selectedMantra: $chosenMantraFromResultsPage,
+                    presentation: [.large]
+                )
+            }
+    }
+    
+    struct CloseButton: View {
+        let action: () -> Void
+        @State private var isPressed = false
         
+        var body: some View {
+            Button(action: {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    triggerSomeVibration(type: .success)
+                    isPressed = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    isPressed = false
+                    action()
+                }
+            }) {
+                ZStack {
+                    // Background
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.gray.opacity(0.08))
+                    
+                    // Outline
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
+                    
+                    // Content
+                    Text("close")
+                        .fontDesign(.rounded)
+                        .fontWeight(.thin)
+                        .foregroundColor(.primary)
+                }
+                .frame(width: 100, height: 50)
+                .scaleEffect(isPressed ? 0.95 : 1.0)
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
     }
 }
+
+#Preview {
+    ResultsView(
+        isPresented: .constant(true),
+        savedSession: SessionDataModel(
+            title: "yo",
+            sessionMode: 1,
+            targetMin: 1,
+            targetCount: Int(5) ?? 0,
+            totalCount: 66,
+            startTime: Date(),
+            secondsPassed: 72,
+            avgTimePerClick: 0.54,
+            tasbeehRate: "10m 4s"
+        ),
+        startTimer: {}
+    )
+    .environmentObject(SharedStateClass())
+}
+
 
 struct inactivityAlert: View {
     let countDownForAlert: Int
@@ -1516,114 +2318,6 @@ struct RingStyle4 {
     }
 }
 
-//struct RingStyle3OldSimple {
-//    let prayer: Prayer
-//    let progress: Double
-//    let progressColor: Color
-//    let isCurrentPrayer: Bool
-//    let isAnimating: Bool
-//    let colorScheme: ColorScheme
-//    let isQiblaAligned: Bool
-//
-//    init(prayer: Prayer,
-//         progress: Double,
-//         progressColor: Color,
-//         isCurrentPrayer: Bool,
-//         isAnimating: Bool,
-//         colorScheme: ColorScheme,
-//         isQiblaAligned: Bool) {
-//        self.prayer = prayer
-//        self.progress = progress
-//        self.progressColor = progressColor
-//        self.isCurrentPrayer = isCurrentPrayer
-//        self.isAnimating = isAnimating
-//        self.colorScheme = colorScheme
-//        self.isQiblaAligned = isQiblaAligned
-//    }
-//
-//    // Convert countdown progress to clockwise progress
-//    private var clockwiseProgress: Double {
-//        1 - progress // Invert the progress
-//    }
-//
-//    var body: some View {
-//        ZStack {
-//            // Outer pulsing circle (only for current prayer)
-//            if isCurrentPrayer {
-//                Circle()
-//                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
-//                    .frame(width: 224, height: 224)
-//                    .rotationEffect(.degrees(-90))
-//                    .scaleEffect(isAnimating ? 1.15 : 1)
-//                    .opacity(isAnimating ? -0.05 : 0.7)
-//                    .foregroundStyle(colorScheme == .dark ? progressColor : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
-//                    .shadow(color: progressColor.opacity(0.3), radius: 15, x: 0, y: 0)
-//            } else {
-//                Circle()
-//                    .frame(width: 224, height: 224)
-//                    .opacity(0)
-//            }
-//
-//            // Base ring (background)
-//            Circle()
-//                .stroke(lineWidth: 24)
-//                .frame(width: 200, height: 200)
-//                // .foregroundStyle(progressColor == .red ? progressColor.opacity(0.7) : progressColor)
-//                .foregroundStyle(progressColor == .white ? progressColor : progressColor.opacity(0.15))
-//                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
-//
-//            // Progress arc (only for current prayer)
-//            if isCurrentPrayer {
-//                // Layer 1: Small shadow segment that follows the progress
-//                Circle()
-//                    .trim(from: max(clockwiseProgress - 0.05, 0), to: clockwiseProgress)
-//                    .stroke(style: StrokeStyle(
-//                        lineWidth: 24,
-//                        lineCap: .round
-//                    ))
-//                    .frame(width: 200, height: 200)
-//                    .rotationEffect(.degrees(-90))
-//                    .foregroundStyle(progressColor)
-//                    .shadow(color: .black.opacity(0.3), radius: 5, x: 0, y: 0)
-//                    .opacity(clockwiseProgress)
-//
-//                // Layer 2: Main progress arc
-//                Circle()
-//                    .trim(from: 0, to: clockwiseProgress)
-//                    .stroke(style: StrokeStyle(
-//                        lineWidth: 24,
-//                        lineCap: .round
-//                    ))
-//                    .frame(width: 200, height: 200)
-//                    .rotationEffect(.degrees(-90))
-//                    .foregroundStyle(progressColor)
-//            }
-//
-//            // Inner gradient circle for depth effect
-//            Circle()
-//                .stroke(lineWidth: 0.34)
-//                .frame(width: 175, height: 175)
-//                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
-//                .overlay {
-//                    Circle()
-//                        .stroke(.black.opacity(0.1), lineWidth: 2)
-//                        .blur(radius: 5)
-//                        .mask {
-//                            Circle()
-//                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
-//                        }
-//                }
-//
-//            // Qibla indicator
-//            Circle()
-//                .frame(width: 8, height: 8)
-//                .offset(y: -100)
-//                .foregroundStyle(progressColor == .white ? .gray : .white)
-//                .opacity(isQiblaAligned ? 0.5 : 0)
-//        }
-//    }
-//}
-
 struct RingStyle5 {
     let prayer: Prayer
     let progress: Double
@@ -1949,158 +2643,502 @@ struct RingStyle6 {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-struct ToggleText: View {
-    let originalText: String
-    let toggledText: String
-    let font: Font?
-    let fontDesign: Font.Design?
-    let fontWeight: Font.Weight?
-    let hapticFeedback: Bool
+struct RingStyle7 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
     
-    @State private var showOriginal = true
-    @State private var timer: Timer?
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
     
-    init(
-        originalText: String,
-        toggledText: String,
-        font: Font? = nil,
-        fontDesign: Font.Design? = .rounded,
-        fontWeight: Font.Weight? = .thin,
-        hapticFeedback: Bool = true
-    ) {
-        self.originalText = originalText
-        self.toggledText = toggledText
-        self.font = font
-        self.fontDesign = fontDesign
-        self.fontWeight = fontWeight
-        self.hapticFeedback = hapticFeedback
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3  // Changed from 6 to 4 (total time needed)
+    }
+
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - ((timeRemaining - 0.4) / 3)  // Changed from (timeRemaining - 2) / 4
+            return min(max(pow(progress, 7), 0), 1)
+        }
+        return 0
+    }
+    
+    private var ringTipShadowOffset: CGPoint {
+        let ringTipPosition = tipPosition(progress: clockwiseProgress, radius: 100)
+        let shadowPosition = tipPosition(progress: clockwiseProgress + 0.0075, radius: 100)
+        return CGPoint(
+            x: shadowPosition.x - ringTipPosition.x,
+            y: shadowPosition.y - ringTipPosition.y
+        )
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
     }
     
     var body: some View {
-        Text(showOriginal ? originalText : toggledText)
-            .font(font)
-            .fontDesign(fontDesign)
-            .fontWeight(fontWeight)
-            .onTapGesture {
-                handleTap()
+        ZStack {
+            // Outer pulsing circle
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .scaleEffect(isAnimating ? 1.2 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor.opacity(0.7) : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: .white.opacity(1), radius: 10, x: 0, y: 0)
+
+                //this is so pulse gets hidden behind the other transparent layers.
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .foregroundStyle(Color("bgColor"))
             }
-            .onDisappear {
-                timer?.invalidate()
-                timer = nil
+
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+//                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.15) : Color.white)
+//                .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
+                .foregroundColor(colorScheme == .dark ? Color(.secondarySystemBackground) : Color("wheelColor"))
+                .shadow(
+                    color: colorScheme == .dark
+                        ? .white.opacity(0.1) // Light shadow for dark mode
+                        : .black.opacity(0.1), // Dark shadow for light mode
+                    radius: 10,
+                    x: colorScheme == .dark ? -10 : 10,
+                    y: colorScheme == .dark ? -10 : 10
+                )
+            
+            // uncomment this if you want the unprogressed part of the track to be colored instead of clear
+            Circle()
+                .stroke(lineWidth: 24)
+                .frame(width: 200, height: 200)
+                .foregroundStyle(progressColor.opacity(0.15))
+            
+            if isCurrentPrayer {
+                // Main progress arc with gradient
+                Circle()
+                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(
+                         AngularGradient(
+                             gradient: Gradient(colors: [
+                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
+                                 progressColor
+                             ]),
+                             center: .center,
+                             startAngle: .degrees(0),
+                             endAngle: .degrees((360 * clockwiseProgress))
+                        )
+                    )
+                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+                
+                // Ring tip with shadow
+                Circle()
+                    .trim(from: finalAnimation >= 1 ?  0 :     clockwiseProgress - 0.001,
+                          to:   finalAnimation >= 1 ?   0 :     clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .shadow(
+                        color: .black.opacity(isInFinalSeconds ? 0.3*(1-finalAnimation*2) : min(0.5 * clockwiseProgress, 0.3)),
+                        radius: 2.5,
+                        x: ringTipShadowOffset.x,
+                        y: ringTipShadowOffset.y
+                    )
+                    .opacity(finalAnimation > 0.05 ? 1 - finalAnimation : 1) // Fade out tip
+                    .zIndex(1)
+                
+                // dot at the top for the animation so we can make everything opacity 0 and keep animation crisp.
+                Circle()
+                    .trim(from:  0,
+                          to:   0.001)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 24,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(clockwiseProgress >= 0.99 || clockwiseProgress <= 0.01 ? 1 : 0)
             }
+            
+            // Inner gradient circle for depth
+            Circle()
+                .stroke(lineWidth: 0.34)
+                .frame(width: 175, height: 175)
+                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
+                .overlay {
+                    Circle()
+                        .stroke(.black.opacity(0.1), lineWidth: 2)
+                        .blur(radius: 5)
+                        .mask {
+                            Circle()
+                                .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
+                        }
+                }
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+//                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .foregroundStyle(colorScheme == .dark ? .white : isCurrentPrayer ? .white : .gray)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
+        }
+    }
+}
+
+struct RingStyle8 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    private var clockwiseProgress: Double {
+        1 - progress
     }
     
-    private func handleTap() {
-        timer?.invalidate()
-        
-        if hapticFeedback {
-            triggerSomeVibration(type: .light)
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3  // Changed from 6 to 4 (total time needed)
+    }
+
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - ((timeRemaining - 0.4) / 3)  // Changed from (timeRemaining - 2) / 4
+            return min(max(pow(progress, 7), 0), 1)
         }
-        
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showOriginal.toggle()
-        }
-        
-        if !showOriginal {
-            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showOriginal = true
-                }
+        return 0
+    }
+    
+    private var ringTipShadowOffset: CGPoint {
+        let ringTipPosition = tipPosition(progress: clockwiseProgress, radius: 100)
+        let shadowPosition = tipPosition(progress: clockwiseProgress + 0.0075, radius: 100)
+        return CGPoint(
+            x: shadowPosition.x - ringTipPosition.x,
+            y: shadowPosition.y - ringTipPosition.y
+        )
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // Outer pulsing circle
+            if isCurrentPrayer {
+                Circle()
+                    .stroke(style: StrokeStyle(lineWidth: isAnimating ? 6 : 15))
+                    .frame(width: 224, height: 224)
+                    .scaleEffect(isAnimating ? 1.2 : 1)
+                    .opacity(isAnimating ? -0.05 : 0.7)
+                    .foregroundStyle(colorScheme == .dark ? progressColor.opacity(0.7) : progressColor == .red ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+                    .shadow(color: .white.opacity(0.5), radius: 10, x: 0, y: 0)
+
+                //this is so pulse gets hidden behind the other transparent layers.
+                Circle()
+                    .frame(width: 224, height: 224)
+                    .foregroundStyle(Color("bgColor"))
             }
+
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            CircularProgressView(progress: 0)
+            
+            // uncomment this if you want the unprogressed part of the track to be colored instead of clear
+//            Circle()
+//                .stroke(lineWidth: 24)
+//                .frame(width: 200, height: 200)
+//                .foregroundStyle(progressColor.opacity(0.15))
+            
+            if isCurrentPrayer {
+                // Main progress arc with gradient
+                Circle()
+                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 14,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(
+                         AngularGradient(
+                             gradient: Gradient(colors: [
+                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
+                                 progressColor
+                             ]),
+                             center: .center,
+                             startAngle: .degrees(0),
+                             endAngle: .degrees((360 * clockwiseProgress))
+                        )
+                    )
+                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+                
+                // Ring tip with shadow
+                Circle()
+                    .trim(from: finalAnimation >= 1 ?  0 :     clockwiseProgress - 0.001,
+                          to:   finalAnimation >= 1 ?   0 :     clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 14,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .shadow(
+                        color: .black.opacity(isInFinalSeconds ? 0.3*(1-finalAnimation*2) : min(0.5 * clockwiseProgress, 0.3)),
+                        radius: 2.5,
+                        x: ringTipShadowOffset.x,
+                        y: ringTipShadowOffset.y
+                    )
+                    .opacity(finalAnimation > 0.05 ? 1 - finalAnimation : 1) // Fade out tip
+                    .zIndex(1)
+                
+                // dot at the top for the animation so we can make everything opacity 0 and keep animation crisp.
+                Circle()
+                    .trim(from:  0,
+                          to:   0.001)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 14,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(clockwiseProgress >= 0.99 || clockwiseProgress <= 0.01 ? 1 : 0)
+            }
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+//                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .foregroundStyle(colorScheme == .dark ? .white : isCurrentPrayer ? .white : .gray)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
+        }
+    }
+}
+
+struct RingStyle9 {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+    
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3  // Changed from 6 to 4 (total time needed)
+    }
+
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - ((timeRemaining - 0.4) / 3)  // Changed from (timeRemaining - 2) / 4
+            return min(max(pow(progress, 7), 0), 1)
+        }
+        return 0
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            CircularProgressView(progress: 0)
+                        
+            if isCurrentPrayer {
+                // Main progress arc with gradient
+                Circle()
+                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(
+                        AngularGradient(
+                            gradient: Gradient(colors: [
+                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
+                                progressColor
+                            ]),
+                            center: .center,
+                            startAngle: .degrees(0),
+                            endAngle: .degrees((360 * clockwiseProgress))
+                        )
+                    )
+                    .opacity(0.6)
+                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+                
+                // Ring tip with shadow
+                Circle()
+                    .trim(from: finalAnimation >= 1 ?  0 :     clockwiseProgress - 0.001,
+                          to:   finalAnimation >= 1 ?   0 :     clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(finalAnimation > 0.05 ? 1 - finalAnimation : 1) // Fade out tip
+                    .zIndex(1)
+                
+                // dot at the top for the animation so we can make everything opacity 0 and keep animation crisp.
+                Circle()
+                    .trim(from:  0,
+                          to:   0.001)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(clockwiseProgress >= 0.99 || clockwiseProgress <= 0.01 ? 1 : 0)
+            
+                // Thin pulsing band
+                Circle()
+                    .stroke(lineWidth: 2)
+                    .frame(width: 222, height: 222)
+                    .opacity(isAnimating ? -0.15 : 1)
+                    .foregroundStyle(colorScheme == .dark ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+            }
+            
+
+
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+//                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .foregroundStyle(colorScheme == .dark ? .white : isCurrentPrayer ? .white : .gray)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
         }
     }
 }
 
 
-struct ExternalToggleText: View {
-    let originalText: String
-    let toggledText: String
-    let font: Font?
-    let fontDesign: Font.Design?
-    let fontWeight: Font.Weight?
-    let hapticFeedback: Bool
-    
-    @State private var showOriginal = true
-    @State private var timer: Timer?
-    @Binding var externalTrigger: Bool
-    
-    init(
-        originalText: String,
-        toggledText: String,
-        externalTrigger: Binding<Bool> = .constant(false), // Default to constant false if not provided
-        font: Font? = nil,
-        fontDesign: Font.Design? = .rounded,
-        fontWeight: Font.Weight? = .thin,
-        hapticFeedback: Bool = true
-    ) {
-        self.originalText = originalText
-        self.toggledText = toggledText
-        self._externalTrigger = externalTrigger
-        self.font = font
-        self.fontDesign = fontDesign
-        self.fontWeight = fontWeight
-        self.hapticFeedback = hapticFeedback
-    }
-    
-    var body: some View {
-        Text(showOriginal ? originalText : toggledText)
-            .font(font)
-            .fontDesign(fontDesign)
-            .fontWeight(fontWeight)
-            .onTapGesture {
-                handleTap()
-            }
-            .onChange(of: externalTrigger) { _, _ in
-                handleTap()
-            }
-            .onDisappear {
-                timer?.invalidate()
-                timer = nil
-            }
-    }
-    
-    private func handleTap() {
-        timer?.invalidate()
-        
-        if hapticFeedback {
-            triggerSomeVibration(type: .light)
-        }
-        
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showOriginal.toggle()
-        }
-        
-        if !showOriginal {
-            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showOriginal = true
-                }
-            }
-        }
-    }
-}
+
+//struct ToggleText: View {
+//    let originalText: String
+//    let toggledText: String
+//    let font: Font?
+//    let fontDesign: Font.Design?
+//    let fontWeight: Font.Weight?
+//    let hapticFeedback: Bool
+//    
+//    @State private var showOriginal = true
+//    @State private var timer: Timer?
+//    
+//    init(
+//        originalText: String,
+//        toggledText: String,
+//        font: Font? = nil,
+//        fontDesign: Font.Design? = .rounded,
+//        fontWeight: Font.Weight? = .thin,
+//        hapticFeedback: Bool = true
+//    ) {
+//        self.originalText = originalText
+//        self.toggledText = toggledText
+//        self.font = font
+//        self.fontDesign = fontDesign
+//        self.fontWeight = fontWeight
+//        self.hapticFeedback = hapticFeedback
+//    }
+//    
+//    var body: some View {
+//        Text(showOriginal ? originalText : toggledText)
+//            .font(font)
+//            .fontDesign(fontDesign)
+//            .fontWeight(fontWeight)
+//            .onTapGesture {
+//                handleTap()
+//            }
+//            .onDisappear {
+//                timer?.invalidate()
+//                timer = nil
+//            }
+//    }
+//    
+//    private func handleTap() {
+//        timer?.invalidate()
+//        
+//        if hapticFeedback {
+//            triggerSomeVibration(type: .light)
+//        }
+//        
+//        withAnimation(.easeInOut(duration: 0.2)) {
+//            showOriginal.toggle()
+//        }
+//        
+//        if !showOriginal {
+//            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+//                withAnimation(.easeInOut(duration: 0.2)) {
+//                    showOriginal = true
+//                }
+//            }
+//        }
+//    }
+//}
+
+
 
 
 struct ToggleTextExample: View {
@@ -2188,5 +3226,173 @@ private func openLeftPage(proxy: ScrollViewProxy) {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     withAnimation{
         proxy.scrollTo(0, anchor: .center)
+    }
+}
+
+
+
+// Add Color Hex Extension
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue:  Double(b) / 255,
+            opacity: Double(a) / 255
+        )
+    }
+}
+
+
+// Add these helper functions
+func formatTimeNoSeconds(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "h:mm a"
+    return formatter.string(from: date)
+}
+
+
+struct ToggleText: View {
+    let originalText: String
+    let toggledText: String
+    let font: Font?
+    let fontDesign: Font.Design?
+    let fontWeight: Font.Weight?
+    let hapticFeedback: Bool
+    
+    @State private var showOriginal = true
+    @State private var timer: Timer?
+    
+    init(
+        originalText: String,
+        toggledText: String,
+        font: Font? = nil,
+        fontDesign: Font.Design? = .rounded,
+        fontWeight: Font.Weight? = .thin,
+        hapticFeedback: Bool = true
+    ) {
+        self.originalText = originalText
+        self.toggledText = toggledText
+        self.font = font
+        self.fontDesign = fontDesign
+        self.fontWeight = fontWeight
+        self.hapticFeedback = hapticFeedback
+    }
+    
+    var body: some View {
+        Text(showOriginal ? originalText : toggledText)
+            .font(font)
+            .fontDesign(fontDesign)
+            .fontWeight(fontWeight)
+            .onTapGesture {
+                handleTap()
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
+    }
+    
+    private func handleTap() {
+        timer?.invalidate()
+        
+        if hapticFeedback {
+            triggerSomeVibration(type: .light)
+        }
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showOriginal.toggle()
+        }
+        
+        if !showOriginal {
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showOriginal = true
+                }
+            }
+        }
+    }
+}
+
+struct ExternalToggleText: View {
+    let originalText: String
+    let toggledText: String
+    let font: Font?
+    let fontDesign: Font.Design?
+    let fontWeight: Font.Weight?
+    let hapticFeedback: Bool
+    
+    @State private var showOriginal = true
+    @State private var timer: Timer?
+    @Binding var externalTrigger: Bool
+    
+    init(
+        originalText: String,
+        toggledText: String,
+        externalTrigger: Binding<Bool> = .constant(false), // Default to constant false if not provided
+        font: Font? = nil,
+        fontDesign: Font.Design? = .rounded,
+        fontWeight: Font.Weight? = .thin,
+        hapticFeedback: Bool = true
+    ) {
+        self.originalText = originalText
+        self.toggledText = toggledText
+        self._externalTrigger = externalTrigger
+        self.font = font
+        self.fontDesign = fontDesign
+        self.fontWeight = fontWeight
+        self.hapticFeedback = hapticFeedback
+    }
+    
+    var body: some View {
+        Text(showOriginal ? originalText : toggledText)
+            .font(font)
+            .fontDesign(fontDesign)
+            .fontWeight(fontWeight)
+            .onTapGesture {
+                handleTap()
+            }
+            .onChange(of: externalTrigger) { _, _ in
+                handleTap()
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
+            }
+    }
+    
+    private func handleTap() {
+        timer?.invalidate()
+        
+        if hapticFeedback {
+            triggerSomeVibration(type: .light)
+        }
+        
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showOriginal.toggle()
+        }
+        
+        if !showOriginal {
+            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showOriginal = true
+                }
+            }
+        }
     }
 }

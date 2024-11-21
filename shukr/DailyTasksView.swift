@@ -234,7 +234,7 @@ struct AddDailyTaskView: View {
                 .padding(.bottom, 20)
             
             TaskCardView(task: TaskModel(
-                mantra: mantra == "" ? "choose mantra" : mantra ?? "its nil",
+                mantra: mantra == "" ? "choose zikr" : mantra ?? "its nil",
                 mode: taskMode,
                 goal: goal
 //                sessionItems: sessionItems
@@ -269,7 +269,7 @@ struct AddDailyTaskView: View {
             Button(action: {
                 showMantraPicker.toggle()
             }) {
-                Text("Select Mantra")
+                Text("Select Zikr")
                     .font(.headline)
                     .padding()
                     .frame(maxWidth: .infinity)

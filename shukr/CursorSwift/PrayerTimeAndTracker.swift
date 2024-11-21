@@ -217,11 +217,12 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func togglePrayerCompletion(for prayer: Prayer) {
-        triggerSomeVibration(type: .light)
+        triggerSomeVibration(type: .medium)
         if let index = prayers.firstIndex(where: { $0.id == prayer.id }) {
             if(prayers[index].startTime <= Date()){
                 prayers[index].isCompleted.toggle()
                 if prayers[index].isCompleted{
+                    //show chain zikr alert?
                     setPrayerScoreFor(at: index)
                 }else{
                     prayers[index].timeAtComplete = nil
@@ -304,7 +305,8 @@ class SharedStateClass: ObservableObject {
     @Published var targetCount: String = ""
     @Published var titleForSession: String = ""
     @Published var showTopMainOrBottom: Int = 0 // 1 for top, 0 for default, -1 for bottom
-//    @Published var showingOtherPages: Bool = false
+    @Published var isDoingPostNamazZikr: Bool = false
+    @Published var showingOtherPages: Bool = false
 }
 
 
@@ -330,7 +332,7 @@ struct PrayerTimesView: View {
     @State private var showMantraSheetFromHomePage: Bool = false
     @State private var chosenMantra: String? = ""
     @State private var isAnimating: Bool = false
-    
+    @State private var showChainZikrButton: Bool = false
     
     private var startCondition: Bool{
         let timeModeCond = (sharedState.selectedMode == 1 && sharedState.selectedMinutes != 0)
@@ -342,7 +344,7 @@ struct PrayerTimesView: View {
     private func scheduleNextTransition() {
         // Cancel any existing timer to avoid duplicates
         relevantPrayerTimer?.invalidate()
-        
+
         let now = Date()
         print("\n--- Scheduling Check at \(formatTime(now)) ---")
         
@@ -377,7 +379,7 @@ struct PrayerTimesView: View {
                 withTimeInterval: nextTime.timeIntervalSinceNow,
                 repeats: false
             ) { _ in
-                print("\n🔄 Timer fired at \(self.formatTime(Date()))")
+                print("\n🔄 Timer fired at \(formatTime(Date()))")
                 // Force view refresh when timer fires
                 withAnimation {
                     self.viewModel.objectWillChange.send()
@@ -393,6 +395,9 @@ struct PrayerTimesView: View {
     var body: some View {
 //        NavigationView {
             ZStack {
+  
+                Color("bgColor")
+                    .edgesIgnoringSafeArea(.all)
                 
                 VStack(spacing: 0){
                     Color.white.opacity(0.001)
@@ -408,7 +413,6 @@ struct PrayerTimesView: View {
                         }
                     
                     Color.white.opacity(0.001)
-//                    Color.green.opacity(0.2)
                         .frame(maxWidth: .infinity)
                         .onTapGesture {
                             if isNumberEntryFocused {
@@ -430,43 +434,8 @@ struct PrayerTimesView: View {
                             handleDragEnd(translation: value.translation.height)
                         }
                 )
-                
-//                // Left edge detection for horizontal drag to previous page
-//                Color.red.opacity(0.1)
-//                    .frame(width: 30) // Narrow width for left edge
-//                    .onTapGesture {
-//                        // Optional: Add any tap behavior if needed
-//                    }
-//                    .gesture(
-//                        DragGesture()
-//                            .onEnded { value in
-//                                if value.translation.width > 50 {
-//                                    // Trigger navigation to previous TabView page
-//                                    sharedState.selectedViewPage = max(0, sharedState.selectedViewPage - 1)
-//                                }
-//                            }
-//                    )
-//                    .position(x: 15, y: UIScreen.main.bounds.height / 2) // Align it to the left edge
-//
-//                // Right edge detection for horizontal drag to next page
-//                Color.red.opacity(0.1)
-//                    .frame(width: 30) // Narrow width for right edge
-//                    .onTapGesture {
-//                        // Optional: Add any tap behavior if needed
-//                    }
-//                    .gesture(
-//                        DragGesture()
-//                            .onEnded { value in
-//                                if value.translation.width < -50 {
-//                                    // Trigger navigation to next TabView page
-//                                    sharedState.selectedViewPage = min(2, sharedState.selectedViewPage + 1)
-//                                }
-//                            }
-//                    )
-//                    .position(x: UIScreen.main.bounds.width - 15, y: UIScreen.main.bounds.height / 2) // Align to right edge
 
-
-                // This is a zstack with really just the pulseCircle. The roundedrectangle just to push up.
+                // This is a zstack with SwipeZikrMenu, pulseCircle, (and roundedrectangle just to push up.)
                 ZStack {
                     VStack {
                         // state 1
@@ -498,20 +467,13 @@ struct PrayerTimesView: View {
                                     }
                                     isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
                                 }
-                                .fullScreenCover(isPresented: $showTasbeehPage) {
-                                    tasbeehView(isPresented: $showTasbeehPage/*, autoStart: true*/)
-                                        .onAppear{
-                                            print("showNewPage (from tabview): \(showTasbeehPage)")
-                                        }
-                                        .transition(.blurReplace) // Apply fade-in effect
-                                }
                                 
                                 // the circles we see
                                 CircularProgressView(progress: (0))
                                 
                                 Circle()
-                                    .stroke(lineWidth: 24)
-                                    .frame(width: 200, height: 200)
+                                    .stroke(lineWidth: 2)
+                                    .frame(width: 222, height: 222)
                                     .foregroundStyle(startCondition ?
                                                      LinearGradient(
                                                         gradient: Gradient(colors: colorScheme == .dark ?
@@ -535,11 +497,11 @@ struct PrayerTimesView: View {
                         
                         // state 2
                         if !showTop, let relevantPrayer = viewModel.prayers.first(where: {
-                            !$0.isCompleted && $0.startTime <= Date() && $0.endTime >= Date()
+                            !$0.isCompleted && $0.startTime <= Date() && $0.endTime >= Date() // current prayer if not completed
                         }) ?? viewModel.prayers.first(where: {
-                            !$0.isCompleted && $0.startTime > Date()
+                            !$0.isCompleted && $0.startTime > Date() // next up prayer
                         }) ?? viewModel.prayers.first(where: {
-                            !$0.isCompleted && $0.endTime < Date()
+                            !$0.isCompleted && $0.endTime < Date() // missed prayers
                         }) {
                             PulseCircleView(prayer: relevantPrayer) {
                                 viewModel.togglePrayerCompletion(for: relevantPrayer)
@@ -556,6 +518,17 @@ struct PrayerTimesView: View {
                                     }
                             )
                         }
+                        else if !showTop{
+                            ZStack{
+                                CircularProgressView(progress: 0)
+                                VStack{
+                                    Text("done.")
+//                                    Text("fajr is at 6:00")
+//                                        .font(.caption)
+                                }
+                            }
+                            
+                        }
                         
                         // state 3
                         if showBottom {
@@ -567,17 +540,24 @@ struct PrayerTimesView: View {
                     }
                     .offset(y: dragOffset)
                 }
+                .fullScreenCover(isPresented: $showTasbeehPage) {
+                    tasbeehView(isPresented: $showTasbeehPage/*, autoStart: true*/)
+                        .onAppear{
+                            print("showNewPage (from tabview): \(showTasbeehPage)")
+                        }
+                        .transition(.blurReplace) // Apply fade-in effect
+                }
                 
                 
                 Group {
                     // in the case of having a valid location (everything except pulsecirlce):
                     if viewModel.hasValidLocation {
                         VStack {
-                            // This ZStack holds the showTopChevron topbar or the mantra picker.
+                            // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
                             ZStack(alignment: .top) {
-                                // select mantra button
+                                // select mantra button (zikrFlag1)
                                 if showTop{
-                                    Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "select mantra")")
+                                    Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "select zikr")")
                                         .frame(width: 150, height: 40)
                                         .font(.footnote)
                                         .fontDesign(.rounded)
@@ -611,6 +591,9 @@ struct PrayerTimesView: View {
                                         }
                                 }
                                 
+                                // floating chain zikr button
+                                FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
+                                
                                 // top bar
                                 TopBar(viewModel: viewModel,/* /*showingDuaPageBool: $showingDuaPage , showingHistoryPageBool: $showingHistoryPage, */showingTasbeehPageBool: $showingTasbeehPage, */showTop: $showTop, showBottom: $showBottom, dragOffset: dragOffset)
                                         .transition(.opacity)
@@ -619,46 +602,37 @@ struct PrayerTimesView: View {
                                                         
                             Spacer()
                             
-                            // This VStack holds the expandable prayer tracker list
+                            // This VStack holds the PrayerTracker list
                             VStack {
                                 // expandable prayer tracker (dynamically shown)
                                 if showBottom {
+                                    let spacing: CGFloat = 6
                                     VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                                         ForEach(viewModel.prayers.indices, id: \.self) { index in
                                             let prayer = viewModel.prayers[index]
                                             
-                                            if prayer.isCompleted {
-                                                CompletedPrayerListItem(prayer: prayer, toggleCompletion: {
+                                            PrayerButton(
+                                                showChainZikrButton: $showChainZikrButton,
+                                                prayer: prayer,
+                                                toggleCompletion: {
                                                     viewModel.togglePrayerCompletion(for: prayer)
                                                     scheduleNextTransition()
-                                                }, viewModel: viewModel)
-                                                .padding(.horizontal)
-                                                .background(Color(UIColor.secondarySystemGroupedBackground))  // Dynamic background color
-                                            } else if prayer.startTime > Date() {
-                                                UpcomingPrayerListItem(prayer: prayer)
-                                                .padding(.horizontal)
-                                                .background(Color(UIColor.secondarySystemGroupedBackground))  // Dynamic background color
-                                            } else {
-                                                IncompletePrayerListItem(prayer: prayer, toggleCompletion: {
-                                                    viewModel.togglePrayerCompletion(for: prayer)
-                                                    scheduleNextTransition()
-                                                }, viewModel: viewModel)
-                                                .padding(.horizontal)
-                                                .background(Color(UIColor.secondarySystemGroupedBackground))  // Dynamic background color
-                                            }
+                                                },
+                                                viewModel: viewModel
+                                            )
                                             
-                                            // Add divider after each item except the last one
-                                            if index < viewModel.prayers.count - 1 {
-                                                Divider()
-                                                    .foregroundStyle(Color(UIColor.separator))  // Dynamic divider color
-                                                    .padding(.leading, 30+16)
+                                            .padding(.bottom, prayer.name == "Isha" ? 0 : spacing)
+                                            
+                                            if(prayer.name != "Isha"){
+                                                Divider().foregroundStyle(.secondary)
+                                                    .padding(.top, -spacing/2 - 0.5)
+                                                    .padding(.horizontal, 25)
                                             }
                                         }
                                     }
-                                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .shadow(color: .black.opacity(0.1), radius: 10)
-                                    .frame(width: 280)
+                                    .padding()
+                                    .background( NeumorphicBorder() )
+                                    .frame(width: 260)
                                     .transition(.move(edge: .bottom).combined(with: .opacity))
                                     .highPriorityGesture(
                                         DragGesture()
@@ -762,18 +736,11 @@ struct PrayerTimesView: View {
                 NotificationCenter.default.removeObserver(self)
                 timeDisplayTimer?.invalidate()
                 timeDisplayTimer = nil
-//                print("--------------hey i dis")
             }
         //}
 //        .navigationBarBackButtonHidden()
     }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm:ss a"
-        return formatter.string(from: date)
-    }
-    
+        
     private func handleDragEnd(translation: CGFloat) {
         let threshold: CGFloat = 30
 
@@ -802,74 +769,7 @@ struct PrayerTimesView: View {
 
         print("translation: \(translation)")
     }
-
     
-//    private func handleDragEnd(translation: CGFloat) {
-//        let threshold: CGFloat = 30
-//
-//        // Specify the animation in withAnimation
-//        withAnimation(.bouncy(duration: 0.5)) {
-//            if !showBottom && !showTop {
-//                if translation > threshold {
-//                    showTop = true
-//                    triggerSomeVibration(type: .medium)
-//                } else if translation < -threshold {
-//                    showBottom = true
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//            else if showBottom && !showTop {
-//                if translation > threshold {
-//                    showBottom = false
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//            else if showTop && !showBottom {
-//                if translation < -threshold {
-//                    showTop = false
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//        }
-//        dragOffset = 0
-//        print("translation: \(translation)")
-//
-//    }
-//    private func handleDragEnd(translation: CGFloat) {
-//        let threshold: CGFloat = 30
-//        
-//        withAnimation/*(.spring(response: 0.3, dampingFraction: 0.7))*/ {
-//            if !showBottom && !showTop {
-//                if translation > threshold {
-//                    showTop = true
-//                    triggerSomeVibration(type: .medium)
-//                } else if translation < -threshold {
-//                    showBottom = true
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//            else if showBottom && !showTop {
-//                if translation > threshold {
-//                    showBottom = false
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//            else if showTop && !showBottom {
-//                if translation < -threshold {
-//                    showTop = false
-//                    triggerSomeVibration(type: .medium)
-//                }
-//            }
-//
-////            if translation < -threshold && !showBottom && !showTop {
-////                showBottom = true
-////            } else if translation > threshold && showBottom && !showTop {
-////                showBottom = false
-////            }
-//            dragOffset = 0
-//            print("translation: \(translation)")
-//        }
-//    }
 }
 
 struct ContentView3_Previews: PreviewProvider {
@@ -882,144 +782,6 @@ struct ContentView3_Previews: PreviewProvider {
 // Add notification name
 extension Notification.Name {
     static let prayersUpdated = Notification.Name("prayersUpdated")
-}
-
-// Add these helper functions
-private func formatTimeNoSeconds(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a"
-    return formatter.string(from: date)
-}
-
-// Updated timeUntilStart function
-private func timeUntilStart(_ startTime: Date) -> String {
-    let interval = startTime.timeIntervalSince(Date())
-    let hours = Int(interval) / 3600
-    let minutes = (Int(interval) % 3600) / 60
-    let seconds = Int(interval) % 60
-
-    if hours > 0 {
-        return "in \(hours)h \(minutes)m"
-    } else if minutes > 0 {
-        return "in \(minutes)m"
-    } else {
-        return "in \(seconds)s"
-    }
-}
-
-private var listItemPadding: CGFloat{
-    return 10
-}
-
-struct IncompletePrayerListItem: View {
-    let prayer: Prayer
-    let toggleCompletion: () -> Void
-    let viewModel: PrayerViewModel
-
-    var body: some View {
-        HStack (alignment: .center) {
-            Image(systemName: prayer.isCompleted ? "checkmark.circle.fill" : "circle")
-                .foregroundColor(viewModel.getColorForPrayerScore(prayer.numberScore))
-                .opacity(prayer.startTime <= Date() ? 1 : 0.3)
-                .frame(width: 30, alignment: .leading)
-                .onTapGesture {
-                    toggleCompletion()
-                }
-            VStack(alignment: .leading) {
-                Text(prayer.name)
-                    .font(.headline)
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                Text(formatTimeNoSeconds(prayer.startTime))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            Spacer()
-            ChevronTap()
-        }
-        .padding(.vertical, listItemPadding)
-    }
-    
-    private var isMissed: Bool {
-        !prayer.isCompleted && prayer.endTime < Date()
-    }
-}
-
-struct UpcomingPrayerListItem: View {
-    let prayer: Prayer
-
-    var body: some View {
-        HStack (alignment: .center) {
-            Image(systemName: "circle")
-                .foregroundColor(.gray.opacity(0.2))
-                .frame(width: 30, alignment: .leading)
-            VStack(alignment: .leading) {
-                Text(prayer.name)
-                    .font(.headline)
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-            }
-            Spacer()
-            ToggleText(originalText: formatTimeNoSeconds(prayer.startTime), toggledText: timeUntilStart(prayer.startTime), font: .subheadline, fontDesign: .rounded, fontWeight: .light, hapticFeedback: true)
-                .foregroundColor(.primary)
-                .frame(width: 100, alignment: .trailing)
-
-            ChevronTap()
-        }
-        .padding(.vertical, listItemPadding)
-    }
-}
-
-struct CompletedPrayerListItem: View {
-    let prayer: Prayer
-    let toggleCompletion: () -> Void
-    let viewModel: PrayerViewModel
-
-    var body: some View {
-        HStack (alignment: .center) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(viewModel.getColorForPrayerScore(prayer.numberScore))
-                .onTapGesture {
-                    toggleCompletion()
-                }
-                .frame(width: 30, alignment: .leading)
-
-            VStack(alignment: .leading) {
-                Text(prayer.name)
-                    .font(.headline)
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                if let completedTime = prayer.timeAtComplete {
-                    Text("@ \(formatTimeNoSeconds(completedTime))")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            }
-            Spacer()
-            VStack(alignment: .trailing) {
-                if let engScore = prayer.englishScore, let numScore = prayer.numberScore {
-                    Text("\(engScore)")
-//                    Text("\(Int(numScore * 100))%")
-                }
-            }
-            .font(.subheadline)
-            .foregroundColor(.secondary)
-            .frame(width: 100, alignment: .trailing)
-            ChevronTap()
-        }
-        .padding(.vertical, listItemPadding)
-    }
-}
-
-struct ChevronTap: View {
-    var body: some View {
-        Image(systemName: "chevron.right")
-            .foregroundColor(.gray)
-            .onTapGesture {
-                triggerSomeVibration(type: .medium)
-                print("chevy hit")
-            }
-    }
 }
 
 struct TopBar: View {
@@ -1174,34 +936,7 @@ struct TopBar: View {
         ZStack{
             VStack{
                 if let cityName = viewModel.cityName {
-                    
-//                    HStack {
-//                        Image(systemName: !showBottom && (dragOffset > 10 || showTop) ? "circle.hexagonpath" : "location.fill")
-//                            .foregroundColor(.secondary)
-//                        Text(!showBottom && (dragOffset > 10 || showTop) ? "Tasbeeh - \(tasbeehModeName)" : cityName)
-//                    }
-//                    .opacity(!showBottom && dragOffset > 10 ? 1 : 1 - Double(dragOffset / 10))
-//                    .font(.caption)
-//                    .fontDesign(.rounded)
-//                    .fontWeight(.thin)
-//                    .frame(height: 24, alignment: .center)
-//                    .offset(y: !showBottom && dragOffset > 0 ? dragOffset : 0)
-//                    .animation(.easeInOut, value: dragOffset)
-                    
                     VStack {
-//                        if ((dragOffset > 0 && !showBottom) || showTop){
-//                            Image(systemName: "circle.hexagonpath")
-//                                .foregroundColor(.secondary)
-////                                .transition(.blurReplace)
-//                            Text("Tasbeeh - \(tasbeehModeName)")
-////                                .transition(.blurReplace)
-//                        }
-//                        else{
-//                            Image(systemName: "location.fill")
-//                                .foregroundColor(.secondary)
-//                            Text(cityName)
-//                        }
-                        
                         ZStack{
                                 // tasbeeh label
                                 HStack{
@@ -1232,20 +967,6 @@ struct TopBar: View {
                     .offset(y: !showBottom && (dragOffset > 0 || showTop) ? dragOffset : 0)
                     .animation(.easeInOut, value: dragOffset > 0 && !showBottom)
                     
-                    
-//                    .transition(.scale)
-//                    HStack {
-//                        Image(systemName: showTop ? "circle.hexagonpath" : "location.fill")
-//                            .foregroundColor(.secondary)
-//                        Text(showTop ? "Tasbeeh - \(tasbeehModeName)" : cityName)
-//                    }
-//                    .font(.caption)
-//                    .fontDesign(.rounded)
-//                    .fontWeight(.thin)
-//                    .frame(height: 24, alignment: .center)
-//                    .animation(.easeInOut, value: showTop)
-////                    .background(.blue)
-
                 } else {
                     HStack {
                         Image(systemName: "location.circle")
@@ -1282,19 +1003,19 @@ struct TopBar: View {
                             
                             if expandButtons{
                                 
-                                Button(action: {
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation {
-//                                        showingTasbeehPageBool = true
-                                        showBottom = false
-                                        showTop.toggle()
-                                    }
-                                }) {
-                                    Image(systemName: "circle.hexagonpath")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
+//                                Button(action: {
+//                                    triggerSomeVibration(type: .light)
+//                                    withAnimation {
+////                                        showingTasbeehPageBool = true
+//                                        showBottom = false
+//                                        showTop.toggle()
+//                                    }
+//                                }) {
+//                                    Image(systemName: "circle.hexagonpath")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
                                 
                                 Button(action: {
                                     triggerSomeVibration(type: .light)
@@ -1360,35 +1081,55 @@ struct TopBar: View {
     }
 }
 
-struct BlankCircleCopy: View {
-    var body: some View {
-        // Main circle (always visible)
-        Circle()
-            .stroke(lineWidth: 24)
-            .frame(width: 200, height: 200)
-            .foregroundColor(Color("wheelColor"))
-            .shadow(color: .black.opacity(0.1), radius: 10, x: 10, y: 10)
-        // Inner gradient circle
-        Circle()
-            .stroke(lineWidth: 0.34)
-            .frame(width: 175, height: 175)
-            .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black.opacity(0.3), .clear]), startPoint: .bottomTrailing, endPoint: .topLeading))
-            .overlay {
-                Circle()
-                    .stroke(.black.opacity(0.1), lineWidth: 2)
-                    .blur(radius: 5)
-                    .mask {
-                        Circle()
-                            .foregroundStyle(LinearGradient(gradient: Gradient(colors: [.black, .clear]), startPoint: .topLeading, endPoint: .bottomTrailing))
-                    }
-            }
-    }
-}
-
-
 /*
  Things i added:
  - dimmer slider when inactivity toggle on
  - select mantra from pause screen
  -
  */
+
+struct FloatingChainZikrButton: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+    @State private var chainButtonPressed = false
+    @Binding var showTasbeehPage: Bool
+    @Binding var showChainZikrButton: Bool
+
+    var body: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                triggerSomeVibration(type: .success)
+                chainButtonPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                chainButtonPressed = false
+                sharedState.isDoingPostNamazZikr = true
+                showTasbeehPage = true
+                sharedState.showingOtherPages = true
+            }
+        }) {
+            ZStack {
+                // Background
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.gray.opacity(0.08))
+                
+                // Outline
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
+                
+                // Content
+                Text("post prayer zikr?")
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 150, height: 50)
+            .shadow(radius: 10)
+            .scaleEffect(chainButtonPressed ? 0.95 : 1.0)
+        }
+        .padding()
+        .offset(y: showChainZikrButton ? 50 : 0)
+        .opacity(showChainZikrButton ? 1 : 0)
+        .disabled(!showChainZikrButton)
+        .animation(.easeInOut, value: showChainZikrButton)
+    }
+}
