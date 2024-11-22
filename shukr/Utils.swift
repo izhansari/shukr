@@ -3000,6 +3000,146 @@ struct RingStyle9 {
             CircularProgressView(progress: 0)
                         
             if isCurrentPrayer {
+                
+                Circle()
+                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .fill(
+        //                .red
+                        Color("bgColor")
+                        //indent
+                            .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -2, y: 2))
+                            .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 2, y: -2))
+                    )
+                    //outdented
+                    .shadow(color: Color("NeuDarkShad"), radius: 1, x: -2, y: 2)
+                    .shadow(color: Color("NeuLightShad"), radius: 1, x: 2, y: -2)
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+
+                
+//                // Main progress arc with gradient
+//                Circle()
+//                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
+//                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
+//                    .stroke(style: StrokeStyle(
+//                        lineWidth: 10,
+//                        lineCap: .round
+//                    ))
+//                    .frame(width: 200, height: 200)
+//                    .rotationEffect(.degrees(-90))
+//                    .foregroundStyle(
+//                        AngularGradient(
+//                            gradient: Gradient(colors: [
+//                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
+//                                progressColor
+//                            ]),
+//                            center: .center,
+//                            startAngle: .degrees(0),
+//                            endAngle: .degrees((360 * clockwiseProgress))
+//                        )
+//                    )
+//                    .opacity(0.6)
+//                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
+                
+                // Ring tip with shadow
+                Circle()
+                    .trim(from: finalAnimation >= 1 ?  0 :     clockwiseProgress - 0.001,
+                          to:   finalAnimation >= 1 ?   0 :     clockwiseProgress)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(finalAnimation > 0.05 ? 1 - finalAnimation : 1) // Fade out tip
+                    .zIndex(1)
+                
+                // dot at the top for the animation so we can make everything opacity 0 and keep animation crisp.
+                Circle()
+                    .trim(from:  0,
+                          to:   0.001)
+                    .stroke(style: StrokeStyle(
+                        lineWidth: 10,
+                        lineCap: .round
+                    ))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(progressColor)
+                    .opacity(clockwiseProgress >= 0.99 || clockwiseProgress <= 0.01 ? 1 : 0)
+            
+                // Thin pulsing band
+                Circle()
+                    .stroke(lineWidth: 2)
+                    .frame(width: 222, height: 222)
+                    .opacity(isAnimating ? -0.15 : 1)
+                    .foregroundStyle(colorScheme == .dark ? progressColor.opacity(0.5) : progressColor.opacity(0.7))
+            }
+            
+
+
+            
+            // Qibla indicator
+            Circle()
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+//                .foregroundStyle(progressColor == .white ? .gray : .white)
+                .foregroundStyle(colorScheme == .dark ? .white : isCurrentPrayer ? .white : .gray)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
+        }
+    }
+}
+
+struct RingStyle9old {
+    let prayer: Prayer
+    let progress: Double
+    let progressColor: Color
+    let isCurrentPrayer: Bool
+    let isAnimating: Bool
+    let colorScheme: ColorScheme
+    let isQiblaAligned: Bool
+    
+    private var clockwiseProgress: Double {
+        1 - progress
+    }
+    
+    private var timeRemaining: TimeInterval {
+        prayer.endTime.timeIntervalSinceNow
+    }
+    
+    private var isInFinalSeconds: Bool {
+        timeRemaining < 3  // Changed from 6 to 4 (total time needed)
+    }
+
+    private var finalAnimation: Double {
+        if isInFinalSeconds {
+            let progress = 1 - ((timeRemaining - 0.4) / 3)  // Changed from (timeRemaining - 2) / 4
+            return min(max(pow(progress, 7), 0), 1)
+        }
+        return 0
+    }
+    
+    private func tipPosition(progress: Double, radius: Double) -> CGPoint {
+        let progressAngle = Angle(degrees: (360.0 * progress) - 90.0)
+        return CGPoint(
+            x: radius * cos(progressAngle.radians),
+            y: radius * sin(progressAngle.radians)
+        )
+    }
+    
+    var body: some View {
+        ZStack {
+            // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
+            CircularProgressView(progress: 0)
+                        
+            if isCurrentPrayer {
                 // Main progress arc with gradient
                 Circle()
                     .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),

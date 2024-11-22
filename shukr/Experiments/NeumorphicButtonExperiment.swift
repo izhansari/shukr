@@ -181,6 +181,135 @@ struct NeumorphicBorder: View {
     }
 }
 
+
+
+struct NeumorphicProgressRing: View{
+    let progress: Double
+    
+    var body: some View {
+        
+        Circle()
+            .trim(from: 0,
+                  to: CGFloat(progress)
+            )
+            .stroke(style: StrokeStyle(
+                lineWidth: 10,
+                lineCap: .round
+            ))
+            .fill(
+//                .red
+                Color("bgColor")
+                //indent
+//                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: 1))
+//                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: -1))
+            )
+            //outdented
+            .shadow(color: Color("NeuDarkShad"), radius: 1, x: -1, y: 1)
+            .shadow(color: Color("NeuLightShad"), radius: 1, x: 1, y: -1)
+            .frame(width: 200, height: 200)
+            .rotationEffect(.degrees(-90))
+    }
+
+}
+
+struct NeumorphicProgressRing2: View{
+    let progress: Double
+    
+    var body: some View {
+        ZStack{
+            
+            Circle()
+                .trim(from: 0,
+                      to: CGFloat(progress)
+                )
+                .stroke(style: StrokeStyle(
+                    lineWidth: 14,
+                    lineCap: .round
+                ))
+                .fill(
+                    .green
+//                    Color("bgColor")
+                    //indent
+                    //                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: 1))
+                    //                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: -1))
+                )
+            //outdented
+                .frame(width: 200, height: 200)
+                .rotationEffect(.degrees(-90))
+                .opacity(0.5)
+            
+            Circle()
+                .trim(from: 0,
+                      to: CGFloat(progress)
+                )
+                .stroke(style: StrokeStyle(
+                    lineWidth: 10,
+                    lineCap: .round
+                ))
+                .fill(
+                    //                .red
+                    Color("bgColor")
+                    //indent
+                                        .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: 1))
+                                        .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: -1))
+                )
+            //outdented
+//                .shadow(color: Color("NeuDarkShad"), radius: 1, x: -1, y: 1)
+//                .shadow(color: Color("NeuLightShad"), radius: 1, x: 1, y: -1)
+                .frame(width: 200, height: 200)
+                .rotationEffect(.degrees(-90))
+            
+
+        }
+    }
+
+}
+
+#Preview {
+    @Previewable @State var progress: Double = 0.5
+    
+    ZStack {
+        Color("bgColor")
+            .ignoresSafeArea()
+        
+        VStack(spacing: 16) {
+            
+            NeumorphicProgressRing2(progress: progress)
+
+            
+            NeumorphicProgressRing(progress: progress)
+                        
+            
+            Circle()
+                .trim(from: 0,
+                      to: CGFloat(1)
+                )
+                .stroke(style: StrokeStyle(
+                    lineWidth: 10,
+                    lineCap: .round
+                ))
+                .fill(Color("bgColor")
+                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: 1, y: 1))
+                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: -1, y: -1))
+                )
+                .shadow(color: Color("NeuDarkShad"), radius: 1, x: 1, y: 1)
+                .shadow(color: Color("NeuLightShad"), radius: 1, x: -1, y: -1)
+                .frame(width: 200, height: 200)
+            
+            // Inner shadow implementation
+            Circle()
+                .fill(Color("bgColor")
+                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: -1))
+                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: 1))
+                )
+                .frame(width: 7, height: 7)
+            
+        }
+        .padding()
+    }
+}
+
+
 struct NeumorphicBead: View {
     var body: some View {
 //        Circle()
@@ -226,7 +355,7 @@ struct NeumorphicBead: View {
             PrayerButton(showChainZikrButton: $dummyBool, prayer: previewFajr, toggleCompletion: {}, viewModel: dummyViewModel)
             
             // Inner shadow implementation
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 0)
                 .fill(Color("bgColor")
                     .shadow(.inner(color: Color("NeuDarkShad"), radius: 3, x: -5, y: -5))
                     .shadow(.inner(color: Color("NeuLightShad"), radius: 3, x: 5, y: 5))
@@ -234,7 +363,7 @@ struct NeumorphicBead: View {
                 .frame(width: 200, height: 100)
             
             // Drop shadow implementation
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: 0)
                 .fill(Color("bgColor"))
                 .shadow(color: Color("NeuDarkShad"), radius: 3, x: 5, y: 5)
                 .shadow(color: Color("NeuLightShad"), radius: 3, x: -5, y: -5)

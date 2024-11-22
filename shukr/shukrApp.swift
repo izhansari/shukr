@@ -23,7 +23,8 @@ struct shukrApp: App {
             MantraModel.self,
             TaskModel.self,
             DuaModel.self,
-            PrayerModel.self
+            PrayerModel.self,
+            Prayer.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -121,74 +122,74 @@ struct shukrApp: App {
 }
 
 
-import SwiftUI
+//import SwiftUI
 
-struct SwipeNavView: View {
-    @EnvironmentObject var sharedState: SharedStateClass
-    @SceneStorage("selectedPage") private var selectedPage: Int = 1 // Persist selected page
-    
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(0..<3) { index in
-                        Group {
-                            switch index {
-                            case 0:
-                                HistoryPageView()
-                                    .id(index)
-                            case 1:
-                                PrayerTimesView()
-                                    .id(index)
-                            case 2:
-                                DuaPageView()
-                                    .id(index)
-                            default:
-//                                EmptyView()
-                                
-                                    Rectangle()
-                                        .fill(Color(hue: Double(index) / 10, saturation: 0.5, brightness: 0.8).gradient)
-                                        .overlay(
-                                            Text("\(index)").foregroundColor(.black)
-                                        )
-                                        .frame(width: UIScreen.main.bounds.width) // Adjust the frame to match the screen width
-                                        .id(index)
-                                        .containerRelativeFrame(.horizontal, alignment: .center)
-                                
-                            }
-                        }
-                        .containerRelativeFrame(.horizontal, alignment: .center)
-                    }
-                }
-            }
-            .scrollDismissesKeyboard(.immediately)
-//            .ignoresSafeArea()
-            .scrollTargetLayout()
-            .scrollTargetBehavior(.paging)
-//            .scrollBounceBehavior(.basedOnSize)
-            .defaultScrollAnchor(.center) // this we will show the middle of the tab view on load.
-            .scrollIndicators(.never)
-            .scrollPosition(id: .init(get: {
-                selectedPage
-            }, set: { newPosition in
-                if let newPos = newPosition {
-                    print("was \(selectedPage) and now is \(newPos)")
-                    selectedPage = newPos
-                    sharedState.selectedViewPage = newPos
-                }
-            }))
-            .onAppear {
-                UIScrollView.appearance().bounces = false
-            }
-        }
-    }
-}
+//struct SwipeNavView: View {
+//    @EnvironmentObject var sharedState: SharedStateClass
+//    @SceneStorage("selectedPage") private var selectedPage: Int = 1 // Persist selected page
+//    
+//    var body: some View {
+//        ScrollViewReader { proxy in
+//            ScrollView(.horizontal) {
+//                LazyHStack(spacing: 0) {
+//                    ForEach(0..<3) { index in
+//                        Group {
+//                            switch index {
+//                            case 0:
+//                                HistoryPageView()
+//                                    .id(index)
+//                            case 1:
+//                                PrayerTimesView()
+//                                    .id(index)
+//                            case 2:
+//                                DuaPageView()
+//                                    .id(index)
+//                            default:
+////                                EmptyView()
+//                                
+//                                    Rectangle()
+//                                        .fill(Color(hue: Double(index) / 10, saturation: 0.5, brightness: 0.8).gradient)
+//                                        .overlay(
+//                                            Text("\(index)").foregroundColor(.black)
+//                                        )
+//                                        .frame(width: UIScreen.main.bounds.width) // Adjust the frame to match the screen width
+//                                        .id(index)
+//                                        .containerRelativeFrame(.horizontal, alignment: .center)
+//                                
+//                            }
+//                        }
+//                        .containerRelativeFrame(.horizontal, alignment: .center)
+//                    }
+//                }
+//            }
+//            .scrollDismissesKeyboard(.immediately)
+////            .ignoresSafeArea()
+//            .scrollTargetLayout()
+//            .scrollTargetBehavior(.paging)
+////            .scrollBounceBehavior(.basedOnSize)
+//            .defaultScrollAnchor(.center) // this we will show the middle of the tab view on load.
+//            .scrollIndicators(.never)
+//            .scrollPosition(id: .init(get: {
+//                selectedPage
+//            }, set: { newPosition in
+//                if let newPos = newPosition {
+//                    print("was \(selectedPage) and now is \(newPos)")
+//                    selectedPage = newPos
+//                    sharedState.selectedViewPage = newPos
+//                }
+//            }))
+//            .onAppear {
+//                UIScrollView.appearance().bounces = false
+//            }
+//        }
+//    }
+//}
 
 // Preview provider
-struct SwipeNavView_Previews: PreviewProvider {
-    static var previews: some View {
-        SwipeNavView()
-            .environmentObject(SharedStateClass())
-            .environment(\.colorScheme, .dark)
-    }
-}
+//struct SwipeNavView_Previews: PreviewProvider {
+//    static var previews: some View {
+//        SwipeNavView()
+//            .environmentObject(SharedStateClass())
+//            .environment(\.colorScheme, .dark)
+//    }
+//}
