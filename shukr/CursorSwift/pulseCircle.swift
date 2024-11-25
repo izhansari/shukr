@@ -33,7 +33,7 @@ struct PrayerArc {
 struct PulseCircleView: View {
     @EnvironmentObject var sharedState: SharedStateClass
 
-    let prayer: Prayer
+    let prayer: PrayerModel
     let toggleCompletion: () -> Void
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 7
     
@@ -565,7 +565,7 @@ struct PulseCircleView_Previews: PreviewProvider {
     static var previews: some View {
         let calendar = Calendar.current
         let now = Date()
-        let prayer = Prayer(
+        let prayer = PrayerModel(
             name: "Asr",
             startTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now,
             endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
@@ -581,7 +581,7 @@ struct PulseCircleView_Previews: PreviewProvider {
     }
 }
 
-extension Prayer {
+extension PrayerModel {
     func getAverageDuration() -> TimeInterval {
         let durations = UserDefaults.standard.array(forKey: "prayerDurations_\(name)") as? [TimeInterval] ?? []
         return durations.isEmpty ? 0 : durations.reduce(0, +) / Double(durations.count)

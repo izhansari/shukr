@@ -17,6 +17,7 @@ struct HistoryPageView: View {
     
     @State private var selectedDateIndex: Int = 0
     @State private var showAddTaskScreen: Bool = false
+    @State private var dailyStatBool = true
     
     private var calendar: Calendar { Calendar.current }
     
@@ -34,79 +35,94 @@ struct HistoryPageView: View {
     private func exitPage() {
         triggerSomeVibration(type: .light)
         withAnimation {
-            //                                        showingHistoryPageBool = true
+            //showingHistoryPageBool = true
             sharedState.selectedViewPage = 1
         }
     }
     
     var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Spacer()
-                Button(action: {
-                    exitPage()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 24))
-                        .foregroundColor(.gray)
-                        .padding(.vertical, 7)
+        ZStack{
+            VStack(alignment: .leading) {
+                HStack {
+                    DailyStatToggleView(dailyStatBool: $dailyStatBool) //BOokmark2
+//                        .opacity(!showAddTaskScreen ? 1 : 0)
+//                        .animation(.easeInOut, value: dailyStatBool)
+                        .padding()
+
+                    Spacer()
+
+                    Button(action: {
+                        exitPage()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 24))
+                            .foregroundColor(.gray)
+                            .padding(.vertical, 7)
+                    }
+                    .padding()
                 }
-            }
-            
-            
-            Text("Tasks")
-                .font(.title)
-                .fontWeight(.thin)
-                .padding(.leading, 30)
-            
-//            DailyTasksView(showAddTaskScreen: $showAddTaskScreen)
-//                .padding(.bottom, 15)
+                
 
-
-            Text("Sessions")
-                .font(.title)
-                .fontWeight(.thin)
-                .padding(.leading, 30)
-            
-            // Fixed date label that updates with scroll
-//            Text(dateLabel(for: availableDates[safe: selectedDateIndex] ?? Date()))
-            Text(myDateLabel)
-                .font(.subheadline)
-                .underline()
-                .foregroundStyle(.green)
-                .bold()
-                .frame(height: 50)
-                .frame(maxWidth: .infinity)
-            
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(Array(availableDates.enumerated()), id: \.element) { index, date in
-                        DayView(date: date, sessions: sessions(for: date))
-                            .frame(width: UIScreen.main.bounds.width)
-                            .containerRelativeFrame(.horizontal, alignment: .center)
+                Text("Tasks")
+                    .font(.title)
+                    .fontWeight(.thin)
+                    .padding(.leading, 30)
+                
+                DailyTasksView(showAddTaskScreen: $showAddTaskScreen)
+                    .padding(.bottom, 15)
+                
+                
+                Text("Sessions")
+                    .font(.title)
+                    .fontWeight(.thin)
+                    .padding(.leading, 30)
+                
+                // Fixed date label that updates with scroll
+                //            Text(dateLabel(for: availableDates[safe: selectedDateIndex] ?? Date()))
+                Text(myDateLabel)
+                    .font(.subheadline)
+                    .underline()
+                    .foregroundStyle(.green)
+                    .bold()
+                    .frame(height: 50)
+                    .frame(maxWidth: .infinity)
+                
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(Array(availableDates.enumerated()), id: \.element) { index, date in
+                            DayView(date: date, sessions: sessions(for: date))
+                                .frame(width: UIScreen.main.bounds.width)
+                                .containerRelativeFrame(.horizontal, alignment: .center)
+                        }
                     }
                 }
+                .scrollTargetLayout()
+                .scrollTargetBehavior(.paging)
+                .defaultScrollAnchor(.trailing) // this is how we get it to show middle page on load.
+                .scrollPosition(id: .init(get: {
+                    selectedDateIndex
+                }, set: { newPosition in
+                    if let newPos = newPosition {
+                        selectedDateIndex = newPos
+                    }
+                }))
             }
-            .scrollTargetLayout()
-            .scrollTargetBehavior(.paging)
-            .defaultScrollAnchor(.trailing) // this is how we get it to show middle page on load.
-            .scrollPosition(id: .init(get: {
-                selectedDateIndex
-            }, set: { newPosition in
-                if let newPos = newPosition {
-                    selectedDateIndex = newPos
-                }
-            }))
-        }
-        .onAppear {
-            // Set initial index to the last item (most recent date)
-            selectedDateIndex = 0
-        }
-        
-        ZStack{
-            if showAddTaskScreen {
+            .onAppear {
+                // Set initial index to the last item (most recent date)
+                selectedDateIndex = 0
+            }
+            .sheet(isPresented: $showAddTaskScreen) {
                 AddDailyTaskView(isPresented: $showAddTaskScreen)
             }
+            .onChange(of: showAddTaskScreen) { _, new in
+                print("$showAddTaskScreen: \(new)")
+            }
+
+//            if showAddTaskScreen {
+//                AddDailyTaskView(isPresented: $showAddTaskScreen)
+//                    .zIndex(1)
+//            }
+            
         }
     }
     
@@ -1054,20 +1070,34 @@ func formatTime(_ time: TimeInterval) -> String {
 
 
 struct DailyStatToggleView: View {
-    // right now it pulls the stat by
+
     @Environment(\.modelContext) private var context
-    @Query private var allSessionItems: [SessionDataModel]
+  
+    static var descriptor: FetchDescriptor<SessionDataModel> {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+        
+        let predicate = #Predicate<SessionDataModel> { session in
+            session.startTime >= today && session.startTime < tomorrow
+        }
+        
+        let descriptor = FetchDescriptor<SessionDataModel>(
+            predicate: predicate,
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        return descriptor
+    }
+
+    @Query(descriptor) var todaySessions: [SessionDataModel]
     
     @Binding var dailyStatBool: Bool
-    @Binding var dateToCheck: Date
+//    @Binding var dateToCheck: Date
     private var dailyStats: (Count: Int, Time: TimeInterval) { //not sure if this works with modelContainer / persistent data yet...
         var runningCount = 0
         var runningTime = 0.0
-        let todaySessions = allSessionItems.filter { session in
-//            Calendar.current.isDateInToday(session.startTime)
-            Calendar.current.isDate(session.startTime, inSameDayAs: dateToCheck)
 
-        }
         for session in todaySessions {
             runningCount += session.totalCount
             runningTime += session.secondsPassed
@@ -1080,11 +1110,17 @@ struct DailyStatToggleView: View {
             if dailyStatBool {
                 Image(systemName: "clock")
                     .frame(width: 20, height: 20)
-                Text("\(formatTime(dailyStats.Time))")
+                    .padding(.leading)
+                Spacer()
+                Text("\(formatSecondsToTimerString(dailyStats.Time/60))")
+                Spacer()
             } else {
-                Image(systemName: "circle.grid.cross")
+                Image(systemName: "circle.hexagonpath")
                     .frame(width: 20, height: 20)
+                    .padding(.leading)
+                Spacer()
                 Text("\(dailyStats.Count)")
+                Spacer()
             }
         }
         .padding(10)

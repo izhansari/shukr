@@ -24,11 +24,11 @@ struct LinkedScrollViewPage: View {
             .frame(height: 60) // Set the frame height to limit the overall space taken by TabView
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
 //            .padding(.horizontal, 100)
-            .onChange(of: selectedDayIndex, perform: { newValue in
+            .onChange(of: selectedDayIndex) { _, newValue in
                 withAnimation {
                     currentPageIndex = newValue
                 }
-            })
+            }
 
             // TabView with paging for detailed content
             TabView(selection: $currentPageIndex) {
@@ -44,11 +44,11 @@ struct LinkedScrollViewPage: View {
                 }
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
-            .onChange(of: currentPageIndex, perform: { newValue in
+            .onChange(of: currentPageIndex){ _, newValue in
                 withAnimation {
                     selectedDayIndex = newValue
                 }
-            })
+            }
 
             Spacer()
         }

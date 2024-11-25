@@ -10,7 +10,7 @@ import SwiftUI
 struct PrayerButton: View {
     @Binding var showChainZikrButton: Bool
     @State private var toggledText: Bool = false
-    let prayer: Prayer
+    let prayer: PrayerModel
     let toggleCompletion: () -> Void
     let viewModel: PrayerViewModel
     
@@ -32,7 +32,7 @@ struct PrayerButton: View {
     // Text Properties
     private var statusBasedOpacity: Double {
         if isFuturePrayer { return 0.6 }
-        return prayer.isCompleted ? 0.8 : 1
+        return prayer.isCompleted ? 0.7 : 1
     }
     
     // Background Properties
@@ -72,7 +72,7 @@ struct PrayerButton: View {
                 }
                 
                 // Show Chain Zikr Button Animation
-                if !prayer.isCompleted {
+                if prayer.isCompleted {
                     withAnimation {
                         showChainZikrButton = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
@@ -152,7 +152,7 @@ struct PrayerButton: View {
                     }
                 }
             )
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: prayer.isCompleted)
+            .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayer.isCompleted)
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -180,8 +180,6 @@ struct NeumorphicBorder: View {
             .shadow(color: Color("NeuLightShad").opacity(0.5), radius: 6, x: -5, y: -5)
     }
 }
-
-
 
 struct NeumorphicProgressRing: View{
     let progress: Double
@@ -332,13 +330,13 @@ struct NeumorphicBead: View {
 
 #Preview {
     @Previewable @State var dummyBool: Bool = true
-    @Previewable @StateObject var dummyViewModel = PrayerViewModel()
+//    @Previewable @StateObject var dummyViewModel = PrayerViewModel()
 
 
     let now = Date()
     let calendar = Calendar.current
-    let previewFajr: Prayer = Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now)
-    let previewZuhr: Prayer = Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now)
+    let previewFajr: PrayerModel = PrayerModel(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now)
+    let previewZuhr: PrayerModel = PrayerModel(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now)
     
     ZStack {
         Color("bgColor")
@@ -352,7 +350,7 @@ struct NeumorphicBead: View {
 //            
 //            ClickablePrayerButton(showChainZikrButton: $dummyBool, prayer: previewFajr, toggleCompletion: {}, viewModel: dummyViewModel)
             
-            PrayerButton(showChainZikrButton: $dummyBool, prayer: previewFajr, toggleCompletion: {}, viewModel: dummyViewModel)
+//            PrayerButton(showChainZikrButton: $dummyBool, prayer: previewFajr, toggleCompletion: {}, viewModel: dummyViewModel)
             
             // Inner shadow implementation
             RoundedRectangle(cornerRadius: 0)

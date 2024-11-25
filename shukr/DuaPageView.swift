@@ -9,7 +9,7 @@ struct DuaPageView: View {
     @Query(sort: \DuaModel.date, order: .reverse) private var duaItems: [DuaModel]
 
     @State private var searchText = ""
-    @State private var showingAddDuaSheet = false
+    @State private var showingEditDuaSheet = false
     @State private var selectedDua: DuaModel? = nil
     @State private var initialSearchQueryForEditDuaView: String? = nil
 
@@ -127,7 +127,7 @@ struct DuaPageView: View {
                                     selectedDua = dua
                                     initialSearchQueryForEditDuaView = searchText
                                     // Present the sheet after updating selectedDua
-                                    showingAddDuaSheet = true
+                                    showingEditDuaSheet = true
                                 }
                                 .contextMenu {
                                     Button(role: .destructive) {
@@ -158,7 +158,7 @@ struct DuaPageView: View {
                             print("Add Dua button tapped")
                             selectedDua = nil
                             initialSearchQueryForEditDuaView = nil
-                            showingAddDuaSheet = true
+                            showingEditDuaSheet = true
                         }) {
                             HStack {
                                 Image(systemName: "plus.circle")
@@ -178,7 +178,7 @@ struct DuaPageView: View {
             .zIndex(0)
         }
         // Apply the fullScreenCover modifier directly to the root view
-        .fullScreenCover(isPresented: $showingAddDuaSheet, onDismiss: {
+        .fullScreenCover(isPresented: $showingEditDuaSheet, onDismiss: {
             selectedDua = nil
             initialSearchQueryForEditDuaView = nil
         }) {
@@ -201,7 +201,7 @@ struct DuaPageView: View {
                     } catch {
                         print("Failed to save dua: \(error)")
                     }
-                    showingAddDuaSheet = false // Dismiss the sheet
+                    showingEditDuaSheet = false // Dismiss the sheet
                 },
                 initialSearchQuery: initialSearchQueryForEditDuaView // Pass the search query
             )
@@ -260,6 +260,7 @@ struct DuaPageView: View {
 // MARK: - EditDuaView
 
 struct EditDuaView: View {
+    @Environment(\.modelContext) private var context
     @Environment(\.dismiss) var dismiss
     @Binding var dua: DuaModel?
     @State private var title: String = ""
@@ -367,46 +368,46 @@ struct EditDuaView: View {
                         .padding(.trailing, 3)
                     }
                     .frame(height: 30)
-                } else {
-                    // Show regular buttons
+                } else if !showingSearchBar {
+                    // Button to save or close.
                     Button(action: {
                         triggerSomeVibration(type: .light)
-                        if theyMadeChanges {
-                            showingDiscardChangesAlert = true
-                        } else {
-                            dismiss()
+                        if (theyMadeChanges && !title.isEmpty && !duaBody.isEmpty){
+                            onSave(title, duaBody)
                         }
+                        if (title.isEmpty && duaBody.isEmpty), let dua = dua{
+                            context.delete(dua)
+                        }
+                        dismiss()
                     }) {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.gray)
+                        Image(systemName:  "chevron.left")
+                            .foregroundStyle( .gray )
                             .frame(width: 30, height: 30)
+                        
                     }
-
-//                    if !isNewDua {
-//                        Button(action: {
-//                            showingSearchBar = true
-//                        }) {
-//                            Image(systemName: "magnifyingglass")
-//                                .foregroundStyle(.gray)
-//                                .frame(width: 30, height: 30)
-//                        }
-//                    }
                 }
 
+                
                 Spacer()
 
                 // Hide the 'Checkmark' button when the search bar is visible
-                if theyMadeChanges && !title.isEmpty && !duaBody.isEmpty && !showingSearchBar {
-                    Button(action: {
-                        triggerSomeVibration(type: .light)
-                        onSave(title, duaBody)
-                        dismiss()
-                    }) {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(.green.opacity(0.7))
-                            .frame(width: 30, height: 30)
-                    }
-                }
+//                if /*theyMadeChanges && !title.isEmpty && !duaBody.isEmpty && */ !showingSearchBar {
+//                    Button(action: {
+//                        triggerSomeVibration(type: .light)
+//                        if (theyMadeChanges && !title.isEmpty && !duaBody.isEmpty){
+//                            onSave(title, duaBody)
+//                        }
+//                        dismiss()
+//                    }) {
+////                        Image(systemName: theyMadeChanges && !title.isEmpty && !duaBody.isEmpty ? "checkmark" : "xmark")
+////                            .foregroundStyle( theyMadeChanges && !title.isEmpty && !duaBody.isEmpty ? .green.opacity(0.7) : .gray )
+////                            .frame(width: 30, height: 30)
+//                        Image(systemName:  "chevron.left")
+//                            .foregroundStyle( .gray )
+//                            .frame(width: 30, height: 30)
+//
+//                    }
+//                }
             }
             .frame(height: 44)
             .padding()

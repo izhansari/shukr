@@ -44,9 +44,9 @@ func formatSecondsToTimerString(_ totalSeconds: Double) -> String {
     let seconds = roundedSeconds % 60
     
     if hours > 0 {
-        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds) // 00:00:00
     } else {
-        return String(format: "%02d:%02d", minutes, seconds)
+        return String(format: "%02d:%02d", minutes, seconds) // 00:00
     }
 }
 
@@ -178,7 +178,7 @@ let notificationFeedbackGenerator = UINotificationFeedbackGenerator()
 func triggerSomeVibration(type: HapticFeedbackType) {
 //    impactFeedbackGenerator.prepare()
     
-    let userDefaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+//    let userDefaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
 //    let vibrateToggle = userDefaults?.bool(forKey: "vibrateToggle") ?? false // Get vibrateToggle value from UserDefaults
 
 //    print("should do it", vibrateToggle)
@@ -1534,7 +1534,7 @@ struct ResultsView: View {
             title: "yo",
             sessionMode: 1,
             targetMin: 1,
-            targetCount: Int(5) ?? 0,
+            targetCount: 5,
             totalCount: 66,
             startTime: Date(),
             secondsPassed: 72,
@@ -1702,7 +1702,7 @@ struct BlurView: UIViewRepresentable {
 
 
 struct RingStyle0 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -1710,7 +1710,7 @@ struct RingStyle0 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
     
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -1804,7 +1804,7 @@ struct RingStyle0 {
 }
 
 struct RingStyle1 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -1812,7 +1812,7 @@ struct RingStyle1 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
     
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -1906,7 +1906,7 @@ struct RingStyle1 {
 }
 
 struct RingStyle2 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -1914,7 +1914,7 @@ struct RingStyle2 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
     
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -2009,7 +2009,7 @@ struct RingStyle2 {
 }
 
 struct RingStyle3 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2017,7 +2017,7 @@ struct RingStyle3 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
     
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -2159,7 +2159,7 @@ struct RingStyle3 {
 }
 
 struct RingStyle4 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2167,7 +2167,7 @@ struct RingStyle4 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
 
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -2319,7 +2319,7 @@ struct RingStyle4 {
 }
 
 struct RingStyle5 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2327,7 +2327,7 @@ struct RingStyle5 {
     let colorScheme: ColorScheme
     let isQiblaAligned: Bool
     
-    init(prayer: Prayer,
+    init(prayer: PrayerModel,
          progress: Double,
          progressColor: Color,
          isCurrentPrayer: Bool,
@@ -2483,7 +2483,7 @@ struct RingStyle5 {
 }
 
 struct RingStyle6 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2644,7 +2644,7 @@ struct RingStyle6 {
 }
 
 struct RingStyle7 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2815,7 +2815,7 @@ struct RingStyle7 {
 }
 
 struct RingStyle8 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -2958,7 +2958,7 @@ struct RingStyle8 {
 }
 
 struct RingStyle9 {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -3098,7 +3098,7 @@ struct RingStyle9 {
 }
 
 struct RingStyle9old {
-    let prayer: Prayer
+    let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
     let isCurrentPrayer: Bool
@@ -3534,5 +3534,153 @@ struct ExternalToggleText: View {
                 }
             }
         }
+    }
+}
+
+
+
+struct TimeProgressViewWithSmoothColorTransition: View {
+    // Example start and end times
+    let startTime: Date
+    let endTime: Date
+    @Binding var completedTime: Date?
+    
+    // Current time
+    @State private var currentTime: Date = Date()
+    @State private var completed: Bool = false
+    
+    var body: some View {
+        VStack {
+            ZStack(alignment: .leading) {
+                // Progress bar background with dynamic gradient
+                GeometryReader { geometry in
+                    let progressWidth = CGFloat(progress) * geometry.size.width
+                    let tickPosition = progressWidth
+                    
+                    // Smooth animated color
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: progColor, location: colorPosition),
+                                    .init(color: Color.gray.opacity(0.4), location: colorPosition+0.1)
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 4)
+//                        .animation(.easeInOut(duration: 0.3), value: progColor) // Animate color transition
+//                        .animation(.easeInOut(duration: 0.3), value: colorPosition)
+                    
+                    // Current time text under the tick
+                    if(Date() >= startTime && currentTime <= endTime || completedTime != nil){
+                        if completedTime ?? Date() <= endTime{
+                            Text(hmmTimeFormatter.string(from: completedTime ?? Date()))
+                                .foregroundColor(.primary)
+                                .font(.caption)
+                                .position(x: tickPosition, y: -10) // Align text with the tick mark
+                            
+                            // White tick mark
+                            Rectangle()
+                                .fill(Color.primary)
+                                .frame(width: 2, height: 8)
+                                .position(x: tickPosition, y: 2) // Position the tick on the progress
+                        }
+                    }
+                }
+                .frame(height: 4)
+            }
+            .padding(.horizontal)
+            .padding(.horizontal)
+            .animation(.easeInOut(duration: 1), value: colorPosition)
+            .animation(.easeInOut(duration: 0.3), value: progColor) // Animate color transition
+
+            
+            // Display the start and end times
+            HStack {
+                Text(hmmTimeFormatter.string(from: startTime))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Spacer()
+                Text(hmmTimeFormatter.string(from: endTime))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            .padding(.horizontal)
+        }
+        .onAppear {
+            // Update current time when the view appears
+            currentTime = Date()
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            // Update current time every second
+            withAnimation {
+                currentTime = Date()
+            }
+        }
+    }
+    
+    // Computed property to calculate progress between startTime and endTime
+    private var progress: Double {
+        let totalInterval = endTime.timeIntervalSince(startTime)
+        let currentInterval = currentTime.timeIntervalSince(startTime)
+        
+        if let completedTime = completedTime {
+            let completedInterval = completedTime.timeIntervalSince(startTime)
+            
+            if completedInterval <= 0 {
+                return 0.0 // Before start time
+            } else if completedInterval >= totalInterval {
+                return 1.0 // After end time
+            } else {
+                return completedInterval / totalInterval // Between start and end times
+            }
+        }
+
+        
+        if currentInterval <= 0 {
+            return 0.0 // Before start time
+        } else if currentInterval >= totalInterval {
+            return 1.0 // After end time
+        } else {
+            return currentInterval / totalInterval // Between start and end times
+        }
+    }
+    
+    private var colorPosition: Double {
+        //this is going to return progress. But if completed, then we set to 1
+        if(completedTime != nil){
+            return 1
+        }
+        return progress
+    }
+    
+    // Smooth color transition based on progress
+    private var progColor: Color {
+        if progress >= 1 && completedTime != nil{
+            return Color.gray
+        } else if progress >= 1 {
+            return Color.gray.opacity(0.4)
+        } else if progress > 0.75 {
+            return Color.red
+        } else if progress > 0.50 {
+            return Color.yellow
+        } else if progress > 0.00 {
+            return Color.green
+        } else {
+            return Color.gray.opacity(0.4)
+        }
+    }
+}
+
+// Preview for the new TodayPrayerView
+
+
+struct TimeProgressViewWithSmoothColorTransition_Previews: PreviewProvider {
+    static var previews: some View {
+        @Previewable @State var testCompletedTime: Date? = Date()
+        // Example preview with specific start and end times
+        TimeProgressViewWithSmoothColorTransition(startTime: Date().addingTimeInterval(-4), endTime: Date().addingTimeInterval(2), completedTime: $testCompletedTime)
     }
 }

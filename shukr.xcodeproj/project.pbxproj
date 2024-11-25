@@ -29,6 +29,7 @@
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
 		36FAF81B2CDDF64800718D73 /* oldTasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */; };
+		36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36FAF8232CF2EFA600718D73 /* Adhan */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,6 +116,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -281,6 +283,7 @@
 			);
 			name = shukr;
 			packageProductDependencies = (
+				36FAF8232CF2EFA600718D73 /* Adhan */,
 			);
 			productName = shukr;
 			productReference = 369A05C42C5E8616002CD697 /* shukr.app */;
@@ -375,6 +378,7 @@
 			);
 			mainGroup = 369A05BB2C5E8616002CD697;
 			packageReferences = (
+				36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */,
 			);
 			productRefGroup = 369A05C52C5E8616002CD697 /* Products */;
 			projectDirPath = "";
@@ -852,6 +856,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/batoulapps/adhan-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.4.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		36FAF8232CF2EFA600718D73 /* Adhan */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;
+			productName = Adhan;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 369A05BC2C5E8616002CD697 /* Project object */;
 }

@@ -684,7 +684,6 @@ struct tasbeehView: View {
     @Previewable @State var dummyBool: Bool = true
 
     tasbeehView(isPresented: $dummyBool)
-        .modelContainer(for: Item.self, inMemory: true)
         .environmentObject(sharedState) // Inject shared state into the environment
 }
 

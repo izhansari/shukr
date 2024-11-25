@@ -9,80 +9,32 @@ struct QiblaSettings {
 }
 
 struct SettingsView: View {
-    @ObservedObject var viewModel: PrayerViewModel
+    @EnvironmentObject var viewModel: PrayerViewModel
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 2
     @AppStorage("qibla_sensitivity") private var qiblaSensitivity: Double = 3.5
     @State private var refreshID = UUID()
     
-    let prayersOld = [
-        PrayerModel(
-            prayerName: "FAJR",
-            startTimeDate: Date().addingTimeInterval(-3800),
-            endTimeDate: Date().addingTimeInterval(-2600)
-        ),
-        PrayerModel(
-            prayerName: "ZUHR",
-            startTimeDate: Date().addingTimeInterval(-60),
-            endTimeDate: Date().addingTimeInterval(30)
-        ),
-        PrayerModel(
-            prayerName: "ASR",
-            startTimeDate: Date().addingTimeInterval(30),
-            endTimeDate: Date().addingTimeInterval(200)
-        ),
-        PrayerModel(
-            prayerName: "MAGHRIB",
-            startTimeDate: Date().addingTimeInterval(200),
-            endTimeDate: Date().addingTimeInterval(260)
-        ),
-        PrayerModel(
-            prayerName: "ISHA",
-            startTimeDate: Date().addingTimeInterval(260),
-            endTimeDate: Date().addingTimeInterval(300)
-        )
-    ]
-    let prayers = [
-        PrayerModel(
-            prayerName: "FAJR",
-            startTimeDate: todayAt(hour: 6, minute: 23),
-            endTimeDate: todayAt(hour: 7, minute: 34)
-        ),
-        PrayerModel(
-            prayerName: "ZUHR",
-            startTimeDate: todayAt(hour: 13, minute: 6),
-            endTimeDate: todayAt(hour: 16, minute: 56)
-        ),
-        PrayerModel(
-            prayerName: "ASR",
-            startTimeDate: todayAt(hour: 16, minute: 56),
-            endTimeDate: todayAt(hour: 18, minute: 37)
-        ),
-        PrayerModel(
-            prayerName: "MAGHRIB",
-            startTimeDate: todayAt(hour: 18, minute: 37),
-            endTimeDate: todayAt(hour: 19, minute: 48)
-        ),
-        PrayerModel(
-            prayerName: "ISHA",
-            startTimeDate: todayAt(hour: 19, minute: 48),
-            endTimeDate: todayAt(hour: 23, minute: 59)
-        )
-    ]
+    @AppStorage("calculationMethod") var calculationMethod: Int = 4
+    @AppStorage("school") var school: Int = 0
+
+    @State private var localCalculationMethod: Int = 0
+    @State private var localSchool: Int = 0
+
     
     let calculationMethods = [
-        (1, "University of Islamic Sciences, Karachi"),
-        (2, "Islamic Society of North America"),
-        (3, "Muslim World League"),
-        (4, "Umm Al-Qura University, Makkah"),
-        (5, "Egyptian General Authority of Survey"),
-        (7, "Institute of Geophysics, University of Tehran"),
-        (8, "Gulf Region"),
-        (9, "Kuwait"),
-        (10, "Qatar"),
-        (11, "Majlis Ugama Islam Singapura, Singapore"),
-        (12, "Union Organization islamic de France"),
-        (13, "Diyanet İşleri Başkanlığı, Turkey"),
-        (14, "Spiritual Administration of Muslims of Russia")
+        (1, "University of Islamic Sciences, Karachi"), // .karachi
+        (2, "Islamic Society of North America"), // .northAmerica
+        (3, "Muslim World League"), // .muslimWorldLeague
+        (4, "Umm Al-Qura University, Makkah"), // .ummAlQura
+        (5, "Egyptian General Authority of Survey"), // .egyptian
+        (7, "Institute of Geophysics, University of Tehran"), // .tehran
+        (8, "Gulf Region"), // .dubai
+        (9, "Kuwait"), // .kuwait
+        (10, "Qatar"), // .qatar
+        (11, "Majlis Ugama Islam Singapura, Singapore"), // .singapore
+        (12, "Union Organization islamic de France"), // .other
+        (13, "Diyanet İşleri Başkanlığı, Turkey"), // .turkey
+        (14, "Spiritual Administration of Muslims of Russia") // .other
     ]
     
     let schools = [
@@ -129,25 +81,21 @@ struct SettingsView: View {
                 }
             }
             
+
+            
             Section(header: Text("Calculation Method")) {
-                Picker("Method", selection: $viewModel.calculationMethod) {
+                Picker("Method", selection: $localCalculationMethod) {
                     ForEach(calculationMethods, id: \.0) { method in
                         Text(method.1).tag(method.0)
                     }
                 }
-                .onChange(of: viewModel.calculationMethod) { _, new in
-                    viewModel.fetchPrayerTimes()
-                }
             }
             
             Section(header: Text("Juristic School (for Asr)")) {
-                Picker("School", selection: $viewModel.school) {
+                Picker("School", selection: $localSchool) {
                     ForEach(schools, id: \.0) { school in
                         Text(school.1).tag(school.0)
                     }
-                }
-                .onChange(of: viewModel.school) { _, new in
-                    viewModel.fetchPrayerTimes()
                 }
             }
             
@@ -161,23 +109,12 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.gray)
                 }
+                Toggle("Debug Location", isOn: $viewModel.locationPrints)
+//                    .onChange(of: viewModel.locationPrints) { _, new in
+//                        viewModel.toggleLocationPrints()
+//                    }
             }
-            
-            HStack{
-                NavigationLink(destination: TodayPrayerView(prayers: prayers)) {
-                    Text("Prayers V1")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-            
-            HStack{
-                NavigationLink(destination:  MeccaCompass()) {
-                    Text("Qibla V1")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
+        
             
             Section(header: Text("Appearance")) {
                 Picker("Ring Style", selection: $selectedRingStyle) {
@@ -218,8 +155,17 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .id(refreshID)
         .onAppear {
+            localCalculationMethod = calculationMethod
             // Force a refresh when the view appears
             refreshID = UUID()
+        }
+        .onDisappear{
+                calculationMethod = localCalculationMethod
+                school = localSchool
+                viewModel.fetchPrayerTimes()
+            
+//            viewModel.fetchPrayerTimes()
+
         }
     }
 }

@@ -45,7 +45,8 @@ struct DailyTasksView: View {
                                 let remainingGoal = task.goal - task.runningGoal
                                 taskToComplete = task
                                 sharedState.titleForSession = task.mantra
-                                if(task.mode == .count){
+//                                if(task.mode == .count){ //modeflag
+                                if(task.isCountMode){ //modeflag
                                     sharedState.selectedMode = 2
                                     sharedState.targetCount = "\(remainingGoal <= 0 ? task.goal : remainingGoal)"
                                 }else{
@@ -59,14 +60,14 @@ struct DailyTasksView: View {
                                     sharedState.showTopMainOrBottom = 1
                                 }
                             }
-                            .onAppear{
-                                task.calculateRunningGoal(from: sessionItems) // not the best way to do this but okay for now... will work on this later.
-                                print(">>>>>>>on appear")
-                            }
-                            .onChange(of: sessionItems) {_, newSessions in
-                                task.calculateRunningGoal(from: newSessions)
-                                print(">>>>>>>cuz change")
-                            }
+//                            .onAppear{
+//                                task.calculateRunningGoal(from: sessionItems) // not the best way to do this but okay for now... will work on this later.
+//                                print(">>>>>>>on appear")
+//                            }
+//                            .onChange(of: sessionItems) {_, newSessions in
+//                                task.calculateRunningGoal(from: newSessions)
+//                                print(">>>>>>>cuz change")
+//                            }
                     }
                     .alert(isPresented: $showDeleteTaskAlert) {
                         Alert(
@@ -113,7 +114,7 @@ struct DailyTasksView: View {
                                 .frame(width: 40, height: 40)
                                 .foregroundColor(.green.opacity(0.7))
                         }
-                        .frame(width: 100, height: 100)
+                        .frame(width: 80, height: 80)
                         .background(Color.gray.opacity(0.1))
                         .cornerRadius(10)
                     }
@@ -168,7 +169,8 @@ struct AddDailyTaskView: View {
 
     // Task creation properties
     @State private var mantra: String? = "" // Will be updated by MantraPickerView
-    @State private var taskMode: TaskModel.TaskMode = .count // Default to count mode
+//    @State private var taskMode: TaskModel.TaskMode = .count // Default to count mode
+    @State private var taskIsCountMode: Bool = true // Default to count mode
     @State private var goal: Int = 0
     @State private var selectedMantra: String? = nil
     @State private var showMantraPicker: Bool = false
@@ -184,7 +186,8 @@ struct AddDailyTaskView: View {
     
     var runningGoalToShow: String{
         if let yo = taskInMaking{
-            return "completed \(yo.runningGoal) \(yo.mode == .count ? "count" : "minutes")"
+//            return "completed \(yo.runningGoal) \(yo.mode == .count ? "count" : "minutes")" //modeflag
+            return "completed \(yo.runningGoal) \(yo.isCountMode ? "count" : "minutes")" //modeflag
         }
         return ""
     }
@@ -193,7 +196,8 @@ struct AddDailyTaskView: View {
     func createTask() {
         let task = TaskModel(
             mantra: mantra ?? "",
-            mode: taskMode,
+//            mode: taskMode,
+            isCountMode: taskIsCountMode,
             goal: goal
 //            sessionItems: sessionItems
 //            runningGoal: 0
@@ -235,7 +239,8 @@ struct AddDailyTaskView: View {
             
             TaskCardView(task: TaskModel(
                 mantra: mantra == "" ? "choose zikr" : mantra ?? "its nil",
-                mode: taskMode,
+//                mode: taskMode,
+                isCountMode: taskIsCountMode,
                 goal: goal
 //                sessionItems: sessionItems
                 )
@@ -244,9 +249,13 @@ struct AddDailyTaskView: View {
             
             
             // Picker for selecting Task Mode (count or time)
-            Picker("Task Mode", selection: $taskMode) {
-                Text("Count").tag(TaskModel.TaskMode.count)
-                Text("Time").tag(TaskModel.TaskMode.time)
+//            Picker("Task Mode", selection: $taskMode) {
+//                Text("Count").tag(TaskModel.TaskMode.count)
+//                Text("Time").tag(TaskModel.TaskMode.time)
+//            }
+            Picker("Task Mode", selection: $taskIsCountMode) {
+                Text("Count").tag(true)
+                Text("Time").tag(false)
             }
             .frame(width: 200)
             .pickerStyle(SegmentedPickerStyle())
@@ -329,8 +338,8 @@ struct TaskCardView: View {
             
             // Mantra title at the top, fixed height for consistency
             Text(task.mantra)
-                .font(.headline)
-                .bold()
+                .font(.footnote)
+//                .bold()
                 .multilineTextAlignment(.leading)
                 .lineLimit(2) // Limit to 2 lines for consistency
                 .padding(.top, 8)
@@ -341,7 +350,8 @@ struct TaskCardView: View {
             // Bottom section: Mode icon and goal on the left, completion indicator on the right
             HStack(spacing: 2) { // Reduced space between icon and goal
                 HStack(spacing: 0) { // Reduced space between icon and text
-                    if task.mode == .count {
+//                    if task.mode == .count { // modeflag
+                    if task.isCountMode { // modeflag
                         Image(systemName: "number")
                         Text("\(task.goal)")
                     } else {
@@ -349,6 +359,7 @@ struct TaskCardView: View {
                         Text("\(task.goal)m")
                     }
                 }
+                .font(.footnote)
 
                 Spacer()
 
@@ -368,7 +379,7 @@ struct TaskCardView: View {
             .padding(.all, 8)
 
         }
-        .frame(width: 140, height: 100)
+        .frame(width: 120, height: 80)
         .background(task.isCompleted ? Color.green.opacity(0.3) : Color.gray.opacity(0.1))
         .cornerRadius(10)
     }

@@ -13,18 +13,16 @@ struct shukrApp: App {
 
     
     @StateObject var sharedState = SharedStateClass()
+    @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
     @State private var globalLocationManager = GlobalLocationManager()
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
             SessionDataModel.self,
-            ClickDataModel.self, // Add all models here
             MantraModel.self,
             TaskModel.self,
             DuaModel.self,
-            PrayerModel.self,
-            Prayer.self
+            PrayerModel.self
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -35,22 +33,16 @@ struct shukrApp: App {
         }
     }()
     
+    init() {
+        let context = sharedModelContainer.mainContext
+        _prayerViewModel = StateObject(wrappedValue: PrayerViewModel(context: context))
+    }
+    
     var body: some Scene {
         
             WindowGroup {
                 NavigationView{
                     if globalLocationManager.isAuthorized{
-                        // v1 mainpage - no prayer times. buttons on top left and right corners for dua / history
-                        //            tasbeehView()
-                        
-                        
-                        
-                        // v2 mainpage - swipe up down with sidebar buttons
-                        //            PrayerTimesView()
-                        
-                        
-                        
-                        
                         // v3 mainpage - tabview paging with vertical dragging
                         TabView (selection: $sharedState.selectedViewPage){
                             // Rightmost page: History page
@@ -61,10 +53,19 @@ struct shukrApp: App {
                             
                             
                             // Middle page: Prayer time tracker
+//                            let context = sharedModelContainer.mainContext
+//                            PrayerTimesView(viewModel: PrayerViewModel(context: context))
+//                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+//                                .tag(1)
+//                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            
+                            
+                            // Middle page: Prayer time tracker
                             PrayerTimesView()
                                 .transition(.opacity.animation(.easeInOut(duration: 0.3)))
                                 .tag(1)
                                 .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+
                             
                             
                             // Leftmost page: Dua page
@@ -76,18 +77,6 @@ struct shukrApp: App {
                             
                         }
                         .tabViewStyle(DefaultTabViewStyle()) // for testing
-                        
-                        //                .onAppear {
-                        //                    UIScrollView.appearance().bounces = false
-                        //                }
-                        
-                        
-                        
-                        
-                        
-                        
-                        //v4
-                        //            SwipeNavView()
                     }
                     else{
                         ZStack{
@@ -110,6 +99,7 @@ struct shukrApp: App {
             .modelContainer(sharedModelContainer)
             .environment(globalLocationManager)
             .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
+            .environmentObject(prayerViewModel) // Inject PrayerViewModel
             // Inject `sharedState` as an EnvironmentObject at the top level of the app.
             // This makes `sharedState` globally accessible to any view within the view hierarchy
             // that starts from `PrayerTimesView`.
@@ -120,7 +110,6 @@ struct shukrApp: App {
 
     }
 }
-
 
 //import SwiftUI
 

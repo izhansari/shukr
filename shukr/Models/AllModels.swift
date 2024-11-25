@@ -10,49 +10,11 @@ import SwiftData
 import SwiftUI
 
 
-@Model
-class PrayerModel {
-    enum PrayerStateEnum: String, Codable {
-        case upcoming
-        case current
-        case completed // Eventually get rid of this if not used
-        case missed
-    }
-
-    enum PrayerScoreEnum: String, Codable {
-        case Optimal
-        case Good
-        case Poor
-        case Kaza
-        case Empty
-    }
-    
-    var id: UUID
-    var prayerName: String
-    var startTimeDate: Date
-    var endTimeDate: Date
-    var prayerScore: PrayerScoreEnum
-    var prayerState: PrayerStateEnum
-    var timeAtComplete: Date?
-
-    init(id: UUID = UUID(), prayerName: String, startTimeDate: Date, endTimeDate: Date, prayerScore: PrayerScoreEnum = .Empty, prayerState: PrayerStateEnum = .upcoming, timeAtComplete: Date? = nil) {
-        self.id = id
-        self.prayerName = prayerName
-        self.startTimeDate = startTimeDate
-        self.endTimeDate = endTimeDate
-        self.prayerScore = prayerScore
-        self.prayerState = prayerState
-        self.timeAtComplete = timeAtComplete
-    }
-}
-
-
-
 
 
 @Model
 class DuaModel: Identifiable { // Updated to use SwiftData model //GPT
-    var id: UUID
+    @Attribute(.unique) var id: UUID = UUID()
     var title: String
     var duaBody: String
     var date: Date
@@ -70,40 +32,8 @@ class DuaModel: Identifiable { // Updated to use SwiftData model //GPT
 
 
 @Model
-class ClickDataModel {
-    var id: UUID
-    var date: Date
-    var pauseTime: TimeInterval
-    var tpc: TimeInterval
-    
-    init(date: Date, pauseTime: TimeInterval, tpc: TimeInterval) {
-        self.id = UUID() // Generate a unique ID for each ClickData entry
-        self.date = date
-        self.pauseTime = pauseTime
-        self.tpc = tpc
-    }
-}
-
-
-
-
-
-@Model
-final class Item {
-    var timestamp: Date
-    
-    init(timestamp: Date) {
-        self.timestamp = timestamp
-    }
-}
-
-
-
-
-
-@Model
 class MantraModel: Identifiable {
-    var id: UUID
+    @Attribute(.unique) var id: UUID = UUID()
     var text: String
 
     init(text: String) {
@@ -133,7 +63,7 @@ class MockModelContext: ObservableObject {
 @Model
 class SessionDataModel: Identifiable {
 
-    var id: String
+    @Attribute(.unique) var id: UUID = UUID()
 
     var title: String                   // (placeHolderTitle for now...)
     var sessionMode: Int                // selectedMode
@@ -149,12 +79,8 @@ class SessionDataModel: Identifiable {
 
     var tasbeehRate: String             // tasbeehRate
 
-    var clickStats: [ClickDataModel]    // Array of ClickDataModel
-    // Use ClickDataModel instead of tuple -- he cant store custom tuples in persistence
-
     
     init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String) {
-        self.id = UUID().uuidString
         self.title = title
         self.sessionMode = sessionMode
         self.targetMin = targetMin
@@ -172,7 +98,6 @@ class SessionDataModel: Identifiable {
         self.timeDurationString = formatFromSeconds
         self.avgTimePerClick = avgTimePerClick
         self.tasbeehRate = tasbeehRate
-        self.clickStats = []
     }
 }
 
@@ -185,9 +110,10 @@ class TaskModel: Identifiable {
     
     //mineeeeeeeeeeeeeeeeeeeeeeeeeeee
 
-    var id: String
+    @Attribute(.unique) var id: UUID = UUID()
     var mantra: String
-    var mode: TaskMode
+    var isCountMode: Bool
+//    var mode: TaskMode
     var goal: Int
 
 //    var sessionItems: [SessionDataModel]
@@ -198,30 +124,30 @@ class TaskModel: Identifiable {
 
     var runningGoal: Int = 0
 
-    enum TaskMode: String, Codable {
-        case count, time
-    }
+//    enum TaskMode: String, Codable {
+//        case count, time
+//    }
     
-    init(mantra: String, mode: TaskMode, goal: Int/*, sessionItems: [SessionDataModel]*/) {
-        self.id = UUID().uuidString
+    init(mantra: String, /*mode: TaskMode*/ isCountMode: Bool, goal: Int/*, sessionItems: [SessionDataModel]*/) {
         self.mantra = mantra
-        self.mode = mode
+//        self.mode = mode
+        self.isCountMode = isCountMode
         self.goal = goal
 //        self.sessionItems = sessionItems
     }
     
     // Calculate running goal for the task
-        func calculateRunningGoal(from sessionItems: [SessionDataModel]) {
-            if mode == .count {
-                runningGoal = sessionItems.filter { session in
-                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
-                }.reduce(0) { $0 + $1.totalCount }
-            } else {  // For time-based tasks
-                runningGoal = sessionItems.filter { session in
-                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
-                }.reduce(0) { $0 + Int($1.secondsPassed / 60) } // Calculate minutes
-            }
-        }
+//        func calculateRunningGoal(from sessionItems: [SessionDataModel]) {
+//            if mode == .count {
+//                runningGoal = sessionItems.filter { session in
+//                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
+//                }.reduce(0) { $0 + $1.totalCount }
+//            } else {  // For time-based tasks
+//                runningGoal = sessionItems.filter { session in
+//                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
+//                }.reduce(0) { $0 + Int($1.secondsPassed / 60) } // Calculate minutes
+//            }
+//        }
 
 //        // Check if task is completed
 //        func isCompleted(from sessionItems: [SessionDataModel]) -> Bool {

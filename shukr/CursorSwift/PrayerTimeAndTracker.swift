@@ -1,27 +1,14 @@
 import SwiftUI
+import Adhan
 import CoreLocation
-
-//struct Prayer: Identifiable {
-//    let id = UUID()
-//    let name: String
-//    var startTime: Date
-//    var endTime: Date
-//    var isCompleted: Bool = false
-//    var prayerStartedAt: Date?  // When user starts praying
-//    var prayerCompletedAt: Date?  // When user finishes praying
-//    var duration: TimeInterval?  // Calculated duration
-//    var timeAtComplete: Date? = nil
-//    var numberScore: Double? = nil
-//    var englishScore: String? = nil
-//}
-
 import SwiftData
 
 @Model
-class Prayer {
+class PrayerModel {
     @Attribute(.unique) var id: UUID = UUID()
     var name: String // e.g., "Fajr", "Dhuhr"
     var startTime: Date
+    var dateAtMake: Date
     var endTime: Date
     var isCompleted: Bool = false
     var latPrayedAt: Double? // lat where the prayer was performed (Cant store CLLocation in swiftdata)
@@ -38,28 +25,30 @@ class Prayer {
         startTime: Date,
         endTime: Date,
         latitude: Double? = nil,
-        longitude: Double? = nil
+        longitude: Double? = nil,
+        dateAtMake: Date = .now
     ) {
         self.name = name
         self.startTime = startTime
         self.endTime = endTime
         self.latPrayedAt = latitude
         self.longPrayedAt = longitude
+        self.dateAtMake = dateAtMake
     }
 }
 
 class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
-    @Environment(\.modelContext) private var context
+    private let context: ModelContext
 
-    @Published var prayers: [Prayer] = [] {
+    @Published var prayers: [PrayerModel] = [] {
         didSet {
             // Notify that prayers have been updated
             self.objectWillChange.send()
             NotificationCenter.default.post(name: .prayersUpdated, object: nil)
         }
     }
-    @Published var calculationMethod: Int = 2 // Default to Islamic Society of North America (ISNA)
-    @Published var school: Int = 1 // Default to Shafi'i
+    @AppStorage("calculationMethod") var calculationMethod: Int = 4
+    @AppStorage("school") var school: Int = 0
     @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var hasValidLocation: Bool = false
     @Published var cityName: String?
@@ -67,21 +56,59 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var longitude: String = "N/A"
     @Published var lastApiCallUrl: String = "N/A"
     @Published var useTestPrayers: Bool = false  // Add this property
-
+    
+    @Published var locationPrints: Bool = false
+    let fetchPrints = true
+    
     private let locationManager: CLLocationManager
     private let geocoder = CLGeocoder()
     private var lastGeocodeRequestTime: Date?
     private var lastAppLocation: CLLocation?
 
-    override init() {
-        locationManager = CLLocationManager()
+
+    // Inject the ModelContext in the initializer
+    init(context: ModelContext) {
+        self.context = context
+        self.locationManager = CLLocationManager()
         super.init()
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        locationManager.requestWhenInUseAuthorization()
-        locationManager.startUpdatingLocation()
+        self.locationManager.delegate = self
+        self.locationManager.desiredAccuracy = kCLLocationAccuracyBest
+        self.locationManager.requestWhenInUseAuthorization()
+        self.locationManager.startUpdatingLocation()
+        
+        // Load persisted prayers
+        self.loadPersistedPrayers()
+        
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
+    }
+    
+    
+    func locationPrinter(_ message: String) {
+        locationPrints ? print(message) : ()
     }
 
+    
+    private func loadPersistedPrayers() {
+        do {
+            // Define a FetchDescriptor with a sort order
+            let fetchDescriptor = FetchDescriptor<PrayerModel>(
+                sortBy: [
+                    SortDescriptor(\.startTime, order: .forward) // Sort by startTime in ascending order
+                ]
+            )
+            
+            // Fetch prayers using the fetch descriptor
+            let persistedPrayers: [PrayerModel] = try context.fetch(fetchDescriptor)
+            
+            DispatchQueue.main.async {
+                self.prayers = persistedPrayers
+            }
+        } catch {
+            locationPrinter("❌ Failed to fetch persisted prayers: \(error.localizedDescription)")
+        }
+    }
+
+    
     func checkLocationAuthorization() {
         switch locationManager.authorizationStatus {
         case .notDetermined:
@@ -103,18 +130,10 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-//    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-//        if let location = locations.last {
-//            updateLocation(location)
-//            print("<inside update location>")
-//        } else{
-//            print(">passed by the didUpdateLocation<")
-//        }
-//    }
-
+    
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let deviceLocation = locations.last else {
-            print(">passed by the didUpdateLocation< - No location found")
+            locationPrinter(">passed by the didUpdateLocation< - No location found")
             return
         }
 
@@ -126,14 +145,14 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                     // Only print if the update is skipped
                     return
                 } else {
-                    print("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?")
+                    locationPrinter("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?")
                 }
             } else {
-                print("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request")
+                locationPrinter("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request")
 
             }
         } else {
-            print("⚠️ First location update. Proceeding with geocoding.")
+            locationPrinter("⚠️ First location update. Proceeding with geocoding.")
         }
 
         // If checks pass, update location and proceed with geocoding
@@ -150,7 +169,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         lastGeocodeRequestTime = Date()
         lastAppLocation = location
 
-        print("🌍 Triggering geocoding and prayer times fetch...")
+        locationPrinter("🌍 Triggering geocoding and prayer times fetch...")
         updateCityName(for: location)
         fetchPrayerTimes()
     }
@@ -160,23 +179,97 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             DispatchQueue.main.async {
                 if let error = error {
-                    print("❌ Reverse geocoding error: \(error.localizedDescription)")
+                    self?.locationPrinter("❌ Reverse geocoding error: \(error.localizedDescription)")
                     self?.cityName = "Error fetching city"
                     return
                 }
 
                 if let placemark = placemarks?.first {
                     let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
-                    print("🏙️ Geocoded City: \(newCityName)")
+                    self?.locationPrinter("🏙️ Geocoded City: \(newCityName)")
                     self?.cityName = newCityName
                 } else {
-                    print("⚠️ No placemark found")
+                    self?.locationPrinter("⚠️ No placemark found")
                     self?.cityName = "Unknown"
                 }
             }
         }
     }
 
+//    func fetchPrayerTimes() {
+//        guard let location = locationManager.location else {
+//            print("Location not available")
+//            return
+//        }
+//
+//        // Update latitude and longitude
+//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
+//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
+//
+//        let dateFormatter = DateFormatter()
+//        dateFormatter.dateFormat = "dd-MM-yyyy"
+//        let currentDate = dateFormatter.string(from: Date())
+//
+//        let urlString = "https://api.aladhan.com/v1/timings/\(currentDate)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
+//
+//        // Update lastApiCallUrl
+//        self.lastApiCallUrl = urlString
+//
+//        // Print the complete URL to the console
+////        print("API URL: \(urlString)")
+//
+//        guard let url = URL(string: urlString) else {
+//            print("Invalid URL")
+//            return
+//        }
+//
+//        URLSession.shared.dataTask(with: url) { data, response, error in
+//            guard let data = data, error == nil else {
+//                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
+//                return
+//            }
+//
+//            do {
+//                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+//                   let data = json["data"] as? [String: Any],
+//                   let timings = data["timings"] as? [String: String] {
+//
+//                    DispatchQueue.main.async {
+//                        let now = Date()
+//                        let calendar = Calendar.current
+//                        var testPrayers = [
+//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
+//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
+//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
+//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
+//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
+//                        ]
+////                        var testPrayers = [
+////                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
+////                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
+////                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
+////                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
+////                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
+////                        ]
+//                        var actualPrayers = [
+//                            Prayer(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
+//                            Prayer(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
+//                            Prayer(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
+//                            Prayer(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
+//                            Prayer(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
+//                        ]
+//
+//                        self.prayers = self.useTestPrayers ? testPrayers : actualPrayers
+//                    }
+//                }
+//            } catch {
+//                print("Error parsing JSON: \(error.localizedDescription)")
+//            }
+//        }.resume()
+//    }
+
+    
+    // the current one im working on.
     func fetchPrayerTimes() {
         guard let location = locationManager.location else {
             print("Location not available")
@@ -187,75 +280,408 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         self.latitude = String(format: "%.6f", location.coordinate.latitude)
         self.longitude = String(format: "%.6f", location.coordinate.longitude)
 
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "dd-MM-yyyy"
-        let currentDate = dateFormatter.string(from: Date())
+        // Format the current date
+        let calendar = Calendar.current
+        let todayStart = calendar.startOfDay(for: Date())
+        let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
 
-        let urlString = "https://api.aladhan.com/v1/timings/\(currentDate)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
+        // Map calculationMethod and school to Adhan enums
+        let adhanCalculationMethod: CalculationMethod? = {
+            switch self.calculationMethod {
+            case 1: return .karachi
+            case 2: return .northAmerica
+            case 3: return .muslimWorldLeague
+            case 4: return .ummAlQura
+            case 5: return .egyptian
+            case 7: return .tehran
+            case 8: return .dubai
+            case 9: return .kuwait
+            case 10: return .qatar
+            case 11: return .singapore
+            case 12: return .other
+            case 13: return .turkey
+            case 14: return .other
+            default: return nil
+            }
+        }()
 
-        // Update lastApiCallUrl
-        self.lastApiCallUrl = urlString
+        let adhanMadhab: Madhab? = {
+            switch self.school {
+            case 0: return .shafi
+            case 1: return .hanafi
+            default: return nil
+            }
+        }()
 
-        // Print the complete URL to the console
-//        print("API URL: \(urlString)")
-
-        guard let url = URL(string: urlString) else {
-            print("Invalid URL")
+        guard let calculationMethod = adhanCalculationMethod, let madhab = adhanMadhab else {
+            print("Invalid calculation method or madhab")
             return
         }
 
-        URLSession.shared.dataTask(with: url) { data, response, error in
-            guard let data = data, error == nil else {
-                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
-                return
-            }
+        // Set up Adhan parameters
+        let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+        var params = calculationMethod.params
+        params.madhab = madhab
 
+        // Generate prayer times for the current date
+        let components = calendar.dateComponents([.year, .month, .day], from: Date())
+        if let prayerTimes = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) {
             do {
-                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-                   let data = json["data"] as? [String: Any],
-                   let timings = data["timings"] as? [String: String] {
+                // Fetch prayers for the current day from the context
+                let fetchDescriptor = FetchDescriptor<PrayerModel>(
+                    predicate: #Predicate { prayer in
+                        prayer.startTime >= todayStart && prayer.startTime <= todayEnd
+                    }
+                )
+                let existingPrayers = try self.context.fetch(fetchDescriptor)
+                
 
-                    DispatchQueue.main.async {
-                        let now = Date()
-                        let calendar = Calendar.current
-                        var testPrayers = [
-                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
-                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
-                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
-                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
-                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
-                        ]
-//                        var testPrayers = [
-//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
-//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
-//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
-//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
-//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
-//                        ]
-                        var actualPrayers = [
-                            Prayer(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
-                            Prayer(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
-                            Prayer(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
-                            Prayer(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
-                            Prayer(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
-                        ]
+                // Define prayer names and times
+                let prayerInfo = [
+                    ("Fajr", prayerTimes.fajr, prayerTimes.sunrise),
+                    ("Dhuhr", prayerTimes.dhuhr, prayerTimes.asr),
+                    ("Asr", prayerTimes.asr, prayerTimes.maghrib),
+                    ("Maghrib", prayerTimes.maghrib, prayerTimes.isha),
+                    ("Isha", prayerTimes.isha, calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
+                ]
 
-                        self.prayers = self.useTestPrayers ? testPrayers : actualPrayers
+                for (name, startTime, endTime) in prayerInfo {
+                    if let existingPrayer = existingPrayers.first(where: { $0.name == name }) {
+                        // Update existing prayer if not completed
+                        if !existingPrayer.isCompleted {
+                            if existingPrayer.startTime != startTime || existingPrayer.endTime != endTime {
+                                print("Overwriting Prayer: Name: \(name)")
+                                if existingPrayer.startTime != startTime {
+                                    print("Changed Start: \(startTime) (old \(existingPrayer.startTime))")
+                                    existingPrayer.startTime = startTime
+                                }
+                                if existingPrayer.endTime != endTime {
+                                    print("Changed End: \(endTime) (old \(existingPrayer.endTime))")
+                                    existingPrayer.endTime = endTime
+                                }
+                            }
+                        }
+                    } else {
+                        // Insert new prayer
+                        let newPrayer = PrayerModel(
+                            name: name,
+                            startTime: startTime,
+                            endTime: endTime
+                        )
+                        self.context.insert(newPrayer)
                     }
                 }
+                print("\(calculationMethod) & \(madhab) & \(coordinates)")
+
+                // Save changes
+                self.saveChanges()
+                self.prayers = try self.context.fetch(fetchDescriptor).sorted(by: { $0.startTime < $1.startTime })
+
             } catch {
-                print("Error parsing JSON: \(error.localizedDescription)")
+                print("❌ Error fetching existing prayers: \(error.localizedDescription)")
             }
-        }.resume()
+        }
     }
 
+    
+    // okay now this matches our current settings so its dynamic. but some of the calculation methods from AlAdhan arent in Adhan
+//    func fetchPrayerTimes() {
+//        guard let location = locationManager.location else {
+//            print("Location not available")
+//            return
+//        }
+//
+//        // Update latitude and longitude
+//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
+//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
+//
+//        // Format the current date
+//        let calendar = Calendar.current
+//        let todayStart = calendar.startOfDay(for: Date())
+//        let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+//
+//        // Map calculationMethod and school to Adhan enums
+//        let adhanCalculationMethod: CalculationMethod? = {
+//            switch self.calculationMethod {
+//            case 1: return .karachi
+//            case 2: return .northAmerica
+//            case 3: return .muslimWorldLeague
+//            case 4: return .ummAlQura
+//            case 5: return .egyptian
+//            case 7: return .tehran
+//            case 8: return .dubai
+//            case 9: return .kuwait
+//            case 10: return .qatar
+//            case 11: return .singapore
+//            case 12: return .other // Union Organization Islamic de France (customizable)
+//            case 13: return .turkey
+//            case 14: return .other // Spiritual Administration of Muslims of Russia (customizable)
+//            default: return nil
+//            }
+//        }()
+//
+//        let adhanMadhab: Madhab? = {
+//            switch self.school {
+//            case 0: return .shafi
+//            case 1: return .hanafi
+//            default: return nil
+//            }
+//        }()
+//
+//        guard let calculationMethod = adhanCalculationMethod, let madhab = adhanMadhab else {
+//            print("Invalid calculation method or madhab")
+//            return
+//        }
+//
+//        // Set up Adhan parameters
+//        let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+//        var params = calculationMethod.params
+//        params.madhab = madhab
+//
+//        // Generate prayer times for the current date
+//        let components = calendar.dateComponents([.year, .month, .day], from: Date())
+//        if let prayerTimes = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) {
+//            let fetchedPrayers = [
+//                PrayerModel(name: "Fajr", startTime: prayerTimes.fajr, endTime: prayerTimes.sunrise),
+//                PrayerModel(name: "Dhuhr", startTime: prayerTimes.dhuhr, endTime: prayerTimes.asr),
+//                PrayerModel(name: "Asr", startTime: prayerTimes.asr, endTime: prayerTimes.maghrib),
+//                PrayerModel(name: "Maghrib", startTime: prayerTimes.maghrib, endTime: prayerTimes.isha),
+//                PrayerModel(name: "Isha", startTime: prayerTimes.isha, endTime: calendar.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
+//            ]
+//
+//            do {
+//                let fetchDescriptor = FetchDescriptor<PrayerModel>(
+//                    predicate: #Predicate { prayer in
+//                        prayer.startTime >= todayStart && prayer.startTime <= todayEnd
+//                    }
+//                )
+//                let existingPrayers = try self.context.fetch(fetchDescriptor)
+//
+//                // Update or insert prayers
+//                for fetched in fetchedPrayers {
+//                    if let existingPrayer = existingPrayers.first(where: { $0.name == fetched.name }) {
+//                        // Update existing prayer if not completed
+//                        if !existingPrayer.isCompleted {
+//                            existingPrayer.startTime = fetched.startTime
+//                            existingPrayer.endTime = fetched.endTime
+//                        }
+//                    } else {
+//                        // Insert new prayer
+//                        let newPrayer = PrayerModel(
+//                            name: fetched.name,
+//                            startTime: fetched.startTime,
+//                            endTime: fetched.endTime,
+//                            dateAtMake: Date() // Track when it was added
+//                        )
+//                        self.context.insert(newPrayer)
+//                    }
+//                }
+//
+//                // Save changes
+//                self.saveChanges()
+//                self.prayers = try self.context.fetch(fetchDescriptor).sorted(by: { $0.startTime < $1.startTime })
+//
+//            } catch {
+//                print("❌ Error fetching existing prayers: \(error.localizedDescription)")
+//            }
+//        }
+//    }
+
+    // successfully used a fetch descriptor and update the items directly instead of replacing.
+//    func fetchPrayerTimes() {
+//        guard let location = locationManager.location else {
+//            print("Location not available")
+//            return
+//        }
+//
+//        // Update latitude and longitude
+//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
+//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
+//
+//        // Format the current date
+//        let calendar = Calendar.current
+//        let todayStart = calendar.startOfDay(for: Date())
+//        let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+//
+//        // Make the API call URL
+//        let dateFormatter = DateFormatter()
+//        dateFormatter.dateFormat = "yyyy-MM-dd"
+//        let currentDateString = dateFormatter.string(from: Date())
+//
+//        let urlString = "https://api.aladhan.com/v1/timings/\(currentDateString)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
+//        guard let url = URL(string: urlString) else {
+//            print("Invalid URL")
+//            return
+//        }
+//        self.lastApiCallUrl = urlString
+//
+//        // Perform the API call
+//        URLSession.shared.dataTask(with: url) { data, response, error in
+//            guard let data = data, error == nil else {
+//                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
+//                return
+//            }
+//
+//            do {
+//                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+//                   let data = json["data"] as? [String: Any],
+//                   let timings = data["timings"] as? [String: String] {
+//
+//                    DispatchQueue.main.async {
+//                        let now = Date()
+//
+//                        // Parse the fetched prayers
+//                        let fetchedPrayers = [
+//                            PrayerModel(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
+//                            PrayerModel(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
+//                            PrayerModel(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
+//                            PrayerModel(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
+//                            PrayerModel(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
+//                        ]
+//
+//                        // Fetch prayers for the current day from the context
+//                        let fetchDescriptor = FetchDescriptor<PrayerModel>(
+//                            predicate: #Predicate { prayer in
+//                                prayer.startTime >= todayStart && prayer.startTime <= todayEnd
+//                            }
+//                        )
+//
+//                        do {
+//                            let existingPrayers = try self.context.fetch(fetchDescriptor)
+//
+//                            // Update or insert prayers
+//                            for fetched in fetchedPrayers {
+//                                if let existingPrayer = existingPrayers.first(where: { $0.name == fetched.name }) {
+//                                    // Update existing prayer if not completed
+//                                    if !existingPrayer.isCompleted {
+//                                        existingPrayer.startTime = fetched.startTime
+//                                        existingPrayer.endTime = fetched.endTime
+//                                    }
+//                                } else {
+//                                    // Insert new prayer
+//                                    let newPrayer = PrayerModel(
+//                                        name: fetched.name,
+//                                        startTime: fetched.startTime,
+//                                        endTime: fetched.endTime,
+//                                        dateAtMake: Date() // Track when it was added
+//                                    )
+//                                    self.context.insert(newPrayer)
+//                                }
+//                            }
+//
+//                            // Save changes
+//                            self.saveChanges()
+//                            self.prayers = try self.context.fetch(fetchDescriptor).sorted(by: { $0.startTime < $1.startTime })
+//
+//                        } catch {
+//                            print("❌ Error fetching existing prayers: \(error.localizedDescription)")
+//                        }
+//                    }
+//                }
+//            } catch {
+//                print("Error parsing JSON: \(error.localizedDescription)")
+//            }
+//        }.resume()
+//    }
+
+    
+    
+//    func fetchPrayerTimes() {
+//        // get a location.
+//        guard let location = locationManager.location else {
+//            print("Location not available")
+//            return
+//        }
+//
+//        // Update latitude and longitude
+//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
+//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
+//
+//        // format the date for the api call
+//        let dateFormatter = DateFormatter()
+//        dateFormatter.dateFormat = "dd-MM-yyyy"
+//        let currentDate = dateFormatter.string(from: Date())
+//
+//        // make the api call url
+//        let urlString = "https://api.aladhan.com/v1/timings/\(currentDate)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
+//        
+//        // check if url is valid
+//        guard let url = URL(string: urlString) else {
+//            print("Invalid URL")
+//            return
+//        }
+//        
+//        self.lastApiCallUrl = urlString
+//
+//        // enter url session. get acc data from api call.
+//        URLSession.shared.dataTask(with: url) { data, response, error in
+//            // catch any errors
+//            guard let data = data, error == nil else {
+//                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
+//                return
+//            }
+//
+//            do {
+//                // boil down the data to get the timings.
+//                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
+//                   let data = json["data"] as? [String: Any],
+//                   let timings = data["timings"] as? [String: String] {
+//
+//                    DispatchQueue.main.async {
+//                        let now = Date()
+//                        let fetchedPrayers = [
+//                            PrayerModel(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
+//                            PrayerModel(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
+//                            PrayerModel(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
+//                            PrayerModel(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
+//                            PrayerModel(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
+//                        ]
+//
+//                        var prayersToShow: [PrayerModel] = []
+//
+//                        for fetched in fetchedPrayers {
+//                            
+//                            if let existingPrayer = self.prayers.first(where: {
+//                                $0.name == fetched.name &&
+//                                Calendar.current.isDate($0.startTime, inSameDayAs: fetched.startTime)
+//                                }) {
+//                                if existingPrayer.startTime > now {
+//                                    // Replace future prayers with new ones
+//                                    prayersToShow.append(fetched) // lets maybe change this to just make the existingPrayer to equal fetched self.prayer
+//                                } else {
+//                                    // Retain past and completed prayers
+//                                    prayersToShow.append(existingPrayer)
+//                                }
+//                            } else {
+//                                // If no prayer exists for the same name and date, save the new prayer
+//                                prayersToShow.append(fetched)
+//                                self.context.insert(fetched) // Add to the context
+//                            }
+//                            
+//                        }
+//
+//                        self.prayers = prayersToShow.sorted(by: { $0.startTime < $1.startTime })
+//                        
+//                        print("\(self.calculationMethod) & \(self.school) & \(self.cityName ?? "(no city)")")
+//                        // Persist changes
+//                        self.saveChanges()
+//                    }
+//                }
+//            } catch {
+//                print("Error parsing JSON: \(error.localizedDescription)")
+//            }
+//        }.resume()
+//    }
+
+    
+    
     private func parseTime(_ timeString: String) -> Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
 
         // Set the formatter's time zone to the current time zone
         formatter.timeZone = TimeZone.current
-        print("\(TimeZone.current)")
+        locationPrinter("from parseTime: \(TimeZone.current)")
 
         // Parse the time string
         guard let time = formatter.date(from: timeString) else {
@@ -276,23 +702,43 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                              of: now) ?? now
     }
 
-    func togglePrayerCompletion(for prayer: Prayer) {
+    // new way. doesnt use index. so no need to parse through database. was using index = prayers.firstIndex(where: { $0.id == prayer.id })
+    func togglePrayerCompletion(for prayer: PrayerModel) {
         triggerSomeVibration(type: .medium)
-        if let index = prayers.firstIndex(where: { $0.id == prayer.id }) {
-            if(prayers[index].startTime <= Date()){
-                prayers[index].isCompleted.toggle()
-                if prayers[index].isCompleted{
-                    //show chain zikr alert?
-                    setPrayerScoreFor(at: index)
-                }else{
-                    prayers[index].timeAtComplete = nil
-                    prayers[index].numberScore = nil
-                    prayers[index].englishScore = nil
+        
+            if prayer.startTime <= Date() {
+                prayer.isCompleted.toggle()
+                if prayer.isCompleted {
+                    setPrayerScore(for: prayer)
+                } else {
+                    prayer.timeAtComplete = nil
+                    prayer.numberScore = nil
+                    prayer.englishScore = nil
                 }
+
+                // Persist the changes (swiftdata saves automatically for us.)
             }
+        
+    }
+    
+    
+    private var saveTimer: Timer?
+
+    private func scheduleSaveChanges() {
+        saveTimer?.invalidate()
+        saveTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            self?.saveChanges()
         }
     }
-
+    
+    private func saveChanges() {
+        do {
+            try context.save()
+            print("✅ Prayer state saved successfully")
+        } catch {
+            print("❌ Failed to save prayer state: \(error.localizedDescription)")
+        }
+    }
 
 
     // CLLocationManagerDelegate method
@@ -326,638 +772,35 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    func setPrayerScoreFor(at index: Int) {
+    // new way directly writes on the prayer. old way used an index.
+    func setPrayerScore(for prayer: PrayerModel) {
         print("setting time at complete as: ", Date())
-        prayers[index].timeAtComplete = Date()
+        prayer.timeAtComplete = Date()
 
-        if let completedTime = prayers[index].timeAtComplete {
-            let timeLeft = prayers[index].endTime.timeIntervalSince(completedTime)
-            let totalInterval = prayers[index].endTime.timeIntervalSince(prayers[index].startTime)
+        if let completedTime = prayer.timeAtComplete {
+            let timeLeft = prayer.endTime.timeIntervalSince(completedTime)
+            let totalInterval = prayer.endTime.timeIntervalSince(prayer.startTime)
             let score = timeLeft / totalInterval
-            prayers[index].numberScore = max(0, min(score, 1))
+            prayer.numberScore = max(0, min(score, 1))
 
-            if let percentage = prayers[index].numberScore {
+            if let percentage = prayer.numberScore {
                 if percentage > 0.50 {
-                    prayers[index].englishScore = "Optimal"
+                    prayer.englishScore = "Optimal"
                 } else if percentage > 0.25 {
-                    prayers[index].englishScore = "Good"
+                    prayer.englishScore = "Good"
                 } else if percentage > 0 {
-                    prayers[index].englishScore = "Poor"
+                    prayer.englishScore = "Poor"
                 } else {
-                    prayers[index].englishScore = "Kaza"
+                    prayer.englishScore = "Kaza"
                 }
             }
         }
     }
+
+    
 }
 
 
-
-//class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
-//    @Published var prayers: [Prayer] = [] {
-//        didSet {
-//            // Notify that prayers have been updated
-//            self.objectWillChange.send()
-//            NotificationCenter.default.post(name: .prayersUpdated, object: nil)
-//        }
-//    }
-//    @Published var calculationMethod: Int = 2 // Default to Islamic Society of North America (ISNA)
-//    @Published var school: Int = 1 // Default to Shafi'i
-//    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
-//    @Published var hasValidLocation: Bool = false
-//    @Published var cityName: String?
-//    @Published var latitude: String = "N/A"
-//    @Published var longitude: String = "N/A"
-//    @Published var lastApiCallUrl: String = "N/A"
-//    @Published var useTestPrayers: Bool = false  // Add this property
-//    
-//    private let locationManager: CLLocationManager
-//    private let geocoder = CLGeocoder()
-//    private var lastGeocodeRequestTime: Date?
-//    private var lastAppLocation: CLLocation?
-//
-//    override init() {
-//        locationManager = CLLocationManager()
-//        super.init()
-//        locationManager.delegate = self
-//        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-//        locationManager.requestWhenInUseAuthorization()
-//        locationManager.startUpdatingLocation()
-//    }
-//
-//    func checkLocationAuthorization() {
-//        switch locationManager.authorizationStatus {
-//        case .notDetermined:
-//            locationManager.requestWhenInUseAuthorization()
-//        case .restricted, .denied:
-//            locationAuthorizationStatus = .denied
-//            hasValidLocation = false
-//        case .authorizedWhenInUse, .authorizedAlways:
-//            locationAuthorizationStatus = .authorizedWhenInUse
-//            if let location = locationManager.location {
-//                hasValidLocation = true
-//                fetchPrayerTimes()
-//                updateCityName(for: location)
-//            } else {
-//                hasValidLocation = false
-//            }
-//        @unknown default:
-//            hasValidLocation = false
-//        }
-//    }
-//
-////    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-////        if let location = locations.last {
-////            updateLocation(location)
-////            print("<inside update location>")
-////        } else{
-////            print(">passed by the didUpdateLocation<")
-////        }
-////    }
-//    
-//    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-//        guard let deviceLocation = locations.last else {
-//            print(">passed by the didUpdateLocation< - No location found")
-//            return
-//        }
-//
-//        let now = Date()
-//        if let appLocation = lastAppLocation {
-//            let distanceChange = appLocation.distance(from: deviceLocation)
-//            if let lastRequestTime = lastGeocodeRequestTime {
-//                if distanceChange < 50, now.timeIntervalSince(lastRequestTime) < 30 {
-//                    // Only print if the update is skipped
-//                    return
-//                } else {
-//                    print("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?")
-//                }
-//            } else {
-//                print("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request")
-//
-//            }
-//        } else {
-//            print("⚠️ First location update. Proceeding with geocoding.")
-//        }
-//
-//        // If checks pass, update location and proceed with geocoding
-//        updateLocation(deviceLocation)
-//    }
-//
-//
-//    private func updateLocation(_ location: CLLocation) {
-//        hasValidLocation = true
-//        latitude = String(format: "%.6f", location.coordinate.latitude)
-//        longitude = String(format: "%.6f", location.coordinate.longitude)
-//        
-//        // Update the last geocode request time and last updated location
-//        lastGeocodeRequestTime = Date()
-//        lastAppLocation = location
-//        
-//        print("🌍 Triggering geocoding and prayer times fetch...")
-//        updateCityName(for: location)
-//        fetchPrayerTimes()
-//    }
-//
-//
-//    private func updateCityName(for location: CLLocation) {
-//        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-//            DispatchQueue.main.async {
-//                if let error = error {
-//                    print("❌ Reverse geocoding error: \(error.localizedDescription)")
-//                    self?.cityName = "Error fetching city"
-//                    return
-//                }
-//
-//                if let placemark = placemarks?.first {
-//                    let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
-//                    print("🏙️ Geocoded City: \(newCityName)")
-//                    self?.cityName = newCityName
-//                } else {
-//                    print("⚠️ No placemark found")
-//                    self?.cityName = "Unknown"
-//                }
-//            }
-//        }
-//    }
-//
-//    func fetchPrayerTimes() {
-//        guard let location = locationManager.location else {
-//            print("Location not available")
-//            return
-//        }
-//
-//        // Update latitude and longitude
-//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
-//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
-//
-//        let dateFormatter = DateFormatter()
-//        dateFormatter.dateFormat = "dd-MM-yyyy"
-//        let currentDate = dateFormatter.string(from: Date())
-//
-//        let urlString = "https://api.aladhan.com/v1/timings/\(currentDate)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
-//
-//        // Update lastApiCallUrl
-//        self.lastApiCallUrl = urlString
-//
-//        // Print the complete URL to the console
-////        print("API URL: \(urlString)")
-//
-//        guard let url = URL(string: urlString) else {
-//            print("Invalid URL")
-//            return
-//        }
-//
-//        URLSession.shared.dataTask(with: url) { data, response, error in
-//            guard let data = data, error == nil else {
-//                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
-//                return
-//            }
-//
-//            do {
-//                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-//                   let data = json["data"] as? [String: Any],
-//                   let timings = data["timings"] as? [String: String] {
-//
-//                    DispatchQueue.main.async {
-//                        let now = Date()
-//                        let calendar = Calendar.current
-//                        var testPrayers = [
-//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
-//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
-//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
-//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
-//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
-//                        ]
-////                        var testPrayers = [
-////                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
-////                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
-////                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
-////                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
-////                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
-////                        ]
-//                        var actualPrayers = [
-//                            Prayer(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
-//                            Prayer(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
-//                            Prayer(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
-//                            Prayer(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
-//                            Prayer(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
-//                        ]
-//
-//                        self.prayers = self.useTestPrayers ? testPrayers : actualPrayers
-//                    }
-//                }
-//            } catch {
-//                print("Error parsing JSON: \(error.localizedDescription)")
-//            }
-//        }.resume()
-//    }
-//
-//    private func parseTime(_ timeString: String) -> Date {
-//        let formatter = DateFormatter()
-//        formatter.dateFormat = "HH:mm"
-//
-//        // Set the formatter's time zone to the current time zone
-//        formatter.timeZone = TimeZone.current
-//        print("\(TimeZone.current)")
-//
-//        // Parse the time string
-//        guard let time = formatter.date(from: timeString) else {
-//            return Date()
-//        }
-//
-//        // Get the current calendar
-//        let calendar = Calendar.current
-//        let now = Date()
-//
-//        // Extract hour and minute from the parsed time
-//        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
-//
-//        // Combine the current date with the parsed time
-//        return calendar.date(bySettingHour: timeComponents.hour ?? 0,
-//                             minute: timeComponents.minute ?? 0,
-//                             second: 0,
-//                             of: now) ?? now
-//    }
-//
-//    func togglePrayerCompletion(for prayer: Prayer) {
-//        triggerSomeVibration(type: .medium)
-//        if let index = prayers.firstIndex(where: { $0.id == prayer.id }) {
-//            if(prayers[index].startTime <= Date()){
-//                prayers[index].isCompleted.toggle()
-//                if prayers[index].isCompleted{
-//                    //show chain zikr alert?
-//                    setPrayerScoreFor(at: index)
-//                }else{
-//                    prayers[index].timeAtComplete = nil
-//                    prayers[index].numberScore = nil
-//                    prayers[index].englishScore = nil
-//                }
-//            }
-//        }
-//    }
-//
-//
-//
-//    // CLLocationManagerDelegate method
-//    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-//        checkLocationAuthorization()
-//    }
-//
-//    func requestLocationAuthorization() {
-//        locationManager.requestWhenInUseAuthorization()
-//    }
-//
-//    func fetchAndPrintCity() {
-//        guard let location = locationManager.location else {
-//            print("Location not available")
-//            return
-//        }
-//        updateCityName(for: location)
-//    }
-//    
-//    func getColorForPrayerScore(_ score: Double?) -> Color {
-//        guard let score = score else { return .gray }
-//        
-//        if score >= 0.50 {
-//            return .green
-//        } else if score >= 0.25 {
-//            return .yellow
-//        } else if score > 0 {
-//            return .red
-//        } else {
-//            return .gray
-//        }
-//    }
-//
-//    func setPrayerScoreFor(at index: Int) {
-//        print("setting time at complete as: ", Date())
-//        prayers[index].timeAtComplete = Date()
-//
-//        if let completedTime = prayers[index].timeAtComplete {
-//            let timeLeft = prayers[index].endTime.timeIntervalSince(completedTime)
-//            let totalInterval = prayers[index].endTime.timeIntervalSince(prayers[index].startTime)
-//            let score = timeLeft / totalInterval
-//            prayers[index].numberScore = max(0, min(score, 1))
-//
-//            if let percentage = prayers[index].numberScore {
-//                if percentage > 0.50 {
-//                    prayers[index].englishScore = "Optimal"
-//                } else if percentage > 0.25 {
-//                    prayers[index].englishScore = "Good"
-//                } else if percentage > 0 {
-//                    prayers[index].englishScore = "Poor"
-//                } else {
-//                    prayers[index].englishScore = "Kaza"
-//                }
-//            }
-//        }
-//    }
-//}
-
-
-//class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
-//    @Published var prayers: [Prayer] = [] {
-//        didSet {
-//            // Notify that prayers have been updated
-//            self.objectWillChange.send()
-//            NotificationCenter.default.post(name: .prayersUpdated, object: nil)
-//        }
-//    }
-//    @Published var calculationMethod: Int = 2 // Default to Islamic Society of North America (ISNA)
-//    @Published var school: Int = 1 // Default to Shafi'i
-//    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
-//    @Published var hasValidLocation: Bool = false
-//    @Published var cityName: String?
-//    @Published var latitude: String = "N/A"
-//    @Published var longitude: String = "N/A"
-//    @Published var lastApiCallUrl: String = "N/A"
-//    @Published var useTestPrayers: Bool = false  // Add this property
-//    
-//    private let locationManager: CLLocationManager
-//    private let geocoder = CLGeocoder()
-//    private var lastGeocodeRequestTime: Date?
-//
-//    override init() {
-//        locationManager = CLLocationManager()
-//        super.init()
-//        locationManager.delegate = self
-//        locationManager.desiredAccuracy = kCLLocationAccuracyBest
-//        locationManager.requestWhenInUseAuthorization()
-//        locationManager.startUpdatingLocation()
-//    }
-//
-//    func checkLocationAuthorization() {
-//        switch locationManager.authorizationStatus {
-//        case .notDetermined:
-//            locationManager.requestWhenInUseAuthorization()
-//        case .restricted, .denied:
-//            locationAuthorizationStatus = .denied
-//            hasValidLocation = false
-//        case .authorizedWhenInUse, .authorizedAlways:
-//            locationAuthorizationStatus = .authorizedWhenInUse
-//            if let location = locationManager.location {
-//                hasValidLocation = true
-//                fetchPrayerTimes()
-//                updateCityName(for: location)
-//            } else {
-//                hasValidLocation = false
-//            }
-//        @unknown default:
-//            hasValidLocation = false
-//        }
-//    }
-//
-////    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-////        if let location = locations.last {
-////            updateLocation(location)
-////            print("<inside update location>")
-////        } else{
-////            print(">passed by the didUpdateLocation<")
-////        }
-////    }
-//    
-//    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-//        if let location = locations.last {
-//            print("📍 Current Location: lat \(location.coordinate.latitude), lon \(location.coordinate.longitude)")
-//            
-//            if let lastLocation = locationManager.location {
-//                let distance = lastLocation.distance(from: location)
-//                print("📏 Distance from last location: \(distance) meters")
-//                
-//                // Check if the location has changed significantly
-//                if distance < 50 {
-//                    print("🚫 Skipped update: Location change too small (<50m)")
-//                    return
-//                }
-//            } else {
-//                print("⚠️ No last location available yet.")
-//            }
-//            
-//            updateLocation(location) // Only updates when location changes significantly
-//        } else {
-//            print(">passed by the didUpdateLocation< - No location found")
-//        }
-//    }
-//
-//    private func updateLocation(_ location: CLLocation) {
-//        hasValidLocation = true
-//        latitude = String(format: "%.6f", location.coordinate.latitude)
-//        longitude = String(format: "%.6f", location.coordinate.longitude)
-//
-//        // Debounce geocoding requests
-//        let now = Date()
-//        if let lastRequestTime = lastGeocodeRequestTime, now.timeIntervalSince(lastRequestTime) < 60 {
-//            // Skip geocoding if the last request was made less than 60 seconds ago
-//            print("skipped cuz < 60 time")
-//            return
-//        }
-//
-//        // Check if the location has changed significantly
-//        if let lastLocation = locationManager.location, lastLocation.distance(from: location) < 50 {
-//            // Skip geocoding if the location hasn't changed significantly
-//            print("skipped cuz too close distance")
-//            return
-//        }
-//
-//        lastGeocodeRequestTime = now
-//        updateCityName(for: location)
-//        fetchPrayerTimes()
-//    }
-//
-//    private func updateCityName(for location: CLLocation) {
-//        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-//            DispatchQueue.main.async {
-//                if let error = error {
-//                    print("Reverse geocoding error: \(error.localizedDescription)")
-//                    self?.cityName = "Error fetching city"
-//                    return
-//                }
-//
-//                if let placemark = placemarks?.first {
-//                    let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
-//                    print("Geocoded City: \(newCityName)")
-//                    self?.cityName = newCityName
-//                } else {
-//                    print("No placemark found")
-//                    self?.cityName = "Unknown"
-//                }
-//            }
-//        }
-//    }
-//
-//    func fetchPrayerTimes() {
-//        guard let location = locationManager.location else {
-//            print("Location not available")
-//            return
-//        }
-//
-//        // Update latitude and longitude
-//        self.latitude = String(format: "%.6f", location.coordinate.latitude)
-//        self.longitude = String(format: "%.6f", location.coordinate.longitude)
-//
-//        let dateFormatter = DateFormatter()
-//        dateFormatter.dateFormat = "dd-MM-yyyy"
-//        let currentDate = dateFormatter.string(from: Date())
-//
-//        let urlString = "https://api.aladhan.com/v1/timings/\(currentDate)?latitude=\(location.coordinate.latitude)&longitude=\(location.coordinate.longitude)&method=\(calculationMethod)&school=\(school)"
-//
-//        // Update lastApiCallUrl
-//        self.lastApiCallUrl = urlString
-//
-//        // Print the complete URL to the console
-////        print("API URL: \(urlString)")
-//
-//        guard let url = URL(string: urlString) else {
-//            print("Invalid URL")
-//            return
-//        }
-//
-//        URLSession.shared.dataTask(with: url) { data, response, error in
-//            guard let data = data, error == nil else {
-//                print("Error fetching data: \(error?.localizedDescription ?? "Unknown error")")
-//                return
-//            }
-//
-//            do {
-//                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any],
-//                   let data = json["data"] as? [String: Any],
-//                   let timings = data["timings"] as? [String: String] {
-//
-//                    DispatchQueue.main.async {
-//                        let now = Date()
-//                        let calendar = Calendar.current
-//                        var testPrayers = [
-//                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -60*60*3, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now),
-//                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 7, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now),
-//                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 40, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now),
-//                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 70, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now),
-//                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 95, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 120, to: now) ?? now)
-//                        ]
-////                        var testPrayers = [
-////                            Prayer(name: "Fajr", startTime: calendar.date(byAdding: .second, value: -5, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now),
-////                            Prayer(name: "Dhuhr", startTime: calendar.date(byAdding: .second, value: 2, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now),
-////                            Prayer(name: "Asr", startTime: calendar.date(byAdding: .second, value: 4, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now),
-////                            Prayer(name: "Maghrib", startTime: calendar.date(byAdding: .second, value: 6, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now),
-////                            Prayer(name: "Isha", startTime: calendar.date(byAdding: .second, value: 8, to: now) ?? now, endTime: calendar.date(byAdding: .second, value: 10, to: now) ?? now)
-////                        ]
-//                        var actualPrayers = [
-//                            Prayer(name: "Fajr", startTime: self.parseTime(timings["Fajr"] ?? ""), endTime: self.parseTime(timings["Sunrise"] ?? "")),
-//                            Prayer(name: "Dhuhr", startTime: self.parseTime(timings["Dhuhr"] ?? ""), endTime: self.parseTime(timings["Asr"] ?? "")),
-//                            Prayer(name: "Asr", startTime: self.parseTime(timings["Asr"] ?? ""), endTime: self.parseTime(timings["Maghrib"] ?? "")),
-//                            Prayer(name: "Maghrib", startTime: self.parseTime(timings["Maghrib"] ?? ""), endTime: self.parseTime(timings["Isha"] ?? "")),
-//                            Prayer(name: "Isha", startTime: self.parseTime(timings["Isha"] ?? ""), endTime: Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
-//                        ]
-//
-//                        self.prayers = self.useTestPrayers ? testPrayers : actualPrayers
-//                    }
-//                }
-//            } catch {
-//                print("Error parsing JSON: \(error.localizedDescription)")
-//            }
-//        }.resume()
-//    }
-//
-//    private func parseTime(_ timeString: String) -> Date {
-//        let formatter = DateFormatter()
-//        formatter.dateFormat = "HH:mm"
-//
-//        // Set the formatter's time zone to the current time zone
-//        formatter.timeZone = TimeZone.current
-//        print("\(TimeZone.current)")
-//
-//        // Parse the time string
-//        guard let time = formatter.date(from: timeString) else {
-//            return Date()
-//        }
-//
-//        // Get the current calendar
-//        let calendar = Calendar.current
-//        let now = Date()
-//
-//        // Extract hour and minute from the parsed time
-//        let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
-//
-//        // Combine the current date with the parsed time
-//        return calendar.date(bySettingHour: timeComponents.hour ?? 0,
-//                             minute: timeComponents.minute ?? 0,
-//                             second: 0,
-//                             of: now) ?? now
-//    }
-//
-//    func togglePrayerCompletion(for prayer: Prayer) {
-//        triggerSomeVibration(type: .medium)
-//        if let index = prayers.firstIndex(where: { $0.id == prayer.id }) {
-//            if(prayers[index].startTime <= Date()){
-//                prayers[index].isCompleted.toggle()
-//                if prayers[index].isCompleted{
-//                    //show chain zikr alert?
-//                    setPrayerScoreFor(at: index)
-//                }else{
-//                    prayers[index].timeAtComplete = nil
-//                    prayers[index].numberScore = nil
-//                    prayers[index].englishScore = nil
-//                }
-//            }
-//        }
-//    }
-//
-//
-//
-//    // CLLocationManagerDelegate method
-//    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-//        checkLocationAuthorization()
-//    }
-//
-//    func requestLocationAuthorization() {
-//        locationManager.requestWhenInUseAuthorization()
-//    }
-//
-//    func fetchAndPrintCity() {
-//        guard let location = locationManager.location else {
-//            print("Location not available")
-//            return
-//        }
-//        updateCityName(for: location)
-//    }
-//    
-//    func getColorForPrayerScore(_ score: Double?) -> Color {
-//        guard let score = score else { return .gray }
-//        
-//        if score >= 0.50 {
-//            return .green
-//        } else if score >= 0.25 {
-//            return .yellow
-//        } else if score > 0 {
-//            return .red
-//        } else {
-//            return .gray
-//        }
-//    }
-//
-//    func setPrayerScoreFor(at index: Int) {
-//        print("setting time at complete as: ", Date())
-//        prayers[index].timeAtComplete = Date()
-//
-//        if let completedTime = prayers[index].timeAtComplete {
-//            let timeLeft = prayers[index].endTime.timeIntervalSince(completedTime)
-//            let totalInterval = prayers[index].endTime.timeIntervalSince(prayers[index].startTime)
-//            let score = timeLeft / totalInterval
-//            prayers[index].numberScore = max(0, min(score, 1))
-//
-//            if let percentage = prayers[index].numberScore {
-//                if percentage > 0.50 {
-//                    prayers[index].englishScore = "Optimal"
-//                } else if percentage > 0.25 {
-//                    prayers[index].englishScore = "Good"
-//                } else if percentage > 0 {
-//                    prayers[index].englishScore = "Poor"
-//                } else {
-//                    prayers[index].englishScore = "Kaza"
-//                }
-//            }
-//        }
-//    }
-//}
 
 class SharedStateClass: ObservableObject {
     @Published var selectedViewPage: Int = 1
@@ -973,10 +816,17 @@ class SharedStateClass: ObservableObject {
 
 struct PrayerTimesView: View {
     @EnvironmentObject var sharedState: SharedStateClass
+    @EnvironmentObject var viewModel: PrayerViewModel
+    //@StateObject private var viewModel: PrayerViewModel
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    @StateObject private var viewModel = PrayerViewModel()
     @FocusState private var isNumberEntryFocused
+
+    @Environment(\.modelContext) var context
+    @Query private var prayersFromPersistence: [PrayerModel] = []
+    @State private var last5Prayers: [PrayerModel] = []
+
+    
 
     
     @State private var relevantPrayerTimer: Timer? = nil
@@ -994,6 +844,12 @@ struct PrayerTimesView: View {
     //    @State private var showingDuaPage: Bool = false
     //    @State private var showingHistoryPage: Bool = false
     //    @State private var showingTasbeehPage: Bool = false
+    
+    let schedulePrints = false
+    
+//    init(viewModel: PrayerViewModel) {
+//         self._viewModel = StateObject(wrappedValue: viewModel)
+//     }
 
     
     private var startCondition: Bool{
@@ -1002,55 +858,52 @@ struct PrayerTimesView: View {
         let freestyleModeCond = (sharedState.selectedMode == 0)
         return (timeModeCond || countModeCond || freestyleModeCond)
     }
+    
+    func schedulePrinter(_ message: String) {
+        schedulePrints ? print(message) : ()
+    }
 
     private func scheduleNextTransition() {
         // Cancel any existing timer to avoid duplicates
         relevantPrayerTimer?.invalidate()
 
         let now = Date()
-        print("\n--- Scheduling Check at \(formatTime(now)) ---")
-        
-        // Debug: Check if prayers array is empty
-        print("Number of prayers: \(viewModel.prayers.count)")
+        schedulePrinter("\n--- Scheduling Check at \(formatTime(now)) ---")
+        schedulePrinter("Number of prayers: \(viewModel.prayers.count)") // Debug: Check if prayers array is empty
         
         guard !viewModel.prayers.isEmpty else {
-            print("⚠️ No prayers available yet")
+            schedulePrinter("⚠️ No prayers available yet")
             return
         }
         
         // Find the next transition time from all prayers
         let nextTransition = viewModel.prayers.compactMap { prayer -> Date? in
-            if !prayer.isCompleted && prayer.startTime > now {
-                // If prayer hasn't started and isn't completed
-                print("Found upcoming prayer: \(prayer.name) at \(formatTime(prayer.startTime))")
+            if !prayer.isCompleted && prayer.startTime > now { // If prayer hasn't started and isn't completed
+                schedulePrinter("Found upcoming prayer: \(prayer.name) at \(formatTime(prayer.startTime))")
                 return prayer.startTime
-            } else if !prayer.isCompleted && prayer.endTime > now {
-                // If prayer is ongoing and isn't completed
-                print("Found ongoing prayer: \(prayer.name) ending at \(formatTime(prayer.endTime))")
+            } else if !prayer.isCompleted && prayer.endTime > now { // If prayer is ongoing and isn't completed
+                schedulePrinter("Found ongoing prayer: \(prayer.name) ending at \(formatTime(prayer.endTime))")
                 return prayer.endTime
             }
-            print("Skipping \(prayer.name) - completed or past")
+            schedulePrinter("Skipping \(prayer.name) - completed or past")
             return nil
         }.min()
         
-        // If we found a next transition time
-        if let nextTime = nextTransition {
-            print("Scheduling next transition for: \(formatTime(nextTime))")
+        if let nextTime = nextTransition { // If we found a next transition time
+            schedulePrinter("Scheduling next transition for: \(formatTime(nextTime))")
             
             relevantPrayerTimer = Timer.scheduledTimer(
                 withTimeInterval: nextTime.timeIntervalSinceNow,
                 repeats: false
             ) { _ in
-                print("\n🔄 Timer fired at \(formatTime(Date()))")
-                // Force view refresh when timer fires
-                withAnimation {
+                schedulePrinter("\n🔄 Timer fired at \(formatTime(Date()))")
+                withAnimation { // Force view refresh when timer fires
                     self.viewModel.objectWillChange.send()
                 }
-                // Schedule the next transition
-                self.scheduleNextTransition()
+                self.scheduleNextTransition() // Schedule the next transition
             }
         } else {
-            print("⚠️ No more transitions to schedule today")
+            schedulePrinter("⚠️ No more transitions to schedule today")
         }
     }
     
@@ -1367,6 +1220,29 @@ struct PrayerTimesView: View {
             }
             .onAppear {
 //                sharedState.showingOtherPages = false
+                 
+////                do {
+////                    prayersFromPersistence = try context.fetch(PrayerModel.fetchRequest())
+//                    print("Number of prayers fetched: \(prayersFromPersistence.count)")
+//                    
+//                    // Loop through prayers and print their details
+//                    for (index, prayer) in prayersFromPersistence.enumerated() {
+//                        print("Prayer \(index + 1): \(prayer.name)")
+//                        print("Start Time: \(prayer.startTime)")
+//                        print("End Time: \(prayer.endTime)")
+//                        print("---")
+//                    }
+////                } catch {
+////                    print("Error fetching prayers: \(error.localizedDescription)")
+////                }
+                
+                loadLast5Prayers()
+                print(">F>F>F>F>F>F>F>F>F>F")
+                print(last5Prayers.count)
+                for (index, prayer) in last5Prayers.enumerated() {
+                    print("Prayer \(index + 1): (\(prayer.isCompleted ? "☑" : "☐")) \(prayer.name) : \(prayer.startTime) - \(prayer.endTime)")
+                }
+
                 
                 if !viewModel.prayers.isEmpty { scheduleNextTransition() }
                 NotificationCenter.default.addObserver(
@@ -1402,6 +1278,21 @@ struct PrayerTimesView: View {
         //}
 //        .navigationBarBackButtonHidden()
     }
+    
+    private func loadLast5Prayers() {
+        do {
+            var fetchDescriptor = FetchDescriptor<PrayerModel>(
+                sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+            )
+            fetchDescriptor.fetchLimit = 5
+            
+            last5Prayers = try context.fetch(fetchDescriptor)
+            
+            last5Prayers.reverse()
+        } catch {
+            print("❌ Failed to fetch prayers: \(error.localizedDescription)")
+        }
+    }
         
     private func handleDragEnd(translation: CGFloat) {
         let threshold: CGFloat = 30
@@ -1433,13 +1324,38 @@ struct PrayerTimesView: View {
     }
     
 }
-
 struct ContentView3_Previews: PreviewProvider {
     static var previews: some View {
-        PrayerTimesView()
-            .environmentObject(SharedStateClass()) // Inject the environment object here
+        let sharedState = SharedStateClass()
+        
+        // Create a preview ModelContainer
+        let previewModelContainer: ModelContainer = {
+            let schema = Schema([
+                PrayerModel.self
+            ])
+            let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+            do {
+                return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            } catch {
+                fatalError("Could not create ModelContainer for preview: \(error)")
+            }
+        }()
+
+        // Create a preview context
+        let context = previewModelContainer.mainContext
+
+        // Create a preview PrayerTimesView
+        return PrayerTimesView()
+            .environmentObject(sharedState)
     }
 }
+
+//struct ContentView3_Previews: PreviewProvider {
+//    static var previews: some View {
+//        PrayerTimesView()
+//            .environmentObject(SharedStateClass()) // Inject the environment object here
+//    }
+//}
 
 // Add notification name
 extension Notification.Name {
@@ -1725,7 +1641,21 @@ struct TopBar: View {
                                         .padding(.vertical, 7)
                                 }
                                 
-                                NavigationLink(destination: SettingsView(viewModel: viewModel)) {
+                                NavigationLink(destination: SeeAllPrayers()) {
+                                    Image(systemName: "volleyball.circle")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: AdhanTestView()) {
+                                    Image(systemName: "basketball.circle")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: SettingsView()) {
                                     Image(systemName: "gear")
                                         .font(.system(size: 24))
                                         .foregroundColor(.gray)
