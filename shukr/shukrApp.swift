@@ -41,7 +41,7 @@ struct shukrApp: App {
     var body: some Scene {
         
             WindowGroup {
-                NavigationView{
+                
                     if globalLocationManager.isAuthorized{
                         // v3 mainpage - tabview paging with vertical dragging
                         TabView (selection: $sharedState.selectedViewPage){
@@ -59,12 +59,14 @@ struct shukrApp: App {
 //                                .tag(1)
 //                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
                             
-                            
-                            // Middle page: Prayer time tracker
-                            PrayerTimesView()
-                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                                .tag(1)
-                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            NavigationView{
+                                // Middle page: Prayer time tracker
+                                PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
+                                    .transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                                    .tag(1)
+                                    .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                            }
+                            .environmentObject(prayerViewModel)
 
                             
                             
@@ -94,12 +96,12 @@ struct shukrApp: App {
                                 .padding()
                         }
                     }
-                }
+                
             }
             .modelContainer(sharedModelContainer)
             .environment(globalLocationManager)
             .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
-            .environmentObject(prayerViewModel) // Inject PrayerViewModel
+//            .environmentObject(prayerViewModel) // Inject PrayerViewModel
             // Inject `sharedState` as an EnvironmentObject at the top level of the app.
             // This makes `sharedState` globally accessible to any view within the view hierarchy
             // that starts from `PrayerTimesView`.

@@ -10,6 +10,7 @@ struct QiblaSettings {
 
 struct SettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
+//    @ObservedObject var viewModel: PrayerViewModel
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 2
     @AppStorage("qibla_sensitivity") private var qiblaSensitivity: Double = 3.5
     @State private var refreshID = UUID()
@@ -83,12 +84,33 @@ struct SettingsView: View {
             
 
             
+//            Section(header: Text("Calculation Method")) {
+//                Picker("Method", selection: $localCalculationMethod) {
+//                    ForEach(calculationMethods, id: \.0) { method in
+//                        Text(method.1).tag(method.0)
+//                    }
+//                }
+//            }
+//            
+//            Section(header: Text("Juristic School (for Asr)")) {
+//                Picker("School", selection: $localSchool) {
+//                    ForEach(schools, id: \.0) { school in
+//                        Text(school.1).tag(school.0)
+//                    }
+//                }
+//            }
+            
+            
             Section(header: Text("Calculation Method")) {
                 Picker("Method", selection: $localCalculationMethod) {
                     ForEach(calculationMethods, id: \.0) { method in
                         Text(method.1).tag(method.0)
                     }
                 }
+                .onChange(of: localCalculationMethod) { _, new in
+                    calculationMethod = new
+                    viewModel.fetchPrayerTimes()
+                 }
             }
             
             Section(header: Text("Juristic School (for Asr)")) {
@@ -97,6 +119,10 @@ struct SettingsView: View {
                         Text(school.1).tag(school.0)
                     }
                 }
+                .onChange(of: localSchool) { _, new in
+                    school = new
+                    viewModel.fetchPrayerTimes()
+                 }
             }
             
             Section(header: Text("My Dev Stuff")) {
@@ -153,9 +179,11 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .navigationBarBackButtonHidden(false)
         .id(refreshID)
         .onAppear {
             localCalculationMethod = calculationMethod
+            localSchool = school
             // Force a refresh when the view appears
             refreshID = UUID()
         }
@@ -169,3 +197,4 @@ struct SettingsView: View {
         }
     }
 }
+

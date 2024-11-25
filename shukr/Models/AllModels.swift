@@ -10,6 +10,40 @@ import SwiftData
 import SwiftUI
 
 
+@Model
+class PrayerModel {
+    @Attribute(.unique) var id: UUID = UUID()
+    var name: String // e.g., "Fajr", "Dhuhr"
+    var startTime: Date
+    var dateAtMake: Date
+    var endTime: Date
+    var isCompleted: Bool = false
+    var latPrayedAt: Double? // lat where the prayer was performed (Cant store CLLocation in swiftdata)
+    var longPrayedAt: Double? // long where the prayer was performed
+    var prayerStartedAt: Date? // When the prayer was started
+    var prayerCompletedAt: Date? // When the prayer was marked complete
+    var duration: TimeInterval? // How long the prayer lasted
+    var timeAtComplete: Date? // Exact timestamp of marking completion
+    var numberScore: Double? // Numerical performance score
+    var englishScore: String? // Descriptive performance score (e.g., "Good", "Poor")
+
+    init(
+        name: String,
+        startTime: Date,
+        endTime: Date,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        dateAtMake: Date = .now
+    ) {
+        self.name = name
+        self.startTime = startTime
+        self.endTime = endTime
+        self.latPrayedAt = latitude
+        self.longPrayedAt = longitude
+        self.dateAtMake = dateAtMake
+    }
+}
+
 
 
 @Model

@@ -21,7 +21,7 @@ struct AdhanTestView: View {
     @State private var isEditingCoordinates: Bool = false
     @State private var tempLatitude: String = ""
     @State private var tempLongitude: String = ""
-
+    
     // Default locations
     let defaultLocations: [(name: String, latitude: Double, longitude: Double)] = [
         ("Cupertino, CA", 37.322998, -122.032182),

@@ -34,7 +34,7 @@ struct PulseCircleView: View {
     @EnvironmentObject var sharedState: SharedStateClass
 
     let prayer: PrayerModel
-    let toggleCompletion: () -> Void
+//    let toggleCompletion: () -> Void
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 7
     
     @State private var showTimeUntilText: Bool = true
@@ -572,8 +572,8 @@ struct PulseCircleView_Previews: PreviewProvider {
         )
         
         PulseCircleView(
-            prayer: prayer,
-            toggleCompletion: {}
+            prayer: prayer
+//            toggleCompletion: {}
         )
         .environmentObject(SharedStateClass())
 
@@ -957,8 +957,83 @@ struct ClusterLocationsWrapper: Identifiable {
 import SwiftUI
 import CoreLocation
 
+
+// my version thats an environmentobject
+/*
+ class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    let manager = CLLocationManager()
+    @Published var userLocation: CLLocation?
+    @Published var isAuthorized = false
+    @Published var compassHeading: Double = 0
+    @Published var storedLocations: [StoredLocation] = []
+
+    
+    override init(){
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        startLocationServices()
+    }
+    
+    func startLocationServices(){
+        if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse{
+            manager.startUpdatingLocation()
+            isAuthorized = true
+        } else {
+            isAuthorized = false
+            manager.requestWhenInUseAuthorization()
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        userLocation = locations.last
+    }
+    
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            isAuthorized = true
+            manager.requestLocation()
+        case .notDetermined:
+            isAuthorized = false
+            manager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            isAuthorized = false
+            print("denied")
+        default:
+            isAuthorized = true
+            startLocationServices()
+            
+        }
+    }
+    
+    // --> will need to add this
+    func addCurrentLocation() {
+        if let location = manager.location {
+            let newLocation = StoredLocation(coordinate: location.coordinate, timestamp: Date())
+            storedLocations.append(newLocation)
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
+        print(error.localizedDescription)
+    }
+    
+    func startUpdating() {
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+        manager.startUpdatingHeading()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        compassHeading = newHeading.magneticHeading
+    }
+}
+*/
+
+
 @Observable
-class GlobalLocationManager: NSObject, CLLocationManagerDelegate {
+class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
     @ObservationIgnored let manager = CLLocationManager()
     var userLocation: CLLocation?
     var isAuthorized = false

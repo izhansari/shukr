@@ -1,6 +1,7 @@
 import SwiftUI
 import AudioToolbox
 import MediaPlayer
+import Adhan
 
 /// Utility Functions ----------------------------------------------------------------------------------------------------
 func roundToTwo(val: Double) -> Double {
@@ -3682,5 +3683,284 @@ struct TimeProgressViewWithSmoothColorTransition_Previews: PreviewProvider {
         @Previewable @State var testCompletedTime: Date? = Date()
         // Example preview with specific start and end times
         TimeProgressViewWithSmoothColorTransition(startTime: Date().addingTimeInterval(-4), endTime: Date().addingTimeInterval(2), completedTime: $testCompletedTime)
+    }
+}
+
+
+
+struct TopBar: View {
+    @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject var viewModel: PrayerViewModel
+//    @ObservedObject var viewModel: PrayerViewModel
+
+    @EnvironmentObject var sharedState: SharedStateClass
+
+    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    var colorModeToggle = false
+
+//    let viewModel: PrayerViewModel
+//    @Binding var showingDuaPageBool: Bool
+//    @Binding var showingHistoryPageBool: Bool
+//    @Binding var showingTasbeehPageBool: Bool
+    @Binding var showTop: Bool
+    @Binding var showBottom: Bool
+    @GestureState var dragOffset: CGFloat
+    
+    @State private var expandButtons: Bool = false
+    
+    private var switchToTopLabel: Bool {
+        ((dragOffset > 0 && !showBottom) || showTop)
+    }
+    
+    private var tasbeehModeName: String {
+        switch sharedState.selectedMode{
+        case 0: return "Freestyle"
+        case 1: return "Time Goal"
+        case 2: return "Count Goal"
+        default: return "Error on page name switch"
+        }
+    }
+
+    
+    var body: some View {
+        ZStack{
+            VStack{
+                if let cityName = viewModel.cityName {
+                    VStack {
+                        ZStack{
+                                // tasbeeh label
+                                HStack{
+                                    Image(systemName: "circle.hexagonpath")
+                                        .foregroundColor(.secondary)
+                                    Text("Tasbeeh - \(tasbeehModeName)")
+
+                                }
+                                .opacity(switchToTopLabel ? 1 : 0)
+                                .offset(y: switchToTopLabel ? 0 : -10)
+                                
+                                // location label
+                                HStack{
+                                    Image(systemName: "location.fill")
+                                        .foregroundColor(.secondary)
+                                    Text(cityName)
+                                }
+                                .opacity(switchToTopLabel ? 0 : 1)
+                                .offset(y: switchToTopLabel ? 10 : 0)
+                            }
+                        
+                        
+                    }
+                    .font(.caption)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .frame(height: 24, alignment: .center)
+                    .offset(y: !showBottom && (dragOffset > 0 || showTop) ? dragOffset : 0)
+                    .animation(.easeInOut, value: dragOffset > 0 && !showBottom)
+                    
+                } else {
+                    HStack {
+                        Image(systemName: "location.circle")
+                            .foregroundColor(.secondary)
+                        Text("Fetching location...")
+                    }
+                    .font(.caption)
+                    .fontDesign(.rounded)
+                    .frame(height: 24, alignment: .center)
+                }
+                
+                Spacer()
+            }
+            .padding()
+            
+            VStack{
+                HStack{
+                    Spacer()
+
+                        VStack (spacing: 0){
+                            //// FIXME: eventually need to clean up the side bar since we no longer have the showing page booleans
+                            
+                            Button(action: {
+                                triggerSomeVibration(type: .light)
+                                withAnimation {
+                                    expandButtons.toggle()
+                                }
+                            }) {
+                                Image(systemName: "ellipsis.circle")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.gray.opacity(!expandButtons ? 0.3 : 1))
+                                    .padding(.bottom, 7)
+                            }
+                            
+                            if expandButtons{
+                                
+//                                Button(action: {
+//                                    triggerSomeVibration(type: .light)
+//                                    withAnimation {
+////                                        showingTasbeehPageBool = true
+//                                        showBottom = false
+//                                        showTop.toggle()
+//                                    }
+//                                }) {
+//                                    Image(systemName: "circle.hexagonpath")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
+                                
+                                Button(action: {
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation {
+//                                        showingDuaPageBool = true
+                                        sharedState.selectedViewPage = 2
+                                    }
+//                                    openLeftPage(proxy: proxy)
+                                }) {
+                                    Image(systemName: "book")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                Button(action: {
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation {
+//                                        showingHistoryPageBool = true
+                                        sharedState.selectedViewPage = 0
+                                    }
+                                }) {
+                                    Image(systemName: "rectangle.stack")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                Button(action: {
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation {
+                                        colorModeToggle.toggle()
+                                    }
+                                }) {
+                                    Image(systemName: colorModeToggle ? "moon.fill" : "sun.max.fill")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: LocationMapContentView()) {
+                                    Image(systemName: "scribble")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: SeeAllPrayers()) {
+                                    Image(systemName: "volleyball.circle")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: AdhanTestView()) {
+                                    Image(systemName: "basketball.circle")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
+                                    Image(systemName: "gear")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+
+                            }
+                        }
+                        .frame(width: 30)
+                        .opacity(0.7)
+                }
+                Spacer()
+            }.padding()
+        }
+        .preferredColorScheme(colorModeToggle ? .dark : .light)
+    }
+}
+
+
+struct FloatingChainZikrButton: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+    @State private var chainButtonPressed = false
+    @Binding var showTasbeehPage: Bool
+    @Binding var showChainZikrButton: Bool
+
+    var body: some View {
+        Button(action: {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                triggerSomeVibration(type: .success)
+                chainButtonPressed = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                chainButtonPressed = false
+                sharedState.isDoingPostNamazZikr = true
+                showTasbeehPage = true
+                sharedState.showingOtherPages = true
+            }
+        }) {
+            ZStack {
+                // Background
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.gray.opacity(0.08))
+                
+                // Outline
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
+                
+                // Content
+                Text("post prayer zikr?")
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .foregroundColor(.primary)
+            }
+            .frame(width: 150, height: 50)
+            .shadow(radius: 10)
+            .scaleEffect(chainButtonPressed ? 0.95 : 1.0)
+        }
+        .padding()
+        .offset(y: showChainZikrButton ? 50 : 0)
+        .opacity(showChainZikrButton ? 1 : 0)
+        .disabled(!showChainZikrButton)
+        .animation(.easeInOut, value: showChainZikrButton)
+    }
+}
+
+
+
+
+func getCalcMethodFromAppStorageVar() -> CalculationMethod? {
+    let calculationMethod = UserDefaults.standard.integer(forKey: "calculationMethod")
+    switch  calculationMethod{
+    case 1: return .karachi
+    case 2: return .northAmerica
+    case 3: return .muslimWorldLeague
+    case 4: return .ummAlQura
+    case 5: return .egyptian
+    case 7: return .tehran
+    case 8: return .dubai
+    case 9: return .kuwait
+    case 10: return .qatar
+    case 11: return .singapore
+    case 12: return .other
+    case 13: return .turkey
+    case 14: return .other
+    default: return nil
+    }
+}
+
+func getSchoolFromAppStorageVar() -> Madhab? {
+    let school = UserDefaults.standard.integer(forKey: "school")
+    switch school {
+    case 0: return .shafi
+    case 1: return .hanafi
+    default: return nil
     }
 }
