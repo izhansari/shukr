@@ -8,9 +8,10 @@
 import SwiftUI
 import SwiftData
 
+
 @main
 struct shukrApp: App {
-
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     @StateObject var sharedState = SharedStateClass()
     @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
@@ -29,7 +30,12 @@ struct shukrApp: App {
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
+                print("Preview mode: Using empty ModelContainer.")
+                return try! ModelContainer(for: Schema([]), configurations: []) // essentially making it an empty dummy
+            } else {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
         }
     }()
     
@@ -43,48 +49,22 @@ struct shukrApp: App {
             WindowGroup {
                 
                     if globalLocationManager.isAuthorized{
-                        // v3 mainpage - tabview paging with vertical dragging
-                        TabView (selection: $sharedState.selectedViewPage){
-                            // Rightmost page: History page
-                            HistoryPageView()
-                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                                .tag(0)
-                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                            
-                            
-                            // Middle page: Prayer time tracker
-//                            let context = sharedModelContainer.mainContext
-//                            PrayerTimesView(viewModel: PrayerViewModel(context: context))
-//                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-//                                .tag(1)
-//                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                            
+                            // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
                             NavigationView{
                                 // Middle page: Prayer time tracker
                                 PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
                                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                                    .tag(1)
                                     .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
                             }
+                            .tag(1)
                             .environmentObject(prayerViewModel)
-
                             
-                            
-                            // Leftmost page: Dua page
-                            DuaPageView()
-                                .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                                .tag(2)
-                                .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                            
-                            
-                        }
-                        .tabViewStyle(DefaultTabViewStyle()) // for testing
                     }
                     else{
                         ZStack{
                             Color.red.opacity(0.001)
                                 .edgesIgnoringSafeArea(.all)
-                            CircularProgressView(progress: 0)
+                            NeuCircularProgressView(progress: 0)
                             Text("shukr")
                                 .font(.headline)
                                 .fontWeight(.thin)
@@ -113,74 +93,76 @@ struct shukrApp: App {
     }
 }
 
-//import SwiftUI
 
-//struct SwipeNavView: View {
-//    @EnvironmentObject var sharedState: SharedStateClass
-//    @SceneStorage("selectedPage") private var selectedPage: Int = 1 // Persist selected page
-//    
-//    var body: some View {
-//        ScrollViewReader { proxy in
-//            ScrollView(.horizontal) {
-//                LazyHStack(spacing: 0) {
-//                    ForEach(0..<3) { index in
-//                        Group {
-//                            switch index {
-//                            case 0:
-//                                HistoryPageView()
-//                                    .id(index)
-//                            case 1:
-//                                PrayerTimesView()
-//                                    .id(index)
-//                            case 2:
-//                                DuaPageView()
-//                                    .id(index)
-//                            default:
-////                                EmptyView()
-//                                
-//                                    Rectangle()
-//                                        .fill(Color(hue: Double(index) / 10, saturation: 0.5, brightness: 0.8).gradient)
-//                                        .overlay(
-//                                            Text("\(index)").foregroundColor(.black)
-//                                        )
-//                                        .frame(width: UIScreen.main.bounds.width) // Adjust the frame to match the screen width
-//                                        .id(index)
-//                                        .containerRelativeFrame(.horizontal, alignment: .center)
-//                                
-//                            }
-//                        }
-//                        .containerRelativeFrame(.horizontal, alignment: .center)
-//                    }
-//                }
-//            }
-//            .scrollDismissesKeyboard(.immediately)
-////            .ignoresSafeArea()
-//            .scrollTargetLayout()
-//            .scrollTargetBehavior(.paging)
-////            .scrollBounceBehavior(.basedOnSize)
-//            .defaultScrollAnchor(.center) // this we will show the middle of the tab view on load.
-//            .scrollIndicators(.never)
-//            .scrollPosition(id: .init(get: {
-//                selectedPage
-//            }, set: { newPosition in
-//                if let newPos = newPosition {
-//                    print("was \(selectedPage) and now is \(newPos)")
-//                    selectedPage = newPos
-//                    sharedState.selectedViewPage = newPos
-//                }
-//            }))
-//            .onAppear {
-//                UIScrollView.appearance().bounces = false
-//            }
-//        }
-//    }
-//}
+class AppDelegate: NSObject, UIApplicationDelegate {
+    let notificationDelegate = NotificationDelegate()
+    
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = notificationDelegate
+        return true
+    }
+}
 
-// Preview provider
-//struct SwipeNavView_Previews: PreviewProvider {
-//    static var previews: some View {
-//        SwipeNavView()
-//            .environmentObject(SharedStateClass())
-//            .environment(\.colorScheme, .dark)
-//    }
-//}
+class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound, .badge])
+    }
+    
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+        let remind5 = UNNotificationAction(
+            identifier: "SNOOZE_5_ACTION",
+            title: "Nudge in 5 minutes",
+            options: []
+        )
+        let remind10 = UNNotificationAction(
+            identifier: "SNOOZE_10_ACTION",
+            title: "Nudge in 10 minutes",
+            options: []
+        )
+        let prayerCategory = UNNotificationCategory(
+            identifier: "PRAYER_CATEGORY",
+            actions: [remind5, remind10],
+            intentIdentifiers: [],
+            options: []
+        )
+        UNUserNotificationCenter.current().setNotificationCategories([prayerCategory])
+        return true
+    }
+
+    
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        switch response.actionIdentifier {
+        case "SNOOZE_5_ACTION":
+            print("Snooze5 action tapped")
+            scheduleSnoozeNotification(after: 5 * 60, identifier: "reminder5", body: "It's been 5 minutes")
+            
+        case "SNOOZE_10_ACTION":
+            print("Snooze10 action tapped")
+            scheduleSnoozeNotification(after: 10 * 60, identifier: "reminder10", body: "It's been 10 minutes")
+            
+        default:
+            break
+        }
+        completionHandler()
+        
+        func scheduleSnoozeNotification(after seconds: TimeInterval, identifier: String, body: String) {
+            let content = UNMutableNotificationContent()
+            content.body = body
+            content.sound = UNNotificationSound.default
+            content.interruptionLevel = .timeSensitive
+            
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+            
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    print("Error \(identifier): \(error.localizedDescription)")
+                } else {
+                    print("✅ Scheduled \(identifier): in \(seconds)s")
+                }
+            }
+        }
+    }
+
+}
+

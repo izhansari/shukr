@@ -56,7 +56,7 @@ struct DailyTasksView: View {
                                 self.presentationMode.wrappedValue.dismiss()
                                 withAnimation {
                                     //                                        showingHistoryPageBool = true
-                                    sharedState.selectedViewPage = 1
+                                    sharedState.selectedViewPage = 1 //// FIXME: Need to make it dismiss the navlink instead
                                     sharedState.showTopMainOrBottom = 1
                                 }
                             }

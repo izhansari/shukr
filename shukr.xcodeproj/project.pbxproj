@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		360A104D2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360A104C2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift */; };
 		360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* tasbeehView.swift */; };
 		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
 		3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */; };
@@ -28,7 +27,6 @@
 		369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9232CA48B88003A58B7 /* HistoryPageView.swift */; };
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
-		36FAF81B2CDDF64800718D73 /* oldTasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */; };
 		36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36FAF8232CF2EFA600718D73 /* Adhan */; };
 /* End PBXBuildFile section */
 
@@ -71,10 +69,10 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		360A104C2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InnerCirclesDuringTasbeeh.swift; sourceTree = "<group>"; };
 		360B85932C6E1D62000385F3 /* shukrWidgetExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukrWidgetExtension.entitlements; sourceTree = "<group>"; };
 		360B85942C6E1F61000385F3 /* shukr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukr.entitlements; sourceTree = "<group>"; };
 		360B85952C7112A2000385F3 /* tasbeehView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = tasbeehView.swift; sourceTree = "<group>"; };
+		361F895C2D0402D300E81F07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipablePagesExperiment.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -102,7 +100,6 @@
 		36F4710C2C8FF7DA0077DB22 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		36F471132C8FF9220077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = oldTasbeehView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -174,6 +171,7 @@
 		369A05C62C5E8616002CD697 /* shukr */ = {
 			isa = PBXGroup;
 			children = (
+				361F895C2D0402D300E81F07 /* Info.plist */,
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
 				369BE93C2CA4D160003A58B7 /* Preview Content */,
 				369A05CD2C5E8617002CD697 /* Assets.xcassets */,
@@ -196,8 +194,6 @@
 		369A05CF2C5E8617002CD697 /* OLD */ = {
 			isa = PBXGroup;
 			children = (
-				360A104C2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift */,
-				36FAF81A2CDDF64100718D73 /* oldTasbeehView.swift */,
 			);
 			path = OLD;
 			sourceTree = "<group>";
@@ -436,10 +432,8 @@
 				3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
-				36FAF81B2CDDF64800718D73 /* oldTasbeehView.swift in Sources */,
 				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,
 				369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */,
-				360A104D2C98B86100ACA18C /* InnerCirclesDuringTasbeeh.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -623,6 +617,7 @@
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukr/Info.plist;
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We need your location to provide accurate prayer times at all times, even in the background.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to provide accurate prayer times based on your current location.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "We need to access motion data to track prayer positions";
@@ -657,6 +652,7 @@
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukr/Info.plist;
 				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We need your location to provide accurate prayer times at all times, even in the background.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to provide accurate prayer times based on your current location.";
 				INFOPLIST_KEY_NSMotionUsageDescription = "We need to access motion data to track prayer positions";

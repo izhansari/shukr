@@ -37,6 +37,7 @@ struct HistoryPageView: View {
         withAnimation {
             //showingHistoryPageBool = true
             sharedState.selectedViewPage = 1
+            //// FIXME: need to make it dismiss the navlink instead
         }
     }
     
@@ -1112,7 +1113,7 @@ struct DailyStatToggleView: View {
                     .frame(width: 20, height: 20)
                     .padding(.leading)
                 Spacer()
-                Text("\(formatSecondsToTimerString(dailyStats.Time/60))")
+                Text("\(timerStyle(dailyStats.Time/60))")
                 Spacer()
             } else {
                 Image(systemName: "circle.hexagonpath")

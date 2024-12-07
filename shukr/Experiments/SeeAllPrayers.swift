@@ -22,7 +22,7 @@ struct SeeAllPrayers: View {
     }
 
     var body: some View {
-        NavigationView {
+//        NavigationView {
             VStack {
                 HStack {
                     Button(action: { dismiss() }) {
@@ -118,7 +118,7 @@ struct SeeAllPrayers: View {
             }
             .onAppear(perform: loadPrayers)
             .navigationBarHidden(true)
-        }
+//        }
     }
 
     // MARK: - Helper Functions

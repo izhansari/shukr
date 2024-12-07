@@ -52,7 +52,7 @@ struct DuaPageView: View {
                             withAnimation {
                                 sharedState.selectedViewPage = 1
 //                                showingDuaPageBool = false
-                                //// FIXME: need to make it aware instead it changes the tab view page to show the middle
+                                //// FIXME: need to make it dismiss the navlink instead
                             }
                             searchText = ""
                         }) {

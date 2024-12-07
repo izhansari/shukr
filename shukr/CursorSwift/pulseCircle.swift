@@ -35,7 +35,7 @@ struct PulseCircleView: View {
 
     let prayer: PrayerModel
 //    let toggleCompletion: () -> Void
-    @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 7
+    @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
     
     @State private var showTimeUntilText: Bool = true
     @State private var showEndTime: Bool = true  // Add this line
@@ -148,11 +148,11 @@ struct PulseCircleView: View {
         }
     }
     
-    private func formatTimeWithAMPM(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
-    }
+//    private func formatTimeWithAMPM(_ date: Date) -> String {
+//        let formatter = DateFormatter()
+//        formatter.dateFormat = "h:mm a"
+//        return formatter.string(from: date)
+//    }
     
     private func iconName(for prayerName: String) -> String {
         switch prayerName.lowercased() {
@@ -432,7 +432,7 @@ struct PulseCircleView: View {
                     }
                     else if isCurrentPrayer {
                         ExternalToggleText(
-                            originalText: "ends \(formatTimeWithAMPM(prayer.endTime))",
+                            originalText: "ends \(shortTimePM(prayer.endTime))",
                             toggledText: timeLeftString,
                             externalTrigger: $textTrigger,  // Pass the binding
                             fontDesign: .rounded,
@@ -442,7 +442,7 @@ struct PulseCircleView: View {
                         .foregroundStyle(.secondary)
                     } else if isUpcomingPrayer{
                         ExternalToggleText(
-                            originalText: "at \(formatTimeWithAMPM(prayer.startTime))",
+                            originalText: "at \(shortTimePM(prayer.startTime))",
                             toggledText: timeUntilStartString,
                             externalTrigger: $textTrigger,  // Pass the binding
                             fontDesign: .rounded,
@@ -515,7 +515,7 @@ struct PulseCircleView: View {
                     .frame(width: 44, height: 44) // Adjust as needed to expand tappable area
 
                     .fullScreenCover(isPresented: $showQiblaMap) {
-                        QiblaMapView(/*isPresented: $showQiblaMap*/)
+                        LocationMapContentView()
                         .onAppear {
                             print("showqiblamap (from qibla arrow): \(showQiblaMap)")
                         }
@@ -581,23 +581,23 @@ struct PulseCircleView_Previews: PreviewProvider {
     }
 }
 
-extension PrayerModel {
-    func getAverageDuration() -> TimeInterval {
-        let durations = UserDefaults.standard.array(forKey: "prayerDurations_\(name)") as? [TimeInterval] ?? []
-        return durations.isEmpty ? 0 : durations.reduce(0, +) / Double(durations.count)
-    }
-    
-    func getTotalDurationToday() -> TimeInterval {
-        let durations = UserDefaults.standard.array(forKey: "prayerDurations_\(name)") as? [TimeInterval] ?? []
-        let calendar = Calendar.current
-        return durations.filter { duration in
-            if let date = UserDefaults.standard.object(forKey: "prayerDate_\(name)_\(duration)") as? Date {
-                return calendar.isDateInToday(date)
-            }
-            return false
-        }.reduce(0, +)
-    }
-}
+//extension PrayerModel {
+//    func getAverageDuration() -> TimeInterval {
+//        let durations = UserDefaults.standard.array(forKey: "prayerDurations_\(name)") as? [TimeInterval] ?? []
+//        return durations.isEmpty ? 0 : durations.reduce(0, +) / Double(durations.count)
+//    }
+//    
+//    func getTotalDurationToday() -> TimeInterval {
+//        let durations = UserDefaults.standard.array(forKey: "prayerDurations_\(name)") as? [TimeInterval] ?? []
+//        let calendar = Calendar.current
+//        return durations.filter { duration in
+//            if let date = UserDefaults.standard.object(forKey: "prayerDate_\(name)_\(duration)") as? Date {
+//                return calendar.isDateInToday(date)
+//            }
+//            return false
+//        }.reduce(0, +)
+//    }
+//}
 
 struct CustomArc: Shape {
     var progress: Double
@@ -668,7 +668,7 @@ struct CustomArc: Shape {
 import SwiftUI
 import MapKit
 
-
+// MARK: - QiblaMapView
 struct QiblaMapView: View {
     @Environment(\.presentationMode) var presentationMode
     @Environment(GlobalLocationManager.self) var globalLocationManager
@@ -727,10 +727,7 @@ struct QiblaMapView: View {
                 }
                 .onAppear {
                     globalLocationManager.startUpdating()
-
-//                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        startMapAnimation()
-//                    }
+                    startMapAnimation()
                 }
 
             
@@ -759,14 +756,6 @@ struct QiblaMapView: View {
                     Spacer()
 
                 }
-//                Text("mapHeading: \(mapHeading)")
-//                    .padding()
-//                    .background(Color.white.opacity(0.8))
-//                    .cornerRadius(8)
-//                    .padding()
-//                    .onTapGesture {
-//                        updateCameraPosition()
-//                    }
                 Spacer()
             }
         }
@@ -856,10 +845,8 @@ struct QiblaMapView: View {
         
         var qiblaDirection = atan2(y, x) * 180 / .pi
         qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-//        print("qibla degrees: ", qiblaDirection, "| compass heading: ", globalLocationManager.compassHeading, "| diff heading: ", qiblaDirection-globalLocationManager.compassHeading)
         if turnableStyle{ return qiblaDirection - globalLocationManager.compassHeading }
         else{ return qiblaDirection }
-//        return qiblaDirection/* - globalLocationManager.compassHeading*/
 
     }
     
@@ -877,14 +864,10 @@ struct QiblaMapView: View {
         
         var qiblaDirection = atan2(y, x) * 180 / .pi
         qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-//        return withAnimation{
         let newRotation = qiblaDirection - mapHeading
-//        }
         withAnimation{
             animatedRotation = newRotation
         }
-        
-//        print("qibla degrees: ", qiblaDirection, "| mapHeading: ", mapHeading, "| diff: ", qiblaDirection-mapHeading, " | animatedRotation: ", animatedRotation, " | new rot:", newRotation)
 
         
         return newRotation
@@ -894,6 +877,7 @@ struct QiblaMapView: View {
 }
 
 
+// MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
     @Binding var degrees: Double
 
@@ -926,111 +910,10 @@ struct CircleWithArrowOverlay: View {
 
 
 
-
-
-
-
-
-
-
-
-// MARK: - Model
-struct StoredLocation: Identifiable {
-    let id = UUID()
-    let coordinate: CLLocationCoordinate2D
-    let timestamp: Date
-}
-
-class CustomAnnotation: MKPointAnnotation {
-    var storedLocation: StoredLocation?
-}
-
-// Wrapper for cluster locations
-struct ClusterLocationsWrapper: Identifiable {
-    let id = UUID()
-    let locations: [StoredLocation]
-}
-
-
 // MARK: - My Gloabl Location Manager
 
 import SwiftUI
 import CoreLocation
-
-
-// my version thats an environmentobject
-/*
- class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    let manager = CLLocationManager()
-    @Published var userLocation: CLLocation?
-    @Published var isAuthorized = false
-    @Published var compassHeading: Double = 0
-    @Published var storedLocations: [StoredLocation] = []
-
-    
-    override init(){
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-        startLocationServices()
-    }
-    
-    func startLocationServices(){
-        if manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse{
-            manager.startUpdatingLocation()
-            isAuthorized = true
-        } else {
-            isAuthorized = false
-            manager.requestWhenInUseAuthorization()
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        userLocation = locations.last
-    }
-    
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedAlways, .authorizedWhenInUse:
-            isAuthorized = true
-            manager.requestLocation()
-        case .notDetermined:
-            isAuthorized = false
-            manager.requestWhenInUseAuthorization()
-        case .denied, .restricted:
-            isAuthorized = false
-            print("denied")
-        default:
-            isAuthorized = true
-            startLocationServices()
-            
-        }
-    }
-    
-    // --> will need to add this
-    func addCurrentLocation() {
-        if let location = manager.location {
-            let newLocation = StoredLocation(coordinate: location.coordinate, timestamp: Date())
-            storedLocations.append(newLocation)
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
-        print(error.localizedDescription)
-    }
-    
-    func startUpdating() {
-        manager.requestWhenInUseAuthorization()
-        manager.startUpdatingLocation()
-        manager.startUpdatingHeading()
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        compassHeading = newHeading.magneticHeading
-    }
-}
-*/
-
 
 @Observable
 class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
@@ -1038,7 +921,6 @@ class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelega
     var userLocation: CLLocation?
     var isAuthorized = false
     var compassHeading: Double = 0
-    var storedLocations: [StoredLocation] = []
 
     
     override init(){
@@ -1079,15 +961,7 @@ class GlobalLocationManager: NSObject, ObservableObject, CLLocationManagerDelega
             
         }
     }
-    
-    // --> will need to add this
-    func addCurrentLocation() {
-        if let location = manager.location {
-            let newLocation = StoredLocation(coordinate: location.coordinate, timestamp: Date())
-            storedLocations.append(newLocation)
-        }
-    }
-    
+        
     func locationManager(_ manager: CLLocationManager, didFailWithError error: any Error) {
         print(error.localizedDescription)
     }

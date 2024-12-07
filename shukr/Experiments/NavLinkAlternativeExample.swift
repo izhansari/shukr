@@ -7,13 +7,15 @@
 
 
 import SwiftUI
+import SwiftData
 
 struct NavLinkAlternativeExample: View {
     @State private var isDetailViewActive: Bool = false
 
     var body: some View {
+
         ZStack {
-            NavigationView {
+//            NavigationView {
                 VStack {
                     Button(action: {
                         withAnimation {
@@ -28,7 +30,7 @@ struct NavLinkAlternativeExample: View {
                     }
                     .navigationTitle("Home")
                 }
-            }
+//            }
             .zIndex(0)
 
             if isDetailViewActive {

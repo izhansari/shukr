@@ -2,13 +2,16 @@ import SwiftUI
 import AudioToolbox
 import MediaPlayer
 import Adhan
+import SwiftData
 
-/// Utility Functions ----------------------------------------------------------------------------------------------------
+// MARK: - Utility Functions
 func roundToTwo(val: Double) -> Double {
     return ((val * 100.0).rounded() / 100.0)
 }
 
-// Updated timeUntilStart function
+// MARK: - Time Formatters
+
+// Displays as "in 2h 3m" or "in 3m" or "in 32s"
 func timeUntilStart(_ startTime: Date) -> String {
     let interval = startTime.timeIntervalSince(Date())
     let hours = Int(interval) / 3600
@@ -24,21 +27,17 @@ func timeUntilStart(_ startTime: Date) -> String {
     }
 }
 
-func formatTime(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm:ss a"
-    return formatter.string(from: date)
-}
+//// Displays as "3m 46s" or "32s"
+//func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
+//    let minutes = Int(totalSeconds) / 60
+//    let seconds = Int(totalSeconds) % 60
+//    
+//    if minutes > 0 { return "\(minutes)m \(seconds)s"}
+//    else { return "\(seconds)s" }
+//}
 
-func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
-    let minutes = Int(totalSeconds) / 60
-    let seconds = Int(totalSeconds) % 60
-    
-    if minutes > 0 { return "\(minutes)m \(seconds)s"}
-    else { return "\(seconds)s" }
-}
-
-func formatSecondsToTimerString(_ totalSeconds: Double) -> String {
+// Displays as "01:32:49" or "25:07"
+func timerStyle(_ totalSeconds: Double) -> String {
     let roundedSeconds = Int(round(totalSeconds))
     let hours = roundedSeconds / 3600
     let minutes = (roundedSeconds % 3600) / 60
@@ -51,26 +50,36 @@ func formatSecondsToTimerString(_ totalSeconds: Double) -> String {
     }
 }
 
-let MSPMTimeFormatter: DateFormatter = {
+// Displays as 2:01
+let shortTime: DateFormatter = {
     let formatter = DateFormatter()
-    formatter.dateFormat = "mm:ss.SSS a" // Displays in 12-hour format with AM or PM
+    formatter.dateFormat = "h:mm"
     return formatter
 }()
 
-let shortTimeFormatter: DateFormatter = {
+// DIsplays as 2:01 AM
+func shortTimePM(_ date: Date) -> String {
     let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a" // Displays in 12-hour format with AM or PM
-    return formatter
-}()
+    formatter.dateFormat = "h:mm a"
+    return formatter.string(from: date)
+}
 
-let hmmTimeFormatter: DateFormatter = {
+// Displays as 5:41 AM 12/05
+func shortTimePMDate(_ date: Date) -> String {
     let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm" // Displays the time as 4:50
-    return formatter
-}()
+    formatter.dateFormat = "h:mm a MM/dd"
+    return formatter.string(from: date)
+}
 
-// Function to format remaining time as minutes
-func mLeftTimeFormatter(from timeInterval: TimeInterval) -> String {
+// Displays as 2:01:14 AM
+func shortTimeSecPM(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "h:mm:ss a"
+    return formatter.string(from: date)
+}
+
+// Displays as "3h 24m left", "24m left" or "43s left"
+func timeLeftString(from timeInterval: TimeInterval) -> String {
     let totalSeconds = Int(timeInterval)
     let hours = totalSeconds / 3600
     let minutes = (totalSeconds % 3600) / 60
@@ -79,41 +88,24 @@ func mLeftTimeFormatter(from timeInterval: TimeInterval) -> String {
     // Building the formatted string
     var components: [String] = []
 
-    if hours > 0 {
-        components.append("\(hours)h")
-    }
+    if hours > 0 { components.append("\(hours)h") }
     
-    if minutes > 0 {
-        components.append("\(minutes)m")
-    }
+    if minutes > 0 { components.append("\(minutes)m") }
     
-    // Only show seconds if less than a minute
-    if totalSeconds < 60 {
-        components.append("\(seconds)s")
-    }
+    if totalSeconds < 60 { components.append("\(seconds)s") } // Only show seconds if less than a minute
 
-    // If no time left, return "0s left"
-    if components.isEmpty {
-        return "0s left"
-    }
+    if components.isEmpty { return "0s left" } // If no time left, return "0s left"
 
-    // Join components with a space and append "left"
     return components.joined(separator: " ") + " left"
 }
-//func mLeftTimeFormatter(from timeInterval: TimeInterval) -> String {
-//    let minutesLeft = Int(timeInterval / 60)
-//    if (timeInterval < 60){
-//        return "\(Int(timeInterval))s left"
-//    }
-//    return "\(minutesLeft)m left"
-//}
 
-func todayAt(hour: Int, minute: Int) -> Date {
+// Use to return a custom time in today
+func todayAt(_ hour: Int, _ minute: Int) -> Date {
     Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date())!
 }
 
-// Function to format remaining time as hours, minutes, or seconds
-func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
+// Displays as "in 3h 24m", "in 24m" or "in 43s"
+func inMinSecStyle(from timeInterval: TimeInterval) -> String {
     let totalSeconds = Int(timeInterval)
     let hours = totalSeconds / 3600
     let minutes = (totalSeconds % 3600) / 60
@@ -122,47 +114,18 @@ func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
     // Building the formatted string
     var components: [String] = []
 
-    if hours > 0 {
-        components.append("\(hours)h")
-    }
+    if hours > 0 { components.append("\(hours)h") }
     
-    if minutes > 0 {
-        components.append("\(minutes)m")
-    }
+    if minutes > 0 { components.append("\(minutes)m") }
     
-    // Only show seconds if less than a minute
-    if totalSeconds < 60 {
-        components.append("\(seconds)s")
-    }
+    if totalSeconds < 60 { components.append("\(seconds)s") } // Only show seconds if less than a minute
 
     // Join components with a space and prepend "in "
     return "in " + components.joined(separator: " ")
 }
-//func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
-//    let totalSeconds = Int(timeInterval)
-//    let hours = totalSeconds / 3600
-//    let minutes = (totalSeconds % 3600) / 60
-//    let seconds = totalSeconds % 60
-//
-//    if hours > 0 {
-//        return "in \(hours)h \(minutes)m"
-//    } else if minutes > 0 {
-//        return "in \(minutes)m"
-//    } else {
-//        return "in \(seconds)s"
-//    }
-//}
-//// Function to format remaining time as minutes
-//func inMSTimeFormatter(from timeInterval: TimeInterval) -> String {
-//    let minutesLeft = Int(timeInterval / 60)
-//    if (timeInterval < 60){
-//        return "in \(Int(timeInterval))s"
-//    }
-//    return "in \(minutesLeft)m"
-//}
 
 
-/// Vibration Feedback ---------------------------------------------------------------------------------------------------
+// MARK: - Vibration Feedback
 enum HapticFeedbackType: String, CaseIterable, Identifiable {
     case light = "Light"; case medium = "Medium"
     case heavy = "Heavy"; case soft = "Soft"
@@ -211,15 +174,13 @@ func triggerSomeVibration(type: HapticFeedbackType) {
 
 
 
-///                                     vvv--------------------------------------subviews--------------------------------------vvv
+// MARK: - Subviews
 
 
 
+//MARK: - Custom Buttons
+///most of these  are found in the tasbeeh pause page
 
-
-
-
-/// Custom Buttons ----------------------------------------------------------------------------------------------------------
 func toggleButton(_ label: String, isOn: Binding<Bool>, color: Color, checks: Bool) -> some View {
     Toggle(isOn: isOn) {
         if(checks){Text(isOn.wrappedValue ? "✓\(label)" : "✗\(label)")}
@@ -268,16 +229,6 @@ struct DebugToggleButton: View {
 }
 
 struct SleepModeToggleButton: View {
-//    @Binding var toggleInactivityTimer: Bool
-////    var body: some View {
-////        twoModeToggleButton(
-////            boolToToggle: $toggleInactivityTimer,
-////            onSymbol: "bed.double.fill",
-////            onColor: .orange,
-////            offSymbol: "bed.double",
-////            offColor: .gray)
-////    }
-    
     @Binding var toggleInactivityTimer: Bool
     @Binding var colorModeToggle: Bool
     let onSymbol: String = "bed.double.fill"
@@ -331,7 +282,6 @@ struct AutoStopToggleButton: View {
 struct VibrationModeToggleButton: View {
     @Binding var currentVibrationMode: HapticFeedbackType
 
-    // Function to toggle between vibration modes
     private func toggleVibrationMode() {
         switch currentVibrationMode {
         case .off:
@@ -347,7 +297,6 @@ struct VibrationModeToggleButton: View {
         }
     }
 
-    // Function to get the appropriate SF Symbol based on the mode
     private func getIconForVibrationMode() -> String {
         switch currentVibrationMode {
         case .heavy:
@@ -397,7 +346,7 @@ struct PlayPauseButton: View {
     }
 }
 
-struct ExitButton: View{
+struct ExitButton: View{ //FIXME: maybe use this as the complete button we have now.
     let stopTimer: () -> Void
     
     var body: some View{
@@ -435,19 +384,11 @@ struct TopOfSessionButton: View{
 
 
 
-/// Mode Selection Views ---------------------------------------------------------------------------------------------------
+//MARK: - Tasbeeh Mode Selection Views
 struct freestyleMode: View {
     var body: some View {
-//        Text(Image(systemName: "circle.fill"))
-//            .font(.title)
-//            .fontDesign(.rounded)
-//            .fontWeight(.thin)
-//            .foregroundStyle(.white)
-//            .shadow(color: .black.opacity(0.2), radius: 6, x: 3, y: 3)
-        
         Circle()
             .frame(width: 30, height: 30)
-//            .foregroundStyle(.white)
             .foregroundStyle(Color("NeuRing"))
             .shadow(
                 color: Color("NeuDarkShad"), // shadow top lighter
@@ -469,7 +410,6 @@ struct timeTargetMode: View {
 
     var body: some View {
         Picker("Minutes", selection: $selectedMinutesBinding) {
-//            Text("")
             ForEach(0..<60) { minute in
                 Text("\(minute)m").tag(minute)
                     .fontWeight(.thin)
@@ -501,7 +441,6 @@ struct countTargetMode: View {
                 .padding()
                 .keyboardType(.numberPad) // Limits input to numbers only
                 .frame(width: 90)
-//                .background(Color.gray.opacity(0.2))
                 .background(Color("NeuRing"))
                 .cornerRadius(15)
                 .shadow(
@@ -523,7 +462,7 @@ struct countTargetMode: View {
     }
 }
 
-struct inputOffsetSubView: View {
+struct inputOffsetSubView: View { //used in count
     @Binding var targetCount: String
     @FocusState var isNumberEntryFocused: Bool
     
@@ -552,7 +491,7 @@ struct inputOffsetSubView: View {
 
 
 
-/// Main Views -------------------------------------------------------------------------------------------------------------
+// MARK: - Tasbeeh Views
 
 struct oldCircularProgressView: View {
     let progress: CGFloat
@@ -643,7 +582,7 @@ struct oldCircularProgressView: View {
 }
 
 
-struct CircularProgressView: View {
+struct NeuCircularProgressView: View {
     let progress: CGFloat
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
 
@@ -695,7 +634,7 @@ struct NeumorphicProgressRing_Previews: PreviewProvider {
     static var previews: some View {
         ZStack{
             Rectangle().fill(Color("NeuRing")).frame(width: 400, height: 400)
-            CircularProgressView(progress: 0)
+            NeuCircularProgressView(progress: 0)
         }
     }
 }
@@ -831,172 +770,6 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
     }
 }
 
-struct old_pauseStatsAndBG: View {
-    @EnvironmentObject var sharedState: SharedStateClass
-    @State private var showMantraSheetFromPausedPage = false
-    @State private var chosenMantra: String? = ""
-    @State private var rateTextToggle = false  // to control the toggle text in the middle
-        
-    let paused: Bool
-    let tasbeeh: Int
-    let timePassedAtPause: String
-    let avgTimePerClick: TimeInterval
-    let tasbeehRate: String
-    let togglePause: () -> Void // Closure for the togglePause function
-    let takingNotes: Bool
-    @Binding var toggleInactivityTimer: Bool
-    @Binding var inactivityDimmer: Double
-    @Binding var autoStop: Bool
-    @Binding var colorModeToggle: Bool
-    @Binding var currentVibrationMode: HapticFeedbackType
-    
-    // Computed variables for est time completion (only for target count mode)
-    private var remainingCount: Int{
-        return (Int(sharedState.targetCount) ?? 0) - Int(tasbeeh)
-    }
-    private var timeLeft : TimeInterval{
-        return avgTimePerClick * Double(remainingCount)
-    }
-    private var finishTime: Date{
-        return Date().addingTimeInterval(timeLeft)
-    }
-
-
-    
-    var body: some View {
-        
-        
-        Color("pauseColor")
-            .edgesIgnoringSafeArea(.all)
-            .animation(.easeOut(duration: 0.3), value: paused)
-            .onTapGesture { togglePause() }
-            .opacity(paused ? 1 : 0.0)
-        
-        VStack{
-            VStack(spacing: 20){
-                
-                //The Mode Text
-                switch sharedState.selectedMode {
-                case 1:
-                    Text("\(sharedState.selectedMinutes)m Session")
-                        .font(.title2)
-                        .bold()
-                case 2:
-                    Text("\(sharedState.targetCount) Count Session")
-                        .font(.title2)
-                        .bold()
-                default:
-                    Text("Freestyle Session")
-                        .font(.title2)
-                        .bold()
-                }
-                
-                //The Mantra Picker
-                Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "No Selected Zikr")")
-                    .frame(width: 150)
-                    .fontDesign(.rounded)
-                    .fontWeight(.thin)
-                    .multilineTextAlignment(.center)
-                    .padding()
-                    .background(.gray.opacity(0.08))
-                    .cornerRadius(10)
-                    .onTapGesture {
-                        showMantraSheetFromPausedPage = true
-                    }
-                    .onChange(of: chosenMantra){
-                        if let newSetMantra = chosenMantra{
-                            sharedState.titleForSession = newSetMantra
-                        }
-                    }
-                    .sheet(isPresented: $showMantraSheetFromPausedPage) {
-                        MantraPickerView(isPresented: $showMantraSheetFromPausedPage, selectedMantra: $chosenMantra, presentation: [.large])
-                    }
-                
-                
-                
-                //The Stats
-                if paused && !takingNotes {
-                    VStack(spacing: 20){
-                        
-                        Text("Count: \(tasbeeh)")
-                            .fontWeight(.thin)
-                            .fontDesign(.rounded)
-                        
-                        Text("Time: \(timePassedAtPause)")
-                            .fontWeight(.thin)
-                            .fontDesign(.rounded)
-                        
-                        ExternalToggleText(
-                            originalText: "Time Per Click: \((String(format: "%.2f", avgTimePerClick)))s",
-                            toggledText: "Time Per Tasbeeh: \(tasbeehRate)",
-                            externalTrigger: $rateTextToggle,  // Pass the binding
-                            fontDesign: .rounded,
-                            fontWeight: .thin,
-                            hapticFeedback: true
-                        )
-                    }
-                }
-            }
-            .padding()
-            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
-            .cornerRadius(20)
-            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
-            .padding(.horizontal, 30)
-            
-            if sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0 {
-                ExternalToggleText(
-                    originalText: "you'll finish \(inMSTimeFormatter(from: timeLeft))",
-                    toggledText: "you'll finish around \(hmmTimeFormatter.string(from: finishTime))",
-                    externalTrigger: $rateTextToggle,  // Pass the binding
-                    font: .caption,
-                    fontDesign: .rounded,
-                    fontWeight: .thin,
-                    hapticFeedback: true
-                )
-                .opacity(0.8)
-                .padding()
-                .background(Color("pauseColor").opacity(0.001))
-
-                
-//                Text("targetCount :\(Int(sharedState.targetCount) ?? 0) | (tasbeeh): \(Int(tasbeeh)) | remaining: \(remainingCount)")
-//                Text("avgTimePerClick: \(avgTimePerClick) | remainingCount: \(remainingCount) | timeLeft: \(timeLeft)")
-//                Text("\(finishTime)")
-
-            }
-        }
-        .opacity(paused ? 1.0 : 0.0)
-        .animation(.easeInOut, value: paused)
-        
-        VStack {
-            Spacer()
-            
-            // bottom settings bar when paused
-            VStack {
-                if(toggleInactivityTimer){
-                    Slider(value: $inactivityDimmer,
-                           in: 0...1.0)
-                    .tint(.white)
-                    .frame(width: 250)
-                    .padding()
-                }
-                HStack{
-                    AutoStopToggleButton(autoStop: $autoStop)
-                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, colorModeToggle: $colorModeToggle)
-                    VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
-                    ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
-                }
-            }
-            .padding()
-            .background(BlurView(style: .systemUltraThinMaterial))
-            .cornerRadius(20)
-            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
-            .padding(.bottom, 40)
-            .opacity(paused ? 1.0 : 0.0)
-        }
-        
-    }
-}
-
 
 struct pauseStatsAndBG: View {
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
@@ -1011,6 +784,7 @@ struct pauseStatsAndBG: View {
     let avgTimePerClick: TimeInterval
     let tasbeehRate: String
     let togglePause: () -> Void // Closure for the togglePause function
+    let stopTimer: () -> Void // Closure for the togglePause function
     let takingNotes: Bool
     @Binding var toggleInactivityTimer: Bool
     @Binding var inactivityDimmer: Double
@@ -1079,12 +853,27 @@ struct pauseStatsAndBG: View {
                     VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
                     ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
                 }
+                HStack{
+                    Spacer()
+                    Button(action: {
+                        stopTimer()
+                    }) {
+                        Text("Complete")
+                            .font(.headline)
+                            .bold()
+                            .foregroundColor(.white)
+                            .padding()
+                            .cornerRadius(10)
+                    }
+                    .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+                    .cornerRadius(15)
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+
+                    Spacer()
+                }
             }
             .padding()
-//            .background(BlurView(style: .systemUltraThinMaterial))
-//            .cornerRadius(20)
-//            .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 10)
-            .padding(.bottom, 40)
+            .padding(.bottom, 20)
             .opacity(paused ? 1.0 : 0.0)
         }
         
@@ -1151,7 +940,7 @@ struct pauseStatsAndBG: View {
                                     .rotationEffect(.degrees(timerRotation))
                                     .animation(.spring(duration: 0.3), value: timerRotation)
                                 Spacer()
-                                Text(formatSecondsToTimerString(secsToReport))
+                                Text(timerStyle(secsToReport))
                                     .font(.system(size: textSize, weight: .medium))
                                     .monospacedDigit()
                                 Spacer()
@@ -1221,8 +1010,8 @@ struct pauseStatsAndBG: View {
     
     private var estimatedFinishTime: some View {
         ExternalToggleText(
-            originalText: "you'll finish \(inMSTimeFormatter(from: timeLeft))",
-            toggledText: "you'll finish around \(hmmTimeFormatter.string(from: finishTime))",
+            originalText: "you'll finish \(inMinSecStyle(from: timeLeft))",
+            toggledText: "you'll finish around \(shortTime.string(from: finishTime))",
             externalTrigger: $rateTextToggle,  // Pass the binding
             font: .caption,
             fontDesign: .rounded,
@@ -1314,6 +1103,7 @@ struct ResultsView: View {
                     action: {
                         isPresented = false
                         sharedState.showingOtherPages = false
+                        sharedState.titleForSession = ""
                     }
                 )
                 .padding(.bottom)
@@ -1378,7 +1168,7 @@ struct ResultsView: View {
                                     .rotationEffect(.degrees(timerRotation))
                                     .animation(.spring(duration: 0.3), value: timerRotation)
                                 Spacer()
-                                Text(formatSecondsToTimerString(secsToReport))
+                                Text(timerStyle(secsToReport))
                                     .font(.system(size: textSize, weight: .medium))
                                     .monospacedDigit()
                                 Spacer()
@@ -1575,7 +1365,7 @@ struct inactivityAlert: View {
     }
 }
 
-struct stopButton: View {
+struct completeButton: View {
     let stopTimer: () -> Void
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
@@ -1601,36 +1391,6 @@ struct stopButton: View {
 }
 
 
-struct startStopButton: View {
-    let timerIsActive: Bool
-    let toggleTimer: () -> Void
-    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    
-    var body: some View{
-
-
-        Button(action: toggleTimer, label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .foregroundStyle(.gray.opacity(0.2))
-                RoundedRectangle(cornerRadius: 20)
-//                    .foregroundStyle(timerIsActive ? .green.opacity(0.5) : .blue.opacity(0.5))
-                    .foregroundStyle(timerIsActive ?
-                                     LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing)
-                                     :
-                                        LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.blue.opacity(0.5), .blue.opacity(0.5)] : [.blue.opacity(0.6), .blue.opacity(0.6)]), startPoint: .topLeading, endPoint: .bottomTrailing))
-                Text(timerIsActive ? "complete" : "start")
-                    .foregroundStyle(.white)
-                    .font(.title3)
-                    .fontDesign(.rounded)
-            }
-            .frame(width: 300,height: 50)
-            .shadow(radius: 5)
-        })
-        .padding([.leading, .bottom, .trailing])
-    }
-}
-
 struct NoteModalView: View {
     @Binding var savedText: String
     @Binding var showSheet: Bool
@@ -1638,7 +1398,6 @@ struct NoteModalView: View {
     @State private var tempText = ""
     
     var body: some View {
-        NavigationView {
             TextEditor(text: $tempText)
                 .padding()
                 .navigationTitle("Edit Text")
@@ -1654,7 +1413,6 @@ struct NoteModalView: View {
                     }
                     .disabled(tempText.isEmpty)
                 )
-        }
         .presentationDetents([.medium])
 
         .onAppear {
@@ -1668,7 +1426,7 @@ struct NoteModalView: View {
 }
 
 
-/// Effect Modifier Views -------------------------------------------------------------------------------------------------------------
+// MARK: - Effect Modifier Views
 struct GlassMorphicView: View {
     var body: some View {
         ZStack {
@@ -1701,8 +1459,10 @@ struct BlurView: UIViewRepresentable {
 
 
 
+// MARK: - RingStyles
 
 struct RingStyle0 {
+    @AppStorage("qibla_sensitivity") static var alignmentThreshold: Double = 3.5
     let prayer: PrayerModel
     let progress: Double
     let progressColor: Color
@@ -2880,7 +2640,7 @@ struct RingStyle8 {
             }
 
             // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
-            CircularProgressView(progress: 0)
+            NeuCircularProgressView(progress: 0)
             
             // uncomment this if you want the unprogressed part of the track to be colored instead of clear
 //            Circle()
@@ -2998,7 +2758,7 @@ struct RingStyle9 {
     var body: some View {
         ZStack {
             // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
-            CircularProgressView(progress: 0)
+            NeuCircularProgressView(progress: 0)
                         
             if isCurrentPrayer {
                 
@@ -3010,7 +2770,6 @@ struct RingStyle9 {
                         lineCap: .round
                     ))
                     .fill(
-        //                .red
                         Color("bgColor")
                         //indent
                             .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -2, y: 2))
@@ -3022,31 +2781,6 @@ struct RingStyle9 {
                     .frame(width: 200, height: 200)
                     .rotationEffect(.degrees(-90))
                     .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
-
-                
-//                // Main progress arc with gradient
-//                Circle()
-//                    .trim(from: finalAnimation >= 1 ? 0 : (isInFinalSeconds ? (clockwiseProgress * finalAnimation) : 0),
-//                          to: finalAnimation >= 1 ? 0 : clockwiseProgress)
-//                    .stroke(style: StrokeStyle(
-//                        lineWidth: 10,
-//                        lineCap: .round
-//                    ))
-//                    .frame(width: 200, height: 200)
-//                    .rotationEffect(.degrees(-90))
-//                    .foregroundStyle(
-//                        AngularGradient(
-//                            gradient: Gradient(colors: [
-//                                isInFinalSeconds ? progressColor.opacity(max((finalAnimation), 0.5)) : progressColor.opacity(max((1-clockwiseProgress), 0.5)),
-//                                progressColor
-//                            ]),
-//                            center: .center,
-//                            startAngle: .degrees(0),
-//                            endAngle: .degrees((360 * clockwiseProgress))
-//                        )
-//                    )
-//                    .opacity(0.6)
-//                    .opacity(isInFinalSeconds ? (1 - finalAnimation)*3.5 : 1) // Fade out gradient
                 
                 // Ring tip with shadow
                 Circle()
@@ -3138,7 +2872,7 @@ struct RingStyle9old {
     var body: some View {
         ZStack {
             // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
-            CircularProgressView(progress: 0)
+            NeuCircularProgressView(progress: 0)
                         
             if isCurrentPrayer {
                 // Main progress arc with gradient
@@ -3216,72 +2950,7 @@ struct RingStyle9old {
 }
 
 
-
-//struct ToggleText: View {
-//    let originalText: String
-//    let toggledText: String
-//    let font: Font?
-//    let fontDesign: Font.Design?
-//    let fontWeight: Font.Weight?
-//    let hapticFeedback: Bool
-//    
-//    @State private var showOriginal = true
-//    @State private var timer: Timer?
-//    
-//    init(
-//        originalText: String,
-//        toggledText: String,
-//        font: Font? = nil,
-//        fontDesign: Font.Design? = .rounded,
-//        fontWeight: Font.Weight? = .thin,
-//        hapticFeedback: Bool = true
-//    ) {
-//        self.originalText = originalText
-//        self.toggledText = toggledText
-//        self.font = font
-//        self.fontDesign = fontDesign
-//        self.fontWeight = fontWeight
-//        self.hapticFeedback = hapticFeedback
-//    }
-//    
-//    var body: some View {
-//        Text(showOriginal ? originalText : toggledText)
-//            .font(font)
-//            .fontDesign(fontDesign)
-//            .fontWeight(fontWeight)
-//            .onTapGesture {
-//                handleTap()
-//            }
-//            .onDisappear {
-//                timer?.invalidate()
-//                timer = nil
-//            }
-//    }
-//    
-//    private func handleTap() {
-//        timer?.invalidate()
-//        
-//        if hapticFeedback {
-//            triggerSomeVibration(type: .light)
-//        }
-//        
-//        withAnimation(.easeInOut(duration: 0.2)) {
-//            showOriginal.toggle()
-//        }
-//        
-//        if !showOriginal {
-//            timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-//                withAnimation(.easeInOut(duration: 0.2)) {
-//                    showOriginal = true
-//                }
-//            }
-//        }
-//    }
-//}
-
-
-
-
+// MARK: - Toggle Text
 struct ToggleTextExample: View {
     @State private var autoRevertTimer: Timer?
     @State private var textTrigger = false  // Add this state
@@ -3323,90 +2992,6 @@ struct ToggleTextExample: View {
 #Preview {
     ToggleTextExample()
 }
-
-
-struct DragGestureModifier: ViewModifier {
-    @Binding var dragOffset: CGFloat
-    let onEnd: (CGFloat) -> Void
-    let calculateResistance: (CGFloat) -> CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if value.translation.height != 0 {
-                            dragOffset = calculateResistance(value.translation.height)
-                        }
-                    }
-                    .onEnded { value in
-                        onEnd(value.translation.height)
-                    }
-            )
-        
-    }
-}
-
-func calculateResistance(_ translation: CGFloat) -> CGFloat {
-        let maxResistance: CGFloat = 40
-        let rate: CGFloat = 0.01
-        let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
-        return translation < 0 ? -resistance : resistance
-    }
-
-extension View {
-    func applyDragGesture(dragOffset: Binding<CGFloat>, onEnd: @escaping (CGFloat) -> Void, calculateResistance: @escaping (CGFloat) -> CGFloat) -> some View {
-        self.modifier(DragGestureModifier(dragOffset: dragOffset, onEnd: onEnd, calculateResistance: calculateResistance))
-    }
-}
-
-
-// Function to open to the left
-private func openLeftPage(proxy: ScrollViewProxy) {
-    print("Clicked to go to id 0")
-    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    withAnimation{
-        proxy.scrollTo(0, anchor: .center)
-    }
-}
-
-
-
-// Add Color Hex Extension
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (1, 1, 1, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
-        )
-    }
-}
-
-
-// Add these helper functions
-func formatTimeNoSeconds(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a"
-    return formatter.string(from: date)
-}
-
 
 struct ToggleText: View {
     let originalText: String
@@ -3539,8 +3124,86 @@ struct ExternalToggleText: View {
 }
 
 
+// MARK: - Drag Gestures
 
-struct TimeProgressViewWithSmoothColorTransition: View {
+
+struct DragGestureModifier: ViewModifier {
+    @Binding var dragOffset: CGFloat
+    let onEnd: (CGFloat) -> Void
+    let calculateResistance: (CGFloat) -> CGFloat
+    
+    func body(content: Content) -> some View {
+        content
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if value.translation.height != 0 {
+                            dragOffset = calculateResistance(value.translation.height)
+                        }
+                    }
+                    .onEnded { value in
+                        onEnd(value.translation.height)
+                    }
+            )
+    }
+}
+
+func calculateResistance(_ translation: CGFloat) -> CGFloat {
+        let maxResistance: CGFloat = 40
+        let rate: CGFloat = 0.01
+        let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
+        return translation < 0 ? -resistance : resistance
+    }
+
+//extension View {
+//    func applyDragGesture(dragOffset: Binding<CGFloat>, onEnd: @escaping (CGFloat) -> Void, calculateResistance: @escaping (CGFloat) -> CGFloat) -> some View {
+//        self.modifier(DragGestureModifier(dragOffset: dragOffset, onEnd: onEnd, calculateResistance: calculateResistance))
+//    }
+//}
+
+
+// Function to open to the left
+//private func openLeftPage(proxy: ScrollViewProxy) {
+//    print("Clicked to go to id 0")
+//    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+//    withAnimation{
+//        proxy.scrollTo(0, anchor: .center)
+//    }
+//}
+
+
+
+// Color Hex Extension
+//extension Color {
+//    init(hex: String) {
+//        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+//        var int: UInt64 = 0
+//        Scanner(string: hex).scanHexInt64(&int)
+//        let a, r, g, b: UInt64
+//        switch hex.count {
+//        case 3: // RGB (12-bit)
+//            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+//        case 6: // RGB (24-bit)
+//            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+//        case 8: // ARGB (32-bit)
+//            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+//        default:
+//            (a, r, g, b) = (1, 1, 1, 0)
+//        }
+//        self.init(
+//            .sRGB,
+//            red: Double(r) / 255,
+//            green: Double(g) / 255,
+//            blue:  Double(b) / 255,
+//            opacity: Double(a) / 255
+//        )
+//    }
+//}
+
+
+// MARK: - V1 Prayers Page Experiment
+
+struct TimeColorFadeProgressBar: View {
     // Example start and end times
     let startTime: Date
     let endTime: Date
@@ -3577,7 +3240,7 @@ struct TimeProgressViewWithSmoothColorTransition: View {
                     // Current time text under the tick
                     if(Date() >= startTime && currentTime <= endTime || completedTime != nil){
                         if completedTime ?? Date() <= endTime{
-                            Text(hmmTimeFormatter.string(from: completedTime ?? Date()))
+                            Text(shortTime.string(from: completedTime ?? Date()))
                                 .foregroundColor(.primary)
                                 .font(.caption)
                                 .position(x: tickPosition, y: -10) // Align text with the tick mark
@@ -3600,11 +3263,11 @@ struct TimeProgressViewWithSmoothColorTransition: View {
             
             // Display the start and end times
             HStack {
-                Text(hmmTimeFormatter.string(from: startTime))
+                Text(shortTime.string(from: startTime))
                     .font(.caption)
                     .foregroundColor(.gray)
                 Spacer()
-                Text(hmmTimeFormatter.string(from: endTime))
+                Text(shortTime.string(from: endTime))
                     .font(.caption)
                     .foregroundColor(.gray)
             }
@@ -3675,33 +3338,26 @@ struct TimeProgressViewWithSmoothColorTransition: View {
     }
 }
 
-// Preview for the new TodayPrayerView
-
 
 struct TimeProgressViewWithSmoothColorTransition_Previews: PreviewProvider {
     static var previews: some View {
         @Previewable @State var testCompletedTime: Date? = Date()
         // Example preview with specific start and end times
-        TimeProgressViewWithSmoothColorTransition(startTime: Date().addingTimeInterval(-4), endTime: Date().addingTimeInterval(2), completedTime: $testCompletedTime)
+        TimeColorFadeProgressBar(startTime: Date().addingTimeInterval(-4), endTime: Date().addingTimeInterval(2), completedTime: $testCompletedTime)
     }
 }
 
 
+// MARK: - Prayer Views
 
 struct TopBar: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: PrayerViewModel
-//    @ObservedObject var viewModel: PrayerViewModel
-
     @EnvironmentObject var sharedState: SharedStateClass
 
     @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var colorModeToggle = false
 
-//    let viewModel: PrayerViewModel
-//    @Binding var showingDuaPageBool: Bool
-//    @Binding var showingHistoryPageBool: Bool
-//    @Binding var showingTasbeehPageBool: Bool
     @Binding var showTop: Bool
     @Binding var showBottom: Bool
     @GestureState var dragOffset: CGFloat
@@ -3793,46 +3449,20 @@ struct TopBar: View {
                             
                             if expandButtons{
                                 
-//                                Button(action: {
-//                                    triggerSomeVibration(type: .light)
-//                                    withAnimation {
-////                                        showingTasbeehPageBool = true
-//                                        showBottom = false
-//                                        showTop.toggle()
-//                                    }
-//                                }) {
-//                                    Image(systemName: "circle.hexagonpath")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-                                
-                                Button(action: {
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation {
-//                                        showingDuaPageBool = true
-                                        sharedState.selectedViewPage = 2
-                                    }
-//                                    openLeftPage(proxy: proxy)
-                                }) {
+                                NavigationLink(destination: DuaPageView()) {
                                     Image(systemName: "book")
                                         .font(.system(size: 24))
                                         .foregroundColor(.gray)
                                         .padding(.vertical, 7)
                                 }
                                 
-                                Button(action: {
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation {
-//                                        showingHistoryPageBool = true
-                                        sharedState.selectedViewPage = 0
-                                    }
-                                }) {
+                                NavigationLink(destination: HistoryPageView()) {
                                     Image(systemName: "rectangle.stack")
                                         .font(.system(size: 24))
                                         .foregroundColor(.gray)
                                         .padding(.vertical, 7)
                                 }
+                                
                                 
                                 Button(action: {
                                     triggerSomeVibration(type: .light)
@@ -3846,7 +3476,7 @@ struct TopBar: View {
                                         .padding(.vertical, 7)
                                 }
                                 
-                                NavigationLink(destination: LocationMapContentView()) {
+                                NavigationLink(destination: QiblaMapView()) {
                                     Image(systemName: "scribble")
                                         .font(.system(size: 24))
                                         .foregroundColor(.gray)
@@ -3869,6 +3499,13 @@ struct TopBar: View {
                                 
                                 NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
                                     Image(systemName: "gear")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.gray)
+                                        .padding(.vertical, 7)
+                                }
+                                
+                                NavigationLink(destination: NotifExp()) {
+                                    Image(systemName: "bell")
                                         .font(.system(size: 24))
                                         .foregroundColor(.gray)
                                         .padding(.vertical, 7)
@@ -3930,37 +3567,5 @@ struct FloatingChainZikrButton: View {
         .opacity(showChainZikrButton ? 1 : 0)
         .disabled(!showChainZikrButton)
         .animation(.easeInOut, value: showChainZikrButton)
-    }
-}
-
-
-
-
-func getCalcMethodFromAppStorageVar() -> CalculationMethod? {
-    let calculationMethod = UserDefaults.standard.integer(forKey: "calculationMethod")
-    switch  calculationMethod{
-    case 1: return .karachi
-    case 2: return .northAmerica
-    case 3: return .muslimWorldLeague
-    case 4: return .ummAlQura
-    case 5: return .egyptian
-    case 7: return .tehran
-    case 8: return .dubai
-    case 9: return .kuwait
-    case 10: return .qatar
-    case 11: return .singapore
-    case 12: return .other
-    case 13: return .turkey
-    case 14: return .other
-    default: return nil
-    }
-}
-
-func getSchoolFromAppStorageVar() -> Madhab? {
-    let school = UserDefaults.standard.integer(forKey: "school")
-    switch school {
-    case 0: return .shafi
-    case 1: return .hanafi
-    default: return nil
     }
 }

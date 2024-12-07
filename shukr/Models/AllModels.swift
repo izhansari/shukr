@@ -9,23 +9,37 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+class SharedStateClass: ObservableObject {
+    @Published var selectedViewPage: Int = 1 //// FIXME: No need for this anymore since we dont use the tabView in main.
+    @Published var selectedMode: Int = 2
+    @Published var selectedMinutes: Int = 0
+    @Published var targetCount: String = ""
+    @Published var titleForSession: String = ""
+    @Published var showTopMainOrBottom: Int = 0 // 1 for top, 0 for default, -1 for bottom
+    @Published var isDoingPostNamazZikr: Bool = false
+    @Published var showingOtherPages: Bool = false
+//    @Published var lastKnownLocation: CLLocation? = nil
+}
+
 
 @Model
 class PrayerModel {
     @Attribute(.unique) var id: UUID = UUID()
     var name: String // e.g., "Fajr", "Dhuhr"
-    var startTime: Date
     var dateAtMake: Date
+    var startTime: Date
     var endTime: Date
     var isCompleted: Bool = false
-    var latPrayedAt: Double? // lat where the prayer was performed (Cant store CLLocation in swiftdata)
-    var longPrayedAt: Double? // long where the prayer was performed
-    var prayerStartedAt: Date? // When the prayer was started
-    var prayerCompletedAt: Date? // When the prayer was marked complete
-    var duration: TimeInterval? // How long the prayer lasted
     var timeAtComplete: Date? // Exact timestamp of marking completion
     var numberScore: Double? // Numerical performance score
     var englishScore: String? // Descriptive performance score (e.g., "Good", "Poor")
+    var latPrayedAt: Double? // lat where the prayer was performed (Cant store CLLocation in swiftdata)
+    var longPrayedAt: Double? // long where the prayer was performed
+
+    var prayerStartedAt: Date? // When the prayer was started
+    var prayerCompletedAt: Date? // When the prayer was marked complete
+    var duration: TimeInterval? // How long the prayer lasted
+
 
     init(
         name: String,
@@ -188,3 +202,12 @@ class TaskModel: Identifiable {
 //            return calculateRunningGoal(from: sessionItems) >= goal
 //        }
 }
+
+
+
+
+
+
+
+
+
