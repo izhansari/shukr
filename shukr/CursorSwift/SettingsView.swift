@@ -355,7 +355,7 @@ struct NotificationDropdownInfo: View {
                 .frame(maxWidth: .infinity)
                 .onTapGesture{
                     let content = UNMutableNotificationContent()
-                    content.categoryIdentifier = "PRAYER_CATEGORY" // Associate the category
+                    content.categoryIdentifier = "Round1_Snooze" // Associate the category
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
                     content.subtitle = "\(randPrayerName) Time 🟢"
@@ -373,7 +373,7 @@ struct NotificationDropdownInfo: View {
                 .frame(maxWidth: .infinity)
                 .onTapGesture {
                     let content = UNMutableNotificationContent()
-                    content.categoryIdentifier = "PRAYER_CATEGORY" // Associate the category
+                    content.categoryIdentifier = "Round1_Snooze" // Associate the category
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
                     let randNudge = [

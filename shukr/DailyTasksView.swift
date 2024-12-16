@@ -53,11 +53,14 @@ struct DailyTasksView: View {
                                     sharedState.selectedMode = 1
                                     sharedState.selectedMinutes = remainingGoal <= 0 ? task.goal : remainingGoal
                                 }
-                                self.presentationMode.wrappedValue.dismiss()
                                 withAnimation {
                                     //                                        showingHistoryPageBool = true
+                                    self.presentationMode.wrappedValue.dismiss()
                                     sharedState.selectedViewPage = 1 //// FIXME: Need to make it dismiss the navlink instead
-                                    sharedState.showTopMainOrBottom = 1
+                                    sharedState.newTopMainOrBottom = .top
+                                    print("**********************************jiofejfioejeiofjfieojiofejiofejiofejoifejiofe")
+                                    
+//                                    sharedState.showTopMainOrBottom = 1
                                 }
                             }
 //                            .onAppear{

@@ -10,14 +10,25 @@ import SwiftData
 import SwiftUI
 
 class SharedStateClass: ObservableObject {
+    enum ViewPosition {
+        case top
+        case main
+        case bottom
+    }
     @Published var selectedViewPage: Int = 1 //// FIXME: No need for this anymore since we dont use the tabView in main.
     @Published var selectedMode: Int = 2
     @Published var selectedMinutes: Int = 0
     @Published var targetCount: String = ""
     @Published var titleForSession: String = ""
-    @Published var showTopMainOrBottom: Int = 0 // 1 for top, 0 for default, -1 for bottom
+
     @Published var isDoingPostNamazZikr: Bool = false
     @Published var showingOtherPages: Bool = false
+    @Published var newTopMainOrBottom: ViewPosition = .main {
+        didSet {
+            print("newTopMainOrBottom changed to: \(newTopMainOrBottom)")
+        }
+    }
+    var firstLaunch: Bool = true
 //    @Published var lastKnownLocation: CLLocation? = nil
 }
 

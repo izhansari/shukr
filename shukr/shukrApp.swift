@@ -97,72 +97,139 @@ struct shukrApp: App {
 class AppDelegate: NSObject, UIApplicationDelegate {
     let notificationDelegate = NotificationDelegate()
     
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
+        
+        // Register notification categories
+        let snooze5 = UNNotificationAction(
+            identifier: "SNOOZE_5_ACTION",
+            title: "Nudge in 5 minutes",
+            options: []
+        )
+        let snooze10 = UNNotificationAction(
+            identifier: "SNOOZE_10_ACTION",
+            title: "Nudge in 10 minutes",
+            options: []
+        )
+        let round1Actions = UNNotificationCategory(
+            identifier: "Round1_Snooze",
+            actions: [snooze5, snooze10],
+            intentIdentifiers: [],
+            options: []
+        )
+        // Register notification categories
+        let round2_snooze5 = UNNotificationAction(
+            identifier: "ROUND2_SNOOZE_5_ACTION",
+            title: "5 more minutes",
+            options: []
+        )
+        let round2Actions = UNNotificationCategory(
+            identifier: "Round2_Snooze",
+            actions: [round2_snooze5],
+            intentIdentifiers: [],
+            options: []
+        )
+        // Register notification categories
+        let round2_conf = UNNotificationAction(
+            identifier: "ROUND2_CONFIRM_ACTION",
+            title: "Yes",
+            options: []
+        )
+        let round2_deny = UNNotificationAction(
+            identifier: "ROUND2_DENY_ACTION",
+            title: "Lol, I'll pray right now!",
+            options: [.foreground]
+        )
+        let round2Confirmation = UNNotificationCategory(
+            identifier: "Round2_Confirm",
+            actions: [round2_conf, round2_deny],
+            intentIdentifiers: [],
+            options: []
+        )
+        
+        // Register the category with the notification center
+        UNUserNotificationCenter.current().setNotificationCategories([round1Actions, round2Actions, round2Confirmation])
+        print("✅ Notification categories registered")
+        
+        // Request notification permissions (if not already requested)
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+            } else if granted {
+                print("Notification permission granted")
+            } else {
+                print("Notification permission denied")
+            }
+        }
+
         return true
     }
 }
+
 
 class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound, .badge])
     }
-    
-    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        let remind5 = UNNotificationAction(
-            identifier: "SNOOZE_5_ACTION",
-            title: "Nudge in 5 minutes",
-            options: []
-        )
-        let remind10 = UNNotificationAction(
-            identifier: "SNOOZE_10_ACTION",
-            title: "Nudge in 10 minutes",
-            options: []
-        )
-        let prayerCategory = UNNotificationCategory(
-            identifier: "PRAYER_CATEGORY",
-            actions: [remind5, remind10],
-            intentIdentifiers: [],
-            options: []
-        )
-        UNUserNotificationCenter.current().setNotificationCategories([prayerCategory])
-        return true
-    }
 
-    
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         switch response.actionIdentifier {
-        case "SNOOZE_5_ACTION":
-            print("Snooze5 action tapped")
-            scheduleSnoozeNotification(after: 5 * 60, identifier: "reminder5", body: "It's been 5 minutes")
+        case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION":
+            let firstOption = (response.actionIdentifier == "SNOOZE_5_ACTION" ? true : false)
+            print(firstOption ? "SNOOZE_5_ACTION action tapped" : "SNOOZE_10_ACTION action tapped")
+            makeNextSnoozeNotifBe(
+                after: firstOption ? 5 : 10,
+                body: firstOption ? "It's been 5 minutes" : "It's been 10 minutes",
+                withActionsFromCatId: "Round2_Snooze"
+            )
+
             
-        case "SNOOZE_10_ACTION":
-            print("Snooze10 action tapped")
-            scheduleSnoozeNotification(after: 10 * 60, identifier: "reminder10", body: "It's been 10 minutes")
+        case "ROUND2_SNOOZE_5_ACTION", "ROUND2_SNOOZE_10_ACTION": //got rid of snooze 10
+            let firstOption = (response.actionIdentifier == "ROUND2_SNOOZE_5_ACTION" ? true : false)
+            print(firstOption ? "ROUND2_SNOOZE_5_ACTION action tapped" : "ROUND2_SNOOZE_10_ACTION action tapped")
+            makeNextSnoozeNotifBe(
+                after: 0.1,
+                body: "😑 Are you being serious? Another \(firstOption ? "5" : "10") minutes?",
+                withActionsFromCatId: "Round2_Confirm"
+            )
+            
+        case "ROUND2_CONFIRM_ACTION":
+            print("ROUND2_CONFIRM_ACTION action tapped")
+            makeNextSnoozeNotifBe(
+                after: 5,
+                body: "5 more minutes have passed!",
+                withActionsFromCatId: nil
+            )
+
+        case "ROUND2_DENY_ACTION":
+            print("ROUND2_DENY_ACTION action tapped")
+            // open the app
             
         default:
             break
         }
         completionHandler()
+    }
+
+    private func makeNextSnoozeNotifBe(after seconds: TimeInterval, body: String, withActionsFromCatId: String?) {
+        let content = UNMutableNotificationContent()
+        let identifier = UUID().uuidString
+        content.body = body
+        content.sound = UNNotificationSound.default
+        content.interruptionLevel = .timeSensitive
+        if let withActionsFromCatId {
+            content.categoryIdentifier = withActionsFromCatId
+        }
         
-        func scheduleSnoozeNotification(after seconds: TimeInterval, identifier: String, body: String) {
-            let content = UNMutableNotificationContent()
-            content.body = body
-            content.sound = UNNotificationSound.default
-            content.interruptionLevel = .timeSensitive
-            
-            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
-            let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-            
-            UNUserNotificationCenter.current().add(request) { error in
-                if let error = error {
-                    print("Error \(identifier): \(error.localizedDescription)")
-                } else {
-                    print("✅ Scheduled \(identifier): in \(seconds)s")
-                }
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("Error \(identifier): \(error.localizedDescription)")
+            } else {
+                print("✅ Scheduled \(identifier): in \(seconds)s")
             }
         }
     }
-
 }
-

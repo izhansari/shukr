@@ -9,179 +9,179 @@ import SwiftUI
 import Adhan
 
 
-struct PrayerButton: View {
-    @EnvironmentObject var sharedState: SharedStateClass
-    @EnvironmentObject var viewModel: PrayerViewModel
-
-    @AppStorage("calculationMethod") var calculationMethod: Int = 2
-    @AppStorage("school") var school: Int = 0
-
-    @Binding var showChainZikrButton: Bool
-    @Binding var todaysStartedPrayers: [PrayerModel]
-    @State private var toggledText: Bool = false
-    let prayerObject: PrayerModel
-    let name: String
-    
-    private var isFuturePrayer: Bool {
-        calcStartTime > Date()
-    }
-    
-    // Status Circle Properties
-    private var statusImageName: String {
-        if isFuturePrayer { return "circle" }
-        return prayerObject.isCompleted ? "checkmark.circle.fill" : "circle"
-    }
-    
-    private var statusColor: Color {
-        if isFuturePrayer { return Color.secondary.opacity(0.2) }
-        return prayerObject.isCompleted ? viewModel.getColorForPrayerScore(prayerObject.numberScore) : Color.secondary.opacity(0.5)
-    }
-    
-    // Text Properties
-    private var statusBasedOpacity: Double {
-        if isFuturePrayer { return 0.6 }
-        return prayerObject.isCompleted ? 0.7 : 1
-    }
-    
-    // Background Properties
-    private var backgroundColor: Color {
-        if isFuturePrayer { return Color("bgColor") }
-        return prayerObject.isCompleted ? Color("NeuClickedButton") : Color("bgColor")
-    }
-    
-    // Shadow Properties
-    private var shadowXOffset: CGFloat {
-        prayerObject.isCompleted ? -2 : 0
-    }
-    
-    private var shadowYOffset: CGFloat {
-        prayerObject.isCompleted ? -2 : 0
-    }
-    
-    private var nameFontSize: Font {
-        return .callout
-    }
-    
-    private var timeFontSize: Font {
-        return .footnote
-    }
-    
-    private var calcStartTime: Date{
-        if let timesFromDict = viewModel.prayerTimesForDateDict[name]{
-            return timesFromDict.start
-        }
-        return Date()
-    }
-    
-    var body: some View {
-        Button(action: {
-            // Handle Future Prayer Toggle
-            if isFuturePrayer {
-                withAnimation {
-                    toggledText.toggle()
-                }
-            } else {
-                // Handle Prayer Completion with Spring Animation
-                withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
-                    viewModel.togglePrayerCompletion(for: prayerObject)
-                }
-                
-                // Show Chain Zikr Button Animation
-                if prayerObject.isCompleted {
-                    withAnimation {
-                        showChainZikrButton = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                            showChainZikrButton = false
-                        }
-                    }
-                }
-            }
-        }) {
-            HStack {
-                // Status Circle
-                Image(systemName: statusImageName)
-                    .foregroundColor(statusColor)
-                    .frame(width: 24, height: 24, alignment: .leading)
-                
-                // Prayer Name Label
-                Text(name)
-                    .font(nameFontSize)
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                
-                Spacer()
-                
-                // Time Display Section
-                if isFuturePrayer {
-                    // Future Prayer: Toggleable Time/Countdown
-                    ExternalToggleText(
-                        originalText: shortTimePM(calcStartTime),
-                        toggledText: timeUntilStart(calcStartTime),
-                        externalTrigger: $toggledText,
-                        font: timeFontSize,
-                        fontDesign: .rounded,
-                        fontWeight: .light,
-                        hapticFeedback: true
-                    )
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-
-                } else if prayerObject.isCompleted {
-                    // Completed Prayer: Show Completion Time
-                    if let completedTime = prayerObject.timeAtComplete {
-                        Text("@ \(shortTimePM(completedTime))")
-                            .font(timeFontSize)
-                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
-                    }
-                } else {
-                    // Current Prayer: Show Start Time
-                    Text(shortTimePM(calcStartTime))
-                        .font(timeFontSize)
-                        .foregroundColor(.secondary)
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
-                }
-                
-                // Chevron Arrow
-                ChevronTap()
-                    .opacity(statusBasedOpacity)
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-            // Background Effects Container
-            .background(
-                Group {
-                    if isFuturePrayer || !prayerObject.isCompleted {
-                        // Plain Effect: Future Prayer (No Shadow) or Current
-                        RoundedRectangle(cornerRadius: 13)
-                            .fill(backgroundColor)
-                    } else {
-                        // Neumorphic Effect: Completed Prayer
-                        RoundedRectangle(cornerRadius: 13)
-                            .fill(backgroundColor
-                                  // Indent/Outdent Effects
-                                .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 1, x: -shadowXOffset, y: -shadowYOffset))
-                                .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 1, x: shadowXOffset, y: shadowYOffset))
-                            )
-                    }
-                }
-            )
-            .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct ChevronTap: View {
-    var body: some View {
-        Image(systemName: "chevron.right")
-            .foregroundColor(.gray)
-            .onTapGesture {
-                triggerSomeVibration(type: .medium)
-                print("chevy hit")
-            }
-    }
-}
+//struct PrayerButton: View {
+//    @EnvironmentObject var sharedState: SharedStateClass
+//    @EnvironmentObject var viewModel: PrayerViewModel
+//
+//    @AppStorage("calculationMethod") var calculationMethod: Int = 2
+//    @AppStorage("school") var school: Int = 0
+//
+//    @Binding var showChainZikrButton: Bool
+//    @Binding var todaysStartedPrayers: [PrayerModel]
+//    @State private var toggledText: Bool = false
+//    let prayerObject: PrayerModel
+//    let name: String
+//    
+//    private var isFuturePrayer: Bool {
+//        calcStartTime > Date()
+//    }
+//    
+//    // Status Circle Properties
+//    private var statusImageName: String {
+//        if isFuturePrayer { return "circle" }
+//        return prayerObject.isCompleted ? "checkmark.circle.fill" : "circle"
+//    }
+//    
+//    private var statusColor: Color {
+//        if isFuturePrayer { return Color.secondary.opacity(0.2) }
+//        return prayerObject.isCompleted ? viewModel.getColorForPrayerScore(prayerObject.numberScore) : Color.secondary.opacity(0.5)
+//    }
+//    
+//    // Text Properties
+//    private var statusBasedOpacity: Double {
+//        if isFuturePrayer { return 0.6 }
+//        return prayerObject.isCompleted ? 0.7 : 1
+//    }
+//    
+//    // Background Properties
+//    private var backgroundColor: Color {
+//        if isFuturePrayer { return Color("bgColor") }
+//        return prayerObject.isCompleted ? Color("NeuClickedButton") : Color("bgColor")
+//    }
+//    
+//    // Shadow Properties
+//    private var shadowXOffset: CGFloat {
+//        prayerObject.isCompleted ? -2 : 0
+//    }
+//    
+//    private var shadowYOffset: CGFloat {
+//        prayerObject.isCompleted ? -2 : 0
+//    }
+//    
+//    private var nameFontSize: Font {
+//        return .callout
+//    }
+//    
+//    private var timeFontSize: Font {
+//        return .footnote
+//    }
+//    
+//    private var calcStartTime: Date{
+//        if let timesFromDict = viewModel.prayerTimesForDateDict[name]{
+//            return timesFromDict.start
+//        }
+//        return Date()
+//    }
+//    
+//    var body: some View {
+//        Button(action: {
+//            // Handle Future Prayer Toggle
+//            if isFuturePrayer {
+//                withAnimation {
+//                    toggledText.toggle()
+//                }
+//            } else {
+//                // Handle Prayer Completion with Spring Animation
+//                withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
+//                    viewModel.togglePrayerCompletion(for: prayerObject)
+//                }
+//                
+//                // Show Chain Zikr Button Animation
+//                if prayerObject.isCompleted {
+//                    withAnimation {
+//                        showChainZikrButton = true
+//                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+//                            showChainZikrButton = false
+//                        }
+//                    }
+//                }
+//            }
+//        }) {
+//            HStack {
+//                // Status Circle
+//                Image(systemName: statusImageName)
+//                    .foregroundColor(statusColor)
+//                    .frame(width: 24, height: 24, alignment: .leading)
+//                
+//                // Prayer Name Label
+//                Text(name)
+//                    .font(nameFontSize)
+//                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
+//                    .fontDesign(.rounded)
+//                    .fontWeight(.light)
+//                
+//                Spacer()
+//                
+//                // Time Display Section
+//                if isFuturePrayer {
+//                    // Future Prayer: Toggleable Time/Countdown
+//                    ExternalToggleText(
+//                        originalText: shortTimePM(calcStartTime),
+//                        toggledText: timeUntilStart(calcStartTime),
+//                        externalTrigger: $toggledText,
+//                        font: timeFontSize,
+//                        fontDesign: .rounded,
+//                        fontWeight: .light,
+//                        hapticFeedback: true
+//                    )
+//                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
+//
+//                } else if prayerObject.isCompleted {
+//                    // Completed Prayer: Show Completion Time
+//                    if let completedTime = prayerObject.timeAtComplete {
+//                        Text("@ \(shortTimePM(completedTime))")
+//                            .font(timeFontSize)
+//                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
+//                    }
+//                } else {
+//                    // Current Prayer: Show Start Time
+//                    Text(shortTimePM(calcStartTime))
+//                        .font(timeFontSize)
+//                        .foregroundColor(.secondary)
+//                        .fontDesign(.rounded)
+//                        .fontWeight(.light)
+//                }
+//                
+//                // Chevron Arrow
+//                ChevronTap()
+//                    .opacity(statusBasedOpacity)
+//            }
+//            .padding(.horizontal)
+//            .padding(.vertical, 12)
+//            // Background Effects Container
+//            .background(
+//                Group {
+//                    if isFuturePrayer || !prayerObject.isCompleted {
+//                        // Plain Effect: Future Prayer (No Shadow) or Current
+//                        RoundedRectangle(cornerRadius: 13)
+//                            .fill(backgroundColor)
+//                    } else {
+//                        // Neumorphic Effect: Completed Prayer
+//                        RoundedRectangle(cornerRadius: 13)
+//                            .fill(backgroundColor
+//                                  // Indent/Outdent Effects
+//                                .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 1, x: -shadowXOffset, y: -shadowYOffset))
+//                                .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 1, x: shadowXOffset, y: shadowYOffset))
+//                            )
+//                    }
+//                }
+//            )
+//            .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
+//        }
+//        .buttonStyle(PlainButtonStyle())
+//    }
+//}
+//
+//struct ChevronTap: View {
+//    var body: some View {
+//        Image(systemName: "chevron.right")
+//            .foregroundColor(.gray)
+//            .onTapGesture {
+//                triggerSomeVibration(type: .medium)
+//                print("chevy hit")
+//            }
+//    }
+//}
 
 
 struct NeumorphicBorder: View {

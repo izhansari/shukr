@@ -3358,14 +3358,18 @@ struct TopBar: View {
     @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     var colorModeToggle = false
 
-    @Binding var showTop: Bool
-    @Binding var showBottom: Bool
+//    @Binding var yuyushowTop: Bool
+//    @Binding var yuyushowBottom: Bool
+    var viewState: SharedStateClass.ViewPosition { sharedState.newTopMainOrBottom }
     @GestureState var dragOffset: CGFloat
     
     @State private var expandButtons: Bool = false
     
+//    private var switchToTopLabel: Bool {
+//        ((dragOffset > 0 && !yuyushowBottom) || yuyushowTop)
+//    }
     private var switchToTopLabel: Bool {
-        ((dragOffset > 0 && !showBottom) || showTop)
+        ( viewState == .top || (viewState != .bottom && dragOffset > 0) )
     }
     
     private var tasbeehModeName: String {
@@ -3410,8 +3414,10 @@ struct TopBar: View {
                     .fontDesign(.rounded)
                     .fontWeight(.thin)
                     .frame(height: 24, alignment: .center)
-                    .offset(y: !showBottom && (dragOffset > 0 || showTop) ? dragOffset : 0)
-                    .animation(.easeInOut, value: dragOffset > 0 && !showBottom)
+                    .offset(y: viewState != .bottom && (dragOffset > 0 || viewState == .top) ? dragOffset : 0)
+                    .animation(.easeInOut, value: dragOffset > 0 && viewState != .bottom)
+//                    .offset(y: !yuyushowBottom && (dragOffset > 0 || yuyushowTop) ? dragOffset : 0)
+//                    .animation(.easeInOut, value: dragOffset > 0 && !yuyushowBottom)
                     
                 } else {
                     HStack {

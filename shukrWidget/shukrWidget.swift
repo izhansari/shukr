@@ -182,6 +182,7 @@ extension Date{
 
 struct AddIntent: AppIntent {
     static var title: LocalizedStringResource = "add"
+    static var isDiscoverable: Bool = false
 
     func perform() async throws -> some IntentResult {
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -197,6 +198,7 @@ struct AddIntent: AppIntent {
 
 struct SubtractIntent: AppIntent {
     static var title: LocalizedStringResource = "Subtract"
+    static var isDiscoverable: Bool = false
 
     func perform() async throws -> some IntentResult {
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -212,6 +214,7 @@ struct SubtractIntent: AppIntent {
 
 struct ResumeIntent: AppIntent {
     static var title: LocalizedStringResource = "Resume"
+    static var isDiscoverable: Bool = false
 
     func perform() async throws -> some IntentResult {
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -222,4 +225,39 @@ struct ResumeIntent: AppIntent {
         return .result()
     }
 }
+
+
+//struct GetFajrTimeIntent: AppIntent {
+//    static var title: LocalizedStringResource = "Resume"
+//    static var description: IntentDescription = IntentDescription(
+//        "Fetches prayer times for the current day.",
+//        categoryName: "Prayer"
+//    )
+//    
+//    // Optional: Parameters for the intent (e.g., specific prayer)
+//    @Parameter(
+//        title: "Prayer Name",
+//        description: "Fetch times for a specific prayer or all prayers.",
+//        default: "All"
+//    )
+//    var prayerName: String
+//    
+//    @MainActor
+//    func perform() async throws -> some IntentResult {
+//        // Fetch prayer times from your `PrayerViewModel` or API
+//        let prayerTimes = await PrayerManager.shared.getPrayerTimes(for: prayerName)
+//
+//        // Format the result
+//        let response = prayerTimes.map { "\($0.name): \($0.startTime) - \($0.endTime)" }
+//            .joined(separator: "\n")
+//        
+//        return .result(
+//            dialog: IntentDialog(stringLiteral: "Prayer times fetched successfully."),
+//            result: response
+//        )
+//    }
+//
+//}
+
+
 
