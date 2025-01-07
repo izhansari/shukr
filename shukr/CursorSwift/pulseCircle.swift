@@ -134,24 +134,18 @@ struct PulseCircleView: View {
         return "in " + formatTimeInterval(timeUntilStart)
     }
     
-    private func formatTimeInterval(_ interval: TimeInterval) -> String {
-        let hours = Int(interval) / 3600
-        let minutes = (Int(interval) % 3600) / 60
-        let seconds = Int(interval) % 60
-        
-        if hours > 0 {
-            return "\(hours)h \(minutes)m"
-        } else if minutes > 0 {
-            return "\(minutes)m"
-        } else {
-            return "\(seconds)s"
-        }
-    }
-    
-//    private func formatTimeWithAMPM(_ date: Date) -> String {
-//        let formatter = DateFormatter()
-//        formatter.dateFormat = "h:mm a"
-//        return formatter.string(from: date)
+//    private func formatTimeInterval(_ interval: TimeInterval) -> String {
+//        let hours = Int(interval) / 3600
+//        let minutes = (Int(interval) % 3600) / 60
+//        let seconds = Int(interval) % 60
+//        
+//        if hours > 0 {
+//            return "\(hours)h \(minutes)m"
+//        } else if minutes > 0 {
+//            return "\(minutes)m"
+//        } else {
+//            return "\(seconds)s"
+//        }
 //    }
     
     private func iconName(for prayerName: String) -> String {
@@ -478,11 +472,14 @@ struct PulseCircleView: View {
                 .onTapGesture {
                     textTrigger.toggle()  // Toggle the trigger
                 }
-                .onLongPressGesture {
-                    if isCurrentPrayer || isPraying {
-                        handlePrayerTracking()
-                    }
-                }
+                .simultaneousGesture(
+                    LongPressGesture()
+                        .onEnded { _ in
+                            if isCurrentPrayer || isPraying {
+                                handlePrayerTracking()
+                            }
+                        }
+                )
             
             ZStack {
                 let isAligned = abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold

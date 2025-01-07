@@ -31,14 +31,11 @@ struct SettingsView: View {
     
     @AppStorage("calculationMethod") var calculationMethod: Int = 2
     @AppStorage("school") var school: Int = 0
+    
+    @AppStorage("modeToggle") var colorModeToggle = false
 
     @State private var isPopupVisible: Bool = false
     @State private var selectedPrayerToCancelNudges = "Fajr"
-
-    
-//    @State private var localCalculationMethod: Int = 0
-//    @State private var localSchool: Int = 0
-
     
     let calculationMethods = [
         (1, "University of Islamic Sciences, Karachi"), // .karachi
@@ -100,20 +97,6 @@ struct SettingsView: View {
                 }
             }
             
-            //MARK: - API Information
-            //            Section(header: Text("API Information")) {
-            //                VStack(alignment: .leading) {
-            //                    Text("Last API Call URL:")
-            //                    Link(destination: URL(string: viewModel.lastApiCallUrl) ?? URL(string: "https://example.com")!) {
-            //                        Text(viewModel.lastApiCallUrl)
-            //                            .font(.caption)
-            //                            .foregroundColor(.blue)
-            //                            .lineLimit(3)
-            //                    }
-            //                }
-            //            }
-            
-            
             //MARK: - Calculation Method
             Section(header: Text("Calculation Method")) {
                 Picker("Method", selection: $calculationMethod) {
@@ -162,6 +145,16 @@ struct SettingsView: View {
             
             //MARK: - Appearance
             Section(header: Text("Appearance")) {
+                
+                Picker(selection: $colorModeToggle, label:
+                        HStack {
+                    Image(systemName: "circle.lefthalf.filled")
+                    Text("Color Scheme")
+                }){
+                    Text("Light").tag(false)
+                    Text("Dark").tag(true)
+                }
+                
                 Picker("Ring Style", selection: $selectedRingStyle) {
                     ForEach(0..<10) { index in
                         Text("\(index)").tag(index)
@@ -208,19 +201,9 @@ struct SettingsView: View {
             }
             
         }
-        
         .navigationTitle("Settings")
         .navigationBarBackButtonHidden(false)
-//        .id(refreshID)
-//        .onAppear {
-//            localCalculationMethod = calculationMethod
-//            localSchool = school
-            // Force a refresh when the view appears
-//            refreshID = UUID()
-//        }
         .onDisappear{
-//            calculationMethod = localCalculationMethod
-//            school = localSchool
             viewModel.fetchPrayerTimes()
         }
     }
@@ -358,8 +341,8 @@ struct NotificationDropdownInfo: View {
                     content.categoryIdentifier = "Round1_Snooze" // Associate the category
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
-                    content.subtitle = "\(randPrayerName) Time 🟢"
-                    content.body = "Pray by \(shortTimePM(Date()))"
+                    content.title = "\(randPrayerName) Time 🟢"
+                    content.subtitle = "Pray by \(shortTimePM(Date()))"
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
                     viewModel.addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
@@ -377,12 +360,12 @@ struct NotificationDropdownInfo: View {
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
                     let randNudge = [
-                        (subtitle: "\(randPrayerName) At Midpoint 🟡", body: "Did you pray? There's \(timeLeftString(from: Double.random(in: 60...110)*60))"),
-                        (subtitle: "\(randPrayerName) Almost Over! 🔴", body: "Did you pray? There's still \(timeLeftString(from: Double.random(in: 20...45)*60))")
+                        (title: "\(randPrayerName) At Midpoint 🟡", subtitle: "Did you pray? There's \(timeLeftString(from: Double.random(in: 60...110)*60))"),
+                        (title: "\(randPrayerName) Almost Over! 🔴", subtitle: "Did you pray? There's still \(timeLeftString(from: Double.random(in: 20...45)*60))")
                     ]
                         .randomElement()!
+                    content.title = randNudge.title
                     content.subtitle = randNudge.subtitle
-                    content.body = randNudge.body
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
                     viewModel.addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)

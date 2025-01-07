@@ -578,18 +578,18 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             switch notifType {
             case "Start":
                 schedDate = prayerTimeData.start
-                content.subtitle = /*nudges ?*/ "\(prayerName) Time 🟢" /*: "\(prayerName) Time"*/
-                content.body = "Pray by \(shortTimePM(endTime))"
+                content.title = /*nudges ?*/ "\(prayerName) Time 🟢" /*: "\(prayerName) Time"*/
+                content.subtitle = "Pray by \(shortTimePM(endTime))"
             case "Mid":
                 let timeUntilEnd = prayerTimeData.window * 0.5
                 schedDate = endTime.addingTimeInterval(-timeUntilEnd)
-                content.subtitle = "\(prayerName) At Midpoint 🟡"
-                content.body = "Did you pray? There's \(timeLeftString(from: timeUntilEnd))"
+                content.title = "\(prayerName) At Midpoint 🟡"
+                content.subtitle = /*"Did you pray?" */"There's \(timeLeftString(from: timeUntilEnd))"
             case "End":
                 let timeUntilEnd = prayerTimeData.window * 0.25
                 schedDate = endTime.addingTimeInterval(-timeUntilEnd)
-                content.subtitle = "\(prayerName) Almost Over! 🔴"
-                content.body = "Did you pray? There's still \(timeLeftString(from: timeUntilEnd))"
+                content.title = "\(prayerName) Almost Over! 🔴"
+                content.subtitle = /*"Did you pray?" */"There's still \(timeLeftString(from: timeUntilEnd))"
             default:
                 logMessages.append("failed to conform to switch case")
                 passedSwitchCase = false
@@ -946,7 +946,7 @@ struct PrayerTimesView: View {
                     // state 2
                     //FIXME: need to account for if they didnt complete all of todays prayers. cant show done if its not done.
                     if !showTop{
-                        if let relevantPrayer = viewModel.relevantPrayer/*, relevantPrayer.name != "Fajr"*/{
+                        if let relevantPrayer = viewModel.relevantPrayer{
                             PulseCircleView(prayer: relevantPrayer)
                                 .transition(.opacity)
                                 .highPriorityGesture(
@@ -961,28 +961,6 @@ struct PrayerTimesView: View {
                         }
                         else {
                             summaryCircle()
-//                            ZStack{
-//                                NeuCircularProgressView(progress: 0)
-//                                VStack{
-//                                    Text("done.")
-//                                    if let fajrTime = nextFajr {
-//                                        Text("Fajr is at \(shortTimePM(fajrTime.start))")
-//                                            .fontWeight(.thin)
-//                                            .foregroundColor(.secondary)
-//                                        Text("Sunrise is at \(shortTimePM(fajrTime.end))")
-//                                            .fontWeight(.thin)
-//                                            .foregroundColor(.secondary)
-//                                    }
-//                                }
-//                            }
-//                            .onAppear {
-//                                // Fetch Fajr time on view load
-//                                // let x = viewModel.todaysPrayers["Fajr"]
-//                                // let foundPrayer = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" })
-//                                nextFajr = viewModel.getPrayerTime(for: "Fajr", on: Date())
-//                                viewModel.fetchPrayerTimes() // FIXME: think this through more and make sure it makes sense.
-//                            }
-                            
                         }
                     }
                     
@@ -1045,6 +1023,8 @@ struct PrayerTimesView: View {
                                 .sheet(isPresented: $showMantraSheetFromHomePage) {
                                     MantraPickerView(isPresented: $showMantraSheetFromHomePage, selectedMantra: $chosenMantra, presentation: [.large])
                                 }
+                            
+                            //FIXME: ADD TASKS HERE?
                         }
                         
                         FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
@@ -1089,6 +1069,8 @@ struct PrayerTimesView: View {
                                             handleDragEnd(translation: value.translation.height)
                                         }
                                 )
+                            
+                            
                         }
                         
                         // chevron button to pull up the tracker.
@@ -1128,7 +1110,6 @@ struct PrayerTimesView: View {
             }
             
         }
-        
         .onAppear {
             viewModel.loadTodaysPrayers()
             if sharedState.firstLaunch{
@@ -1379,24 +1360,6 @@ struct PrayerButton: View {
                             secondaryButton: .cancel()
                         )
                     }
-//            .sheet(isPresented: $showTimePicker) {
-//                        VStack {
-//                            Text("Select completion time for \(name)")
-//                                .font(.headline)
-//                                .padding()
-//                            
-//                            DatePicker("", selection: $selectedDate, displayedComponents: [.hourAndMinute, .date])
-//                                .datePickerStyle(WheelDatePickerStyle())
-//                                .labelsHidden()
-//                            
-//                            Button("Save") {
-////                                viewModel.updatePrayerCompletionTime(for: prayerObject, with: selectedDate)
-//                                prayerObject.timeAtComplete = selectedDate
-//                                showTimePicker = false
-//                            }
-//                            .padding()
-//                        }
-//            }
             .sheet(isPresented: $showTimePicker) {
                 VStack {
                     Text("Edit Prayer Details for \(name)")
@@ -1430,7 +1393,6 @@ struct PrayerButton: View {
                     .padding()
                 }
             }
-
             .onTapGesture {
                 if isFuturePrayer {
                     withAnimation {
@@ -1438,113 +1400,18 @@ struct PrayerButton: View {
                     }
                 }
             }
-            .onLongPressGesture(minimumDuration: 0.5){
-                if prayerObject.isCompleted {
-                    selectedDate = prayerObject.timeAtComplete ?? Date()
-                    showTimePicker = true
-                }
-            }
+            .simultaneousGesture(
+                LongPressGesture()
+                    .onEnded { _ in
+                        if prayerObject.isCompleted {
+                            selectedDate = prayerObject.timeAtComplete ?? Date()
+                            showTimePicker = true
+                        }
+                    }
+            )
     }
 
-    
-//    var body: some View {
-//        Button(action: {
-//            // Handle Future Prayer Toggle
-//            if isFuturePrayer {
-//                withAnimation {
-//                    toggledText.toggle()
-//                }
-//            } else {
-//                // Handle Prayer Completion with Spring Animation
-//                withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
-//                    viewModel.togglePrayerCompletion(for: prayerObject)
-//                }
-//                
-//                // Show Chain Zikr Button Animation
-//                if prayerObject.isCompleted {
-//                    withAnimation {
-//                        showChainZikrButton = true
-//                        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-//                            showChainZikrButton = false
-//                        }
-//                    }
-//                }
-//            }
-//        }) {
-//            HStack {
-//                // Status Circle
-//                Image(systemName: statusImageName)
-//                    .foregroundColor(statusColor)
-//                    .frame(width: 24, height: 24, alignment: .leading)
-//                
-//                // Prayer Name Label
-//                Text(name)
-//                    .font(nameFontSize)
-//                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-//                    .fontDesign(.rounded)
-//                    .fontWeight(.light)
-//                
-//                Spacer()
-//                
-//                // Time Display Section
-//                if isFuturePrayer {
-//                    // Future Prayer: Toggleable Time/Countdown
-//                    ExternalToggleText(
-//                        originalText: shortTimePM(calcStartTime),
-//                        toggledText: timeUntilStart(calcStartTime),
-//                        externalTrigger: $toggledText,
-//                        font: timeFontSize,
-//                        fontDesign: .rounded,
-//                        fontWeight: .light,
-//                        hapticFeedback: true
-//                    )
-//                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-//
-//                } else if prayerObject.isCompleted {
-//                    // Completed Prayer: Show Completion Time
-//                    if let completedTime = prayerObject.timeAtComplete {
-//                        Text("@ \(shortTimePM(completedTime))")
-//                            .font(timeFontSize)
-//                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
-//                    }
-//                } else {
-//                    // Current Prayer: Show Start Time
-//                    Text(shortTimePM(calcStartTime))
-//                        .font(timeFontSize)
-//                        .foregroundColor(.secondary)
-//                        .fontDesign(.rounded)
-//                        .fontWeight(.light)
-//                }
-//                
-//                // Chevron Arrow
-//                ChevronTap()
-//                    .opacity(statusBasedOpacity)
-//            }
-//            .padding(.horizontal)
-//            .padding(.vertical, 12)
-//            // Background Effects Container
-//            .background(
-//                Group {
-//                    if isFuturePrayer || !prayerObject.isCompleted {
-//                        // Plain Effect: Future Prayer (No Shadow) or Current
-//                        RoundedRectangle(cornerRadius: 13)
-//                            .fill(backgroundColor)
-//                    } else {
-//                        // Neumorphic Effect: Completed Prayer
-//                        RoundedRectangle(cornerRadius: 13)
-//                            .fill(backgroundColor
-//                                  // Indent/Outdent Effects
-//                                .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 1, x: -shadowXOffset, y: -shadowYOffset))
-//                                .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 1, x: shadowXOffset, y: shadowYOffset))
-//                            )
-//                    }
-//                }
-//            )
-//            .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
-//        }
-//        .buttonStyle(PlainButtonStyle())
-//    }
-    
+        
     struct MiniMapView: View {
         @Binding var coordinate: CLLocationCoordinate2D
         @State private var region: MKCoordinateRegion
@@ -1579,11 +1446,23 @@ struct ChevronTap: View {
 }
 
 struct summaryCircle: View{
+    // FIXME: think this through more and make sure it makes sense.
     @State private var nextFajr: (start: Date, end: Date)?
     @EnvironmentObject var viewModel: PrayerViewModel
     @State var summaryInfo: [String : Double?] = [:]
     @State private var textTrigger = false
+    @State private var currentTime = Date()
 
+    private var fajrAtString: String{
+        guard let fajrTime = nextFajr else { return "" }
+//        return "Fajr in " + formatTimeIntervalWithS(fajrTime.start.timeIntervalSince(currentTime))
+        return "Farj at \(shortTimePM(fajrTime.start))"
+    }
+    
+    private var sunriseAtString: String{
+        guard let fajrTime = nextFajr else { return "" }
+        return "Sunrise at \(shortTimePM(fajrTime.end))"
+    }
     
     private func getTheSummaryInfo(){
         for name in viewModel.orderedPrayerNames {
@@ -1649,24 +1528,19 @@ struct summaryCircle: View{
 
                         
             VStack{
-                Text("done.")
+                Text("done")
                 if let fajrTime = nextFajr {
                     
                     ExternalToggleText(
-                        originalText:"Fajr starts \(shortTimePM(fajrTime.start))",
-                        toggledText: "Sunrise at \(shortTimePM(fajrTime.end))",
+                        originalText: fajrAtString,
+                        toggledText: sunriseAtString,
+//                        toggledText: "Fajr in \(fajrInString)",
+//                        toggledText: "Fajr in \(formatTimeInterval(fajrTime.end.timeIntervalSince(Date())))",
                         externalTrigger: $textTrigger,  // Pass the binding
                         fontDesign: .rounded,
                         fontWeight: .thin,
                         hapticFeedback: true
                     )
-                    
-//                    Text("Fajr starts \(shortTimePM(fajrTime.start))")
-//                        .fontWeight(.thin)
-//                        .foregroundColor(.secondary)
-//                    Text("Sunrise at \(shortTimePM(fajrTime.end))")
-//                        .fontWeight(.thin)
-//                        .foregroundColor(.secondary)
                 }
             }
             

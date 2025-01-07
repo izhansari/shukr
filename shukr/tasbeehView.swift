@@ -23,21 +23,19 @@ struct tasbeehView: View {
     @Query private var sessionItems: [SessionDataModel]
     
     // AppStorage properties
-//    @AppStorage("count", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-//    var tasbeeh: Int = 10
     @AppStorage("streak") var streak = 0
-//    @AppStorage("autoStop", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-//    @State private var autoStop = true
-//    @AppStorage("paused", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-//    var paused = false
-    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var toggleInactivityTimer = false
+    @AppStorage("inactivityToggle") var toggleInactivityTimer = false
+//    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+//    var toggleInactivityTimer = false
+    
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
 
-    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var vibrateToggle = true
-    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var colorModeToggle = false
+    @AppStorage("vibrateToggle") var vibrateToggle = true
+//    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+//    var vibrateToggle = true
+    
+    @AppStorage("modeToggle") var colorModeToggle = false
+    
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
 
     
@@ -279,7 +277,7 @@ struct tasbeehView: View {
                     toggleInactivityTimer: $toggleInactivityTimer,
                     inactivityDimmer: $inactivityDimmer,
                     autoStop: $autoStop,
-                    colorModeToggle: $colorModeToggle,
+//                    colorModeToggle: $colorModeToggle,
                     currentVibrationMode: $currentVibrationMode
                 )
             }

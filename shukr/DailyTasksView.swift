@@ -10,7 +10,8 @@ import SwiftData
 
 
 struct DailyTasksView: View {
-    @Binding var showAddTaskScreen: Bool
+//    @Binding var showAddTaskScreen: Bool
+    @State private var showAddTaskScreen: Bool = false
     
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.presentationMode) var presentationMode
@@ -31,13 +32,16 @@ struct DailyTasksView: View {
         if taskItems.isEmpty /*tasks.isEmpty*/ {
             // Default view for when there are no tasks
             NoTasksView(showAddTaskScreen: $showAddTaskScreen)
+                .sheet(isPresented: $showAddTaskScreen) {
+                    AddDailyTaskView(isPresented: $showAddTaskScreen)
+                        .presentationDetents([.medium, .large], selection: .constant(.medium))
+                }
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(taskItems/*tasks.indices*/, id: \.self) { task in
                         TaskCardView(task: task/*tasks[index]*/)
                             .onLongPressGesture{
-//                                titleOfTaskToDelete = task.mantra
                                 taskToDelete = task
                                 showDeleteTaskAlert = true
                             }
@@ -45,7 +49,6 @@ struct DailyTasksView: View {
                                 let remainingGoal = task.goal - task.runningGoal
                                 taskToComplete = task
                                 sharedState.titleForSession = task.mantra
-//                                if(task.mode == .count){ //modeflag
                                 if(task.isCountMode){ //modeflag
                                     sharedState.selectedMode = 2
                                     sharedState.targetCount = "\(remainingGoal <= 0 ? task.goal : remainingGoal)"
@@ -54,23 +57,12 @@ struct DailyTasksView: View {
                                     sharedState.selectedMinutes = remainingGoal <= 0 ? task.goal : remainingGoal
                                 }
                                 withAnimation {
-                                    //                                        showingHistoryPageBool = true
                                     self.presentationMode.wrappedValue.dismiss()
                                     sharedState.selectedViewPage = 1 //// FIXME: Need to make it dismiss the navlink instead
                                     sharedState.newTopMainOrBottom = .top
                                     print("**********************************jiofejfioejeiofjfieojiofejiofejiofejoifejiofe")
-                                    
-//                                    sharedState.showTopMainOrBottom = 1
                                 }
                             }
-//                            .onAppear{
-//                                task.calculateRunningGoal(from: sessionItems) // not the best way to do this but okay for now... will work on this later.
-//                                print(">>>>>>>on appear")
-//                            }
-//                            .onChange(of: sessionItems) {_, newSessions in
-//                                task.calculateRunningGoal(from: newSessions)
-//                                print(">>>>>>>cuz change")
-//                            }
                     }
                     .alert(isPresented: $showDeleteTaskAlert) {
                         Alert(
@@ -87,20 +79,6 @@ struct DailyTasksView: View {
                             }
                         )
                     }
-//                    .alert(isPresented: $showTaskCompletionTypePrompt) {
-//                        Alert(
-//                            title: Text("Choose Completion Type"),
-//                            message: Text("Would you like to complete the remaining or do a full session for the target?"),
-//                            primaryButton: .default(Text("Remaining")) {
-////                                if let session = taskToDelete {
-//                                    taskToComplete = nil // Reset the sessionToDelete
-////                                }
-//                            },
-//                            secondaryButton: .cancel {
-//                                taskToComplete = nil // Reset the sessionToDelete
-//                            }
-//                        )
-//                    }
 
 
                     // Plus Button Card
@@ -108,10 +86,6 @@ struct DailyTasksView: View {
                         showAddTaskScreen = true
                     }) {
                         VStack {
-//                            Image(systemName: "plus.circle.fill")
-//                                .resizable()
-//                                .frame(width: 40, height: 40)
-//                                .foregroundColor(.gray)
                             Image(systemName: "plus.circle")
                                 .resizable()
                                 .frame(width: 40, height: 40)
@@ -123,6 +97,10 @@ struct DailyTasksView: View {
                     }
                 }
                 .padding(.horizontal, 25)
+            }
+            .sheet(isPresented: $showAddTaskScreen) {
+                AddDailyTaskView(isPresented: $showAddTaskScreen)
+                    .presentationDetents([.medium, .large], selection: .constant(.medium))
             }
         }
     }
@@ -392,7 +370,7 @@ struct TaskCardView: View {
     @Previewable @State var testBool: Bool = true
     ZStack{
         VStack{
-            DailyTasksView(showAddTaskScreen: $testBool)
+            DailyTasksView(/*showAddTaskScreen: $testBool*/)
             Spacer()
         }
         AddDailyTaskView(isPresented: $testBool)

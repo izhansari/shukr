@@ -99,6 +99,36 @@ func timeLeftString(from timeInterval: TimeInterval) -> String {
     return components.joined(separator: " ") + " left"
 }
 
+// returns "h + m", "m", or"s" as string
+func formatTimeInterval(_ interval: TimeInterval) -> String {
+    let hours = Int(interval) / 3600
+    let minutes = (Int(interval) % 3600) / 60
+    let seconds = Int(interval) % 60
+    
+    if hours > 0 {
+        return "\(hours)h \(minutes)m"
+    } else if minutes > 0 {
+        return "\(minutes)m"
+    } else {
+        return "\(seconds)s"
+    }
+}
+
+// returns "h+m+s", "m+s", or"s" as string
+func formatTimeIntervalWithS(_ interval: TimeInterval) -> String {
+    let hours = Int(interval) / 3600
+    let minutes = (Int(interval) % 3600) / 60
+    let seconds = Int(interval) % 60
+    
+    if hours > 0 {
+        return "\(hours)h \(minutes)m \(seconds)s"
+    } else if minutes > 0 {
+        return "\(minutes)m" + " \(seconds)s"
+    } else {
+        return "\(seconds)s"
+    }
+}
+
 // Use to return a custom time in today
 func todayAt(_ hour: Int, _ minute: Int) -> Date {
     Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: Date())!
@@ -257,6 +287,7 @@ struct SleepModeToggleButton: View {
 
 struct ColorSchemeModeToggleButton: View {
     @Binding var colorModeToggle: Bool
+
     var body: some View {
         twoModeToggleButton(
             boolToToggle: $colorModeToggle,
@@ -789,8 +820,14 @@ struct pauseStatsAndBG: View {
     @Binding var toggleInactivityTimer: Bool
     @Binding var inactivityDimmer: Double
     @Binding var autoStop: Bool
-    @Binding var colorModeToggle: Bool
+//    @Binding var colorModeToggle: Bool
     @Binding var currentVibrationMode: HapticFeedbackType
+    
+//    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+//    var colorModeToggle = false
+    @AppStorage("modeToggle") var colorModeToggle = false
+
+
     
     // UI state
     private let textSize: CGFloat = 14
@@ -3355,19 +3392,12 @@ struct TopBar: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var sharedState: SharedStateClass
 
-    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    var colorModeToggle = false
-
-//    @Binding var yuyushowTop: Bool
-//    @Binding var yuyushowBottom: Bool
     var viewState: SharedStateClass.ViewPosition { sharedState.newTopMainOrBottom }
     @GestureState var dragOffset: CGFloat
     
     @State private var expandButtons: Bool = false
     
-//    private var switchToTopLabel: Bool {
-//        ((dragOffset > 0 && !yuyushowBottom) || yuyushowTop)
-//    }
+
     private var switchToTopLabel: Bool {
         ( viewState == .top || (viewState != .bottom && dragOffset > 0) )
     }
@@ -3416,9 +3446,6 @@ struct TopBar: View {
                     .frame(height: 24, alignment: .center)
                     .offset(y: viewState != .bottom && (dragOffset > 0 || viewState == .top) ? dragOffset : 0)
                     .animation(.easeInOut, value: dragOffset > 0 && viewState != .bottom)
-//                    .offset(y: !yuyushowBottom && (dragOffset > 0 || yuyushowTop) ? dragOffset : 0)
-//                    .animation(.easeInOut, value: dragOffset > 0 && !yuyushowBottom)
-                    
                 } else {
                     HStack {
                         Image(systemName: "location.circle")
@@ -3470,39 +3497,6 @@ struct TopBar: View {
                                 }
                                 
                                 
-                                Button(action: {
-                                    triggerSomeVibration(type: .light)
-                                    withAnimation {
-                                        colorModeToggle.toggle()
-                                    }
-                                }) {
-                                    Image(systemName: colorModeToggle ? "moon.fill" : "sun.max.fill")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-                                NavigationLink(destination: QiblaMapView()) {
-                                    Image(systemName: "scribble")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-                                NavigationLink(destination: SeeAllPrayers()) {
-                                    Image(systemName: "volleyball.circle")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-                                NavigationLink(destination: AdhanTestView()) {
-                                    Image(systemName: "basketball.circle")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
                                 NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
                                     Image(systemName: "gear")
                                         .font(.system(size: 24))
@@ -3510,12 +3504,46 @@ struct TopBar: View {
                                         .padding(.vertical, 7)
                                 }
                                 
-                                NavigationLink(destination: NotifExp()) {
-                                    Image(systemName: "bell")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
+//                                Button(action: {
+//                                    triggerSomeVibration(type: .light)
+//                                    withAnimation {
+//                                        colorModeToggle.toggle()
+//                                    }
+//                                }) {
+//                                    Image(systemName: colorModeToggle ? "moon.fill" : "sun.max.fill")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
+                                
+                                
+//                                NavigationLink(destination: QiblaMapView()) {
+//                                    Image(systemName: "scribble")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
+//
+//                                NavigationLink(destination: SeeAllPrayers()) {
+//                                    Image(systemName: "volleyball.circle")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
+//
+//                                NavigationLink(destination: AdhanTestView()) {
+//                                    Image(systemName: "basketball.circle")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
+//
+//                                NavigationLink(destination: NotifExp()) {
+//                                    Image(systemName: "bell")
+//                                        .font(.system(size: 24))
+//                                        .foregroundColor(.gray)
+//                                        .padding(.vertical, 7)
+//                                }
 
                             }
                         }
@@ -3525,7 +3553,6 @@ struct TopBar: View {
                 Spacer()
             }.padding()
         }
-        .preferredColorScheme(colorModeToggle ? .dark : .light)
     }
 }
 

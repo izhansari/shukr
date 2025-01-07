@@ -16,7 +16,9 @@ struct shukrApp: App {
     @StateObject var sharedState = SharedStateClass()
     @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
     @State private var globalLocationManager = GlobalLocationManager()
-
+    
+    @AppStorage("modeToggle") var colorModeToggle = false    
+    
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SessionDataModel.self,
@@ -55,10 +57,10 @@ struct shukrApp: App {
                                 PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
                                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
                                     .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                                    .preferredColorScheme(colorModeToggle ? .dark : .light)
                             }
                             .tag(1)
                             .environmentObject(prayerViewModel)
-                            
                     }
                     else{
                         ZStack{
@@ -178,7 +180,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             let firstOption = (response.actionIdentifier == "SNOOZE_5_ACTION" ? true : false)
             print(firstOption ? "SNOOZE_5_ACTION action tapped" : "SNOOZE_10_ACTION action tapped")
             makeNextSnoozeNotifBe(
-                after: firstOption ? 5 : 10,
+                after: firstOption ? 5*60 : 10*60,
                 body: firstOption ? "It's been 5 minutes" : "It's been 10 minutes",
                 withActionsFromCatId: "Round2_Snooze"
             )
@@ -214,7 +216,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     private func makeNextSnoozeNotifBe(after seconds: TimeInterval, body: String, withActionsFromCatId: String?) {
         let content = UNMutableNotificationContent()
         let identifier = UUID().uuidString
-        content.body = body
+        content.title = body
         content.sound = UNNotificationSound.default
         content.interruptionLevel = .timeSensitive
         if let withActionsFromCatId {
