@@ -12,6 +12,7 @@ import SwiftUI
 
 struct HistoryPageView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query private var sessionItems: [SessionDataModel]
     @EnvironmentObject var sharedState: SharedStateClass
     
@@ -33,32 +34,35 @@ struct HistoryPageView: View {
     
     private func exitPage() {
         triggerSomeVibration(type: .light)
-        withAnimation {
-            //showingHistoryPageBool = true
-            sharedState.selectedViewPage = 1
-            //  FIXME: need to make it dismiss the navlink instead
-        }
+        dismiss()
     }
     
     var body: some View {
         ZStack{
             VStack(alignment: .leading) {
-                HStack {
-                    DailyStatToggleView(dailyStatBool: $dailyStatBool) //BOokmark2
-                        .padding()
-
-                    Spacer()
-
-                    Button(action: {
-                        exitPage()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 24))
-                            .foregroundColor(.gray)
-                            .padding(.vertical, 7)
-                    }
-                    .padding()
-                }
+//                HStack {
+//                    DailyStatToggleView(dailyStatBool: $dailyStatBool)
+//
+//                    Spacer()
+//
+//                    Button(action: {
+//                        exitPage()
+//                    }) {
+//                        RoundedRectangle(cornerRadius: 15)
+//                            .fill(Color.clear.opacity(0.1))
+//                            .frame(width: 70, height: 70)
+//                            .overlay(
+//                                VStack(spacing: 10) {
+//                                    Image(systemName: "xmark")
+//                                        .frame(width: 30, height: 30)
+//                                        .foregroundColor(.gray)
+//                                }
+//                            )
+//                    }
+//                }
+//                .padding([.top, .leading])
+                
+                
                 
 
                 Text("Tasks")
@@ -75,8 +79,6 @@ struct HistoryPageView: View {
                     .fontWeight(.thin)
                     .padding(.leading, 30)
                 
-                // Fixed date label that updates with scroll
-                //            Text(dateLabel(for: availableDates[safe: selectedDateIndex] ?? Date()))
                 Text(myDateLabel)
                     .font(.subheadline)
                     .underline()
@@ -110,6 +112,14 @@ struct HistoryPageView: View {
                 selectedDateIndex = 0
             }
         }
+//        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            
+            ToolbarItem(placement: .principal) {
+                DailyStatToggleView(dailyStatBool: $dailyStatBool)
+            }
+        }
+
     }
     
     private var myDateLabel: String {
@@ -406,18 +416,20 @@ struct DailyStatToggleView: View {
         HStack(alignment: .center) { // toggle daily stat section.
             if dailyStatBool {
                 Image(systemName: "clock")
-                    .frame(width: 20, height: 20)
-                    .padding(.leading)
-                Spacer()
+//                    .frame(width: 20, height: 20)
+                    .font(.system(size: 12))
+//                    .padding(.leading)
+//                Spacer()
                 Text("\(timerStyle(dailyStats.Time/60))")
-                Spacer()
+//                Spacer()
             } else {
                 Image(systemName: "circle.hexagonpath")
-                    .frame(width: 20, height: 20)
-                    .padding(.leading)
-                Spacer()
+//                    .frame(width: 20, height: 20)
+                    .font(.system(size: 12))
+//                    .padding(.leading)
+//                Spacer()
                 Text("\(dailyStats.Count)")
-                Spacer()
+//                Spacer()
             }
         }
         .padding(10)

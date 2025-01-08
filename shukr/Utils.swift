@@ -3418,27 +3418,23 @@ struct TopBar: View {
                 if let cityName = viewModel.cityName {
                     VStack {
                         ZStack{
-                                // tasbeeh label
-                                HStack{
-                                    Image(systemName: "circle.hexagonpath")
-                                        .foregroundColor(.secondary)
-                                    Text("Tasbeeh - \(tasbeehModeName)")
-
-                                }
-                                .opacity(switchToTopLabel ? 1 : 0)
-                                .offset(y: switchToTopLabel ? 0 : -10)
+                            HStack{ // tasbeeh label
+                                Image(systemName: "circle.hexagonpath")
+                                    .foregroundColor(.secondary)
+                                Text("Tasbeeh - \(tasbeehModeName)")
                                 
-                                // location label
-                                HStack{
-                                    Image(systemName: "location.fill")
-                                        .foregroundColor(.secondary)
-                                    Text(cityName)
-                                }
-                                .opacity(switchToTopLabel ? 0 : 1)
-                                .offset(y: switchToTopLabel ? 10 : 0)
                             }
-                        
-                        
+                            .opacity(switchToTopLabel ? 1 : 0)
+                            .offset(y: switchToTopLabel ? 0 : -10)
+                            
+                            HStack{ // location label
+                                Image(systemName: "location.fill")
+                                    .foregroundColor(.secondary)
+                                Text(cityName)
+                            }
+                            .opacity(switchToTopLabel ? 0 : 1)
+                            .offset(y: switchToTopLabel ? 10 : 0)
+                        }
                     }
                     .font(.caption)
                     .fontDesign(.rounded)
@@ -3461,99 +3457,54 @@ struct TopBar: View {
             }
             .padding()
             
+            TopRightSettingButton(viewState: viewState)
+//            VStack{
+//                HStack{
+//                    Spacer()
+//                    
+//                    NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
+//                        Image(systemName: "gear")
+//                            .font(.system(size: 24))
+//                            .foregroundColor(.gray)
+//                            .padding(.vertical, 7)
+//                    }
+//                        .frame(width: 30)
+//                        .opacity(0.7)
+//                }
+//                Spacer()
+//            }.padding()
+        }
+    }
+}
+
+struct TopRightSettingButton: View {
+    @EnvironmentObject var viewModel: PrayerViewModel
+    var viewState: SharedStateClass.ViewPosition
+    
+    
+    var body: some View {
+        ZStack{
             VStack{
                 HStack{
                     Spacer()
-
-                        VStack (spacing: 0){
-                            //// FIXME: eventually need to clean up the side bar since we no longer have the showing page booleans
-                            
-                            Button(action: {
-                                triggerSomeVibration(type: .light)
-                                withAnimation {
-                                    expandButtons.toggle()
-                                }
-                            }) {
-                                Image(systemName: "ellipsis.circle")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.gray.opacity(!expandButtons ? 0.3 : 1))
-                                    .padding(.bottom, 7)
-                            }
-                            
-                            if expandButtons{
-                                
-                                NavigationLink(destination: DuaPageView()) {
-                                    Image(systemName: "book")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-                                NavigationLink(destination: HistoryPageView()) {
-                                    Image(systemName: "rectangle.stack")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-                                
-                                NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
-                                    Image(systemName: "gear")
-                                        .font(.system(size: 24))
-                                        .foregroundColor(.gray)
-                                        .padding(.vertical, 7)
-                                }
-                                
-//                                Button(action: {
-//                                    triggerSomeVibration(type: .light)
-//                                    withAnimation {
-//                                        colorModeToggle.toggle()
-//                                    }
-//                                }) {
-//                                    Image(systemName: colorModeToggle ? "moon.fill" : "sun.max.fill")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-                                
-                                
-//                                NavigationLink(destination: QiblaMapView()) {
-//                                    Image(systemName: "scribble")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-//
-//                                NavigationLink(destination: SeeAllPrayers()) {
-//                                    Image(systemName: "volleyball.circle")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-//
-//                                NavigationLink(destination: AdhanTestView()) {
-//                                    Image(systemName: "basketball.circle")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-//
-//                                NavigationLink(destination: NotifExp()) {
-//                                    Image(systemName: "bell")
-//                                        .font(.system(size: 24))
-//                                        .foregroundColor(.gray)
-//                                        .padding(.vertical, 7)
-//                                }
-
-                            }
-                        }
+                    
+                    NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
+                        Image(systemName: "gear")
+                            .font(.system(size: 24))
+                            .foregroundColor(.gray)
+                            .padding(.vertical, 7)
+                    }
                         .frame(width: 30)
-                        .opacity(0.7)
+                        .opacity(viewState == .bottom ? 0.7 : 0)
+                        .onChange(of: viewState){_, newValue in
+                            print("topRightSettingButton - newTopMainOrBottom: \(viewState)")
+                        }
                 }
                 Spacer()
             }.padding()
         }
     }
+
 }
 
 

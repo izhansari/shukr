@@ -27,6 +27,9 @@ struct SettingsView: View {
     @AppStorage("maghribNudges") var maghribNudges: Bool = true
     @AppStorage("ishaNudges") var ishaNudges: Bool = true
     
+    @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
+    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
+    
 //    @State private var refreshID = UUID()
     
     @AppStorage("calculationMethod") var calculationMethod: Int = 2
@@ -74,6 +77,7 @@ struct SettingsView: View {
             Section(header: Text("Location Information")) {
                 if let cityName = viewModel.cityName {
                     HStack {
+                        Image(systemName: "mappin.and.ellipse")
                         Text("City")
                         Spacer()
                         Text(cityName)
@@ -82,11 +86,13 @@ struct SettingsView: View {
                     Text("Fetching city...")
                 }
                 HStack {
+                    Image(systemName: "arrow.left.and.right.square")
                     Text("Latitude")
                     Spacer()
                     Text(viewModel.latitude)
                 }
                 HStack {
+                    Image(systemName: "arrow.up.and.down.square")
                     Text("Longitude")
                     Spacer()
                     Text(viewModel.longitude)
@@ -108,6 +114,20 @@ struct SettingsView: View {
                     ForEach(schools, id: \.0) { school in
                         Text(school.1).tag(school.0)
                     }
+                }
+                
+                // Qibla sensitivity slider
+                VStack(alignment: .leading) {
+                    HStack{
+                        Image(systemName: "location.north.line")
+                        Text("Qibla Sensitivity: \(qiblaSensitivity, specifier: "%.1f")°")
+                    }
+                    Slider(value: $qiblaSensitivity,
+                           in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
+                           step: 0.5)
+                    Text("Lower value = More precise")
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
             }
             .onChange(of: calculationMethod) { _, new in
@@ -154,28 +174,22 @@ struct SettingsView: View {
                     Text("Light").tag(false)
                     Text("Dark").tag(true)
                 }
-                
+
+
+            }
+            
+            
+            // MARK: - Daily Alarm
+            AlarmSettingsView()
+            
+            //MARK: - Dev Stuff
+            Section(header: Text("My Dev Stuff")) {
                 Picker("Ring Style", selection: $selectedRingStyle) {
                     ForEach(0..<10) { index in
                         Text("\(index)").tag(index)
                     }
                     
                 }
-                
-                // Qibla sensitivity slider
-                VStack(alignment: .leading) {
-                    Text("Qibla Sensitivity: \(qiblaSensitivity, specifier: "%.1f")°")
-                    Slider(value: $qiblaSensitivity,
-                           in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
-                           step: 0.5)
-                    Text("Lower value = More precise")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-            
-            //MARK: - Dev Stuff
-            Section(header: Text("My Dev Stuff")) {
                 Toggle("Location Printer", isOn: $viewModel.locationPrints)
                 Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
                 Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
@@ -189,6 +203,10 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
+                }
+                Button("Reset Autopilot Fajr Alert"){
+                    didShowAlarmSetupAlert = false
+                    alarmEnabled = false
                 }
                 Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
                     ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
@@ -376,5 +394,190 @@ struct NotificationDropdownInfo: View {
         }
         .padding(.horizontal)
 
+    }
+}
+
+
+struct AlarmSettingsView: View {
+    
+    // Whether or not to show the informational text section
+    @State private var isAlarmInfoVisible: Bool = false
+    
+    // Local state to manage alert presentation
+    @State private var isShowingShortcutAlert: Bool = false
+    
+    // Persisted state (using AppStorage so the values remain between launches)
+    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
+    
+    @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
+    @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = true
+    @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = true
+    
+    // A flag to remember if user has already seen the “setup required” alert
+    @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
+    
+    // ------------------------------------------
+    // MARK: - Computed Helpers
+    // ------------------------------------------
+    
+    /// Checks if the user has *actually* chosen “After Sunrise” (which is disallowed).
+    private var isAlarmAfterSunrise: Bool {
+        // isBefore = false => After
+        // isFajr = false => Sunrise
+        return (!alarmIsBefore && !alarmIsFajr)
+    }
+    
+    private var shortcutURL: URL? {
+        
+        if let url = URL(string: "https://www.icloud.com/shortcuts/0b1164a730044179ad0afa6ff0d2bc4c"){
+            return url
+        }
+        else {
+            return nil
+        }
+    }
+    
+    // ------------------------------------------
+    // MARK: - Body
+    // ------------------------------------------
+    
+    var body: some View {
+        
+        Section(header:
+                    HStack {
+            Text("Alarm Settings")
+            Spacer()
+            Button(action: {
+                withAnimation {
+                    isAlarmInfoVisible.toggle()
+                }
+            }) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.blue)
+            }
+        }
+        ) {
+            
+            if isAlarmInfoVisible {
+                alarmInfoView
+            }
+            
+            // Toggle to enable/disable alarm
+            HStack {
+                Image(systemName: "alarm")
+                    .foregroundColor(.gray)
+                
+                Toggle("Schedule Daily Fajr Alarm", isOn: Binding(
+                    get: { self.alarmEnabled },
+                    set: { newValue in
+                        // Animate changes
+                        withAnimation {
+                            self.alarmEnabled = newValue
+                        }
+                        // If user just turned it ON and has never seen the alert, show it now
+                        if newValue && !didShowAlarmSetupAlert {
+                            isShowingShortcutAlert = true
+                            didShowAlarmSetupAlert = true
+                        }
+                    }
+                ))
+            }
+            // Present an alert the first time user toggles the alarm ON
+            .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
+                Button("Get Shortcut") {
+                    if let shortcutURL {
+                        UIApplication.shared.open(shortcutURL)
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    didShowAlarmSetupAlert = false
+                    alarmEnabled = false
+                }
+            } message: {
+                Text("This only works if you set up a shortcut automation. Tap “Get Shortcut” to install it, then tap the info button above for setup steps.")
+            }
+            
+            // If alarm is enabled, show the detail controls
+            if alarmEnabled {
+                
+                HStack {
+                    Picker("", selection: $alarmOffsetMinutes) {
+                        ForEach(0...60, id: \.self) { number in
+                            Text("\(number) min")
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    
+                    // Picker for "Before"/"After"
+                    Picker("", selection: $alarmIsBefore) {
+                        Text("Before").tag(true)
+                        // Only show "After" if user picked Fajr
+                        if alarmIsFajr {
+                            Text("After").tag(false)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    
+                    // Picker for "Fajr"/"Sunrise"
+                    Picker("", selection: $alarmIsFajr) {
+                        Text("Fajr").tag(true)
+                        // Only show "Sunrise" if user picked "Before"
+                        if alarmIsBefore {
+                            Text("Sunrise").tag(false)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    
+                }
+                
+                .frame(height: 100) // Adjust this value to your preferred height
+                .clipped() // This ensures the picker doesn't overflow its frame
+                
+            }
+        }
+    }
+
+    // ------------------------------------------
+    // MARK: - Info Section
+    // ------------------------------------------
+    
+    /// A quick informational view about how to use the alarm feature and set up the shortcuts.
+    @ViewBuilder
+    private var alarmInfoView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Information:")
+            
+            Text("Tired of manually setting up Fajr alarms everyday? This feature lets you define rules once which will dynamically create daily Fajr alarms for you.")
+                .font(.caption)
+                .foregroundColor(.gray)
+            
+            HStack {
+                Image(systemName: "1.circle")
+                Text("Click here to add the iOS shortcut")
+                    .font(.caption)
+                    .foregroundColor(.blue)
+                    .underline()
+                    .onTapGesture {
+                        if let shortcutURL {
+                            UIApplication.shared.open(shortcutURL)
+                        }
+                    }
+            }
+            .foregroundColor(.gray)
+            
+            HStack {
+                Image(systemName: "2.circle")
+                Text("Open the iOS Shortcuts App > Automations Tab > Add New")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+            
+            HStack {
+                Image(systemName: "3.circle")
+                Text("On the sheet > Select 'Time of Day' > 10:00 PM, Daily > Run Immediately > Select this new shortcut")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+        }
     }
 }

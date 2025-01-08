@@ -9,7 +9,6 @@ import Foundation
 
 
 struct tasbeehView: View {
-//    let autoStart: Bool  // New parameter to auto-start the timer
     @Binding var isPresented: Bool
     
     init(isPresented: Binding<Bool>) {
@@ -25,19 +24,14 @@ struct tasbeehView: View {
     // AppStorage properties
     @AppStorage("streak") var streak = 0
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
-//    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-//    var toggleInactivityTimer = false
-    
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
-
     @AppStorage("vibrateToggle") var vibrateToggle = true
-//    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-//    var vibrateToggle = true
-    
     @AppStorage("modeToggle") var colorModeToggle = false
-    
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
-
+    //    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    //    var toggleInactivityTimer = false
+    //    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
+    //    var vibrateToggle = true
     
     // State properties
     @FocusState private var isNumberEntryFocused
@@ -49,7 +43,6 @@ struct tasbeehView: View {
     @State private var endTime: Date? = nil
     @State private var pauseStartTime: Date? = nil
     @State private var autoStop = true
-//    @State private var currentVibrationMode: HapticFeedbackType = .medium
 
     @State private var timePassedAtPauseString: String = ""
     @State private var secsPassedAtPause: TimeInterval = 0
@@ -277,7 +270,6 @@ struct tasbeehView: View {
                     toggleInactivityTimer: $toggleInactivityTimer,
                     inactivityDimmer: $inactivityDimmer,
                     autoStop: $autoStop,
-//                    colorModeToggle: $colorModeToggle,
                     currentVibrationMode: $currentVibrationMode
                 )
             }
@@ -803,6 +795,18 @@ enum enumPrayer: String, AppEnum {
     ]
 }
 
+/// AppEnum for Prayer Selection
+enum enumFajrSunrisePrayer: String, AppEnum {
+    case fajr = "Fajr"
+    case sunrise = "Sunrise"
+    
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Prayer"
+    static var caseDisplayRepresentations: [enumFajrSunrisePrayer: DisplayRepresentation] = [
+        .fajr: "Fajr",
+        .sunrise: "Sunrise",
+    ]
+}
+
 /// AppEnum for Reference Point
 enum ReferencePoint: String, AppEnum {
     case after = "after"
@@ -862,10 +866,10 @@ struct GetNextFajrIntent: AppIntent {
     }
 }
 
-/// Intent: Get Offset Time Relative to Fajr or Sunrise
+/// Intent: Get Offset Time Relative to Any Prayer
 struct GetOffsetTimeIntent: AppIntent {
     static var title: LocalizedStringResource = "Get Offset Time Relative to Prayer"
-    static var description: LocalizedStringResource = "Returns a time offset from Fajr or Sunrise."
+    static var description: LocalizedStringResource = "Returns a time offset from any prayer."
     
     @Parameter(title: "Minutes", description: "Number of minutes to offset.")
     var offsetMinutes: Int
@@ -900,6 +904,54 @@ struct GetOffsetTimeIntent: AppIntent {
 }
 
 
+
+/// Intent: Get Offset Time Relative to Fajr or Sunrise
+struct SetFajrAlarmIntent: AppIntent {
+    static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time"
+    static var description: LocalizedStringResource = "Dynamically returns a time offset from Fajr or Sunrise (rules defined in the Shukr app settings)"
+        
+    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
+    @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
+    @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = false
+    @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = false
+
+    /// Custom Error for Disabled Alarm
+    struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
+        var localizedStringResource: LocalizedStringResource {
+            "Daily Fajr Alarm is disabled. Please enable it in the Shukr app settings."
+        }
+    }
+    
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
+        
+        // 1) Stop if alarm is disabled:
+        if !alarmEnabled {
+            throw AlarmDisabledError()
+        }
+        
+        let coordinates = try PrayerUtils.getUserCoordinates()
+        let params = PrayerUtils.getCalculationParameters()
+        
+        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
+        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
+        
+        let prayer: enumPrayer = alarmIsFajr ? .fajr : .sunrise
+        
+        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
+        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
+        
+        let offset = TimeInterval(alarmOffsetMinutes * 60)
+        let resultTime = nextPrayerTime.addingTimeInterval((alarmIsBefore ? -offset : offset))
+        
+        let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
+        let message = "\(offsetMinutesText) \(alarmOffsetMinutes) \(prayer) will be at \(shortTimePM(resultTime))"
+        
+        print("\(message)")
+        
+        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: message))
+    }
+}
 
 
 

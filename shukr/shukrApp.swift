@@ -53,7 +53,6 @@ struct shukrApp: App {
                     if globalLocationManager.isAuthorized{
                             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
                             NavigationView{
-                                // Middle page: Prayer time tracker
                                 PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
                                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
                                     .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
@@ -76,6 +75,11 @@ struct shukrApp: App {
                             Spacer()
                             Text("gimme your location bruh...")
                                 .padding()
+                            Button("Allow Location Access in Settings") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
                         }
                     }
                 
@@ -98,6 +102,19 @@ struct shukrApp: App {
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     let notificationDelegate = NotificationDelegate()
+    
+    func requestUserNotificationPermission() {
+        // Request notification permissions (if not already requested)
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Notification permission error: \(error.localizedDescription)")
+            } else if granted {
+                print("Notification permission granted")
+            } else {
+                print("Notification permission denied")
+            }
+        }
+    }
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
@@ -153,16 +170,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         UNUserNotificationCenter.current().setNotificationCategories([round1Actions, round2Actions, round2Confirmation])
         print("✅ Notification categories registered")
         
-        // Request notification permissions (if not already requested)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("Notification permission error: \(error.localizedDescription)")
-            } else if granted {
-                print("Notification permission granted")
-            } else {
-                print("Notification permission denied")
-            }
-        }
+        requestUserNotificationPermission()
 
         return true
     }

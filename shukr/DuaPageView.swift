@@ -6,6 +6,7 @@ import SwiftData
 struct DuaPageView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \DuaModel.date, order: .reverse) private var duaItems: [DuaModel]
 
     @State private var searchText = ""
@@ -27,6 +28,14 @@ struct DuaPageView: View {
             }
         }
     }
+    
+    private func exitPage() {
+        // Close the Dua page and keyboard
+        triggerSomeVibration(type: .light)
+        isSearchFieldFocused = false
+        searchText = ""
+        dismiss()
+    }
 
     let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -34,149 +43,136 @@ struct DuaPageView: View {
         formatter.timeStyle = .short // Adjust to the preferred time style
         return formatter
     }()
-
+    
     var body: some View {
-        ZStack {
-//            NavigationView {
-                VStack {
-                    // Header
-                    HStack {
-                        Text("My Duas")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                        Spacer()
-                        Button(action: {
-                            triggerSomeVibration(type: .light)
-                            // Close the Dua page and keyboard
-                            isSearchFieldFocused = false
-                            withAnimation {
-                                sharedState.selectedViewPage = 1
-//                                showingDuaPageBool = false
-                                //// FIXME: need to make it dismiss the navlink instead
-                            }
-                            searchText = ""
-                        }) {
-                            RoundedRectangle(cornerRadius: 15)
-                                .fill(Color.clear.opacity(0.1))
-                                .frame(width: 70, height: 70)
-                                .overlay(
-                                    VStack(spacing: 10) {
-                                        Image(systemName: "xmark")
-                                            .frame(width: 30, height: 30)
-                                            .foregroundColor(.gray)
-                                    }
-                                )
-                        }
-                    }
-                    .padding([.top, .leading])
-
-                    // Search Bar
-                    HStack {
-                        TextField("Search Duas", text: $searchText)
-                            .textFieldStyle(RoundedBorderTextFieldStyle())
-                            .focused($isSearchFieldFocused) // Bind focus state
-                        if !searchText.isEmpty {
-                            Button(action: {
-                                triggerSomeVibration(type: .light)
-                                searchText = ""
-                                isSearchFieldFocused = false // Dismiss keyboard and remove focus
-                            }) {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.gray)
-                            }
-                        }
-                    }
-                    .padding([.horizontal, .bottom])
-
-                    // Dua List
-                    if duaItems.isEmpty {
-                        Spacer()
-                        Text("No duas found.")
+        VStack {
+            // Header
+//            HStack {
+//                Text("My Duas")
+//                    .font(.largeTitle)
+//                    .fontWeight(.bold)
+//                Spacer()
+//                Button(action: {
+//                    exitPage()
+//                }) {
+//                    RoundedRectangle(cornerRadius: 15)
+//                        .fill(Color.clear.opacity(0.1))
+//                        .frame(width: 70, height: 70)
+//                        .overlay(
+//                            VStack(spacing: 10) {
+//                                Image(systemName: "xmark")
+//                                    .frame(width: 30, height: 30)
+//                                    .foregroundColor(.gray)
+//                            }
+//                        )
+//                }
+//            }
+//            .padding([.top, .leading])
+            
+            // Search Bar
+            HStack {
+                TextField("Search Duas", text: $searchText)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .focused($isSearchFieldFocused) // Bind focus state
+                if !searchText.isEmpty {
+                    Button(action: {
+                        triggerSomeVibration(type: .light)
+                        searchText = ""
+                        isSearchFieldFocused = false // Dismiss keyboard and remove focus
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
-                        Spacer()
-                    } else if filteredDuas.isEmpty {
-                        Spacer()
-                        Text("No matching duas found.")
-                            .foregroundColor(.gray)
-                        Spacer()
-                    } else {
-                        List {
-                            ForEach(filteredDuas) { dua in
-                                // Use a regular view and add an onTapGesture
-                                HStack{
-                                    VStack(alignment: .leading) {
-                                        highlightedText(for: dua.title, searchText: searchText)
-                                            .font(.headline)
-                                        Text(dateFormatter.string(from: dua.date))
-                                            .font(.subheadline)
-                                            .fontWeight(.light)
-                                            .foregroundColor(.gray)
-                                        highlightedText(for: String(dua.duaBody.prefix(100)) + (dua.duaBody.count > 100 ? "..." : ""), searchText: searchText)
-                                            .font(.body)
-                                            .foregroundColor(.secondary)
-                                            .lineLimit(3)
-                                    }
-                                    .padding()
-                                    Spacer()
-                                }
-//                                .background(Color.gray.opacity(0.2))
-                                .contentShape(Rectangle()) // Make the entire cell tappable
-                                .onTapGesture {
-                                    print("Tapped on dua: \(dua.title)")
-                                    triggerSomeVibration(type: .light)
-                                    selectedDua = dua
-                                    initialSearchQueryForEditDuaView = searchText
-                                    // Present the sheet after updating selectedDua
-                                    showingEditDuaSheet = true
-                                }
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        triggerSomeVibration(type: .light)
-                                        deleteDua(dua: dua)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-
-                                    // Share option
-                                    ShareLink(item: dua.title + ":\n\n" + dateFormatter.string(from: dua.date) + "\n\n" + dua.duaBody) {
-                                        Label("Share", systemImage: "square.and.arrow.up")
-                                    }
-                                }
-                                .listRowInsets(EdgeInsets()) // Remove default insets
-                            }
-                            .onDelete(perform: deleteDuas)
-                        }
-                        .shadow(color: .black.opacity(0.1), radius: 10)
-                        .scrollContentBackground(.hidden)
-                    }
-
-                    // Add Dua Button
-                    HStack {
-                        Spacer()
-                        Button(action: {
-                            triggerSomeVibration(type: .light)
-                            print("Add Dua button tapped")
-                            selectedDua = nil
-                            initialSearchQueryForEditDuaView = nil
-                            showingEditDuaSheet = true
-                        }) {
-                            HStack {
-                                Image(systemName: "plus.circle")
-                                    .resizable()
-                                    .frame(width: 15, height: 15)
-                                Text("Add Dua")
-                            }
-                            .frame(height: 40)
-                            .font(.subheadline)
-                            .foregroundColor(.green.opacity(0.7))
-                        }
-                        Spacer()
                     }
                 }
-//                .navigationBarHidden(true)
-//            }
-            .zIndex(0)
+            }
+            .padding([.horizontal, .bottom])
+            
+            // Dua List
+            if duaItems.isEmpty {
+                Spacer()
+                Text("No duas found.")
+                    .foregroundColor(.gray)
+                Spacer()
+            } else if filteredDuas.isEmpty {
+                Spacer()
+                Text("No matching duas found.")
+                    .foregroundColor(.gray)
+                Spacer()
+            } else {
+                List {
+                    ForEach(filteredDuas) { dua in
+                        // Use a regular view and add an onTapGesture
+                        HStack{
+                            VStack(alignment: .leading) {
+                                highlightedText(for: dua.title, searchText: searchText)
+                                    .font(.headline)
+                                Text(dateFormatter.string(from: dua.date))
+                                    .font(.subheadline)
+                                    .fontWeight(.light)
+                                    .foregroundColor(.gray)
+                                highlightedText(for: String(dua.duaBody.prefix(100)) + (dua.duaBody.count > 100 ? "..." : ""), searchText: searchText)
+                                    .font(.body)
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(3)
+                            }
+                            .padding()
+                            Spacer()
+                        }
+                        .contentShape(Rectangle()) // Make the entire cell tappable
+                        .onTapGesture {
+                            print("Tapped on dua: \(dua.title)")
+                            triggerSomeVibration(type: .light)
+                            selectedDua = dua
+                            initialSearchQueryForEditDuaView = searchText
+                            // Present the sheet after updating selectedDua
+                            showingEditDuaSheet = true
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                triggerSomeVibration(type: .light)
+                                deleteDua(dua: dua)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                            
+                            // Share option
+                            ShareLink(item: dua.title + ":\n\n" + dateFormatter.string(from: dua.date) + "\n\n" + dua.duaBody) {
+                                Label("Share", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        .listRowInsets(EdgeInsets()) // Remove default insets
+                    }
+                    .onDelete(perform: deleteDuas)
+                }
+                .shadow(color: .black.opacity(0.1), radius: 10)
+                .scrollContentBackground(.hidden)
+            }
+            
+            // Add Dua Button
+            HStack {
+                Spacer()
+                Button(action: {
+                    triggerSomeVibration(type: .light)
+                    print("Add Dua button tapped")
+                    selectedDua = nil
+                    initialSearchQueryForEditDuaView = nil
+                    showingEditDuaSheet = true
+                }) {
+                    HStack {
+                        Image(systemName: "plus.circle")
+                            .resizable()
+                            .frame(width: 15, height: 15)
+                        Text("Add Dua")
+                    }
+                    .frame(height: 40)
+                    .font(.subheadline)
+                    .foregroundColor(.green.opacity(0.7))
+                }
+                Spacer()
+            }
         }
+//        .navigationBarBackButtonHidden(true)
+        .navigationTitle("My Duas")
         // Apply the fullScreenCover modifier directly to the root view
         .fullScreenCover(isPresented: $showingEditDuaSheet, onDismiss: {
             selectedDua = nil

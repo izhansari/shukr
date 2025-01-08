@@ -185,11 +185,14 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     func checkLocationAuthorization() {
         switch locationManager.authorizationStatus {
         case .notDetermined:
+            print("locman: notDetermined")
             locationManager.requestWhenInUseAuthorization()
         case .restricted, .denied:
+            print("locman: denied")
             locationAuthorizationStatus = .denied
             hasValidLocation = false
         case .authorizedWhenInUse, .authorizedAlways:
+            print("locman: authorizedWhenInUse or authorizedAlways")
             locationAuthorizationStatus = .authorizedWhenInUse
             if let location = locationManager.location {
                 hasValidLocation = true
@@ -199,6 +202,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 hasValidLocation = false
             }
         @unknown default:
+            print("locman: default")
             hasValidLocation = false
         }
     }
@@ -970,7 +974,7 @@ struct PrayerTimesView: View {
                         // just for spacing to push it up.
                         RoundedRectangle(cornerSize: CGSize(width: 10, height: 10))
                             .fill(Color.clear)
-                            .frame(width: 320, height: 250)
+                            .frame(width: 320, height: 320)
                     }
                 }
                 .offset(y: dragOffset)
@@ -1039,48 +1043,54 @@ struct PrayerTimesView: View {
                     VStack {
                         // expandable prayer tracker (dynamically shown)
                         if showBottom {
-                                let spacing: CGFloat = 6
-                                VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
-                                    ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
-                                        PrayerButton(
-                                            showChainZikrButton: $showChainZikrButton,
-                                            name: prayerName,
-                                            viewModel: viewModel
-                                        )
-                                        .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
-                                        
-                                        if prayerName != "Isha" {
-                                            Divider().foregroundStyle(.secondary)
-                                                .padding(.top, -spacing / 2 - 0.5)
-                                                .padding(.horizontal, 25)
-                                        }
+                            let spacing: CGFloat = 6
+                            VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
+                                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
+                                    PrayerButton(
+                                        showChainZikrButton: $showChainZikrButton,
+                                        name: prayerName,
+                                        viewModel: viewModel
+                                    )
+                                    .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
+                                    
+                                    if prayerName != "Isha" {
+                                        Divider().foregroundStyle(.secondary)
+                                            .padding(.top, -spacing / 2 - 0.5)
+                                            .padding(.horizontal, 25)
                                     }
                                 }
-                                .padding()
-                                .background( NeumorphicBorder() )
-                                .frame(width: 260)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                                .highPriorityGesture(
-                                    DragGesture()
-                                        .onChanged { value in
-                                            dragOffset = calculateResistance(value.translation.height)
-                                        }
-                                        .onEnded { value in
-                                            handleDragEnd(translation: value.translation.height)
-                                        }
-                                )
+                            }
+                            .padding()
+                            .background( NeumorphicBorder() )
+                            .frame(width: 260)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .highPriorityGesture(
+                                DragGesture()
+                                    .onChanged { value in
+                                        dragOffset = calculateResistance(value.translation.height)
+                                    }
+                                    .onEnded { value in
+                                        handleDragEnd(translation: value.translation.height)
+                                    }
+                            )
                             
-                            
+                            CustomBottomBar()
+                            .padding(.top, 35)
+                            .padding(.bottom, 25)
+                            .padding(.horizontal, 45)
+                            .opacity(0.7)
+//                            .background(Color("bgColor"))
+//                            .cornerRadius(15)
                         }
                         
                         // chevron button to pull up the tracker.
-                        if !showTop{
+                        if showMain{
                             Image(systemName: "chevron.up")
                                 .font(.title3)
                                 .foregroundColor(.gray)
                                 .scaleEffect(x: 1, y: dragOffset > 0 || showBottom ? -1 : 1)
-                                .padding(.bottom, 2)
-                                .padding(.top)
+                                .padding(.bottom, 30)
+//                                .padding(.top)
                                 .onTapGesture{
                                     withAnimation{
                                         print("tapped the chev")
@@ -1110,6 +1120,7 @@ struct PrayerTimesView: View {
             }
             
         }
+        .edgesIgnoringSafeArea(.bottom)
         .onAppear {
             viewModel.loadTodaysPrayers()
             if sharedState.firstLaunch{
@@ -1145,6 +1156,64 @@ struct ContentView3_Previews: PreviewProvider {
     }
 }
 
+struct CustomBottomBar: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+
+    var body: some View {
+        HStack {
+            
+            NavigationLink(destination: HistoryPageView()) {
+                VStack(spacing: 6){
+                    Image(systemName: "circle.hexagonpath")
+                        .font(.system(size: 20))
+                    Text("Zikr")
+                        .font(.system(size: 12))
+                        .fontWeight(.light)
+                }
+                .foregroundColor(.gray)
+                .frame(width: 100)
+//                .background(.blue)
+            }
+            
+            Spacer()
+
+            
+            Button(action: {
+                withAnimation(.bouncy(duration: 0.5)) {
+                    sharedState.newTopMainOrBottom = .main
+                }
+            }) {
+                VStack(spacing: 6) {
+                    Image(systemName: "rectangle.portrait")
+                        .font(.system(size: 20))
+                    Text("Salah")
+                        .font(.system(size: 12))
+                        .fontWeight(.light)
+                }
+                .foregroundColor(.green)
+                .frame(width: 100)
+            }
+
+            
+            
+            Spacer()
+            
+            NavigationLink(destination: DuaPageView()) {
+                VStack(spacing: 6){
+                    Image(systemName: "book")
+                        .font(.system(size: 20))
+                    Text("Duas")
+                        .font(.system(size: 12))
+                        .fontWeight(.light)
+                }
+                .foregroundColor(.gray)
+                .frame(width: 100)
+//                .background(.blue)
+            }
+        }
+        .background(Color("bgColor").opacity(0.1))
+    }
+}
 
 // MARK: - Prayer Button
 
