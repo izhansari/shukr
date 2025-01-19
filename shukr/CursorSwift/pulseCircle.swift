@@ -23,15 +23,11 @@ class DisplayLink: ObservableObject {
     }
 }
 
-// Add this struct at the top level
-struct PrayerArc {
-    let startProgress: Double
-    let endProgress: Double
-}
-
 
 struct PulseCircleView: View {
     @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(\.colorScheme) var colorScheme
+
 
     let prayer: PrayerModel
 //    let toggleCompletion: () -> Void
@@ -42,17 +38,22 @@ struct PulseCircleView: View {
     @State private var showQiblaMap: Bool = false
     @State private var isAnimating = false
     @State private var currentTime = Date()
-    @Environment(\.colorScheme) var colorScheme
     @State private var timer: Timer?
     @State private var textTrigger = false  // to control the toggle text in the middle
+//    @State private var showingPulseView: Bool = false
+//    @State private var isPraying: Bool = false
+//    @State private var prayerStartTime: Date?
+////    @State private var completedPrayerArcs: [PrayerArc] = []
+//    @AppStorage("lastPrayerDuration") private var lastPrayerDuration: TimeInterval = 0
+
     
     // Replace Timer.publish with DisplayLink
     @StateObject private var displayLink = DisplayLink()
     
     // Add LocationManager
     @StateObject private var locationManager = LocationManager()
-    private let meccaLatitude = 21.4225
-    private let meccaLongitude = 39.8262
+//    private let meccaLatitude = 21.4225
+//    private let meccaLongitude = 39.8262
 
     
     // Timer for updating currentTime
@@ -96,8 +97,12 @@ struct PulseCircleView: View {
         else {return .gray}
     }
     
+//    private var showingPulseView: Bool{
+//        sharedState.showingPulseView
+//    }
+    
     private func startPulseAnimation() {
-        if isPraying {return}
+//        if isPraying {return}
         // First, clean up existing timer
         timer?.invalidate()
         timer = nil
@@ -115,12 +120,23 @@ struct PulseCircleView: View {
     
     private func triggerPulse() {
         isAnimating = false
-        if !sharedState.showingOtherPages{
+        if sharedState.showingPulseView && sharedState.showSalahTab/*!sharedState.showingOtherPages*/{
             triggerSomeVibration(type: .medium)
         }
-        
+        print("triggerPulse: showing pulseView \(sharedState.showingPulseView) (still calling it)")
+
         withAnimation(.easeOut(duration: pulseRate)) {
             isAnimating = true
+        }
+    }
+    
+    private func checkToTriggerQiblaHaptic(aligned: Bool){
+        if aligned {
+            if sharedState.showingPulseView/*!sharedState.showingOtherPages*/{
+                triggerSomeVibration(type: .heavy)
+            }
+            print("checkToTriggerQiblaHaptic: showing pulseView \(sharedState.showingPulseView)")
+
         }
     }
     
@@ -133,20 +149,6 @@ struct PulseCircleView: View {
         let timeUntilStart = prayer.startTime.timeIntervalSince(currentTime)
         return "in " + formatTimeInterval(timeUntilStart)
     }
-    
-//    private func formatTimeInterval(_ interval: TimeInterval) -> String {
-//        let hours = Int(interval) / 3600
-//        let minutes = (Int(interval) % 3600) / 60
-//        let seconds = Int(interval) % 60
-//        
-//        if hours > 0 {
-//            return "\(hours)h \(minutes)m"
-//        } else if minutes > 0 {
-//            return "\(minutes)m"
-//        } else {
-//            return "\(seconds)s"
-//        }
-//    }
     
     private func iconName(for prayerName: String) -> String {
         switch prayerName.lowercased() {
@@ -170,6 +172,8 @@ struct PulseCircleView: View {
     
     private func calculateQiblaDirection() -> Double {
         guard let userLocation = locationManager.location else { return 0 }
+        let meccaLatitude = 21.4225
+        let meccaLongitude = 39.8262
         
         let userLat = userLocation.coordinate.latitude * .pi / 180
         let userLong = userLocation.coordinate.longitude * .pi / 180
@@ -187,95 +191,7 @@ struct PulseCircleView: View {
         return returnVal
     }
     
-    // Add these state variables
-    @State private var isPraying: Bool = false
-    @State private var prayerStartTime: Date?
-    @AppStorage("lastPrayerDuration") private var lastPrayerDuration: TimeInterval = 0
-    
-    // Add this computed property for formatting the ongoing prayer duration
-    private var recordedPrayerDuration: String {
-        guard let startTime = prayerStartTime else { return "00:00" }
-        let duration = currentTime.timeIntervalSince(startTime)
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%02d:%02d", minutes, seconds)
-    }
-    
-    @State private var completedPrayerArcs: [PrayerArc] = []
-    
-    
-    private func handlePrayerTracking() {
-        triggerSomeVibration(type: .success)
         
-        if !isPraying {
-            // Start praying
-            isPraying = true
-            timer?.invalidate()
-            timer = nil
-            prayerStartTime = Date()
-            // Store start time persistently
-            UserDefaults.standard.set(prayerStartTime, forKey: "prayerStartTime_\(prayer.name)")
-        } else {
-            // Finish praying - save the arc
-            let newArc = PrayerArc(
-                startProgress: prayerTrackingCurrentProgress,
-                endProgress: prayerTrackingStartProgress
-            )
-            completedPrayerArcs.append(newArc)
-            
-            isPraying = false
-            guard let startTime = prayerStartTime else { return }
-            let duration = Date().timeIntervalSince(startTime)
-            lastPrayerDuration = duration
-            
-            // Store the prayer duration
-            let key = "prayerDurations_\(prayer.name)"
-            var durations = UserDefaults.standard.array(forKey: key) as? [TimeInterval] ?? []
-            durations.append(duration)
-            UserDefaults.standard.set(durations, forKey: key)
-            
-            // Clear the start time
-            UserDefaults.standard.removeObject(forKey: "prayerStartTime_\(prayer.name)")
-            prayerStartTime = nil
-        }
-    }
-    
-    private var adjustedProgPerZone: Double {
-        // get the current progress
-        // get the current color
-        // if green, its an interval from 1 to 0.5 (0.5 of space). so progress may be 0.7. so show (0.7-0.5)/(0.5)
-        // if yellow, its an interval from 0.5 to 0.25 (0.25 of space). so progress may be 0.4. so show (0.4-0.25)/(0.25)
-        // if red, its an interval from 0.25 to 0 (0.25 of space). so progress may be 0.1. so show (0.1-0)/(0.25)
-        // so the formula is ( {progress} - {sum of intervals below} ) / ( {space of current interval} )
-        
-        let greenInterval = (1.0, 0.5)
-        let yellowInterval = (0.5, 0.25)
-        let redInterval = (0.25, 0.0)
-        
-        if progress >= greenInterval.1 {
-            return (progress - greenInterval.1) / (greenInterval.0 - greenInterval.1)
-        } else if progress >= yellowInterval.1 {
-            return (progress - yellowInterval.1) / (yellowInterval.0 - yellowInterval.1)
-        } else {
-            return (progress - redInterval.1) / (redInterval.0 - redInterval.1)
-        }
-    }
-    
-    // Add these computed properties to calculate the prayer tracking arc
-    private var prayerTrackingStartProgress: Double {
-        guard let startTime = prayerStartTime else { return 0 }
-        let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
-        let elapsedAtStart = startTime.timeIntervalSince(prayer.startTime)
-        return 1 - min(max(elapsedAtStart / totalDuration, 0), 1)
-    }
-
-    private var prayerTrackingCurrentProgress: Double {
-        guard isPraying, let startTime = prayerStartTime else { return 0 }
-        let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
-        let elapsedNow = currentTime.timeIntervalSince(prayer.startTime)
-        return 1 - min(max(elapsedNow / totalDuration, 0), 1)
-    }
-    
     private func chooseRingStyle(style: Int) -> AnyView {
         switch style {
         case 0:
@@ -413,18 +329,9 @@ struct PulseCircleView: View {
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
                             .foregroundStyle(.secondary)
-
                     }
                     
-                    if isPraying {
-                        HStack {
-                            Image(systemName: "record.circle")
-                            Text(recordedPrayerDuration)
-                        }
-                            .fontDesign(.rounded)
-                            .fontWeight(.thin)
-                    }
-                    else if isCurrentPrayer {
+                    if isCurrentPrayer {
                         ExternalToggleText(
                             originalText: "ends \(shortTimePM(prayer.endTime))",
                             toggledText: timeLeftString,
@@ -454,17 +361,6 @@ struct PulseCircleView: View {
                     }
                 }
             }
-            
-            
-            // Show current prayer arc if praying
-            if isPraying {
-                Circle()
-                    .trim(from: prayerTrackingCurrentProgress, to: prayerTrackingStartProgress)
-                    .stroke(style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                    .frame(width: 200, height: 200)
-                    .rotationEffect(.degrees(-90))
-                    .foregroundColor(.white.opacity(0.8))
-            }
                 
             Circle()
                 .fill(Color.white.opacity(0.001))
@@ -472,14 +368,6 @@ struct PulseCircleView: View {
                 .onTapGesture {
                     textTrigger.toggle()  // Toggle the trigger
                 }
-                .simultaneousGesture(
-                    LongPressGesture()
-                        .onEnded { _ in
-                            if isCurrentPrayer || isPraying {
-                                handlePrayerTracking()
-                            }
-                        }
-                )
             
             ZStack {
                 let isAligned = abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
@@ -497,16 +385,13 @@ struct PulseCircleView: View {
                     .rotationEffect(Angle(degrees: isAligned ? 0 : calculateQiblaDirection()))
                     .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: isAligned)
                     .onChange(of: isAligned) { _, newIsAligned in
-                        if newIsAligned {
-                            if !sharedState.showingOtherPages{
-                                triggerSomeVibration(type: .heavy)
-                            }
-                        }
+                        checkToTriggerQiblaHaptic(aligned: newIsAligned)
                     }
 
                     .onTapGesture {
                         showQiblaMap = true
-                        sharedState.showingOtherPages = true
+//                        sharedState.showingOtherPages = true
+//                        showingPulseView = false //(test without it first)
                     }
                     // Adding a larger tappable area without extra views
                     .frame(width: 44, height: 44) // Adjust as needed to expand tappable area
@@ -515,6 +400,10 @@ struct PulseCircleView: View {
                         LocationMapContentView()
                         .onAppear {
                             print("showqiblamap (from qibla arrow): \(showQiblaMap)")
+                            sharedState.showingPulseView = false
+                        }
+                        .onDisappear{
+                            sharedState.showingPulseView = true
                         }
                     }
             }
@@ -531,11 +420,7 @@ struct PulseCircleView: View {
                 }
             }
             locationManager.startUpdating() // Start location updates
-            // Check for unfinished prayer session
-            if let savedStartTime = UserDefaults.standard.object(forKey: "prayerStartTime_\(prayer.name)") as? Date {
-                prayerStartTime = savedStartTime
-                isPraying = true
-            }
+            sharedState.showingPulseView = true
         }
         .onChange(of: progressZone) { _, _ in
             startPulseAnimation()
@@ -544,6 +429,7 @@ struct PulseCircleView: View {
             timer?.invalidate()
             timer = nil
             displayLink.stop()
+            sharedState.showingPulseView = false
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
             currentTime = newTime
@@ -743,7 +629,7 @@ struct QiblaMapView: View {
                 HStack {
                     Button("Close") {
                         presentationMode.wrappedValue.dismiss()
-                        sharedState.showingOtherPages = false
+//                        sharedState.showingOtherPages = false
                     }
                     .padding()
                     .background(Color.white.opacity(0.8))

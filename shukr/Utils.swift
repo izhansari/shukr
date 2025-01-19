@@ -50,12 +50,12 @@ func timerStyle(_ totalSeconds: Double) -> String {
     }
 }
 
-// Displays as 2:01
-let shortTime: DateFormatter = {
+// DIsplays as 2:01
+func shortTime(_ date: Date) -> String {
     let formatter = DateFormatter()
     formatter.dateFormat = "h:mm"
-    return formatter
-}()
+    return formatter.string(from: date)
+}
 
 // DIsplays as 2:01 AM
 func shortTimePM(_ date: Date) -> String {
@@ -153,6 +153,34 @@ func inMinSecStyle(from timeInterval: TimeInterval) -> String {
     // Join components with a space and prepend "in "
     return "in " + components.joined(separator: " ")
 }
+
+// Displays as "in 3h 24m", "in 24m and 20s" or "in 43s"
+func inMinSecStyle2(from timeInterval: TimeInterval) -> String {
+    let totalSeconds = Int(timeInterval)
+    let hours = totalSeconds / 3600
+    let minutes = (totalSeconds % 3600) / 60
+    let seconds = totalSeconds % 60
+
+    // Building the formatted string
+    var components: [String] = []
+
+    if hours > 0 { components.append("\(hours)h") }
+    
+    if minutes > 0 { components.append("\(minutes)m") }
+    
+    if minutes > 0 { components.append("& \(seconds)s") } // Only show seconds if less than a minute
+
+    // Join components with a space and prepend "in "
+    return "in " + components.joined(separator: " ")
+}
+
+// Turns Date type into 1/12/24
+func formatDateToShorthand(_ date: Date) -> String {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "M/d/y"
+    return dateFormatter.string(from: date)
+}
+
 
 
 // MARK: - Vibration Feedback
@@ -260,7 +288,7 @@ struct DebugToggleButton: View {
 
 struct SleepModeToggleButton: View {
     @Binding var toggleInactivityTimer: Bool
-    @Binding var colorModeToggle: Bool
+    @Binding var tasbeehColorMode: Bool
     let onSymbol: String = "bed.double.fill"
     let onColor: Color = .orange
     let offSymbol: String = "bed.double"
@@ -269,8 +297,8 @@ struct SleepModeToggleButton: View {
     var body: some View {
         Button(action: {
             toggleInactivityTimer.toggle()
-            if toggleInactivityTimer == true && colorModeToggle == false {
-                colorModeToggle.toggle()
+            if toggleInactivityTimer == true && tasbeehColorMode == false {
+                tasbeehColorMode.toggle()
             }
         }) {
             Image(systemName: toggleInactivityTimer ? onSymbol : offSymbol)
@@ -286,11 +314,11 @@ struct SleepModeToggleButton: View {
 }
 
 struct ColorSchemeModeToggleButton: View {
-    @Binding var colorModeToggle: Bool
+    @Binding var tasbeehColorMode: Bool
 
     var body: some View {
         twoModeToggleButton(
-            boolToToggle: $colorModeToggle,
+            boolToToggle: $tasbeehColorMode,
             onSymbol: "moon.fill",
             onColor: .yellow,
             offSymbol: "sun.max.fill",
@@ -820,12 +848,14 @@ struct pauseStatsAndBG: View {
     @Binding var toggleInactivityTimer: Bool
     @Binding var inactivityDimmer: Double
     @Binding var autoStop: Bool
-//    @Binding var colorModeToggle: Bool
+    @Binding var tasbeehColorMode: Bool
     @Binding var currentVibrationMode: HapticFeedbackType
     
 //    @AppStorage("modeToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
 //    var colorModeToggle = false
-    @AppStorage("modeToggle") var colorModeToggle = false
+//    @AppStorage("modeToggle") var colorModeToggle = false
+    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+
 
 
     
@@ -886,9 +916,9 @@ struct pauseStatsAndBG: View {
                 }
                 HStack{
                     AutoStopToggleButton(autoStop: $autoStop)
-                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, colorModeToggle: $colorModeToggle)
+                    SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, tasbeehColorMode: $tasbeehColorMode)
                     VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
-                    ColorSchemeModeToggleButton(colorModeToggle: $colorModeToggle)
+                    ColorSchemeModeToggleButton(tasbeehColorMode: $tasbeehColorMode)
                 }
                 HStack{
                     Spacer()
@@ -898,7 +928,7 @@ struct pauseStatsAndBG: View {
                         Text("Complete")
                             .font(.headline)
                             .bold()
-                            .foregroundColor(.white)
+                            .foregroundColor(Color(.secondaryLabel))
                             .padding()
                             .cornerRadius(10)
                     }
@@ -1047,8 +1077,8 @@ struct pauseStatsAndBG: View {
     
     private var estimatedFinishTime: some View {
         ExternalToggleText(
-            originalText: "you'll finish \(inMinSecStyle(from: timeLeft))",
-            toggledText: "you'll finish around \(shortTime.string(from: finishTime))",
+            originalText: "you'll finish \(inMinSecStyle2(from: timeLeft))",
+            toggledText: "you'll finish around \(shortTime(finishTime))",
             externalTrigger: $rateTextToggle,  // Pass the binding
             font: .caption,
             fontDesign: .rounded,
@@ -1139,7 +1169,7 @@ struct ResultsView: View {
                 CloseButton(
                     action: {
                         isPresented = false
-                        sharedState.showingOtherPages = false
+//                        sharedState.showingOtherPages = false
                         sharedState.titleForSession = ""
                     }
                 )
@@ -2795,7 +2825,7 @@ struct RingStyle9 {
     var body: some View {
         ZStack {
             // Clear ring for inner shadow effect (the base ring having opacity 0.15 runied it)
-            NeuCircularProgressView(progress: 0)
+//            NeuCircularProgressView(progress: 0)
                         
             if isCurrentPrayer {
                 
@@ -3164,33 +3194,26 @@ struct ExternalToggleText: View {
 // MARK: - Drag Gestures
 
 
-struct DragGestureModifier: ViewModifier {
-    @Binding var dragOffset: CGFloat
-    let onEnd: (CGFloat) -> Void
-    let calculateResistance: (CGFloat) -> CGFloat
-    
-    func body(content: Content) -> some View {
-        content
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if value.translation.height != 0 {
-                            dragOffset = calculateResistance(value.translation.height)
-                        }
-                    }
-                    .onEnded { value in
-                        onEnd(value.translation.height)
-                    }
-            )
-    }
-}
-
-func calculateResistance(_ translation: CGFloat) -> CGFloat {
-        let maxResistance: CGFloat = 40
-        let rate: CGFloat = 0.01
-        let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
-        return translation < 0 ? -resistance : resistance
-    }
+//struct DragGestureModifier: ViewModifier {
+//    @Binding var dragOffset: CGFloat
+//    let onEnd: (CGFloat) -> Void
+//    let calculateResistance: (CGFloat) -> CGFloat
+//    
+//    func body(content: Content) -> some View {
+//        content
+//            .gesture(
+//                DragGesture(minimumDistance: 0)
+//                    .onChanged { value in
+//                        if value.translation.height != 0 {
+//                            dragOffset = calculateResistance(value.translation.height)
+//                        }
+//                    }
+//                    .onEnded { value in
+//                        onEnd(value.translation.height)
+//                    }
+//            )
+//    }
+//}
 
 //extension View {
 //    func applyDragGesture(dragOffset: Binding<CGFloat>, onEnd: @escaping (CGFloat) -> Void, calculateResistance: @escaping (CGFloat) -> CGFloat) -> some View {
@@ -3277,7 +3300,7 @@ struct TimeColorFadeProgressBar: View {
                     // Current time text under the tick
                     if(Date() >= startTime && currentTime <= endTime || completedTime != nil){
                         if completedTime ?? Date() <= endTime{
-                            Text(shortTime.string(from: completedTime ?? Date()))
+                            Text(shortTime(completedTime ?? Date()))
                                 .foregroundColor(.primary)
                                 .font(.caption)
                                 .position(x: tickPosition, y: -10) // Align text with the tick mark
@@ -3300,11 +3323,11 @@ struct TimeColorFadeProgressBar: View {
             
             // Display the start and end times
             HStack {
-                Text(shortTime.string(from: startTime))
+                Text(shortTime(startTime))
                     .font(.caption)
                     .foregroundColor(.gray)
                 Spacer()
-                Text(shortTime.string(from: endTime))
+                Text(shortTime(endTime))
                     .font(.caption)
                     .foregroundColor(.gray)
             }
@@ -3392,14 +3415,17 @@ struct TopBar: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var sharedState: SharedStateClass
 
-    var viewState: SharedStateClass.ViewPosition { sharedState.newTopMainOrBottom }
-    @GestureState var dragOffset: CGFloat
-    
-    @State private var expandButtons: Bool = false
-    
+    @AppStorage("prayerStreak") var prayerStreak: Int = 0
+    @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
 
-    private var switchToTopLabel: Bool {
-        ( viewState == .top || (viewState != .bottom && dragOffset > 0) )
+    var viewState: SharedStateClass.ViewPosition { sharedState.newTopMainOrBottom }
+//    @GestureState var dragOffset: CGFloat
+    
+    @State private var showMaxStreakToggle: Bool = false
+
+    
+    private var showSalahTab: Bool {
+        sharedState.showSalahTab
     }
     
     private var tasbeehModeName: String {
@@ -3416,96 +3442,116 @@ struct TopBar: View {
         ZStack{
             VStack{
                 if let cityName = viewModel.cityName {
-                    VStack {
-                        ZStack{
-                            HStack{ // tasbeeh label
-                                Image(systemName: "circle.hexagonpath")
-                                    .foregroundColor(.secondary)
-                                Text("Tasbeeh - \(tasbeehModeName)")
-                                
-                            }
-                            .opacity(switchToTopLabel ? 1 : 0)
-                            .offset(y: switchToTopLabel ? 0 : -10)
+                    ZStack{
+                        HStack{ // tasbeeh label
+                            Image(systemName: "circle.hexagonpath")
+                                .foregroundColor(.secondary)
+                            Text("\(tasbeehModeName)")
                             
-                            HStack{ // location label
-                                Image(systemName: "location.fill")
-                                    .foregroundColor(.secondary)
-                                Text(cityName)
-                            }
-                            .opacity(switchToTopLabel ? 0 : 1)
-                            .offset(y: switchToTopLabel ? 10 : 0)
                         }
+                        .opacity(!showSalahTab ? 1 : 0)
+                        .offset(x: !showSalahTab ? 0 : 10) // move right
+                        
+                        
+                        HStack{ // location label
+                            Image(systemName: "location.fill")
+                                .foregroundColor(.secondary)
+                            Text(cityName)
+                        }
+                        .opacity(showSalahTab && viewState != .bottom ? 1 : 0)
+                        .offset(y: viewState != .bottom ? 0 : -10) // move up
+                        .offset(x: showSalahTab ? 0 : -10) // move left
+
+                        HStack(alignment: .center) {
+                            Image(systemName: "heart.fill")
+                                .foregroundColor(.secondary)
+                            ExternalToggleText(
+                                originalText: "\(prayerStreak) Prayers",
+                                toggledText: "Max \(maxPrayerStreak) Prayers",
+                                externalTrigger: $showMaxStreakToggle,  // Pass the binding
+                                font: .caption,  // this doesnt take on the parent group's font modifiers. so we define again inside
+                                fontDesign: .rounded,
+                                fontWeight: .thin,
+                                hapticFeedback: true
+                            )
+                        }
+                        .opacity(showSalahTab && viewState == .bottom  ? 1 : 0)
+                        .offset(y: viewState == .bottom  ? 0 : 10) // move down
+                        .offset(x: showSalahTab ? 0 : -10) // move left
+
                     }
-                    .font(.caption)
-                    .fontDesign(.rounded)
-                    .fontWeight(.thin)
+                    .padding()
                     .frame(height: 24, alignment: .center)
-                    .offset(y: viewState != .bottom && (dragOffset > 0 || viewState == .top) ? dragOffset : 0)
-                    .animation(.easeInOut, value: dragOffset > 0 && viewState != .bottom)
+//                    .offset(y: viewState != .bottom && (dragOffset > 0/* || viewState == .top*/) ? dragOffset : 0)
+//                    .animation(.easeInOut, value: dragOffset > 0 && viewState != .bottom)
                 } else {
                     HStack {
                         Image(systemName: "location.circle")
                             .foregroundColor(.secondary)
                         Text("Fetching location...")
                     }
-                    .font(.caption)
-                    .fontDesign(.rounded)
                     .frame(height: 24, alignment: .center)
                 }
                 
                 Spacer()
             }
+            .font(.caption)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
             .padding()
             
-            TopRightSettingButton(viewState: viewState)
-//            VStack{
-//                HStack{
-//                    Spacer()
-//                    
-//                    NavigationLink(destination: SettingsView(/*viewModel: viewModel*/).environmentObject(viewModel)) {
-//                        Image(systemName: "gear")
-//                            .font(.system(size: 24))
-//                            .foregroundColor(.gray)
-//                            .padding(.vertical, 7)
-//                    }
-//                        .frame(width: 30)
-//                        .opacity(0.7)
-//                }
-//                Spacer()
-//            }.padding()
+            topRightButton(viewState: viewState)
         }
     }
-}
+    
+    struct topRightButton: View {
+        @EnvironmentObject var viewModel: PrayerViewModel
+        @EnvironmentObject var sharedState: SharedStateClass
+        
+        var showSalahTab: Bool { sharedState.showSalahTab }
+        var viewState: SharedStateClass.ViewPosition
+        var dynamicDestination: AnyView { showSalahTab ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
+        var dynamicSFSymbol: String { showSalahTab ? "gear" : "clock" }
+        
+        
+        var body: some View {
+//            ZStack{
+                VStack{
+                    HStack{
+    //                    NavigationLink(destination: HistoryPageView()) {
+    //                        Image(systemName: "clock")
+    //                            .font(.system(size: 24))
+    //                            .foregroundColor(.gray)
+    //                            .padding(.vertical, 7)
+    //                    }
+    //                    .frame(width: 30)
+    //                    .opacity(!showSalahTab && viewState == .bottom ? 0.7 : 0)
+    //                    .opacity(viewState == .top ? 0.7 : 0)
 
-struct TopRightSettingButton: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
-    var viewState: SharedStateClass.ViewPosition
-    
-    
-    var body: some View {
-        ZStack{
-            VStack{
-                HStack{
-                    Spacer()
-                    
-                    NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
-                        Image(systemName: "gear")
-                            .font(.system(size: 24))
-                            .foregroundColor(.gray)
-                            .padding(.vertical, 7)
-                    }
-                        .frame(width: 30)
-                        .opacity(viewState == .bottom ? 0.7 : 0)
-                        .onChange(of: viewState){_, newValue in
-                            print("topRightSettingButton - newTopMainOrBottom: \(viewState)")
+                        Spacer()
+                        
+//                        NavigationLink(destination: dynamicDestination) {
+//                            Image(systemName: dynamicSFSymbol)
+//                                .font(.system(size: 24))
+//                                .foregroundColor(.gray)
+////                                .padding(.vertical, 7)
+//                        }
+                        NavigationLink(destination: dynamicDestination) {
+                            Image(systemName: dynamicSFSymbol)
+                                .font(.system(size: 24))
+                                .foregroundColor(.gray)
+                                .padding()
                         }
+                        .opacity(viewState == .bottom ? 0.7 : 0)
+                    }
+                    Spacer()
                 }
-                Spacer()
-            }.padding()
         }
+
     }
 
 }
+
 
 
 struct FloatingChainZikrButton: View {
@@ -3524,7 +3570,7 @@ struct FloatingChainZikrButton: View {
                 chainButtonPressed = false
                 sharedState.isDoingPostNamazZikr = true
                 showTasbeehPage = true
-                sharedState.showingOtherPages = true
+//                sharedState.showingOtherPages = true
             }
         }) {
             ZStack {
@@ -3537,7 +3583,7 @@ struct FloatingChainZikrButton: View {
                     .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
                 
                 // Content
-                Text("post prayer zikr?")
+                Text("post salah zikr?")
                     .fontDesign(.rounded)
                     .fontWeight(.thin)
                     .foregroundColor(.primary)
@@ -3553,3 +3599,35 @@ struct FloatingChainZikrButton: View {
         .animation(.easeInOut, value: showChainZikrButton)
     }
 }
+
+
+
+
+func showTemporaryMessage(
+    workItem: inout DispatchWorkItem?,
+    boolToShow: Binding<Bool>,
+    delay: Int = 2
+) {
+    // Cancel any existing dismissal timer
+    workItem?.cancel()
+    
+    // Show the message with animation
+    withAnimation {
+        boolToShow.wrappedValue = true
+    }
+    
+    // Schedule a new dismissal timer
+    let newWorkItem = DispatchWorkItem {
+        withAnimation {
+            boolToShow.wrappedValue = false
+        }
+        print("just cancelled")
+    }
+    
+    // Schedule the new work item after the specified delay
+    DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(delay), execute: newWorkItem)
+    
+    // Update the workItem reference
+    workItem = newWorkItem
+}
+

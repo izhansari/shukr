@@ -1,3 +1,11 @@
+//
+//  PrayerViewModel.swift
+//  shukr
+//
+//  Created by Izhan S Ansari on 1/17/25.
+//
+
+
 import SwiftUI
 import Adhan
 import CoreLocation
@@ -30,6 +38,21 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("lastLatitude") var lastLatitude: Double = 0
     @AppStorage("lastLongitude") var lastLongitude: Double = 0
 
+    // App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
+    @AppStorage("prayerStreak") var prayerStreak: Int = 0
+    @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
+    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
+    @AppStorage("dateOfMaxPrayerStreak") var dateOfMaxPrayerStreakTimeInterval: Double = Date().timeIntervalSince1970
+    var dateOfMaxPrayerStreak: Date {
+        get {
+            return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval)
+        }
+        set {
+            dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970
+        }
+    }
+
+    
 
     var orderedPrayerNames: [String] {
         ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -48,9 +71,6 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var hasValidLocation: Bool = false
     @Published var cityName: String?
-    @Published var latitude: String = "N/A"
-    @Published var longitude: String = "N/A"
-    @Published var lastApiCallUrl: String = "N/A"
     @Published var useTestPrayers: Bool = false  // Add this property
     @Published var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
     @Published var timeAtLLastRefresh: Date
@@ -166,7 +186,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
             refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in
                 self.timeAtLLastRefresh = Date()
-                self.fetchPrayerTimes()
+                self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")
                 self.scheduleDailyRefresh() // Schedule the next update
             }
         }
@@ -196,7 +216,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             locationAuthorizationStatus = .authorizedWhenInUse
             if let location = locationManager.location {
                 hasValidLocation = true
-                fetchPrayerTimes()
+                fetchPrayerTimes(cameFrom: "checkLocationAuthorization")
                 updateCityName(for: location)
             } else {
                 hasValidLocation = false
@@ -232,8 +252,6 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
     private func updateLocation(_ location: CLLocation) {
         hasValidLocation = true
-        latitude = String(format: "%.6f", location.coordinate.latitude)
-        longitude = String(format: "%.6f", location.coordinate.longitude)
         lastLatitude = location.coordinate.latitude
         lastLongitude = location.coordinate.longitude
 
@@ -243,7 +261,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         locationPrinter("🌍 Triggering geocoding and prayer times fetch...")
         updateCityName(for: location)
-        fetchPrayerTimes()
+        fetchPrayerTimes(cameFrom: "updateLocation")
     }
 
 
@@ -280,6 +298,8 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         switch prayerName.lowercased() {
         case "fajr":
             return (times.fajr, times.sunrise)
+        case "sunrise":
+            return (times.sunrise, times.dhuhr)
         case "dhuhr", "zuhr":
             return (times.dhuhr, times.asr)
         case "asr":
@@ -293,6 +313,20 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             return nil
         }
     }
+    
+    func getNextPrayerTime(for prayerName: String) -> Date? {
+        let now = Date()
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: now)!
+        guard let todaysTime = getPrayerTime(for: prayerName, on: now)?.start,
+           let tomorrowsTime = getPrayerTime(for: prayerName, on: tomorrow)?.start else{
+            print("getNextPrayerTime failed (probably cuz invalid prayer names)")
+            return nil
+        }
+
+        let nextPrayerTime = now > todaysTime ? tomorrowsTime : todaysTime
+        
+        return nextPrayerTime
+    }
 
     
     func calcAdhanLibraryPrayerTimes(date: Date) -> PrayerTimes?{
@@ -300,20 +334,16 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             print("Location not available")
             return nil
         }
-        let calculationMethod = getCalcMethodFromAppStorageVar(); let madhab = getSchoolFromAppStorageVar()
         
         // Update latitude and longitude
-        self.latitude = String(format: "%.6f", location.coordinate.latitude)
-        self.longitude = String(format: "%.6f", location.coordinate.longitude)
+        lastLatitude = location.coordinate.latitude
+        lastLongitude = location.coordinate.longitude
 
         // Set up Adhan parameters
         let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
-        var params = calculationMethod.params
-        params.madhab = madhab
-        
-        // Generate prayer times for the current date
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
-//        return (cord: coordinates, date: components, params: params)
+        var params = getCalcMethodFromAppStorageVar().params
+        params.madhab = getSchoolFromAppStorageVar()
         
         guard let times = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) else{
             print("failed generating PrayerTimes object using Adhan libary")
@@ -323,9 +353,10 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     // the current one im working on.
-    func fetchPrayerTimes() {
+    func fetchPrayerTimes(cameFrom: String) {
+        print("@@ came from: @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \(cameFrom)")
         guard let times = calcAdhanLibraryPrayerTimes(date: Date()) else{
-            print("failed using adhanArgsFromLocSettingsDate() to build a valid a PrayerTimes object")
+            print("failed using calcAdhanLibraryPrayerTimes() to build a valid a PrayerTimes object")
             return
         }
         
@@ -362,7 +393,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             "Maghrib": createTestPrayerTime(startOffset: 1, endOffset: 2), // 6–9 seconds from now
             "Isha": createTestPrayerTime(startOffset: 2, endOffset: 4)     // 12–18 seconds from now
         ]
-        print("Current Test Times: Asr end \(shortTimeSecPM(testTimes["Asr"]!.1)), Maghrib Start \(shortTimeSecPM(testTimes["Maghrib"]!.0))")
+//        print("Current Test Times: Asr end \(shortTimeSecPM(testTimes["Asr"]!.1)), Maghrib Start \(shortTimeSecPM(testTimes["Maghrib"]!.0))")
         
         prayerTimesForDateDict = useTestPrayers ? testTimes : realTimes
                 
@@ -419,134 +450,6 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         scheduleAllPrayerNotifications(prayerByDateDict: prayerTimesForDateDict)
     }
     
-//    func fetchPrayerTimes() {
-//        
-//        guard let stuff = adhanArgsFromLocSettingsDate(date: Date()) else{
-//            return
-//        }
-//        let coordinates = stuff.cord
-//        let components = stuff.date
-//        let params  = stuff.params
-//        // My new proposed way of just having calc var shown on prayerButtons. Dont store nothing in persistence UNTIL COMPLETION or MISSED
-//        //-------------------------------------------------------------------
-////        if let times = PrayerTimes(coordinates: stuff.cord, date: stuff.date, calculationParameters: stuff.params) {
-//        if let times = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) {
-//            
-//            let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(24 * 60 * 60)) // Start of next day
-//            let midnightMinusOneSec = midnight.addingTimeInterval(-1) // Subtract 1 second
-//
-//            func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
-//                return (starTime, endTime, endTime.timeIntervalSince(starTime))
-//            }
-//            
-//            func createTestPrayerTime(startOffset: Int, endOffset: Int) -> (start: Date, end: Date, window: TimeInterval) {
-//                // Configurable Time Units for Testing
-//                let timeUnit: Calendar.Component = .minute // Use seconds for more granular testing
-//                let timeMult = 1 // Multiplier to scale the time intervals
-//                let start = Calendar.current.date(byAdding: timeUnit, value: startOffset * timeMult, to: Date())!
-//                let end = Calendar.current.date(byAdding: timeUnit, value: endOffset * timeMult, to: Date())!
-//                return (start: start, end: end, window: end.timeIntervalSince(start))
-//            }
-//            
-//            let realTimes = [
-//                "Fajr": timesAndWindow(times.fajr, times.sunrise),
-//                "Dhuhr": timesAndWindow(times.dhuhr, times.asr),
-//                "Asr": timesAndWindow(times.asr, times.maghrib),
-//                "Maghrib": timesAndWindow(times.maghrib, times.isha),
-//                "Isha": timesAndWindow(times.isha, /*todayAt(23, 59)*/ midnightMinusOneSec)
-//            ]
-//            
-//            let testTimes = [
-//                "Fajr": createTestPrayerTime(startOffset: -4, endOffset: -3),  // 18–15 seconds ago
-//                "Dhuhr": createTestPrayerTime(startOffset: -3, endOffset: -2), // 12–9 seconds ago
-//                "Asr": createTestPrayerTime(startOffset: -2, endOffset: 1),    // 3 seconds ago to 3 seconds from now
-//                "Maghrib": createTestPrayerTime(startOffset: 1, endOffset: 2), // 6–9 seconds from now
-//                "Isha": createTestPrayerTime(startOffset: 2, endOffset: 4)     // 12–18 seconds from now
-//            ]
-//            
-//            prayerTimesForDateDict = useTestPrayers ? testTimes : realTimes
-//
-//
-//        }
-//        
-////        schedulePrayerNotifications(prayerByDateDict: prayerTimesForDateDict)
-//
-//        //-------------------------------------------------------------------
-//        
-//        ////  CURRENT OBJECTIVE: 12/2 @ 5:04PM just commented this out and gonna try making it dependent on the calc vars from Adhan. Then create the persisted prayerModel objects on completion instead... this is the start of a big rethinking of our current archtiecture to handle the prayers. The current code as it stands will not work because now thelast5Prayers rely on the persisted objects which are then fed into  PulseCircleView and PrayerButton.
-//
-//        // Format the current date
-//        let todayStart = Calendar.current.startOfDay(for: Date())
-//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-//
-//        if let prayerTimes = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) {
-//            do {
-//                // Fetch prayers for the current day from the context
-//                let fetchDescriptor = FetchDescriptor<PrayerModel>(
-//                    predicate: #Predicate { prayer in
-//                        prayer.startTime >= todayStart && prayer.startTime <= todayEnd
-//                    }
-//                )
-//                let existingPrayers = try self.context.fetch(fetchDescriptor)
-//                
-//
-//                // Define prayer names and times
-//                let prayerInfo = [
-//                    ("Fajr", prayerTimes.fajr, prayerTimes.sunrise),
-//                    ("Dhuhr", prayerTimes.dhuhr, prayerTimes.asr),
-//                    ("Asr", prayerTimes.asr, prayerTimes.maghrib),
-//                    ("Maghrib", prayerTimes.maghrib, prayerTimes.isha),
-//                    ("Isha", prayerTimes.isha, Calendar.current.date(bySettingHour: 23, minute: 59, second: 59, of: Date()) ?? Date())
-//                ]
-//                
-//
-//                for (name, startTime, endTime) in prayerInfo {
-//                    if let existingPrayer = existingPrayers.first(where: { $0.name == name }) {
-//                        // Update existing prayer if not completed
-//                        if !existingPrayer.isCompleted {
-//                            if existingPrayer.startTime != startTime {
-//                                calculationPrinter("""
-//                                    ➤ OVERWRITING PRAYER: \(name)
-//                                        \(existingPrayer.startTime != startTime ? "↳ NEW START = \(shortTimePMDate(startTime)) (was \(shortTimePMDate( existingPrayer.startTime)))" : "")
-//                                    """.trimmingCharacters(in: .whitespacesAndNewlines)) // Remove empty lines
-//                                existingPrayer.startTime = startTime
-//                            }
-//                            if existingPrayer.endTime != endTime {
-//                                existingPrayer.endTime = endTime
-//                            }
-//                        }
-//                    } else {
-//                        // Insert new prayer
-//                        let newPrayer = PrayerModel(
-//                            name: name,
-//                            startTime: startTime,
-//                            endTime: endTime
-//                        )
-//                        self.context.insert(newPrayer)
-//                        calculationPrinter("""
-//                        ➕ Adding New Prayer: \(name)
-//                            ↳ Start Time: \(shortTimePMDate(startTime)) | End Time:   \(shortTimePMDate(endTime))
-//                        """)
-//                    }
-//                }
-//
-//                calculationPrinter("Calc: \(String(describing: getCalcMethodFromAppStorageVar())) & \(String(describing: getSchoolFromAppStorageVar())) & \(coordinates)")
-//
-//                // Save changes
-//                self.saveChanges()
-////                self.prayers = try self.context.fetch(fetchDescriptor).sorted(by: { $0.startTime < $1.startTime })
-//
-//            } catch {
-//                print("❌ Error fetching existing prayers: \(error.localizedDescription)")
-//            }
-//        }
-//
-//        //-------------------------------------------------------------------
-//        
-//        scheduleAllPrayerNotifications(prayerByDateDict: prayerTimesForDateDict)
-//    }
-
-    
 
     func scheduleAllPrayerNotifications(prayerByDateDict: [String : (start: Date, end: Date, window: TimeInterval)]) {
         var logMessages: [String] = [] // Collect logs here to ensure they print in order
@@ -556,9 +459,9 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         for name in orderedPrayerNames {
             let prayerTimeData = prayerByDateDict[name]!
             let settings = notifSettings[name]!
-
-            logMessages.append("---(\(settings.allowNotif  ? (settings.allowNudges ? "3" : "1") : "0")) \(name) Notifs ---")
-            guard let isCompleted = checkIfComplete(prayerName: name, startTime: prayerTimeData.start), !isCompleted else{
+                        
+            logMessages.append("--- (\(settings.allowNotif  ? (settings.allowNudges ? "3" : "1") : "0")) \(name) Notifs ---")
+            guard isNotCompletedToday(prayerName: name) /*== false, !isCompleted*/ else{
                 logMessages.append("➤ \(name) is completed"); continue
             }
             guard settings.allowNotif else{
@@ -589,11 +492,16 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 schedDate = endTime.addingTimeInterval(-timeUntilEnd)
                 content.title = "\(prayerName) At Midpoint 🟡"
                 content.subtitle = /*"Did you pray?" */"There's \(timeLeftString(from: timeUntilEnd))"
+//            case "End":
+//                let timeUntilEnd = prayerTimeData.window * 0.25
+//                schedDate = endTime.addingTimeInterval(-timeUntilEnd)
+//                content.title = "\(prayerName) Almost Over! 🔴"
+//                content.subtitle = /*"Did you pray?" */"There's still \(timeLeftString(from: timeUntilEnd))"
             case "End":
-                let timeUntilEnd = prayerTimeData.window * 0.25
+                let timeUntilEnd = (30.0 * 60)
                 schedDate = endTime.addingTimeInterval(-timeUntilEnd)
                 content.title = "\(prayerName) Almost Over! 🔴"
-                content.subtitle = /*"Did you pray?" */"There's still \(timeLeftString(from: timeUntilEnd))"
+                content.subtitle = /*"Did you pray?" */"There's only \(timeLeftString(from: timeUntilEnd))"
             default:
                 logMessages.append("failed to conform to switch case")
                 passedSwitchCase = false
@@ -624,29 +532,24 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    func checkIfComplete(prayerName: String, startTime: Date) -> Bool?{
+    func isNotCompletedToday(prayerName: String) -> Bool{
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: Date())
         let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-        var thisPrayerInContext: PrayerModel?
-        
+        var fetchDescriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd && $0.name == prayerName }
+        )
+        fetchDescriptor.fetchLimit = 1
+
         do {
-            var fetchDescriptor = FetchDescriptor<PrayerModel>(
-                predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd && $0.name == prayerName }
-            )
-            fetchDescriptor.fetchLimit = 1
-            thisPrayerInContext = try context.fetch(fetchDescriptor).first // Fetch the first item directly
-            if let prayer = thisPrayerInContext {
-                return prayer.isCompleted
-            }else {
-                // fetch succeeded but did not find any relevant data.
-                return nil
-            }
+            let fetchedPrayer = try context.fetch(fetchDescriptor).first // Fetch the first item directly
+            let isIncomplete = ( fetchedPrayer?.isCompleted == false )
+            return isIncomplete ? true : false
         } catch {
-            //2 an error occured during the fetch attempt.
-            print("❌ (checkIfComplete) Error fetching '\(prayerName) \(shortTimePMDate(startTime))' from context \(error.localizedDescription)")
-            return nil
+            print("❌ (checkIfComplete) Error fetching '\(prayerName)' from context \(error.localizedDescription)")
+            return false
         }
+
     }
 
     
@@ -666,7 +569,8 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     private func saveChanges() {
         do {
             try context.save()
-            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(self.latitude), longitude: \(self.longitude)")
+//            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(self.latitude), longitude: \(self.longitude)")
+            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(lastLatitude), longitude: \(lastLongitude)")
         } catch {
             print("🚨 Failed to save prayer state: \(error.localizedDescription)")
         }
@@ -678,7 +582,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             return
         }
         updateCityName(for: location)
-        fetchPrayerTimes()
+        fetchPrayerTimes(cameFrom: "refreshCityAndPrayerTimes")
     }
 
 
@@ -691,59 +595,101 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 setPrayerScore(for: prayer)
                 setPrayerLocation(for: prayer)
                 cancelUpcomingNudges(for: prayer.name)
+                calculatePrayerStreak()
             } else {
-                prayer.timeAtComplete = nil
-                prayer.numberScore = nil
-                prayer.englishScore = nil
-                prayer.latPrayedAt = nil
-                prayer.longPrayedAt = nil
+                prayer.resetPrayer()
+                calculatePrayerStreak()
             }
-        }
-        
-        func setPrayerScore(for prayer: PrayerModel) {
-            print("setting time at complete as: ", Date())
-            prayer.timeAtComplete = Date()
-
-            if let completedTime = prayer.timeAtComplete {
-                let timeLeft = prayer.endTime.timeIntervalSince(completedTime)
-                let totalInterval = prayer.endTime.timeIntervalSince(prayer.startTime)
-                let score = timeLeft / totalInterval
-                prayer.numberScore = max(0, min(score, 1))
-
-                if let percentage = prayer.numberScore {
-                    if percentage > 0.50 {
-                        prayer.englishScore = "Optimal"
-                    } else if percentage > 0.25 {
-                        prayer.englishScore = "Good"
-                    } else if percentage > 0 {
-                        prayer.englishScore = "Poor"
-                    } else {
-                        prayer.englishScore = "Kaza"
-                    }
-                }
-            }
-        }
-        
-        func setPrayerLocation(for prayer: PrayerModel) {
-            guard let location = locationManager.location else {
-                print("Location not available")
-                return
-            }
-            print("setting location at complete as: ", location.coordinate.latitude, "and ", location.coordinate.longitude)
-            prayer.latPrayedAt = location.coordinate.latitude
-            prayer.longPrayedAt = location.coordinate.longitude
-
         }
     }
     
+    func setPrayerScore(for prayer: PrayerModel, atDate: Date = Date()) {
+        print("setting time at complete as: ", atDate)
+        prayer.timeAtComplete = atDate
+
+        if let completedTime = prayer.timeAtComplete {
+            let timeLeft = prayer.endTime.timeIntervalSince(completedTime)
+            let totalInterval = prayer.endTime.timeIntervalSince(prayer.startTime)
+            let score = timeLeft / totalInterval
+            prayer.numberScore = max(0, min(score, 1))
+
+            if let percentage = prayer.numberScore {
+                if percentage > 0.50 {
+                    prayer.englishScore = "Optimal"
+                } else if percentage > 0.25 {
+                    prayer.englishScore = "Good"
+                } else if percentage > 0 {
+                    prayer.englishScore = "Poor"
+                } else {
+                    prayer.englishScore = "Kaza"
+                }
+            }
+        }
+    }
     
-    func cancelUpcomingNudges(for prayerName: String){ /// FIXME: Issue. Cancels pending notification requests... but just schedules them again when fetchPrayers() is run.
-        // Remove pending notifications for this prayer
+    func setPrayerLocation(for prayer: PrayerModel) {
+        guard let location = locationManager.location else {
+            print("Location not available")
+            return
+        }
+        print("setting location at complete as: ", location.coordinate.latitude, "and ", location.coordinate.longitude)
+        prayer.latPrayedAt = location.coordinate.latitude
+        prayer.longPrayedAt = location.coordinate.longitude
+
+    }
+    
+    
+    func cancelUpcomingNudges(for prayerName: String){
         let center = UNUserNotificationCenter.current()
         let identifiers = ["\(prayerName)Mid", "\(prayerName)End"]
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
         print("✅ Canceled notifications for \(prayerName): [\(identifiers)]")
     }
+            
+    func calculatePrayerStreak()/* -> Int */{
+                
+        // Fetch prayers that are in the past
+        let now = Date()
+        let fetchDescriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.startTime <= now},
+            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
+        )
+        
+        // Fetch all prayers from the database
+        guard let pastPrayersSorted = try? context.fetch(fetchDescriptor) else {
+            print("❌ Failed to fetch prayers for streak.")
+            prayerStreak = -999 // to quickly see in the view that something is wrong
+            return
+        }
+        
+        prayerStreak = 0
+        for prayer in pastPrayersSorted {
+            if gradingCriteria(for: prayer) {
+                prayerStreak += 1
+            }
+            else if now <= prayer.endTime{continue}
+            else {
+                if prayerStreak > maxPrayerStreak {
+                    maxPrayerStreak = prayerStreak
+                    dateOfMaxPrayerStreak = Date()
+                }
+                break
+            }
+        }
+        
+        func gradingCriteria(for prayer: PrayerModel) -> Bool{
+            if prayerStreakMode == 1 {
+                prayer.isCompleted
+            }
+            else if prayerStreakMode == 2 {
+                prayer.numberScore ?? 0 > 0
+            }
+            else {
+                prayer.numberScore ?? 0 > 0.25
+            }
+        }
+    }
+
     
     func getColorForPrayerScore(_ score: Double?) -> Color {
         guard let score = score else { return .gray }
@@ -785,6 +731,28 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("---------------------------")
     }
     
+    // For Sun Based Color Scheme:
+    var isDaytime: Bool {
+        // Get the Fajr prayer time
+        guard let fajr = prayerTimesForDateDict["Fajr"], let maghrib = prayerTimesForDateDict["Maghrib"] else {
+            return true // Default to daytime if no times are available
+        }
+        let now = Date()
+
+//        let testCutOffDate = todayAt(17, 47)
+        
+        // Check if the current time is between Fajr and 5:35 PM
+        let isAfterFajr = now >= fajr.end
+        let isBeforeMaghrib = now < maghrib.start /*testCutOffDate*/
+        let isDaytime = isAfterFajr && isBeforeMaghrib
+
+        // Combine all prints into one statement
+//        print("isDayTime: Past Fajr: \(isAfterFajr), Before Maghrib: \(isBeforeMaghrib) = Daytime?: \(isDaytime)")
+
+        return isDaytime
+    }
+    
+    
 }
 
 
@@ -801,53 +769,30 @@ struct PrayerTimesView: View {
     @Query private var prayersFromPersistence: [PrayerModel] = []
     
     @State private var activeTimerId: UUID? = nil
-    @State private var dragOffset: CGFloat = 0.0
+//    @State private var dragOffset: CGFloat = 0.0
+//    @State private var horizontalDragOffset: CGFloat = 0.0
+    @State private var isDraggingVertically: Bool? = nil  // Current drag direction
+    @State private var dragOffsetNew = CGSize.zero       // Current offset of the view
+
     @State private var showTasbeehPage = false // State to control full-screen cover
     @State private var showMantraSheetFromHomePage: Bool = false
-    @State private var chosenMantra: String? = ""
+    @State private var chosenMantra: String? = "" {
+        didSet{
+            if let text = chosenMantra {
+                print("ran chosenMantra's didSet")
+                sharedState.titleForSession = text
+            }
+        }
+    }
+    
     @State private var isAnimating: Bool = false
     @State private var showChainZikrButton: Bool = false
-//    @State private var nextFajr: (start: Date, end: Date)? = nil // State for Fajr time
-    
-    var showTop: Bool { sharedState.newTopMainOrBottom == .top }
+    @State private var isSheetPresented = false
+
+    let spacing: CGFloat = 6
     var showBottom: Bool { sharedState.newTopMainOrBottom == .bottom }
     var showMain: Bool { sharedState.newTopMainOrBottom == .main }
-    
-    private func handleTap(for targetView: SharedStateClass.ViewPosition) {
-        if isNumberEntryFocused {
-            isNumberEntryFocused = false
-        }else{
-            let viewState = sharedState.newTopMainOrBottom
-            withAnimation {
-                sharedState.newTopMainOrBottom = (viewState == .main ? targetView : .main)
-            }
-        }
-    }
-    
-    private func handleDragEnd(translation: CGFloat) {
-        let threshold: CGFloat = 30
-        let satisfiedDragDown = translation > threshold
-        let satisfiedDragUp = translation < -threshold
-        let viewState = sharedState.newTopMainOrBottom
-        
-        guard satisfiedDragDown || satisfiedDragUp else { return }
-
-        withAnimation(.bouncy(duration: 0.5)) {
-            switch viewState {
-            case .main:
-                if satisfiedDragUp { sharedState.newTopMainOrBottom = .bottom }
-                else if satisfiedDragDown { sharedState.newTopMainOrBottom = .top }
-            case .top:
-                if satisfiedDragUp { sharedState.newTopMainOrBottom = .main }
-            case .bottom:
-                if satisfiedDragDown { sharedState.newTopMainOrBottom = .main }
-            }
-            dragOffset = 0
-        }
-        isNumberEntryFocused = false
-        triggerSomeVibration(type: .medium)
-//        print("Drag translation: \(translation)")
-    }
+    var showSalahTab: Bool { sharedState.showSalahTab }
 
 
     private var startCondition: Bool{
@@ -856,135 +801,434 @@ struct PrayerTimesView: View {
         let freestyleModeCond = (sharedState.selectedMode == 0)
         return (timeModeCond || countModeCond || freestyleModeCond)
     }
+        
+    private var zikrButtonView: some View {
+            
+        
+        Button {
+            showMantraSheetFromHomePage = true
+        } label: {
+            Text(sharedState.titleForSession.isEmpty
+                 ? "select zikr"
+                 : sharedState.titleForSession
+            )
+            .frame(width: 150, height: 40)
+            .font(.footnote)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .multilineTextAlignment(.center)
+            .padding()
+            .background(Color.gray.opacity(0.08))
+            .cornerRadius(10)
+            .transition(.opacity)
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 60)
+        .onChange(of: chosenMantra) {_, newMantra in
+            // If the mantra changes (from MantraPickerView),
+            // update sharedState.titleForSession
+            if let text = newMantra {
+                sharedState.titleForSession = text
+            }
+        }
+    }
     
+    
+    private var zikrLableButtonUnderCircle: some View {
+        Button(action: {
+            showMantraSheetFromHomePage = true
+        }) {
+            Text(sharedState.titleForSession != "" ? sharedState.titleForSession : "choose zikr")
+                .font(.footnote)
+                .fontDesign(.rounded)
+                .fontWeight(.thin)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .padding()
+                .frame(width: 200)
+                .opacity(sharedState.titleForSession != "" ? 0.9 : 0.7)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    sharedState.titleForSession = ""
+                }
+        )
+    }
+
+
+    
+    private var theZikrCircle: some View {
+        ZStack{
+            TabView (selection: $sharedState.selectedMode) {
+                freestyleMode()
+                    .tag(0)
+                timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
+                    .tag(1)
+                countTargetMode(targetCount: $sharedState.targetCount, isNumberEntryFocused: _isNumberEntryFocused)
+                    .tag(2)
+            }
+            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
+            .scrollBounceBehavior(.always)
+            .frame(width: 200, height: 200) // Match the CircularProgressView size
+            .onChange(of: sharedState.selectedMode) {_, newPage in
+                isNumberEntryFocused = false //Dismiss keyboard when switching pages
+            }
+            .onTapGesture {
+                if(startCondition){
+                    showTasbeehPage = true // Set to true to show the full-screen cover
+                    triggerSomeVibration(type: .medium)
+                }
+                isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
+            }
+        }
+    }
+    
+    private var startZikrOutline: some View {
+        // the color outline circle to indicate start button
+        Circle()
+            .stroke(lineWidth: 2)
+            .frame(width: 222, height: 222)
+            .foregroundStyle(startCondition ?
+                             LinearGradient(
+                                gradient: Gradient(colors: colorScheme == .dark ?
+                                                   [.yellow.opacity(0.6), .green.opacity(0.8)] :
+                                                    [.yellow, .green]
+                                                  ),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                             ) :
+                                LinearGradient(
+                                    gradient: Gradient(colors: []),
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+            )
+            .animation(.easeInOut(duration: 0.5), value: startCondition)
+    }
+
+    
+    private var prayerList: some View{
+//        let spacing: CGFloat = 6
+        VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
+            ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
+                PrayerButton(
+                    showChainZikrButton: $showChainZikrButton,
+                    name: prayerName,
+                    viewModel: viewModel
+                )
+                .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
+                
+                if prayerName != "Isha" {
+                    Divider().foregroundStyle(.secondary)
+                        .padding(.top, -spacing / 2 - 0.5)
+                        .padding(.horizontal, 25)
+                }
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+        
+    private var switchToSalahDoubleTapSGesture: some Gesture{
+        TapGesture(count: 2)
+            .onEnded {
+                withAnimation{
+                    sharedState.showSalahTab.toggle()
+                }
+                print("Double tap detected!")
+            }
+    }
+    
+    
+    private var abstractedDragGesture: some Gesture{
+        DragGesture()
+            .onChanged { value in
+                // on first change, decide if its up/down or left/right
+                if isDraggingVertically == nil{
+                    if abs(value.translation.height) > abs(value.translation.width) {
+                        isDraggingVertically = true
+                    } else {
+                        isDraggingVertically = false
+                    }
+                }
+                // on subsequent changes, we will be updating only one of the two
+                if isDraggingVertically == true {
+                    dragOffsetNew.height = calculateResistance(value.translation.height)
+                }
+                else if isDraggingVertically == false {
+                    dragOffsetNew.width = calculateResistance(value.translation.width)
+                }
+            }
+            .onEnded { value in
+                handleDragEndNew(translation: value.translation, isDraggingVertically: isDraggingVertically)
+                isDraggingVertically = nil
+            }
+    }
+    
+    func calculateResistance(_ translation: CGFloat) -> CGFloat {
+            let maxResistance: CGFloat = 40
+            let rate: CGFloat = 0.01
+            let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
+            return translation < 0 ? -resistance : resistance
+        }
+    
+    private func handleDragEndNew(translation: CGSize, isDraggingVertically: Bool?) {
+        let threshold: CGFloat = 30
+        let satisfiedDragPositive = isDraggingVertically == true ? translation.height > threshold : translation.width > threshold
+        let satisfiedDragNegative = isDraggingVertically == true ? translation.height < -threshold : translation.width < -threshold
+        
+        guard satisfiedDragPositive || satisfiedDragNegative else { return }
+
+        withAnimation(.spring(duration: 0.5)) {
+            if isDraggingVertically == true {
+                switch sharedState.newTopMainOrBottom {
+                case .main:
+                    if satisfiedDragNegative { sharedState.newTopMainOrBottom = .bottom }
+                case .bottom:
+                    if satisfiedDragPositive { sharedState.newTopMainOrBottom = .main }
+                }
+            } else if isDraggingVertically == false {
+                switch showSalahTab {
+                case true:
+                    if satisfiedDragNegative { sharedState.showSalahTab = false }
+                case false:
+                    if satisfiedDragPositive { sharedState.showSalahTab = true }
+                }
+            }
+            dragOffsetNew = .zero
+        }
+        isNumberEntryFocused = false
+        triggerSomeVibration(type: .medium)
+    }
+
+//        private var abstractedDragGesture: some Gesture{
+//            DragGesture()
+//                .onChanged { value in
+//                    if isDraggingVertically == nil{
+//                        if abs(value.translation.height) > abs(value.translation.width) {
+//                            isDraggingVertically = true
+//                        } else {
+//                            isDraggingVertically = false
+//    //                        dragOffsetNew.width = calculateResistance(value.translation.width)
+//                        }
+//                    }
+//                    if isDraggingVertically == true {
+//    //                    dragOffset = calculateResistance(value.translation.height)
+//                        dragOffsetNew.height = calculateResistance(value.translation.height)
+//                    }
+//                    else if isDraggingVertically == false {
+//    //                    horizontalDragOffset = calculateResistance(value.translation.width)
+//                        dragOffsetNew.width = calculateResistance(value.translation.width)
+//                    }
+//                }
+//                .onEnded { value in
+//    //                if isDraggingVertically == true {
+//    //                    handleDragEnd(translation: value.translation.height)
+//    //                }
+//    //                else if isDraggingVertically == false{
+//    //                    handleDragEndHorizontal(translation: value.translation.width)
+//    //                }
+//                    handleDragEndNew(translation: value.translation, isDraggingVertically: isDraggingVertically)
+//                    isDraggingVertically = nil
+//                }
+//        }
+//
+//    private func handleDragEnd(translation: CGFloat) {
+//        let threshold: CGFloat = 30
+//        let satisfiedDragDown = translation > threshold
+//        let satisfiedDragUp = translation < -threshold
+//        let viewState = sharedState.newTopMainOrBottom
+//        
+//        guard satisfiedDragDown || satisfiedDragUp else { return }
+//
+//        withAnimation(.spring(duration: 0.5)) {
+//            switch viewState {
+//            case .main:
+//                if satisfiedDragUp { sharedState.newTopMainOrBottom = .bottom }
+//            case .bottom:
+//                if satisfiedDragDown { sharedState.newTopMainOrBottom = .main }
+//            }
+//            dragOffset = 0
+//            dragOffsetNew = .zero
+//        }
+//        isNumberEntryFocused = false
+//        triggerSomeVibration(type: .medium)
+////        print("Drag translation: \(translation)")
+//    }
+//
+//    private func handleDragEndHorizontal(translation: CGFloat) {
+//        let threshold: CGFloat = 30
+//        let satisfiedDragRight = translation > threshold
+//        let satisfiedDragLeft = translation < -threshold
+//        
+//        guard satisfiedDragRight || satisfiedDragLeft else { return }
+//
+//        withAnimation(.spring(duration: 0.5)) {
+//            switch showSalahTab {
+//            case true:
+//                if satisfiedDragLeft { sharedState.showSalahTab = false }
+//            case false:
+//                if satisfiedDragRight { sharedState.showSalahTab = true }
+//            }
+//            horizontalDragOffset = 0
+//            dragOffsetNew = .zero
+//        }
+//        isNumberEntryFocused = false
+//        triggerSomeVibration(type: .medium)
+//    }
+
     
     var body: some View {
         ZStack {
             
             Color("bgColor")
                 .edgesIgnoringSafeArea(.all)
+                .onTapGesture { isNumberEntryFocused = false }
+                .highPriorityGesture(abstractedDragGesture)
+                .simultaneousGesture(switchToSalahDoubleTapSGesture)
+
+
             
-            VStack(spacing: 0){
-                Color.white.opacity(0.001)
-                    .frame(maxWidth: .infinity)
-                    .onTapGesture {
-                        handleTap(for: .top)
-                    }
-                
-                Color.white.opacity(0.001)
-                    .frame(maxWidth: .infinity)
-                    .onTapGesture {
-                        handleTap(for: .bottom)
-                    }
-            }
-            .highPriorityGesture(
-                DragGesture()
-                    .onChanged { value in
-                        dragOffset = calculateResistance(value.translation.height)
-                    }
-                    .onEnded { value in
-                        handleDragEnd(translation: value.translation.height)
-                    }
-            )
             
             // This is a zstack with SwipeZikrMenu, pulseCircle, (and roundedrectangle just to push up.)
-            ZStack {
-                VStack {
-                    // state 1
-                    if showTop {
-                        // replace circle with tasbeehSelectionTabView
-                        ZStack{
-                            // the middle with a swipable selection
-                            TabView (selection: $sharedState.selectedMode) {
-                                timeTargetMode(selectedMinutesBinding: $sharedState.selectedMinutes)
-                                    .tag(1)
-                                countTargetMode(targetCount: $sharedState.targetCount, isNumberEntryFocused: _isNumberEntryFocused)
-                                    .tag(2)
-                                freestyleMode()
-                                    .tag(0)
+            VStack {
+                
+                // MARK: - this one works vv
+                
+                // Combined State
+                    ZStack {
+                        VStack {
+                            Spacer()
+                            if showBottom {
+                                Spacer()
                             }
-                            .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
-                            .scrollBounceBehavior(.always)
-                            .frame(width: 200, height: 200) // Match the CircularProgressView size
-                            .onChange(of: sharedState.selectedMode) {_, newPage in
-                                isNumberEntryFocused = false //Dismiss keyboard when switching pages
-                            }
-                            .onTapGesture {
-                                if(startCondition){
-                                    showTasbeehPage = true // Set to true to show the full-screen cover
-                                    triggerSomeVibration(type: .medium)
+                            
+                            // -- Main Circle(s) --
+                            ZStack{
+                                NeuCircularProgressView(progress: 0)
+                                    .zIndex(2)
+                                // Salah Tab Circles
+                                if showSalahTab {
+                                    ZStack{
+                                        if let relevantPrayer = viewModel.relevantPrayer {
+                                            PulseCircleView(prayer: relevantPrayer)
+//                                                .transition(.opacity)
+                                                .highPriorityGesture(abstractedDragGesture)
+                                        } else {
+                                            summaryCircle()
+                                        }
+                                    }
+                                    .zIndex(3)
+                                    .onAppear {
+                                        print("⭐️ prayerTimesView onAppear")
+                                        viewModel.fetchPrayerTimes(cameFrom: "onAppear showSalahTab Circles")
+                                        viewModel.loadTodaysPrayers()
+                                        viewModel.calculatePrayerStreak()
+                                    }
                                 }
-                                isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
+                                // Zikr Tab Circles
+                                else {
+                                    // Zikr Tab Content
+                                    Group{
+                                        theZikrCircle
+                                            .zIndex(1)
+                                        startZikrOutline
+                                            .zIndex(4)
+                                        zikrLableButtonUnderCircle
+                                            .offset(y: 140)
+                                    }
+
+                                }
+                            }
+                            .offset(dragOffsetNew)
+                            
+                            Spacer()
+                            
+                            if showBottom {
+                                // -- Bottom Content --
+                                ZStack(alignment: .bottom){
+                                    VStack{
+                                        Spacer()
+
+                                        VStack{
+                                            if showSalahTab {
+                                                prayerList
+                                            } else {
+                                                DailyTasksView(showMantraSheetFromHomePage: $showMantraSheetFromHomePage, showTasbeehPage: $showTasbeehPage)
+                                            }
+                                        }
+                                        .frame(width: 260)
+                                        .background( NeumorphicBorder() )
+                                        .padding(.bottom, 45)
+                                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                                    }
+                                }
+                                .offset(y: dragOffsetNew.height / 1.75)
+                                .opacity(1 - Double(dragOffsetNew.height / 90))
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                                .frame(height: 300)
                             }
                             
-                            // the circles we see
-                            NeuCircularProgressView(progress: (0))
-                            
-                            // the color outline circle to indicate start button
-                            Circle()
-                                .stroke(lineWidth: 2)
-                                .frame(width: 222, height: 222)
-                                .foregroundStyle(startCondition ?
-                                                 LinearGradient(
-                                                    gradient: Gradient(colors: colorScheme == .dark ?
-                                                                       [.yellow.opacity(0.6), .green.opacity(0.8)] :
-                                                                        [.yellow, .green]
-                                                                      ),
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                 ) :
-                                                    LinearGradient(
-                                                        gradient: Gradient(colors: []),
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                )
-                                .animation(.easeInOut(duration: 0.5), value: startCondition)
-                            
-                            
+                            // -- Bottom Bar --
+                            if showBottom {
+                                CustomBottomBar()
+                                    .offset(y: max(dragOffsetNew.height / 2, 0))
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
                         }
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                    
-                    // MARK:  current focus
-                    // state 2
-                    //FIXME: need to account for if they didnt complete all of todays prayers. cant show done if its not done.
-                    if !showTop{
-                        if let relevantPrayer = viewModel.relevantPrayer{
-                            PulseCircleView(prayer: relevantPrayer)
-                                .transition(.opacity)
-                                .highPriorityGesture(
-                                    DragGesture()
-                                        .onChanged { value in
-                                            dragOffset = calculateResistance(value.translation.height)
-                                        }
-                                        .onEnded { value in
-                                            handleDragEnd(translation: value.translation.height)
-                                        }
-                                )
+                        .onChange(of: showBottom){ _, newValue in
+                            if !showSalahTab && !showBottom && !showTasbeehPage {
+                                sharedState.resetTasbeehInputs()
+                            }
+                            print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
                         }
-                        else {
-                            summaryCircle()
+                        
+                        // -- “Chevron” to Toggle Main <-> Bottom --
+                        if showMain {
+                            VStack {
+                                Spacer()
+                                Button {
+                                    withAnimation {
+                                        print("tapped the chev")
+                                        sharedState.newTopMainOrBottom = showBottom ? .main : .bottom
+                                    }
+                                } label: {
+                                    Image(systemName: "chevron.up")
+                                        .font(.title3)
+                                        .foregroundColor(.gray)
+                                        .scaleEffect(x: 1, y: (dragOffsetNew.height > 0 || showBottom) ? -1 : 1)
+                                        .padding(.bottom, 30)
+                                        .padding()
+                                        .offset(y: dragOffsetNew.height)
+                                }
+                            }
                         }
                     }
-                    
-                    
-                    // state 3
-                    if showBottom {
-                        // just for spacing to push it up.
-                        RoundedRectangle(cornerSize: CGSize(width: 10, height: 10))
-                            .fill(Color.clear)
-                            .frame(width: 320, height: 320)
-                    }
+            }
+                    // MARK: - this one works ^^
+            .onChange(of: chosenMantra) {_, newMantra in
+                if let text = newMantra {
+                    sharedState.titleForSession = text
                 }
-                .offset(y: dragOffset)
+            }
+            .sheet(isPresented: $showMantraSheetFromHomePage) {
+                MantraPickerView(
+                    isPresented: $showMantraSheetFromHomePage,
+                    selectedMantra: $chosenMantra, //try putting sharedstate.titleforsession in here <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                    presentation: [.height(400)]
+                )
             }
             .fullScreenCover(isPresented: $showTasbeehPage) {
-                tasbeehView(isPresented: $showTasbeehPage/*, autoStart: true*/)
+                tasbeehView(isPresented: $showTasbeehPage)
                     .onAppear{
                         print("showNewPage (from tabview): \(showTasbeehPage)")
+                        sharedState.showingPulseView = false
                     }
-                    .transition(.blurReplace) // Apply fade-in effect
+                    .onDisappear{
+                        sharedState.showingPulseView = true
+                    }
             }
             
             
@@ -993,113 +1237,13 @@ struct PrayerTimesView: View {
                 VStack {
                     // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
                     ZStack(alignment: .top) {
-                        // select mantra button (zikrFlag1)
-                        if showTop{
-                            Text("\(sharedState.titleForSession != "" ? sharedState.titleForSession : "select zikr")")
-                                .frame(width: 150, height: 40)
-                                .font(.footnote)
-                                .fontDesign(.rounded)
-                                .fontWeight(.thin)
-                                .multilineTextAlignment(.center)
-                                .padding()
-                                .background(.gray.opacity(0.08))
-                                .cornerRadius(10)
-                                .padding(.top, 50)
-                                .offset(y: dragOffset) // drags with finger
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                                .highPriorityGesture(
-                                    DragGesture()
-                                        .onChanged { value in
-                                            dragOffset = calculateResistance(value.translation.height)
-                                        }
-                                        .onEnded { value in
-                                            handleDragEnd(translation: value.translation.height)
-                                        }
-                                )
-                                .onTapGesture {
-                                    showMantraSheetFromHomePage = true
-                                }
-                                .onChange(of: chosenMantra){
-                                    if let newSetMantra = chosenMantra{
-                                        sharedState.titleForSession = newSetMantra
-                                    }
-                                }
-                                .sheet(isPresented: $showMantraSheetFromHomePage) {
-                                    MantraPickerView(isPresented: $showMantraSheetFromHomePage, selectedMantra: $chosenMantra, presentation: [.large])
-                                }
-                            
-                            //FIXME: ADD TASKS HERE?
-                        }
-                        
                         FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
-                        
-                        TopBar(dragOffset: dragOffset)
+                        TopBar()
                             .transition(.opacity)
                     }
-                    
+                                        
                     Spacer()
                     
-                    // This VStack holds the PrayerTracker list
-                    VStack {
-                        // expandable prayer tracker (dynamically shown)
-                        if showBottom {
-                            let spacing: CGFloat = 6
-                            VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
-                                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
-                                    PrayerButton(
-                                        showChainZikrButton: $showChainZikrButton,
-                                        name: prayerName,
-                                        viewModel: viewModel
-                                    )
-                                    .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
-                                    
-                                    if prayerName != "Isha" {
-                                        Divider().foregroundStyle(.secondary)
-                                            .padding(.top, -spacing / 2 - 0.5)
-                                            .padding(.horizontal, 25)
-                                    }
-                                }
-                            }
-                            .padding()
-                            .background( NeumorphicBorder() )
-                            .frame(width: 260)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .highPriorityGesture(
-                                DragGesture()
-                                    .onChanged { value in
-                                        dragOffset = calculateResistance(value.translation.height)
-                                    }
-                                    .onEnded { value in
-                                        handleDragEnd(translation: value.translation.height)
-                                    }
-                            )
-                            
-                            CustomBottomBar()
-                            .padding(.top, 35)
-                            .padding(.bottom, 25)
-                            .padding(.horizontal, 45)
-                            .opacity(0.7)
-//                            .background(Color("bgColor"))
-//                            .cornerRadius(15)
-                        }
-                        
-                        // chevron button to pull up the tracker.
-                        if showMain{
-                            Image(systemName: "chevron.up")
-                                .font(.title3)
-                                .foregroundColor(.gray)
-                                .scaleEffect(x: 1, y: dragOffset > 0 || showBottom ? -1 : 1)
-                                .padding(.bottom, 30)
-//                                .padding(.top)
-                                .onTapGesture{
-                                    withAnimation{
-                                        print("tapped the chev")
-                                        sharedState.newTopMainOrBottom = showBottom ? .main : .bottom
-                                    }
-                                }
-                        }
-                    }
-                    .offset(y: dragOffset) // moves with drag
                 }
                 .navigationBarHidden(true)
             }
@@ -1121,14 +1265,206 @@ struct PrayerTimesView: View {
             
         }
         .edgesIgnoringSafeArea(.bottom)
-        .onAppear {
-            viewModel.loadTodaysPrayers()
-            if sharedState.firstLaunch{
-                sharedState.newTopMainOrBottom = .main
-                sharedState.firstLaunch = false
+    }
+
+    
+    // MARK: - Other Helper Structs
+    
+    struct summaryCircle: View{
+        // FIXME: think this through more and make sure it makes sense.
+        @State private var nextFajr: (start: Date, end: Date)?
+        @EnvironmentObject var viewModel: PrayerViewModel
+        @State var summaryInfo: [String : Double?] = [:]
+        @State private var textTrigger = false
+        @State private var currentTime = Date()
+
+        private var fajrAtString: String{
+            guard let fajrTime = nextFajr else { return "" }
+    //        return "Fajr in " + formatTimeIntervalWithS(fajrTime.start.timeIntervalSince(currentTime))
+            return "Farj at \(shortTimePM(fajrTime.start))"
+        }
+        
+        private var sunriseAtString: String{
+            guard let fajrTime = nextFajr else { return "" }
+            return "Sunrise at \(shortTimePM(fajrTime.end))"
+        }
+        
+        private func getTheSummaryInfo(){
+            for name in viewModel.orderedPrayerNames {
+                if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }){
+                    summaryInfo[name] = prayer.numberScore
+                    print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with scores: \(prayer.numberScore ?? 0)")
+                }
             }
         }
+        
+        func setTheRightFajrTime(){
+            if let todaysFajr = viewModel.getPrayerTime(for: "Fajr", on: Date()){
+                if todaysFajr.start > Date(){
+                    nextFajr = todaysFajr
+                }
+                else{
+                    let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+                    nextFajr = viewModel.getPrayerTime(for: "Fajr", on: tomorrow)
+                }
+            }
+        }
+        
+        func calculateScoreDotPosition(_ score: Double, from: CGFloat, to: CGFloat) -> CGPoint {
+            let angle = CGFloat(-90.0) + 360.0 * (CGFloat(score) * (to - from) + from)
+            let radius: CGFloat = 90 // Adjust based on your circle size
+            let radians = angle * .pi / 180
+            return CGPoint(x: cos(radians) * radius, y: sin(radians) * radius)
+        }
+
+        var body: some View{
+            ZStack{
+                NeuCircularProgressView(progress: 0)
+                
+    //            ForEach(0..<5) { index in
+    //                let prayerSpace = 360.0 / 5 // 360 degrees / 5 sections
+    //                let startAngle = CGFloat(index) * prayerSpace
+    //
+    //                // Separator lines
+    //                Rectangle()
+    //                    .fill(Color.secondary.opacity(0.2))
+    //                    .frame(width: 2, height: 12)
+    //                    .offset(y: -100) // Based on circle size of 200x200
+    //                    .rotationEffect(.degrees(Double(startAngle)))
+    //
+    //                Circle()
+    //                    .trim(from: 0, to: 0.2)
+    //                    .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
+    //                    .frame(width: 200, height: 200)
+    //                    .foregroundStyle(.secondary)
+    //                    .rotationEffect(.degrees(Double(startAngle)))
+    //
+    //
+    //                // Dot on the circle
+    //                let score: CGFloat = 0.25 // Example prayer score
+    //                let dotAngle = startAngle + ((1 - score) * prayerSpace) // Place dot at 1 - score from end
+    //                let scoreColor: Color = .secondary // Replace with your dynamic color variable
+    //                Circle()
+    //                    .stroke(scoreColor.opacity(0.5), lineWidth: 0.5) // Dot stroke with scoreColor
+    //                    .frame(width: 10, height: 10) // Dot size
+    //                    .offset(y: -100) // Radius positioning
+    //                    .rotationEffect(.degrees(Double(dotAngle))) // Dot position in section
+    //            }
+
+                            
+                VStack{
+                    Text("done")
+                    if let fajrTime = nextFajr {
+                        
+                        ExternalToggleText(
+                            originalText: fajrAtString,
+                            toggledText: sunriseAtString,
+    //                        toggledText: "Fajr in \(fajrInString)",
+    //                        toggledText: "Fajr in \(formatTimeInterval(fajrTime.end.timeIntervalSince(Date())))",
+                            externalTrigger: $textTrigger,  // Pass the binding
+                            fontDesign: .rounded,
+                            fontWeight: .thin,
+                            hapticFeedback: true
+                        )
+                    }
+                }
+                
+                Circle()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: 200, height: 200)
+                    .onTapGesture {
+                        textTrigger.toggle()  // Toggle the trigger
+                    }
+            }
+            .onAppear {
+                setTheRightFajrTime()
+                getTheSummaryInfo()
+//                viewModel.fetchPrayerTimes(cameFrom: "onAppear summaryCircle") // FIXME: think this through more and make sure it makes sense.
+            }
+        }
+        
+
     }
+    
+//    struct CustomBottomBar: View {
+    struct CustomBottomBar: View {
+        @EnvironmentObject var sharedState: SharedStateClass
+//        private var showBottom: Bool{ sharedState.newTopMainOrBottom == .bottom }
+        private var showSalahTab: Bool{ sharedState.showSalahTab }
+    //    @Binding var showSalahTab: Bool
+
+        var body: some View {
+            VStack(spacing: 0){
+
+                    Divider()
+                        .foregroundStyle(.primary)
+                    
+                    HStack {
+                        
+                        NavigationLink(destination: DuaPageView()) {
+                            VStack(spacing: 6){
+                                Image(systemName: "book")
+                                    .font(.system(size: 20))
+                                Text("Duas")
+                                    .font(.system(size: 12))
+                                    .fontWeight(.light)
+                            }
+                            .foregroundColor(.gray)
+                            .frame(width: 100)
+                            //                .background(.blue)
+                        }
+
+                        Spacer()
+                        
+                        Button(action: {
+                            withAnimation(.bouncy(duration: 0.5)) {
+                                //                            sharedState.newTopMainOrBottom = showSalahTab ? .main : .bottom
+                                sharedState.showSalahTab = true
+                            }
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "rectangle.portrait")
+                                    .font(.system(size: 20))
+                                Text("Salah")
+                                    .font(.system(size: 12))
+                                    .fontWeight(.light)
+                            }
+                            .foregroundColor(showSalahTab ? .green : .gray)
+                            .frame(width: 100)
+                        }
+                        
+                        Spacer()
+                        
+                        Button(action: {
+                            withAnimation(.bouncy(duration: 0.5)) {
+                                //                    sharedState.newTopMainOrBottom = .top
+                                //                            sharedState.newTopMainOrBottom = !showSalahTab ? .main : .bottom
+                                sharedState.showSalahTab = false
+                            }
+                        }) {
+                            VStack(spacing: 6) {
+                                Image(systemName: "circle.hexagonpath")
+                                    .font(.system(size: 20))
+                                Text("Zikr")
+                                    .font(.system(size: 12))
+                                    .fontWeight(.light)
+                            }
+                            .foregroundColor(showSalahTab ? .gray : .green)
+                            .frame(width: 100)
+                        }
+                    }
+                    .padding(.top, 15)
+                    .padding(.bottom, 25)
+                    .padding(.horizontal, 45)
+                    .opacity(0.8)
+                    .background(Color("bgColor"))
+                
+            }
+        }
+        
+//        return body
+    }
+
 }
 struct ContentView3_Previews: PreviewProvider {
     static var previews: some View {
@@ -1156,64 +1492,6 @@ struct ContentView3_Previews: PreviewProvider {
     }
 }
 
-struct CustomBottomBar: View {
-    @EnvironmentObject var sharedState: SharedStateClass
-
-    var body: some View {
-        HStack {
-            
-            NavigationLink(destination: HistoryPageView()) {
-                VStack(spacing: 6){
-                    Image(systemName: "circle.hexagonpath")
-                        .font(.system(size: 20))
-                    Text("Zikr")
-                        .font(.system(size: 12))
-                        .fontWeight(.light)
-                }
-                .foregroundColor(.gray)
-                .frame(width: 100)
-//                .background(.blue)
-            }
-            
-            Spacer()
-
-            
-            Button(action: {
-                withAnimation(.bouncy(duration: 0.5)) {
-                    sharedState.newTopMainOrBottom = .main
-                }
-            }) {
-                VStack(spacing: 6) {
-                    Image(systemName: "rectangle.portrait")
-                        .font(.system(size: 20))
-                    Text("Salah")
-                        .font(.system(size: 12))
-                        .fontWeight(.light)
-                }
-                .foregroundColor(.green)
-                .frame(width: 100)
-            }
-
-            
-            
-            Spacer()
-            
-            NavigationLink(destination: DuaPageView()) {
-                VStack(spacing: 6){
-                    Image(systemName: "book")
-                        .font(.system(size: 20))
-                    Text("Duas")
-                        .font(.system(size: 12))
-                        .fontWeight(.light)
-                }
-                .foregroundColor(.gray)
-                .frame(width: 100)
-//                .background(.blue)
-            }
-        }
-        .background(Color("bgColor").opacity(0.1))
-    }
-}
 
 // MARK: - Prayer Button
 
@@ -1222,20 +1500,36 @@ import MapKit
 struct PrayerButton: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
 
     @AppStorage("calculationMethod") var calculationMethod: Int = 2
     @AppStorage("school") var school: Int = 0
 
     @Binding var showChainZikrButton: Bool
+    @State private var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
     
     @State private var toggledText: Bool = false
-    @State private var showAlert = false // State for showing alert
+    @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
-    @State private var selectedDate = Date()
+    @State private var selectedEditTimeDate = Date()
     @State private var selectedLocation: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 0, longitude: 0)
     @State private var searchQuery = ""
-
+    
+    private func handlePrayerButtonPress() {
+        // Only allow pressing on Future Prayers
+        if !isFuturePrayer {
+            if !prayerObject.isCompleted {
+                withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
+                    viewModel.togglePrayerCompletion(for: prayerObject)
+                }
+                showTemporaryMessage(workItem: &dismissChainZikrItem, boolToShow: $showChainZikrButton, delay: 5)
+            }
+            else {
+                showMarkIncompleteAlert = true
+            }
+        }
+    }
     
     let prayerObject: PrayerModel
     let name: String
@@ -1266,6 +1560,11 @@ struct PrayerButton: View {
         }
     }
 
+    private var nameToDisplay: String{
+        let isTodayFriday = Calendar.current.component(.weekday, from: Date()) == 6
+        if (name == "Dhuhr" && isTodayFriday){ return "Jummah" }
+        else { return name }
+    }
     
     private var isFuturePrayer: Bool {
         calcStartTime > Date()
@@ -1279,7 +1578,7 @@ struct PrayerButton: View {
     
     private var statusColor: Color {
         if isFuturePrayer { return Color.secondary.opacity(0.2) }
-        return prayerObject.isCompleted ? viewModel.getColorForPrayerScore(prayerObject.numberScore) : Color.secondary.opacity(0.5)
+        return prayerObject.isCompleted ? viewModel.getColorForPrayerScore(prayerObject.numberScore).opacity(/*colorScheme == .dark ? 0.5 : */0.70) : Color.secondary.opacity(0.5)
     }
     
     // Text Properties
@@ -1318,44 +1617,28 @@ struct PrayerButton: View {
         return Date()
     }
     
+    
     var body: some View {
             HStack {
                 // Status Circle
                 Button(action: {
-                    // Handle Future Prayer Toggle
-                    if !isFuturePrayer {
-                        // Handle Prayer Completion with Spring Animation
-                        if prayerObject.isCompleted {
-                            // Show alert if trying to mark as incomplete
-                            showAlert = true
-                        }
-                        else {
-                            withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
-                                viewModel.togglePrayerCompletion(for: prayerObject)
-                            }
-                        }
-                        
-                        // Show Chain Zikr Button Animation
-                        if prayerObject.isCompleted {
-                            withAnimation {
-                                showChainZikrButton = true
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-                                    showChainZikrButton = false
-                                }
-                            }
-                        }
-                    }
+                    handlePrayerButtonPress()
                 }) {
                     Image(systemName: statusImageName)
                         .foregroundColor(statusColor)
                         .frame(width: 24, height: 24, alignment: .leading)
+                        .overlay(
+                            Image(systemName: "circle")
+                                .foregroundColor(Color.secondary.opacity(0.15))
+                                .frame(width: 24, height: 24, alignment: .leading)
+                        )
                 }
                     .buttonStyle(PlainButtonStyle())
                 
                 // Prayer Name Label
-                Text(name)
-                    .font(nameFontSize)
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                Text(name /*nameToDisplay*/ )
+                    .font(nameFontSize) //.callout
+                    .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
                 
@@ -1416,7 +1699,7 @@ struct PrayerButton: View {
                 }
             )
             .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
-            .alert(isPresented: $showAlert) {
+            .alert(isPresented: $showMarkIncompleteAlert) {
                         Alert(
                             title: Text("Confirm Action"),
                             message: Text("Are you sure you want to mark this prayer as incomplete?"),
@@ -1435,28 +1718,35 @@ struct PrayerButton: View {
                         .font(.headline)
                         .padding()
                     
-                    DatePicker("Completion Time", selection: $selectedDate, displayedComponents: [.hourAndMinute, .date])
+                    Text("\(prayerObject.name) Range:")
+                    Text("\(shortTime(prayerObject.startTime)) - \(shortTimePM(prayerObject.endTime))")
+                    
+//                    Text("Completion Time")
+                    DatePicker("", selection: $selectedEditTimeDate, displayedComponents: [.hourAndMinute])
                         .datePickerStyle(WheelDatePickerStyle())
                         .padding()
                     
-                    // Add a small map view
-                    MiniMapView(coordinate: $selectedLocation)
-                        .frame(height: 200)
-                        .cornerRadius(10)
-                        .padding()
-                    
+//                    // Add a small map view
+//                    MiniMapView(coordinate: $selectedLocation)
+//                        .frame(height: 200)
+//                        .cornerRadius(10)
+//                        .padding()
+
                     // Add a search bar
-                    TextField("Search location", text: $searchQuery)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .padding()
-                        .onSubmit {
-                            searchLocation()
-                        }
+//                    TextField("Search location", text: $searchQuery)
+//                        .textFieldStyle(RoundedBorderTextFieldStyle())
+//                        .padding()
+//                        .onSubmit {
+//                            searchLocation()
+//                        }
                     
                     Button("Save") {
 //                        viewModel.updatePrayerDetails(for: prayerObject, time: selectedDate, location: selectedLocation)
-                        prayerObject.latPrayedAt = selectedLocation.latitude
-                        prayerObject.longPrayedAt = selectedLocation.longitude
+//                        prayerObject.latPrayedAt = selectedLocation.latitude
+//                        prayerObject.longPrayedAt = selectedLocation.longitude
+                        viewModel.setPrayerScore(for: prayerObject, atDate: selectedEditTimeDate)
+//                        prayerObject.timeAtComplete = selectedDate
+                        
                         showTimePicker = false
                     }
                     .padding()
@@ -1473,7 +1763,7 @@ struct PrayerButton: View {
                 LongPressGesture()
                     .onEnded { _ in
                         if prayerObject.isCompleted {
-                            selectedDate = prayerObject.timeAtComplete ?? Date()
+                            selectedEditTimeDate = prayerObject.timeAtComplete ?? Date()
                             showTimePicker = true
                         }
                     }
@@ -1505,127 +1795,17 @@ struct PrayerButton: View {
 
 struct ChevronTap: View {
     var body: some View {
-        Image(systemName: "chevron.right")
-            .foregroundColor(.gray)
-            .onTapGesture {
-                triggerSomeVibration(type: .medium)
-                print("chevy hit")
-            }
-    }
-}
-
-struct summaryCircle: View{
-    // FIXME: think this through more and make sure it makes sense.
-    @State private var nextFajr: (start: Date, end: Date)?
-    @EnvironmentObject var viewModel: PrayerViewModel
-    @State var summaryInfo: [String : Double?] = [:]
-    @State private var textTrigger = false
-    @State private var currentTime = Date()
-
-    private var fajrAtString: String{
-        guard let fajrTime = nextFajr else { return "" }
-//        return "Fajr in " + formatTimeIntervalWithS(fajrTime.start.timeIntervalSince(currentTime))
-        return "Farj at \(shortTimePM(fajrTime.start))"
-    }
-    
-    private var sunriseAtString: String{
-        guard let fajrTime = nextFajr else { return "" }
-        return "Sunrise at \(shortTimePM(fajrTime.end))"
-    }
-    
-    private func getTheSummaryInfo(){
-        for name in viewModel.orderedPrayerNames {
-            if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }){
-                summaryInfo[name] = prayer.numberScore
-                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with scores: \(prayer.numberScore ?? 0)")
-            }
-        }
-    }
-    
-    func setTheRightFajrTime(){
-        if let todaysFajr = viewModel.getPrayerTime(for: "Fajr", on: Date()){
-            if todaysFajr.start > Date(){
-                nextFajr = todaysFajr
-            }
-            else{
-                let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
-                nextFajr = viewModel.getPrayerTime(for: "Fajr", on: tomorrow)
-            }
-        }
-    }
-    
-    func calculateScoreDotPosition(_ score: Double, from: CGFloat, to: CGFloat) -> CGPoint {
-        let angle = CGFloat(-90.0) + 360.0 * (CGFloat(score) * (to - from) + from)
-        let radius: CGFloat = 90 // Adjust based on your circle size
-        let radians = angle * .pi / 180
-        return CGPoint(x: cos(radians) * radius, y: sin(radians) * radius)
-    }
-
-    var body: some View{
-        ZStack{
-            NeuCircularProgressView(progress: 0)
-            
-//            ForEach(0..<5) { index in
-//                let prayerSpace = 360.0 / 5 // 360 degrees / 5 sections
-//                let startAngle = CGFloat(index) * prayerSpace
-//                
-//                // Separator lines
-//                Rectangle()
-//                    .fill(Color.secondary.opacity(0.2))
-//                    .frame(width: 2, height: 12)
-//                    .offset(y: -100) // Based on circle size of 200x200
-//                    .rotationEffect(.degrees(Double(startAngle)))
-//                
-//                Circle()
-//                    .trim(from: 0, to: 0.2)
-//                    .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
-//                    .frame(width: 200, height: 200)
-//                    .foregroundStyle(.secondary)
-//                    .rotationEffect(.degrees(Double(startAngle)))
-//                
-//                
-//                // Dot on the circle
-//                let score: CGFloat = 0.25 // Example prayer score
-//                let dotAngle = startAngle + ((1 - score) * prayerSpace) // Place dot at 1 - score from end
-//                let scoreColor: Color = .secondary // Replace with your dynamic color variable
-//                Circle()
-//                    .stroke(scoreColor.opacity(0.5), lineWidth: 0.5) // Dot stroke with scoreColor
-//                    .frame(width: 10, height: 10) // Dot size
-//                    .offset(y: -100) // Radius positioning
-//                    .rotationEffect(.degrees(Double(dotAngle))) // Dot position in section
+//        Image(systemName: "chevron.right")
+//            .foregroundColor(.gray)
+//            .onTapGesture {
+//                triggerSomeVibration(type: .medium)
+//                print("chevy hit")
 //            }
-
-                        
-            VStack{
-                Text("done")
-                if let fajrTime = nextFajr {
-                    
-                    ExternalToggleText(
-                        originalText: fajrAtString,
-                        toggledText: sunriseAtString,
-//                        toggledText: "Fajr in \(fajrInString)",
-//                        toggledText: "Fajr in \(formatTimeInterval(fajrTime.end.timeIntervalSince(Date())))",
-                        externalTrigger: $textTrigger,  // Pass the binding
-                        fontDesign: .rounded,
-                        fontWeight: .thin,
-                        hapticFeedback: true
-                    )
-                }
-            }
-            
-            Circle()
-                .fill(Color.white.opacity(0.001))
-                .frame(width: 200, height: 200)
-                .onTapGesture {
-                    textTrigger.toggle()  // Toggle the trigger
-                }
-        }
-        .onAppear {
-            setTheRightFajrTime()
-            getTheSummaryInfo()
-            viewModel.fetchPrayerTimes() // FIXME: think this through more and make sure it makes sense.
+        
+        NavigationLink(destination: PrayerEditorView()) {
+            Image(systemName: "chevron.right")
+                .foregroundColor(.gray)
         }
     }
-    
-
 }
+

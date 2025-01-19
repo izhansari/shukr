@@ -3,6 +3,288 @@
 <plist version="1.0">
 <dict>
 	<key>top-level-items</key>
-	<array/>
+	<array>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>375</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>374</string>
+					<key>Timestamp</key>
+					<string>758975318.070955</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/CursorSwift/SettingsView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>        showTemporaryMessage(workItem: &amp;dismissWorkItem, boolToShow: $showFloatingMessage, delay: 2)
+</string>
+				<key>leading</key>
+				<string>            colorModeToggleNew = (colorModeToggleNew + 1) % 3
+        }
+</string>
+				<key>trailing</key>
+				<string>    }
+}
+
+</string>
+			</dict>
+			<key>title</key>
+			<string>example of how to use a dismiss work item to keep a bool set to true and dismiss the asynch work item that sets it to false.</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>10</string>
+					<key>EndingLineNumber</key>
+					<string>251</string>
+					<key>StartingColumnNumber</key>
+					<string>10</string>
+					<key>StartingLineNumber</key>
+					<string>251</string>
+					<key>Timestamp</key>
+					<string>758851912.149139</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/Models/AllModels.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string></string>
+				<key>leading</key>
+				<string>////            return
+////        }
+//        </string>
+				<key>trailing</key>
+				<string>
+//        let sessionsForMantra = todaysSessions.filter { $0.title == self.mantra }
+//
+</string>
+			</dict>
+			<key>title</key>
+			<string>our issue is most likely the string comparison...?</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>172</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>171</string>
+					<key>Timestamp</key>
+					<string>758970452.625544</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/DailyTasksView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>//                            task.updateRunningGoal(with: todaysSessions/*using: context*/)
+</string>
+				<key>leading</key>
+				<string>                        .onAppear{
+                            task.updateRunningGoal(with: todaysSessionsDict)
+</string>
+				<key>trailing</key>
+				<string>                        }
+                }
+                .onAppear {
+</string>
+			</dict>
+			<key>title</key>
+			<string>avert from running onAppear of EACH task -- insted have single source of truth. Run fetch descriptor to update it when page .onAppear </string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>280</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>279</string>
+					<key>Timestamp</key>
+					<string>758970452.626019</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/DailyTasksView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>        todaysSessionsDict = sessionDictInProgress
+</string>
+				<key>leading</key>
+				<string>        }
+        
+</string>
+				<key>trailing</key>
+				<string>        
+        // You can now use sessionSummary as needed
+        print("Session Summary: \(todaysSessionsDict)")
+</string>
+			</dict>
+			<key>title</key>
+			<string>made a dict from sessions and stored as state var. Need to do something with it. Not being used. Just made.</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>171</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>170</string>
+					<key>Timestamp</key>
+					<string>758970452.6259429</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/DailyTasksView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>                            task.updateRunningGoal(with: todaysSessionsDict)
+</string>
+				<key>leading</key>
+				<string>                    taskCard(for: task)
+                        .onAppear{
+</string>
+				<key>trailing</key>
+				<string>//                            task.updateRunningGoal(with: todaysSessions/*using: context*/)
+                        }
+                }
+</string>
+			</dict>
+			<key>title</key>
+			<string>cool now using a dictionary to just retrieve the value instead of parsing.</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>229</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>228</string>
+					<key>Timestamp</key>
+					<string>758970452.625868</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/DailyTasksView.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>//                    triggerSomeVibration(type: .light) herè
+</string>
+				<key>leading</key>
+				<string>            .onChange(of: currentScrollTargetID) {_, newValue in
+                if currentScrollTargetID == task.id {
+</string>
+				<key>trailing</key>
+				<string>                    withAnimation{sharedState.selectedTask = task}
+                }
+            }
+</string>
+			</dict>
+			<key>title</key>
+			<string>Trying to make it where triggered vibration is handled by the whole stack whenever current scroll ID changes and not by each individual task item that</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+	</array>
 </dict>
 </plist>

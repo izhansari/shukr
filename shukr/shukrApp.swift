@@ -17,8 +17,9 @@ struct shukrApp: App {
     @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
     @State private var globalLocationManager = GlobalLocationManager()
     
-    @AppStorage("modeToggle") var colorModeToggle = false    
-    
+    @AppStorage("modeToggle") var colorModeToggle = false
+    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             SessionDataModel.self,
@@ -56,7 +57,12 @@ struct shukrApp: App {
                                 PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
                                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
                                     .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-                                    .preferredColorScheme(colorModeToggle ? .dark : .light)
+//                                    .preferredColorScheme(colorModeToggle ? .dark : .light)
+                                    .preferredColorScheme(
+                                        colorModeToggleNew == 0 ? .light :
+                                        colorModeToggleNew == 1 ? .dark :
+                                        (prayerViewModel.isDaytime ? .light : .dark)
+                                    )
                             }
                             .tag(1)
                             .environmentObject(prayerViewModel)

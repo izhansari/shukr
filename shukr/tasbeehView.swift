@@ -19,15 +19,15 @@ struct tasbeehView: View {
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.modelContext) private var context
     @EnvironmentObject var sharedState: SharedStateClass
-    @Query private var sessionItems: [SessionDataModel]
     
     // AppStorage properties
     @AppStorage("streak") var streak = 0
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("vibrateToggle") var vibrateToggle = true
-    @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
+//    @AppStorage("modeToggle") var colorModeToggle = false
+    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     //    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     //    var toggleInactivityTimer = false
     //    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
@@ -75,6 +75,7 @@ struct tasbeehView: View {
     @State private var currentSessionIndex: Int = 0
     @State private var isSequentialModeActive: Bool = false
     @State private var inMiddleOfSequence: Bool = false //use this to hide resultsview
+    @State private var tasbeehColorMode = false
 
     
     private var totalTime:  Int {
@@ -270,6 +271,7 @@ struct tasbeehView: View {
                     toggleInactivityTimer: $toggleInactivityTimer,
                     inactivityDimmer: $inactivityDimmer,
                     autoStop: $autoStop,
+                    tasbeehColorMode: $tasbeehColorMode,
                     currentVibrationMode: $currentVibrationMode
                 )
             }
@@ -281,17 +283,17 @@ struct tasbeehView: View {
                 // The Top Buttons During Session
                 HStack {
                     // exit button top left when paused
-                    if paused{
-                        Button(action: {stopTimer()} ) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 26))
-                                .foregroundColor(.green.opacity(0.5))
-                                .padding()
-                                .background(.clear)
-                                .cornerRadius(10)
-                        }
-                        .opacity(paused ? 1.0 : 0.0)
-                    }
+//                    if paused{
+//                        Button(action: {stopTimer()} ) {
+//                            Image(systemName: "checkmark.circle.fill")
+//                                .font(.system(size: 26))
+//                                .foregroundColor(.green.opacity(0.5))
+//                                .padding()
+//                                .background(.clear)
+//                                .cornerRadius(10)
+//                        }
+//                        .opacity(paused ? 1.0 : 0.0)
+//                    }
                     
                     
                     // minus, 100, and notes button when not paused
@@ -391,6 +393,8 @@ struct tasbeehView: View {
         )
         
         .onAppear {
+            tasbeehColorMode = colorScheme == .dark ? true : false
+            
             if !timerIsActive{
 //                timerIsActive = true // ensures functions dont happen outside of session AND not reenabling the onAppear
                 print("a1 tasbeehView onappear (timerIsActive?: \(timerIsActive) @ \(Date())) ")
@@ -401,8 +405,10 @@ struct tasbeehView: View {
                 }
                 paused = false // sometimes appstorage had paused = true. so clear it.
                 inactivityTimerHandler(run: "restart")
-                
             }
+        }
+        .onChange(of: tasbeehColorMode){oldVal, newVal in
+            print("tasbeehView: old tasbeehColorMode: \(oldVal), newVal: \(newVal)")
         }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
@@ -429,7 +435,7 @@ struct tasbeehView: View {
             }
         }
 
-        .preferredColorScheme(colorModeToggle ? .dark : .light)
+        .preferredColorScheme(tasbeehColorMode ? .dark : .light)
     }
 //--------------------------------------functions--------------------------------------
 
@@ -454,7 +460,7 @@ struct tasbeehView: View {
             currentSessionIndex = 0
             sharedState.isDoingPostNamazZikr = false
             isPresented = false
-            sharedState.showingOtherPages = false
+//            sharedState.showingOtherPages = false
         }
     }
     
@@ -520,6 +526,7 @@ struct tasbeehView: View {
 //            UIApplication.shared.isIdleTimerDisabled = false
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
+            sharedState.selectedTask = nil
             // if in middle of sequence, run stoptimer() asap
             if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/{
                 self.completeStopTimer()
@@ -563,7 +570,7 @@ struct tasbeehView: View {
         
         if tasbeeh == 0 {
             isPresented = false
-            sharedState.showingOtherPages = false
+//            sharedState.showingOtherPages = false
             resetSharedState()
         }
         if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/ {
@@ -602,7 +609,7 @@ struct tasbeehView: View {
         sharedState.targetCount = ""
         sharedState.selectedMinutes = 0
         sharedState.titleForSession = ""
-        sharedState.selectedMode = 0
+        sharedState.selectedMode = 1
     }
     
     private func togglePause() {
@@ -705,6 +712,7 @@ import Adhan
 
 /// Utility class for shared functionality
 struct PrayerUtils {
+
     /// Fetches user location from UserDefaults
     static func getUserCoordinates() throws -> Coordinates {
         let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
@@ -767,6 +775,48 @@ struct PrayerUtils {
         case .isha: return times.isha
         }
     }
+    
+
+    static func calculateAlarmDescription() throws -> (description: String, time: Date) {
+        let alarmEnabled = UserDefaults.standard.bool(forKey: "alarmEnabled")
+        let alarmOffsetMinutes = UserDefaults.standard.integer(forKey: "alarmOffsetMinutes")
+        let alarmIsBefore = UserDefaults.standard.bool(forKey: "alarmIsBefore")
+        let alarmIsFajr = UserDefaults.standard.bool(forKey: "alarmIsFajr")
+
+        guard alarmEnabled else {
+            throw AlarmDisabledError()
+        }
+        
+        let coordinates = try PrayerUtils.getUserCoordinates()
+        let params = PrayerUtils.getCalculationParameters()
+
+        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
+        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
+
+        let prayer: enumPrayer = alarmIsFajr ? .fajr : .sunrise
+        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
+        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
+
+        let offset = TimeInterval(alarmOffsetMinutes * 60)
+        let resultTime = nextPrayerTime.addingTimeInterval(alarmIsBefore ? -offset : offset)
+        
+        let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
+        let beforeAfterText = alarmIsBefore ? "before" : "after"
+        let fajrSunriseText = alarmIsFajr ? "Fajr" : "Sunrise"
+        let resultTimeText = "(\(shortTimePM(resultTime)))"
+        let firstPartText = alarmOffsetMinutes != 0 ? "\(offsetMinutesText) \(beforeAfterText)" : "Alarm at"
+        let description = "\(firstPartText) \(fajrSunriseText) \(resultTimeText)"
+
+        return (description, resultTime)
+    }
+
+
+    struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
+        var localizedStringResource: LocalizedStringResource {
+            "Daily Fajr Alarm is disabled. Please enable it in the Shukr app settings."
+        }
+    }
+
 }
 
 /// Custom error for prayer intents
@@ -914,6 +964,8 @@ struct SetFajrAlarmIntent: AppIntent {
     @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
     @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = false
     @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = false
+    @AppStorage("alarmTimeSetFor") private var alarmTimeSetFor: String = ""
+    @AppStorage("alarmDescription") private var alarmDescription: String = ""
 
     /// Custom Error for Disabled Alarm
     struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
@@ -925,244 +977,19 @@ struct SetFajrAlarmIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
         
-        // 1) Stop if alarm is disabled:
-        if !alarmEnabled {
-            throw AlarmDisabledError()
-        }
+        let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
+        let resultTime = calculatedAlarm.time
+        alarmTimeSetFor = shortTimePM(resultTime)
+        alarmDescription = calculatedAlarm.description
+                
+        print("\(alarmDescription)")
         
-        let coordinates = try PrayerUtils.getUserCoordinates()
-        let params = PrayerUtils.getCalculationParameters()
-        
-        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-        
-        let prayer: enumPrayer = alarmIsFajr ? .fajr : .sunrise
-        
-        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
-        
-        let offset = TimeInterval(alarmOffsetMinutes * 60)
-        let resultTime = nextPrayerTime.addingTimeInterval((alarmIsBefore ? -offset : offset))
-        
-        let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
-        let message = "\(offsetMinutesText) \(alarmOffsetMinutes) \(prayer) will be at \(shortTimePM(resultTime))"
-        
-        print("\(message)")
-        
-        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: message))
+        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: alarmDescription))
     }
 }
 
 
 
-
-
-//enum enumPrayer: String, AppEnum {
-//    case fajr = "Fajr"
-//    case sunrise = "Sunrise"
-//    case dhuhr = "Dhuhr"
-//    case asr = "Asr"
-//    case maghrib = "Maghrib"
-//    case isha = "Isha"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Prayer"
-//    static var caseDisplayRepresentations: [enumPrayer: DisplayRepresentation] = [
-//        .fajr: "Fajr",
-//        .sunrise: "Sunrise",
-//        .dhuhr: "Dhuhr",
-//        .asr: "Asr",
-//        .maghrib: "Maghrib",
-//        .isha: "Isha"
-//    ]
-//}
-//
-//struct GetNextPrayerTimeIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Next Prayer Time"
-//    static var description: LocalizedStringResource = "Returns the next time for the selected prayer"
-//    
-//    @Parameter(title: "Prayer", description: "Select which prayer time you want")
-//    var prayer: enumPrayer
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> {
-//        // Get coordinates from UserDefaults
-//        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-//        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-//        
-//        guard latitude != 0, longitude != 0 else {
-//            throw Error("Location not available. Please open the app first.")
-//        }
-//        
-//        // Set up coordinates and calculation parameters
-//        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-//        
-//        // Get calculation method from UserDefaults
-//        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-//        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-//        
-//        let calculationMethod: CalculationMethod = {
-//            switch calcMethodInt {
-//            case 1: return .karachi
-//            case 2: return .northAmerica
-//            case 3: return .muslimWorldLeague
-//            case 4: return .ummAlQura
-//            case 5: return .egyptian
-//            case 7: return .tehran
-//            case 8: return .dubai
-//            case 9: return .kuwait
-//            case 10: return .qatar
-//            case 11: return .singapore
-//            case 12, 14: return .other
-//            case 13: return .turkey
-//            default: return .northAmerica
-//            }
-//        }()
-//        
-//        var params = calculationMethod.params
-//        params.madhab = madhab
-//        
-//        let todayComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-//        let tmmComponents = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: 1, to: Date())!)
-//        
-//        guard let todayPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                                date: todayComponents,
-//                                                calculationParameters: params) else {
-//            throw Error("Unable to calculate today's prayer times")
-//        }
-//        
-//        guard let tmmPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                              date: tmmComponents,
-//                                              calculationParameters: params) else {
-//            throw Error("Unable to calculate tomorrow's prayer times")
-//        }
-//        
-//        // Get the prayer time based on selection
-//        func getPrayerTime(_ times: PrayerTimes) -> Date {
-//            switch prayer {
-//            case .fajr: return times.fajr
-//            case .sunrise: return times.sunrise
-//            case .dhuhr: return times.dhuhr
-//            case .asr: return times.asr
-//            case .maghrib: return times.maghrib
-//            case .isha: return times.isha
-//            }
-//        }
-//        
-//        let x = todayPrayerTimes.nextPrayer()
-//        let todayTime = getPrayerTime(todayPrayerTimes)
-//        let nextTime = Date() > todayTime ? getPrayerTime(tmmPrayerTimes) : todayTime
-//        
-//        return .result(value: nextTime)
-//    }
-//}
-//
-//// Custom error type
-//extension GetNextPrayerTimeIntent {
-//    struct Error: Swift.Error {
-//        let message: String
-//        
-//        init(_ message: String) {
-//            self.message = message
-//        }
-//    }
-//}
-//
-//import AppIntents
-//import Adhan
-//
-//struct GetNextFajrIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Next Fajr Time"
-//    static var description: LocalizedStringResource = "Returns the next Fajr prayer time"
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> {
-//        // Get coordinates from UserDefaults
-//        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-//        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-//        
-//        guard latitude != 0, longitude != 0 else {
-//            throw Error("Location not available. Please open the app first.")
-//        }
-//        
-//        // Set up coordinates and calculation parameters
-//        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-//        
-//        // Get calculation method from UserDefaults
-//        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-//        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-//        
-//        let calculationMethod: CalculationMethod = {
-//            switch calcMethodInt {
-//            case 1: return .karachi
-//            case 2: return .northAmerica
-//            case 3: return .muslimWorldLeague
-//            case 4: return .ummAlQura
-//            case 5: return .egyptian
-//            case 7: return .tehran
-//            case 8: return .dubai
-//            case 9: return .kuwait
-//            case 10: return .qatar
-//            case 11: return .singapore
-//            case 12, 14: return .other
-//            case 13: return .turkey
-//            default: return .northAmerica
-//            }
-//        }()
-//        
-//        var params = calculationMethod.params
-//        params.madhab = madhab
-//        
-//        let todayComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-//        let tmmComponents = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: 1, to: Date())!)
-//        
-//        guard let todayPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                                date: todayComponents,
-//                                                calculationParameters: params) else {
-//            throw Error("Unable to calculate today's prayer times")
-//        }
-//        
-//        guard let tmmPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                              date: tmmComponents,
-//                                              calculationParameters: params) else {
-//            throw Error("Unable to calculate tomorrow's prayer times")
-//        }
-//        
-//        let nextFajr = Date() > todayPrayerTimes.fajr ? tmmPrayerTimes.fajr : todayPrayerTimes.fajr
-//        
-//        // Convert the Date to IntentTime
-//        return .result(value: nextFajr)
-//    }
-//}
-//
-//// Custom error type
-//extension GetNextFajrIntent {
-//    struct Error: Swift.Error {
-//        let message: String
-//        
-//        init(_ message: String) {
-//            self.message = message
-//        }
-//    }
-//}
-//
-
-//struct PrayerTimeShortcuts: AppShortcutsProvider {
-//    static var appShortcuts: [AppShortcut] {
-//        AppShortcut(
-//            intent: GetNextFajrIntent(),
-//            phrases: [
-//                "Get Next Fajr time from \(.applicationName)",
-//                "When is Fajr",
-//                "Get Fajr time from \(.applicationName)",
-//                "Fajr time from \(.applicationName)",
-//                "Get morning prayer time from \(.applicationName)",
-//                "morning prayer time from \(.applicationName)"
-//            ],
-//            shortTitle: "Fajr Time",
-//            systemImageName: "sunrise.fill"
-//        )
-//    }
-//}
 
 struct PrayerTimeShortcuts: AppShortcutsProvider {
     @AppShortcutsBuilder
@@ -1204,343 +1031,3 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         
     }
 }
-
-//
-//
-//
-//
-//
-//
-//
-//import AppIntents
-//import Adhan
-//
-//enum ReferencePoint: String, AppEnum {
-//    case after = "after"
-//    case before = "before"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Reference Point"
-//    static var caseDisplayRepresentations: [ReferencePoint: DisplayRepresentation] = [
-//        .after: "after",
-//        .before: "before"
-//    ]
-//}
-//
-//enum PrayerTime: String, AppEnum {
-//    case fajr = "Fajr"
-//    case sunrise = "Sunrise"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Choose Time"
-//    static var caseDisplayRepresentations: [PrayerTime: DisplayRepresentation] = [
-//        .fajr: "after Fajr",
-//        .sunrise: "before Sunrise"
-//    ]
-//}
-//
-//struct GetOffsetTimeIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Time Relative to Prayer"
-//    static var description: LocalizedStringResource = "Returns a time offset from Fajr or Sunrise"
-//    
-//    @Parameter(title: "Minutes", description: "Number of minutes to offset")
-//    var offsetMinutes: Int
-//    
-//    @Parameter(title: "Prayer Time", description: "Choose the prayer time reference")
-//    var prayerTime: PrayerTime
-//    
-//    static var parameterSummary: some ParameterSummary {
-//        Summary("\(\.$offsetMinutes) minutes \(\.$prayerTime)")
-//    }
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> {
-//        // Get coordinates from UserDefaults
-//        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-//        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-//        
-//        guard latitude != 0, longitude != 0 else {
-//            throw Error("Location not available. Please open the app first.")
-//        }
-//        
-//        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-//        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-//        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-//        
-//        let calculationMethod: CalculationMethod = {
-//            switch calcMethodInt {
-//            case 1: return .karachi
-//            case 2: return .northAmerica
-//            case 3: return .muslimWorldLeague
-//            case 4: return .ummAlQura
-//            case 5: return .egyptian
-//            case 7: return .tehran
-//            case 8: return .dubai
-//            case 9: return .kuwait
-//            case 10: return .qatar
-//            case 11: return .singapore
-//            case 12, 14: return .other
-//            case 13: return .turkey
-//            default: return .northAmerica
-//            }
-//        }()
-//        
-//        var params = calculationMethod.params
-//        params.madhab = madhab
-//        
-//        // Get prayer times for today and tomorrow
-//        let todayComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-//        let tmmComponents = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: 1, to: Date())!)
-//        
-//        guard let todayPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                                date: todayComponents,
-//                                                calculationParameters: params) else {
-//            throw Error("Unable to calculate today's prayer times")
-//        }
-//        
-//        guard let tmmPrayerTimes = PrayerTimes(coordinates: coordinates,
-//                                              date: tmmComponents,
-//                                              calculationParameters: params) else {
-//            throw Error("Unable to calculate tomorrow's prayer times")
-//        }
-//        
-//        // Get reference times
-//        let getReferenceTime: (PrayerTimes) -> Date = { times in
-//            switch self.prayerTime {
-//            case .fajr: return times.fajr
-//            case .sunrise: return times.sunrise
-//            }
-//        }
-//        
-//        let todayReferenceTime = getReferenceTime(todayPrayerTimes)
-//        let nextReferenceTime = Date() > todayReferenceTime ? getReferenceTime(tmmPrayerTimes) : todayReferenceTime
-//        
-//        // Calculate the offset time
-//        let offsetInterval = TimeInterval(offsetMinutes * 60) // Convert minutes to seconds
-//        let resultTime = prayerTime == .fajr
-//            ? nextReferenceTime.addingTimeInterval(offsetInterval)
-//            : nextReferenceTime.addingTimeInterval(-offsetInterval)
-//        
-//        return .result(value: resultTime)
-//    }
-//}
-//
-//// Custom error type
-//extension GetOffsetTimeIntent {
-//    struct Error: Swift.Error {
-//        let message: String
-//        
-//        init(_ message: String) {
-//            self.message = message
-//        }
-//    }
-//}
-//
-//
-//
-//
-//// working one but ugly representation
-////import AppIntents
-////import Adhan
-////
-////// Enum for selecting reference prayer
-////enum ReferencePoint: String, AppEnum {
-////    case afterFajr = "After Fajr"
-////    case beforeSunrise = "Before Sunrise"
-////
-////    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Reference Point"
-////    static var caseDisplayRepresentations: [ReferencePoint: DisplayRepresentation] = [
-////        .afterFajr: "After Fajr Start",
-////        .beforeSunrise: "Before Sunrise"
-////    ]
-////}
-////
-////struct GetOffsetTimeIntent: AppIntent {
-////    static var title: LocalizedStringResource = "Get Time Relative to Prayer"
-////    static var description: LocalizedStringResource = "Returns a time offset from Fajr or Sunrise"
-////
-////    @Parameter(title: "Reference Point", description: "Choose whether to offset from Fajr start or Sunrise")
-////    var referencePoint: ReferencePoint
-////
-////    @Parameter(title: "Minutes", description: "Number of minutes to offset")
-////    var offsetMinutes: Int
-////
-////    @MainActor
-////    func perform() async throws -> some IntentResult & ReturnsValue<Date> {
-////        // Get coordinates from UserDefaults
-////        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-////        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-////
-////        guard latitude != 0, longitude != 0 else {
-////            throw Error("Location not available. Please open the app first.")
-////        }
-////
-////        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-////        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-////        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-////
-////        let calculationMethod: CalculationMethod = {
-////            switch calcMethodInt {
-////            case 1: return .karachi
-////            case 2: return .northAmerica
-////            case 3: return .muslimWorldLeague
-////            case 4: return .ummAlQura
-////            case 5: return .egyptian
-////            case 7: return .tehran
-////            case 8: return .dubai
-////            case 9: return .kuwait
-////            case 10: return .qatar
-////            case 11: return .singapore
-////            case 12, 14: return .other
-////            case 13: return .turkey
-////            default: return .northAmerica
-////            }
-////        }()
-////
-////        var params = calculationMethod.params
-////        params.madhab = madhab
-////
-////        // Get prayer times for today and tomorrow
-////        let todayComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-////        let tmmComponents = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: 1, to: Date())!)
-////
-////        guard let todayPrayerTimes = PrayerTimes(coordinates: coordinates,
-////                                                date: todayComponents,
-////                                                calculationParameters: params) else {
-////            throw Error("Unable to calculate today's prayer times")
-////        }
-////
-////        guard let tmmPrayerTimes = PrayerTimes(coordinates: coordinates,
-////                                              date: tmmComponents,
-////                                              calculationParameters: params) else {
-////            throw Error("Unable to calculate tomorrow's prayer times")
-////        }
-////
-////        // Get reference times
-////        let getReferenceTime: (PrayerTimes) -> Date = { times in
-////            switch self.referencePoint {
-////            case .afterFajr: return times.fajr
-////            case .beforeSunrise: return times.sunrise
-////            }
-////        }
-////
-////        let todayReferenceTime = getReferenceTime(todayPrayerTimes)
-////        let nextReferenceTime = Date() > todayReferenceTime ? getReferenceTime(tmmPrayerTimes) : todayReferenceTime
-////
-////        // Calculate the offset time
-////        let offsetInterval = TimeInterval(offsetMinutes * 60) // Convert minutes to seconds
-////        let resultTime = referencePoint == .afterFajr
-////            ? nextReferenceTime.addingTimeInterval(offsetInterval)
-////            : nextReferenceTime.addingTimeInterval(-offsetInterval)
-////
-////        return .result(value: resultTime)
-////    }
-////}
-////
-////// Custom error type
-////extension GetOffsetTimeIntent {
-////    struct Error: Swift.Error {
-////        let message: String
-////
-////        init(_ message: String) {
-////            self.message = message
-////        }
-////    }
-////}
-//
-//
-//
-//
-//
-//
-////import AppIntents
-////import Adhan
-////
-////struct GetNextFajrIntent: AppIntent {
-////    static var title: LocalizedStringResource = "Get Next Fajr Time"
-////    static var description: LocalizedStringResource = "Returns the next Fajr time"
-////
-////    func perform() async throws -> some IntentResult & ProvidesDialog {
-////        // Use shared UserDefaults to get the last calculated Maghrib time
-//////        let defaults = UserDefaults(suiteName: "group.com.yourapp.shukr")
-//////        let defaults = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
-//////        UserDefaults.standard.integer(forKey: "school")
-////
-////        // Get coordinates from UserDefaults
-////        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-////        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-////
-////        guard latitude != 0, longitude != 0 else {
-////            return .result(dialog: "Location not available. Please open the app first.")
-////        }
-////
-////        // Set up coordinates and calculation parameters
-////        let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-////
-////        // Get calculation method from UserDefaults
-////        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-////        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-////
-////        let calculationMethod: CalculationMethod = {
-////            switch calcMethodInt {
-////            case 1: return .karachi
-////            case 2: return .northAmerica
-////            case 3: return .muslimWorldLeague
-////            case 4: return .ummAlQura
-////            case 5: return .egyptian
-////            case 7: return .tehran
-////            case 8: return .dubai
-////            case 9: return .kuwait
-////            case 10: return .qatar
-////            case 11: return .singapore
-////            case 12, 14: return .other
-////            case 13: return .turkey
-////            default: return .northAmerica
-////            }
-////        }()
-////
-////        var params = calculationMethod.params
-////        params.madhab = madhab
-////
-////        let todayComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-////        let tmmComponents = Calendar.current.dateComponents([.year, .month, .day], from: Calendar.current.date(byAdding: .day, value: 1, to: Date())!)
-////
-////        guard let todayPayerTimes = PrayerTimes(coordinates: coordinates,
-////                                          date: todayComponents,
-////                                          calculationParameters: params) else {
-////            return .result(dialog: "Unable to calculate prayer times")
-////        }
-////
-////        guard let tmmPrayerTimes = PrayerTimes(coordinates: coordinates,
-////                                          date: tmmComponents,
-////                                          calculationParameters: params) else {
-////            return .result(dialog: "Unable to calculate prayer times")
-////        }
-////
-////        var fajrToReturn = todayPayerTimes.fajr
-////
-////        if Date() > todayPayerTimes.fajr  {
-////            fajrToReturn = tmmPrayerTimes.fajr
-////            print("giving tomorrows cuz we past todays")
-////        }
-////
-////        let formatter = DateFormatter()
-////        formatter.timeStyle = .short
-////        return .result(dialog: "Next Fajr is at \(formatter.string(from: fajrToReturn))")
-////    }
-////}
-////
-////struct PrayerTimeShortcuts: AppShortcutsProvider {
-////    static var appShortcuts: [AppShortcut] {
-////        AppShortcut(
-////            intent: GetNextFajrIntent(),
-////            phrases: [
-////                "Get Next Fajr time",
-////                "When is Fajr",
-////                "What time is Fajr",
-////                "Get Fajr time",
-////                "Morning prayer time"
-////            ],
-////            shortTitle: "Fajr Time",
-////            systemImageName: "sunrise.fill"
-////        )
-////    }
-////}

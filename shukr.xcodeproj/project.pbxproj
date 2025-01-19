@@ -27,6 +27,8 @@
 		369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9232CA48B88003A58B7 /* HistoryPageView.swift */; };
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
+		36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */; };
+		36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */; };
 		36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36FAF8232CF2EFA600718D73 /* Adhan */; };
 /* End PBXBuildFile section */
 
@@ -96,6 +98,8 @@
 		369BE9232CA48B88003A58B7 /* HistoryPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPageView.swift; sourceTree = "<group>"; };
 		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
+		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
+		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
 		36F4710A2C8FF7CB0077DB22 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 		36F4710C2C8FF7DA0077DB22 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
 		36F471132C8FF9220077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -177,8 +181,10 @@
 				369A05CD2C5E8617002CD697 /* Assets.xcassets */,
 				369A05D02C5E8617002CD697 /* Preview Assets.xcassets */,
 				369BE9582CB09280003A58B7 /* DuaPageView.swift */,
+				36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */,
 				3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */,
 				360B85952C7112A2000385F3 /* tasbeehView.swift */,
+				36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */,
 				369BE9232CA48B88003A58B7 /* HistoryPageView.swift */,
 				369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */,
 				36867E382C9DE3ED00A981EB /* Utils.swift */,
@@ -430,6 +436,8 @@
 				360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */,
 				369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */,
 				3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */,
+				36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */,
+				36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
 				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,

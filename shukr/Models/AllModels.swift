@@ -11,25 +11,54 @@ import SwiftUI
 
 class SharedStateClass: ObservableObject {
     enum ViewPosition {
-        case top
+//        case top
         case main
         case bottom
     }
-    @Published var selectedViewPage: Int = 1 //// FIXME: No need for this anymore since we dont use the tabView in main.
-    @Published var selectedMode: Int = 2
+    @Published var selectedMode: Int = 1
+    
+    @Published var titleForSession: String = ""
     @Published var selectedMinutes: Int = 0
     @Published var targetCount: String = ""
-    @Published var titleForSession: String = ""
 
     @Published var isDoingPostNamazZikr: Bool = false
-    @Published var showingOtherPages: Bool = false
-    @Published var newTopMainOrBottom: ViewPosition = .main {
+//    @Published var showingOtherPages: Bool = false
+    @Published var showingPulseView: Bool = false
+    @Published var showSalahTab: Bool = true
+    @Published var newTopMainOrBottom: ViewPosition = .main
+    
+    @Published var selectedTask: TaskModel? = nil {
         didSet {
-            print("newTopMainOrBottom changed to: \(newTopMainOrBottom)")
+            if let task = selectedTask{
+//                let remainingGoal = task.isCountMode ? (task.goal - task.runningCount) : task.goal - Int(task.runningSeconds/60))
+                titleForSession = task.mantra
+                if(task.isCountMode){ //modeflag
+                    selectedMode = 2
+                    targetCount = "\(task.goal)"
+                }else{
+                    selectedMode = 1
+                    selectedMinutes = task.goal
+                }
+            }
         }
     }
-    var firstLaunch: Bool = true
-//    @Published var lastKnownLocation: CLLocation? = nil
+    
+    func resetTasbeehInputs(){
+        selectedTask = nil
+        selectedMinutes = 0
+        targetCount = ""
+        titleForSession = ""
+        selectedMode = 1
+    }
+
+
+//    @Published var newTopMainOrBottom: ViewPosition = .main {
+//        didSet {
+////            print("newTopMainOrBottom changed to: \(newTopMainOrBottom)")
+//        }
+//    }
+//    var firstLaunch: Bool = true
+    
 }
 
 
@@ -66,6 +95,15 @@ class PrayerModel {
         self.latPrayedAt = latitude
         self.longPrayedAt = longitude
         self.dateAtMake = dateAtMake
+    }
+    
+    func resetPrayer() {
+        self.isCompleted = false
+        self.timeAtComplete = nil
+        self.numberScore = nil
+        self.englishScore = nil
+        self.latPrayedAt = nil
+        self.longPrayedAt = nil
     }
 }
 
@@ -105,19 +143,6 @@ class MantraModel: Identifiable {
 
 
 
-class MockModelContext: ObservableObject {
-    @Published var sessions: [SessionDataModel]
-    @Published var mantras: [MantraModel]
-
-    init(sessions: [SessionDataModel], mantras: [MantraModel]) {
-        self.sessions = sessions
-        self.mantras = mantras
-    }
-}
-
-
-
-
 
 @Model
 class SessionDataModel: Identifiable {
@@ -144,9 +169,9 @@ class SessionDataModel: Identifiable {
         self.sessionMode = sessionMode
         self.targetMin = targetMin
         self.targetCount = targetCount
-        self.totalCount = totalCount /* clickStats.count */
+        self.totalCount = totalCount
         self.startTime = startTime
-        self.secondsPassed = secondsPassed /* clickStats.last?.date.timeIntervalSince(startTime)*/
+        self.secondsPassed = secondsPassed
         var formatFromSeconds: String{
             let minutes = Int(secondsPassed) / 60
             let seconds = Int(secondsPassed) % 60
@@ -167,58 +192,119 @@ class SessionDataModel: Identifiable {
 @Model
 class TaskModel: Identifiable {
     
-    //mineeeeeeeeeeeeeeeeeeeeeeeeeeee
-
     @Attribute(.unique) var id: UUID = UUID()
     var mantra: String
     var isCountMode: Bool
-//    var mode: TaskMode
     var goal: Int
-
-//    var sessionItems: [SessionDataModel]
+//    var isComplete: Bool = false
 
     var isCompleted: Bool {
-        goal != 0 && runningGoal != 0 && runningGoal >= goal
+         isCountMode ? (runningCount >= goal) : (Int(runningSeconds/60) > goal)
     }
 
-    var runningGoal: Int = 0
-
-//    enum TaskMode: String, Codable {
-//        case count, time
-//    }
+    var runningCount: Int = 0
+    var runningSeconds: Double = 0
     
-    init(mantra: String, /*mode: TaskMode*/ isCountMode: Bool, goal: Int/*, sessionItems: [SessionDataModel]*/) {
+    init(mantra: String, isCountMode: Bool, goal: Int) {
         self.mantra = mantra
-//        self.mode = mode
         self.isCountMode = isCountMode
         self.goal = goal
-//        self.sessionItems = sessionItems
     }
     
-    // Calculate running goal for the task
-//        func calculateRunningGoal(from sessionItems: [SessionDataModel]) {
-//            if mode == .count {
-//                runningGoal = sessionItems.filter { session in
-//                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
-//                }.reduce(0) { $0 + $1.totalCount }
-//            } else {  // For time-based tasks
-//                runningGoal = sessionItems.filter { session in
-//                    Calendar.current.isDateInToday(session.startTime) && session.title == mantra
-//                }.reduce(0) { $0 + Int($1.secondsPassed / 60) } // Calculate minutes
-//            }
-//        }
+    // Function to calculate running goal using a predicate
+    func updateRunningGoal(with todaysSessions: [String: (totalCount: Int, secondsPassed: TimeInterval)]) {
+        
+        // search dict to find this mantra in it
+        let sessionsForMantra = todaysSessions[self.mantra]
+        
+        // Calculate the running goal based on the task mode
+        if isCountMode{
+            runningCount = sessionsForMantra?.totalCount ?? 0
+        } else{
+            runningSeconds = sessionsForMantra?.secondsPassed ?? 0
+        }
 
-//        // Check if task is completed
-//        func isCompleted(from sessionItems: [SessionDataModel]) -> Bool {
-//            return calculateRunningGoal(from: sessionItems) >= goal
+    }
+
+//    func updateRunningGoal2(with todaysSessions: [SessionDataModel]) {
+//        // Define today's start and end times
+////        let todayStart = Calendar.current.startOfDay(for: Date())
+////        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+////
+////        // Store `mantra` locally for use in the predicate
+////        let mantraCopy = self.mantra
+////
+////        // Build a fetch descriptor with a predicate
+////        let fetchDescriptor = FetchDescriptor<SessionDataModel>(
+////            predicate: #Predicate<SessionDataModel> {
+////                $0.startTime >= todayStart &&
+////                $0.startTime <= todayEnd &&
+////                $0.title == mantraCopy // Use a local copy of `self.mantra`
+////            },
+////            sortBy: [SortDescriptor(\.startTime, order: .forward)]
+////        )
+////
+////        // Fetch sessions matching the criteria
+////        guard let todaysMantraSessions = try? context.fetch(fetchDescriptor) else {
+////            print("❌ (updateRunningGoal) Failed to fetch sessions.")
+////            return
+////        }
+//        
+//        let sessionsForMantra = todaysSessions.filter { $0.title == self.mantra }
+//
+//        // Calculate the running goal based on the task mode
+//        if isCountMode{
+//            runningCount = sessionsForMantra.reduce(0) { $0 + $1.totalCount }
+//        } else{
+//            runningSeconds = sessionsForMantra.reduce(0) { $0 + $1.secondsPassed }
 //        }
+//
+//    }
+    
 }
 
 
 
-
-
-
-
-
-
+//@Model
+//class TaskModel2: Identifiable {
+//    
+//    @Attribute(.unique) var id: UUID = UUID()
+//    var mantra: String
+//    var isCountMode: Bool
+//    var goal: Int
+//
+//    var isCompleted: Bool {
+//        goal != 0 && runningGoal != 0 && runningGoal >= goal
+//    }
+//    
+//    var runningGoal: Int = 0 // Dynamically updated
+//
+//    init(mantra: String, isCountMode: Bool, goal: Int) {
+//        self.mantra = mantra
+//        self.isCountMode = isCountMode
+//        self.goal = goal
+//    }
+//
+//    // Function to calculate running goal using a predicate
+//    func updateRunningGoal(using context: ModelContext) throws {
+//        // Define today's start and end times
+//        let todayStart = Calendar.current.startOfDay(for: Date())
+//        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+//
+//        // Build a fetch descriptor with a predicate
+//        let fetchDescriptor = FetchDescriptor<SessionDataModel>(
+//            predicate: #Predicate<SessionDataModel> {
+//                $0.startTime >= todayStart &&
+//                $0.startTime <= todayEnd &&
+//                $0.title == self.mantra
+//            },
+//            sortBy: [SortDescriptor(\.startTime, order: .forward)]
+//        )
+//
+//        // Fetch sessions matching the criteria
+//        let todaysMantraSessions = try context.fetch(fetchDescriptor)
+//
+//        // Calculate the running goal
+//        runningGoal = todaysMantraSessions.reduce(0) { $0 + $1.totalCount }
+//    }
+//}

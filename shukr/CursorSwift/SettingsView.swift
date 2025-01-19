@@ -6,7 +6,7 @@ import UIKit
 struct QiblaSettings {
     @AppStorage("qibla_sensitivity") static var alignmentThreshold: Double = 3.5
     static let minThreshold: Double = 1.0  // More precise
-    static let maxThreshold: Double = 10.0 // More forgiving
+    static let maxThreshold: Double = 15.0 // More forgiving
 }
 
 struct SettingsView: View {
@@ -29,16 +29,30 @@ struct SettingsView: View {
     
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
     @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
-    
-//    @State private var refreshID = UUID()
-    
+        
     @AppStorage("calculationMethod") var calculationMethod: Int = 2
     @AppStorage("school") var school: Int = 0
     
     @AppStorage("modeToggle") var colorModeToggle = false
+    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+    
+    @AppStorage("lastLatitude") var lastLatitude: Double = 0
+    @AppStorage("lastLongitude") var lastLongitude: Double = 0
+    
+    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
 
-    @State private var isPopupVisible: Bool = false
+
+    @State private var isNotifPopupVisible: Bool = false
+    @State private var isStreakPopupVisible: Bool = false
     @State private var selectedPrayerToCancelNudges = "Fajr"
+    @State private var rotationAngle: Double = 0 // For rotating the symbol
+    
+    // for the floating message
+    @State private var showFloatingMessage = false // State to control visibility
+    
+    // For minimizing and expanding the devSection
+    @State private var showDevStuff = false
+
     
     let calculationMethods = [
         (1, "University of Islamic Sciences, Karachi"), // .karachi
@@ -71,160 +85,212 @@ struct SettingsView: View {
     
     
     var body: some View {
-        Form {
-            
-            //MARK: - Location Info
-            Section(header: Text("Location Information")) {
-                if let cityName = viewModel.cityName {
-                    HStack {
-                        Image(systemName: "mappin.and.ellipse")
-                        Text("City")
-                        Spacer()
-                        Text(cityName)
-                    }
-                } else {
-                    Text("Fetching city...")
-                }
-                HStack {
-                    Image(systemName: "arrow.left.and.right.square")
-                    Text("Latitude")
-                    Spacer()
-                    Text(viewModel.latitude)
-                }
-                HStack {
-                    Image(systemName: "arrow.up.and.down.square")
-                    Text("Longitude")
-                    Spacer()
-                    Text(viewModel.longitude)
-                }
-                Button("Refresh Location") {
-                    viewModel.refreshCityAndPrayerTimes()
-                    viewModel.fetchPrayerTimes()
-                }
-            }
-            
-            //MARK: - Calculation Method
-            Section(header: Text("Calculation Method")) {
-                Picker("Method", selection: $calculationMethod) {
-                    ForEach(calculationMethods, id: \.0) { method in
-                        Text(method.1).tag(method.0)
-                    }
-                }
-                Picker("School", selection: $school) {
-                    ForEach(schools, id: \.0) { school in
-                        Text(school.1).tag(school.0)
-                    }
-                }
+        ZStack{
+            Form {
                 
-                // Qibla sensitivity slider
-                VStack(alignment: .leading) {
-                    HStack{
-                        Image(systemName: "location.north.line")
-                        Text("Qibla Sensitivity: \(qiblaSensitivity, specifier: "%.1f")°")
-                    }
-                    Slider(value: $qiblaSensitivity,
-                           in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
-                           step: 0.5)
-                    Text("Lower value = More precise")
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
-            }
-            .onChange(of: calculationMethod) { _, new in
-                viewModel.fetchPrayerTimes()
-            }
-            .onChange(of: school) { _, new in
-                viewModel.fetchPrayerTimes()
-            }
-            
-            
-            //MARK: - Notifications
-            Section(header: notificationHeader(isPopupVisible: $isPopupVisible)) {
-                HStack {
-                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
-                    Divider()
-                    
-                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
-                    Divider()
-                    
-                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
-                    Divider()
-                    
-                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
-                    Divider()
-                    
-                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
-                }
-                .padding(.vertical)
-                
-                if isPopupVisible{
-                    NotificationDropdownInfo()
-                }
-            }
-            
-            
-            //MARK: - Appearance
-            Section(header: Text("Appearance")) {
-                
-                Picker(selection: $colorModeToggle, label:
+                //MARK: - Location Info
+                Section(header: Text("Location Information")) {
+                    if let cityName = viewModel.cityName {
                         HStack {
-                    Image(systemName: "circle.lefthalf.filled")
-                    Text("Color Scheme")
-                }){
-                    Text("Light").tag(false)
-                    Text("Dark").tag(true)
+                            Image(systemName: "mappin.and.ellipse")
+                            Text("City")
+                            Spacer()
+                            Text(cityName)
+                        }
+                    } else {
+                        Text("Fetching city...")
+                    }
+                    
+                    HStack {
+                        Image(systemName: "arrow.left.and.right.square")
+                        Text("Latitude")
+                        Spacer()
+//                        Text(viewModel.latitude)
+                        Text(String(format: "%.6f", lastLatitude))
+                    }
+                    
+                    HStack {
+                        Image(systemName: "arrow.up.and.down.square")
+                        Text("Longitude")
+                        Spacer()
+//                        Text(viewModel.longitude)
+                        Text(String(format: "%.6f", lastLongitude))
+                    }
+                    
+                    Button("Refresh Location") {
+                        viewModel.refreshCityAndPrayerTimes()
+                        viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
+                    }
+                }
+                
+                
+                //MARK: - Notifications
+                Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
+                    HStack {
+                        prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
+                        Divider()
+                        
+                        prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
+                        Divider()
+                        
+                        prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
+                        Divider()
+                        
+                        prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
+                        Divider()
+                        
+                        prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                    }
+                    .padding(.vertical)
+                    
+                    if isNotifPopupVisible{
+                        NotificationDropdownInfo()
+                    }
+                }
+                
+                
+                // MARK: - Daily Alarm
+                AlarmSettingsView()
+                
+                
+                
+                //MARK: - Prayer Streak Settings
+                Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) {
+                    Picker("Streak Type", selection: $prayerStreakMode) {
+                        Text("Level 1").tag(1)
+                        Text("Level 2").tag(2)
+                        Text("Level 3").tag(3)
+                    }
+                    .pickerStyle(.segmented)
+                    
+                    if isStreakPopupVisible{
+                        StreakDropdownInfo()
+                    }
                 }
 
-
-            }
-            
-            
-            // MARK: - Daily Alarm
-            AlarmSettingsView()
-            
-            //MARK: - Dev Stuff
-            Section(header: Text("My Dev Stuff")) {
-                Picker("Ring Style", selection: $selectedRingStyle) {
-                    ForEach(0..<10) { index in
-                        Text("\(index)").tag(index)
+                
+                
+                //MARK: - Calculation Method
+                Section(header: Text("Calculation Method")
+                    .onTapGesture {
+                        showDevStuff.toggle()
+                    }
+                ) {
+                    Picker("Method", selection: $calculationMethod) {
+                        ForEach(calculationMethods, id: \.0) { method in
+                            Text(method.1).tag(method.0)
+                        }
+                    }
+                    Picker("School", selection: $school) {
+                        ForEach(schools, id: \.0) { school in
+                            Text(school.1).tag(school.0)
+                        }
+                    }
+                    
+                    // Qibla sensitivity slider
+                    
+                    VStack(alignment: .leading){
+                        HStack{
+                            Image(systemName: "location.north.line")
+                            Stepper("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°",
+                                    value: $qiblaSensitivity,
+                                    in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
+                                    step: 0.5)
+                        }
                     }
                     
                 }
-                Toggle("Location Printer", isOn: $viewModel.locationPrints)
-                Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
-                Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
-                VStack{
-                    Toggle("Use Test Prayer Times", isOn: $viewModel.useTestPrayers)
-                        .onChange(of: viewModel.useTestPrayers) { _, new in
-                            viewModel.fetchPrayerTimes()
+                .onChange(of: calculationMethod) { _, new in
+                    viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
+                }
+                .onChange(of: school) { _, new in
+                    viewModel.fetchPrayerTimes(cameFrom: "onChange school")
+                }
+                
+                
+                
+                //MARK: - Appearance
+//                Section(header: Text("Appearance")) {
+//                    
+//                    //                Picker(selection: $colorModeToggle, label:
+//                    //                        HStack {
+//                    //                    Image(systemName: "circle.lefthalf.filled")
+//                    //                    Text("Color Scheme")
+//                    //                }){
+//                    //                    Text("Light").tag(false)
+//                    //                    Text("Dark").tag(true)
+//                    //                }
+//                    
+//                    Picker(selection: $colorModeToggleNew, label: HStack {
+//                        Image(systemName: "circle.lefthalf.filled")
+//                        Text("Color Scheme")
+//                    }) {
+//                        Text("Light").tag(0)
+//                        Text("Dark").tag(1)
+//                        Text("Auto").tag(2)
+//                    }
+//                    
+//                    
+//                    
+//                }
+                
+
+                
+                //MARK: - Dev Stuff
+                if(showDevStuff){
+                    Section(header: Text("My Dev Stuff")) {
+                        Picker("Ring Style", selection: $selectedRingStyle) {
+                            ForEach(0..<10) { index in
+                                Text("\(index)").tag(index)
+                            }
+                            
                         }
-                    if viewModel.useTestPrayers {
-                        Text("Using test times with short intervals")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                        Toggle("Location Printer", isOn: $viewModel.locationPrints)
+                        Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
+                        Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
+                        VStack{
+                            Toggle("Use Test Prayer Times", isOn: $viewModel.useTestPrayers)
+                                .onChange(of: viewModel.useTestPrayers) { _, new in
+                                    viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                                }
+                            if viewModel.useTestPrayers {
+                                Text("Using test times with short intervals")
+                                    .font(.caption)
+                                    .foregroundColor(.gray)
+                            }
+                        }
+                        Button("Reset Autopilot Fajr Alert"){
+                            didShowAlarmSetupAlert = false
+                            alarmEnabled = false
+                        }
+                        Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
+                            ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
+                                Text(prayer)
+                            }
+                        }
+                        Button("Cancel for \(selectedPrayerToCancelNudges)") {
+                            viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
+                        }
                     }
+
                 }
-                Button("Reset Autopilot Fajr Alert"){
-                    didShowAlarmSetupAlert = false
-                    alarmEnabled = false
-                }
-                Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
-                    ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
-                        Text(prayer)
-                    }
-                }
-                Button("Cancel for \(selectedPrayerToCancelNudges)") {
-                    viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
-                }
+                
             }
-            
+            floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
         .navigationTitle("Settings")
         .navigationBarBackButtonHidden(false)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
+
+            }
+        }
         .onDisappear{
-            viewModel.fetchPrayerTimes()
+            viewModel.fetchPrayerTimes(cameFrom: "onDisappear SettingsView")
         }
     }
+    
     
                 
     
@@ -233,11 +299,91 @@ struct SettingsView: View {
 
 //MARK: - Helper Views
 
-struct notificationHeader: View {
+struct floatingMessageView: View {
+    @Binding var showFloatingMessage: Bool
+    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+    
+    var messageToShow: String{
+        if colorModeToggleNew == 0{
+         "Now in Light Mode"
+        } else if colorModeToggleNew == 1{
+            "Now in Dark Mode"
+        } else {
+            "Now in Auto Mode"
+        }
+//        "Now in \(colorModeToggleNew == 0 ? "Light" : colorModeToggleNew == 1 ? "Dark" : "Auto") Mode"
+    }
+
+    var body: some View {
+        VStack{
+            Spacer()
+            
+            VStack(spacing: 10) {
+                Text(messageToShow)
+                    .multilineTextAlignment(.center)
+            }
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .padding()
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(10)
+            .shadow(radius: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color.primary, lineWidth: 2) // Add stroke with primary color
+            )
+            .opacity(showFloatingMessage ? 1 : 0.0)
+            .padding(.bottom)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .zIndex(1)
+            .animation(.easeInOut, value: showFloatingMessage)
+        }
+    }
+}
+
+struct ColorModeToggleButton: View {
+    @EnvironmentObject var viewModel: PrayerViewModel
+    
+    @Binding var showFloatingMessage: Bool
+    @State private var dismissWorkItem: DispatchWorkItem? // Manage the dismissal timer
+
+    @AppStorage("modeToggleNew") private var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = Auto
+    
+    var body: some View {
+        Button(action: toggleColorMode) {
+            Image(systemName: currentSymbol)
+                .foregroundColor(.primary)
+                .padding(.horizontal, 4)
+        }
+    }
+    
+    /// Computed property for the current SF Symbol
+    private var currentSymbol: String {
+        switch colorModeToggleNew {
+        case 0: return "sun.min" // Light mode
+        case 1: return "moon" // Dark mode
+        case 2: return viewModel.isDaytime ? "sun.max.circle" : "moon.circle"
+        default: return "circle.lefthalf.filled"
+        }
+    }
+    
+    /// Toggle color mode and update the rotation angle
+    private func toggleColorMode() {
+        withAnimation {
+            colorModeToggleNew = (colorModeToggleNew + 1) % 3
+        }
+        showTemporaryMessage(workItem: &dismissWorkItem, boolToShow: $showFloatingMessage, delay: 2)
+    }
+}
+
+
+struct headerWithInfoButton: View {
+    let title: String
     @Binding var isPopupVisible: Bool
     var body: some View {
         HStack {
-            Text("Notifications")
+//            Text("Notifications")
+            Text(title)
             Spacer()
             Button(action: {
                 withAnimation {
@@ -298,10 +444,10 @@ struct prayerCol: View {
             }
             .buttonStyle(.plain)
             .onChange(of: notifIsOn) { _, _ in
-                viewModel.fetchPrayerTimes()
+                viewModel.fetchPrayerTimes(cameFrom: "onChange notifIsOn")
             }
             .onChange(of: nudgeIsOn) { _, _ in
-                viewModel.fetchPrayerTimes()
+                viewModel.fetchPrayerTimes(cameFrom: "onChange nudgeIsOn")
             }
     }
 
@@ -397,8 +543,37 @@ struct NotificationDropdownInfo: View {
     }
 }
 
+struct StreakDropdownInfo: View {
+    var body: some View {
+        
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Information:")
+            
+            HStack{
+                Text("Level 1: Counts kazas")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+            
+            HStack{
+                Text("Level 2: counts prayers completed during prayer window")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+            
+            HStack{
+                Text("Level 3: counts prayers before 75% of time")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+            
+        }
+    }
+}
+
 
 struct AlarmSettingsView: View {
+    @EnvironmentObject var viewModel: PrayerViewModel
     
     // Whether or not to show the informational text section
     @State private var isAlarmInfoVisible: Bool = false
@@ -406,12 +581,21 @@ struct AlarmSettingsView: View {
     // Local state to manage alert presentation
     @State private var isShowingShortcutAlert: Bool = false
     
+    // To minimize the editing basically
+    @State private var isEditingAlarm: Bool = false
+    
+    // For reference and shown at bottom while setting the alarm
+    @State private var nextFajrTime: Date = Date()
+    @State private var nextSunriseTime: Date = Date()
+    
     // Persisted state (using AppStorage so the values remain between launches)
     @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
     
     @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
     @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = true
     @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = true
+    @AppStorage("alarmTimeSetFor") private var alarmTimeSetFor: String = ""
+    @AppStorage("alarmDescription") private var alarmDescription: String = ""
     
     // A flag to remember if user has already seen the “setup required” alert
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
@@ -437,6 +621,20 @@ struct AlarmSettingsView: View {
         }
     }
     
+    private var timeOfCalcAlarmText: String {
+        let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
+        let offsetSeconds = alarmIsBefore ? -Double(alarmOffsetMinutes)*60 : Double(alarmOffsetMinutes)*60
+        let calcDate = ref.addingTimeInterval(offsetSeconds)
+        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
+//        return "\(shortTimePM(calcDate))"
+    }
+    
+    private var fajrTimeRangeText: String {
+//        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
+//        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
+        return alarmIsFajr ? "(Fajr at \(shortTimePM(nextFajrTime)))" : "(Sunrise at \(shortTimePM(nextSunriseTime)))"
+    }
+    
     // ------------------------------------------
     // MARK: - Body
     // ------------------------------------------
@@ -457,10 +655,6 @@ struct AlarmSettingsView: View {
             }
         }
         ) {
-            
-            if isAlarmInfoVisible {
-                alarmInfoView
-            }
             
             // Toggle to enable/disable alarm
             HStack {
@@ -499,40 +693,95 @@ struct AlarmSettingsView: View {
             
             // If alarm is enabled, show the detail controls
             if alarmEnabled {
-                
-                HStack {
-                    Picker("", selection: $alarmOffsetMinutes) {
-                        ForEach(0...60, id: \.self) { number in
-                            Text("\(number) min")
+                if isEditingAlarm{
+                    VStack{
+                        
+                        HStack {
+                            Picker("", selection: $alarmOffsetMinutes) {
+                                ForEach(0...60, id: \.self) { number in
+                                    Text("\(number) min")
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            
+                            // Picker for "Before"/"After"
+                            Picker("", selection: $alarmIsBefore) {
+                                Text("Before").tag(true)
+                                // Only show "After" if user picked Fajr
+                                if alarmIsFajr {
+                                    Text("After").tag(false)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            
+                            // Picker for "Fajr"/"Sunrise"
+                            Picker("", selection: $alarmIsFajr) {
+                                Text("Fajr").tag(true)
+                                // Only show "Sunrise" if user picked "Before"
+                                if alarmIsBefore {
+                                    Text("Sunrise").tag(false)
+                                }
+                            }
+                            .pickerStyle(.wheel)
+                            
                         }
+                        .frame(height: 100) // Adjust this value to your preferred height
+                        .clipped() // This ensures the picker doesn't overflow its frame
+                        
+                        Text(timeOfCalcAlarmText)
+                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                        
+//                        Text(fajrTimeRangeText)
+//                            .foregroundStyle(.secondary)
+//                            .font(.subheadline)
+//                            .padding(.bottom)
                     }
-                    .pickerStyle(.wheel)
-                    
-                    // Picker for "Before"/"After"
-                    Picker("", selection: $alarmIsBefore) {
-                        Text("Before").tag(true)
-                        // Only show "After" if user picked Fajr
-                        if alarmIsFajr {
-                            Text("After").tag(false)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    
-                    // Picker for "Fajr"/"Sunrise"
-                    Picker("", selection: $alarmIsFajr) {
-                        Text("Fajr").tag(true)
-                        // Only show "Sunrise" if user picked "Before"
-                        if alarmIsBefore {
-                            Text("Sunrise").tag(false)
-                        }
-                    }
-                    .pickerStyle(.wheel)
-                    
                 }
-                
-                .frame(height: 100) // Adjust this value to your preferred height
-                .clipped() // This ensures the picker doesn't overflow its frame
-                
+
+                HStack(alignment: .center) {
+                    Spacer()
+                    
+                    Button(action: {
+                        withAnimation {
+                            isEditingAlarm.toggle()
+                            do{
+                                let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
+                                let resultTime = calculatedAlarm.time
+                                alarmTimeSetFor = shortTimePM(resultTime)
+                                alarmDescription = calculatedAlarm.description
+                            }
+                            catch{
+                                print("Error: \(error.localizedDescription)")
+                            }
+                        }
+                    }) {
+                        HStack {
+                            Text(isEditingAlarm ? "Save" : alarmDescription)
+                                .foregroundStyle(isEditingAlarm ? .blue : .gray)
+                                .font(isEditingAlarm ? .body : .subheadline)
+                            Spacer()
+                            Image(systemName: isEditingAlarm ? "square.and.arrow.down" : "pencil") // Add the pencil icon here
+                                .foregroundStyle(isEditingAlarm ? .blue : .gray) // Match the color with text
+                        }
+                    }
+                    
+                    Spacer()
+                }
+            }
+            
+            // Info Block
+            if isAlarmInfoVisible {
+                alarmInfoView
+            }
+        }
+        .onAppear{
+            nextSunriseTime = viewModel.getNextPrayerTime(for: "sunrise")!
+            nextFajrTime = viewModel.getNextPrayerTime(for: "fajr")!
+        }
+        .onChange(of: alarmEnabled){_, newValue in
+                if newValue {
+                    isEditingAlarm = true
             }
         }
     }
@@ -547,7 +796,7 @@ struct AlarmSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Information:")
             
-            Text("Tired of manually setting up Fajr alarms everyday? This feature lets you define rules once which will dynamically create daily Fajr alarms for you.")
+            Text("No more mental math to set up daily Fajr alarms! Define your rules once. I'll dynamically set daily Fajr alarms for you!")
                 .font(.caption)
                 .foregroundColor(.gray)
             

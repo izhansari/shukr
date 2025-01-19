@@ -374,7 +374,7 @@ struct LocationMapContentView: View {
                     // Close button
                     Button("Close") {
                         presentationMode.wrappedValue.dismiss()
-                        sharedState.showingOtherPages = false
+//                        sharedState.showingOtherPages = false
                     }
                     .padding()
                     .background(Color.white.opacity(0.8))

@@ -65,13 +65,13 @@ struct HistoryPageView: View {
                 
                 
 
-                Text("Tasks")
-                    .font(.title)
-                    .fontWeight(.thin)
-                    .padding(.leading, 30)
-                
-                DailyTasksView()
-                    .padding(.bottom, 15)
+//                Text("Tasks")
+//                    .font(.title)
+//                    .fontWeight(.thin)
+//                    .padding(.leading, 30)
+//                
+//                DailyTasksView()
+//                    .padding(.bottom, 15)
                 
                 
                 Text("Sessions")
@@ -113,6 +113,7 @@ struct HistoryPageView: View {
             }
         }
 //        .navigationBarBackButtonHidden(true)
+//        .navigationTitle("History")
         .toolbar {
             
             ToolbarItem(placement: .principal) {
@@ -445,20 +446,22 @@ struct DailyStatToggleView: View {
 struct MantraPickerView: View {
     @Environment(\.modelContext) private var context
     @State private var searchQuery: String = ""
-    private var predefinedMantras: [String] = ["Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
+    private var predefinedMantras: [String] = ["", "Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
     
     // MantraItems from model context
     @Query private var mantraItems: [MantraModel]
     
+    // Binding for controlling the visibility of the sheet
+    @Binding var isPresented: Bool
+
+    // Optional binding to pass the selected mantra, set to nil if not provided
+    @Binding var selectedMantra: String?
+
     // Now use @Binding for selectedSession to watch changes
     @Binding var selectedSession: SessionDataModel?
     
-    // Binding for controlling the visibility of the sheet
-    @Binding var isPresented: Bool
-    
-    // Optional binding to pass the selected mantra, set to nil if not provided
-    @Binding var selectedMantra: String?
-    
+    @State private var tempSelection: String?
+        
     private var presentation: Set<PresentationDetent>
 
     // Allow selectedSession and selectedMantra to be optional in the initializer
@@ -468,60 +471,159 @@ struct MantraPickerView: View {
         self._selectedMantra = selectedMantra
         self.presentation = presentation ?? [.medium]
     }
+  
+    
+//    var body: some View {
+//        VStack {
+//            // Search Bar
+//            TextField("Search or Add Zikr", text: $searchQuery)
+//                .textFieldStyle(RoundedBorderTextFieldStyle())
+//                .padding()
+//            
+//            // Combine predefined and custom mantras, and filter by search query
+//            let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
+//                .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
+//                .sorted()
+//            
+//            if filteredMantras.isEmpty {
+//                // If no matches, show option to add new mantra
+//                Text("No results.")
+//                Text(" Add '\(searchQuery)' as a new zikr?")
+//                    .padding()
+//            } else {
+//                
+//                Spacer()
+//                
+//                Picker("Select Mantra", selection: $tempSelection) {
+//                    ForEach(filteredMantras, id: \.self) { existingMantra in
+//                        Text(existingMantra).tag(existingMantra)
+//                    }
+//                }
+//                .pickerStyle(.wheel)
+//                .frame(height: 150) // Adjust the height as needed
+//                
+//                Spacer()
+//                
+//            }
+//            
+//            Button("Add Zikr") {
+//                if !searchQuery.isEmpty {
+//                    saveToMantraList(searchQuery) // Save the mantra to model
+//                    if selectedSession != nil {
+//                        assignMantraToSession(searchQuery)
+//                    }
+//                    selectedMantra = searchQuery // Set the selected mantra if provided
+//                    isPresented = false // Close the sheet
+//                }
+//            }
+//            .disabled(searchQuery.isEmpty || !filteredMantras.isEmpty)
+//            .opacity(searchQuery.isEmpty || !filteredMantras.isEmpty ? 0 : 1)
+//            .padding()
+//            .onDisappear {
+//                searchQuery = ""
+//            }
+//            
+//            if !filteredMantras.isEmpty {
+//                Button("Confirm") {
+//                    if let pickedMantra = tempSelection, selectedSession != nil {
+//                        assignMantraToSession(pickedMantra)
+//                    }
+//                    selectedMantra = tempSelection
+//                }
+//                .foregroundStyle(.green.opacity(0.7))
+//                .buttonStyle(.bordered)
+//                .padding(.bottom)
+//            }
+//            Spacer()
+//        }
+//        .padding(.top)
+//        .onChange(of: selectedMantra) {_, newValue in
+//            // This will be called whenever the selection changes
+//            print("Selected mantra: \(newValue ?? "nil")")
+//        }
+//        .onDisappear{
+////            if let pickedMantra = selectedMantra, selectedSession != nil {
+////                assignMantraToSession(pickedMantra)
+////            }
+//        }
+//        .presentationDetents(presentation)
+//        .padding()
+//    }
     
     var body: some View {
-        VStack {
-            // Search Bar
-            TextField("Search or Add Zikr", text: $searchQuery)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
+        VStack(spacing: 20) {
             
             // Combine predefined and custom mantras, and filter by search query
             let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
                 .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
                 .sorted()
             
+            // Search Bar
+            TextField("Search or Add Zikr", text: $searchQuery)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .padding()
+            
+            Spacer()
+            
             if filteredMantras.isEmpty {
                 // If no matches, show option to add new mantra
-                Text("No results.")
-                Text(" Add '\(searchQuery)' as a new zikr?")
-                    .padding()
+                VStack {
+                    Text("No results.")
+                    Text("Add '\(searchQuery)' as a new zikr?")
+                }
+                .padding()
+                Spacer()
             } else {
-                // Show filtered mantras
-                List(filteredMantras, id: \.self) { existingMantra in
-                    Button(action: {
-                        if selectedSession != nil {
-                            assignMantraToSession(existingMantra)
-                        }
-                        selectedMantra = existingMantra // Set the selected mantra if provided
-                        isPresented = false // Close sheet after selecting
-                    }) {
-                        Text(existingMantra)
+                // Wheel Picker
+                Picker("Select Mantra", selection: $tempSelection) {
+                    ForEach(filteredMantras, id: \.self) { existingMantra in
+                        Text(existingMantra).tag(existingMantra as String?)
                     }
                 }
-                .shadow(color: .black.opacity(0.1), radius: 10)
-                .scrollContentBackground(.hidden)
+                .pickerStyle(.wheel)
+                .padding(.horizontal)
+                .frame(height: 150)
+                .clipped()
             }
             
-            Button("Add Zikr") {
-                if !searchQuery.isEmpty {
-                    saveToMantraList(searchQuery) // Save the mantra to model
+            Spacer()
+            
+            // Confirm or Add Button
+            Button(action: {
+                if !searchQuery.isEmpty && filteredMantras.isEmpty {
+                    // Add new Zikr
+                    saveToMantraList(searchQuery)
                     if selectedSession != nil {
                         assignMantraToSession(searchQuery)
                     }
-                    selectedMantra = searchQuery // Set the selected mantra if provided
-                    isPresented = false // Close the sheet
+                    selectedMantra = searchQuery
+                } else if let pickedMantra = tempSelection {
+                    // Confirm existing Zikr
+                    if selectedSession != nil {
+                        assignMantraToSession(pickedMantra)
+                    }
+                    selectedMantra = pickedMantra
                 }
+                isPresented = false // Close the sheet
+            }) {
+                Text(searchQuery.isEmpty || !filteredMantras.isEmpty ? "Confirm" : "Add Zikr")
+                    .foregroundStyle(searchQuery.isEmpty || !filteredMantras.isEmpty ? Color.green.opacity(0.7) : Color.blue.opacity(0.7))
+                    .padding(.vertical, 8)
+                    .frame(minWidth: 0, maxWidth: 150)
             }
-            .disabled(searchQuery.isEmpty)
-            .opacity(searchQuery.isEmpty ? 0 : 1)
-            .padding()
-            .onDisappear {
-                searchQuery = ""
-            }
+            .buttonStyle(.bordered)
+            .disabled(searchQuery.isEmpty && tempSelection == nil)
+            .opacity((searchQuery.isEmpty && tempSelection == nil) ? 0.5 : 1)
+            .padding(.horizontal)
+        }
+//        .padding(.vertical)
+        .onChange(of: selectedMantra) { _, newValue in
+            print("Selected mantra: \(newValue ?? "nil")")
+        }
+        .onDisappear {
+            searchQuery = ""
         }
         .presentationDetents(presentation)
-        .padding()
     }
     
     // Function to save a new or selected mantra
