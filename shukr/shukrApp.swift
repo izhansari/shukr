@@ -53,7 +53,7 @@ struct shukrApp: App {
                 
                     if globalLocationManager.isAuthorized{
                             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
-                            NavigationView{
+                        NavigationStack{
                                 PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
                                     .transition(.opacity.animation(.easeInOut(duration: 0.3)))
                                     .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.

@@ -1,11 +1,3 @@
-//
-//  PrayerViewModel.swift
-//  shukr
-//
-//  Created by Izhan S Ansari on 1/17/25.
-//
-
-
 import SwiftUI
 import Adhan
 import CoreLocation
@@ -13,7 +5,7 @@ import SwiftData
 import UserNotifications
 
 // MARK: - PrayerViewModel
-class PrayerViewModel_WillMakeThisDaddy: NSObject, ObservableObject, CLLocationManagerDelegate {
+class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var context: ModelContext
     
     @AppStorage("calculationMethod") var calculationMethod: Int = 2
@@ -75,8 +67,6 @@ class PrayerViewModel_WillMakeThisDaddy: NSObject, ObservableObject, CLLocationM
     @Published var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
     @Published var timeAtLLastRefresh: Date
     @Published var prayerSettings: [String: Bool] = [:]
-    @Published var compassHeading: Double = 0
-
     
     @State private var refreshTimer: Timer?
         
@@ -192,11 +182,6 @@ class PrayerViewModel_WillMakeThisDaddy: NSObject, ObservableObject, CLLocationM
                 self.scheduleDailyRefresh() // Schedule the next update
             }
         }
-    }
-    
-    // to get compass heading
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        compassHeading = newHeading.magneticHeading
     }
     
     // CLLocationManagerDelegate method
@@ -577,7 +562,7 @@ class PrayerViewModel_WillMakeThisDaddy: NSObject, ObservableObject, CLLocationM
         do {
             try context.save()
 //            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(self.latitude), longitude: \(self.longitude)")
-            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(lastLatitude), longitude: \(self.lastLongitude)")
+            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(lastLatitude), longitude: \(lastLongitude)")
         } catch {
             print("🚨 Failed to save prayer state: \(error.localizedDescription)")
         }
@@ -759,26 +744,5 @@ class PrayerViewModel_WillMakeThisDaddy: NSObject, ObservableObject, CLLocationM
         return isDaytime
     }
     
-    
-    func calculateQiblaDirection() -> Double {
-        guard let userLocation = locationManager.location else { return 0 }
-        let meccaLatitude = 21.4225
-        let meccaLongitude = 39.8262
-        
-        let userLat = userLocation.coordinate.latitude * .pi / 180
-        let userLong = userLocation.coordinate.longitude * .pi / 180
-        let meccaLat = meccaLatitude * .pi / 180
-        let meccaLong = meccaLongitude * .pi / 180
-        
-        let y = sin(meccaLong - userLong)
-        let x = cos(userLat) * tan(meccaLat) - sin(userLat) * cos(meccaLong - userLong)
-        
-        var qiblaDirection = atan2(y, x) * 180 / .pi
-        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-        
-        let returnVal = qiblaDirection - compassHeading
-        
-        return returnVal
-    }
     
 }

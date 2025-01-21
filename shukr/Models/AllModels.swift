@@ -11,9 +11,11 @@ import SwiftUI
 
 class SharedStateClass: ObservableObject {
     enum ViewPosition {
-//        case top
+        case top
         case main
         case bottom
+        case left
+        case right
     }
     @Published var selectedMode: Int = 1
     
@@ -25,7 +27,8 @@ class SharedStateClass: ObservableObject {
 //    @Published var showingOtherPages: Bool = false
     @Published var showingPulseView: Bool = false
     @Published var showSalahTab: Bool = true
-    @Published var newTopMainOrBottom: ViewPosition = .main
+    @Published var navPosition: ViewPosition = .main
+    @Published var cameFromNavPosition: ViewPosition = .main
     
     @Published var selectedTask: TaskModel? = nil {
         didSet {

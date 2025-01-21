@@ -27,15 +27,6 @@ func timeUntilStart(_ startTime: Date) -> String {
     }
 }
 
-//// Displays as "3m 46s" or "32s"
-//func formatSecToMinAndSec(_ totalSeconds: TimeInterval) -> String {
-//    let minutes = Int(totalSeconds) / 60
-//    let seconds = Int(totalSeconds) % 60
-//    
-//    if minutes > 0 { return "\(minutes)m \(seconds)s"}
-//    else { return "\(seconds)s" }
-//}
-
 // Displays as "01:32:49" or "25:07"
 func timerStyle(_ totalSeconds: Double) -> String {
     let roundedSeconds = Int(round(totalSeconds))
@@ -181,6 +172,13 @@ func formatDateToShorthand(_ date: Date) -> String {
     return dateFormatter.string(from: date)
 }
 
+func relativeDayFormatted(_ date: Date) -> String {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateStyle = .medium
+    dateFormatter.doesRelativeDateFormatting = true
+    
+    return dateFormatter.string(from: date)
+}
 
 
 // MARK: - Vibration Feedback
@@ -3176,13 +3174,13 @@ struct ExternalToggleText: View {
             triggerSomeVibration(type: .light)
         }
         
-        withAnimation(.easeInOut(duration: 0.2)) {
+        withAnimation{
             showOriginal.toggle()
         }
         
         if !showOriginal {
             timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation{
                     showOriginal = true
                 }
             }
@@ -3418,14 +3416,15 @@ struct TopBar: View {
     @AppStorage("prayerStreak") var prayerStreak: Int = 0
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
 
-    var viewState: SharedStateClass.ViewPosition { sharedState.newTopMainOrBottom }
+    var viewState: SharedStateClass.ViewPosition { sharedState.navPosition }
 //    @GestureState var dragOffset: CGFloat
     
     @State private var showMaxStreakToggle: Bool = false
 
     
     private var showSalahTab: Bool {
-        sharedState.showSalahTab
+//        sharedState.showSalahTab
+        sharedState.navPosition == .bottom || sharedState.navPosition == .main
     }
     
     private var tasbeehModeName: String {
@@ -3450,7 +3449,7 @@ struct TopBar: View {
                             
                         }
                         .opacity(!showSalahTab ? 1 : 0)
-                        .offset(x: !showSalahTab ? 0 : 10) // move right
+                        .offset(y: !showSalahTab ? 0 : -10) // move right
                         
                         
                         HStack{ // location label
@@ -3460,7 +3459,7 @@ struct TopBar: View {
                         }
                         .opacity(showSalahTab && viewState != .bottom ? 1 : 0)
                         .offset(y: viewState != .bottom ? 0 : -10) // move up
-                        .offset(x: showSalahTab ? 0 : -10) // move left
+                        .offset(y: showSalahTab ? 0 : 10) // move left
 
                         HStack(alignment: .center) {
                             Image(systemName: "heart.fill")

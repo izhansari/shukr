@@ -13,5 +13,12 @@ struct shukrWidgetBundle: WidgetBundle {
     var body: some Widget {
         shukrWidget()
         shukrWidgetLiveActivity()
+        CompassWidget()
     }
 }
+
+//@main
+//struct CompassWidgetBundle: WidgetBundle {
+//    var body: some Widget {
+//    }
+//}

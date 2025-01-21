@@ -26,7 +26,7 @@ struct DailyTasksView: View {
     @State private var taskToDelete: TaskModel? = nil
     @State private var showDeleteTaskAlert: Bool = false
     @State private var currentScrollTargetID: UUID? = nil
-    @State private var showTaskScroller: Bool = false
+    @State private var showTaskScroller: Bool = true
 //    @State private var todaysSessions: [SessionDataModel] = []
     @State private var todaysSessionsDict: [String: (totalCount: Int, secondsPassed: TimeInterval)] = [:]
     // “Select Zikr” logic
@@ -124,6 +124,21 @@ extension DailyTasksView {
 
             }
             
+//            HStack{
+//                Button(action: {
+//                    withAnimation{
+//                        showTaskScroller.toggle()
+//                    }
+//                }) {
+//                    Image(systemName: showTaskScroller ? "chevron.left" : "list.bullet")
+//                        .foregroundColor(.green.opacity(0.7))
+//                }
+//                .padding(.leading, 5)
+//                
+//                Spacer()
+//
+//            }
+            
             
             HStack{
                 Spacer()
@@ -139,20 +154,7 @@ extension DailyTasksView {
             }
             .opacity(showTaskScroller && !taskItems.isEmpty ? 1 : 0)
             
-            HStack{
-                Button(action: {
-                    withAnimation{
-                        showTaskScroller.toggle()
-                    }
-                }) {
-                    Image(systemName: showTaskScroller ? "chevron.left" : "list.bullet")
-                        .foregroundColor(.green.opacity(0.7))
-                }
-                .padding(.leading, 5)
-                
-                Spacer()
 
-            }
         }
         .padding()
     }
@@ -244,7 +246,7 @@ extension DailyTasksView {
         // Optionally do more logic here, e.g. adjusting sharedState’s goals/timers
         presentationMode.wrappedValue.dismiss()
         showTasbeehPage = true
-        sharedState.newTopMainOrBottom = .main
+        sharedState.navPosition = .main
     }
     
     // Function to fetch today's sessions from swiftdata

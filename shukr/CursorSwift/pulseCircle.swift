@@ -120,7 +120,7 @@ struct PulseCircleView: View {
     
     private func triggerPulse() {
         isAnimating = false
-        if sharedState.showingPulseView && sharedState.showSalahTab/*!sharedState.showingOtherPages*/{
+        if sharedState.showingPulseView && (sharedState.navPosition == .bottom || sharedState.navPosition == .main) /*sharedState.showSalahTab*/{
             triggerSomeVibration(type: .medium)
         }
         print("triggerPulse: showing pulseView \(sharedState.showingPulseView) (still calling it)")
