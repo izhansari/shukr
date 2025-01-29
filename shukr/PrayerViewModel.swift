@@ -3,13 +3,17 @@ import Adhan
 import CoreLocation
 import SwiftData
 import UserNotifications
+import WidgetKit
 
 // MARK: - PrayerViewModel
 class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     private var context: ModelContext
     
-    @AppStorage("calculationMethod") var calculationMethod: Int = 2
-    @AppStorage("school") var school: Int = 0
+//    @AppStorage("calculationMethod") var calculationMethod: Int = 2
+//    @AppStorage("school") var school: Int = 0
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
+    @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
+
     
     @AppStorage("fajrNotif") var fajrNotif: Bool = true
     @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = false
@@ -27,8 +31,9 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("schedulePrints") var schedulePrints: Bool = false
     @AppStorage("calculationPrints") var calculationPrints: Bool = false
 
-    @AppStorage("lastLatitude") var lastLatitude: Double = 0
-    @AppStorage("lastLongitude") var lastLongitude: Double = 0
+    @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
+    @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
+    @AppStorage("lastCityName", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastCityName: String = "Wonderland"
 
     // App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
     @AppStorage("prayerStreak") var prayerStreak: Int = 0
@@ -78,7 +83,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     var todaysPrayers: [PrayerModel] = []
     
     func getCalcMethodFromAppStorageVar() -> CalculationMethod {
-        let calculationMethod = UserDefaults.standard.integer(forKey: "calculationMethod")
+//        let calculationMethod = UserDefaults.standard.integer(forKey: "calculationMethod")
         switch  calculationMethod{
         case 1: return .karachi
         case 2: return .northAmerica
@@ -98,7 +103,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     func getSchoolFromAppStorageVar() -> Madhab {
-        let school = UserDefaults.standard.integer(forKey: "school")
+//        let school = UserDefaults.standard.integer(forKey: "school")
         switch school {
         case 0: return .shafi
         case 1: return .hanafi
@@ -273,6 +278,11 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 } else {
                     self?.locationPrinter("⚠️ No placemark found")
                     self?.cityName = "Unknown"
+                }
+                let oldCityName = self?.lastCityName
+                self?.lastCityName = self?.cityName ?? "Error."
+                if oldCityName != self?.lastCityName {
+                    WidgetCenter.shared.reloadAllTimelines()
                 }
             }
         }

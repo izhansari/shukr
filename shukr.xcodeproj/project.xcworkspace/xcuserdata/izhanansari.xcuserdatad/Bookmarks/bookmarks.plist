@@ -12,13 +12,13 @@
 					<key>EndingColumnNumber</key>
 					<string>0</string>
 					<key>EndingLineNumber</key>
-					<string>375</string>
+					<string>350</string>
 					<key>StartingColumnNumber</key>
 					<string>0</string>
 					<key>StartingLineNumber</key>
-					<string>374</string>
+					<string>349</string>
 					<key>Timestamp</key>
-					<string>758975318.070955</string>
+					<string>759527570.823787</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -112,7 +112,7 @@
 					<key>StartingLineNumber</key>
 					<string>173</string>
 					<key>Timestamp</key>
-					<string>759143209.767179</string>
+					<string>759571409.5261101</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -159,7 +159,7 @@
 					<key>StartingLineNumber</key>
 					<string>281</string>
 					<key>Timestamp</key>
-					<string>759143209.767151</string>
+					<string>759571409.526207</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -206,7 +206,7 @@
 					<key>StartingLineNumber</key>
 					<string>172</string>
 					<key>Timestamp</key>
-					<string>759143209.767215</string>
+					<string>759571409.525732</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -253,7 +253,7 @@
 					<key>StartingLineNumber</key>
 					<string>230</string>
 					<key>Timestamp</key>
-					<string>759143209.766613</string>
+					<string>759571409.526163</string>
 				</dict>
 				<key>rebasable-url</key>
 				<dict>
@@ -283,6 +283,53 @@
 			</dict>
 			<key>title</key>
 			<string>Trying to make it where triggered vibration is handled by the whole stack whenever current scroll ID changes and not by each individual task item that</string>
+			<key>type</key>
+			<string>bookmark</string>
+		</dict>
+		<dict>
+			<key>destination</key>
+			<dict>
+				<key>location-parameters</key>
+				<dict>
+					<key>EndingColumnNumber</key>
+					<string>0</string>
+					<key>EndingLineNumber</key>
+					<string>382</string>
+					<key>StartingColumnNumber</key>
+					<string>0</string>
+					<key>StartingLineNumber</key>
+					<string>381</string>
+					<key>Timestamp</key>
+					<string>759646438.967461</string>
+				</dict>
+				<key>rebasable-url</key>
+				<dict>
+					<key>base</key>
+					<string>workspace</string>
+					<key>payload</key>
+					<dict>
+						<key>relative-path</key>
+						<string>shukr/PrayerViewModel.swift</string>
+					</dict>
+				</dict>
+			</dict>
+			<key>text-context</key>
+			<dict>
+				<key>focused</key>
+				<string>        let realTimes = [
+</string>
+				<key>leading</key>
+				<string>        }
+        
+</string>
+				<key>trailing</key>
+				<string>            "Fajr": timesAndWindow(times.fajr, times.sunrise),
+            "Dhuhr": timesAndWindow(times.dhuhr, times.asr),
+            "Asr": timesAndWindow(times.asr, times.maghrib),
+</string>
+			</dict>
+			<key>title</key>
+			<string>this is how we made the windows</string>
 			<key>type</key>
 			<string>bookmark</string>
 		</dict>

@@ -172,7 +172,7 @@ struct DuaPageView: View {
             }
         }
 //        .navigationBarBackButtonHidden(true)
-        .navigationTitle("My Duas")
+//        .navigationTitle("My Duas")
         // Apply the fullScreenCover modifier directly to the root view
         .fullScreenCover(isPresented: $showingEditDuaSheet, onDismiss: {
             selectedDua = nil

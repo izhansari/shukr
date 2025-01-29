@@ -35,10 +35,11 @@ struct PulseCircleView: View {
     
     @State private var showTimeUntilText: Bool = true
     @State private var showEndTime: Bool = true  // Add this line
-    @State private var showQiblaMap: Bool = false
+//    @State private var showQiblaMap: Bool = false
+    @Binding var showQiblaMap: Bool
     @State private var isAnimating = false
     @State private var currentTime = Date()
-    @State private var timer: Timer?
+//    @State private var timer: Timer?
     @State private var textTrigger = false  // to control the toggle text in the middle
 //    @State private var showingPulseView: Bool = false
 //    @State private var isPraying: Bool = false
@@ -48,7 +49,7 @@ struct PulseCircleView: View {
 
     
     // Replace Timer.publish with DisplayLink
-    @StateObject private var displayLink = DisplayLink()
+//    @StateObject private var displayLink = DisplayLink()
     
     // Add LocationManager
     @StateObject private var locationManager = LocationManager()
@@ -94,41 +95,41 @@ struct PulseCircleView: View {
         else if progress > 0.25 { return .yellow }
         else if progress > 0 { return .red }
         else if isUpcomingPrayer {return Color(.secondarySystemBackground)/*.white*/}
-        else {return .gray}
+        else {return .clear}
     }
     
 //    private var showingPulseView: Bool{
 //        sharedState.showingPulseView
 //    }
     
-    private func startPulseAnimation() {
-//        if isPraying {return}
-        // First, clean up existing timer
-        timer?.invalidate()
-        timer = nil
-        
-        // Only start animation for current prayer
-        if isCurrentPrayer {
-            
-            // Create new timer
-            timer = Timer.scheduledTimer(withTimeInterval: pulseRate, repeats: true) { _ in
-                triggerPulse()
-//                if !sharedState.showingOtherPages { triggerPulse() }
-            }
-        }
-    }
+//    private func startPulseAnimation() {
+////        if isPraying {return}
+//        // First, clean up existing timer
+//        timer?.invalidate()
+//        timer = nil
+//        
+//        // Only start animation for current prayer
+//        if isCurrentPrayer {
+//            
+//            // Create new timer
+//            timer = Timer.scheduledTimer(withTimeInterval: pulseRate, repeats: true) { _ in
+//                triggerPulse()
+////                if !sharedState.showingOtherPages { triggerPulse() }
+//            }
+//        }
+//    }
     
-    private func triggerPulse() {
-        isAnimating = false
-        if sharedState.showingPulseView && (sharedState.navPosition == .bottom || sharedState.navPosition == .main) /*sharedState.showSalahTab*/{
-            triggerSomeVibration(type: .medium)
-        }
-        print("triggerPulse: showing pulseView \(sharedState.showingPulseView) (still calling it)")
-
-        withAnimation(.easeOut(duration: pulseRate)) {
-            isAnimating = true
-        }
-    }
+//    private func triggerPulse() {
+//        isAnimating = false
+//        if sharedState.showingPulseView && (sharedState.navPosition == .bottom || sharedState.navPosition == .main) /*sharedState.showSalahTab*/{
+//            triggerSomeVibration(type: .medium)
+//        }
+//        print("triggerPulse: showing pulseView \(sharedState.showingPulseView) (still calling it)")
+//
+//        withAnimation(.easeOut(duration: pulseRate)) {
+//            isAnimating = true
+//        }
+//    }
     
     private func checkToTriggerQiblaHaptic(aligned: Bool){
         if aligned {
@@ -147,23 +148,25 @@ struct PulseCircleView: View {
     
     private var timeUntilStartString: String {
         let timeUntilStart = prayer.startTime.timeIntervalSince(currentTime)
-        return "in " + formatTimeInterval(timeUntilStart)
+//        return "in " + formatTimeInterval(timeUntilStart)
+//        return inMinSecStyle(from: timeUntilStart)
+        return inMinSecStyle2(from: timeUntilStart)
     }
     
-    private func iconName(for prayerName: String) -> String {
-        switch prayerName.lowercased() {
-        case "fajr":
-            return "sunrise.fill"
-        case "dhuhr":
-            return "sun.max.fill"
-        case "asr":
-            return "sun.haze.fill"
-        case "maghrib":
-            return "sunset.fill"
-        default:
-            return "moon.stars.fill"
-        }
-    }
+//    private func prayerIcon(for prayerName: String) -> String {
+//        switch prayerName.lowercased() {
+//        case "fajr":
+//            return "sunrise.fill"
+//        case "dhuhr":
+//            return "sun.max.fill"
+//        case "asr":
+//            return "sun.haze.fill"
+//        case "maghrib":
+//            return "sunset.fill"
+//        default:
+//            return "moon.stars.fill"
+//        }
+//    }
     
     private var isMissedPrayer: Bool {
         currentTime >= prayer.endTime && !prayer.isCompleted
@@ -191,136 +194,135 @@ struct PulseCircleView: View {
         return returnVal
     }
     
-        
-    private func chooseRingStyle(style: Int) -> AnyView {
-        switch style {
-        case 0:
-            return AnyView(RingStyle0(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 1:
-            return AnyView(RingStyle1(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 2:
-            return AnyView(RingStyle2(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 3:
-            return AnyView(RingStyle3(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 4:
-            return AnyView(RingStyle4(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 5:
-            return AnyView(RingStyle5(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 6:
-            return AnyView(RingStyle6(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 7:
-            return AnyView(RingStyle7(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 8:
-            return AnyView(RingStyle8(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        case 9:
-            return AnyView(RingStyle9(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        default:
-            return AnyView(RingStyle2(
-                prayer: prayer,
-                progress: progress,
-                progressColor: progressColor,
-                isCurrentPrayer: isCurrentPrayer,
-                isAnimating: isAnimating,
-                colorScheme: colorScheme,
-                isQiblaAligned: abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
-            ).body)
-        }
+    private var isQiblaAligned: Bool{
+        abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
+    }
+    
+//    private var timeToDisplay: Date {
+//        if isCurrentPrayer{ prayer.endTime }
+//        else { prayer.startTime }
+//    }
+//    
+//    private var timeStyle: Text.DateStyle{
+//        if isCurrentPrayer{ .relative }
+//        else { .time }
+//    }
+    
+    private var timeText: Text{
+        if isCurrentPrayer{ Text(prayer.endTime, style: textTrigger ? .time : .relative) }
+        else if isUpcomingPrayer { Text(prayer.startTime, style: textTrigger ? .relative : .time) }
+        else { Text("Missed") }
+    }
+    
+    private func handleTap() {
+        triggerSomeVibration(type: .light)
+//        timer?.invalidate()
+//        withAnimation{ textTrigger.toggle() }
+        withAnimation(.easeInOut(duration: 0.2)) { textTrigger.toggle() }
     }
 
     
     var body: some View {
         ZStack {
             
-            chooseRingStyle(style: selectedRingStyle)  // Use selectedRingStyle here
+                
+
+                ZStack{
+                    // main circle
+                    Circle()
+                        .fill(Color(.systemBackground))
+                        .stroke(Color(.secondarySystemFill), lineWidth: 12)
+                        .frame(width: 200, height: 200)
+
+                    // progress arc
+                    Circle()
+                        .trim(from: 0, to: 1-progress) // Adjust progress value (0 to 1)
+                        .stroke( progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .butt)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 200, height: 200)
+                    
+
+                    // Qibla indicator
+                    Circle()
+                        .frame(width: 4, height: 4)
+                        .offset(y: -100)
+                        .foregroundStyle(.primary)
+                        .opacity(isQiblaAligned ? 0.5 : 0)
+                        .zIndex(1)
+                    
+                    // Inner content
+                    ZStack{
+                        VStack{
+                            HStack(alignment: .center){
+                                Image(systemName: prayerIcon(for: prayer.name))
+                                Text(prayer.name)
+                                    .fontWeight(.bold)
+                            }
+                            .font(.title)
+                            timeText
+                                .foregroundColor(.primary.opacity(0.7))
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+                }
+                .onTapGesture {
+                    handleTap()
+                }
+            
+
+            /*
+            // main circle
+            Circle()
+                .fill(Color(.systemBackground))
+                .stroke(Color(.secondarySystemFill), lineWidth: 12)
+                .frame(width: 200, height: 200)
+
+            // progress arc
+            Circle()
+                .trim(from: 0, to: 1-progress) // Adjust progress value (0 to 1)
+                .stroke( progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .butt)
+                )
+                .rotationEffect(.degrees(-90))
+                .frame(width: 200, height: 200)
+            
+
+            // Qibla indicator
+            Circle()
+                .frame(width: 4, height: 4)
+                .offset(y: -100)
+                .foregroundStyle(.primary)
+                .opacity(isQiblaAligned ? 0.5 : 0)
+                .zIndex(1)
             
             // Inner content
+            ZStack{
+                VStack{
+                    HStack(alignment: .center){
+                        Image(systemName: prayerIcon(for: prayer.name))
+                        Text(prayer.name)
+                            .fontWeight(.bold)
+                    }
+                    .font(.title)
+                    timeText
+                        .foregroundColor(.primary.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                }
+            }
+            */
+            
+            
+            /*
+            .onChange(of: textTrigger){ _, _ in
+                handleTap()
+            }
             ZStack {
                 
                 VStack{
                     
                     HStack {
-                        Image(systemName: iconName(for: prayer.name))
-                            .foregroundColor(isMissedPrayer ? .gray : .secondary)
+                        Image(systemName: prayerIcon(for: prayer.name))
+                            .foregroundColor(isMissedPrayer ? .gray : .primary/*.secondary*/)
                             .font(.title)
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
@@ -328,7 +330,7 @@ struct PulseCircleView: View {
                             .font(.title)
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)/*.foregroundStyle(.secondary)*/
                     }
                     
                     if isCurrentPrayer {
@@ -340,7 +342,7 @@ struct PulseCircleView: View {
                             fontWeight: .thin,
                             hapticFeedback: true
                         )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)/*.foregroundStyle(.secondary)*/
                     } else if isUpcomingPrayer{
                         ExternalToggleText(
                             originalText: "at \(shortTimePM(prayer.startTime))",
@@ -350,14 +352,14 @@ struct PulseCircleView: View {
                             fontWeight: .thin,
                             hapticFeedback: true
                         )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)/*.foregroundStyle(.secondary)*/
                     }
                     
                     if isMissedPrayer {
                         Text("Missed")
                             .fontDesign(.rounded)
                             .fontWeight(.thin)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)/*.foregroundStyle(.secondary)*/
                     }
                 }
             }
@@ -366,8 +368,10 @@ struct PulseCircleView: View {
                 .fill(Color.white.opacity(0.001))
                 .frame(width: 200, height: 200)
                 .onTapGesture {
-                    textTrigger.toggle()  // Toggle the trigger
+//                    textTrigger.toggle()  // Toggle the trigger
+                    handleTap()
                 }
+            */
             
             ZStack {
                 let isAligned = abs(calculateQiblaDirection()) <= QiblaSettings.alignmentThreshold
@@ -390,8 +394,6 @@ struct PulseCircleView: View {
 
                     .onTapGesture {
                         showQiblaMap = true
-//                        sharedState.showingOtherPages = true
-//                        showingPulseView = false //(test without it first)
                     }
                     // Adding a larger tappable area without extra views
                     .frame(width: 44, height: 44) // Adjust as needed to expand tappable area
@@ -412,23 +414,23 @@ struct PulseCircleView: View {
         }
 
         .onAppear {
-            startPulseAnimation()
+//            startPulseAnimation()
             // Start DisplayLink
-            displayLink.start { newTime in
-                withAnimation(.linear(duration: 0.1)) {
-                    currentTime = newTime
-                }
-            }
+//            displayLink.start { newTime in
+//                withAnimation(.linear(duration: 0.1)) {
+//                    currentTime = newTime
+//                }
+//            }
             locationManager.startUpdating() // Start location updates
             sharedState.showingPulseView = true
         }
-        .onChange(of: progressZone) { _, _ in
-            startPulseAnimation()
-        }
+//        .onChange(of: progressZone) { _, _ in
+//            startPulseAnimation()
+//        }
         .onDisappear {
-            timer?.invalidate()
-            timer = nil
-            displayLink.stop()
+//            timer?.invalidate()
+//            timer = nil
+//            displayLink.stop()
             sharedState.showingPulseView = false
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
@@ -454,11 +456,11 @@ struct PulseCircleView_Previews: PreviewProvider {
             endTime: calendar.date(byAdding: .second, value: 50, to: now) ?? now
         )
         
-        PulseCircleView(
-            prayer: prayer
-//            toggleCompletion: {}
-        )
-        .environmentObject(SharedStateClass())
+//        PulseCircleView(
+//            prayer: prayer
+////            toggleCompletion: {}
+//        )
+//        .environmentObject(SharedStateClass())
 
 //        .background(.black)
     }

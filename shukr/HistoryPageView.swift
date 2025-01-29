@@ -445,25 +445,30 @@ struct DailyStatToggleView: View {
 
 struct MantraPickerView: View {
     @Environment(\.modelContext) private var context
-    @State private var searchQuery: String = ""
-    private var predefinedMantras: [String] = ["", "Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
-    
-    // MantraItems from model context
     @Query private var mantraItems: [MantraModel]
     
     // Binding for controlling the visibility of the sheet
     @Binding var isPresented: Bool
-
-    // Optional binding to pass the selected mantra, set to nil if not provided
     @Binding var selectedMantra: String?
-
-    // Now use @Binding for selectedSession to watch changes
     @Binding var selectedSession: SessionDataModel?
-    
-    @State private var tempSelection: String?
-        
-    private var presentation: Set<PresentationDetent>
 
+    @State private var searchQuery: String = ""
+    @State private var tempSelection: String?
+    @State private var showAlertToAdd: Bool = false
+        
+    private var predefinedMantras: [String] = ["Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
+    private var presentation: Set<PresentationDetent>
+    private var filteredMantras: [String]{
+        (predefinedMantras + mantraItems.map { $0.text })
+            .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
+            .sorted()
+    }
+    private var  uniqueItem: Bool {
+        (predefinedMantras + mantraItems.map { $0.text })
+            .filter { $0.lowercased() == searchQuery.lowercased() }
+            .isEmpty
+    }
+    
     // Allow selectedSession and selectedMantra to be optional in the initializer
     init(isPresented: Binding<Bool>, selectedSession: Binding<SessionDataModel?> = .constant(nil), selectedMantra: Binding<String?> = .constant(nil), presentation: Set<PresentationDetent>? = nil) {
         self._isPresented = isPresented
@@ -551,79 +556,84 @@ struct MantraPickerView: View {
 //    }
     
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 0) {
             
-            // Combine predefined and custom mantras, and filter by search query
-            let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
-                .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
-                .sorted()
+            // Search Bar and Add Button
+            HStack {
+                TextField("Search or Add Zikr", text: $searchQuery)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .autocorrectionDisabled(true)
+                
+                    Button(action: {
+                        showAlertToAdd = true
+                    }) {
+                        Image(systemName: "plus.circle")
+                            .foregroundColor(.green.opacity(0.7))
+                    }
+                    .opacity(searchQuery.isEmpty || !uniqueItem ? 0.3 : 1)
+                    .disabled(searchQuery.isEmpty || !uniqueItem)
+            }
+            .padding()
             
-            // Search Bar
-            TextField("Search or Add Zikr", text: $searchQuery)
-                .textFieldStyle(RoundedBorderTextFieldStyle())
-                .padding()
-            
-            Spacer()
             
             if filteredMantras.isEmpty {
+                Spacer()
                 // If no matches, show option to add new mantra
                 VStack {
                     Text("No results.")
                     Text("Add '\(searchQuery)' as a new zikr?")
+                    Button("Add") {
+                        // Add new Zikr
+                        saveToMantraList(searchQuery)
+                        if selectedSession != nil {
+                            assignMantraToSession(searchQuery)
+                        }
+                        selectedMantra = searchQuery
+                        isPresented = false // Close the sheet
+                    }
                 }
                 .padding()
                 Spacer()
             } else {
-                // Wheel Picker
-                Picker("Select Mantra", selection: $tempSelection) {
-                    ForEach(filteredMantras, id: \.self) { existingMantra in
-                        Text(existingMantra).tag(existingMantra as String?)
+                
+                // List instead of Wheel Picker
+                List(filteredMantras, id: \.self, selection: $tempSelection) { existingMantra in
+                    Button(existingMantra){
+                            // Confirm existing Zikr
+                            if selectedSession != nil {
+                                assignMantraToSession(existingMantra)
+                            }
+                            selectedMantra = existingMantra
+                        isPresented = false // Close the sheet
                     }
+                    .tint(Color.primary)
                 }
-                .pickerStyle(.wheel)
-                .padding(.horizontal)
-                .frame(height: 150)
-                .clipped()
+                .listStyle(DefaultListStyle())
             }
-            
-            Spacer()
-            
-            // Confirm or Add Button
-            Button(action: {
-                if !searchQuery.isEmpty && filteredMantras.isEmpty {
-                    // Add new Zikr
-                    saveToMantraList(searchQuery)
-                    if selectedSession != nil {
-                        assignMantraToSession(searchQuery)
-                    }
-                    selectedMantra = searchQuery
-                } else if let pickedMantra = tempSelection {
-                    // Confirm existing Zikr
-                    if selectedSession != nil {
-                        assignMantraToSession(pickedMantra)
-                    }
-                    selectedMantra = pickedMantra
-                }
-                isPresented = false // Close the sheet
-            }) {
-                Text(searchQuery.isEmpty || !filteredMantras.isEmpty ? "Confirm" : "Add Zikr")
-                    .foregroundStyle(searchQuery.isEmpty || !filteredMantras.isEmpty ? Color.green.opacity(0.7) : Color.blue.opacity(0.7))
-                    .padding(.vertical, 8)
-                    .frame(minWidth: 0, maxWidth: 150)
-            }
-            .buttonStyle(.bordered)
-            .disabled(searchQuery.isEmpty && tempSelection == nil)
-            .opacity((searchQuery.isEmpty && tempSelection == nil) ? 0.5 : 1)
-            .padding(.horizontal)
         }
-//        .padding(.vertical)
+        .alert(isPresented: $showAlertToAdd) {
+                    Alert(
+                        title: Text("Add this to list?"),
+                        message: Text("\(searchQuery)"),
+                        primaryButton: .default(Text("Add")) {
+                            // Add new Zikr
+                            saveToMantraList(searchQuery)
+                            if selectedSession != nil {
+                                assignMantraToSession(searchQuery)
+                            }
+                            selectedMantra = searchQuery
+                            isPresented = false // Close the sheet
+                        },
+                        secondaryButton: .cancel()
+                    )
+                }
         .onChange(of: selectedMantra) { _, newValue in
             print("Selected mantra: \(newValue ?? "nil")")
         }
         .onDisappear {
             searchQuery = ""
         }
-        .presentationDetents(presentation)
+//        .presentationDetents(presentation)
     }
     
     // Function to save a new or selected mantra

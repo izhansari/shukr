@@ -1,4 +1,11 @@
-/*
+//
+//  PrayerTimesView.swift
+//  shukr
+//
+//  Created by Izhan S Ansari on 1/28/25.
+//
+
+
 //
 //  PrayerViewModel.swift
 //  shukr
@@ -142,7 +149,7 @@ struct PrayerTimesView: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never)) // Enable paging
             .scrollBounceBehavior(.always)
-            .frame(width: 200, height: 200) // Match the CircularProgressView size
+            .frame(width: 185, height: 185) // Match the CircularProgressView size
             .onChange(of: sharedState.selectedMode) {_, newPage in
                 isNumberEntryFocused = false //Dismiss keyboard when switching pages
             }
@@ -154,13 +161,15 @@ struct PrayerTimesView: View {
                 isNumberEntryFocused = false //Dismiss keyboard when tabview tapped
             }
         }
+        .frame(width: 185, height: 185)
+        .clipShape(Circle())
     }
     
     private var startZikrOutline: some View {
         // the color outline circle to indicate start button
         Circle()
             .stroke(lineWidth: 2)
-            .frame(width: 222, height: 222)
+            .frame(width: 212, height: 212)
             .foregroundStyle(startCondition ?
                              LinearGradient(
                                 gradient: Gradient(colors: colorScheme == .dark ?
@@ -192,7 +201,8 @@ struct PrayerTimesView: View {
                 .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
                 
                 if prayerName != "Isha" {
-                    Divider().foregroundStyle(.secondary)
+                    Divider()
+                        .overlay(Color(.secondarySystemFill))
                         .padding(.top, -spacing / 2 - 0.5)
                         .padding(.horizontal, 25)
                 }
@@ -243,12 +253,19 @@ struct PrayerTimesView: View {
             }
     }
     
+//    func calculateResistance(_ translation: CGFloat) -> CGFloat {
+//            let maxResistance: CGFloat = 40
+//            let rate: CGFloat = 0.01
+//            let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
+//            return translation < 0 ? -resistance : resistance
+//        }
     func calculateResistance(_ translation: CGFloat) -> CGFloat {
-            let maxResistance: CGFloat = 40
-            let rate: CGFloat = 0.01
-            let resistance = maxResistance - maxResistance * exp(-rate * abs(translation))
-            return translation < 0 ? -resistance : resistance
-        }
+        let maxResistance: CGFloat = 40
+        let normalizedTranslation = min(abs(translation), 200) // Cap at 200px for smoother response
+        let resistance = (normalizedTranslation / 200) * maxResistance // Linear scale
+        return translation < 0 ? -resistance : resistance
+    }
+
     
     private func handleDragEndNew(translation: CGSize, isDraggingVertically: Bool?) {
         let threshold: CGFloat = 30
@@ -271,7 +288,7 @@ struct PrayerTimesView: View {
             satisfiedDragDown = false
         }
         
-        withAnimation(.spring(duration: 0.5)) {
+        withAnimation(.smooth(duration: 0.5)) {
             dragOffsetNew = .zero
             isNumberEntryFocused = false
             
@@ -310,7 +327,7 @@ struct PrayerTimesView: View {
     var body: some View {
         ZStack {
             
-            Color("bgColor")
+            Color("bgColor").opacity(0.001)
                 .edgesIgnoringSafeArea(.all)
                 .onTapGesture { isNumberEntryFocused = false }
                 .highPriorityGesture(abstractedDragGesture)
@@ -334,7 +351,10 @@ struct PrayerTimesView: View {
                                 
                                 theZikrCircle
                                     .zIndex(1)
-                                NeuCircularProgressView(progress: 0)
+//                                NeuCircularProgressView(progress: 0)
+                                Circle()
+                                    .stroke(Color(.secondarySystemFill), lineWidth: 12)
+                                    .frame(width: 200, height: 200)
                                     .zIndex(2)
                                 startZikrOutline
                                     .zIndex(4)
@@ -349,7 +369,15 @@ struct PrayerTimesView: View {
                                 DailyTasksView(showMantraSheetFromHomePage: $showMantraSheetFromHomePage, showTasbeehPage: $showTasbeehPage)
                             }
                             .frame(width: 260)
-                            .background( NeumorphicBorder() )
+//                            .background( NeumorphicBorder() )
+                            .background(
+                                RoundedRectangle(cornerRadius: 20)
+                                    .fill(Color.primary.opacity(0.001)) // Background color
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 20)
+                                            .stroke(Color(.secondarySystemBackground), lineWidth: 2) // Border color and width
+                                    )
+                            )
                             .offset(y: -220 )
                             .offset(x: dragOffsetNew.width / 1.75)
                             .offset(y: (dragOffsetNew.height / 1.75) )
@@ -360,7 +388,7 @@ struct PrayerTimesView: View {
                     
                     
                     // Salah Circles
-                    if sharedState.navPosition == .main || sharedState.navPosition == .bottom {
+                    if sharedState.navPosition == .main || sharedState.navPosition == .bottom{
                         
                         Spacer()
                         if showBottom {
@@ -369,7 +397,41 @@ struct PrayerTimesView: View {
                         
                         ZStack{
                             ZStack{
-                                NeuCircularProgressView(progress: 0)
+//                                Circle()
+//                                    .trim(from: 0, to: 1)
+//                                    .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
+//                                    .frame(width: 200, height: 200)
+//                                    .rotationEffect(.degrees(-90))
+//                                    .foregroundStyle(
+//                                        LinearGradient(
+//                                            gradient: Gradient(
+//                                                colors: colorScheme == .dark
+//                                                    ? [.yellow.opacity(0.6), .green.opacity(0.8)]
+//                                                    : [.yellow, .green]
+//                                            ),
+//                                            startPoint: .topLeading,
+//                                            endPoint: .bottomTrailing
+//                                        )
+//                                    )
+//                                    .animation(.spring(), value: 0)
+//                                    .opacity(0.3)
+//                                NeuCircularProgressView(progress: 0)
+//                                Circle()
+//                                    .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+//                                    .frame(width: 200, height: 200)
+//
+//                                
+//                                Circle()
+//                                    .trim(from: 0, to: 0.4) // Adjust progress value (0 to 1)
+//                                    .stroke(
+//                                        .green,
+//                                        style: StrokeStyle(lineWidth: 2, lineCap: .butt)
+//                                    )
+//                                    .rotationEffect(.degrees(-90))
+//                                    .frame(width: 200, height: 200)
+
+
+                                
                                 
                                 if let relevantPrayer = viewModel.relevantPrayer {
                                     PulseCircleView(prayer: relevantPrayer, showQiblaMap: $showQiblaMap)
@@ -414,12 +476,11 @@ struct PrayerTimesView: View {
 //                                .background( NeumorphicBorder() )
                                 .background(
                                     RoundedRectangle(cornerRadius: 20)
-                                        .fill(Color("bgColor")
-//                                            .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 3, x: 5, y: 5))
-//                                            .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 3, x: -5, y: -5))
+                                        .fill(Color.primary.opacity(0.001)) // Background color
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 20)
+                                                .stroke(Color(.secondarySystemBackground), lineWidth: 2) // Border color and width
                                         )
-                                        .shadow(color: Color("NeuDarkShad").opacity(0.5), radius: 6, x: 5, y: 5)
-                                        .shadow(color: Color("NeuLightShad").opacity(0.5), radius: 6, x: -5, y: -5)
                                 )
                                 .padding(.bottom, 45)
                                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -474,17 +535,18 @@ struct PrayerTimesView: View {
             ZStack{
                 VStack{
                     HStack{
-                        Spacer()
-                        Button("Back>"){
+                        Button("<Back"){
                             dismissKeyboard()
                             withAnimation(.spring(duration: 0.5)) {
                                 sharedState.navPosition = sharedState.cameFromNavPosition
                             }
                         }
+                        Spacer()
                     }
-                    .padding(.trailing, 20)
+                    .padding(.leading, 20)
                     
                     SettingsView()
+                        .background(Color(.systemBackground))
                 }
                 
                 HStack(){
@@ -496,7 +558,7 @@ struct PrayerTimesView: View {
                 .highPriorityGesture(abstractedDragGesture)
 
             }
-            .background(Color("bgColor"))
+//            .background(Color("bgColor"))
 //                .padding()
             .offset(x: dragOffsetNew.width > 0 ? dragOffsetNew.width : 0)
             .offset(x: sharedState.navPosition == .right ? 0 : UIScreen.main.bounds.width)
@@ -518,7 +580,7 @@ struct PrayerTimesView: View {
                 
                 DuaPageView()
             }
-            .background(Color("bgColor"))
+            .background(Color(.systemBackground))
             .padding()
             .offset(x: dragOffsetNew.width < 0 ? dragOffsetNew.width : 0)
             .offset(x: sharedState.navPosition == .left ? 0 : -UIScreen.main.bounds.width)
@@ -596,8 +658,8 @@ struct PrayerTimesView: View {
         .onChange(of: sharedState.navPosition){ oldValue, newValue in
             if oldValue == .top && newValue == .main  {
                 sharedState.resetTasbeehInputs()
+                print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
             }
-            print("ResetTasbeehInputs cuz we dismissed DailyTasks.")
         }
         .navigationDestination(isPresented: $settingsViewNavBool) {
             SettingsView()
@@ -920,9 +982,9 @@ struct PrayerButton: View {
     }
     
     private var isFuturePrayer: Bool {
-        withAnimation(.spring(duration: 0.5)) {
+//        withAnimation(.spring(duration: 0.5)) {
             calcStartTime > Date()
-        }
+//        }
     }
     
     // Status Circle Properties
@@ -955,8 +1017,8 @@ struct PrayerButton: View {
     
     // Background Properties
     private var backgroundColor: Color {
-        if isFuturePrayer { return Color("bgColor") }
-        return prayerObject.isCompleted ? Color("NeuClickedButton") : Color("bgColor")
+        if isFuturePrayer { return Color(.systemBackground) }
+        return prayerObject.isCompleted ? Color(.systemBackground) : Color(.systemBackground)
     }
     
     // Shadow Properties
@@ -1213,4 +1275,3 @@ struct ChevronTap: View {
 
 
 
-*/

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import WidgetKit
 
 //used by pulseCircle
 struct QiblaSettings {
@@ -28,16 +29,19 @@ struct SettingsView: View {
     @AppStorage("ishaNudges") var ishaNudges: Bool = true
     
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
-    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmEnabled: Bool = false
         
-    @AppStorage("calculationMethod") var calculationMethod: Int = 2
-    @AppStorage("school") var school: Int = 0
+//    @AppStorage("calculationMethod") var calculationMethod: Int = 2
+//    @AppStorage("school") var school: Int = 0
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
+    @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
+
     
     @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     
-    @AppStorage("lastLatitude") var lastLatitude: Double = 0
-    @AppStorage("lastLongitude") var lastLongitude: Double = 0
+    @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
+    @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
 
@@ -105,7 +109,6 @@ struct SettingsView: View {
                         Image(systemName: "arrow.left.and.right.square")
                         Text("Latitude")
                         Spacer()
-//                        Text(viewModel.latitude)
                         Text(String(format: "%.6f", lastLatitude))
                     }
                     
@@ -113,7 +116,6 @@ struct SettingsView: View {
                         Image(systemName: "arrow.up.and.down.square")
                         Text("Longitude")
                         Spacer()
-//                        Text(viewModel.longitude)
                         Text(String(format: "%.6f", lastLongitude))
                     }
                     
@@ -129,16 +131,12 @@ struct SettingsView: View {
                     HStack {
                         prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
                         Divider()
-                        
                         prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
                         Divider()
-                        
                         prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
                         Divider()
-                        
                         prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
                         Divider()
-                        
                         prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
                     }
                     .padding(.vertical)
@@ -188,7 +186,6 @@ struct SettingsView: View {
                     }
                     
                     // Qibla sensitivity slider
-                    
                     VStack(alignment: .leading){
                         HStack{
                             Image(systemName: "location.north.line")
@@ -202,37 +199,12 @@ struct SettingsView: View {
                 }
                 .onChange(of: calculationMethod) { _, new in
                     viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
+                    WidgetCenter.shared.reloadAllTimelines()
                 }
                 .onChange(of: school) { _, new in
                     viewModel.fetchPrayerTimes(cameFrom: "onChange school")
+                    WidgetCenter.shared.reloadAllTimelines()
                 }
-                
-                
-                
-                //MARK: - Appearance
-//                Section(header: Text("Appearance")) {
-//                    
-//                    //                Picker(selection: $colorModeToggle, label:
-//                    //                        HStack {
-//                    //                    Image(systemName: "circle.lefthalf.filled")
-//                    //                    Text("Color Scheme")
-//                    //                }){
-//                    //                    Text("Light").tag(false)
-//                    //                    Text("Dark").tag(true)
-//                    //                }
-//                    
-//                    Picker(selection: $colorModeToggleNew, label: HStack {
-//                        Image(systemName: "circle.lefthalf.filled")
-//                        Text("Color Scheme")
-//                    }) {
-//                        Text("Light").tag(0)
-//                        Text("Dark").tag(1)
-//                        Text("Auto").tag(2)
-//                    }
-//                    
-//                    
-//                    
-//                }
                 
 
                 
@@ -278,7 +250,10 @@ struct SettingsView: View {
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color("bgColor"))
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(false)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -589,13 +564,13 @@ struct AlarmSettingsView: View {
     @State private var nextSunriseTime: Date = Date()
     
     // Persisted state (using AppStorage so the values remain between launches)
-    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmEnabled: Bool = false
     
-    @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
-    @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = true
-    @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = true
-    @AppStorage("alarmTimeSetFor") private var alarmTimeSetFor: String = ""
-    @AppStorage("alarmDescription") private var alarmDescription: String = ""
+    @AppStorage("alarmOffsetMinutes", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmOffsetMinutes: Int = 0
+    @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmIsBefore: Bool = true
+    @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmIsFajr: Bool = true
+    @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmTimeSetFor: String = ""
+    @AppStorage("alarmDescription", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmDescription: String = ""
     
     // A flag to remember if user has already seen the “setup required” alert
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
@@ -613,7 +588,7 @@ struct AlarmSettingsView: View {
     
     private var shortcutURL: URL? {
         
-        if let url = URL(string: "https://www.icloud.com/shortcuts/0b1164a730044179ad0afa6ff0d2bc4c"){
+        if let url = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14"){
             return url
         }
         else {
@@ -625,7 +600,10 @@ struct AlarmSettingsView: View {
         let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
         let offsetSeconds = alarmIsBefore ? -Double(alarmOffsetMinutes)*60 : Double(alarmOffsetMinutes)*60
         let calcDate = ref.addingTimeInterval(offsetSeconds)
-        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
+        return "Alarm for \(shortTimePM(calcDate))"
+//        return "\(shortTime(alarmIsFajr ? nextFajrTime : nextSunriseTime)) \(alarmIsBefore ? "-" : "+") \(alarmOffsetMinutes)m = \(shortTimePM(calcDate))"
+//        return "is \(shortTimePM(calcDate))"
+//        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
 //        return "\(shortTimePM(calcDate))"
     }
     

@@ -13,7 +13,8 @@ struct shukrWidgetBundle: WidgetBundle {
     var body: some Widget {
         shukrWidget()
         shukrWidgetLiveActivity()
-        CompassWidget()
+//        CompassWidget()
+        PrayersWidget()
     }
 }
 

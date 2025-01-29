@@ -27,6 +27,11 @@
 		369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9232CA48B88003A58B7 /* HistoryPageView.swift */; };
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
+		36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
+		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
+		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
+		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
+		36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36E0E0AE2D41F930005C62BB /* Adhan */; };
 		36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */; };
 		36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */; };
 		36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36FAF8232CF2EFA600718D73 /* Adhan */; };
@@ -98,6 +103,8 @@
 		369BE9232CA48B88003A58B7 /* HistoryPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPageView.swift; sourceTree = "<group>"; };
 		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
+		36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTargetForIntents.swift; sourceTree = "<group>"; };
+		36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayersWidget.swift; sourceTree = "<group>"; };
 		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
 		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
 		36F4710A2C8FF7CB0077DB22 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
@@ -139,6 +146,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */,
 				369A05FC2C5E8635002CD697 /* SwiftUI.framework in Frameworks */,
 				369A05FA2C5E8635002CD697 /* WidgetKit.framework in Frameworks */,
 			);
@@ -237,9 +245,11 @@
 		369A05FD2C5E8635002CD697 /* shukrWidget */ = {
 			isa = PBXGroup;
 			children = (
+				36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */,
 				369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */,
 				369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */,
 				369A06022C5E8635002CD697 /* shukrWidget.swift */,
+				36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */,
 				369A06042C5E8635002CD697 /* AppIntent.swift */,
 				369A06062C5E8636002CD697 /* Assets.xcassets */,
 				369A06082C5E8636002CD697 /* Info.plist */,
@@ -422,6 +432,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */,
 				369A06072C5E8636002CD697 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -440,6 +451,7 @@
 				36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,
 				369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */,
+				36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */,
 				369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */,
 				369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */,
 			);
@@ -466,7 +478,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */,
 				369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */,
+				36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */,
 				369A06052C5E8635002CD697 /* AppIntent.swift in Sources */,
 				369A06032C5E8635002CD697 /* shukrWidget.swift in Sources */,
 				369A05FF2C5E8635002CD697 /* shukrWidgetBundle.swift in Sources */,
@@ -768,6 +782,7 @@
 				INFOPLIST_FILE = shukrWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = shukrWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -796,6 +811,7 @@
 				INFOPLIST_FILE = shukrWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = shukrWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -873,6 +889,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		36E0E0AE2D41F930005C62BB /* Adhan */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;
+			productName = Adhan;
+		};
 		36FAF8232CF2EFA600718D73 /* Adhan */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;

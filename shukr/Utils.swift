@@ -42,18 +42,18 @@ func timerStyle(_ totalSeconds: Double) -> String {
 }
 
 // DIsplays as 2:01
-func shortTime(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm"
-    return formatter.string(from: date)
-}
+//func shortTime(_ date: Date) -> String {
+//    let formatter = DateFormatter()
+//    formatter.dateFormat = "h:mm"
+//    return formatter.string(from: date)
+//}
 
-// DIsplays as 2:01 AM
-func shortTimePM(_ date: Date) -> String {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "h:mm a"
-    return formatter.string(from: date)
-}
+//// DIsplays as 2:01 AM
+//func shortTimePM(_ date: Date) -> String {
+//    let formatter = DateFormatter()
+//    formatter.dateFormat = "h:mm a"
+//    return formatter.string(from: date)
+//}
 
 // Displays as 5:41 AM 12/05
 func shortTimePMDate(_ date: Date) -> String {
@@ -106,19 +106,19 @@ func formatTimeInterval(_ interval: TimeInterval) -> String {
 }
 
 // returns "h+m+s", "m+s", or"s" as string
-func formatTimeIntervalWithS(_ interval: TimeInterval) -> String {
-    let hours = Int(interval) / 3600
-    let minutes = (Int(interval) % 3600) / 60
-    let seconds = Int(interval) % 60
-    
-    if hours > 0 {
-        return "\(hours)h \(minutes)m \(seconds)s"
-    } else if minutes > 0 {
-        return "\(minutes)m" + " \(seconds)s"
-    } else {
-        return "\(seconds)s"
-    }
-}
+//func formatTimeIntervalWithS(_ interval: TimeInterval) -> String {
+//    let hours = Int(interval) / 3600
+//    let minutes = (Int(interval) % 3600) / 60
+//    let seconds = Int(interval) % 60
+//    
+//    if hours > 0 {
+//        return "\(hours)h \(minutes)m \(seconds)s"
+//    } else if minutes > 0 {
+//        return "\(minutes)m" + " \(seconds)s"
+//    } else {
+//        return "\(seconds)s"
+//    }
+//}
 
 // Use to return a custom time in today
 func todayAt(_ hour: Int, _ minute: Int) -> Date {
@@ -159,7 +159,7 @@ func inMinSecStyle2(from timeInterval: TimeInterval) -> String {
     
     if minutes > 0 { components.append("\(minutes)m") }
     
-    if minutes > 0 { components.append("& \(seconds)s") } // Only show seconds if less than a minute
+    if minutes > 0 { components.append("\(seconds)s") } // Only show seconds if less than a minute
 
     // Join components with a space and prepend "in "
     return "in " + components.joined(separator: " ")
@@ -3155,6 +3155,7 @@ struct ExternalToggleText: View {
             .font(font)
             .fontDesign(fontDesign)
             .fontWeight(fontWeight)
+            .transition(.blurReplace)
             .onTapGesture {
                 handleTap()
             }

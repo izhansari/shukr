@@ -70,9 +70,9 @@ struct DailyTasksView: View {
         .onAppear{
             updateTodaysSessions()
         }
-        .sheet(isPresented: $showAddTaskScreen) {
+        ./*sheet*/fullScreenCover(isPresented: $showAddTaskScreen) {
             AddDailyTaskView(isPresented: $showAddTaskScreen, scrollProxy: $currentScrollTargetID)
-                .presentationDetents([.medium])
+//                .presentationDetents([.medium])
         }
         .alert(isPresented: $showDeleteTaskAlert) {
             Alert(
@@ -481,23 +481,10 @@ struct AddDailyTaskView: View {
     
     @State private var showBorder: Bool = false
     
-    init(
-        isPresented: Binding<Bool>,
-        scrollProxy: Binding<UUID?>
-    ) {
+    init( isPresented: Binding<Bool>, scrollProxy: Binding<UUID?>) {
         self._isPresented = isPresented
         self._scrollProxy = scrollProxy
     }
-
-    
-
-//    var runningGoalToShow: String{
-//        if let yo = taskInMaking{
-//            //return "completed \(yo.runningGoal) \(yo.mode == .count ? "count" : "minutes")" //modeflag
-//            return "completed \(yo.runningGoal) \(yo.isCountMode ? "count" : "minutes")" //modeflag
-//        }
-//        return ""
-//    }
 
     // Function to create and persist the TaskModel, then dismiss the view
     func createTask() {
@@ -528,7 +515,7 @@ struct AddDailyTaskView: View {
     }
 
     
-    private var predefinedMantras: [String] = ["", "Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah", "jiofej eiojioefjfe iojeiofjfi ojiofejoijf eoijeofi"]
+//    private var predefinedMantras: [String] = ["", "Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah", "jiofej eiojioefjfe iojeiofjfi ojiofejoijf eoijeofi"]
 
     private var accentColor: Color{
         .green
@@ -555,12 +542,12 @@ struct AddDailyTaskView: View {
         return formatter
     }()
     
-    private func resetStates(){
-        goal = nil
-        taskIsCountMode = nil
-        searchQuery = ""
-        selectedMantra = nil
-    }
+//    private func resetStates(){
+//        goal = nil
+//        taskIsCountMode = nil
+//        searchQuery = ""
+//        selectedMantra = nil
+//    }
     
     private func closeView(){
         withAnimation{
@@ -572,46 +559,43 @@ struct AddDailyTaskView: View {
         
         
         // Combine predefined and custom mantras, and filter by search query
-        let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
-            .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
-            .sorted()
+//        let filteredMantras = (predefinedMantras + mantraItems.map { $0.text })
+//            .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
+//            .sorted()
         ZStack{
             Color.white.opacity(0.01)
                 .onTapGesture { isGoalFocused = false }
+//                .scrollDismissesKeyboard(.automatic)
             
             VStack{
                 
-                HStack{
-                    Button(action: {
-                        closeView()
-                    }) {
-                        Image(systemName: "chevron.left")
-                            .frame(width: 20, height: 20)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Spacer()
-                    
-                    Text("Create a New Task")
-                        .font(.title2)
-                        .fontWeight(.thin)
-                        .onTapGesture {
-                            showBorder.toggle()
+                ZStack{
+                    HStack{
+                        Button(action: { closeView() }) {
+                            Image(systemName: "chevron.left")
+                                .frame(width: 20, height: 20) // Keep image size constant
+                                .foregroundColor(.secondary)
                         }
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        createTask()
-                    }) {
-                        Image(systemName: "square.and.arrow.down")
-                            .frame(width: 20, height: 20)
-                            .foregroundColor(parametersIncomplete ? .secondary : accentColor)
-                            .fontDesign(.rounded)
+                        .padding(20) // Increase tappable area
+                        .contentShape(Rectangle()) // Ensure the entire padded area is tappable
+                        
+                        Spacer()
                     }
-                    .disabled(parametersIncomplete)
+                    HStack{
+                        
+                        Spacer()
+                        
+                        Text("Create a New Task")
+                            .font(.title2)
+                            .fontWeight(.thin)
+                            .onTapGesture {
+                                showBorder.toggle()
+                            }
+                        
+                        Spacer()
+                    }
+
                 }
-                .padding(.vertical, 16)
                 .border(borderColor)
                 
                 Spacer()
@@ -643,9 +627,6 @@ struct AddDailyTaskView: View {
                                 goal = 10000
                             }
                         }
-                        .onAppear{
-                            isGoalFocused = true
-                        }
                     
                     // Unit Selection Menu
                     Menu {
@@ -655,6 +636,9 @@ struct AddDailyTaskView: View {
                         Button("Minutes") {
                             taskIsCountMode = false
                         }
+//                        .onAppear() {
+//                            isGoalFocused = false
+//                        }
                     } label: {
                         Text(taskIsCountMode == nil ? "Units" : unitText)
                         //                .frame(width: 60)
@@ -668,9 +652,10 @@ struct AddDailyTaskView: View {
                                     .foregroundStyle(accentColor.opacity(0.15))
                             )
                     }
-                    .onChange(of: taskIsCountMode) { _, newVal in
-                        isGoalFocused = false
-                    }
+//                    .onChange(of: taskIsCountMode) { _, newVal in
+//                        isGoalFocused = false
+//                    }
+
                     
                     
                     // "of" Label
@@ -679,16 +664,33 @@ struct AddDailyTaskView: View {
                         .foregroundColor(Color.secondary.opacity(1))
                         .padding(.vertical, 4)
                     
-                    // Zikr Picker Menu
-                    Menu {
-                        ForEach(filteredMantras, id: \ .self) { zikr in
-                            if zikr != "" {
-                                Button("\(zikr)") {
-                                    selectedMantra = zikr
-                                }
-                            }
-                        }
-                    } label: {
+                    // OLD: Zikr Picker Menu
+//                    Menu {
+//                        ForEach(filteredMantras, id: \ .self) { zikr in
+//                            if zikr != "" {
+//                                Button("\(zikr)") {
+//                                    selectedMantra = zikr
+//                                }
+//                            }
+//                        }
+//                    } label: {
+//                        Text(selectedMantra ?? "" == "" ? "Zikr" : (selectedMantra ?? ""))
+//                            .font(.headline)
+//                            .lineLimit(1)
+//                            .foregroundColor(selectedMantra ?? "" == ""  ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
+//                            .padding(.horizontal, 8)
+//                            .padding(.vertical, 4)
+//                            .background(
+//                                RoundedRectangle(cornerRadius: 5)
+//                                    .stroke(accentColor.opacity(0.5), lineWidth: 1)
+//                                    .foregroundStyle(accentColor.opacity(0.15))
+//                            )
+//                    }
+                    
+                    // NEW: Zikr Picker Sheet
+                    Button(action: {
+                        showMantraPicker = true
+                    }) {
                         Text(selectedMantra ?? "" == "" ? "Zikr" : (selectedMantra ?? ""))
                             .font(.headline)
                             .lineLimit(1)
@@ -701,6 +703,13 @@ struct AddDailyTaskView: View {
                                     .foregroundStyle(accentColor.opacity(0.15))
                             )
                     }
+                    .sheet(isPresented: $showMantraPicker) {
+                        MantraPickerView(
+                            isPresented: $showMantraPicker,
+                            selectedMantra: $selectedMantra, //try putting sharedstate.titleforsession in here
+                            presentation: [.height(400)]
+                        )
+                    }
                                         
                 }
                 .padding()
@@ -708,10 +717,38 @@ struct AddDailyTaskView: View {
                 
                 Spacer()
                 
+                Button(action: {
+                    createTask()
+                }) {
+                    Text("Confirm")
+                        .foregroundStyle(parametersIncomplete ? .secondary: Color.green.opacity(0.7))
+                        .padding(.vertical, 8)
+                        .frame(minWidth: 0, maxWidth: 150)
+                    
+//                        .font(.headline)
+//                        .foregroundColor(parametersIncomplete ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
+////                        .padding(.horizontal, 8)
+//                        .padding(.vertical, 8)
+//                        .frame(minWidth: 0, maxWidth: 150)
+//                        .background(
+//                            RoundedRectangle(cornerRadius: 5)
+//                                .stroke(accentColor.opacity(0.5), lineWidth: 1)
+//                                .foregroundStyle(accentColor.opacity(0.15))
+//                        )
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+                .disabled(parametersIncomplete)
+                .padding(.horizontal)
+                
             }
+//            .scrollDismissesKeyboard(.automatic)
+
             .padding()
             .border(borderColor)
         }
+//        .scrollDismissesKeyboard(.automatic)
+
     }
     
 }
