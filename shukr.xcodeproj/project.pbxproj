@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* tasbeehView.swift */; };
 		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
-		3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
 		369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		369A05D12C5E8617002CD697 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05D02C5E8617002CD697 /* Preview Assets.xcassets */; };
@@ -81,7 +80,6 @@
 		360B85952C7112A2000385F3 /* tasbeehView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = tasbeehView.swift; sourceTree = "<group>"; };
 		361F895C2D0402D300E81F07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
-		3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipablePagesExperiment.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		369A05C72C5E8616002CD697 /* shukrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrApp.swift; sourceTree = "<group>"; };
 		369A05CD2C5E8617002CD697 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -113,10 +111,20 @@
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		365AC4362D4C83D0002DDCE7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				LocMans.swift,
+			);
+			target = 369A05F62C5E8635002CD697 /* shukrWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3647F2BE2CC7CD46009A8DD9 /* CursorSwift */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CursorSwift; sourceTree = "<group>"; };
+		365AC42A2D4C467D002DDCE7 /* LocationManagers */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (365AC4362D4C83D0002DDCE7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = LocationManagers; sourceTree = "<group>"; };
 		369BE9272CA49384003A58B7 /* Models */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Models; sourceTree = "<group>"; };
-		369BE9282CA4944E003A58B7 /* Experiments */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Experiments; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -190,7 +198,6 @@
 				369A05D02C5E8617002CD697 /* Preview Assets.xcassets */,
 				369BE9582CB09280003A58B7 /* DuaPageView.swift */,
 				36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */,
-				3689AAA52CD1D4F40093A08A /* SwipablePagesExperiment.swift */,
 				360B85952C7112A2000385F3 /* tasbeehView.swift */,
 				36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */,
 				369BE9232CA48B88003A58B7 /* HistoryPageView.swift */,
@@ -198,18 +205,10 @@
 				36867E382C9DE3ED00A981EB /* Utils.swift */,
 				369A05C72C5E8616002CD697 /* shukrApp.swift */,
 				360B85942C6E1F61000385F3 /* shukr.entitlements */,
+				365AC42A2D4C467D002DDCE7 /* LocationManagers */,
 				369BE9272CA49384003A58B7 /* Models */,
-				369BE9282CA4944E003A58B7 /* Experiments */,
-				369A05CF2C5E8617002CD697 /* OLD */,
 			);
 			path = shukr;
-			sourceTree = "<group>";
-		};
-		369A05CF2C5E8617002CD697 /* OLD */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = OLD;
 			sourceTree = "<group>";
 		};
 		369A05D92C5E8617002CD697 /* shukrTests */ = {
@@ -290,8 +289,8 @@
 			);
 			fileSystemSynchronizedGroups = (
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
+				365AC42A2D4C467D002DDCE7 /* LocationManagers */,
 				369BE9272CA49384003A58B7 /* Models */,
-				369BE9282CA4944E003A58B7 /* Experiments */,
 			);
 			name = shukr;
 			packageProductDependencies = (
@@ -446,7 +445,6 @@
 			files = (
 				360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */,
 				369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */,
-				3689AAA62CD1D4FE0093A08A /* SwipablePagesExperiment.swift in Sources */,
 				36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */,
 				36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */,
 				36867E392C9DE3F000A981EB /* Utils.swift in Sources */,

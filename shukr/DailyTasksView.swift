@@ -45,7 +45,7 @@ struct DailyTasksView: View {
 //            }
 //            else {
                 headerView
-                .animation(.easeInOut, value: showTaskScroller)
+//                .animation(.easeInOut, value: showTaskScroller)
                 if showTaskScroller{
                     if taskItems.isEmpty {
                         NoTasksView(showAddTaskScreen: $showAddTaskScreen)
@@ -143,9 +143,7 @@ extension DailyTasksView {
             HStack{
                 Spacer()
                 Button(action: {
-                    withAnimation{
                         showAddTaskScreen = true
-                    }
                 }) {
                     Image(systemName: "plus.circle")
                         .foregroundColor(.green.opacity(0.7))
@@ -245,6 +243,7 @@ extension DailyTasksView {
     private func tapOnTaskCardAction(task: TaskModel) {
         // Optionally do more logic here, e.g. adjusting sharedState’s goals/timers
         presentationMode.wrappedValue.dismiss()
+        sharedState.selectedTask = task
         showTasbeehPage = true
         sharedState.navPosition = .main
     }

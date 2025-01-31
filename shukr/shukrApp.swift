@@ -14,9 +14,13 @@ struct shukrApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     @StateObject var sharedState = SharedStateClass()
-    @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
-    @State private var globalLocationManager = GlobalLocationManager()
     
+    // First define the two @StateObject properties *without* immediate assignment:
+    @StateObject var environmentLocationManager: EnvLocationManager
+    @StateObject var prayerViewModel: PrayerViewModel
+
+
+
     @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
 
@@ -42,68 +46,222 @@ struct shukrApp: App {
         }
     }()
     
+    
+    // 2) Now in the init, create local variables first, then assign them.
     init() {
+        // 1a) Create EnvLocationManager in a local var
+        let manager = EnvLocationManager()
+        // 1b) Grab the ModelContext in a local var too
         let context = sharedModelContainer.mainContext
-        _prayerViewModel = StateObject(wrappedValue: PrayerViewModel(context: context))
+        // 2) Assign the local var to the @StateOobject...
+        _environmentLocationManager = StateObject(wrappedValue: manager)
+        // 2b) Assign both them badboys (context and the @StateObject envmanager) to the @StateObject
+        _prayerViewModel = StateObject(
+            wrappedValue: PrayerViewModel( context: context, envLocationManager: manager )
+        )
     }
     
     var body: some Scene {
-        
-            WindowGroup {
-                
-                    if globalLocationManager.isAuthorized{
-                            // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
-                        NavigationStack{
-                                PrayerTimesView(/*context: sharedModelContainer.mainContext*/)
-                                    .transition(.opacity.animation(.easeInOut(duration: 0.3)))
-                                    .toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
-//                                    .preferredColorScheme(colorModeToggle ? .dark : .light)
-                                    .preferredColorScheme(
-                                        colorModeToggleNew == 0 ? .light :
-                                        colorModeToggleNew == 1 ? .dark :
-                                        (prayerViewModel.isDaytime ? .light : .dark)
-                                    )
-                            }
-                            .tag(1)
-                            .environmentObject(prayerViewModel)
-                    }
-                    else{
-                        ZStack{
-                            Color.red.opacity(0.001)
-                                .edgesIgnoringSafeArea(.all)
-                            NeuCircularProgressView(progress: 0)
-                            Text("shukr")
-                                .font(.headline)
-                                .fontWeight(.thin)
-                                .fontDesign(.rounded)
-                        }
-                        VStack{
-                            Spacer()
-                            Text("gimme your location bruh...")
-                                .padding()
-                            Button("Allow Location Access in Settings") {
-                                if let url = URL(string: UIApplication.openSettingsURLString) {
-                                    UIApplication.shared.open(url)
+
+        WindowGroup {
+            
+            // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
+            NavigationStack{
+                if environmentLocationManager.isAuthorized /*&& false*/{
+                    PrayerTimesView()
+                    //.transition(.opacity.animation(.easeInOut(duration: 0.3)))
+                    //.toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+                }
+                else{
+                    ZStack{
+                        // main outer circle
+                        Circle()
+                            .fill(Color(.clear))
+                            .stroke(Color(.secondarySystemFill), lineWidth: 12)
+                            .frame(width: 200, height: 200)
+                        // inner content
+                        Text("shukr")
+                            .font(.headline)
+                            .fontWeight(.thin)
+                            .fontDesign(.rounded)
+                        // bottom
+                        if true {
+                            VStack{
+                                Spacer()
+                                Text("gimme your location bruh...")
+                                    .padding()
+                                Button("Allow Location Access in Settings") {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                                        UIApplication.shared.open(url)
+                                    }
                                 }
                             }
                         }
+                        else{
+                            VStack {
+                                Text("Location Access Required")
+                                    .font(.headline)
+                                    .padding()
+                                Text("Please allow location access to fetch accurate prayer times.")
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                                Button("Allow Location Access") {
+                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                                        UIApplication.shared.open(url)
+                                    }
+                                }
+                                .padding()
+                            }
+                        }
                     }
+                }
                 
             }
-            .modelContainer(sharedModelContainer)
-            .environment(globalLocationManager)
-            .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
+            .environmentObject(prayerViewModel)
+            .preferredColorScheme(
+                colorModeToggleNew == 0 ? .light :
+                    colorModeToggleNew == 1 ? .dark :
+                    (prayerViewModel.isDaytime ? .light : .dark)
+            )
+            
+            
+        }
+        .modelContainer(sharedModelContainer)
+        .environmentObject(environmentLocationManager)
+        .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
 //            .environmentObject(prayerViewModel) // Inject PrayerViewModel
-            // Inject `sharedState` as an EnvironmentObject at the top level of the app.
-            // This makes `sharedState` globally accessible to any view within the view hierarchy
-            // that starts from `PrayerTimesView`.
-            // All subviews can access it implicitly by declaring
-            // `@EnvironmentObject var sharedState: SharedStateClass`.
-            // NOTE: This injection covers all views in the hierarchy. Additional injections are unnecessary,
-            // unless a view is presented outside this hierarchy, like with a new window or distinct view instance.
-
+        /*
+         Inject `sharedState` as an EnvironmentObject at the top level of the app.
+         This makes `sharedState` globally accessible to any view within the view hierarchy
+         that starts from `PrayerTimesView`.
+         All subviews can access it implicitly by declaring:
+         `@EnvironmentObject var sharedState: SharedStateClass`.
+         NOTE: This injection covers all views in the hierarchy. Additional injections are unnecessary,
+         unless a view is presented outside this hierarchy, like with a new window or distinct view instance.
+         */
+        
     }
 }
+
+//struct shukrApp: App {
+//    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+//    
+//    @StateObject var sharedState = SharedStateClass()
+//    @StateObject var prayerViewModel: PrayerViewModel // Add ViewModel here
+//    @State private var globalLocationManager = EnvLocationManager()
+//    
+//    @AppStorage("modeToggle") var colorModeToggle = false
+//    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+//
+//    var sharedModelContainer: ModelContainer = {
+//        let schema = Schema([
+//            SessionDataModel.self,
+//            MantraModel.self,
+//            TaskModel.self,
+//            DuaModel.self,
+//            PrayerModel.self
+//        ])
+//        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+//
+//        do {
+//            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+//        } catch {
+//            if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
+//                print("Preview mode: Using empty ModelContainer.")
+//                return try! ModelContainer(for: Schema([]), configurations: []) // essentially making it an empty dummy
+//            } else {
+//                fatalError("Could not create ModelContainer: \(error)")
+//            }
+//        }
+//    }()
+//    
+//    init() {
+//        let context = sharedModelContainer.mainContext
+//        _prayerViewModel = StateObject(wrappedValue: PrayerViewModel(context: context))
+//    }
+//    
+//    var body: some Scene {
+//
+//        WindowGroup {
+//            
+//            // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
+//            NavigationStack{
+//                if globalLocationManager.isAuthorized && false{
+//                    PrayerTimesView()
+//                    //.transition(.opacity.animation(.easeInOut(duration: 0.3)))
+//                    //.toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
+//                }
+//                else{
+//                    ZStack{
+//                        // main outer circle
+//                        Circle()
+//                            .fill(Color(.clear))
+//                            .stroke(Color(.secondarySystemFill), lineWidth: 12)
+//                            .frame(width: 200, height: 200)
+//                        // inner content
+//                        Text("shukr")
+//                            .font(.headline)
+//                            .fontWeight(.thin)
+//                            .fontDesign(.rounded)
+//                        // bottom
+//                        if true {
+//                            VStack{
+//                                Spacer()
+//                                Text("gimme your location bruh...")
+//                                    .padding()
+//                                Button("Allow Location Access in Settings") {
+//                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+//                                        UIApplication.shared.open(url)
+//                                    }
+//                                }
+//                            }
+//                        }
+//                        else{
+//                            VStack {
+//                                Text("Location Access Required")
+//                                    .font(.headline)
+//                                    .padding()
+//                                Text("Please allow location access to fetch accurate prayer times.")
+//                                    .multilineTextAlignment(.center)
+//                                    .padding()
+//                                Button("Allow Location Access") {
+//                                    if let url = URL(string: UIApplication.openSettingsURLString) {
+//                                        UIApplication.shared.open(url)
+//                                    }
+//                                }
+//                                .padding()
+//                            }
+//                        }
+//                    }
+//                }
+//                
+//            }
+//            .environmentObject(prayerViewModel)
+//            .preferredColorScheme(
+//                colorModeToggleNew == 0 ? .light :
+//                    colorModeToggleNew == 1 ? .dark :
+//                    (prayerViewModel.isDaytime ? .light : .dark)
+//            )
+//            
+//            
+//        }
+//        .modelContainer(sharedModelContainer)
+//        .environment(globalLocationManager)
+//        .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
+////            .environmentObject(prayerViewModel) // Inject PrayerViewModel
+//        /*
+//         Inject `sharedState` as an EnvironmentObject at the top level of the app.
+//         This makes `sharedState` globally accessible to any view within the view hierarchy
+//         that starts from `PrayerTimesView`.
+//         All subviews can access it implicitly by declaring:
+//         `@EnvironmentObject var sharedState: SharedStateClass`.
+//         NOTE: This injection covers all views in the hierarchy. Additional injections are unnecessary,
+//         unless a view is presented outside this hierarchy, like with a new window or distinct view instance.
+//         */
+//        
+//    }
+//}
+
 
 
 class AppDelegate: NSObject, UIApplicationDelegate {

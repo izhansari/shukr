@@ -3,15 +3,10 @@ import SwiftData
 import UIKit
 import WidgetKit
 
-//used by pulseCircle
-struct QiblaSettings {
-    @AppStorage("qibla_sensitivity") static var alignmentThreshold: Double = 3.5
-    static let minThreshold: Double = 1.0  // More precise
-    static let maxThreshold: Double = 15.0 // More forgiving
-}
-
 struct SettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
+    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
     @AppStorage("qibla_sensitivity") private var qiblaSensitivity: Double = 3.5
@@ -90,171 +85,205 @@ struct SettingsView: View {
     
     var body: some View {
         ZStack{
-            Form {
+            VStack{
+//                HStack {
+//                    Button(action: {
+//                        withAnimation(.spring(duration: 0.3)) {
+//                            sharedState.navPosition = sharedState.cameFromNavPosition
+//                        }
+//                    }) {
+//                        Image(systemName: "chevron.left") // Standard back arrow
+//                            .font(.title2)
+//                            .foregroundColor(.primary)
+//                    }
+//                    
+//                    Spacer()
+//                    
+//                    Text("Settings") // Center title
+//                        .font(.headline)
+//                    
+//                    Spacer()
+//                    
+////                    Button(action: {
+////                        // Placeholder action
+////                    }) {
+////                        Image(systemName: "gearshape") // Dummy trailing button (optional)
+////                            .font(.title2)
+////                            .foregroundColor(.primary)
+////                    }
+//                    ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
+//                }
+//                .padding(.horizontal)
                 
-                //MARK: - Location Info
-                Section(header: Text("Location Information")) {
-                    if let cityName = viewModel.cityName {
+                Form {
+                    
+                    //MARK: - Location Info
+                    Section(header: Text("Location Information")) {
+                        if let cityName = viewModel.cityName {
+                            HStack {
+                                Image(systemName: "mappin.and.ellipse")
+                                Text("City")
+                                Spacer()
+                                Text(cityName)
+                            }
+                        } else {
+                            Text("Fetching city...")
+                        }
+                        
                         HStack {
-                            Image(systemName: "mappin.and.ellipse")
-                            Text("City")
+                            Image(systemName: "arrow.left.and.right.square")
+                            Text("Latitude")
                             Spacer()
-                            Text(cityName)
+                            Text(String(format: "%.6f", lastLatitude))
                         }
-                    } else {
-                        Text("Fetching city...")
+                        
+                        HStack {
+                            Image(systemName: "arrow.up.and.down.square")
+                            Text("Longitude")
+                            Spacer()
+                            Text(String(format: "%.6f", lastLongitude))
+                        }
+                        
+                        Button("Refresh Location") {
+                            viewModel.refreshCityAndPrayerTimes()
+                            viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
+                        }
                     }
                     
-                    HStack {
-                        Image(systemName: "arrow.left.and.right.square")
-                        Text("Latitude")
-                        Spacer()
-                        Text(String(format: "%.6f", lastLatitude))
+                    
+                    //MARK: - Notifications
+                    Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
+                        HStack {
+                            prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
+                            Divider()
+                            prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
+                            Divider()
+                            prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
+                            Divider()
+                            prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
+                            Divider()
+                            prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                        }
+                        .padding(.vertical)
+                        
+                        if isNotifPopupVisible{
+                            NotificationDropdownInfo()
+                        }
                     }
                     
-                    HStack {
-                        Image(systemName: "arrow.up.and.down.square")
-                        Text("Longitude")
-                        Spacer()
-                        Text(String(format: "%.6f", lastLongitude))
-                    }
                     
-                    Button("Refresh Location") {
-                        viewModel.refreshCityAndPrayerTimes()
-                        viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
-                    }
-                }
-                
-                
-                //MARK: - Notifications
-                Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
-                    HStack {
-                        prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
-                        Divider()
-                        prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
-                        Divider()
-                        prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
-                        Divider()
-                        prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
-                        Divider()
-                        prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
-                    }
-                    .padding(.vertical)
+                    // MARK: - Daily Alarm
+                    AlarmSettingsView()
                     
-                    if isNotifPopupVisible{
-                        NotificationDropdownInfo()
-                    }
-                }
-                
-                
-                // MARK: - Daily Alarm
-                AlarmSettingsView()
-                
-                
-                
-                //MARK: - Prayer Streak Settings
-                Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) {
-                    Picker("Streak Type", selection: $prayerStreakMode) {
-                        Text("Level 1").tag(1)
-                        Text("Level 2").tag(2)
-                        Text("Level 3").tag(3)
-                    }
-                    .pickerStyle(.segmented)
                     
-                    if isStreakPopupVisible{
-                        StreakDropdownInfo()
+                    
+                    //MARK: - Prayer Streak Settings
+                    Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) {
+                        Picker("Streak Type", selection: $prayerStreakMode) {
+                            Text("Level 1").tag(1)
+                            Text("Level 2").tag(2)
+                            Text("Level 3").tag(3)
+                        }
+                        .pickerStyle(.segmented)
+                        
+                        if isStreakPopupVisible{
+                            StreakDropdownInfo()
+                        }
                     }
-                }
 
-                
-                
-                //MARK: - Calculation Method
-                Section(header: Text("Calculation Method")
-                    .onTapGesture {
-                        showDevStuff.toggle()
-                    }
-                ) {
-                    Picker("Method", selection: $calculationMethod) {
-                        ForEach(calculationMethods, id: \.0) { method in
-                            Text(method.1).tag(method.0)
-                        }
-                    }
-                    Picker("School", selection: $school) {
-                        ForEach(schools, id: \.0) { school in
-                            Text(school.1).tag(school.0)
-                        }
-                    }
                     
-                    // Qibla sensitivity slider
-                    VStack(alignment: .leading){
-                        HStack{
-                            Image(systemName: "location.north.line")
-                            Stepper("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°",
-                                    value: $qiblaSensitivity,
-                                    in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
-                                    step: 0.5)
-                        }
-                    }
                     
-                }
-                .onChange(of: calculationMethod) { _, new in
-                    viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
-                    WidgetCenter.shared.reloadAllTimelines()
-                }
-                .onChange(of: school) { _, new in
-                    viewModel.fetchPrayerTimes(cameFrom: "onChange school")
-                    WidgetCenter.shared.reloadAllTimelines()
-                }
-                
-
-                
-                //MARK: - Dev Stuff
-                if(showDevStuff){
-                    Section(header: Text("My Dev Stuff")) {
-                        Picker("Ring Style", selection: $selectedRingStyle) {
-                            ForEach(0..<10) { index in
-                                Text("\(index)").tag(index)
+                    //MARK: - Calculation Method
+                    Section(header: Text("Calculation Method")
+                        .onTapGesture {
+                            showDevStuff.toggle()
+                        }
+                    ) {
+                        Picker("Method", selection: $calculationMethod) {
+                            ForEach(calculationMethods, id: \.0) { method in
+                                Text(method.1).tag(method.0)
                             }
-                            
                         }
-                        Toggle("Location Printer", isOn: $viewModel.locationPrints)
-                        Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
-                        Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
-                        VStack{
-                            Toggle("Use Test Prayer Times", isOn: $viewModel.useTestPrayers)
-                                .onChange(of: viewModel.useTestPrayers) { _, new in
-                                    viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                        Picker("School", selection: $school) {
+                            ForEach(schools, id: \.0) { school in
+                                Text(school.1).tag(school.0)
+                            }
+                        }
+                        
+                        // Qibla sensitivity slider
+                        VStack(alignment: .leading){
+                            HStack{
+                                Image(systemName: "location.north.line")
+                                Stepper("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°",
+                                        value: $qiblaSensitivity,
+                                        in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
+                                        step: 0.5)
+                            }
+                        }
+                        
+                    }
+                    .onChange(of: calculationMethod) { _, new in
+                        viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                    .onChange(of: school) { _, new in
+                        viewModel.fetchPrayerTimes(cameFrom: "onChange school")
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+                    
+
+                    
+                    //MARK: - Dev Stuff
+                    if(showDevStuff){
+                        Section(header: Text("My Dev Stuff")) {
+                            Picker("Ring Style", selection: $selectedRingStyle) {
+                                ForEach(0..<10) { index in
+                                    Text("\(index)").tag(index)
                                 }
-                            if viewModel.useTestPrayers {
-                                Text("Using test times with short intervals")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
+                                
+                            }
+                            Toggle("Location Printer", isOn: $viewModel.locationPrints)
+                            Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
+                            Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
+                            VStack{
+                                Toggle("Use Test Prayer Times", isOn: $viewModel.useTestPrayers)
+                                    .onChange(of: viewModel.useTestPrayers) { _, new in
+                                        viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                                    }
+                                if viewModel.useTestPrayers {
+                                    Text("Using test times with short intervals")
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                            }
+                            Button("Reset Autopilot Fajr Alert"){
+                                didShowAlarmSetupAlert = false
+                                alarmEnabled = false
+                            }
+                            Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
+                                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
+                                    Text(prayer)
+                                }
+                            }
+                            Button("Cancel for \(selectedPrayerToCancelNudges)") {
+                                viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
                             }
                         }
-                        Button("Reset Autopilot Fajr Alert"){
-                            didShowAlarmSetupAlert = false
-                            alarmEnabled = false
-                        }
-                        Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
-                            ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
-                                Text(prayer)
-                            }
-                        }
-                        Button("Cancel for \(selectedPrayerToCancelNudges)") {
-                            viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
-                        }
-                    }
 
+                    }
+                    
                 }
-                
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
-        .scrollContentBackground(.hidden)
-        .background(Color("bgColor"))
+//        .scrollContentBackground(.hidden)
+//        .background(Color("bgColor"))
+//        .background(Color(.secondarySystemBackground))
+        .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(false)
+        
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
@@ -484,7 +513,7 @@ struct NotificationDropdownInfo: View {
                     content.subtitle = "Pray by \(shortTimePM(Date()))"
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
-                    viewModel.addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
+                    addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
                 }
                 .font(.subheadline)
                 .foregroundColor(.gray)
@@ -507,7 +536,7 @@ struct NotificationDropdownInfo: View {
                     content.subtitle = randNudge.subtitle
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
-                    viewModel.addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
+                    addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
                 }
                 .font(.subheadline)
                 .foregroundColor(.gray)
@@ -515,6 +544,18 @@ struct NotificationDropdownInfo: View {
         }
         .padding(.horizontal)
 
+    }
+    
+    func addToNotificationCenterBySeconds(identifier: String, content: UNMutableNotificationContent, sec: Double){
+        let center = UNUserNotificationCenter.current()
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: sec, repeats: false)
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        center.add(request) { error in
+            if let error = error {
+                print("Error \(identifier): \(error.localizedDescription)")
+            }
+        }
+        print("✅ Scheduled \(identifier): in \(sec)s")
     }
 }
 

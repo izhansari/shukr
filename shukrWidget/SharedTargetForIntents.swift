@@ -183,7 +183,7 @@ struct PrayerUtils {
     }
     
     /// Generic prayer time retrieval
-    static func getPrayerTime(for prayer: enumPrayer, in times: PrayerTimes) -> Date {
+    static func getTime(for prayer: enumPrayer, in times: PrayerTimes) -> Date {
         switch prayer {
         case .fajr: return times.fajr
         case .sunrise: return times.sunrise
@@ -192,6 +192,23 @@ struct PrayerUtils {
         case .maghrib: return times.maghrib
         case .isha: return times.isha
         }
+    }
+    
+    static func getNextTime(for prayer: enumPrayer) throws -> Date {
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+
+        let coordinates = try PrayerUtils.getUserCoordinates()
+        let params = PrayerUtils.getCalculationParameters()
+
+        let todaysPrayers = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
+        let tomorrowsPrayers = try PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params)
+
+        let prayerToday = PrayerUtils.getTime(for: prayer, in: todaysPrayers)
+        let prayerTomorrow = PrayerUtils.getTime(for: prayer, in: tomorrowsPrayers)
+
+        let nextPrayer = Date() > prayerToday ? prayerTomorrow : prayerToday
+
+        return nextPrayer
     }
     
 
@@ -207,28 +224,34 @@ struct PrayerUtils {
         print("Alarm Is Before: \(alarmIsBefore)")
         print("Alarm Is Fajr: \(alarmIsFajr)")
 
+        print("1")
 
         guard alarmEnabled else {
             print("hellow3")
             throw AlarmDisabledError()
         }
-        print("hellow4")
-        let coordinates = try PrayerUtils.getUserCoordinates()
-        print("1")
-        let params = PrayerUtils.getCalculationParameters()
+
+        /*
         print("2")
-        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
+        let coordinates = try PrayerUtils.getUserCoordinates()
+        let params = PrayerUtils.getCalculationParameters()
         print("3")
+        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
         let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
         print("4")
-        let prayer: enumPrayer = alarmIsFajr ? .fajr : .sunrise
-        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
+        let fajrOrSunrise: enumPrayer = alarmIsFajr ? .fajr : .sunrise
+        let fajrSunriseToday = PrayerUtils.getTime(for: fajrOrSunrise, in: todayTimes)
+        let fajrSunriseTomorrow = PrayerUtils.getTime(for: fajrOrSunrise, in: tomorrowTimes)
         print("5")
-        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
+        let nextFajrSunrise = Date() > fajrSunriseToday ? fajrSunriseTomorrow : fajrSunriseToday
         print("6")
+        */
+        
+        let nextFajrSunrise = try PrayerUtils.getNextTime(for: alarmIsFajr ? .fajr : .sunrise)
+ 
 
         let offset = TimeInterval(alarmOffsetMinutes * 60)
-        let resultTime = nextPrayerTime.addingTimeInterval(alarmIsBefore ? -offset : offset)
+        let resultTime = nextFajrSunrise.addingTimeInterval(alarmIsBefore ? -offset : offset)
         
         let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
         let beforeAfterText = alarmIsBefore ? "before" : "after"
@@ -381,8 +404,8 @@ struct GetSomePrayerTimeIntent: AppIntent {
         let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
         let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
         
-        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
+        let prayerTime = PrayerUtils.getTime(for: prayer, in: todayTimes)
+        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getTime(for: prayer, in: tomorrowTimes) : prayerTime
         
         return .result(value: nextPrayerTime, dialog: IntentDialog(stringLiteral: "\(prayer) will be at \(shortTimePM(nextPrayerTime))"))
     }
@@ -433,8 +456,8 @@ struct GetOffsetTimeIntent: AppIntent {
         let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
         let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
         
-        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
+        let prayerTime = PrayerUtils.getTime(for: prayer, in: todayTimes)
+        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getTime(for: prayer, in: tomorrowTimes) : prayerTime
         
         let offset = TimeInterval(offsetMinutes * 60)
         let resultTime = referencePoint == .after ? nextPrayerTime.addingTimeInterval(offset) : nextPrayerTime.addingTimeInterval(-offset)

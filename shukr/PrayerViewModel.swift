@@ -4,17 +4,38 @@ import CoreLocation
 import SwiftData
 import UserNotifications
 import WidgetKit
+import Combine
 
 // MARK: - PrayerViewModel
-class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private var context: ModelContext
+class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationManager stuff from here. one less location manager!
     
-//    @AppStorage("calculationMethod") var calculationMethod: Int = 2
-//    @AppStorage("school") var school: Int = 0
+    // MARK: - Arguments & Init
+    
+    private var context: ModelContext // Inject the ModelContext in the initializer
+    var ENV_LocationManager: EnvLocationManager // Inject the EnvLocationManager in the initializer
+    init(context: ModelContext, envLocationManager: EnvLocationManager) {
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
+        self.context = context
+        self.ENV_LocationManager = envLocationManager
+        self.timeAtLastRefresh = Date()
+        self.scheduleDailyRefresh()
+        self.subscribeToChanges()
+    }
+    
+    private func subscribeToChanges(){
+        // Subscribe to userLocation changes
+        ENV_LocationManager.$userLocation
+            .sink { [weak self] newVal in
+                self?.handleLocationChange(for: newVal)
+                print("ran off subscribed")
+            }
+            .store(in: &cancellables)
+    }
+    
+    // MARK: - AppStorage
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
     @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
 
-    
     @AppStorage("fajrNotif") var fajrNotif: Bool = true
     @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = false
     @AppStorage("asrNotif") var asrNotif: Bool = true
@@ -26,94 +47,49 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     @AppStorage("asrNudges") var asrNudges: Bool = true
     @AppStorage("maghribNudges") var maghribNudges: Bool = true
     @AppStorage("ishaNudges") var ishaNudges: Bool = true
-    
-    @AppStorage("locationPrints") var locationPrints: Bool = false
-    @AppStorage("schedulePrints") var schedulePrints: Bool = false
-    @AppStorage("calculationPrints") var calculationPrints: Bool = false
 
     @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     @AppStorage("lastCityName", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastCityName: String = "Wonderland"
-
-    // App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
+    
+    /// App Storage doesnt use Date types. So we use timeIntervalSince1970 to convert to Date. Then use a computed var to get and set it. (which deals with the unwrapping for us)
     @AppStorage("prayerStreak") var prayerStreak: Int = 0
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
     @AppStorage("dateOfMaxPrayerStreak") var dateOfMaxPrayerStreakTimeInterval: Double = Date().timeIntervalSince1970
     var dateOfMaxPrayerStreak: Date {
-        get {
-            return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval)
-        }
-        set {
-            dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970
-        }
+        get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
+        set { dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970 }
     }
+    // used appstorage for persistence purposes. but otherwise really not needed.
+    @AppStorage("locationPrints") var locationPrints: Bool = false
+    @AppStorage("schedulePrints") var schedulePrints: Bool = false
+    @AppStorage("calculationPrints") var calculationPrints: Bool = false
 
-    
-
-    var orderedPrayerNames: [String] {
-        ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-    }
+    let orderedPrayerNames: [String] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         
     var notifSettings: [String: (allowNotif: Bool, allowNudges: Bool)] {
-        [
-            "Fajr": (allowNotif: fajrNotif, allowNudges: fajrNudges),
-            "Dhuhr": (allowNotif: dhuhrNotif, allowNudges: dhuhrNudges),
-            "Asr": (allowNotif: asrNotif, allowNudges: asrNudges),
-            "Maghrib": (allowNotif: maghribNotif, allowNudges: maghribNudges),
-            "Isha": (allowNotif: ishaNotif, allowNudges: ishaNudges)
-        ]
+        [    "Fajr":    (fajrNotif,    fajrNudges),
+             "Dhuhr":   (dhuhrNotif,   dhuhrNudges),
+             "Asr":     (asrNotif,     asrNudges),
+             "Maghrib": (maghribNotif, maghribNudges),
+             "Isha":    (ishaNotif,    ishaNudges)      ]
     }
     
-    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
-    @Published var hasValidLocation: Bool = false
+    // MARK: - Published & State
     @Published var cityName: String?
     @Published var useTestPrayers: Bool = false  // Add this property
     @Published var prayerTimesForDateDict: [String: (start: Date, end: Date, window: TimeInterval)] = [:]
-    @Published var timeAtLLastRefresh: Date
+    @Published var timeAtLastRefresh: Date
     @Published var prayerSettings: [String: Bool] = [:]
-    
-    @State private var refreshTimer: Timer?
-        
-    private let locationManager: CLLocationManager
-    private let geocoder = CLGeocoder()
-    private var lastGeocodeRequestTime: Date?
-    private var lastAppLocation: CLLocation?
-    
-    var todaysPrayers: [PrayerModel] = []
-    
-    func getCalcMethodFromAppStorageVar() -> CalculationMethod {
-//        let calculationMethod = UserDefaults.standard.integer(forKey: "calculationMethod")
-        switch  calculationMethod{
-        case 1: return .karachi
-        case 2: return .northAmerica
-        case 3: return .muslimWorldLeague
-        case 4: return .ummAlQura
-        case 5: return .egyptian
-        case 7: return .tehran
-        case 8: return .dubai
-        case 9: return .kuwait
-        case 10: return .qatar
-        case 11: return .singapore
-        case 12: return .other
-        case 13: return .turkey
-        case 14: return .other
-        default: return .northAmerica
-        }
-    }
+    @Published var todaysPrayers: [PrayerModel] = []
 
-    func getSchoolFromAppStorageVar() -> Madhab {
-//        let school = UserDefaults.standard.integer(forKey: "school")
-        switch school {
-        case 0: return .shafi
-        case 1: return .hanafi
-        default: return .shafi
-        }
-    }
-    
+    @State private var refreshTimer: Timer?
+
+    // MARK: - Computed Vars
     var relevantPrayer: PrayerModel? {
         let now = Date()
-        
+
         if let currentPrayer = todaysPrayers.first(where: {  // 1. Check for the current prayer if not completed
             !$0.isCompleted && $0.startTime <= now && now <= $0.endTime
         }) { return currentPrayer }
@@ -128,140 +104,43 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
 
         return nil                                          // No relevant prayer found
     }
-
-    // Inject the ModelContext in the initializer
-    init(context: ModelContext) {
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>PrayerViewModel initialized")
-        self.context = context
-        self.timeAtLLastRefresh = Date()
-        self.locationManager = CLLocationManager()
-        super.init()
-        self.locationManager.delegate = self
-        self.locationManager.desiredAccuracy = kCLLocationAccuracyBest
-        self.locationManager.requestWhenInUseAuthorization()
-        self.locationManager.startUpdatingLocation()
-        self.scheduleDailyRefresh()
-    }
-
     
-    func locationPrinter(_ message: String) {
-        locationPrints ? print(message) : ()
-    }
-    
-    func schedulePriner(_ message: String){
-        schedulePrints ? print(message) : ()
-    }
-        
-    func calculationPrinter(_ message: String = "",
-                            addNewPrayer: (name: String, startTime: Date, endTime: Date)? = nil,
-                            overwritePrayerStart: (name: String, startTime: Date, oldStartTime: Date)? = nil) {
-        guard calculationPrints else { return }
-        
-        if let data = addNewPrayer {
-            print("""
-                ➕ Adding New Prayer: \(data.name)
-                    ↳ Start Time: \(shortTimePMDate(data.startTime)) | End Time: \(shortTimePMDate(data.endTime))
-                """)
-        } else if let data = overwritePrayerStart {
-            if data.startTime != data.oldStartTime {
-                print("""
-                ➤ OVERWRITING PRAYER: \(data.name)
-                    ↳ NEW START = \(shortTimePMDate(data.startTime)) (was \(shortTimePMDate(data.oldStartTime)))
-                """.trimmingCharacters(in: .whitespacesAndNewlines))
-            }
-        } else {
-            print(message)
-        }
-    }
 
-    
-    private func scheduleDailyRefresh() {
-        let calendar = Calendar.current
-        if let midnight = calendar.date(bySettingHour: 0, minute: 0, second: 0, of: Date().addingTimeInterval(86400)) {
-            let timeInterval = midnight.timeIntervalSince(Date())
-            
-            print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in
-                self.timeAtLLastRefresh = Date()
-                self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")
-                self.scheduleDailyRefresh() // Schedule the next update
-            }
-        }
-    }
-    
-    // CLLocationManagerDelegate method
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        checkLocationAuthorization()
-    }
+    // MARK: - Location Stuff
+    private let geocoder = CLGeocoder()
+    private var lastGeocodeRequestTime: Date?
+    private var lastAppLocation: CLLocation?
+    private var cancellables = Set<AnyCancellable>()
 
-    func requestLocationAuthorization() {
-        locationManager.requestWhenInUseAuthorization()
-    }
-
-    // MARK:
-    func checkLocationAuthorization() {
-        switch locationManager.authorizationStatus {
-        case .notDetermined:
-            print("locman: notDetermined")
-            locationManager.requestWhenInUseAuthorization()
-        case .restricted, .denied:
-            print("locman: denied")
-            locationAuthorizationStatus = .denied
-            hasValidLocation = false
-        case .authorizedWhenInUse, .authorizedAlways:
-            print("locman: authorizedWhenInUse or authorizedAlways")
-            locationAuthorizationStatus = .authorizedWhenInUse
-            if let location = locationManager.location {
-                hasValidLocation = true
-                fetchPrayerTimes(cameFrom: "checkLocationAuthorization")
-                updateCityName(for: location)
-            } else {
-                hasValidLocation = false
-            }
-        @unknown default:
-            print("locman: default")
-            hasValidLocation = false
-        }
-    }
-
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let deviceLocation = locations.last else {
+    func handleLocationChange(for location: CLLocation?) {
+        guard let location = location else {
             locationPrinter(">passed by the didUpdateLocation< - No location found")
             return
         }
 
         let now = Date()
-        if let appLocation = lastAppLocation {
-            let distanceChange = appLocation.distance(from: deviceLocation)
+        if let lastAppLocation = lastAppLocation {
+            let distanceChange = lastAppLocation.distance(from: location)
             if let lastRequestTime = lastGeocodeRequestTime {
-                if distanceChange < 50, now.timeIntervalSince(lastRequestTime) < 30 {
+                if distanceChange < 500, now.timeIntervalSince(lastRequestTime) < 30 {
                     // if we reach here, we are skipping updates
                     return
-                } else { locationPrinter("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?") }
-            } else { locationPrinter("📍 New Location: \(deviceLocation.coordinate.latitude), \(deviceLocation.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request") }
+                } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?") }
+            } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request") }
         } else { locationPrinter("⚠️ First location update. Proceeding with geocoding.") }
 
-        // If checks pass, update location and proceed with geocoding
-        updateLocation(deviceLocation)
-    }
-
-
-    private func updateLocation(_ location: CLLocation) {
-        hasValidLocation = true
-        lastLatitude = location.coordinate.latitude
-        lastLongitude = location.coordinate.longitude
-
-        // Update the last geocode request time and last updated location
-        lastGeocodeRequestTime = Date()
-        lastAppLocation = location
-
+        // If we return out of the if block, update location and proceed with geocoding
         locationPrinter("🌍 Triggering geocoding and prayer times fetch...")
+        self.lastLatitude = location.coordinate.latitude
+        self.lastLongitude = location.coordinate.longitude
+        self.lastGeocodeRequestTime = Date()
+        self.lastAppLocation = location
         updateCityName(for: location)
         fetchPrayerTimes(cameFrom: "updateLocation")
+
     }
-
-
+    
+    //used in 2 methods: sub_handleLocationChange() & refreshCityAndPrayerTimes()
     private func updateCityName(for location: CLLocation) {
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             DispatchQueue.main.async {
@@ -287,8 +166,19 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             }
         }
     }
+    
+    func refreshCityAndPrayerTimes() { // used outside of viewmodel.
+        guard let location = ENV_LocationManager.manager.location else {
+            print("Location not available")
+            return
+        }
+        updateCityName(for: location)
+        fetchPrayerTimes(cameFrom: "refreshCityAndPrayerTimes")
+    }
 
-    func getPrayerTime(for prayerName: String, on date: Date) -> (start: Date, end: Date)? {
+
+    // MARK: - Potential Utils
+    func getPrayerTime(for prayerName: String, on date: Date) -> (start: Date, end: Date)? { //PrayerUtilsFlas
         guard let times = calcAdhanLibraryPrayerTimes(date: date) else {
             print("Failed to fetch or calculate Adhan arguments for date: \(date)")
             return nil
@@ -330,9 +220,8 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         return nextPrayerTime
     }
 
-    
-    func calcAdhanLibraryPrayerTimes(date: Date) -> PrayerTimes?{
-        guard let location = locationManager.location else {
+    func calcAdhanLibraryPrayerTimes(date: Date) -> PrayerTimes?{ //PrayerUtilsFlag
+        guard let location = ENV_LocationManager.manager.location else {
             print("Location not available")
             return nil
         }
@@ -344,8 +233,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         // Set up Adhan parameters
         let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
         let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        var params = getCalcMethodFromAppStorageVar().params
-        params.madhab = getSchoolFromAppStorageVar()
+        let params = PrayerUtils.getCalculationParameters()
         
         guard let times = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) else{
             print("failed generating PrayerTimes object using Adhan libary")
@@ -353,7 +241,9 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
         return times
     }
-    
+
+    // MARK: - Prayer Scheduling
+        
     // the current one im working on.
     func fetchPrayerTimes(cameFrom: String) {
         print("@@ came from: @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \(cameFrom)")
@@ -364,8 +254,8 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         
         // My new proposed way of just having calc var shown on prayerButtons. Dont store nothing in persistence UNTIL COMPLETION or MISSED
         //-------------------------------------------------------------------
-        let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(24 * 60 * 60)) // Start of next day
-        let midnightMinusOneSec = midnight.addingTimeInterval(-1) // Subtract 1 second
+        let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(24 * 60 * 60))
+        let midnightMinusOneSec = midnight.addingTimeInterval(-1)
         
         func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
             return (starTime, endTime, endTime.timeIntervalSince(starTime))
@@ -395,13 +285,12 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             "Maghrib": createTestPrayerTime(startOffset: 1, endOffset: 2), // 6–9 seconds from now
             "Isha": createTestPrayerTime(startOffset: 2, endOffset: 4)     // 12–18 seconds from now
         ]
-//        print("Current Test Times: Asr end \(shortTimeSecPM(testTimes["Asr"]!.1)), Maghrib Start \(shortTimeSecPM(testTimes["Maghrib"]!.0))")
         
         prayerTimesForDateDict = useTestPrayers ? testTimes : realTimes
                 
         //-------------------------------------------------------------------
         
-        ////  CURRENT OBJECTIVE: 12/2 @ 5:04PM just commented this out and gonna try making it dependent on the calc vars from Adhan. Then create the persisted prayerModel objects on completion instead... this is the start of a big rethinking of our current archtiecture to handle the prayers. The current code as it stands will not work because now thelast5Prayers rely on the persisted objects which are then fed into  PulseCircleView and PrayerButton.
+        ////  CURRENT OBJECTIVE: 12/2 @ 5:04PM just commented this out and gonna try making it dependent on the calc vars from Adhan. Then create the persisted prayerModel objects on completion instead... this is the start of a big rethinking of our current archtiecture to handle the prayers. The current code as it stands will not work because now thelast5Prayers rely on the persisted objects which are then fed into PulseCircleView and PrayerButton.
         
         // Format the current date
         let todayStart = Calendar.current.startOfDay(for: Date())
@@ -441,17 +330,26 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
                 }
             }
             // Save changes
-            self.saveChanges()
-            //self.prayers = try self.context.fetch(fetchDescriptor).sorted(by: { $0.startTime < $1.
+            saveChanges()
         } catch {
             print("❌ Error fetching existing prayers: \(error.localizedDescription)")
         }
         
+        func saveChanges() {
+            do {
+                try context.save()
+                let params = PrayerUtils.getCalculationParameters()
+                calculationPrinter("👍 \(params.method) & \(params.madhab) & latitude: \(lastLatitude), longitude: \(lastLongitude)")
+            } catch {
+                print("🚨 Failed to save prayer state: \(error.localizedDescription)")
+            }
+        }
         //-------------------------------------------------------------------
         
         scheduleAllPrayerNotifications(prayerByDateDict: prayerTimesForDateDict)
     }
     
+    // MARK: - Notification Scheduling
 
     func scheduleAllPrayerNotifications(prayerByDateDict: [String : (start: Date, end: Date, window: TimeInterval)]) {
         var logMessages: [String] = [] // Collect logs here to ensure they print in order
@@ -534,7 +432,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         }
     }
 
-    func isNotCompletedToday(prayerName: String) -> Bool{
+    private func isNotCompletedToday(prayerName: String) -> Bool{
         let calendar = Calendar.current
         let todayStart = calendar.startOfDay(for: Date())
         let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
@@ -555,37 +453,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
 
     
-    func addToNotificationCenterBySeconds(identifier: String, content: UNMutableNotificationContent, sec: Double){
-        let center = UNUserNotificationCenter.current()
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: sec, repeats: false)
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-        center.add(request) { error in
-            if let error = error {
-                print("Error \(identifier): \(error.localizedDescription)")
-            }
-        }
-        print("✅ Scheduled \(identifier): in \(sec)s")
-    }
-
-    
-    private func saveChanges() {
-        do {
-            try context.save()
-//            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(self.latitude), longitude: \(self.longitude)")
-            calculationPrinter("👍 \(getCalcMethodFromAppStorageVar()) & \(getSchoolFromAppStorageVar()) & latitude: \(lastLatitude), longitude: \(lastLongitude)")
-        } catch {
-            print("🚨 Failed to save prayer state: \(error.localizedDescription)")
-        }
-    }
-
-    func refreshCityAndPrayerTimes() { // used outside of viewmodel.
-        guard let location = locationManager.location else {
-            print("Location not available")
-            return
-        }
-        updateCityName(for: location)
-        fetchPrayerTimes(cameFrom: "refreshCityAndPrayerTimes")
-    }
+// MARK: - PrayerObject Utils
 
 
     func togglePrayerCompletion(for prayer: PrayerModel) {
@@ -630,7 +498,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     }
     
     func setPrayerLocation(for prayer: PrayerModel) {
-        guard let location = locationManager.location else {
+        guard let location = ENV_LocationManager.manager.location else {
             print("Location not available")
             return
         }
@@ -648,7 +516,7 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         print("✅ Canceled notifications for \(prayerName): [\(identifiers)]")
     }
             
-    func calculatePrayerStreak()/* -> Int */{
+    func calculatePrayerStreak(){
                 
         // Fetch prayers that are in the past
         let now = Date()
@@ -740,19 +608,70 @@ class PrayerViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
             return true // Default to daytime if no times are available
         }
         let now = Date()
-
-//        let testCutOffDate = todayAt(17, 47)
         
         // Check if the current time is between Fajr and 5:35 PM
         let isAfterFajr = now >= fajr.end
         let isBeforeMaghrib = now < maghrib.start /*testCutOffDate*/
         let isDaytime = isAfterFajr && isBeforeMaghrib
-
-        // Combine all prints into one statement
-//        print("isDayTime: Past Fajr: \(isAfterFajr), Before Maghrib: \(isBeforeMaghrib) = Daytime?: \(isDaytime)")
-
         return isDaytime
     }
     
     
+}
+
+
+// MARK: - Specialized Debug Printers
+
+extension PrayerViewModel{
+    
+    func locationPrinter(_ message: String) {
+        locationPrints ? print(message) : ()
+    }
+    
+    func schedulePriner(_ message: String){
+        schedulePrints ? print(message) : ()
+    }
+        
+    func calculationPrinter(_ message: String = "",
+                            addNewPrayer: (name: String, startTime: Date, endTime: Date)? = nil,
+                            overwritePrayerStart: (name: String, startTime: Date, oldStartTime: Date)? = nil) {
+        guard calculationPrints else { return }
+        
+        if let data = addNewPrayer {
+            print("""
+                ➕ Adding New Prayer: \(data.name)
+                    ↳ Start Time: \(shortTimePMDate(data.startTime)) | End Time: \(shortTimePMDate(data.endTime))
+                """)
+        } else if let data = overwritePrayerStart {
+            if data.startTime != data.oldStartTime {
+                print("""
+                ➤ OVERWRITING PRAYER: \(data.name)
+                    ↳ NEW START = \(shortTimePMDate(data.startTime)) (was \(shortTimePMDate(data.oldStartTime)))
+                """.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        } else {
+            print(message)
+        }
+    }
+
+}
+
+// MARK: - Non Location Functions
+
+extension PrayerViewModel {
+    
+    private func scheduleDailyRefresh() { // this doesnt work when app is closed... but if its open before midnight and left open until... then it should work
+        let calendar = Calendar.current
+        if let midnight = calendar.date(bySettingHour: 0, minute: 0, second: 0, of: Date().addingTimeInterval(86400)) {
+            let timeInterval = midnight.timeIntervalSince(Date())
+            
+            print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in
+                self.timeAtLastRefresh = Date()
+                self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")
+                self.scheduleDailyRefresh() // Schedule the next update
+            }
+        }
+    }
+
 }

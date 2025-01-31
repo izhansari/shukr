@@ -24,17 +24,17 @@ struct tasbeehView: View {
     @AppStorage("streak") var streak = 0
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
-    @AppStorage("vibrateToggle") var vibrateToggle = true
+//    @AppStorage("vibrateToggle") var vibrateToggle = true
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
 //    @AppStorage("modeToggle") var colorModeToggle = false
-    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+//    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     //    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     //    var toggleInactivityTimer = false
     //    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
     //    var vibrateToggle = true
     
     // State properties
-    @FocusState private var isNumberEntryFocused
+//    @FocusState private var isNumberEntryFocused
     @State private var timerIsActive = false
     @State private var timerbb: Timer? = nil
     @State private var paused = false
@@ -62,19 +62,19 @@ struct tasbeehView: View {
     @State private var newAvrgTPC: TimeInterval = 0 //calculated on increment and decrement by secondsPassed / tasbeeh
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
-    @State private var showMantraSheetFromResultsPage = false
+//    @State private var showMantraSheetFromResultsPage = false
     @State private var savedSession: SessionDataModel? = nil
-    @State private var isCurrentlyDragging = false
+//    @State private var isCurrentlyDragging = false
     
-    @State private var sessionSequence: [(title: String, targetCount: Int)] = []
+//    @State private var sessionSequence: [(title: String, targetCount: Int)] = []
     @State private var postNamazSequence: [(title: String, targetCount: Int)] = [
                 (title: "Subhanallah", targetCount: 33),
                 (title: "Alhamdulillah", targetCount: 33),
                 (title: "Allahu Akbar", targetCount: 34)
             ]
     @State private var currentSessionIndex: Int = 0
-    @State private var isSequentialModeActive: Bool = false
-    @State private var inMiddleOfSequence: Bool = false //use this to hide resultsview
+//    @State private var isSequentialModeActive: Bool = false
+//    @State private var inMiddleOfSequence: Bool = false //use this to hide resultsview
     @State private var tasbeehColorMode = false
 
     

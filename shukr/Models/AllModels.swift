@@ -25,8 +25,8 @@ class SharedStateClass: ObservableObject {
 
     @Published var isDoingPostNamazZikr: Bool = false
 //    @Published var showingOtherPages: Bool = false
-    @Published var showingPulseView: Bool = false
-    @Published var showSalahTab: Bool = true
+    @Published var allowQiblaHaptics: Bool = false
+    @Published var showSalahTabOld: Bool = true
     @Published var navPosition: ViewPosition = .main
     @Published var cameFromNavPosition: ViewPosition = .main
     
@@ -107,6 +107,22 @@ class PrayerModel {
         self.englishScore = nil
         self.latPrayedAt = nil
         self.longPrayedAt = nil
+    }
+    
+    enum prayerStatus {
+        case current
+        case upcoming
+        case missed
+    }
+    
+    func status() -> prayerStatus { // we can expand this out to use and enum and make that
+        let currentTime = Date()
+        let isCurrent = currentTime >= startTime && currentTime < endTime
+        let isUpcoming = currentTime < startTime
+
+        if isCurrent { return .current }
+        else if isUpcoming { return .upcoming }
+        else{ return .missed }
     }
 }
 

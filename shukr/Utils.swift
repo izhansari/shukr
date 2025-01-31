@@ -825,6 +825,26 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
         let startAngle: CGFloat = .pi / 2 // Start at 6 o'clock position (bottom center)
         return startAngle - stepAngle * CGFloat(index)
     }
+    
+    struct NeumorphicBead: View {
+        var body: some View {
+    //        Circle()
+    //            .fill(Color("bgColor")
+    //                .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: 1, y: 1))
+    //                .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: -1, y: -1))
+    //            )
+    //            .shadow(color: Color("NeuDarkShad"), radius: 1, x: 1, y: 1)
+    //            .shadow(color: Color("NeuLightShad"), radius: 1, x: -1, y: -1)
+    //            .frame(width: 7, height: 7)
+            Circle()
+                .fill(Color("bgColor")
+                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: -1))
+                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: 1))
+                )
+                .frame(width: 7, height: 7)
+        }
+    }
+
 }
 
 
@@ -1525,6 +1545,23 @@ struct BlurView: UIViewRepresentable {
 
 
 // MARK: - RingStyles
+
+struct CustomArc: Shape {
+    var progress: Double
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let startAngle = Angle(degrees: -90)
+        let endAngle = Angle(degrees: -90 + 360 * progress)
+
+        path.addArc(center: CGPoint(x: rect.midX, y: rect.midY),
+                    radius: rect.width / 2,
+                    startAngle: startAngle,
+                    endAngle: endAngle,
+                    clockwise: false)
+        return path
+    }
+}
 
 struct RingStyle0 {
     @AppStorage("qibla_sensitivity") static var alignmentThreshold: Double = 3.5
@@ -3128,6 +3165,13 @@ struct ExternalToggleText: View {
     let fontWeight: Font.Weight?
     let hapticFeedback: Bool
     
+//        originalText: "ends \(shortTimePM(prayer.endTime))",
+//        toggledText: timeLeftString,
+//        externalTrigger: $textTrigger,  // Pass the binding
+//        fontDesign: .rounded,
+//        fontWeight: .thin,
+//        hapticFeedback: true
+    
     @State private var showOriginal = true
     @State private var timer: Timer?
     @Binding var externalTrigger: Bool
@@ -3417,15 +3461,18 @@ struct TopBar: View {
     @AppStorage("prayerStreak") var prayerStreak: Int = 0
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
 
-    var viewState: SharedStateClass.ViewPosition { sharedState.navPosition }
-//    @GestureState var dragOffset: CGFloat
-    
     @State private var showMaxStreakToggle: Bool = false
 
-    
-    private var showSalahTab: Bool {
-//        sharedState.showSalahTab
-        sharedState.navPosition == .bottom || sharedState.navPosition == .main
+    var viewState: SharedStateClass.ViewPosition { sharedState.navPosition }
+
+    private var showTop: Bool {
+        sharedState.navPosition == .top
+    }
+    private var showMain: Bool {
+        sharedState.navPosition == .main
+    }
+    private var showBottom: Bool {
+        sharedState.navPosition == .bottom
     }
     
     private var tasbeehModeName: String {
@@ -3439,29 +3486,33 @@ struct TopBar: View {
 
     
     var body: some View {
-        ZStack{
+        ZStack(alignment: .top){
             VStack{
                 if let cityName = viewModel.cityName {
                     ZStack{
-                        HStack{ // tasbeeh label
+                        
+                        // tasbeeh label
+                        HStack{
                             Image(systemName: "circle.hexagonpath")
                                 .foregroundColor(.secondary)
-                            Text("\(tasbeehModeName)")
+                            Text("Tasbeeh")
+//                            Text("\(tasbeehModeName)")
                             
                         }
-                        .opacity(!showSalahTab ? 1 : 0)
-                        .offset(y: !showSalahTab ? 0 : -10) // move right
+                        .opacity(showTop ? 1 : 0)
+                        .offset(y: showTop ? 0 : -10) // move right
                         
-                        
-                        HStack{ // location label
+                        // location label
+                        HStack{
                             Image(systemName: "location.fill")
                                 .foregroundColor(.secondary)
                             Text(cityName)
                         }
-                        .opacity(showSalahTab && viewState != .bottom ? 1 : 0)
-                        .offset(y: viewState != .bottom ? 0 : -10) // move up
-                        .offset(y: showSalahTab ? 0 : 10) // move left
+                        .opacity(showMain ? 1 : 0)
+                        .offset(y: showTop || showMain ? 0 : -10) // move up
+                        .offset(y: showBottom || showMain ? 0 : 10) // move left
 
+                        // streak label
                         HStack(alignment: .center) {
                             Image(systemName: "heart.fill")
                                 .foregroundColor(.secondary)
@@ -3475,15 +3526,15 @@ struct TopBar: View {
                                 hapticFeedback: true
                             )
                         }
-                        .opacity(showSalahTab && viewState == .bottom  ? 1 : 0)
-                        .offset(y: viewState == .bottom  ? 0 : 10) // move down
-                        .offset(x: showSalahTab ? 0 : -10) // move left
+                        .opacity(showBottom  ? 1 : 0)
+                        .offset(y: showBottom  ? 0 : 10) // move down
+                        .offset(x: showBottom || showMain ? 0 : -10) // move left
 
                     }
                     .padding()
                     .frame(height: 24, alignment: .center)
 //                    .offset(y: viewState != .bottom && (dragOffset > 0/* || viewState == .top*/) ? dragOffset : 0)
-//                    .animation(.easeInOut, value: dragOffset > 0 && viewState != .bottom)
+                    .animation(.spring, value: viewState)
                 } else {
                     HStack {
                         Image(systemName: "location.circle")
@@ -3492,8 +3543,6 @@ struct TopBar: View {
                     }
                     .frame(height: 24, alignment: .center)
                 }
-                
-                Spacer()
             }
             .font(.caption)
             .fontDesign(.rounded)
@@ -3508,43 +3557,29 @@ struct TopBar: View {
         @EnvironmentObject var viewModel: PrayerViewModel
         @EnvironmentObject var sharedState: SharedStateClass
         
-        var showSalahTab: Bool { sharedState.showSalahTab }
         var viewState: SharedStateClass.ViewPosition
-        var dynamicDestination: AnyView { showSalahTab ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
-        var dynamicSFSymbol: String { showSalahTab ? "gear" : "clock" }
+        private var showBottom: Bool { sharedState.navPosition == .bottom }
+        private var showTop: Bool { sharedState.navPosition == .top }
+        var rightDynamicDestination: AnyView { showBottom ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
+        var rightDynamicSFSymbol: String { showBottom ? "gear" : "clock" }
+//        var leftDynamicDestination: AnyView { showBottom ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
+//        var leftDynamicSFSymbol: String { showBottom ? "book" : "clock" }
+
         
         
         var body: some View {
-//            ZStack{
-                VStack{
-                    HStack{
-    //                    NavigationLink(destination: HistoryPageView()) {
-    //                        Image(systemName: "clock")
-    //                            .font(.system(size: 24))
-    //                            .foregroundColor(.gray)
-    //                            .padding(.vertical, 7)
-    //                    }
-    //                    .frame(width: 30)
-    //                    .opacity(!showSalahTab && viewState == .bottom ? 0.7 : 0)
-    //                    .opacity(viewState == .top ? 0.7 : 0)
-
-                        Spacer()
-                        
-//                        NavigationLink(destination: dynamicDestination) {
-//                            Image(systemName: dynamicSFSymbol)
-//                                .font(.system(size: 24))
-//                                .foregroundColor(.gray)
-////                                .padding(.vertical, 7)
-//                        }
-                        NavigationLink(destination: dynamicDestination) {
-                            Image(systemName: dynamicSFSymbol)
-                                .font(.system(size: 24))
-                                .foregroundColor(.gray)
-                                .padding()
-                        }
-                        .opacity(viewState == .bottom ? 0.7 : 0)
-                    }
+                HStack{
+                    
                     Spacer()
+
+                    
+                    NavigationLink(destination: rightDynamicDestination) {
+                        Image(systemName: rightDynamicSFSymbol)
+                            .font(.system(size: 24))
+                            .foregroundColor(.gray)
+                            .padding()
+                    }
+                    .opacity(showBottom/* || showTop*/ ? 0.7 : 0)
                 }
         }
 
@@ -3601,6 +3636,32 @@ struct FloatingChainZikrButton: View {
 }
 
 
+struct NeumorphicBorder: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Color("bgColor")
+                .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 3, x: 5, y: 5))
+                .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 3, x: -5, y: -5))
+            )
+            .shadow(color: Color("NeuDarkShad").opacity(0.5), radius: 6, x: 5, y: 5)
+            .shadow(color: Color("NeuLightShad").opacity(0.5), radius: 6, x: -5, y: -5)
+    }
+}
+
+struct FlatBorder: View {
+    var body: some View{
+        RoundedRectangle(cornerRadius: 20)
+            .fill(Color.primary.opacity(0.001)) // Background color
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(Color(.secondarySystemBackground), lineWidth: 2) // Border color and width
+            )
+    }
+}
+
+func dismissKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
 
 
 func showTemporaryMessage(
