@@ -106,20 +106,20 @@ struct ShukrEntryView : View {
 
 }
 
-struct shukrWidget: Widget {
-    let kind: String = "shukrWidget"
-
-    var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: kind, intent: ConfigurationAppIntent.self, provider: Provider()) { entry in
-            ShukrEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
-        }
-        .contentMarginsDisabled()
-        .configurationDisplayName("Timer & Counter")
-        .description("practice shukr with an easy to reach tasbeeh")
-        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
-    }
-}
+//struct shukrWidget: Widget {
+//    let kind: String = "shukrWidget"
+//
+//    var body: some WidgetConfiguration {
+//        AppIntentConfiguration(kind: kind, intent: ConfigurationAppIntent.self, provider: Provider()) { entry in
+//            ShukrEntryView(entry: entry)
+//                .containerBackground(.fill.tertiary, for: .widget)
+//        }
+//        .contentMarginsDisabled()
+//        .configurationDisplayName("Timer & Counter")
+//        .description("practice shukr with an easy to reach tasbeeh")
+//        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+//    }
+//}
 
 extension ConfigurationAppIntent {
     fileprivate static var smiley: ConfigurationAppIntent {
@@ -137,11 +137,11 @@ extension ConfigurationAppIntent {
     }
 }
 
-#Preview(as: .systemMedium) {
-    shukrWidget()
-} timeline: {
-    ShukrEntry(date: .now, tasbeeh: 10, isPaused: false, configuration: .smiley)
-}
+//#Preview(as: .systemMedium) {
+//    shukrWidget()
+//} timeline: {
+//    ShukrEntry(date: .now, tasbeeh: 10, isPaused: false, configuration: .smiley)
+//}
 
 
 /// custom extension so we dont have to write this out everytime.

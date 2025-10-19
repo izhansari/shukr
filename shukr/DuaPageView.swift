@@ -11,6 +11,7 @@ struct DuaPageView: View {
 
     @State private var searchText = ""
     @State private var showingEditDuaSheet = false
+    @State private var dummyBool = false
     @State private var selectedDua: DuaModel? = nil
     @State private var initialSearchQueryForEditDuaView: String? = nil
 
@@ -29,12 +30,22 @@ struct DuaPageView: View {
         }
     }
     
+    private func cancelSearch(){
+        triggerSomeVibration(type: .light)
+        searchText = ""
+        isSearchFieldFocused = false // Dismiss keyboard and remove focus
+    }
+    
     private func exitPage() {
         // Close the Dua page and keyboard
-        triggerSomeVibration(type: .light)
-        isSearchFieldFocused = false
-        searchText = ""
-        dismiss()
+//        triggerSomeVibration(type: .light)
+//        isSearchFieldFocused = false
+//        searchText = ""
+//        dismiss()
+        dismissKeyboard()
+        withAnimation(.spring(duration: 0.3)) {
+            sharedState.navPosition = sharedState.cameFromNavPosition
+        }
     }
 
     let dateFormatter: DateFormatter = {
@@ -46,41 +57,28 @@ struct DuaPageView: View {
     
     var body: some View {
         VStack {
-            // Header
-//            HStack {
-//                Text("My Duas")
-//                    .font(.largeTitle)
-//                    .fontWeight(.bold)
-//                Spacer()
-//                Button(action: {
-//                    exitPage()
-//                }) {
-//                    RoundedRectangle(cornerRadius: 15)
-//                        .fill(Color.clear.opacity(0.1))
-//                        .frame(width: 70, height: 70)
-//                        .overlay(
-//                            VStack(spacing: 10) {
-//                                Image(systemName: "xmark")
-//                                    .frame(width: 30, height: 30)
-//                                    .foregroundColor(.gray)
-//                            }
-//                        )
-//                }
-//            }
-//            .padding([.top, .leading])
             
-            // Search Bar
+            // Top Bar (Search, Cancel, Dismiss)
             HStack {
-                TextField("Search Duas", text: $searchText)
+                // 1. Search
+                TextField("Search Notes", text: $searchText)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .focused($isSearchFieldFocused) // Bind focus state
+                // 2. Cancel
                 if !searchText.isEmpty {
                     Button(action: {
-                        triggerSomeVibration(type: .light)
-                        searchText = ""
-                        isSearchFieldFocused = false // Dismiss keyboard and remove focus
+                        cancelSearch()
                     }) {
                         Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color(.systemRed).opacity(0.8))
+                    }
+                }
+                // 3. Dismiss
+                else {
+                    Button(action: {
+                        exitPage()
+                    }) {
+                        Image(systemName: "chevron.right") // Standard back arrow
                             .foregroundColor(.gray)
                     }
                 }
@@ -90,12 +88,25 @@ struct DuaPageView: View {
             // Dua List
             if duaItems.isEmpty {
                 Spacer()
-                Text("No duas found.")
-                    .foregroundColor(.gray)
+                VStack{
+                    Text("We all forget and need reminders..")
+                        .padding()
+                    Text("use this space to record your duas, notes from khutbahs, ayahs, or any personal reflections")
+                        .multilineTextAlignment(.center)
+                        .font(.footnote)
+                        .frame(width: 300)
+                    Button(action: {
+                        dummyBool = true
+                    }) {
+                        Image(systemName: "chevron.right") // Standard back arrow
+                            .foregroundColor(.gray)
+                    }
+                }
+                .foregroundColor(.gray)
                 Spacer()
             } else if filteredDuas.isEmpty {
                 Spacer()
-                Text("No matching duas found.")
+                Text("No matching notes found.")
                     .foregroundColor(.gray)
                 Spacer()
             } else {
@@ -162,7 +173,7 @@ struct DuaPageView: View {
                         Image(systemName: "plus.circle")
                             .resizable()
                             .frame(width: 15, height: 15)
-                        Text("Add Dua")
+                        Text("Add Note")
                     }
                     .frame(height: 40)
                     .font(.subheadline)
@@ -171,9 +182,8 @@ struct DuaPageView: View {
                 Spacer()
             }
         }
-//        .navigationBarBackButtonHidden(true)
-//        .navigationTitle("My Duas")
-        // Apply the fullScreenCover modifier directly to the root view
+        
+        //this is the original. we want to change it to a navigation destination.
         .fullScreenCover(isPresented: $showingEditDuaSheet, onDismiss: {
             selectedDua = nil
             initialSearchQueryForEditDuaView = nil
@@ -203,6 +213,46 @@ struct DuaPageView: View {
             )
             .interactiveDismissDisabled(true) // Disable swipe-to-dismiss
         }
+
+        //this works
+        //        .navigationDestination(isPresented: $showingEditDuaSheet){
+        //            DailyAyahView()
+        //        }
+
+        //this doesnt work.
+//        .navigationDestination(isPresented: $showingEditDuaSheet){
+//            EditDuaView(
+//                dua: $selectedDua,
+//                onSave: { newTitle, newBody in
+//                    if let dua = selectedDua {
+//                        // Update existing dua
+//                        dua.title = newTitle
+//                        dua.duaBody = newBody
+//                        dua.date = Date()
+//                    } else {
+//                        // Create new dua
+//                        let newDua = DuaModel(title: newTitle, duaBody: newBody, date: Date())
+//                        context.insert(newDua)
+//                    }
+//                    // Save changes
+//                    do {
+//                        try context.save()
+//                    } catch {
+//                        print("Failed to save dua: \(error)")
+//                    }
+//                    showingEditDuaSheet = false // Dismiss the sheet
+//                },
+//                initialSearchQuery: initialSearchQueryForEditDuaView // Pass the search query
+//            )
+//            .interactiveDismissDisabled(true) // Disable swipe-to-dismiss
+//            .onDisappear {
+//                selectedDua = nil
+//                initialSearchQueryForEditDuaView = nil
+//            }
+//            .toolbar(.hidden, for: .navigationBar)
+//        }
+
+
     }
 
     // Delete function
@@ -258,6 +308,8 @@ struct DuaPageView: View {
 struct EditDuaView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) var dismiss
+//    @Environment(\.presentationMode) var presentationMode
+
     @Binding var dua: DuaModel?
     @State private var title: String = ""
     @State private var duaBody: String = ""
@@ -273,7 +325,7 @@ struct EditDuaView: View {
     @FocusState private var isBodyFocused: Bool
     @FocusState private var isSearchFieldFocused: Bool
 
-    @State private var showingDiscardChangesAlert = false
+//    @State private var showingDiscardChangesAlert = false
 
     var onSave: (String, String) -> Void
 
@@ -308,8 +360,25 @@ struct EditDuaView: View {
         VStack {
             // Top HStack for navigation controls
             HStack {
+                
+                // Button to save or close.
+                Button(action: {
+                    triggerSomeVibration(type: .light)
+                    if (theyMadeChanges && !title.isEmpty && !duaBody.isEmpty){
+                        onSave(title, duaBody)
+                    }
+                    if (title.isEmpty && duaBody.isEmpty), let dua = dua{
+                        context.delete(dua)
+                    }
+                    dismiss()
+                }) {
+                    Image(systemName:  "chevron.left")
+                        .foregroundStyle( .gray )
+                        .frame(width: 30, height: 30)
+                }
+                
                 if showingSearchBar {
-                    // Show search bar
+                    // search bar
                     HStack(spacing: 5) {
                         TextField("Search", text: $searchQuery)
                             .textFieldStyle(PlainTextFieldStyle())
@@ -335,7 +404,7 @@ struct EditDuaView: View {
                                 currentOccurrenceIndex = 0
                             }) {
                                 Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.gray)
+                                    .foregroundStyle(.gray)
                             }.padding(.trailing, 4)
                             
                             Text("\(min(currentOccurrenceIndex + 1, totalOccurrences))/\(totalOccurrences)")
@@ -365,45 +434,21 @@ struct EditDuaView: View {
                     }
                     .frame(height: 30)
                 } else if !showingSearchBar {
-                    // Button to save or close.
+                    Spacer()
+                    
                     Button(action: {
-                        triggerSomeVibration(type: .light)
-                        if (theyMadeChanges && !title.isEmpty && !duaBody.isEmpty){
-                            onSave(title, duaBody)
-                        }
-                        if (title.isEmpty && duaBody.isEmpty), let dua = dua{
-                            context.delete(dua)
-                        }
-                        dismiss()
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                     }) {
-                        Image(systemName:  "chevron.left")
+                        Text("Done")
                             .foregroundStyle( .gray )
-                            .frame(width: 30, height: 30)
-                        
+                            .padding(.trailing, 3)
                     }
+                    .opacity(isBodyFocused || isTitleFocused ? 1 : 0)
                 }
 
                 
-                Spacer()
+//                Spacer()
 
-                // Hide the 'Checkmark' button when the search bar is visible
-//                if /*theyMadeChanges && !title.isEmpty && !duaBody.isEmpty && */ !showingSearchBar {
-//                    Button(action: {
-//                        triggerSomeVibration(type: .light)
-//                        if (theyMadeChanges && !title.isEmpty && !duaBody.isEmpty){
-//                            onSave(title, duaBody)
-//                        }
-//                        dismiss()
-//                    }) {
-////                        Image(systemName: theyMadeChanges && !title.isEmpty && !duaBody.isEmpty ? "checkmark" : "xmark")
-////                            .foregroundStyle( theyMadeChanges && !title.isEmpty && !duaBody.isEmpty ? .green.opacity(0.7) : .gray )
-////                            .frame(width: 30, height: 30)
-//                        Image(systemName:  "chevron.left")
-//                            .foregroundStyle( .gray )
-//                            .frame(width: 30, height: 30)
-//
-//                    }
-//                }
             }
             .frame(height: 44)
             .padding()
@@ -426,6 +471,7 @@ struct EditDuaView: View {
                     currentOccurrenceIndex: currentOccurrenceIndex,
                     isSearching: isSearching // Pass isSearching to control editability
                 )
+                .focused($isBodyFocused)
                 .frame(maxHeight: .infinity)
                 .padding()
                 .overlay(
@@ -456,16 +502,6 @@ struct EditDuaView: View {
             if showingSearchBar {
                 calculateMatches()
             }
-        }
-        .alert(isPresented: $showingDiscardChangesAlert) {
-            Alert(
-                title: Text("You Have Unsaved Changes!"),
-                message: Text("Are you sure you want to close the note without saving?"),
-                primaryButton: .destructive(Text("Yes")) {
-                    dismiss()
-                },
-                secondaryButton: .cancel()
-            )
         }
     }
 

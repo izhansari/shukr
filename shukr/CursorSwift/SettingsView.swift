@@ -38,11 +38,10 @@ struct SettingsView: View {
     @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
-    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1
-
-
+    @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
     @State private var isNotifPopupVisible: Bool = false
     @State private var isStreakPopupVisible: Bool = false
+    
     @State private var selectedPrayerToCancelNudges = "Fajr"
     @State private var rotationAngle: Double = 0 // For rotating the symbol
     
@@ -52,6 +51,45 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     @State private var showDevStuff = false
 
+    // For choosing the sheet's content when clicking on the sneak peek stuff
+    @State private var selectedUpcomingFeature: sneakPeekItem?
+    @State private var showFeatureSheet: Bool = false
+
+    // Create an array of sneakPeekItems.
+    let upcomingFeatures: [sneakPeekItem] = [
+        sneakPeekItem(image: "map", title: "Masjid Map", description: "For those times you're in another city and need to find a mosque, this will come in handy!"),
+        sneakPeekItem(image: "lightbulb.max.fill", title: "Hadith Motivator", description: "Sometimes we lose sight of the intention behind our actions and just go through the motions. A daily Hadith page would be a cool way to stay reminded of our purpose in this dunya"),
+        sneakPeekItem(image: "fork.knife", title: "Food Finder", description: "Finding food is hard. Finding halal food - even harder. I wanna partner with another organization for this iA (cough cough HalalEatsNC?!)"),
+        sneakPeekItem(image: "character.book.closed", title: "Quranic Vocab", description: "Explore and learn common words from the Quran to make it easier to focus during prayer."),
+        sneakPeekItem(image: "gift", title: "Sadaqah Links", description: "A list of trustworthy links to help the ummah. Ideally, Apple Pay integration and donation history in app would be nice!"),
+        sneakPeekItem(image: "figure.2.left.holdinghands", title: "Muslim Brand Explorer", description: "I love seeing fellow Muslims doing cool things. So let's make a space for discovering & supporting Muslim brands / influencers.")
+    ]
+    
+    // Define a model for each suggestion.
+    struct sneakPeekItem: Identifiable {
+        let id = UUID()
+        let image: String
+        let title: String
+        let description: String
+    }
+    
+    let coolBrandLinks: [LinkItem] = [
+        LinkItem(title: "DoD", subtitle: "Clothing", imageURL: "https://p19-pu-sign-useast8.tiktokcdn-us.com/tos-useast8-avt-0068-tx2/007b5c7aeffcc3fd7ec601d4aedb7a40~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=25b1007b&x-expires=1742065200&x-signature=JuvqpjsNen2Kg6HKzH4tyABzt4g%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5", url: URL(string: "https://www.instagram.com/deenoverdunya.us")!),
+        LinkItem(title: "Dilkash Gajray", subtitle: "Bridal", imageURL: "https://scontent-iad3-1.cdninstagram.com/v/t51.2885-19/475291630_1150609400015701_4344322516214829308_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2AFR2xxAghsyZBtFl8VgJyYRmtoNqGoIGKe-YfwWPlCu-UW4oTMOyHnFmqxtxEtT9R6wYxP0VbMSmyugCvgjpu3B&_nc_ohc=lCsBLE5msEcQ7kNvgE2RxzX&_nc_gid=10ecb374516d49a5b36b500b6f0165c5&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYGiDEE9wHMJ-6eGZniwzmdnb-ercaQ7-NnfRXI27zOwBQ&oe=67D92853&_nc_sid=8b3546", url: URL(string: "https://www.instagram.com/dilkashgajray/")!),
+        LinkItem(title: "Nadrah", subtitle: "Clothing", imageURL: "https://cdn.shopify.com/s/files/1/0729/2695/3760/files/About_us_d0764397-3562-4654-aea7-946c12e50987_1024x1024.png?v=1705556031", url: URL(string: "https://www.tiktok.com/@nadrah.nc")!),
+        LinkItem(title: "Ali Hida", subtitle: "Influencer", imageURL: "https://scontent-iad3-2.cdninstagram.com/v/t51.2885-19/454593944_2865268120441221_8097741733498839294_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2AHwpE4kUetl7Gc497wkyNvqc_bK6phXMDOx95Wux8IgltUoNc3CZB1Q_GqVNkb5uNTwDRNm4qYf9e9KndVW2dIr&_nc_ohc=nFWa3LhqFQoQ7kNvgEA1t3m&_nc_gid=047fd04209f847caa7b805713890c49d&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYG9zthcKzwptBHhx7Wit8548ghKRdUAnbDcGk0GdldUiw&oe=67D91259&_nc_sid=8b3546", url: URL(string: "https://www.tiktok.com/@hida_feva")!),
+        LinkItem(title: "Latieh", subtitle: "Coffee", imageURL: "https://scontent-iad3-2.cdninstagram.com/v/t51.2885-19/482596401_1338600897348126_7182827564811311299_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-2.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2AHb8Pk0sjECcu7JwTINW3VQdrEupMfAX3LHkGu4G_7SUWB9apX5VYQWCsUXtAizxiAZ6Uoo-c02uObz_VPyq6fL&_nc_ohc=uFOUE9IrHD0Q7kNvgFUQFOk&_nc_gid=dec115a7c05d4134a9b7acbbea4f8268&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYF89YIkZxi3uje_bmY3-UVQdekIr8nC94rw1XRR_8T6Lg&oe=67D91181&_nc_sid=8b3546", url: URL(string: "https://www.instagram.com/latiehcoffee")!),
+        LinkItem(title: "Zachariah Elkordy", subtitle: "Influencer", imageURL: "https://p19-pu-sign-useast8.tiktokcdn-us.com/tos-useast5-avt-0068-tx/7324462037096988714~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=d98ef622&x-expires=1742065200&x-signature=O1IDoHqY4kSAPtui3Cw70zQS8Go%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5", url: URL(string: "https://www.instagram.com/zachelkordy")!),
+        LinkItem(title: "Sohaib Ashraf", subtitle: "YouTuber", imageURL: "https://yt3.googleusercontent.com/gqmOeoEHqNlRn0zATH93p2uYxaJ0BN7o0YFmO9bTxBp9a-3EgnIsYojQPfW13koaTHO8qZFThA=s160-c-k-c0x00ffffff-no-rj", url: URL(string: "https://www.youtube.com/@SohaibAshraf")!)
+    ]
+    
+    struct LinkItem: Identifiable {
+        let id = UUID()
+        let title: String
+        let subtitle: String
+        let imageURL: String
+        let url: URL
+    }
     
     let calculationMethods = [
         (1, "University of Islamic Sciences, Karachi"), // .karachi
@@ -177,19 +215,19 @@ struct SettingsView: View {
                     
                     
                     
-                    //MARK: - Prayer Streak Settings
-                    Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) {
-                        Picker("Streak Type", selection: $prayerStreakMode) {
-                            Text("Level 1").tag(1)
-                            Text("Level 2").tag(2)
-                            Text("Level 3").tag(3)
-                        }
-                        .pickerStyle(.segmented)
-                        
-                        if isStreakPopupVisible{
-                            StreakDropdownInfo()
-                        }
-                    }
+                    //MARK: - Prayer Streak Settings 
+//                    Section(header: headerWithInfoButton(title: "Streak Settings", isPopupVisible: $isStreakPopupVisible) ) { //prayerstreak_flag
+//                        Picker("Streak Type", selection: $prayerStreakMode) {
+//                            Text("Level 1").tag(1)
+//                            Text("Level 2").tag(2)
+//                            Text("Level 3").tag(3)
+//                        }
+//                        .pickerStyle(.segmented)
+//                        
+//                        if isStreakPopupVisible{
+//                            StreakDropdownInfo()
+//                        }
+//                    }
 
                     
                     
@@ -231,6 +269,50 @@ struct SettingsView: View {
                         WidgetCenter.shared.reloadAllTimelines()
                     }
                     
+                    
+                    
+                    //MARK: - Suggestions / Up and Coming
+//                    Section(header: Text("Sneak Peek...")) {
+//                        
+//                        sectionWithChevronButton(image: "map", title: "Masjid Map", isPopupVisible: .constant(false))
+//                        
+//                        sectionWithChevronButton(image: "lightbulb.max.fill", title: "Hadith Motivator", isPopupVisible: .constant(false))
+//                        
+//                        sectionWithChevronButton(image: "fork.knife", title: "Food Finder", isPopupVisible: .constant(false))
+//                        
+//                        sectionWithChevronButton(image: "character.book.closed", title: "Quranic Words", isPopupVisible: .constant(false))
+//                        
+//                        sectionWithChevronButton(image: "gift", title: "Sadqah Links", isPopupVisible: .constant(false))
+//                        
+//                        sectionWithChevronButton(image: "figure.2.left.holdinghands", title: "Support Muslim Brands", isPopupVisible: .constant(false))
+//                        
+//                        Button("Suggest Feature") {
+//                            // control a popup or send to an external link?
+//                        }
+//                    }
+                    
+                    Section(header: Text("Sneak Peek...")) {
+                        ForEach(upcomingFeatures) { feature in
+                            HStack {
+                                Image(systemName: feature.image)
+                                    .frame(width: 24)
+                                Text(feature.title)
+                                Spacer()
+                                Button(action: {
+                                    // Set the selected suggestion so the sheet appears.
+                                    selectedUpcomingFeature = feature
+//                                    showFeatureSheet = true
+                                }) {
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                        }
+                        
+                        Button("Suggest Feature") {
+                            // Add action for suggesting a feature.
+                        }
+                    }
 
                     
                     //MARK: - Dev Stuff
@@ -266,7 +348,8 @@ struct SettingsView: View {
                                 }
                             }
                             Button("Cancel for \(selectedPrayerToCancelNudges)") {
-                                viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
+//                                viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
+//                                selectedPrayerToCancelNudges.canccel //this new function doesnt work with passing in a string. we have to use the prayerObject.
                             }
                         }
 
@@ -276,9 +359,82 @@ struct SettingsView: View {
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
-//        .scrollContentBackground(.hidden)
-//        .background(Color("bgColor"))
-//        .background(Color(.secondarySystemBackground))
+        .sheet(item: $selectedUpcomingFeature) { feature in
+            ScrollView{
+                VStack(spacing: 10) {
+                // Feature image
+                Image(systemName: feature.image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 60, height: 60)
+                    .symbolRenderingMode(.monochrome) // Makes the SF Symbol render in a single, monochrome color
+                    .foregroundColor(.primary) // Use primary or secondary to avoid the default accent color
+                    .padding(.top, 20)
+                
+                // Title
+                Text(feature.title)
+                    .font(.title)
+                    .fontWeight(.bold)
+                    .multilineTextAlignment(.center)
+                
+                Spacer()
+                
+                Text(feature.description)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                
+                if feature.image == "figure.2.left.holdinghands" {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(coolBrandLinks) { link in
+                            Link(destination: link.url) {
+                                HStack (spacing: 10){
+                                    AsyncImage(url: URL(string: link.imageURL)) { phase in
+                                        switch phase {
+                                        case .empty:
+                                            ProgressView() // Show a loading indicator
+                                        case .success(let image):
+                                            image
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fill)
+                                                .frame(width: 50, height: 50)
+                                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        case .failure:
+                                            Image(systemName: "xmark.circle.fill") // Show a default error image
+                                                .foregroundColor(.red)
+                                                .font(.largeTitle)
+                                        @unknown default:
+                                            EmptyView() // Handle future cases
+                                        }
+                                    }
+                                    VStack(alignment: .leading){
+                                        Text(link.title)
+                                            .foregroundColor(.primary)
+                                        Text(link.subtitle)
+                                            .foregroundColor(.secondary)
+                                            .font(.caption)
+                                    }
+                                    Spacer()
+                                    Image(systemName: "arrow.up.right.square")
+                                        .foregroundColor(.secondary)
+                                }
+                                .padding()
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                }
+                Spacer()
+            }
+                
+            .padding()
+            .presentationDetents([.height(300), .medium, .large])
+            .presentationDragIndicator(.visible)  // shows the grab handle at the top
+            }
+
+        }
+
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
@@ -382,11 +538,16 @@ struct ColorModeToggleButton: View {
 
 
 struct headerWithInfoButton: View {
+    var image: String? = nil
     let title: String
     @Binding var isPopupVisible: Bool
     var body: some View {
         HStack {
 //            Text("Notifications")
+            if let imageName = image {
+                Image(systemName: imageName)
+                    .frame(width: 24)
+            }
             Text(title)
             Spacer()
             Button(action: {
@@ -400,6 +561,46 @@ struct headerWithInfoButton: View {
         }
     }
 }
+
+//struct sectionWithChevronButton: View {
+//    var image: String? = nil
+//    let title: String
+//    let description: String
+//    @Binding var isPopupVisible: Bool
+//    
+//    var body: some View {
+//        HStack {
+////            Text("Notifications")
+//            if let imageName = image {
+//                Image(systemName: imageName)
+//                    .frame(width: 24)
+//            }
+//            Text(title)
+//            Spacer()
+//            Button(action: {
+//                withAnimation {
+//                    isPopupVisible.toggle()
+//                }
+//            }) {
+//                Image(systemName: "chevron.right")
+//                    .foregroundColor(.secondary)
+//            }
+//        }
+//        .sheet(isPresented: $isPopupVisible) {
+//            VStack {
+//                Text(title)
+//                    .font(.title)
+//                    .padding()
+//                Text(description)
+//                    .padding()
+//                Button("Close") {
+//                    isPopupVisible = false
+//                }
+//                .padding()
+//            }
+//        }
+//    }
+//}
 
 
 struct prayerCol: View {
@@ -518,6 +719,8 @@ struct NotificationDropdownInfo: View {
                 .font(.subheadline)
                 .foregroundColor(.gray)
             
+            Spacer()
+            Divider()
             Spacer()
 
             Text("Test Nudge")
@@ -641,7 +844,7 @@ struct AlarmSettingsView: View {
         let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
         let offsetSeconds = alarmIsBefore ? -Double(alarmOffsetMinutes)*60 : Double(alarmOffsetMinutes)*60
         let calcDate = ref.addingTimeInterval(offsetSeconds)
-        return "Alarm for \(shortTimePM(calcDate))"
+        return "is \(shortTimePM(calcDate))"
 //        return "\(shortTime(alarmIsFajr ? nextFajrTime : nextSunriseTime)) \(alarmIsBefore ? "-" : "+") \(alarmOffsetMinutes)m = \(shortTimePM(calcDate))"
 //        return "is \(shortTimePM(calcDate))"
 //        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
@@ -651,7 +854,7 @@ struct AlarmSettingsView: View {
     private var fajrTimeRangeText: String {
 //        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
 //        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
-        return alarmIsFajr ? "(Fajr at \(shortTimePM(nextFajrTime)))" : "(Sunrise at \(shortTimePM(nextSunriseTime)))"
+        return alarmIsFajr ? "(Fajr is \(shortTimePM(nextFajrTime)))" : "(Sunrise is \(shortTimePM(nextSunriseTime)))"
     }
     
     // ------------------------------------------
@@ -678,7 +881,7 @@ struct AlarmSettingsView: View {
             // Toggle to enable/disable alarm
             HStack {
                 Image(systemName: "alarm")
-                    .foregroundColor(.gray)
+//                    .foregroundColor(.gray)
                 
                 Toggle("Schedule Daily Fajr Alarm", isOn: Binding(
                     get: { self.alarmEnabled },
@@ -751,15 +954,12 @@ struct AlarmSettingsView: View {
                             .foregroundStyle(.secondary)
                             .font(.subheadline)
                         
-//                        Text(fajrTimeRangeText)
-//                            .foregroundStyle(.secondary)
-//                            .font(.subheadline)
-//                            .padding(.bottom)
+                        Text(fajrTimeRangeText)
+                            .foregroundStyle(.secondary.opacity(0.8))
+                            .font(.footnote)
                     }
+                    
                 }
-
-                HStack(alignment: .center) {
-                    Spacer()
                     
                     Button(action: {
                         withAnimation {
@@ -784,9 +984,6 @@ struct AlarmSettingsView: View {
                                 .foregroundStyle(isEditingAlarm ? .blue : .gray) // Match the color with text
                         }
                     }
-                    
-                    Spacer()
-                }
             }
             
             // Info Block
@@ -821,15 +1018,16 @@ struct AlarmSettingsView: View {
             
             HStack {
                 Image(systemName: "1.circle")
-                Text("Click here to add the iOS shortcut")
+                Text("Add iOS shortcut with button below")
+//                Text("Click here to add the iOS shortcut")
                     .font(.caption)
-                    .foregroundColor(.blue)
-                    .underline()
-                    .onTapGesture {
-                        if let shortcutURL {
-                            UIApplication.shared.open(shortcutURL)
-                        }
-                    }
+                    .foregroundColor(/*.blue*/ .gray)
+//                    .underline()
+//                    .onTapGesture {
+//                        if let shortcutURL {
+//                            UIApplication.shared.open(shortcutURL)
+//                        }
+//                    }
             }
             .foregroundColor(.gray)
             
@@ -846,6 +1044,24 @@ struct AlarmSettingsView: View {
                     .font(.caption)
             }
             .foregroundColor(.gray)
+            
+            Divider()
+            
+            HStack{
+
+                Text("Add iOS Shortcut")
+                    .frame(maxWidth: .infinity)
+                    .onTapGesture {
+                        if let shortcutURL {
+                            UIApplication.shared.open(shortcutURL)
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundColor(.gray)
+
+            }
+            .padding(.horizontal)
+
         }
     }
 }

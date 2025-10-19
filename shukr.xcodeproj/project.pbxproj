@@ -8,6 +8,16 @@
 
 /* Begin PBXBuildFile section */
 		360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360B85952C7112A2000385F3 /* tasbeehView.swift */; };
+		365AC4932D532658002DDCE7 /* english_ar.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC48E2D532658002DDCE7 /* english_ar.sqlite */; };
+		365AC4942D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */; };
+		365AC4952D532658002DDCE7 /* Surahs.json in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4922D532658002DDCE7 /* Surahs.json */; };
+		365AC4962D532658002DDCE7 /* english_hilali.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC48F2D532658002DDCE7 /* english_hilali.sqlite */; };
+		365AC4972D532658002DDCE7 /* quran.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4912D532658002DDCE7 /* quran.sqlite */; };
+		365AC4982D532658002DDCE7 /* english_ar.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC48E2D532658002DDCE7 /* english_ar.sqlite */; };
+		365AC4992D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */; };
+		365AC49A2D532658002DDCE7 /* Surahs.json in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4922D532658002DDCE7 /* Surahs.json */; };
+		365AC49B2D532658002DDCE7 /* english_hilali.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC48F2D532658002DDCE7 /* english_hilali.sqlite */; };
+		365AC49C2D532658002DDCE7 /* quran.sqlite in Resources */ = {isa = PBXBuildFile; fileRef = 365AC4912D532658002DDCE7 /* quran.sqlite */; };
 		36867E392C9DE3F000A981EB /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36867E382C9DE3ED00A981EB /* Utils.swift */; };
 		369A05C82C5E8616002CD697 /* shukrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369A05C72C5E8616002CD697 /* shukrApp.swift */; };
 		369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
@@ -79,6 +89,11 @@
 		360B85942C6E1F61000385F3 /* shukr.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = shukr.entitlements; sourceTree = "<group>"; };
 		360B85952C7112A2000385F3 /* tasbeehView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = tasbeehView.swift; sourceTree = "<group>"; };
 		361F895C2D0402D300E81F07 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		365AC48E2D532658002DDCE7 /* english_ar.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = english_ar.sqlite; sourceTree = "<group>"; };
+		365AC48F2D532658002DDCE7 /* english_hilali.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = english_hilali.sqlite; sourceTree = "<group>"; };
+		365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = KFGQPCUthmanTahaNaskh.ttf; sourceTree = "<group>"; };
+		365AC4912D532658002DDCE7 /* quran.sqlite */ = {isa = PBXFileReference; lastKnownFileType = file; path = quran.sqlite; sourceTree = "<group>"; };
+		365AC4922D532658002DDCE7 /* Surahs.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Surahs.json; sourceTree = "<group>"; };
 		36867E382C9DE3ED00A981EB /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		369A05C42C5E8616002CD697 /* shukr.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukr.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		369A05C72C5E8616002CD697 /* shukrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = shukrApp.swift; sourceTree = "<group>"; };
@@ -200,6 +215,11 @@
 				36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */,
 				360B85952C7112A2000385F3 /* tasbeehView.swift */,
 				36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */,
+				365AC48E2D532658002DDCE7 /* english_ar.sqlite */,
+				365AC48F2D532658002DDCE7 /* english_hilali.sqlite */,
+				365AC4902D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf */,
+				365AC4912D532658002DDCE7 /* quran.sqlite */,
+				365AC4922D532658002DDCE7 /* Surahs.json */,
 				369BE9232CA48B88003A58B7 /* HistoryPageView.swift */,
 				369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */,
 				36867E382C9DE3ED00A981EB /* Utils.swift */,
@@ -410,6 +430,11 @@
 			files = (
 				369A05D12C5E8617002CD697 /* Preview Assets.xcassets in Resources */,
 				369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */,
+				365AC4982D532658002DDCE7 /* english_ar.sqlite in Resources */,
+				365AC4992D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf in Resources */,
+				365AC49A2D532658002DDCE7 /* Surahs.json in Resources */,
+				365AC49B2D532658002DDCE7 /* english_hilali.sqlite in Resources */,
+				365AC49C2D532658002DDCE7 /* quran.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -433,6 +458,11 @@
 			files = (
 				36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */,
 				369A06072C5E8636002CD697 /* Assets.xcassets in Resources */,
+				365AC4932D532658002DDCE7 /* english_ar.sqlite in Resources */,
+				365AC4942D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf in Resources */,
+				365AC4952D532658002DDCE7 /* Surahs.json in Resources */,
+				365AC4962D532658002DDCE7 /* english_hilali.sqlite in Resources */,
+				365AC4972D532658002DDCE7 /* quran.sqlite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

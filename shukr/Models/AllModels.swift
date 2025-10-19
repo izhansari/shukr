@@ -8,8 +8,13 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import CoreLocation
+import WidgetKit
 
 class SharedStateClass: ObservableObject {
+    enum bottomTabEnum {
+        case salah, zikr
+    }
     enum ViewPosition {
         case top
         case main
@@ -18,6 +23,7 @@ class SharedStateClass: ObservableObject {
         case right
     }
     @Published var selectedMode: Int = 1
+    @Published var bottomTabPosition: bottomTabEnum = .salah
     
     @Published var titleForSession: String = ""
     @Published var selectedMinutes: Int = 0
@@ -29,6 +35,7 @@ class SharedStateClass: ObservableObject {
     @Published var showSalahTabOld: Bool = true
     @Published var navPosition: ViewPosition = .main
     @Published var cameFromNavPosition: ViewPosition = .main
+    @Published var showSideMenu: Bool = false
     
     @Published var selectedTask: TaskModel? = nil {
         didSet {
@@ -113,17 +120,129 @@ class PrayerModel {
         case current
         case upcoming
         case missed
+        // havent added this into status yet
+        case completed_Valid
+        case completed_Kaza
     }
     
     func status() -> prayerStatus { // we can expand this out to use and enum and make that
         let currentTime = Date()
         let isCurrent = currentTime >= startTime && currentTime < endTime
         let isUpcoming = currentTime < startTime
-
+        //let completedInTimeRange = currentTime >= startTime && currentTime < endTime
+        
         if isCurrent { return .current }
         else if isUpcoming { return .upcoming }
         else{ return .missed }
     }
+    
+    func setPrayerScore(atDate: Date = Date()) {
+        print("setting time at complete as: ", atDate)
+        timeAtComplete = atDate
+
+        if let completedTime = timeAtComplete {
+            let timeLeft = endTime.timeIntervalSince(completedTime)
+            let totalInterval = endTime.timeIntervalSince(startTime)
+            let score = timeLeft / totalInterval
+            numberScore = max(0, min(score, 1))
+
+            if let percentage = numberScore {
+                if percentage > 0.50 {
+                    englishScore = "Optimal"
+                } else if percentage > 0.25 {
+                    englishScore = "Good"
+                } else if percentage > 0 {
+                    englishScore = "Poor"
+                } else {
+                    englishScore = "Kaza"
+                }
+            }
+        }
+    }
+    
+    func setPrayerLocation(with location: CLLocation?) {
+        guard let location = location else {
+            print("Location not available")
+            return
+        }
+        print("setting location at complete as: ", location.coordinate.latitude, "and ", location.coordinate.longitude)
+        latPrayedAt = location.coordinate.latitude
+        longPrayedAt = location.coordinate.longitude
+
+    }
+    
+    func cancelUpcomingNudges(){
+        // need to do a check for if the prayer is in the same day as today... else toggling complete on a past prayer will also cancel todays active prayer's notif...
+        let prayerInToday = Calendar.current.isDate(startTime, inSameDayAs: Date())
+        let center = UNUserNotificationCenter.current()
+        let identifiers = ["\(name)Mid", "\(name)End"]
+
+        if prayerInToday {
+            center.removePendingNotificationRequests(withIdentifiers: identifiers)
+            print("✅ Canceled notifications for \(name): [\(identifiers)]")
+        }else{
+            print("⚪️ prayerInToday \(prayerInToday) - so skipped cancel notifications for \(name): [\(identifiers)]")
+        }
+        
+    }
+    
+    func getColorForPrayerScore() -> Color {
+        guard let score = numberScore else { return .gray }
+
+        if score >= 0.50 {
+            return .green
+        } else if score >= 0.25 {
+            return .yellow
+        } else if score > 0 {
+            return .red
+        } else {
+            return .gray
+        }
+    }
+    
+    func weightedSummaryScoreFromNumberScore() -> Double {
+        guard let score = numberScore else { return 0 }
+        
+        // If prayed in the first 25% of the window, return 100%
+        if score >= 0.75 {
+            return 1.0
+        }
+        
+        // For prayers after the 25% mark
+        // Map the score from [0, 0.75] to [0.65, 0.9]
+        let scaledScore = (score / 0.75) * 0.25 + 0.65
+        
+        return scaledScore
+        
+//        guard let score = numberScore else { return 0 }
+//        if score >= 0.75 {
+//            return 1
+//        } else if score >= 0.5 {
+//            return 0.9
+//        } else if score > 0.25 {
+//            return 0.8
+//        } else if score > 0 {
+//            return 0.7
+//        } else {
+//            return 0.0
+//        }
+    }
+    
+//    func weightedSummaryScoreFromEnglishScore() -> Double {
+//        switch englishScore {
+//        case "Optimal":
+//            return 1.0
+//        case "Good":
+//            return 0.85
+//        case "Poor":
+//            return 0.75
+//        case "Kaza":
+//            return 0.5
+//        default:
+//            return 0.0
+//        }
+//    }
+
 }
 
 
@@ -280,6 +399,19 @@ class TaskModel: Identifiable {
 //
 //    }
     
+}
+
+
+@Model
+class DailyPrayerScore {
+    @Attribute(.unique) var id: UUID = UUID()
+    var date: Date
+    var averageScore: Double?
+
+    init(date: Date) {
+        self.date = date
+    }
+
 }
 
 

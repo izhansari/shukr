@@ -21,17 +21,9 @@ struct tasbeehView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     
     // AppStorage properties
-    @AppStorage("streak") var streak = 0
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
-//    @AppStorage("vibrateToggle") var vibrateToggle = true
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
-//    @AppStorage("modeToggle") var colorModeToggle = false
-//    @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
-    //    @AppStorage("inactivityToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    //    var toggleInactivityTimer = false
-    //    @AppStorage("vibrateToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"))
-    //    var vibrateToggle = true
     
     // State properties
 //    @FocusState private var isNumberEntryFocused
@@ -62,19 +54,14 @@ struct tasbeehView: View {
     @State private var newAvrgTPC: TimeInterval = 0 //calculated on increment and decrement by secondsPassed / tasbeeh
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
-//    @State private var showMantraSheetFromResultsPage = false
     @State private var savedSession: SessionDataModel? = nil
-//    @State private var isCurrentlyDragging = false
     
-//    @State private var sessionSequence: [(title: String, targetCount: Int)] = []
     @State private var postNamazSequence: [(title: String, targetCount: Int)] = [
                 (title: "Subhanallah", targetCount: 33),
                 (title: "Alhamdulillah", targetCount: 33),
                 (title: "Allahu Akbar", targetCount: 34)
             ]
     @State private var currentSessionIndex: Int = 0
-//    @State private var isSequentialModeActive: Bool = false
-//    @State private var inMiddleOfSequence: Bool = false //use this to hide resultsview
     @State private var tasbeehColorMode = false
 
     
@@ -259,11 +246,11 @@ struct tasbeehView: View {
             // Pause Screen (background overlay, stats & settings)
             ZStack {
                 // middle screen when paused
-                pauseStatsAndBG(
+                pauseScreen_StatsSettingsBG(
                     paused: paused,
                     tasbeeh: tasbeeh,
                     secsToReport: secsPassedAtPause,
-                    avgTimePerClick: newAvrgTPC,
+                    newAvrgTPC: newAvrgTPC,
                     tasbeehRate: tasbeehRate,
                     togglePause: { togglePause() },
                     stopTimer: { stopTimer() },
@@ -283,21 +270,28 @@ struct tasbeehView: View {
                 // The Top Buttons During Session
                 HStack {
                     // exit button top left when paused
-//                    if paused{
-//                        Button(action: {stopTimer()} ) {
-//                            Image(systemName: "checkmark.circle.fill")
-//                                .font(.system(size: 26))
-//                                .foregroundColor(.green.opacity(0.5))
+                    if paused{
+                        Button(action: {stopTimer()} ) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.red.opacity(0.4))
+                                .padding()
+                                .background(.gray.opacity(0.08))
+                                .cornerRadius(10)
+//                            Label {
+//                                Text("Exit")
+//                                    .font(.system(size: 20, weight: .medium))
+//                            } icon: {
+//                                Image(systemName: "xmark")
+//                                    .font(.system(size: 24, weight: .bold))
+//                            }
+//                                .foregroundColor(.red.opacity(0.4))
 //                                .padding()
-//                                .background(.clear)
+//                                .background(.gray.opacity(0.08))
 //                                .cornerRadius(10)
-//                        }
-//                        .opacity(paused ? 1.0 : 0.0)
-//                    }
-                    
-                    
-                    // minus, 100, and notes button when not paused
-                    if !paused{
+                        }
+                    }
+                    else {
                         HStack{
                             TopOfSessionButton( // Minus Button
                                 symbol: "minus", actionToDo: decrementTasbeeh,
@@ -307,12 +301,12 @@ struct tasbeehView: View {
                                 symbol: "infinity", actionToDo: {simulateTasbeehClicks(times: 100)},
                                 paused: paused, togglePause: togglePause)
                             
-                            TopOfSessionButton( // Add Note Button (new feature coming soon)
-                                symbol: "note", actionToDo: {showNotesModal = true},
-                                paused: paused, togglePause: togglePause)
-                            .sheet(isPresented: $showNotesModal) {
-                                NoteModalView(savedText: $noteModalText, showSheet: $showNotesModal, takingNotes: $takingNotes)
-                            }
+//                            TopOfSessionButton( // Add Note Button (new feature coming soon)
+//                                symbol: "note", actionToDo: {showNotesModal = true},
+//                                paused: paused, togglePause: togglePause)
+//                            .sheet(isPresented: $showNotesModal) {
+//                                NoteModalView(savedText: $noteModalText, showSheet: $showNotesModal, takingNotes: $takingNotes)
+//                            }
                         }
                     }
                     
@@ -336,10 +330,10 @@ struct tasbeehView: View {
                 Spacer()
                 
                 // Stop Button when not auto stopping
-                completeButton(stopTimer: stopTimer)
-                    .opacity(stopCondition ? 1 : 0)
-                    .disabled(!stopCondition)
-                    .animation(.easeInOut, value: stopCondition)
+//                completeButton(stopTimer: stopTimer)
+//                    .opacity(stopCondition ? 1 : 0)
+//                    .disabled(!stopCondition)
+//                    .animation(.easeInOut, value: stopCondition)
             }
             
             // adding a dark tint for when they click the sleep mode.
@@ -374,8 +368,7 @@ struct tasbeehView: View {
                 if /*!inMiddleOfSequence, */let session = savedSession{
                     ResultsView(
                         isPresented: $isPresented,
-                        savedSession: session, // Pass the saved session
-                        startTimer: {startTimer()}
+                        savedSession: session // Pass the saved session
                     )
                 }
             }
@@ -424,7 +417,6 @@ struct tasbeehView: View {
                 progressFraction = CGFloat(tasbeeh)/CGFloat(Int(sharedState.targetCount) ?? 0)
 //                    print("2: \(sharedState.selectedMode) profra: \(progressFraction)")
 //                    print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(sharedState.targetCount) ?? 0))")
-                
             }
 
         }
@@ -494,7 +486,6 @@ struct tasbeehView: View {
                 if(autoStop && timerIsActive){
                     stopTimer()
                     print("homeboy auto stopped....")
-                    streak += 1 // Increment the streak
                 }
             }
         }
@@ -604,7 +595,7 @@ struct tasbeehView: View {
     
     func resetSharedState(){
         print("ran a resetSharedState().")
-        sharedState.targetCount = ""
+//        sharedState.targetCount = ""
         sharedState.isDoingPostNamazZikr = false
         sharedState.targetCount = ""
         sharedState.selectedMinutes = 0
@@ -677,6 +668,693 @@ struct tasbeehView: View {
         }
     }
     
+    // MARK: - Helper Structs (basically moved from Utils)
+    
+    struct ResultsView: View {
+        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+        @Environment(\.modelContext) private var context
+        @EnvironmentObject var sharedState: SharedStateClass
+        @Binding var isPresented: Bool
+        let savedSession: SessionDataModel  // Add this
+
+        // UI state
+        private let textSize: CGFloat = 14
+        private let gapSize: CGFloat = 10
+        @State private var countRotation: Double = 0
+        @State private var timerRotation: Double = 0
+        @State private var showingPerCount = true
+        @State private var showMantraSheetFromResultsPage = false
+        @State private var chosenMantraFromResultsPage: String? = ""
+        
+        // Computed properties from savedSession
+        private var tasbeeh: Int { savedSession.totalCount }
+        private var secsToReport: Double { savedSession.secondsPassed }
+        private var tasbeehRate: String { savedSession.tasbeehRate }
+        private var newAvrgTPC: Double { savedSession.avgTimePerClick }
+        
+        var body: some View {
+            ZStack {
+                
+                Color("pauseColor")
+                    .edgesIgnoringSafeArea(.all)
+                
+                completionCard
+                    .padding(.horizontal, 16)
+                
+                VStack {
+                    Spacer()
+                    
+                    CloseButton(
+                        action: {
+                            isPresented = false
+    //                        sharedState.showingOtherPages = false
+                            sharedState.titleForSession = ""
+                        }
+                    )
+                    .padding(.bottom)
+                }
+            }
+        }
+        
+        private var completionCard: some View {
+            VStack(alignment: .center, spacing: 12) {
+                // TOP:
+                // TOP1. Checkmark circle
+                Circle()
+                    .fill(Color(colorScheme == .dark ? .systemGray4 : .white))
+                    .frame(width: 40, height: 40)
+                    .overlay {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.green)
+                    }
+                
+                // TOP2. Message
+                Text("Nice! I'll add this to your history!")
+                    .font(.system(size: 16, weight: .regular))
+                    .multilineTextAlignment(.center)
+                
+                // Boxes
+                VStack(alignment: .center, spacing: gapSize) {
+                    // Mantra selector
+                    mantraSelector
+                        .transition(.opacity)
+                    
+                    // Stats Grid
+                    HStack(alignment: .top, spacing: gapSize) {
+                        // Left Column
+                        VStack(spacing: gapSize) {
+                            // Count Box
+                            statsBox {
+                                HStack {
+                                    Image(systemName: "circle.hexagonpath")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.primary)
+                                        .rotationEffect(.degrees(-countRotation))
+                                        .animation(.spring(duration: 0.5), value: countRotation)
+                                    Spacer()
+                                    Text("\(tasbeeh)")
+                                        .font(.system(size: textSize, weight: .medium))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                            }
+                            .frame(height: 44)  // Fixed height for count
+                            .onTapGesture {
+                                triggerSomeVibration(type: .medium)
+                                countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
+                            }
+
+                            // Timer Box
+                            statsBox {
+                                HStack {
+                                    Image(systemName: "gauge.with.needle")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.primary)
+                                        .rotationEffect(.degrees(timerRotation))
+                                        .animation(.spring(duration: 0.3), value: timerRotation)
+                                    Spacer()
+                                    Text(timerStyle(secsToReport))
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                            }
+                            .frame(height: 44)  // Fixed height for timer
+                            .onTapGesture {
+                                triggerSomeVibration(type: .medium)
+                                timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
+                             }
+
+                        }
+                        
+                        // Rate Box
+                        statsBox {
+                            VStack(spacing: 6) {
+                                Text("Rate")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .underline()
+                                
+                                ZStack {
+                                    // Per count view
+                                    VStack(spacing: 2) {
+                                        Text(String(format: "%.2fs", newAvrgTPC))
+                                            .font(.system(size: textSize, weight: .medium))
+                                            .monospacedDigit()
+                                        Text("per count")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .opacity(showingPerCount ? 1 : 0)
+                                    .offset(y: showingPerCount ? 0 : -20)
+                                    
+                                    // Per tasbeeh view
+                                    VStack(spacing: 2) {
+                                        Text(tasbeehRate)
+                                            .font(.system(size: textSize, weight: .medium))
+                                            .monospacedDigit()
+                                        Text("per tasbeeh")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .opacity(showingPerCount ? 0 : 1)
+                                    .offset(y: showingPerCount ? 20 : 0)
+                                }
+                            }
+                        }
+                        .frame(height: 96)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                triggerSomeVibration(type: .medium)
+                                showingPerCount.toggle()
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 150)
+            }
+            .padding(20)
+            .frame(width: 280)
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+        }
+        
+        private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 10)
+                .background(Color(.tertiarySystemBackground))
+                .cornerRadius(12)
+        }
+        
+        // zikrflag 3
+        private var mantraSelector: some View {
+            Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
+                .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(Color(.tertiarySystemBackground))
+                .cornerRadius(12)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showMantraSheetFromResultsPage = true
+                }
+                .onChange(of: chosenMantraFromResultsPage) {
+                    if let newSetMantra = chosenMantraFromResultsPage {
+                        withAnimation {
+                            sharedState.titleForSession = newSetMantra
+                            savedSession.title = newSetMantra  // Update the saved session directly
+                            do {
+                                try context.save()  // Save the context to persist the changes
+                            } catch {
+                                print("Error saving context: \(error)")
+                            }
+                        }
+                    }
+                }
+                .sheet(isPresented: $showMantraSheetFromResultsPage) {
+                    MantraPickerView(
+                        isPresented: $showMantraSheetFromResultsPage,
+                        selectedMantra: $chosenMantraFromResultsPage,
+                        presentation: [.large]
+                    )
+                }
+        }
+        
+        struct CloseButton: View {
+            let action: () -> Void
+            @State private var isPressed = false
+            
+            var body: some View {
+                Button(action: {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                        triggerSomeVibration(type: .success)
+                        isPressed = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        isPressed = false
+                        action()
+                    }
+                }) {
+                    ZStack {
+                        // Background
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.gray.opacity(0.08))
+                        
+                        // Outline
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
+                        
+                        // Content
+                        Text("close")
+                            .fontDesign(.rounded)
+                            .fontWeight(.thin)
+                            .foregroundColor(.primary)
+                    }
+                    .frame(width: 100, height: 50)
+                    .scaleEffect(isPressed ? 0.95 : 1.0)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+    }
+
+    #Preview {
+        ResultsView(
+            isPresented: .constant(true),
+            savedSession: SessionDataModel(
+                title: "yo",
+                sessionMode: 1,
+                targetMin: 1,
+                targetCount: 5,
+                totalCount: 66,
+                startTime: Date(),
+                secondsPassed: 72,
+                avgTimePerClick: 0.54,
+                tasbeehRate: "10m 4s"
+            )
+        )
+        .environmentObject(SharedStateClass())
+    }
+
+    
+    struct pauseScreen_StatsSettingsBG: View {
+        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+        @EnvironmentObject var sharedState: SharedStateClass
+        @State private var showMantraSheetFromPausedPage = false
+        @State private var chosenMantra: String? = ""
+        @State private var rateTextToggle = false  // to control the toggle text in the middle
+            
+        let paused: Bool
+        let tasbeeh: Int
+        let secsToReport: TimeInterval
+        let newAvrgTPC: TimeInterval
+        let tasbeehRate: String
+        let togglePause: () -> Void // Closure for the togglePause function
+        let stopTimer: () -> Void // Closure for the togglePause function
+        let takingNotes: Bool
+        @Binding var toggleInactivityTimer: Bool
+        @Binding var inactivityDimmer: Double
+        @Binding var autoStop: Bool
+        @Binding var tasbeehColorMode: Bool
+        @Binding var currentVibrationMode: HapticFeedbackType
+        
+        @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+
+
+
+        
+        // UI state
+        private let textSize: CGFloat = 14
+        private let gapSize: CGFloat = 10
+        @State private var countRotation: Double = 0
+        @State private var timerRotation: Double = 0
+        @State private var showingPerCount = true
+        @State private var showMantraSheetFromResultsPage = false
+        @State private var chosenMantraFromResultsPage: String? = ""
+        
+        // Computed variables for est time completion (only for target count mode)
+        private var remainingCount: Int{
+            return (Int(sharedState.targetCount) ?? 0) - Int(tasbeeh)
+        }
+        private var timeLeft : TimeInterval{
+            return newAvrgTPC * Double(remainingCount)
+        }
+        private var finishTime: Date{
+            return Date().addingTimeInterval(timeLeft)
+        }
+
+
+        
+        var body: some View {
+            
+            
+            Color("pauseColor")
+                .edgesIgnoringSafeArea(.all)
+                .animation(.easeOut(duration: 0.3), value: paused)
+                .opacity(paused ? 1 : 0.0)
+                .onTapGesture { togglePause() }
+            
+            VStack{
+                VStack {
+                    completionCard
+                        .padding(.horizontal, 16)
+                }
+                
+                if sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0 {
+                    estimatedFinishTime
+                }
+            }
+            .opacity(paused ? 1.0 : 0.0)
+            .animation(.easeInOut, value: paused)
+            
+            VStack {
+                Spacer()
+                
+                // bottom settings bar when paused
+                VStack {
+                    if(toggleInactivityTimer){
+                        Slider(value: $inactivityDimmer, in: 0...1.0)
+                        .tint(.white)
+                        .frame(width: 250)
+                        .padding()
+                    }
+                    HStack{
+                        AutoStopToggleButton(autoStop: $autoStop)
+                        SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, tasbeehColorMode: $tasbeehColorMode)
+                        VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
+                        ColorSchemeModeToggleButton(tasbeehColorMode: $tasbeehColorMode)
+                    }
+//                    HStack{
+//                        Spacer()
+//                        Button(action: {
+//                            stopTimer()
+//                        }) {
+//                            Text("Complete")
+//                                .font(.headline)
+//                                .bold()
+//                                .foregroundColor(Color(.secondaryLabel))
+//                                .padding()
+//                                .cornerRadius(10)
+//                        }
+//                        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
+//                        .cornerRadius(15)
+//                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
+//
+//                        Spacer()
+//                    }
+                }
+                .padding()
+                .padding(.bottom, 20)
+                .opacity(paused ? 1.0 : 0.0)
+            }
+            
+        }
+        
+        
+        private var completionCard: some View {
+            VStack(alignment: .center, spacing: 12) {
+                
+                //TOP: The Mode Text
+                switch sharedState.selectedMode {
+                case 1:
+                    Text("\(sharedState.selectedMinutes)m Session")
+                        .font(.title3)
+                        .bold()
+                case 2:
+                    Text("\(sharedState.targetCount) Count Session")
+                        .font(.title3)
+                        .bold()
+                default:
+                    Text("Freestyle Session")
+                        .font(.title3)
+                        .bold()
+                }
+
+                
+                // Boxes
+                VStack(alignment: .center, spacing: gapSize) {
+                    // Mantra selector
+                    mantraSelector
+                        .transition(.opacity)
+                    
+                    // Stats Grid
+                    HStack(alignment: .top, spacing: gapSize) {
+                        // Left Column
+                        VStack(spacing: gapSize) {
+                            // Count Box
+                            statsBox {
+                                HStack {
+                                    Image(systemName: "circle.hexagonpath")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.primary)
+                                        .rotationEffect(.degrees(-countRotation))
+                                        .animation(.spring(duration: 0.5), value: countRotation)
+                                    Spacer()
+                                    Text("\(tasbeeh)")
+                                        .font(.system(size: textSize, weight: .medium))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                            }
+                            .frame(height: 44)  // Fixed height for count
+                            .onTapGesture {
+                                triggerSomeVibration(type: .medium)
+                                countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
+                            }
+
+                            // Timer Box
+                            statsBox {
+                                HStack {
+                                    Image(systemName: "gauge.with.needle")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(.primary)
+                                        .rotationEffect(.degrees(timerRotation))
+                                        .animation(.spring(duration: 0.3), value: timerRotation)
+                                    Spacer()
+                                    Text(timerStyle(secsToReport))
+                                        .font(.system(size: textSize, weight: .medium))
+                                        .monospacedDigit()
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 12)
+                            }
+                            .frame(height: 44)  // Fixed height for timer
+                            .onTapGesture {
+                                triggerSomeVibration(type: .medium)
+                                timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
+                             }
+
+                        }
+                        
+                        // Rate Box
+                        statsBox {
+                            VStack(spacing: 6) {
+                                Text("Rate")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .underline()
+                                
+                                ZStack {
+                                    // Per count view
+                                    VStack(spacing: 2) {
+                                        Text(String(format: "%.2fs", newAvrgTPC))
+                                            .font(.system(size: textSize, weight: .medium))
+                                            .monospacedDigit()
+                                        Text("per count")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .opacity(showingPerCount ? 1 : 0)
+                                    .offset(y: showingPerCount ? 0 : -20)
+                                    
+                                    // Per tasbeeh view
+                                    VStack(spacing: 2) {
+                                        Text(tasbeehRate)
+                                            .font(.system(size: textSize, weight: .medium))
+                                            .monospacedDigit()
+                                        Text("per tasbeeh")
+                                            .font(.system(size: 12))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .opacity(showingPerCount ? 0 : 1)
+                                    .offset(y: showingPerCount ? 20 : 0)
+                                }
+                            }
+                        }
+                        .frame(height: 96)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                triggerSomeVibration(type: .medium)
+                                showingPerCount.toggle()
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: 150)
+            }
+            .padding(20)
+            .frame(width: 280)
+            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
+            .cornerRadius(20)
+            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+        }
+        
+        private var estimatedFinishTime: some View {
+            ExternalToggleText(
+                originalText: "you'll finish \(inMinSecStyle2(from: timeLeft))",
+                toggledText: "you'll finish around \(shortTime(finishTime))",
+                externalTrigger: $rateTextToggle,  // Pass the binding
+                font: .caption,
+                fontDesign: .rounded,
+                fontWeight: .thin,
+                hapticFeedback: true
+            )
+            .opacity(0.8)
+            .padding()
+            .background(Color("pauseColor").opacity(0.001))
+        }
+        
+        private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.vertical, 10)
+                .background(Color(.tertiarySystemBackground))
+                .cornerRadius(12)
+        }
+        
+        // zikrflag 2
+        private var mantraSelector: some View {
+            Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
+                .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 12)
+                .background(Color(.tertiarySystemBackground))
+                .cornerRadius(12)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showMantraSheetFromResultsPage = true
+                }
+                .onChange(of: chosenMantraFromResultsPage) {
+                    if let newSetMantra = chosenMantraFromResultsPage {
+                        withAnimation {
+                            sharedState.titleForSession = newSetMantra
+                        }
+                    }
+                }
+                .sheet(isPresented: $showMantraSheetFromResultsPage) {
+                    MantraPickerView(
+                        isPresented: $showMantraSheetFromResultsPage,
+                        selectedMantra: $chosenMantraFromResultsPage,
+                        presentation: [.large]
+                    )
+                }
+        }
+
+    }
+
+    
+    struct TopOfSessionButton: View{
+        let symbol: String
+        let actionToDo: () -> Void
+        let paused: Bool
+        let togglePause: () -> Void
+        
+        var body: some View{
+            Button(action: paused ? togglePause : actionToDo) {
+                Image(systemName: symbol)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.gray.opacity(0.3))
+                    .frame(width: 20, height: 20)
+                    .padding()
+                    .background(paused ? .clear : .gray.opacity(0.08))
+                    .cornerRadius(100)
+                    .opacity(paused ? 0 : 1.0)
+            }
+        }
+    }
+    
+    struct NoteModalView: View {
+        @Binding var savedText: String
+        @Binding var showSheet: Bool
+        @Binding var takingNotes: Bool
+        @State private var tempText = ""
+        
+        var body: some View {
+                TextEditor(text: $tempText)
+                    .padding()
+                    .navigationTitle("Edit Text")
+                    .navigationBarItems(
+                        leading: Button("Cancel") {
+                            showSheet = false
+                        },
+                        trailing: Button("Save") {
+                            if !tempText.isEmpty {
+                                savedText = tempText
+                                showSheet = false
+                            }
+                        }
+                        .disabled(tempText.isEmpty)
+                    )
+            .presentationDetents([.medium])
+
+            .onAppear {
+                takingNotes = true
+                tempText = savedText
+            }
+            .onDisappear{
+                takingNotes = false
+            }
+        }
+    }
+    
+    struct PlayPauseButton: View {
+        let togglePause: () -> Void
+        let paused: Bool
+        
+        var body: some View {
+            // eventually use this to toggle the settings modal that replaces the pause stats modal.
+            /*
+            if paused{
+                Button(action: togglePause) {
+                    Image(systemName: "gear")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.gray.opacity(0.8))
+                        .padding()
+                        .background(/*paused ? .clear : */.gray.opacity(0.08))
+                        .cornerRadius(10)
+                }
+            }
+             */
+            Button(action: togglePause) {
+                Image(systemName: paused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(paused ? .gray.opacity(0.8) : .gray.opacity(0.3))
+                    .padding()
+                    .background(/*paused ? .clear : */.gray.opacity(0.08))
+                    .cornerRadius(10)
+            }
+        }
+    }
+
+
+
+    
+    struct completeButton: View {
+        let stopTimer: () -> Void
+        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+        
+        var body: some View{
+            Button(action: stopTimer, label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .foregroundStyle(.gray.opacity(0.2))
+                    RoundedRectangle(cornerRadius: 20)
+                        .foregroundStyle(
+                                         LinearGradient(gradient: Gradient(colors: colorScheme == .dark ? [.yellow.opacity(0.6), .green.opacity(0.8)] : [.yellow, .green]), startPoint: .topLeading, endPoint: .bottomTrailing)
+                                         )
+                    Text("complete")
+                        .foregroundStyle(.white)
+                        .font(.title3)
+                        .fontDesign(.rounded)
+                }
+                .frame(width: 300,height: 50)
+                .shadow(radius: 5)
+            })
+            .padding([.leading, .bottom, .trailing])
+        }
+    }
+    
+    
+
+    
 }
 
 
@@ -687,347 +1365,3 @@ struct tasbeehView: View {
     tasbeehView(isPresented: $dummyBool)
         .environmentObject(sharedState) // Inject shared state into the environment
 }
-
-
-
-/*
- Current Improvement Focus:
- 
- Improvements needed:
- - bug where it resets randomly. trying to fix it...
-     > i think it has to do with the onappear and ondisappear with the change of scenephase... but not always the case.
-     > works fine in simulator. but not on real device
-     > put print statements to try and debug
-     > also made titleForSession = "set down here" or = "set up here" to understand whats happening
- - next up: make MantraModel hold all information regarding total count
- */
-
-
-
-
-
-
-//import AppIntents
-//import Adhan
-//
-///// Utility class for shared functionality
-//struct PrayerUtils {
-//
-//    /// Fetches user location from UserDefaults
-//    static func getUserCoordinates() throws -> Coordinates {
-//        let latitude = UserDefaults.standard.double(forKey: "lastLatitude")
-//        let longitude = UserDefaults.standard.double(forKey: "lastLongitude")
-//        
-//        guard latitude != 0, longitude != 0 else {
-//            throw PrayerError(message: "Location not available. Please open the app first.")
-//        }
-//        
-//        return Coordinates(latitude: latitude, longitude: longitude)
-//    }
-//    
-//    /// Fetches calculation parameters based on UserDefaults
-//    static func getCalculationParameters() -> CalculationParameters {
-//        let calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-//        let madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-//        
-//        let calculationMethod: CalculationMethod = {
-//            switch calcMethodInt {
-//            case 1: return .karachi
-//            case 2: return .northAmerica
-//            case 3: return .muslimWorldLeague
-//            case 4: return .ummAlQura
-//            case 5: return .egyptian
-//            case 7: return .tehran
-//            case 8: return .dubai
-//            case 9: return .kuwait
-//            case 10: return .qatar
-//            case 11: return .singapore
-//            case 12, 14: return .other
-//            case 13: return .turkey
-//            default: return .northAmerica
-//            }
-//        }()
-//        
-//        var params = calculationMethod.params
-//        params.madhab = madhab
-//        return params
-//    }
-//    
-//    /// Fetches prayer times for a specific date
-//    static func getPrayerTimes(for date: Date, coordinates: Coordinates, params: CalculationParameters) throws -> PrayerTimes {
-//        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
-//        
-//        guard let prayerTimes = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) else {
-//            throw PrayerError(message: "Unable to calculate prayer times for \(date).")
-//        }
-//        
-//        return prayerTimes
-//    }
-//    
-//    /// Generic prayer time retrieval
-//    static func getPrayerTime(for prayer: enumPrayer, in times: PrayerTimes) -> Date {
-//        switch prayer {
-//        case .fajr: return times.fajr
-//        case .sunrise: return times.sunrise
-//        case .dhuhr: return times.dhuhr
-//        case .asr: return times.asr
-//        case .maghrib: return times.maghrib
-//        case .isha: return times.isha
-//        }
-//    }
-//    
-//
-//    static func calculateAlarmDescription() throws -> (description: String, time: Date) {
-//        let alarmEnabled = UserDefaults.standard.bool(forKey: "alarmEnabled")
-//        let alarmOffsetMinutes = UserDefaults.standard.integer(forKey: "alarmOffsetMinutes")
-//        let alarmIsBefore = UserDefaults.standard.bool(forKey: "alarmIsBefore")
-//        let alarmIsFajr = UserDefaults.standard.bool(forKey: "alarmIsFajr")
-//
-//        guard alarmEnabled else {
-//            throw AlarmDisabledError()
-//        }
-//        
-//        let coordinates = try PrayerUtils.getUserCoordinates()
-//        let params = PrayerUtils.getCalculationParameters()
-//
-//        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-//        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-//
-//        let prayer: enumPrayer = alarmIsFajr ? .fajr : .sunrise
-//        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-//        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
-//
-//        let offset = TimeInterval(alarmOffsetMinutes * 60)
-//        let resultTime = nextPrayerTime.addingTimeInterval(alarmIsBefore ? -offset : offset)
-//        
-//        let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
-//        let beforeAfterText = alarmIsBefore ? "before" : "after"
-//        let fajrSunriseText = alarmIsFajr ? "Fajr" : "Sunrise"
-//        let resultTimeText = "(\(shortTimePM(resultTime)))"
-//        let firstPartText = alarmOffsetMinutes != 0 ? "\(offsetMinutesText) \(beforeAfterText)" : "Alarm at"
-//        let description = "\(firstPartText) \(fajrSunriseText) \(resultTimeText)"
-//
-//        return (description, resultTime)
-//    }
-//
-//
-//    struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
-//        var localizedStringResource: LocalizedStringResource {
-//            "Daily Fajr Alarm is disabled. Please enable it in the Shukr app settings."
-//        }
-//    }
-//
-//}
-//
-///// Custom error for prayer intents
-//struct PrayerError: LocalizedError {
-//    let message: String
-//    var errorDescription: String? { message }
-//}
-//
-///// AppEnum for Prayer Selection
-//enum enumPrayer: String, AppEnum {
-//    case fajr = "Fajr"
-//    case sunrise = "Sunrise"
-//    case dhuhr = "Dhuhr"
-//    case asr = "Asr"
-//    case maghrib = "Maghrib"
-//    case isha = "Isha"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Prayer"
-//    static var caseDisplayRepresentations: [enumPrayer: DisplayRepresentation] = [
-//        .fajr: "Fajr",
-//        .sunrise: "Sunrise",
-//        .dhuhr: "Dhuhr",
-//        .asr: "Asr",
-//        .maghrib: "Maghrib",
-//        .isha: "Isha"
-//    ]
-//}
-
-///// AppEnum for Prayer Selection
-//enum enumFajrSunrisePrayer: String, AppEnum {
-//    case fajr = "Fajr"
-//    case sunrise = "Sunrise"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Prayer"
-//    static var caseDisplayRepresentations: [enumFajrSunrisePrayer: DisplayRepresentation] = [
-//        .fajr: "Fajr",
-//        .sunrise: "Sunrise",
-//    ]
-//}
-//
-///// AppEnum for Reference Point
-//enum ReferencePoint: String, AppEnum {
-//    case after = "after"
-//    case before = "before"
-//    
-//    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Reference Point"
-//    static var caseDisplayRepresentations: [ReferencePoint: DisplayRepresentation] = [
-//        .after: "after",
-//        .before: "before"
-//    ]
-//}
-//
-///// Intent: Get Time of Chosen Prayer
-//struct GetSomePrayerTimeIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Time of Chosen Prayer"
-//    static var description: LocalizedStringResource = "Returns the time for the selected prayer."
-//    
-//    @Parameter(title: "Prayer", description: "Select which prayer time you want.")
-//    var prayer: enumPrayer
-//    
-//    
-//    static var parameterSummary: some ParameterSummary {
-//        Summary("Get start time for \(\.$prayer)")
-//    }
-//    
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-//        let coordinates = try PrayerUtils.getUserCoordinates()
-//        let params = PrayerUtils.getCalculationParameters()
-//        
-//        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-//        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-//        
-//        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-//        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
-//        
-//        return .result(value: nextPrayerTime, dialog: IntentDialog(stringLiteral: "\(prayer) will be at \(shortTimePM(nextPrayerTime))"))
-//    }
-//}
-//
-///// Intent: Get Next Fajr Time
-//struct GetNextFajrIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Next Fajr Time"
-//    static var description: LocalizedStringResource = "Returns the next Fajr prayer time."
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-//        let coordinates = try PrayerUtils.getUserCoordinates()
-//        let params = PrayerUtils.getCalculationParameters()
-//        
-//        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-//        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-//        
-//        let nextFajr = Date() > todayTimes.fajr ? tomorrowTimes.fajr : todayTimes.fajr
-//        return .result(value: nextFajr, dialog: IntentDialog(stringLiteral: "Fajr will be at \(shortTimePM(nextFajr))"))
-//    }
-//}
-//
-///// Intent: Get Offset Time Relative to Any Prayer
-//struct GetOffsetTimeIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Get Offset Time Relative to Prayer"
-//    static var description: LocalizedStringResource = "Returns a time offset from any prayer."
-//    
-//    @Parameter(title: "Minutes", description: "Number of minutes to offset.")
-//    var offsetMinutes: Int
-//    
-//    @Parameter(title: "Reference Point", description: "Offset after or before the prayer.")
-//    var referencePoint: ReferencePoint
-//    
-//    @Parameter(title: "Prayer", description: "Select the prayer reference.")
-//    var prayer: enumPrayer
-//    
-//    
-//    static var parameterSummary: some ParameterSummary {
-//        Summary("Get time \(\.$offsetMinutes) minutes \(\.$referencePoint) \(\.$prayer)")
-//    }
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-//        let coordinates = try PrayerUtils.getUserCoordinates()
-//        let params = PrayerUtils.getCalculationParameters()
-//        
-//        let todayTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-//        let tomorrowTimes = try PrayerUtils.getPrayerTimes(for: Calendar.current.date(byAdding: .day, value: 1, to: Date())!, coordinates: coordinates, params: params)
-//        
-//        let prayerTime = PrayerUtils.getPrayerTime(for: prayer, in: todayTimes)
-//        let nextPrayerTime = Date() > prayerTime ? PrayerUtils.getPrayerTime(for: prayer, in: tomorrowTimes) : prayerTime
-//        
-//        let offset = TimeInterval(offsetMinutes * 60)
-//        let resultTime = referencePoint == .after ? nextPrayerTime.addingTimeInterval(offset) : nextPrayerTime.addingTimeInterval(-offset)
-//        
-//        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: "\(offsetMinutes) minutes \(referencePoint) \(prayer) will be at \(shortTimePM(resultTime))"))
-//    }
-//}
-//
-//
-//
-///// Intent: Get Offset Time Relative to Fajr or Sunrise
-//struct SetFajrAlarmIntent: AppIntent {
-//    static var title: LocalizedStringResource = "Autopilot Fajr Alarm Time"
-//    static var description: LocalizedStringResource = "Dynamically returns a time offset from Fajr or Sunrise (rules defined in the Shukr app settings)"
-//        
-//    @AppStorage("alarmEnabled") private var alarmEnabled: Bool = false
-//    @AppStorage("alarmOffsetMinutes") private var alarmOffsetMinutes: Int = 0
-//    @AppStorage("alarmIsBefore") private var alarmIsBefore: Bool = false
-//    @AppStorage("alarmIsFajr") private var alarmIsFajr: Bool = false
-//    @AppStorage("alarmTimeSetFor") private var alarmTimeSetFor: String = ""
-//    @AppStorage("alarmDescription") private var alarmDescription: String = ""
-//
-//    /// Custom Error for Disabled Alarm
-//    struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
-//        var localizedStringResource: LocalizedStringResource {
-//            "Daily Fajr Alarm is disabled. Please enable it in the Shukr app settings."
-//        }
-//    }
-//    
-//    @MainActor
-//    func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-//        
-//        let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
-//        let resultTime = calculatedAlarm.time
-//        alarmTimeSetFor = shortTimePM(resultTime)
-//        alarmDescription = calculatedAlarm.description
-//                
-//        print("\(alarmDescription)")
-//        
-//        return .result(value: resultTime, dialog: IntentDialog(stringLiteral: alarmDescription))
-//    }
-//}
-//
-//
-//
-//
-//struct PrayerTimeShortcuts: AppShortcutsProvider {
-//    @AppShortcutsBuilder
-//    static var appShortcuts: [AppShortcut] {
-//        AppShortcut(
-//            intent: GetNextFajrIntent(),
-//            phrases: [
-//                "Get Next Fajr time from \(.applicationName)",
-//                "When is Fajr",
-//                "Get Fajr time from \(.applicationName)",
-//                "Fajr time from \(.applicationName)",
-//                "Get morning prayer time from \(.applicationName)",
-//                "morning prayer time from \(.applicationName)"
-//            ],
-//            shortTitle: "Fajr Time",
-//            systemImageName: "sunrise.fill"
-//        )
-//        
-//        AppShortcut(
-//            intent: GetSomePrayerTimeIntent(),
-//            phrases: [
-//                "Get next prayer time from \(.applicationName)",
-//                "When is the next prayer",
-//                "Next prayer time from \(.applicationName)",
-//                "What's the upcoming prayer time"
-//            ],
-//            shortTitle: "Some Prayer Time",
-//            systemImageName: "clock.fill"
-//        )
-//        
-//        AppShortcut(
-//            intent: GetOffsetTimeIntent(),
-//            phrases: [
-//                "Get offset prayer time from \(.applicationName)"
-//            ],
-//            shortTitle: "Offset Prayer Time",
-//            systemImageName: "clock.badge.questionmark"
-//        )
-//        
-//    }
-//}

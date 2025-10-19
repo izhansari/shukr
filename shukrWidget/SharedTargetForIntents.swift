@@ -543,12 +543,17 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: GetNextFajrIntent(),
             phrases: [
-                "Get Next Fajr time from \(.applicationName)",
-                "When is Fajr",
-                "Get Fajr time from \(.applicationName)",
-                "Fajr time from \(.applicationName)",
-                "Get morning prayer time from \(.applicationName)",
-                "morning prayer time from \(.applicationName)"
+//                "Get Next Fajr time from \(.applicationName)",
+//                "When is Fajr",
+//                "Get Fajr time from \(.applicationName)",
+//                "Fajr time from \(.applicationName)",
+//                "Get morning prayer time from \(.applicationName)",
+//                "morning prayer time from \(.applicationName)"
+                "Get Next Fajr time from ${applicationName}",
+                "Get Fajr time from ${applicationName}",
+                "Fajr time from ${applicationName}",
+                "Get morning prayer time from ${applicationName}",
+                "morning prayer time from ${applicationName}"
             ],
             shortTitle: "Fajr Time",
             systemImageName: "sunrise.fill"
@@ -557,10 +562,12 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: GetSomePrayerTimeIntent(),
             phrases: [
-                "Get next prayer time from \(.applicationName)",
-                "When is the next prayer",
-                "Next prayer time from \(.applicationName)",
-                "What's the upcoming prayer time"
+//                "Get next prayer time from \(.applicationName)",
+//                "Next prayer time from \(.applicationName)",
+                "Get next prayer time from ${applicationName}",
+                "Next prayer time from ${applicationName}"//,
+//                "When is the next prayer",
+//                "What's the upcoming prayer time"
             ],
             shortTitle: "Some Prayer Time",
             systemImageName: "clock.fill"
@@ -569,7 +576,8 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: GetOffsetTimeIntent(),
             phrases: [
-                "Get offset prayer time from \(.applicationName)"
+//                "Get offset prayer time from \(.applicationName)"
+                "Get offset prayer time from ${applicationName}"
             ],
             shortTitle: "Offset Prayer Time",
             systemImageName: "clock.badge.questionmark"

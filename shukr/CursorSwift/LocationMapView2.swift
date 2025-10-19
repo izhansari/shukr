@@ -1,5 +1,13 @@
-/*
- import SwiftUI
+//
+//  LocationMapView2.swift
+//  shukr
+//  for the map view.
+//
+//  Created on 2/7/25.
+//
+
+
+import SwiftUI
 import MapKit
 import CoreLocation
 import SwiftData
@@ -15,14 +23,31 @@ class MeccaAnnotation: MKPointAnnotation {
     // Empty subclass to identify Mecca annotation
 }
 
+class MeccaMarkerAnnotationView: MKMarkerAnnotationView {
+    override var annotation: MKAnnotation? {
+        didSet {
+            if annotation is MeccaAnnotation {
+                glyphText = "🕋"
+                markerTintColor = .white
+                clusteringIdentifier = nil
+            }
+        }
+    }
+}
+
+
+
+
 // MARK: - ViewModel
 class LocationViewModel: NSObject, ObservableObject, CLLocationManagerDelegate { //locmanflag used in map. -- cant merge with other cuz of the sharedtarget. starts yelling at us with PrayerModel.
     @Published var selectedPrayer: PrayerModel?
     @Published var selectedClusterPrayers: [PrayerModel]?
-    @Published var mapType: MKMapType = .hybrid
+    @Published var mapType: MKMapType = .standard
     @Published var prayers: [PrayerModel] = [] // Holds all prayers with valid coordinates
     @Published var filteredPrayers: [PrayerModel] = [] // Holds prayers after applying filters
     @Published var visiblePrayerCount: Int = 0
+    @Published var isAtMecca: Bool = false
+    let meccaCoordinate = CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262)
 
     // Default filter values
     let defaultStartDate: Date
@@ -56,7 +81,9 @@ class LocationViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
     override init() {
         // Initialize default dates
         self.defaultEndDate = Date()
-        self.defaultStartDate = Calendar.current.date(byAdding: .month, value: -1, to: defaultEndDate) ?? defaultEndDate
+//        self.defaultStartDate = Calendar.current.date(byAdding: .month, value: -1, to: defaultEndDate) ?? defaultEndDate
+        let currentYear = Calendar.current.component(.year, from: Date())
+        self.defaultStartDate = Calendar.current.date(from: DateComponents(year: currentYear, month: 1, day: 1)) ?? defaultEndDate
 
         // Set initial selected dates to defaults
         self.selectedStartDate = self.defaultStartDate
@@ -66,7 +93,8 @@ class LocationViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
 
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyBest /*kCLLocationAccuracyNearestTenMeters*/
+        locationManager.desiredAccuracy = /*kCLLocationAccuracyBest*/ kCLLocationAccuracyNearestTenMeters
+        locationManager.distanceFilter = 40 // only update if user moves ≥ 10 meters
         locationManager.requestWhenInUseAuthorization()
         locationManager.startUpdatingLocation()
     }
@@ -135,16 +163,50 @@ class LocationViewModel: NSObject, ObservableObject, CLLocationManagerDelegate {
         let y = sin(meccaLong - centerLong)
         let x = cos(centerLat) * tan(meccaLat) - sin(centerLat) * cos(meccaLong - centerLong)
 
-        var qiblaDirection = atan2(y, x) * 180 / .pi
-        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-        let newRotation = qiblaDirection - mapHeading
+        var bearing = atan2(y, x) * 180 / .pi
+        bearing = (bearing + 360).truncatingRemainder(dividingBy: 360)
 
+        // Instead of subtracting mapHeading, just store the bearing:
         DispatchQueue.main.async {
             withAnimation {
-                self.qiblaDirection = newRotation
+                self.qiblaDirection = bearing
             }
         }
     }
+    
+    // helper function to determine if mecca annotation is in our circleWithArrowOverlay
+    func overlayRadiusInMeters(for mapView: MKMapView, overlayRadiusPoints: CGFloat = 100) -> CLLocationDistance {
+        let centerPoint = mapView.center
+        let edgePoint = CGPoint(x: centerPoint.x, y: centerPoint.y - overlayRadiusPoints)
+        let centerCoordinate = mapView.centerCoordinate
+        let edgeCoordinate = mapView.convert(edgePoint, toCoordinateFrom: mapView)
+        let centerLocation = CLLocation(latitude: centerCoordinate.latitude, longitude: centerCoordinate.longitude)
+        let edgeLocation = CLLocation(latitude: edgeCoordinate.latitude, longitude: edgeCoordinate.longitude)
+        return centerLocation.distance(from: edgeLocation)
+    }
+    func updateMeccaProximity(using mapView: MKMapView) {
+        let overlayRadius = overlayRadiusInMeters(for: mapView)  // default: 100 points radius
+        let centerLocation = CLLocation(latitude: mapView.centerCoordinate.latitude, longitude: mapView.centerCoordinate.longitude)
+        let meccaLocation = CLLocation(latitude: meccaCoordinate.latitude, longitude: meccaCoordinate.longitude)
+        
+        DispatchQueue.main.async {
+            withAnimation {
+                self.isAtMecca = centerLocation.distance(from: meccaLocation) < overlayRadius
+            }
+        }
+    }
+    
+    /// Returns the shortest signed difference between two angles in degrees,
+    /// guaranteed to be in the range -180...180.
+    func angleDifference(from: Double, to: Double) -> Double {
+        // Example: from = qiblaDirection, to = deviceHeading
+        var diff = (from - to).truncatingRemainder(dividingBy: 360)
+        if diff < -180 { diff += 360 }
+        if diff > 180  { diff -= 360 }
+        return diff
+    }
+
+
 }
 
 // MARK: - MapView
@@ -160,19 +222,22 @@ struct MapView: UIViewRepresentable {
 
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
-        mapView.userTrackingMode = .none
+        mapView.userTrackingMode = .follow
         mapView.mapType = viewModel.mapType
-        mapView.isRotateEnabled = true // Enable rotation
-        mapView.showsCompass = true    // Show compass
-
-        let initialRegion = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 21.4225, longitude: 39.8262),
-            span: MKCoordinateSpan(latitudeDelta: 130, longitudeDelta: 130)
-        )
-        mapView.setRegion(initialRegion, animated: false)
+        mapView.isRotateEnabled = false /*true*/
+//        mapView.userTrackingMode = .followWithHeading
+//        mapView.showsCompass = true    // Show compass
+//        mapView.showsUserTrackingButton = true
+        
+//        let initialRegion = MKCoordinateRegion(
+//            center: CLLocationCoordinate2D(latitude: 21.4225+3, longitude: 39.8262), //mecca with slight offset for pin to seem in center
+//            span: MKCoordinateSpan(latitudeDelta: 80, longitudeDelta: 80)
+//        )
+//        mapView.setRegion(initialRegion, animated: false)
 
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
+        mapView.register(MeccaMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "MeccaAnnotationView")
         
         viewModel.mapView = mapView
 
@@ -205,16 +270,21 @@ struct MapView: UIViewRepresentable {
         init(_ parent: MapView) {
             self.parent = parent
         }
-
-        // Monitor region changes to update annotations and Qibla direction
+        
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             DispatchQueue.main.async {
+                // We’ll still need to update the centerCoordinate:
                 self.parent.viewModel.centerCoordinate = mapView.centerCoordinate
-                self.parent.viewModel.mapHeading = mapView.camera.heading
+                
+                // We’ll still call updateQiblaDirection so that we compute the bearing
                 self.parent.viewModel.updateQiblaDirection()
+
+                // Update proximity based on the current zoom level
+                self.parent.viewModel.updateMeccaProximity(using: mapView)
             }
             self.updateAnnotations(for: mapView.visibleMapRect)
         }
+
 
         func updateAnnotations(for visibleMapRect: MKMapRect) {
             // Remove existing annotations except Mecca
@@ -268,19 +338,7 @@ struct MapView: UIViewRepresentable {
             // Custom view for Mecca annotation
             if annotation is MeccaAnnotation {
                 let identifier = "MeccaAnnotationView"
-                var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier) as? MKMarkerAnnotationView
-                if annotationView == nil {
-                    annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                    annotationView?.canShowCallout = true
-                    annotationView?.glyphText = "🕋"
-                    annotationView?.titleVisibility = .visible
-                    annotationView?.subtitleVisibility = .visible
-                    annotationView?.markerTintColor = UIColor.white
-                    annotationView?.frame.size = CGSize(width: 100, height: 100)
-                    // Do not set clusteringIdentifier to avoid clustering
-                } else {
-                    annotationView?.annotation = annotation
-                }
+                let annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier, for: annotation)
                 return annotationView
             }
 
@@ -330,7 +388,9 @@ struct MapView: UIViewRepresentable {
 // MARK: - ContentView
 struct LocationMapContentView: View {
     @StateObject var viewModel = LocationViewModel()
+    @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.modelContext) private var context
+    @Environment(\.scenePhase) var scenePhase
 
     // Fetch only prayers with non-nil coordinates
     @Query(filter: #Predicate<PrayerModel> { prayer in
@@ -341,6 +401,25 @@ struct LocationMapContentView: View {
 
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.presentationMode) var presentationMode
+    
+    private func locationButtonAction(){
+        if let mapView = mapViewRef {
+            if let userLocation = mapView.userLocation.location?.coordinate {
+                let currentSpan = mapView.region.span
+                let maxSpan = MKCoordinateSpan(latitudeDelta: 0.04, longitudeDelta: 0.04)
+                let closeSpan = /*viewModel.showPrayers ? MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02) : */MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+
+                let newSpan: MKCoordinateSpan
+                if currentSpan.latitudeDelta > maxSpan.latitudeDelta || currentSpan.longitudeDelta > maxSpan.longitudeDelta {
+                    newSpan = closeSpan
+                } else {
+                    newSpan = currentSpan
+                }
+                let region = MKCoordinateRegion(center: userLocation, span: newSpan)
+                mapView.setRegion(region, animated: true)
+            }
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -359,136 +438,175 @@ struct LocationMapContentView: View {
                 }
 
             // Qibla indicator when prayers are hidden
-//            if !viewModel.showPrayers {
-                VStack {
-                    Spacer()
-                    CircleWithArrowOverlay(degrees: viewModel.qiblaDirection)
-                        .padding()
-                    Spacer()
-                }
-                .allowsHitTesting(false) // So it doesn't interfere with map interactions
-                .opacity(viewModel.showPrayers ? 0 : 1)
-//            }
-
-            VStack{
-                HStack {
-                    // Close button
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
-//                        sharedState.showingOtherPages = false
-                    }
-                    .padding()
-                    .background(Color.white.opacity(0.8))
-                    .cornerRadius(8)
-                    .padding()
-                    
-                    Spacer()
-                }
-
-                Spacer()
-            }
-            
-            VStack{
-                HStack{
-                    Spacer()
-                    Text("Qibla: \(Int(round(viewModel.qiblaDirection + viewModel.mapHeading)))°")
-                        .padding()
-                        .padding()
-                        .opacity(viewModel.showPrayers ? 0 : 1)
-                    Spacer()
-                }
-                Spacer()
-            }
-            
-            VStack{
-                HStack{
-                    Spacer()
-                    Text("Prayers in Area: \(viewModel.visiblePrayerCount)")
-                        .padding()
-                        .padding()
-                        .opacity(viewModel.showPrayers ? 1 : 0)
-                    Spacer()
-                }
-                Spacer()
-            }
-            
             VStack {
-                HStack {
+                Spacer()
+                CircleWithArrowOverlay(degrees: viewModel.qiblaDirection, isAtMecca: viewModel.isAtMecca)
+                    .padding()
+                Spacer()
+            }
+            .allowsHitTesting(false) // So it doesn't interfere with map interactions
+            .opacity(viewModel.showPrayers ? 0 : 1)
 
-                    Spacer()
-
-                    VStack(spacing: 10) {
-                        // Map layers button
+            // All The buttons:
+            VStack{
+                ZStack(alignment: .top){
+                    //Close Button
+                    HStack {
+                        // Close button
                         Button(action: {
-                            viewModel.mapType = viewModel.mapType == .standard ? .hybrid : .standard
-                        }) {
-                            Image(systemName: "map")
-                                .foregroundColor(.blue)
+                            sharedState.allowQiblaHaptics = true
+                            presentationMode.wrappedValue.dismiss()
+                        }){
+                            Text("Close")
+                                .font(.body)
                                 .padding()
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .shadow(radius: 2)
-                        }
-
-                        // Location button
-                        Button(action: {
-                            if let mapView = mapViewRef {
-                                if let userLocation = mapView.userLocation.location?.coordinate {
-                                    let currentSpan = mapView.region.span
-                                    let maxSpan = MKCoordinateSpan(latitudeDelta: 0.15, longitudeDelta: 0.15)
-                                    let closeSpan = viewModel.showPrayers ? MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02) : MKCoordinateSpan(latitudeDelta: 0.002, longitudeDelta: 0.002)
-
-                                    let newSpan: MKCoordinateSpan
-                                    if currentSpan.latitudeDelta > maxSpan.latitudeDelta || currentSpan.longitudeDelta > maxSpan.longitudeDelta {
-                                        newSpan = closeSpan
-                                    } else {
-                                        newSpan = currentSpan
-                                    }
-                                    let region = MKCoordinateRegion(center: userLocation, span: newSpan)
-                                    mapView.setRegion(region, animated: true)
-                                }
-                            }
-                        }) {
-                            Image(systemName: "location")
-                                .foregroundColor(.blue)
-                                .padding()
-                                .background(Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .shadow(radius: 2)
-                        }
-
-                        // Show/Hide Prayers button
-                        Button(action: {
-                            withAnimation{
-                                viewModel.showPrayers.toggle()
-                            }
-                        }) {
-                            Image(systemName: viewModel.showPrayers ? "mappin.circle.fill" : "mappin.circle")
-                                .foregroundColor(.blue)
-                                .padding()
+                                .foregroundStyle(.blue)
                                 .background(Color.white)
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                                 .shadow(radius: 2)
                         }
                         
-                        // Filter button with indication
-                        Button(action: {
-                            showFilterSheet = true
-                        }) {
-                            Image(systemName: viewModel.filtersActive ? "line.horizontal.3.decrease.circle.fill" : "line.horizontal.3.decrease.circle")
-                                .foregroundColor(viewModel.filtersActive ? .white : .blue)
-                                .padding()
-                                .background(viewModel.filtersActive ? Color.blue : Color.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .shadow(radius: 2)
-                        }
-                        .opacity(viewModel.showPrayers ? 1 : 0)
-
+                        Spacer()
                     }
-                    .padding(.trailing, 10)
+//                    .border(.yellow)
+                    
+                    //Qibla / Prayers In Area Text:
+                    HStack{
+                        Spacer()
+                        VStack{
+                            if viewModel.showPrayers {
+                                Text("Prayers in Area: \(viewModel.visiblePrayerCount)")
+                                    .font(.subheadline)
+//                                Text("\(viewModel.visiblePrayerCount)")
+//                                    .font(.caption)
+                            }
+                            else{
+//                                Text("Qibla: \(Int(round(viewModel.qiblaDirection + viewModel.mapHeading)))°")
+                                //                        let diff = viewModel.angleDifference(from: viewModel.qiblaDirection, to: locationManager.compassHeading)
+  
+                                Text("""
+                                Qibla: \(envLocationManager.qibla.aligned
+                                    ? "Facing Mecca 🕋"
+                                    : (viewModel.angleDifference(
+                                        from: viewModel.qiblaDirection,
+                                        to: envLocationManager.compassHeading
+                                      ) < 0
+                                      ? "Turn left ←"
+                                      : "Turn right →"
+                                    )
+                                )
+                                """)
+                                .font(.subheadline)
+                                .font(.subheadline)
+
+
+//                                Text("Qibla: \(
+//                                    envLocationManager.qibla.aligned
+//                                    ? "Facing Mecca 🕋"
+//                                    : viewModel.angleDifference(from: viewModel.qiblaDirection, to: envLocationManager.compassHeading) < 0
+//                                    ? "Turn left ←"
+//                                    : "Turn right →")"
+//                                )
+//                                .font(.subheadline)
+                            }
+                        }
+                        .foregroundStyle(.black)
+                        .padding()
+                        .background(Color.white.opacity(0.7))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(!viewModel.showPrayers && envLocationManager.qibla.aligned ? Color.green : Color.clear, lineWidth: 2)
+                        )
+                        .shadow(radius: 2)
+                        Spacer()
+                    }
+                    .transition(.opacity)
+//                    .border(.red)
+                    
+                    
+                    //Side Buttons:
+                    HStack {
+
+                        Spacer()
+
+                        VStack(spacing: 6) {
+                            // Map layers button
+                            Button(action: {
+                                viewModel.mapType = viewModel.mapType == .standard ? .hybrid : .standard
+                            }) {
+                                Image(systemName: "map")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(.blue)
+                                    .padding()
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .shadow(radius: 2)
+                            }
+
+                            // Location button
+                            Button(action: {
+                                locationButtonAction()
+                            }) {
+                                Image(systemName: "location")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(.blue)
+                                    .padding()
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .shadow(radius: 2)
+                            }
+
+                            // Show/Hide Prayers button
+                            Button(action: {
+                                withAnimation{
+                                    viewModel.showPrayers.toggle()
+                                    sharedState.allowQiblaHaptics.toggle()
+                                    if !viewModel.showPrayers {
+                                        locationButtonAction()
+                                    }
+                                }
+                            }) {
+                                Image(systemName: viewModel.showPrayers ? "mappin.circle.fill" : "mappin.circle")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(.blue)
+                                    .padding()
+                                    .background(Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .shadow(radius: 2)
+                            }
+                            
+                            // Filter button with indication
+                            Button(action: {
+                                showFilterSheet = true
+                            }) {
+                                Image(systemName: viewModel.filtersActive ? "line.horizontal.3.decrease.circle.fill" : "line.horizontal.3.decrease.circle")
+                                    .resizable()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(viewModel.filtersActive ? .white : .blue)
+                                    .padding()
+                                    .background(viewModel.filtersActive ? Color.blue : Color.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .shadow(radius: 2)
+                            }
+                            .opacity(viewModel.showPrayers ? 1 : 0)
+
+                        }
+                    }
+//                    .border(.brown)
+
+
                 }
+                .padding(.horizontal, 10)
+                .padding(.top, 6)
+
+
                 Spacer()
             }
+            
         }
         .sheet(item: $viewModel.selectedPrayer) { prayer in
             PrayerDetailView(prayer: prayer)
@@ -531,14 +649,64 @@ struct LocationMapContentView: View {
                 }
             }
         }
+        .onChange(of: scenePhase) {_, newScenePhase in
+            if newScenePhase == .background {
+                sharedState.allowQiblaHaptics = true
+                presentationMode.wrappedValue.dismiss()
+            }
+        }
+        .toolbar(.hidden, for:.navigationBar)
     }
 }
 
 // MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
+    @EnvironmentObject var locationManager: EnvLocationManager
+    @EnvironmentObject var sharedState: SharedStateClass
     var degrees: Double
-
+    var isAtMecca: Bool
+    
     var body: some View {
+        ZStack {
+            // Change the circle's color based on isAtMecca:
+            Circle()
+                .stroke(lineWidth: isAtMecca || locationManager.qibla.aligned ? 4 : 2)
+                .frame(width: 200, height: 200)
+                .foregroundColor(isAtMecca || locationManager.qibla.aligned ? .green : .white)
+                .shadow(color: isAtMecca || locationManager.qibla.aligned ? .white.opacity(0.7) : .black.opacity(0.1), radius: 10, x: 0, y: 0)
+                .animation(.default, value: locationManager.qibla.aligned)
+
+            // Only show the arrows if we're not at Mecca
+            if !isAtMecca {
+                Image(systemName: "arrowtriangle.up.fill")
+                    .resizable()
+                    .foregroundColor(locationManager.qibla.aligned ? .green : .white)
+                    .frame(width: 20, height: 20)
+                    .offset(y: -110)
+                    .rotationEffect(.degrees(degrees))
+                    .animation(.default, value: locationManager.qibla.aligned)
+
+                // second (compass) arrow using your locationManager.
+                // This uses the compassHeading from your environment object.
+                Image(systemName: "chevron.up")
+                    .font(.subheadline)
+                    .fontWeight(.bold)
+                    .foregroundColor(locationManager.qibla.aligned ? .green : Color(.systemBlue))
+                    .background(
+                        Circle() // to increase tappable area
+                            .fill(Color.white.opacity(0.001))
+                            .frame(width: 44, height: 44)
+                    )
+                    .shadow(radius: 2)
+//                    .opacity(0.7)
+                    .offset(y: -20)
+                    .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? degrees : locationManager.compassHeading))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: degrees)
+            }
+        }
+        .frame(width: 200, height: 200)
+
+/*
         ZStack {
             Circle()
                 .stroke(lineWidth: 2)
@@ -553,8 +721,28 @@ struct CircleWithArrowOverlay: View {
                 .offset(y: -100)
                 .rotationEffect(.degrees(degrees))
                 .animation(.easeInOut, value: degrees)
+            
+            // Compass Based Qibla Arrow
+            Image(systemName: "chevron.up")
+                .font(.subheadline)
+                .foregroundColor(locationManager.qibla.aligned ? .green : .primary)
+                .background(
+                    Circle() // this is to increase tappable aread
+                        .fill(Color.white.opacity(0.001))
+                        .frame(width: 44, height: 44)
+                )
+                .opacity(0.7)
+                .offset(y: -80)
+//                            .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? 0 : locationManager.qibla.heading))
+                .rotationEffect(Angle(degrees: locationManager.compassHeading))
+                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
+//                            .onChange(of: locationManager.qibla.aligned) { _, newIsAligned in
+//                                checkToTriggerQiblaHaptic(aligned: newIsAligned)
+//                            }
+//                            .onTapGesture { showQiblaMap = true }
         }
         .frame(width: 200, height: 200)
+ */
     }
 }
 
@@ -771,4 +959,3 @@ struct ClusterPrayersDetailView: View {
         return CLLocationCoordinate2D(latitude: centerLatitude, longitude: centerLongitude)
     }
 }
-*/

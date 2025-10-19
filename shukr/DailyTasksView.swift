@@ -26,7 +26,7 @@ struct DailyTasksView: View {
     @State private var taskToDelete: TaskModel? = nil
     @State private var showDeleteTaskAlert: Bool = false
     @State private var currentScrollTargetID: UUID? = nil
-    @State private var showTaskScroller: Bool = true
+//    @State private var showTaskScroller: Bool = true
 //    @State private var todaysSessions: [SessionDataModel] = []
     @State private var todaysSessionsDict: [String: (totalCount: Int, secondsPassed: TimeInterval)] = [:]
     // “Select Zikr” logic
@@ -39,40 +39,32 @@ struct DailyTasksView: View {
     var body: some View {
         VStack(spacing: 0) {
             
-//            if taskItems.isEmpty {
-//                NoTasksView(showAddTaskScreen: $showAddTaskScreen)
-//                    .padding(.vertical)
-//            }
-//            else {
-                headerView
-//                .animation(.easeInOut, value: showTaskScroller)
-                if showTaskScroller{
-                    if taskItems.isEmpty {
-                        NoTasksView(showAddTaskScreen: $showAddTaskScreen)
-//                            .padding(.vertical)
-                    }
-                    else{
-                        //headerView
-                        tasksScrollView
-
-                    }
+            headerView
+//            if showTaskScroller{
+                if taskItems.isEmpty {
+                    NoTasksView(showAddTaskScreen: $showAddTaskScreen)
                 }
                 else{
-//                    headerView
-                    ZikrSelectionCardView(showMantraSheetFromHomePage: $showMantraSheetFromHomePage)
-                        .contentMargins(.bottom, 10, for: .scrollContent)
-                        .frame(width: 260)
-                        .padding(.bottom, 20)
-
+                    tasksScrollView
+                    
                 }
+//            }
+//            else{
+//                ZikrSelectionCardView(showMantraSheetFromHomePage: $showMantraSheetFromHomePage)
+//                    .contentMargins(.bottom, 10, for: .scrollContent)
+//                    .frame(width: 260)
+//                    .padding(.bottom, 20)
+//                
 //            }
         }
         .onAppear{
             updateTodaysSessions()
         }
-        ./*sheet*/fullScreenCover(isPresented: $showAddTaskScreen) {
+//        .onChange(of: showTasbeehPage) {_, newValue in
+//            updateTodaysSessions()
+//        }
+        .fullScreenCover(isPresented: $showAddTaskScreen) {
             AddDailyTaskView(isPresented: $showAddTaskScreen, scrollProxy: $currentScrollTargetID)
-//                .presentationDetents([.medium])
         }
         .alert(isPresented: $showDeleteTaskAlert) {
             Alert(
@@ -101,25 +93,39 @@ extension DailyTasksView {
     private var incompleteTasksCount: Int {
         taskItems.filter { !$0.isCompleted }.count
     }
+    private var completedTasksCount: Int {
+        taskItems.filter { $0.isCompleted }.count
+    }
+    private var subtitleText: String {
+        completedTasksCount == taskItems.count ?
+        "All Done!" :
+        "\(completedTasksCount) of \(taskItems.count) Completed"
+    }
+    private func startFreestyleTasbeehSession(){
+        sharedState.targetCount = ""
+        sharedState.titleForSession = ""
+        sharedState.selectedMinutes = 0
+        sharedState.selectedMode = 0
+        showTasbeehPage = true
+    }
     /// A header with a centered title and a plus button on the right
     private var headerView: some View {
         ZStack {
             
             VStack(alignment: .center) {
-                Text(showTaskScroller ? "My Tasks" : "Zikr Selector")
+                Text("Tasks")
                     .font(.callout)
                     .foregroundColor(.secondary.opacity(1))
                     .fontDesign(.rounded)
                     .fontWeight(.light)
                 
-                // Example: "2 left" or blank
-                // Text("\(taskItems.count) Task\(taskItems.count > 1 ? "s" : "")")
-                if (showTaskScroller && !taskItems.isEmpty) {
-                    Text("\(incompleteTasksCount) Task\(incompleteTasksCount > 1 ? "s" : "") Left")
-                        .font(.footnote)
-                        .foregroundColor(.secondary.opacity(1))
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
+                // Subtitle: says count of tasks lefe or "All Done"
+                if (!taskItems.isEmpty) {
+                        Text(subtitleText)
+                            .font(.footnote)
+                            .foregroundColor(.secondary.opacity(1))
+                            .fontDesign(.rounded)
+                            .fontWeight(.light)
                 }
 
             }
@@ -141,6 +147,13 @@ extension DailyTasksView {
             
             
             HStack{
+//                Button(action: {
+//                    startFreestyleTasbeehSession()
+//                }) {
+//                    Image(systemName: "infinity")
+//                        .foregroundColor(.green.opacity(0.7))
+//                }
+//                .padding(.leading, 5)
                 Spacer()
                 Button(action: {
                         showAddTaskScreen = true
@@ -150,7 +163,8 @@ extension DailyTasksView {
                 }
                 .padding(.trailing, 5)
             }
-            .opacity(showTaskScroller && !taskItems.isEmpty ? 1 : 0)
+            .opacity(!taskItems.isEmpty ? 1 : 0)
+//            .opacity(showTaskScroller && !taskItems.isEmpty ? 1 : 0)
             
 
         }

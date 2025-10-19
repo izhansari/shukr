@@ -1,6 +1,7 @@
 import SwiftUI
 import QuartzCore
 import Foundation
+import SwiftData
 
 
 struct MainCircleView: View {
@@ -14,11 +15,15 @@ struct MainCircleView: View {
     @State private var ogText = true  // to control the toggle text in the middle
     @State private var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
     
+    
     @Binding var showQiblaMap: Bool
     @Binding var showChainZikrButton: Bool
+    @Binding var showTasbeehPage: Bool
     let animationStyle: Animation = .spring
     
-    private var prayer: PrayerModel? { viewModel.relevantPrayer }
+//    private var prayer: PrayerModel? { viewModel.relevantPrayer }
+//    @State private var prayer: PrayerModel?
+
     
     var body: some View {
         ZStack {
@@ -29,7 +34,30 @@ struct MainCircleView: View {
                 .frame(width: 200, height: 200)
             
             //Inner Content
-            if let prayer = prayer {
+            if sharedState.bottomTabPosition == .zikr {
+//                Text("Zikr")
+                VStack{
+                    HStack(alignment: .center){
+                        Image(systemName: "circle.hexagonpath")
+                        Text("Zikr")
+                            .fontWeight(.bold)
+                    }
+                    .font(.title)
+                    Text("click to freestyle")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
+                }
+                Circle()
+                    .stroke(Color.green, lineWidth: 2) // Green outline
+                    .frame(width: 200, height: 200)
+                    .shadow(color: Color.green.opacity(0.5), radius: 5)
+                    .shadow(color: Color.green.opacity(0.3), radius: 10)
+                    .shadow(color: Color.green.opacity(0.2), radius: 15)
+                    .background(Color.clear) // Ensures the inside remains transparent
+            }
+            else if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
                 var progress: Double {
                     guard prayer.status() == .current else { return 1 }
                     let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
@@ -54,7 +82,6 @@ struct MainCircleView: View {
                         return Text("Missed")
                     }
                 }
-                
                 ZStack{
                     // progress arc
                     Circle()
@@ -63,7 +90,8 @@ struct MainCircleView: View {
                         )
                         .rotationEffect(.degrees(-90))
                         .frame(width: 200, height: 200)
-                        .animation(animationStyle, value: progress)
+                        .animation(animationStyle, value: currentTime/*progress*/)
+                        .animation(animationStyle, value: prayer.name)
                     
                     // Inner content
                     ZStack{
@@ -75,11 +103,38 @@ struct MainCircleView: View {
                             }
                             .animation(animationStyle, value: prayer.name)
                             .font(.title)
-                            timeText
-                                .foregroundColor(.primary.opacity(0.7))
-                                .multilineTextAlignment(.center)
-                                .animation(animationStyle, value: ogText)
+                           // Going back to the old way (want h and m with no comma. Better cleaner transition):
+                            if prayer.status() == .current{
+                                ExternalToggleText(
+                                    originalText: "ends \(shortTimePM(prayer.endTime))",
+                                    toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
+                                    externalTrigger: $ogText,  // Pass the binding
+                                    fontDesign: .rounded,
+                                    fontWeight: .thin,
+                                    hapticFeedback: true
+                                )
+                            }
+                            else if prayer.status() ==  .upcoming{
+                                ExternalToggleText(
+                                    originalText: "at \(shortTimePM(prayer.startTime))",
+                                    toggledText: timeUntilStart(prayer.startTime),
+                                    externalTrigger: $ogText,  // Pass the binding
+                                    fontDesign: .rounded,
+                                    fontWeight: .thin,
+                                    hapticFeedback: true
+                                )
+                            }else {
+                                Text("Missed")
+                            }
                             
+                            
+//                            timeText
+////                                .foregroundColor(.primary.opacity(0.7))
+//                                .fontDesign(.rounded)
+//                                .fontWeight(.thin)
+//                                .foregroundStyle(.secondary)
+//                                .multilineTextAlignment(.center)
+////                                .animation(animationStyle, value: ogText)
                         }
                     }
                 }
@@ -98,7 +153,7 @@ struct MainCircleView: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
-                            if let prayer = prayer, prayer.status() != .upcoming {
+                            if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 showTemporaryMessage(workItem: &dismissChainZikrItem, boolToShow: $showChainZikrButton, delay: 5)
                             }
@@ -107,39 +162,56 @@ struct MainCircleView: View {
             
             
             
-            // Qibla Arrow
-            Image(systemName: "chevron.up")
-                .font(.subheadline)
-                .foregroundColor(locationManager.qibla.aligned ? .green : .primary)
-                .background(
-                    Circle() // this is to increase tappable aread
-                        .fill(Color.white.opacity(0.001))
-                        .frame(width: 44, height: 44)
-                )
-                .opacity(0.5)
-                .offset(y: -80)
-                .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? 0 : locationManager.qibla.heading))
-                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
-                .onChange(of: locationManager.qibla.aligned) { _, newIsAligned in
-                    checkToTriggerQiblaHaptic(aligned: newIsAligned)
-                }
-                .onTapGesture { showQiblaMap = true }
+            if sharedState.bottomTabPosition != .zikr {
+                // Qibla Arrow
+                Image(systemName: "chevron.up")
+                    .font(.subheadline)
+                    .foregroundColor(locationManager.qibla.aligned ? .green : .primary)
+                    .background(
+                        Circle() // this is to increase tappable aread
+                            .fill(Color.white.opacity(0.001))
+                            .frame(width: 44, height: 44)
+                    )
+                    .opacity(0.5)
+                    .offset(y: -80)
+                    .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? 0 : locationManager.qibla.heading))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
+                    .onChange(of: locationManager.qibla.aligned) { _, newIsAligned in
+                        checkToTriggerQiblaHaptic(aligned: newIsAligned)
+                    }
+                    .onTapGesture { showQiblaMap = true }
+                
+                
+                // Alligned Indicator Cirlc
+                Circle()
+                    .fill(Color(.systemGray)/*.primary*/)
+                    .frame(width: 8, height: 8)
+                    .offset(y: -100)
+                    .opacity(locationManager.qibla.aligned ? 1.0 : 0)
+//                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
+            }
             
+
         }
+        .transition(.opacity)
         .fullScreenCover(isPresented: $showQiblaMap) {
             LocationMapContentView()
-                .onAppear { sharedState.allowQiblaHaptics = false }
+//                .onAppear { sharedState.allowQiblaHaptics = false }
                 .onDisappear{ sharedState.allowQiblaHaptics = true }
         }
         .onAppear {
             locationManager.startUpdating() // Start location updates
             sharedState.allowQiblaHaptics = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                viewModel.calculateDayScore(for: Date())
+            }
         }
         .onDisappear {
             sharedState.allowQiblaHaptics = false
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
             currentTime = newTime
+//            prayer = viewModel.relevantPrayer
         }
     }
 
@@ -150,6 +222,7 @@ struct MainCircleView: View {
     }
     
     private func handleTap() {
+        if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
         timer?.invalidate()
         triggerSomeVibration(type: .light)
         withAnimation{ ogText.toggle() }
@@ -157,8 +230,15 @@ struct MainCircleView: View {
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
             withAnimation{ ogText = true }
         }
+        
+        func startFreestyleTasbeehSession(){
+            sharedState.targetCount = ""
+            sharedState.titleForSession = ""
+            sharedState.selectedMinutes = 0
+            sharedState.selectedMode = 0
+            showTasbeehPage = true
+        }
     }
-
     
 }
 
@@ -167,34 +247,48 @@ struct MainCircleView: View {
 struct summaryCircle: View{
     // FIXME: think this through more and make sure it makes sense.
     @EnvironmentObject var viewModel: PrayerViewModel
+    @EnvironmentObject var sharedState: SharedStateClass
+    @Query private var scores: [DailyPrayerScore]
 
     @Binding var ogText: Bool  // to control the toggle text in the middle
-
+    @State private var animationBool: Bool = false
     @State private var nextFajr: (start: Date, end: Date)?
-    @State private var summaryInfo: [String : Double?] = [:]
-    @State private var todaysScore : Double = 0.0
+//    @State private var summaryInfo: [String : Double?] = [:]
+//    @State private var todaysScore : Double = 0.0
     
-    private var timeText: Text{
-        guard let fajrTime = nextFajr else { return Text("") }
-        if ogText{
-            return Text("in \(fajrTime.start, style: .relative)")
-        }
-        else {
-            return Text("\(shortTime(fajrTime.start)) - \(shortTimePM(fajrTime.end))")
-        }
-    }
-    
-    private func getTheSummaryInfo(){
-        for name in viewModel.orderedPrayerNames {
-            if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }){
-                summaryInfo[name] = prayer.numberScore
-                todaysScore += prayer.numberScore ?? 0.0
-                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with scores: \(prayer.numberScore ?? 0)")
+ 
+//    private func getTheSummaryInfo(){
+//        todaysScore = 0
+//        for name in viewModel.orderedPrayerNames {
+//            if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }){
+//                //let thisWeightedScore = prayer.weightedSummaryScoreFromEnglishScore()
+//                let thisWeightedScore = prayer.weightedSummaryScoreFromNumberScore()
+////                summaryInfo[name] = thisWeightedScore
+//                todaysScore += thisWeightedScore
+//                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with score: \(thisWeightedScore)")
+//            }
+//        }
+//        
+//        todaysScore = todaysScore / 5
+//        
+//    }
+    private func changeInDailyScore() -> Text {
+        let changeWithSign = viewModel.todaysScore - getYesterdayScore()
+        let improvement = changeWithSign > 0
+        let absChange = abs(changeWithSign)
+        let percentageAbs = String(format: "%.1f%%", absChange * 100)
+        return Text(changeWithSign < 0 ? "↓\(percentageAbs)" : "↑\(percentageAbs)").foregroundStyle(improvement ? Color(.systemGreen) : Color(.systemRed))
+        
+        func getYesterdayScore() -> Double {
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+            let startOfDay = Calendar.current.startOfDay(for: yesterday)
+            
+            let dailyScore = scores.first { score in
+                Calendar.current.isDate(score.date, inSameDayAs: startOfDay)
             }
+            
+            return dailyScore?.averageScore ?? 0
         }
-        
-        todaysScore = todaysScore / 5
-        
     }
     
     func getTheNextFajrTime() {
@@ -210,33 +304,62 @@ struct summaryCircle: View{
     }
 
     var body: some View{
-        ZStack{
+
                         
-                ZStack{
-                    VStack{
-                        HStack(alignment: .center){
-                            Image(systemName: prayerIcon(for: "Fajr"))
-                            Text("Fajr")
-                                .fontWeight(.bold)
-                        }
-                        //.animation(.spring, value: prayer.name)
+        ZStack{
+            if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah{
+                // The Summary Score
+                VStack{
+                    Text("Today's Score:")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
+                    Text(String(format: "%.1f%%", /*todaysScore*/ viewModel.todaysScore * 100))
                         .font(.title)
-                        timeText
-                            .foregroundColor(.primary.opacity(0.7))
-                            .multilineTextAlignment(.center)
-                            .animation(.spring, value: ogText)
-
-                    }
-                    Text(String(format: "%.1f%%", todaysScore * 100))
-                        .offset(y: 60)
-                        .foregroundColor(.primary.opacity(0.7))
-                        .font(.footnote)
+                        .fontWeight(.medium)
+                        .fontDesign(.rounded)
+                    changeInDailyScore()
+                        .opacity(0.7)
+                        .font(.caption)
+                        .fontDesign(.rounded)
                 }
-
+            }else {
+                // Fajr Icon, Title, Time:
+                VStack{
+                    HStack(alignment: .center){
+                        Image(systemName: prayerIcon(for: "Fajr"))
+                        Text("Fajr")
+                            .fontWeight(.bold)
+                    }
+                    .font(.title)
+                    
+                    // Displayed Fajr Time:
+                    if let fajrTime = nextFajr{
+                        ZStack{
+                            if ogText{
+                                Text("in \(fajrTime.start, style: .relative)")
+                            }
+                            else {
+                                Text("\(shortTime(fajrTime.start)) - \(shortTimePM(fajrTime.end))")
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
+                        .foregroundColor(.primary.opacity(0.7))
+                        .multilineTextAlignment(.center)
+                        .fontDesign(.rounded)
+                        .fontWeight(.thin)
+                        .transition(.blurReplace)
+                    }
+                }
+            }
         }
+        .transition(.opacity)
+
+
         .onAppear {
             getTheNextFajrTime()
-            getTheSummaryInfo()
+//            getTheSummaryInfo()
         }
     }
     
