@@ -456,7 +456,7 @@ struct MantraPickerView: View {
     @State private var tempSelection: String?
     @State private var showAlertToAdd: Bool = false
         
-    private var predefinedMantras: [String] = ["Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
+    private var predefinedMantras: [String] { MantraModel.builtIn }
     private var presentation: Set<PresentationDetent>
     private var filteredMantras: [String]{
         (predefinedMantras + mantraItems.map { $0.text })

@@ -2820,7 +2820,10 @@ struct sideMenu: View {
                     NavigationLink(destination: DailyAyahView()) {
                         Label("Daily Ayah", systemImage: "book")
                     }
-
+                    
+                    NavigationLink(destination: MantrasView()) {
+                        Label("Mantras", systemImage: "text.quote")
+                    }
                     
                     NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
                         Label("Settings", systemImage: "gear")

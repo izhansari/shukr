@@ -72,4 +72,24 @@ Backlog / known oddities:
 - [ ] Estimated finish time on the pause screen is computed at pause time; stale by the pause length once resumed. `newAvrgTPC` includes ramp-up before the first tap.
 - [ ] Dead code: empty `if selectedMode == 2 {}` in `estTimeLeft`, unused `resetTasbeeh()`, `NoteModalView`, `deleteMantra`, `timePassedAtPauseString`, `endTime` (written, never read). `secsPassed` returns 999 when `startTime` is nil.
 - [ ] Count widget (`shukrWidget/shukrWidget.swift`) is commented out of the bundle; nothing writes its `count`/`paused` keys. Delete or revive.
-- [ ] Owner wants a richer mantra: `MantraModel` is just `text`. Wanted: short title, full text (Arabic), notes ("sheikh said read every morning"). Tasks and sessions currently key off the mantra *string*; a real model means `TaskModel.mantra` / `SessionDataModel.title` should become relationships, plus an editor UI in `MantraPickerView`.
+- [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
+- [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
+
+## Planned: richer mantra model
+
+Owner wants a mantra to carry more than a string: a short **title** (what shows on cards and
+in the picker), the **full text** (Arabic, to refresh memory mid-session), and **notes**
+("sheikh said read this every morning for business success"). Design agreed:
+
+1. `MantraModel` gains `title`, `fullText`, `notes`, `createdAt`. Existing `text` becomes
+   `title` via a `VersionedSchema` + `SchemaMigrationPlan` (rename is not lightweight).
+2. `TaskModel.mantra: String` → `@Relationship var mantra: MantraModel?`;
+   `SessionDataModel` gets `mantra: MantraModel?` and keeps `title` as a history snapshot.
+3. Seed the four built-ins into the store on first launch so they become editable like the rest,
+   then drop `MantraModel.builtIn`.
+4. `MantraEditorView` (already the single edit surface) grows the two extra fields.
+   Pause screen / results card: tapping the mantra name shows the full text.
+5. `MantraPickerView` selects a `MantraModel`, not a string; `SharedStateClass.titleForSession`
+   becomes `mantraForSession`.
+
+Do this as its own branch/commit; it's a real migration and needs testing on a device with data.

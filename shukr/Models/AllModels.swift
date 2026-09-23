@@ -268,6 +268,9 @@ class DuaModel: Identifiable { // Updated to use SwiftData model //GPT
 
 @Model
 class MantraModel: Identifiable {
+    /// Ship-with-the-app mantras. Not stored; shown read-only in the picker and Mantras page.
+    static let builtIn: [String] = ["Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
+
     @Attribute(.unique) var id: UUID = UUID()
     var text: String
 

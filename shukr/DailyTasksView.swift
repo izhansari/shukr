@@ -259,7 +259,6 @@ extension DailyTasksView {
     private func tapOnTaskCardAction(task: TaskModel) {
         sharedState.selectedTask = task
         showTasbeehPage = true
-        sharedState.navPosition = .main
     }
     
 }
