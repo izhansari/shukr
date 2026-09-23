@@ -44,7 +44,7 @@ struct PrayersWidgetEntry: TimelineEntry {
     let todayPrayerTimes: PrayerTimes
     let locationName: String // New property
     let textToggle: Bool
-    /// Prayers already prayed today (app-synced + queued from this widget). Skipped by `relevantPrayer`.
+    /// Prayers already prayed today, read from the shared store. Skipped by `relevantPrayer`.
     var completedToday: Set<String> = []
 }
 
@@ -138,7 +138,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             longitude: longitude,
             toggleShowAllTImes: showLocation, prayerDict: windows,
             todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
-            completedToday: WidgetCompletionStore.completedNamesToday()
+            completedToday: SharedStore.completedPrayerNamesToday()
         )
         
         return entry

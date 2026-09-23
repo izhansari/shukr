@@ -4,74 +4,103 @@
 import AppIntents
 import WidgetKit
 
-// MARK: - Widget → App prayer completions
+// MARK: - Shared SwiftData store
 //
-// The widget extension can't reach the app's SwiftData store, so completing a prayer from
-// the widget queues a record in the app group. The widget treats queued prayers as done
-// right away (so the circle moves on to the next prayer), and the app applies the queue
-// the next time it becomes active (`PrayerViewModel.applyPendingWidgetCompletions`),
-// scoring the prayer at the time of the tap rather than the time the app was opened.
+// The app and the widget open the *same* store, kept in the app group container, so the
+// widget's "complete prayer" button writes the completion directly and the app sees it on
+// its next activation (`PrayerViewModel.reconcileAfterWidgetWrites`). The Models/ folder is
+// compiled into both targets so the schema is identical on both sides.
 
-struct WidgetPrayerCompletion: Codable, Equatable {
-    let name: String
-    let prayerStart: Date
-    let prayerEnd: Date
-    let completedAt: Date
-}
+import SwiftData
+import CoreLocation
 
-enum WidgetCompletionStore {
-    static let suite = "group.betternorms.shukr.shukrWidget"
-    private static let pendingKey = "pendingWidgetCompletions"        // [WidgetPrayerCompletion] as JSON
-    private static let appCompletedKey = "appCompletedPrayersToday"   // [String]
-    private static let appCompletedDateKey = "appCompletedPrayersDate" // Date the list above is for
-    private static var defaults: UserDefaults? { UserDefaults(suiteName: suite) }
+enum SharedStore {
+    static let appGroup = "group.betternorms.shukr.shukrWidget"
+    /// Set by the widget after it writes; the app clears it once it has re-read the store.
+    static let widgetWroteStoreKey = "widgetWroteStore"
 
-    static func pending() -> [WidgetPrayerCompletion] {
-        guard let data = defaults?.data(forKey: pendingKey),
-              let list = try? JSONDecoder().decode([WidgetPrayerCompletion].self, from: data) else { return [] }
-        return list
-    }
+    static let schema = Schema([
+        SessionDataModel.self,
+        MantraModel.self,
+        TaskModel.self,
+        DuaModel.self,
+        PrayerModel.self,
+        DailyPrayerScore.self
+    ])
 
-    static func enqueue(_ completion: WidgetPrayerCompletion) {
-        var list = pending()
-        let alreadyQueued = list.contains {
-            $0.name == completion.name && Calendar.current.isDate($0.prayerStart, inSameDayAs: completion.prayerStart)
+    /// The store file. Falls back to SwiftData's default location if the app group is missing
+    /// (which would mean the entitlement is broken; the widget can't share in that case anyway).
+    static var url: URL {
+        if let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+            return group.appending(path: "shukr.store")
         }
-        guard !alreadyQueued else { return }
-        list.append(completion)
-        save(list)
+        return legacyURL
+    }
+    /// Where the store lived before it moved to the app group.
+    private static var legacyURL: URL {
+        URL.applicationSupportDirectory.appending(path: "default.store")
     }
 
-    /// Returns everything queued and clears the queue. App side only.
-    static func drain() -> [WidgetPrayerCompletion] {
-        let list = pending()
-        save([])
-        return list
+    static func makeContainer() throws -> ModelContainer {
+        migrateLegacyStoreIfNeeded()
+        let config = ModelConfiguration(schema: schema, url: url)
+        return try ModelContainer(for: schema, configurations: [config])
     }
 
-    private static func save(_ list: [WidgetPrayerCompletion]) {
-        defaults?.set(try? JSONEncoder().encode(list), forKey: pendingKey)
-    }
-
-    /// App → widget: which of today's prayers the app itself has marked complete.
-    static func syncFromApp(completedNames: [String]) {
-        defaults?.set(completedNames, forKey: appCompletedKey)
-        defaults?.set(Date(), forKey: appCompletedDateKey)
-    }
-
-    /// Everything the widget should treat as done today: the app's list (if it's from today)
-    /// plus anything queued from the widget today.
-    static func completedNamesToday() -> Set<String> {
-        var names = Set<String>()
-        if let syncedOn = defaults?.object(forKey: appCompletedDateKey) as? Date,
-           Calendar.current.isDateInToday(syncedOn),
-           let synced = defaults?.stringArray(forKey: appCompletedKey) {
-            names.formUnion(synced)
+    /// One-time copy of the pre-app-group store into the group container. Runs before the
+    /// store is opened, so the sqlite + wal + shm files are quiescent. The old files are left
+    /// in place as a safety net; nothing reads them afterwards.
+    static func migrateLegacyStoreIfNeeded() {
+        let fm = FileManager.default
+        let target = url
+        guard target != legacyURL, !fm.fileExists(atPath: target.path) else { return }
+        guard fm.fileExists(atPath: legacyURL.path) else { return }
+        for suffix in ["", "-shm", "-wal"] {
+            let from = URL(filePath: legacyURL.path + suffix)
+            let to = URL(filePath: target.path + suffix)
+            guard fm.fileExists(atPath: from.path) else { continue }
+            do { try fm.copyItem(at: from, to: to) }
+            catch { print("❌ store migration: couldn't copy \(from.lastPathComponent): \(error)") }
         }
-        for item in pending() where Calendar.current.isDateInToday(item.prayerStart) {
-            names.insert(item.name)
-        }
-        return names
+        print("✅ store migration: moved default.store into the app group")
+    }
+
+    // MARK: Widget-side helpers (the app uses its own ModelContainer / PrayerViewModel)
+
+    /// One container per widget process; timeline refreshes and intents share it.
+    static let widgetContainer: ModelContainer? = {
+        do { return try makeContainer() }
+        catch { print("❌ widget couldn't open the shared store: \(error)"); return nil }
+    }()
+
+    static func fetchPrayer(named name: String, on day: Date, in context: ModelContext) -> PrayerModel? {
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? day
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd }
+        )
+        return try? context.fetch(descriptor).first
+    }
+
+    /// Names of today's prayers already marked complete, straight from the store.
+    static func completedPrayerNamesToday() -> Set<String> {
+        guard let container = widgetContainer else { return [] }
+        let context = ModelContext(container)
+        let dayStart = Calendar.current.startOfDay(for: Date())
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? Date()
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.isCompleted && $0.startTime >= dayStart && $0.startTime <= dayEnd }
+        )
+        let done = (try? context.fetch(descriptor)) ?? []
+        return Set(done.map { $0.name })
+    }
+
+    /// Last location the app saved for the widget (it writes lastLatitude/lastLongitude).
+    static func lastKnownLocation() -> CLLocation? {
+        guard let store = UserDefaults(suiteName: appGroup) else { return nil }
+        let lat = store.double(forKey: "lastLatitude"), lon = store.double(forKey: "lastLongitude")
+        guard lat != 0 || lon != 0 else { return nil }
+        return CLLocation(latitude: lat, longitude: lon)
     }
 }
 
@@ -92,10 +121,24 @@ struct MarkCompleteIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         // Same rule as the app: a prayer that hasn't started can't be completed.
-        guard prayerStart <= Date() else { return .result() }
-        WidgetCompletionStore.enqueue(
-            WidgetPrayerCompletion(name: prayerName, prayerStart: prayerStart, prayerEnd: prayerEnd, completedAt: Date())
-        )
+        guard prayerStart <= Date(), let container = SharedStore.widgetContainer else { return .result() }
+        let context = ModelContext(container)
+
+        // The app creates today's rows when it opens; if it hasn't opened today, make this one.
+        let prayer = SharedStore.fetchPrayer(named: prayerName, on: prayerStart, in: context) ?? {
+            let made = PrayerModel(name: prayerName, startTime: prayerStart, endTime: prayerEnd, dateAtMake: prayerStart)
+            context.insert(made)
+            return made
+        }()
+        guard !prayer.isCompleted else { return .result() }
+
+        prayer.isCompleted = true
+        prayer.setPrayerScore()                                        // scored now, at the tap
+        prayer.setPrayerLocation(with: SharedStore.lastKnownLocation())
+        prayer.cancelUpcomingNudges()                                  // app repeats this on next open in case extensions can't
+        try context.save()
+
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
         WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
         return .result()
     }

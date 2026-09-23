@@ -10,6 +10,7 @@ import SwiftData
 import SwiftUI
 import CoreLocation
 import WidgetKit
+import UserNotifications
 
 class SharedStateClass: ObservableObject {
     enum bottomTabEnum {

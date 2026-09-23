@@ -349,7 +349,7 @@ struct PrayerTimesView: View {
             if newScenePhase == .active {
 
                 viewModel.loadTodaysPrayerObjects()
-                viewModel.applyPendingWidgetCompletions() // prayers completed from the widget while we were closed
+                viewModel.reconcileAfterWidgetWrites() // prayers completed from the widget while we were closed
                 
                 if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
                     let openCompassFromWidget   = store.bool(forKey: "widgetCompass")

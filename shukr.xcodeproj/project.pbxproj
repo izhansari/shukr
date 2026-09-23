@@ -368,6 +368,9 @@
 			);
 			dependencies = (
 			);
+			fileSystemSynchronizedGroups = (
+				369BE9272CA49384003A58B7 /* Models */,
+			);
 			name = shukrWidgetExtension;
 			productName = shukrWidgetExtension;
 			productReference = 369A05F72C5E8635002CD697 /* shukrWidgetExtension.appex */;

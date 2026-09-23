@@ -25,18 +25,10 @@ struct shukrApp: App {
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
 
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            SessionDataModel.self,
-            MantraModel.self,
-            TaskModel.self,
-            DuaModel.self,
-            PrayerModel.self,
-            DailyPrayerScore.self
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
+        // Store lives in the app group so the widget can read/write it too. Schema + location
+        // are defined once in SharedStore (SharedTargetForIntents.swift), shared with the widget.
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try SharedStore.makeContainer()
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
                 print("Preview mode: Using empty ModelContainer.")
