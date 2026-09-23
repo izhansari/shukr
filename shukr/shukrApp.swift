@@ -28,7 +28,11 @@ struct shukrApp: App {
         // Store lives in the app group so the widget can read/write it too. Schema + location
         // are defined once in SharedStore (SharedTargetForIntents.swift), shared with the widget.
         do {
-            return try SharedStore.makeContainer()
+            let container = try SharedStore.makeContainer()
+            // One-time merge of the pre-app-group store (Application Support/default.store).
+            // Must run before PrayerViewModel or any view reads data. Never deletes the old files.
+            SharedStore.importLegacyStoreIfNeeded(into: container)
+            return container
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
                 print("Preview mode: Using empty ModelContainer.")

@@ -95,9 +95,25 @@ text toggles are in-widget. These use one-shot flags in the app group read on `s
 **One SwiftData store, shared.** `SharedStore` (`shukrWidget/SharedTargetForIntents.swift`,
 compiled into both targets) owns the schema and the store URL: `<app group>/shukr.store`.
 `Models/` is in both targets' `fileSystemSynchronizedGroups` (pbxproj) so the schema matches.
-On first launch after this change `migrateLegacyStoreIfNeeded()` copies the old
-`Application Support/default.store` (+ -wal/-shm) into the group; the old files are left in
-place and never read again. The app's `ModelContainer` comes from `SharedStore.makeContainer()`.
+The app's `ModelContainer` comes from `SharedStore.makeContainer()`, immediately followed by
+`importLegacyStoreIfNeeded(into:)` in `shukrApp`.
+
+**Rule: the widget never creates the store.** `SharedStore.widgetContainer` opens the file only
+if it already exists (and retries on each access until it does). WidgetKit refreshes right
+after an install, so a widget-created store would be empty and would pre-empt the import
+below. This is how the owner's data went missing once (2026-09-23, f9f7685..b4071db): the
+first version copied the legacy file from `URL.applicationSupportDirectory`, which in the
+widget process is the *extension's* sandbox; the widget ran first, found nothing, created an
+empty group store, and the app then skipped its copy because the target existed.
+
+**Legacy import** (`importLegacyStoreIfNeeded`, app only, gated by `legacyStoreImported` in the
+app-group defaults): copies `Application Support/default.store` (+wal/shm) to a temp dir, opens
+that copy as a second `ModelContainer`, and *merges* rows into the shared store — tasks (by
+id, first, so sessions can relink), sessions (by id), mantras (by text), duas (by id), prayers
+(by name+day; newer row wins unless it's incomplete and the old one is complete, then the
+completion fields are copied over), daily scores (by day). Ids are preserved. Flag is set only
+after a successful save; failure retries next launch. Old files are never modified or deleted.
+Logs `✅ legacy import: tasks=… sessions=… …`.
 
 **Completing a prayer from the widget does not open the app.** `MarkCompleteIntent` carries the
 shown prayer's name/start/end, opens the shared store (`SharedStore.widgetContainer`, one per
@@ -113,8 +129,8 @@ streak / day score. In-app completions call `pushCompletionsToWidget()` (save + 
 Sim-tested 2026-09-23 @ 0058a41: widget tap completed Asr in place (score 0.52, location
 recorded), widget advanced to Maghrib, app showed it complete on reopen. Still untested:
 tapping before a prayer starts; widget creating the row when the app hasn't opened that day;
-upgrading an install that has a legacy `default.store` (migration path); whether the nudge
-for a widget-completed prayer still fires on a real device.
+the legacy import on an install that has real data (the owner's phone is the test case);
+whether the nudge for a widget-completed prayer still fires on a real device.
 To verify on device: complete from the widget, check the nudge for that prayer does not fire;
 open the app and check the prayer shows complete with the right score. If the nudge still
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app

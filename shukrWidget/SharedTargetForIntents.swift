@@ -36,42 +36,181 @@ enum SharedStore {
         }
         return legacyURL
     }
-    /// Where the store lived before it moved to the app group.
-    private static var legacyURL: URL {
-        URL.applicationSupportDirectory.appending(path: "default.store")
-    }
+    // MARK: Opening the store
 
+    /// App side: open the shared store, creating it if needed. Call
+    /// `importLegacyStoreIfNeeded(into:)` right after, before anything reads data.
     static func makeContainer() throws -> ModelContainer {
-        migrateLegacyStoreIfNeeded()
         let config = ModelConfiguration(schema: schema, url: url)
         return try ModelContainer(for: schema, configurations: [config])
     }
 
-    /// One-time copy of the pre-app-group store into the group container. Runs before the
-    /// store is opened, so the sqlite + wal + shm files are quiescent. The old files are left
-    /// in place as a safety net; nothing reads them afterwards.
-    static func migrateLegacyStoreIfNeeded() {
-        let fm = FileManager.default
-        let target = url
-        guard target != legacyURL, !fm.fileExists(atPath: target.path) else { return }
-        guard fm.fileExists(atPath: legacyURL.path) else { return }
-        for suffix in ["", "-shm", "-wal"] {
-            let from = URL(filePath: legacyURL.path + suffix)
-            let to = URL(filePath: target.path + suffix)
-            guard fm.fileExists(atPath: from.path) else { continue }
-            do { try fm.copyItem(at: from, to: to) }
-            catch { print("❌ store migration: couldn't copy \(from.lastPathComponent): \(error)") }
+    /// Widget side: open the shared store ONLY if the app has already created it. The widget
+    /// must never create it. WidgetKit refreshes right after an install/update, so a store
+    /// created here would be empty and would pre-empt the app's one-time import of the old
+    /// data (that's exactly how the owner's tasks vanished once). Retries on each access
+    /// until the file exists, then caches.
+    private static var cachedWidgetContainer: ModelContainer?
+    static var widgetContainer: ModelContainer? {
+        if let cached = cachedWidgetContainer { return cached }
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        do {
+            let config = ModelConfiguration(schema: schema, url: url)
+            let container = try ModelContainer(for: schema, configurations: [config])
+            cachedWidgetContainer = container
+            return container
+        } catch {
+            print("❌ widget couldn't open the shared store: \(error)")
+            return nil
         }
-        print("✅ store migration: moved default.store into the app group")
+    }
+
+    // MARK: One-time import of the pre-app-group store (app only)
+
+    static let legacyImportedKey = "legacyStoreImported"
+
+    /// Where the store lived before it moved to the app group. Only meaningful in the app
+    /// process: an extension's Application Support is its own sandbox.
+    private static var legacyURL: URL {
+        URL.applicationSupportDirectory.appending(path: "default.store")
+    }
+
+    /// Merge everything from the old `Application Support/default.store` into the shared
+    /// store, once. A merge, not a file swap: the shared store may already hold data written
+    /// since the update (prayers completed from the widget, for instance). The old files are
+    /// never modified or deleted; we work on a temporary copy. The done-flag is set only after
+    /// a successful save, so a failure retries next launch.
+    static func importLegacyStoreIfNeeded(into container: ModelContainer) {
+        guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
+        let defaults = UserDefaults(suiteName: appGroup)
+        guard defaults?.bool(forKey: legacyImportedKey) != true else { return }
+
+        let fm = FileManager.default
+        // No app group (entitlement missing) means we're still running on the legacy file itself.
+        guard url != legacyURL, fm.fileExists(atPath: legacyURL.path) else {
+            defaults?.set(true, forKey: legacyImportedKey) // fresh install, or nothing to import
+            return
+        }
+
+        let tmpDir = fm.temporaryDirectory.appending(path: "legacy-import-\(UUID().uuidString)")
+        let tmpStore = tmpDir.appending(path: "default.store")
+        defer { try? fm.removeItem(at: tmpDir) }
+        do {
+            try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            for suffix in ["", "-shm", "-wal"] {
+                let from = URL(filePath: legacyURL.path + suffix)
+                guard fm.fileExists(atPath: from.path) else { continue }
+                try fm.copyItem(at: from, to: URL(filePath: tmpStore.path + suffix))
+            }
+            let legacyConfig = ModelConfiguration("legacy", schema: schema, url: tmpStore)
+            let legacy = try ModelContainer(for: schema, configurations: [legacyConfig])
+            let summary = try merge(from: ModelContext(legacy), into: ModelContext(container))
+            defaults?.set(true, forKey: legacyImportedKey)
+            print("✅ legacy import: \(summary)")
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            print("❌ legacy import failed (will retry next launch): \(error)")
+        }
+    }
+
+    /// Copy rows from `src` that `dst` doesn't have. Ids are preserved so the two stores stay
+    /// comparable. Returns a one-line summary for the log.
+    private static func merge(from src: ModelContext, into dst: ModelContext) throws -> String {
+        var tasksN = 0, sessionsN = 0, mantrasN = 0, duasN = 0, prayersN = 0, mergedN = 0, scoresN = 0
+        let cal = Calendar.current
+
+        // Tasks first: sessions link to them by id.
+        var taskByID: [UUID: TaskModel] = [:]
+        for task in try dst.fetch(FetchDescriptor<TaskModel>()) { taskByID[task.id] = task }
+        for old in try src.fetch(FetchDescriptor<TaskModel>()) where taskByID[old.id] == nil {
+            let new = TaskModel(mantra: old.mantra, isCountMode: old.isCountMode, goal: old.goal)
+            new.id = old.id
+            dst.insert(new)
+            taskByID[new.id] = new
+            tasksN += 1
+        }
+
+        let sessionIDs = Set(try dst.fetch(FetchDescriptor<SessionDataModel>()).map { $0.id })
+        for old in try src.fetch(FetchDescriptor<SessionDataModel>()) where !sessionIDs.contains(old.id) {
+            let new = SessionDataModel(
+                title: old.title, sessionMode: old.sessionMode, targetMin: old.targetMin,
+                targetCount: old.targetCount, totalCount: old.totalCount, startTime: old.startTime,
+                secondsPassed: old.secondsPassed, avgTimePerClick: old.avgTimePerClick,
+                tasbeehRate: old.tasbeehRate, task: old.task.flatMap { taskByID[$0.id] }
+            )
+            new.id = old.id
+            new.timeDurationString = old.timeDurationString
+            dst.insert(new)
+            sessionsN += 1
+        }
+
+        // Mantras dedupe by text, not id: the shared store may already hold the same strings.
+        var mantraTexts = Set(try dst.fetch(FetchDescriptor<MantraModel>()).map { $0.text.lowercased() })
+        for old in try src.fetch(FetchDescriptor<MantraModel>()) where !mantraTexts.contains(old.text.lowercased()) {
+            let new = MantraModel(text: old.text)
+            new.id = old.id
+            dst.insert(new)
+            mantraTexts.insert(old.text.lowercased())
+            mantrasN += 1
+        }
+
+        let duaIDs = Set(try dst.fetch(FetchDescriptor<DuaModel>()).map { $0.id })
+        for old in try src.fetch(FetchDescriptor<DuaModel>()) where !duaIDs.contains(old.id) {
+            dst.insert(DuaModel(id: old.id, title: old.title, duaBody: old.duaBody, date: old.date))
+            duasN += 1
+        }
+
+        // Prayers are keyed by name + day. The shared store has its own rows for days since the
+        // update; keep those, except where the old row is completed and the new one isn't.
+        func key(_ name: String, _ date: Date) -> String {
+            "\(name)|\(cal.startOfDay(for: date).timeIntervalSince1970)"
+        }
+        var prayerByKey: [String: PrayerModel] = [:]
+        for prayer in try dst.fetch(FetchDescriptor<PrayerModel>()) { prayerByKey[key(prayer.name, prayer.startTime)] = prayer }
+        for old in try src.fetch(FetchDescriptor<PrayerModel>()) {
+            if let existing = prayerByKey[key(old.name, old.startTime)] {
+                if !existing.isCompleted && old.isCompleted {
+                    copyCompletion(from: old, to: existing)
+                    mergedN += 1
+                }
+                continue
+            }
+            let new = PrayerModel(name: old.name, startTime: old.startTime, endTime: old.endTime,
+                                  latitude: old.latPrayedAt, longitude: old.longPrayedAt, dateAtMake: old.dateAtMake)
+            new.id = old.id
+            copyCompletion(from: old, to: new)
+            dst.insert(new)
+            prayerByKey[key(new.name, new.startTime)] = new
+            prayersN += 1
+        }
+
+        var scoreDays = Set(try dst.fetch(FetchDescriptor<DailyPrayerScore>()).map { cal.startOfDay(for: $0.date) })
+        for old in try src.fetch(FetchDescriptor<DailyPrayerScore>()) where !scoreDays.contains(cal.startOfDay(for: old.date)) {
+            let new = DailyPrayerScore(date: old.date)
+            new.id = old.id
+            new.averageScore = old.averageScore
+            dst.insert(new)
+            scoreDays.insert(cal.startOfDay(for: old.date))
+            scoresN += 1
+        }
+
+        try dst.save()
+        return "tasks=\(tasksN) sessions=\(sessionsN) mantras=\(mantrasN) duas=\(duasN) prayers=\(prayersN) (merged \(mergedN)) scores=\(scoresN)"
+    }
+
+    private static func copyCompletion(from old: PrayerModel, to new: PrayerModel) {
+        new.isCompleted = old.isCompleted
+        new.timeAtComplete = old.timeAtComplete
+        new.numberScore = old.numberScore
+        new.englishScore = old.englishScore
+        new.latPrayedAt = old.latPrayedAt
+        new.longPrayedAt = old.longPrayedAt
+        new.prayerStartedAt = old.prayerStartedAt
+        new.prayerCompletedAt = old.prayerCompletedAt
+        new.duration = old.duration
     }
 
     // MARK: Widget-side helpers (the app uses its own ModelContainer / PrayerViewModel)
-
-    /// One container per widget process; timeline refreshes and intents share it.
-    static let widgetContainer: ModelContainer? = {
-        do { return try makeContainer() }
-        catch { print("❌ widget couldn't open the shared store: \(error)"); return nil }
-    }()
 
     static func fetchPrayer(named name: String, on day: Date, in context: ModelContext) -> PrayerModel? {
         let dayStart = Calendar.current.startOfDay(for: day)
