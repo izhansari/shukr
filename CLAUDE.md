@@ -11,6 +11,30 @@ Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehV
 (PrayersWidget + AppIntents shared with the app via `SharedTargetForIntents.swift`).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
+## Start here: outstanding work, in priority order
+
+Branch: `claude/app-store-publish-requirements-7vrmcg` (not merged to `main`). Everything below
+the first block is unbuilt by the agent that wrote it; the owner builds in Xcode / a local
+agent builds with xcodebuild. Nothing here has CI.
+
+1. **Verify on the owner's phone (2635e04):** the legacy-store import restored their tasks,
+   sessions, duas, history (console: `✅ legacy import: …`). If it printed `❌`, fix the cause;
+   the old file is still at `Application Support/default.store`, untouched.
+2. **Verify horizontal paging on the phone.** Owner reported "dragging left/right does nothing"
+   on an earlier commit while the simulator paged fine. b4071db moved the vertical gesture onto
+   the ScrollView itself, which removes every known way a page could block paging. If it still
+   fails on device, find out whether it fails everywhere or only when the finger starts on the
+   circle / prayer list, and whether the build on the phone is actually current.
+3. **Verify the rest of b4071db on device:** salah sheet stays open across paging; hamburger
+   `Menu` is instant; Settings header (back / title / light-dark-auto) works.
+4. **Widget, still unverified:** does the nudge notification for a widget-completed prayer
+   still fire (can an extension cancel the app's pending notifications)? Widget tap before a
+   prayer starts (should no-op). Widget added before the app is ever opened (must not create
+   the store; checkmark inert until the app runs once).
+5. **General sluggishness lever:** migrate `SharedStateClass` from `ObservableObject` to
+   `@Observable` (see Navigation section). Do it with a compiler in the loop.
+6. Then the App Store blockers below.
+
 ## Immediate goal: App Store submission
 
 Audit done 2026-09. Nothing below is fixed yet unless marked.
@@ -19,7 +43,7 @@ Hard blockers (rejection or upload failure):
 - [ ] Location denied → infinite `GradientAnimationLoad()`; `if true` hardcoded at `shukrApp.swift:79`. Reviewers test denial. Needs the real "Location Access Required" UI and ideally manual city entry.
 - [ ] Widget config placeholder strings ("the title wip...") in `shukrWidget/AppIntent.swift:18-22`, visible in Edit Widget.
 - [ ] Template Live Activity ("Hello 😀", `http://www.apple.com`) registered in `shukrWidgetBundle.swift:15`. Delete.
-- [ ] Dev UI reachable by users: "Dev's WIP" side-menu button (`Utils.swift:2847`); "My Dev Stuff" settings section toggled by tapping the "Calculation Method" header (`SettingsView.swift:236`, `:319`). Wrap in `#if DEBUG`.
+- [ ] Dev UI reachable by users: "My Dev Stuff" settings section toggled by tapping the "Calculation Method" header (`SettingsView.swift`, `showDevStuff`). Wrap in `#if DEBUG`. (The "Dev's WIP" menu entries are already `#if DEBUG` in the new hamburger `Menu`; the old `sideMenu` in Utils.swift still has them but is unreachable.)
 - [ ] Dead buttons: "Suggest Feature" (`SettingsView.swift:312`), "Cancel for X" (`:351`).
 - [ ] "Muslim Brand Explorer" links use expired signed CDN image URLs (`SettingsView.swift:77-83`) + third-party photos/marks. Remove or bundle own assets.
 - [ ] No `PrivacyInfo.xcprivacy` in app or widget. UserDefaults is a required-reason API (`NSPrivacyAccessedAPICategoryUserDefaults`, `CA92.1`). Declare location collection.
@@ -88,7 +112,7 @@ check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push 
 
 ## Widget ↔ app
 
-Widget buttons: compass → app `.main` + qibla map; tasbeeh → app `.left` (Zikr page); list /
+Widget buttons: compass → app main page + qibla map; tasbeeh → `horizontalPage = .zikr`; list /
 text toggles are in-widget. These use one-shot flags in the app group read on `scenePhase ==
 .active` in `PrayerTimesAndTracker`.
 
@@ -145,9 +169,10 @@ should be `let`, unused `endOfDay`.
 Entry: `tasbeehView` is a `fullScreenCover` at `PrayerTimesAndTracker.swift:412` driven by
 `showTasbeehPage`. Launchers preload `SharedStateClass` (`selectedMode` 0 freestyle /
 1 timed / 2 count, `titleForSession`, `selectedMinutes`, `targetCount`) then flip the bool:
-main circle tap on Zikr tab (`mainCircle.swift:225`), task card tap (`DailyTasksView.swift:255`
-via `selectedTask.didSet`), post-salah button (`Utils.swift:3340`, `isDoingPostNamazZikr`
-runs 33/33/34 sequence inside the view).
+`ZikrCircleView` tap on the Zikr page (freestyle), task card tap (`DailyTasksView`
+`tapOnTaskCardAction` via `selectedTask.didSet`), post-salah button (`FloatingChainZikrButton`
+in Utils.swift, `isDoingPostNamazZikr` runs 33/33/34 sequence inside the view).
+`mainCircle.swift`'s `handleTap` freestyle branch is dormant (needs `bottomTabPosition == .zikr`).
 
 Session lifecycle in `tasbeehView`: `startTimer()` → tap/drag increments → `togglePause()`
 accumulates `totalPauseInSession` so `secsPassed` excludes pauses → `stopTimer()` saves a
