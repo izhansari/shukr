@@ -41,6 +41,8 @@ struct PrayerTimesView: View {
             }
         }
     }
+    /// The row behind `chosenMantra`; the picker sets it first, the onChange below forwards it.
+    @State private var chosenMantraObject: MantraModel? = nil
     
     @State private var isDraggingVertically: Bool? = nil  // Current drag direction
     @State private var dragOffset = CGSize.zero       // Vertical drag (with resistance) for the bottom sheet / refresh
@@ -252,12 +254,14 @@ struct PrayerTimesView: View {
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
+                sharedState.mantraForSession = chosenMantraObject
             }
         }
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
                 isPresented: $showMantraSheetFromHomePage,
-                selectedMantra: $chosenMantra, //try putting sharedstate.titleforsession in here <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+                selectedMantra: $chosenMantra,
+                selectedMantraObject: $chosenMantraObject,
                 presentation: [.height(400)]
             )
         }

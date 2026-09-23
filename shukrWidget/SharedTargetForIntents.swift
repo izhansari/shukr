@@ -12,6 +12,7 @@ import WidgetKit
 // compiled into both targets so the schema is identical on both sides.
 
 import SwiftData
+import CoreData
 import CoreLocation
 
 enum SharedStore {
@@ -19,14 +20,10 @@ enum SharedStore {
     /// Set by the widget after it writes; the app clears it once it has re-read the store.
     static let widgetWroteStoreKey = "widgetWroteStore"
 
-    static let schema = Schema([
-        SessionDataModel.self,
-        MantraModel.self,
-        TaskModel.self,
-        DuaModel.self,
-        PrayerModel.self,
-        DailyPrayerScore.self
-    ])
+    /// Current schema. Every container below opens with `ShukrMigrationPlan` so an old store is
+    /// upgraded the same way whichever process (app or widget) touches it first.
+    static let schema = Schema(versionedSchema: ShukrSchemaV2.self)
+    static let migrationPlan: any SchemaMigrationPlan.Type = ShukrMigrationPlan.self
 
     /// The store file. Falls back to SwiftData's default location if the app group is missing
     /// (which would mean the entitlement is broken; the widget can't share in that case anyway).
@@ -42,18 +39,21 @@ enum SharedStore {
     /// `importLegacyStoreIfNeeded(into:)` right after, before anything reads data.
     static func makeContainer() throws -> ModelContainer {
         let config = ModelConfiguration(schema: schema, url: url)
-        return try ModelContainer(for: schema, configurations: [config])
+        return try ModelContainer(for: schema, migrationPlan: migrationPlan, configurations: [config])
     }
 
-    /// Widget side: open the shared store ONLY if the app has already created it. The widget
-    /// must never create it. WidgetKit refreshes right after an install/update, so a store
-    /// created here would be empty and would pre-empt the app's one-time import of the old
-    /// data (that's exactly how the owner's tasks vanished once). Retries on each access
-    /// until the file exists, then caches.
+    /// Widget side: open the shared store ONLY if the app has already created it AND it is at
+    /// the current schema version. The widget never creates and never migrates the store:
+    /// WidgetKit refreshes right after an install/update, so a widget-created store would be
+    /// empty and pre-empt the app's legacy import (how the owner's tasks vanished once), and a
+    /// widget-run migration races the app's own — sim-tested: the app's staged migration found
+    /// the file already at 2.0.0 mid-flight and died with "model incompatible". Opened without
+    /// the plan so it physically can't migrate. Retries on each access until the app has done
+    /// its part, then caches.
     private static var cachedWidgetContainer: ModelContainer?
     static var widgetContainer: ModelContainer? {
         if let cached = cachedWidgetContainer { return cached }
-        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        guard FileManager.default.fileExists(atPath: url.path), storeIsCurrentVersion(at: url) else { return nil }
         do {
             let config = ModelConfiguration(schema: schema, url: url)
             let container = try ModelContainer(for: schema, configurations: [config])
@@ -63,6 +63,20 @@ enum SharedStore {
             print("❌ widget couldn't open the shared store: \(error)")
             return nil
         }
+    }
+
+    /// "2.0.0" etc. — what a migrated store carries in `NSStoreModelVersionIdentifiers`.
+    static var currentVersionIdentifier: String {
+        let v = ShukrSchemaV2.versionIdentifier
+        return "\(v.major).\(v.minor).\(v.patch)"
+    }
+
+    /// Reads the store's metadata without opening it. False for a pre-versioned (V1) store,
+    /// for an older versioned one, and for anything unreadable.
+    static func storeIsCurrentVersion(at url: URL) -> Bool {
+        guard let meta = try? NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: url) else { return false }
+        let ids = meta[NSStoreModelVersionIdentifiersKey] as? [String] ?? []
+        return ids.contains(currentVersionIdentifier)
     }
 
     // MARK: One-time import of the pre-app-group store (app only)
@@ -117,8 +131,9 @@ enum SharedStore {
                 guard fm.fileExists(atPath: from.path) else { continue }
                 try fm.copyItem(at: from, to: URL(filePath: tmpStore.path + suffix))
             }
+            // The copy is at whatever version the old app wrote; the plan brings it to current.
             let legacyConfig = ModelConfiguration("legacy", schema: schema, url: tmpStore)
-            let legacy = try ModelContainer(for: schema, configurations: [legacyConfig])
+            let legacy = try ModelContainer(for: schema, migrationPlan: migrationPlan, configurations: [legacyConfig])
             let summary = try merge(from: ModelContext(legacy), into: ModelContext(container))
             defaults?.set(true, forKey: legacyImportedKey)
             print("✅ legacy import: \(summary)")
@@ -134,11 +149,28 @@ enum SharedStore {
         var tasksN = 0, sessionsN = 0, mantrasN = 0, duasN = 0, prayersN = 0, mergedN = 0, scoresN = 0
         let cal = Calendar.current
 
-        // Tasks first: sessions link to them by id.
+        // Mantras first: tasks and sessions link to them. Dedupe by name, not id — the shared
+        // store already holds the seeded built-ins (and anything added since) under its own ids.
+        var mantraByName: [String: MantraModel] = [:]
+        for mantra in try dst.fetch(FetchDescriptor<MantraModel>()) { mantraByName[mantra.name.lowercased()] = mantra }
+        for old in try src.fetch(FetchDescriptor<MantraModel>()) where mantraByName[old.name.lowercased()] == nil {
+            let new = MantraModel(name: old.name, fullText: old.fullText, notes: old.notes)
+            new.id = old.id
+            new.createdAt = old.createdAt
+            dst.insert(new)
+            mantraByName[new.name.lowercased()] = new
+            mantrasN += 1
+        }
+        func mantra(for old: MantraModel?) -> MantraModel? {
+            old.flatMap { mantraByName[$0.name.lowercased()] }
+        }
+
+        // Tasks next: sessions link to them by id.
         var taskByID: [UUID: TaskModel] = [:]
         for task in try dst.fetch(FetchDescriptor<TaskModel>()) { taskByID[task.id] = task }
         for old in try src.fetch(FetchDescriptor<TaskModel>()) where taskByID[old.id] == nil {
-            let new = TaskModel(mantra: old.mantra, isCountMode: old.isCountMode, goal: old.goal)
+            let new = TaskModel(mantra: mantra(for: old.mantra), isCountMode: old.isCountMode,
+                                goal: old.goal, mantraName: old.mantraName)
             new.id = old.id
             dst.insert(new)
             taskByID[new.id] = new
@@ -151,22 +183,13 @@ enum SharedStore {
                 title: old.title, sessionMode: old.sessionMode, targetMin: old.targetMin,
                 targetCount: old.targetCount, totalCount: old.totalCount, startTime: old.startTime,
                 secondsPassed: old.secondsPassed, avgTimePerClick: old.avgTimePerClick,
-                tasbeehRate: old.tasbeehRate, task: old.task.flatMap { taskByID[$0.id] }
+                tasbeehRate: old.tasbeehRate, task: old.task.flatMap { taskByID[$0.id] },
+                mantra: mantra(for: old.mantra)
             )
             new.id = old.id
             new.timeDurationString = old.timeDurationString
             dst.insert(new)
             sessionsN += 1
-        }
-
-        // Mantras dedupe by text, not id: the shared store may already hold the same strings.
-        var mantraTexts = Set(try dst.fetch(FetchDescriptor<MantraModel>()).map { $0.text.lowercased() })
-        for old in try src.fetch(FetchDescriptor<MantraModel>()) where !mantraTexts.contains(old.text.lowercased()) {
-            let new = MantraModel(text: old.text)
-            new.id = old.id
-            dst.insert(new)
-            mantraTexts.insert(old.text.lowercased())
-            mantrasN += 1
         }
 
         let duaIDs = Set(try dst.fetch(FetchDescriptor<DuaModel>()).map { $0.id })

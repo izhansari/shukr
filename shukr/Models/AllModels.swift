@@ -46,11 +46,17 @@ class SharedStateClass: ObservableObject {
     enum HorizontalPage: Hashable { case zikr, main, settings }
     @Published var horizontalPage: HorizontalPage = .main
     
+    /// The mantra object behind `titleForSession`, so a saved session can link to it.
+    /// Nil when the title came from somewhere without a row (post-salah sequence); `saveSession`
+    /// then falls back to a lookup by name.
+    @Published var mantraForSession: MantraModel? = nil
+
     @Published var selectedTask: TaskModel? = nil {
         didSet {
             if let task = selectedTask{
 //                let remainingGoal = task.isCountMode ? (task.goal - task.runningCount) : task.goal - Int(task.runningSeconds/60))
-                titleForSession = task.mantra
+                titleForSession = task.displayName
+                mantraForSession = task.mantra
                 if(task.isCountMode){ //modeflag
                     selectedMode = 2
                     targetCount = "\(task.goal)"
@@ -67,6 +73,7 @@ class SharedStateClass: ObservableObject {
         selectedMinutes = 0
         targetCount = ""
         titleForSession = ""
+        mantraForSession = nil
         selectedMode = 1
     }
 
@@ -275,17 +282,54 @@ class DuaModel: Identifiable { // Updated to use SwiftData model //GPT
 
 
 
+/// A zikr the user can count. Tasks and sessions point at it; renaming it renames them.
+/// Schema V2 (see `SchemaVersions.swift`): `text` became `name`, plus `fullText` / `notes`.
 @Model
 class MantraModel: Identifiable {
-    /// Ship-with-the-app mantras. Not stored; shown read-only in the picker and Mantras page.
+    /// Ship-with-the-app mantras. Seeded as real rows (migration + first launch) so they are
+    /// editable like any other; this list is only the seed source.
     static let builtIn: [String] = ["Alhamdulillah", "Subhanallah", "Allahu Akbar", "Astaghfirullah"]
 
     @Attribute(.unique) var id: UUID = UUID()
-    var text: String
+    /// Short name: what cards, the picker and session titles show.
+    @Attribute(originalName: "text") var name: String
+    /// The full mantra (Arabic / transliteration) to refresh memory mid-session.
+    var fullText: String = ""
+    /// Free-form notes ("sheikh said read this every morning…").
+    var notes: String = ""
+    var createdAt: Date = Date()
 
-    init(text: String) {
+    @Relationship(deleteRule: .nullify, inverse: \TaskModel.mantra)
+    var tasks: [TaskModel] = []
+    @Relationship(deleteRule: .nullify, inverse: \SessionDataModel.mantra)
+    var sessions: [SessionDataModel] = []
+
+    init(name: String, fullText: String = "", notes: String = "") {
         self.id = UUID()
-        self.text = text
+        self.name = name
+        self.fullText = fullText
+        self.notes = notes
+        self.createdAt = .now
+    }
+
+    /// Case-insensitive, whitespace-trimmed lookup by name.
+    static func find(named name: String, in context: ModelContext) -> MantraModel? {
+        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !key.isEmpty, let all = try? context.fetch(FetchDescriptor<MantraModel>()) else { return nil }
+        return all.first { $0.name.lowercased() == key }
+    }
+
+    /// Insert any built-in that isn't there yet. Runs on fresh installs (the migration seeds
+    /// upgrades). Returns how many were added; the caller saves.
+    @discardableResult
+    static func seedBuiltInsIfNeeded(in context: ModelContext) -> Int {
+        let existing = Set(((try? context.fetch(FetchDescriptor<MantraModel>())) ?? []).map { $0.name.lowercased() })
+        var added = 0
+        for name in builtIn where !existing.contains(name.lowercased()) {
+            context.insert(MantraModel(name: name))
+            added += 1
+        }
+        return added
     }
 }
 
@@ -316,10 +360,14 @@ class SessionDataModel: Identifiable {
     /// The daily task this session was started from (nil for freestyle / post-salah / legacy sessions).
     /// Only linked sessions count toward a task's daily progress.
     var task: TaskModel?
+    /// The mantra counted. `title` stays as the snapshot of its name at the time, so history
+    /// keeps reading right if the mantra is renamed or deleted.
+    var mantra: MantraModel?
 
-    
-    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String, task: TaskModel? = nil) {
+
+    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String, task: TaskModel? = nil, mantra: MantraModel? = nil) {
         self.task = task
+        self.mantra = mantra
         self.title = title
         self.sessionMode = sessionMode
         self.targetMin = targetMin
@@ -348,7 +396,11 @@ class SessionDataModel: Identifiable {
 class TaskModel: Identifiable {
     
     @Attribute(.unique) var id: UUID = UUID()
-    var mantra: String
+    /// Name snapshot (was the only `mantra` field before V2). Fallback for display if the
+    /// mantra row is gone; the editor keeps it in step with renames.
+    @Attribute(originalName: "mantra") var mantraName: String
+    /// The mantra this task counts. Inverse of `MantraModel.tasks`.
+    var mantra: MantraModel?
     var isCountMode: Bool
     var goal: Int
 
@@ -356,9 +408,13 @@ class TaskModel: Identifiable {
     /// Deleting a task keeps its sessions in history (nullify), it just unlinks them.
     @Relationship(deleteRule: .nullify, inverse: \SessionDataModel.task)
     var sessions: [SessionDataModel] = []
-    
-    init(mantra: String, isCountMode: Bool, goal: Int) {
+
+    /// What to show on the card: the live mantra name, or the snapshot if it was deleted.
+    var displayName: String { mantra?.name ?? mantraName }
+
+    init(mantra: MantraModel?, isCountMode: Bool, goal: Int, mantraName: String? = nil) {
         self.mantra = mantra
+        self.mantraName = mantraName ?? mantra?.name ?? ""
         self.isCountMode = isCountMode
         self.goal = goal
     }

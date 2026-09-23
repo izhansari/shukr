@@ -595,7 +595,9 @@ struct tasbeehView: View {
             secondsPassed: secsToReport,
             avgTimePerClick: newAvrgTPC,
             tasbeehRate: tasbeehRate,
-            task: linkedTask
+            task: linkedTask,
+            // Picked from a task/picker → we have the row; post-salah sequence only has a name.
+            mantra: sharedState.mantraForSession ?? MantraModel.find(named: placeholderTitle, in: context)
         )
         print("adding a session card")
         context.insert(item)
@@ -610,6 +612,7 @@ struct tasbeehView: View {
         sharedState.targetCount = ""
         sharedState.selectedMinutes = 0
         sharedState.titleForSession = ""
+        sharedState.mantraForSession = nil
         sharedState.selectedMode = 1
     }
     
@@ -691,6 +694,7 @@ struct tasbeehView: View {
         @State private var showingPerCount = true
         @State private var showMantraSheetFromResultsPage = false
         @State private var chosenMantraFromResultsPage: String? = ""
+        @State private var chosenMantraObjectFromResultsPage: MantraModel? = nil
         
         // Computed properties from savedSession
         private var tasbeeh: Int { savedSession.totalCount }
@@ -874,7 +878,9 @@ struct tasbeehView: View {
                     if let newSetMantra = chosenMantraFromResultsPage {
                         withAnimation {
                             sharedState.titleForSession = newSetMantra
+                            sharedState.mantraForSession = chosenMantraObjectFromResultsPage
                             savedSession.title = newSetMantra  // Update the saved session directly
+                            savedSession.mantra = chosenMantraObjectFromResultsPage
                             do {
                                 try context.save()  // Save the context to persist the changes
                             } catch {
@@ -887,6 +893,7 @@ struct tasbeehView: View {
                     MantraPickerView(
                         isPresented: $showMantraSheetFromResultsPage,
                         selectedMantra: $chosenMantraFromResultsPage,
+                        selectedMantraObject: $chosenMantraObjectFromResultsPage,
                         presentation: [.large]
                     )
                 }
@@ -983,6 +990,7 @@ struct tasbeehView: View {
         @State private var showingPerCount = true
         @State private var showMantraSheetFromResultsPage = false
         @State private var chosenMantraFromResultsPage: String? = ""
+        @State private var chosenMantraObjectFromResultsPage: MantraModel? = nil
         
         // Computed variables for est time completion (only for target count mode)
         private var remainingCount: Int{
@@ -1232,6 +1240,7 @@ struct tasbeehView: View {
                     if let newSetMantra = chosenMantraFromResultsPage {
                         withAnimation {
                             sharedState.titleForSession = newSetMantra
+                            sharedState.mantraForSession = chosenMantraObjectFromResultsPage
                         }
                     }
                 }
@@ -1239,6 +1248,7 @@ struct tasbeehView: View {
                     MantraPickerView(
                         isPresented: $showMantraSheetFromResultsPage,
                         selectedMantra: $chosenMantraFromResultsPage,
+                        selectedMantraObject: $chosenMantraObjectFromResultsPage,
                         presentation: [.large]
                     )
                 }

@@ -2,11 +2,11 @@
 //  MantrasView.swift
 //  shukr
 //
-//  Manage the zikr / mantra list from the side menu.
-//
-//  Today a mantra is just a string (`MantraModel.text`). This screen is laid out so the
-//  richer model (title + full Arabic text + notes) can slot in: the editor sheet is the
-//  one place fields get added, and the list rows only read `text`.
+//  Manage the mantra list from the side menu. A mantra has a short `name` (what cards, the
+//  picker and session titles show), the `fullText` (Arabic / transliteration) and free `notes`.
+//  The four built-ins are ordinary rows here — seeded on migration / first launch — so they can
+//  be edited like the rest. Tasks and sessions point at the row, so a rename shows everywhere;
+//  deleting a row unlinks them (tasks fall back to their name snapshot, sessions keep `title`).
 //
 
 import SwiftUI
@@ -14,52 +14,46 @@ import SwiftData
 
 struct MantrasView: View {
     @Environment(\.modelContext) private var context
-    @Query(sort: \MantraModel.text) private var customMantras: [MantraModel]
+    @Query(sort: \MantraModel.name) private var mantras: [MantraModel]
 
     @State private var editing: MantraModel? = nil
     @State private var showingNewMantra = false
 
     var body: some View {
         List {
-            Section {
-                ForEach(MantraModel.builtIn, id: \.self) { text in
-                    HStack {
-                        Text(text)
-                        Spacer()
-                        Image(systemName: "lock")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            } header: {
-                Text("Built-in")
-            } footer: {
-                Text("These ship with the app and can't be edited yet.")
-            }
-
-            Section {
-                if customMantras.isEmpty {
-                    Text("No custom mantras yet. Tap + to add one.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(customMantras) { mantra in
-                        Button {
-                            editing = mantra
-                        } label: {
-                            HStack {
-                                Text(mantra.text)
+            if mantras.isEmpty {
+                Text("No mantras yet. Tap + to add one.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(mantras) { mantra in
+                    Button {
+                        editing = mantra
+                    } label: {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(mantra.name)
                                     .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.right")
+                                if !mantra.fullText.isEmpty {
+                                    Text(mantra.fullText)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            if !mantra.notes.isEmpty {
+                                Image(systemName: "note.text")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                             }
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
                         }
                     }
-                    .onDelete(perform: delete)
+                    .tint(.primary) // rows, not links
                 }
-            } header: {
-                Text("My Mantras")
+                .onDelete(perform: delete)
             }
         }
         .fontDesign(.rounded)
@@ -77,70 +71,94 @@ struct MantrasView: View {
         }
         .sheet(item: $editing) { mantra in
             MantraEditorView(mantra: mantra)
-                .presentationDetents([.medium])
         }
         .sheet(isPresented: $showingNewMantra) {
             MantraEditorView(mantra: nil)
-                .presentationDetents([.medium])
         }
     }
 
     private func delete(at offsets: IndexSet) {
         for index in offsets {
-            context.delete(customMantras[index])
+            context.delete(mantras[index]) // relationships are .nullify: tasks/sessions survive, unlinked
         }
-        // Tasks keep their mantra string; nothing else references MantraModel directly (yet).
     }
 }
 
 
 /// Create or edit one mantra. `mantra == nil` means create.
-/// When the richer model lands, add its fields here (title / fullText / notes) and nowhere else.
 struct MantraEditorView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query private var allMantras: [MantraModel]
-    @Query private var tasks: [TaskModel]
 
     let mantra: MantraModel?
-    @State private var text: String
+    @State private var name: String
+    @State private var fullText: String
+    @State private var notes: String
 
     init(mantra: MantraModel?) {
         self.mantra = mantra
-        _text = State(initialValue: mantra?.text ?? "")
+        _name = State(initialValue: mantra?.name ?? "")
+        _fullText = State(initialValue: mantra?.fullText ?? "")
+        _notes = State(initialValue: mantra?.notes ?? "")
     }
 
-    private var trimmed: String {
-        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Another mantra (built-in or custom, other than the one being edited) already uses this text.
+    /// Another mantra (other than the one being edited) already uses this name.
     private var isDuplicate: Bool {
-        let lower = trimmed.lowercased()
-        if MantraModel.builtIn.contains(where: { $0.lowercased() == lower }) { return true }
-        return allMantras.contains { $0.text.lowercased() == lower && $0.persistentModelID != mantra?.persistentModelID }
+        let lower = trimmedName.lowercased()
+        return allMantras.contains { $0.name.lowercased() == lower && $0.persistentModelID != mantra?.persistentModelID }
     }
 
     private var canSave: Bool {
-        !trimmed.isEmpty && !isDuplicate
+        !trimmedName.isEmpty && !isDuplicate
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("e.g. Durood", text: $text)
+                    TextField("e.g. Durood", text: $name)
                         .autocorrectionDisabled(true)
                 } header: {
-                    Text("Mantra")
+                    Text("Name")
                 } footer: {
                     if isDuplicate {
                         Text("A mantra with this name already exists.")
                             .foregroundStyle(.red)
+                    } else {
+                        Text("Shown on task cards, in the picker and in history.")
                     }
                 }
-                // TODO(richer mantra): Section("Full text") { TextEditor(...) } for the Arabic
-                // TODO(richer mantra): Section("Notes") { TextEditor(...) }
+
+                Section {
+                    TextEditor(text: $fullText)
+                        .frame(minHeight: 80)
+                        .autocorrectionDisabled(true)
+                } header: {
+                    Text("Full mantra")
+                } footer: {
+                    Text("The complete wording, Arabic or transliterated.")
+                }
+
+                Section {
+                    TextEditor(text: $notes)
+                        .frame(minHeight: 80)
+                } header: {
+                    Text("Notes")
+                } footer: {
+                    Text("Why or when to read it, who recommended it, anything you want to remember.")
+                }
+
+                if let mantra {
+                    Section {
+                        LabeledContent("Tasks", value: "\(mantra.tasks.count)")
+                        LabeledContent("Sessions", value: "\(mantra.sessions.count)")
+                    }
+                }
             }
             .fontDesign(.rounded)
             .navigationTitle(mantra == nil ? "New Mantra" : "Edit Mantra")
@@ -159,16 +177,17 @@ struct MantraEditorView: View {
 
     private func save() {
         guard canSave else { return }
+        let fullTextTrimmed = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let notesTrimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if let mantra {
-            let oldText = mantra.text
-            mantra.text = trimmed
-            // Tasks reference the mantra by string today; keep them in sync with a rename.
-            // Sessions are left alone: their title is a historical snapshot.
-            for task in tasks where task.mantra == oldText {
-                task.mantra = trimmed
-            }
+            mantra.name = trimmedName
+            mantra.fullText = fullTextTrimmed
+            mantra.notes = notesTrimmed
+            // Tasks read the live name through the relationship; keep their snapshot in step too
+            // so a later deletion still shows the right name. Sessions keep their historical title.
+            for task in mantra.tasks { task.mantraName = trimmedName }
         } else {
-            context.insert(MantraModel(text: trimmed))
+            context.insert(MantraModel(name: trimmedName, fullText: fullTextTrimmed, notes: notesTrimmed))
         }
         dismiss()
     }

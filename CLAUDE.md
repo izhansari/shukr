@@ -17,14 +17,16 @@ Branch: `claude/app-store-publish-requirements-7vrmcg` (not merged to `main`). E
 the first block is unbuilt by the agent that wrote it; the owner builds in Xcode / a local
 agent builds with xcodebuild. Nothing here has CI.
 
-1. **Verify on the owner's phone:** the legacy-store import restored their tasks, sessions,
-   duas, history. First launch of the fixed build must print `✅ legacy import: tasks=N …`
-   (N > 0); the next launch prints nothing. `❌ …` → fix the cause and relaunch (it retries).
-   `ℹ️ legacy import: no legacy store found` → the file isn't at either known path; look for
-   `default.store` under the app group's `Library/Application Support` and the app's own
-   `Application Support` (Xcode → Devices → Download Container) before doing anything else.
-   The old file is never modified by the import. Sim-verified on an upgrade with real data
-   (see Widget ↔ app); the phone is the remaining case.
+1. **Verify the schema V2 migration on the owner's phone.** Back up first:
+   `xcrun devicectl device copy from --device <udid> --domain-type appGroupDataContainer
+   --domain-identifier group.betternorms.shukr.shukrWidget --source shukr.store --destination …`
+   (plus `-wal` / `-shm`). First launch must print `✅ schema V1→V2: mantras=N … tasks linked=…
+   sessions linked=…` followed by `✅ legacy import: tasks=0 …` (everything already merged) —
+   then the Zikr cards still show their names, hamburger → Mantras lists the built-ins plus the
+   13 custom ones, history titles are intact. A `❌`/`Fatal error: Could not create
+   ModelContainer` means the migration failed: restore the backup, do not relaunch repeatedly.
+   (Legacy import itself is verified on the phone, 2026-09-23: `tasks=10 sessions=492
+   mantras=13 duas=2 prayers=2096 (merged 1) scores=278`.)
 2. **Verify horizontal paging on the phone.** Owner reported "dragging left/right does nothing"
    on an earlier commit while the simulator paged fine. b4071db moved the vertical gesture onto
    the ScrollView itself, which removes every known way a page could block paging. If it still
@@ -34,8 +36,9 @@ agent builds with xcodebuild. Nothing here has CI.
    `Menu` is instant; Settings header (back / title / light-dark-auto) works.
 4. **Widget, still unverified:** does the nudge notification for a widget-completed prayer
    still fire (can an extension cancel the app's pending notifications)? Widget tap before a
-   prayer starts (should no-op). Widget added before the app is ever opened (must not create
-   the store; checkmark inert until the app runs once).
+   prayer starts (should no-op). Sim-verified 2026-09-23: widget added before the app is ever
+   opened creates no store and its checkmark is inert; widget on a V1 store waits for the app
+   to migrate. Still unverified on a real device.
 5. **General sluggishness lever:** migrate `SharedStateClass` from `ObservableObject` to
    `@Observable` (see Navigation section). Do it with a compiler in the loop.
 6. Then the App Store blockers below.
@@ -138,9 +141,15 @@ process compounds it (its Application Support is the *extension's* sandbox), but
 wrong in the app too. `SharedStore.legacyURLs` now checks the group location first, then the
 sandbox.
 
-**Rule: the widget never creates the store.** `SharedStore.widgetContainer` opens the file only
-if it already exists (and retries on each access until it does). WidgetKit refreshes right
-after an install, so a widget-created store would be empty and would pre-empt the import.
+**Rule: the widget never creates and never migrates the store.** `SharedStore.widgetContainer`
+opens the file only if it exists *and* its metadata already carries the current version
+(`storeIsCurrentVersion`, read via `NSPersistentStoreCoordinator.metadataForPersistentStore`
+without opening), and opens it without the migration plan. WidgetKit refreshes right after an
+install: a widget-created store would be empty and pre-empt the import, and a widget-run
+migration races the app's own — sim-reproduced 2026-09-23: the app's staged migration found the
+file already at 2.0.0 mid-flight and died with "model incompatible" (134110). Until the app has
+migrated, the widget renders its placeholder and the checkmark is inert; it retries on each
+access. The app's `makeContainer()` and the legacy temp copy open with `ShukrMigrationPlan`.
 
 **Legacy import** (`importLegacyStoreIfNeeded`, app only, gated by `legacyStoreImported.v2` in
 the app-group defaults — v2 because the v1 key was set by builds that found nothing): copies the
@@ -223,21 +232,37 @@ Backlog / known oddities:
 - [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe. Pager is a native paging ScrollView (first offset-based version was laggy on device).
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
-## Planned: richer mantra model
+## Mantra model (schema V2)
 
-Owner wants a mantra to carry more than a string: a short **title** (what shows on cards and
-in the picker), the **full text** (Arabic, to refresh memory mid-session), and **notes**
-("sheikh said read this every morning for business success"). Design agreed:
+Done 2026-09-23. A mantra is a row, not a string: `MantraModel { name, fullText, notes,
+createdAt }` with inverse relationships `tasks` / `sessions`. `TaskModel.mantra: MantraModel?`;
+the old string survives as `mantraName` (snapshot + fallback; the editor keeps it in step on
+rename; `displayName` prefers the live name). `SessionDataModel.mantra: MantraModel?` alongside
+`title`, which stays a history snapshot and is never rewritten. The four built-ins are ordinary
+rows — seeded by the migration on upgrade and by `MantraModel.seedBuiltInsIfNeeded` on fresh
+installs; `MantraModel.builtIn` is only the seed list.
 
-1. `MantraModel` gains `title`, `fullText`, `notes`, `createdAt`. Existing `text` becomes
-   `title` via a `VersionedSchema` + `SchemaMigrationPlan` (rename is not lightweight).
-2. `TaskModel.mantra: String` → `@Relationship var mantra: MantraModel?`;
-   `SessionDataModel` gets `mantra: MantraModel?` and keeps `title` as a history snapshot.
-3. Seed the four built-ins into the store on first launch so they become editable like the rest,
-   then drop `MantraModel.builtIn`.
-4. `MantraEditorView` (already the single edit surface) grows the two extra fields.
-   Pause screen / results card: tapping the mantra name shows the full text.
-5. `MantraPickerView` selects a `MantraModel`, not a string; `SharedStateClass.titleForSession`
-   becomes `mantraForSession`.
+**Schema versions live in `Models/SchemaVersions.swift`** (compiled into app + widget):
+`ShukrSchemaV1` = nested copies of the six original models (never edit — they must hash to what
+an old store contains), `ShukrSchemaV2` = the live classes, `ShukrMigrationPlan` with one custom
+stage. The store change is lightweight (`@Attribute(originalName:)` renames, defaulted columns,
+optional relationships); `didMigrate` seeds built-ins, gives every task a mantra row (creating
+one from its name if needed) and links sessions whose title matches a mantra. Sessions with an
+unmatched title stay unlinked on purpose (never invent mantras from history). Logs
+`✅ schema V1→V2: mantras=… tasks linked=… sessions linked=…`. **Only the app migrates** — see
+the widget rule under Widget ↔ app. Adding V3: new enum, append to `schemas`, add a stage, and
+point `SharedStore.currentVersionIdentifier` at it.
 
-Do this as its own branch/commit; it's a real migration and needs testing on a device with data.
+Selection plumbing: `MantraPickerView` hands back `selectedMantra` (name) *and*
+`selectedMantraObject`; the object is set first so name-based `onChange`s can read it.
+`SharedStateClass.mantraForSession` rides alongside `titleForSession`; `saveSession` links it,
+falling back to `MantraModel.find(named:)` (the post-salah sequence only has names). The Mantras
+page (hamburger → Mantras; `MantrasView` / `MantraEditorView`) edits name / full mantra / notes
+and shows task + session counts; delete is `.nullify`.
+
+Sim-tested 2026-09-23: V1 store (task + linked session + prayers) migrated with `mantras=4
+tasks linked=1 sessions linked=1`, the legacy import then ran on top and merged 0, relaunch
+clean; editor saves fullText/notes; a task created via the picker links by object; the task-card
+strip scrolls inside the page without turning it. Not done (owner asked for minimal UI): pause /
+results screens don't surface fullText or notes yet. Still to verify: the migration on the
+owner's phone (real volume: 10 tasks, 492 sessions, 13 mantras).

@@ -72,7 +72,7 @@ struct DailyTasksView: View {
         .alert(isPresented: $showDeleteTaskAlert) {
             Alert(
                 title: Text("Delete Task"),
-                message: Text("Are you sure you want to delete your \(taskToDelete?.mantra ?? "") task?"),
+                message: Text("Are you sure you want to delete your \(taskToDelete?.displayName ?? "") task?"),
                 primaryButton: .destructive(Text("Delete")) {
                     if let task = taskToDelete {
                         withAnimation{
@@ -342,7 +342,7 @@ struct TaskCardView: View {
     var body: some View {
         VStack(alignment: .center) {
             
-            Text(task.mantra)
+            Text(task.displayName)
                 .font(.footnote) //.callout
                 .foregroundColor(.secondary.opacity(1)) //1
                 .fontDesign(.rounded)
@@ -520,7 +520,7 @@ struct AddDailyTaskView: View {
     @FocusState var isZikrFocused: Bool
     @State private var taskIsCountMode: Bool? = nil
     @State private var goal: Int? = nil
-    @State private var selectedMantra: String? = nil
+    @State private var selectedMantra: MantraModel? = nil
     @State private var searchQuery: String = ""
     @State private var showMantraPicker: Bool = false
     @State private var userSelectedCountMin: Bool? = nil // Default to count mode
@@ -537,11 +537,11 @@ struct AddDailyTaskView: View {
 
     // Function to create and persist the TaskModel, then dismiss the view
     func createTask() {
+        guard let selectedMantra else { return } // Confirm is disabled until a mantra is picked
         let task = TaskModel(
-            mantra: selectedMantra ?? "",
+            mantra: selectedMantra,
             isCountMode: taskIsCountMode ?? false,
             goal: goal ?? 0
-            //runningGoal: 0
         )
 
         // Save the task to the persistent context
@@ -552,7 +552,7 @@ struct AddDailyTaskView: View {
         // i think we can get rid of this all since its all State vars... and we close the view so it will be redrawn anyways
         isZikrFocused = false
         isGoalFocused = false
-        selectedMantra = ""
+        self.selectedMantra = nil
         goal = 0
         
         // Dismiss the view after task creation
@@ -740,10 +740,10 @@ struct AddDailyTaskView: View {
                     Button(action: {
                         showMantraPicker = true
                     }) {
-                        Text(selectedMantra ?? "" == "" ? "Zikr" : (selectedMantra ?? ""))
+                        Text(selectedMantra?.name ?? "Zikr")
                             .font(.headline)
                             .lineLimit(1)
-                            .foregroundColor(selectedMantra ?? "" == ""  ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
+                            .foregroundColor(selectedMantra == nil ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
@@ -755,7 +755,7 @@ struct AddDailyTaskView: View {
                     .sheet(isPresented: $showMantraPicker) {
                         MantraPickerView(
                             isPresented: $showMantraPicker,
-                            selectedMantra: $selectedMantra, //try putting sharedstate.titleforsession in here
+                            selectedMantraObject: $selectedMantra,
                             presentation: [.height(400)]
                         )
                     }

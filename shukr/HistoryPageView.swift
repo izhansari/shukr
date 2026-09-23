@@ -443,38 +443,45 @@ struct DailyStatToggleView: View {
     }
 }
 
+/// Pick (or add) a mantra. Hands back the `MantraModel` through `selectedMantraObject` and its
+/// name through `selectedMantra` (the name is what most callers display; the object is what
+/// tasks and sessions link to). The object is set first, so an `onChange` on the name sees it.
 struct MantraPickerView: View {
     @Environment(\.modelContext) private var context
-    @Query private var mantraItems: [MantraModel]
-    
+    @Query(sort: \MantraModel.name) private var mantraItems: [MantraModel]
+
     // Binding for controlling the visibility of the sheet
     @Binding var isPresented: Bool
     @Binding var selectedMantra: String?
+    @Binding var selectedMantraObject: MantraModel?
     @Binding var selectedSession: SessionDataModel?
 
     @State private var searchQuery: String = ""
-    @State private var tempSelection: String?
     @State private var showAlertToAdd: Bool = false
-        
-    private var predefinedMantras: [String] { MantraModel.builtIn }
+
     private var presentation: Set<PresentationDetent>
-    private var filteredMantras: [String]{
-        (predefinedMantras + mantraItems.map { $0.text })
-            .filter { searchQuery.isEmpty || $0.lowercased().contains(searchQuery.lowercased()) }
-            .sorted()
+    private var filteredMantras: [MantraModel] {
+        mantraItems.filter { searchQuery.isEmpty || $0.name.lowercased().contains(searchQuery.lowercased()) }
     }
     private var  uniqueItem: Bool {
-        (predefinedMantras + mantraItems.map { $0.text })
-            .filter { $0.lowercased() == searchQuery.lowercased() }
-            .isEmpty
+        !mantraItems.contains { $0.name.lowercased() == searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
     }
-    
+
     // Allow selectedSession and selectedMantra to be optional in the initializer
-    init(isPresented: Binding<Bool>, selectedSession: Binding<SessionDataModel?> = .constant(nil), selectedMantra: Binding<String?> = .constant(nil), presentation: Set<PresentationDetent>? = nil) {
+    init(isPresented: Binding<Bool>, selectedSession: Binding<SessionDataModel?> = .constant(nil), selectedMantra: Binding<String?> = .constant(nil), selectedMantraObject: Binding<MantraModel?> = .constant(nil), presentation: Set<PresentationDetent>? = nil) {
         self._isPresented = isPresented
         self._selectedSession = selectedSession
         self._selectedMantra = selectedMantra
+        self._selectedMantraObject = selectedMantraObject
         self.presentation = presentation ?? [.medium]
+    }
+
+    /// Every way out of the picker ends here.
+    private func select(_ mantra: MantraModel) {
+        if selectedSession != nil { assignMantraToSession(mantra) }
+        selectedMantraObject = mantra
+        selectedMantra = mantra.name
+        isPresented = false
     }
   
     
@@ -583,30 +590,17 @@ struct MantraPickerView: View {
                     Text("No results.")
                     Text("Add '\(searchQuery)' as a new zikr?")
                     Button("Add") {
-                        // Add new Zikr
-                        saveToMantraList(searchQuery)
-                        if selectedSession != nil {
-                            assignMantraToSession(searchQuery)
-                        }
-                        selectedMantra = searchQuery
-                        isPresented = false // Close the sheet
+                        select(saveToMantraList(searchQuery))
                     }
                 }
                 .padding()
                 Spacer()
             } else {
-                
+
                 // List instead of Wheel Picker
-                List(filteredMantras, id: \.self, selection: $tempSelection) { existingMantra in
-                    Button(existingMantra){
-                            // Confirm existing Zikr
-                            if selectedSession != nil {
-                                assignMantraToSession(existingMantra)
-                            }
-                            selectedMantra = existingMantra
-                        isPresented = false // Close the sheet
-                    }
-                    .tint(Color.primary)
+                List(filteredMantras) { mantra in
+                    Button(mantra.name) { select(mantra) }
+                        .tint(Color.primary)
                 }
                 .listStyle(DefaultListStyle())
             }
@@ -616,13 +610,7 @@ struct MantraPickerView: View {
                         title: Text("Add this to list?"),
                         message: Text("\(searchQuery)"),
                         primaryButton: .default(Text("Add")) {
-                            // Add new Zikr
-                            saveToMantraList(searchQuery)
-                            if selectedSession != nil {
-                                assignMantraToSession(searchQuery)
-                            }
-                            selectedMantra = searchQuery
-                            isPresented = false // Close the sheet
+                            select(saveToMantraList(searchQuery))
                         },
                         secondaryButton: .cancel()
                     )
@@ -636,25 +624,23 @@ struct MantraPickerView: View {
 //        .presentationDetents(presentation)
     }
     
-    // Function to save a new or selected mantra
-    private func saveToMantraList(_ mantra: String) {
-        let isInPredefined = predefinedMantras.contains(mantra)
-        let isInCustomMantras = mantraItems.contains(where: { $0.text == mantra })
-        
-        // Check if the mantra already exists
-        if !isInPredefined && !isInCustomMantras {
-            let newMantraItem = MantraModel(text: mantra)
-            context.insert(newMantraItem) // Insert new mantra into SwiftData
-            print("Saved new mantra: \(mantra)")
-        } else {
-            print("Mantra already exists")
+    /// The mantra with this name, creating it if there isn't one.
+    private func saveToMantraList(_ name: String) -> MantraModel {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let existing = mantraItems.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            return existing
         }
+        let newMantraItem = MantraModel(name: trimmed)
+        context.insert(newMantraItem)
+        print("Saved new mantra: \(trimmed)")
+        return newMantraItem
     }
-    
+
     // Conditionally assign the mantra to a session if selectedSession is not nil
-    private func assignMantraToSession(_ mantra: String) {
+    private func assignMantraToSession(_ mantra: MantraModel) {
         if let session = selectedSession {
-            session.title = mantra
+            session.title = mantra.name
+            session.mantra = mantra
             do {
                 try context.save()  // Save the context to persist the changes
             } catch {

@@ -32,6 +32,9 @@ struct shukrApp: App {
             // One-time merge of the pre-app-group store (Application Support/default.store).
             // Must run before PrayerViewModel or any view reads data. Never deletes the old files.
             SharedStore.importLegacyStoreIfNeeded(into: container)
+            // Fresh installs never run the V1→V2 migration, so the built-in mantras are seeded here.
+            let seedContext = ModelContext(container)
+            if MantraModel.seedBuiltInsIfNeeded(in: seedContext) > 0 { try? seedContext.save() }
             return container
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
