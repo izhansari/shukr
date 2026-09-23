@@ -151,28 +151,32 @@ class AyahDatabaseManager {
 
     // MARK: - Public Functions
 
-    /// Returns a random verse (with Arabic text) from the Arabic database.
-    func getRandomVerse() -> Verse? {
+    /// Verse indices in the bundled quran.sqlite run 1...6236.
+    static let verseCount = 6236
+
+    /// Returns the verse (with Arabic text) at a 1-based index in the Arabic database.
+    func getVerse(at index: Int) -> Verse? {
         guard let dbArabic = dbArabic else {
             print("❌ Error: Arabic database is not available.")
             return nil
         }
-        
-        let randomIndex = Int.random(in: 1...6236)
-        let indexString = String(randomIndex)
-        
-        guard let cIndex = (indexString as NSString).utf8String else {
+        guard let cIndex = (String(index) as NSString).utf8String else {
             print("❌ Error: Failed to convert index to C string.")
             return nil
         }
-        
+
         let query = "SELECT `index`, sura, aya, text FROM quran_text WHERE `index` = ?;"
         guard let result = executeQuery(in: dbArabic, query: query, cIndex: cIndex) else {
-            print("❌ No Arabic verse found for index \(randomIndex).")
+            print("❌ No Arabic verse found for index \(index).")
             return nil
         }
-        
-        return Verse(index: randomIndex, sura: result.sura, aya: result.aya, arabic: result.text)
+
+        return Verse(index: index, sura: result.sura, aya: result.aya, arabic: result.text)
+    }
+
+    /// Returns a random verse (with Arabic text) from the Arabic database.
+    func getRandomVerse() -> Verse? {
+        getVerse(at: Int.random(in: 1...Self.verseCount))
     }
 
     /// Returns a translation for the given verse index and translation option.
@@ -222,11 +226,35 @@ final class DailyAyahViewModel: ObservableObject {
     
     init() {
         loadSurahs()
-        fetchRandomAyah()
+        fetchDailyAyah()
     }
-    
-    func fetchRandomAyah() {
-        if let verse = AyahDatabaseManager.shared.getRandomVerse() {
+
+    // One verse per calendar day: the index is drawn once and remembered with the day it was
+    // drawn for, so reopening the page (or relaunching) shows the same ayah until midnight.
+    private static let dailyIndexKey = "dailyAyah.index"
+    private static let dailyDayKey = "dailyAyah.day"
+
+    /// Today's verse index, drawing and storing a new one if the saved one is from another day.
+    private func todaysVerseIndex() -> Int {
+        let defaults = UserDefaults.standard
+        let calendar = Calendar.current
+        let savedIndex = defaults.integer(forKey: Self.dailyIndexKey)
+        if let savedDay = defaults.object(forKey: Self.dailyDayKey) as? Date,
+           calendar.isDateInToday(savedDay),
+           (1...AyahDatabaseManager.verseCount).contains(savedIndex) {
+            return savedIndex
+        }
+        let index = Int.random(in: 1...AyahDatabaseManager.verseCount)
+        defaults.set(index, forKey: Self.dailyIndexKey)
+        defaults.set(calendar.startOfDay(for: Date()), forKey: Self.dailyDayKey)
+        return index
+    }
+
+    /// Loads today's ayah. Safe to call repeatedly: it only changes after midnight.
+    func fetchDailyAyah() {
+        let index = todaysVerseIndex()
+        if currentAyah?.index == index { return }
+        if let verse = AyahDatabaseManager.shared.getVerse(at: index) {
             // Use the selectedTranslation enum directly.
             let translationType = selectedTranslation
             let englishText = AyahDatabaseManager.shared.getTranslation(for: verse.index, translation: translationType) ?? "No translation found."
@@ -577,6 +605,8 @@ struct DailyAyahCountdownView: View {
             .autoconnect()
             .sink { _ in
                 countdown = viewModel.timeUntilNextVerse()
+                // Page left open across midnight: swap in the new day's verse.
+                if countdown == (0, 0, 0) { viewModel.fetchDailyAyah() }
             }
     }
 
