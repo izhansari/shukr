@@ -51,20 +51,25 @@ runs 33/33/34 sequence inside the view).
 Session lifecycle in `tasbeehView`: `startTimer()` → tap/drag increments → `togglePause()`
 accumulates `totalPauseInSession` so `secsPassed` excludes pauses → `stopTimer()` saves a
 `SessionDataModel` (if count > 0) and shows `ResultsView` → `completeStopTimer()`.
-Task progress is derived, not linked: `DailyTasksView.updateTodaysSessions()` sums today's
-sessions by title string.
+Task progress: `SessionDataModel.task` links a session to the `TaskModel` it was launched
+from (set in `saveSession()` only when mode != 0 and not post-salah). `DailyTasksView` holds a
+`@Query` of today's sessions and computes `task.progress(in:)` live. Rules the owner set:
+a task only counts its own linked sessions; no spill-over between tasks with the same mantra;
+freestyle and post-salah sessions never affect tasks. The query's "today" is fixed when the
+view mounts (it remounts on every nav change, so midnight staleness is minor).
 
 Done:
 - [x] Removed `WidgetCenter.reloadAllTimelines()` from every count (was for the retired count widget; burned refresh budget).
 - [x] Screen stays awake while a session is active and not paused (`isIdleTimerDisabled`).
 - [x] `inMinSecStyle2` dropped the seconds when under a minute ("you'll finish in ").
+- [x] Two tasks with the same mantra completed together, and cards only refreshed on remount. Sessions now link to their task; progress is a live `@Query`. Minutes tasks now complete at `>=` goal.
 
 Backlog / known oddities:
 - [ ] Infinity button (`tasbeehView.swift:302`, `simulateTasbeehClicks(100)`): owner wants this to become a user-set step size (e.g. +10) rather than a hidden +100.
-- [ ] `TaskModel.isCompleted` uses `>` for minutes (`Int(runningSeconds/60) > goal`) but `>=` for counts; a 5-min task completes at 6:00.
 - [ ] Mode 2 `progressFraction = tasbeeh / (Int(targetCount) ?? 0)` → `inf` on empty/zero target; ring fills and autostop fires on first tap. Mode 1 has the same hole if `selectedMinutes == 0`.
 - [ ] `completeStopTimer()` forces `toggleInactivityTimer = false`, so the persisted sleep-mode preference never survives a session.
 - [ ] `resetSharedState()` only runs on the empty-session path; `selectedMode`/`selectedMinutes` linger after a saved session.
 - [ ] Estimated finish time on the pause screen is computed at pause time; stale by the pause length once resumed. `newAvrgTPC` includes ramp-up before the first tap.
 - [ ] Dead code: empty `if selectedMode == 2 {}` in `estTimeLeft`, unused `resetTasbeeh()`, `NoteModalView`, `deleteMantra`, `timePassedAtPauseString`, `endTime` (written, never read). `secsPassed` returns 999 when `startTime` is nil.
 - [ ] Count widget (`shukrWidget/shukrWidget.swift`) is commented out of the bundle; nothing writes its `count`/`paused` keys. Delete or revive.
+- [ ] Owner wants a richer mantra: `MantraModel` is just `text`. Wanted: short title, full text (Arabic), notes ("sheikh said read every morning"). Tasks and sessions currently key off the mantra *string*; a real model means `TaskModel.mantra` / `SessionDataModel.title` should become relationships, plus an editor UI in `MantraPickerView`.

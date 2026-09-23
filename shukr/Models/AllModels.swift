@@ -301,8 +301,13 @@ class SessionDataModel: Identifiable {
 
     var tasbeehRate: String             // tasbeehRate
 
+    /// The daily task this session was started from (nil for freestyle / post-salah / legacy sessions).
+    /// Only linked sessions count toward a task's daily progress.
+    var task: TaskModel?
+
     
-    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String) {
+    init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String, task: TaskModel? = nil) {
+        self.task = task
         self.title = title
         self.sessionMode = sessionMode
         self.targetMin = targetMin
@@ -334,71 +339,37 @@ class TaskModel: Identifiable {
     var mantra: String
     var isCountMode: Bool
     var goal: Int
-//    var isComplete: Bool = false
 
-    var isCompleted: Bool {
-         isCountMode ? (runningCount >= goal) : (Int(runningSeconds/60) > goal)
-    }
-
-    var runningCount: Int = 0
-    var runningSeconds: Double = 0
+    /// Sessions started from this task's card. Inverse of `SessionDataModel.task`.
+    /// Deleting a task keeps its sessions in history (nullify), it just unlinks them.
+    @Relationship(deleteRule: .nullify, inverse: \SessionDataModel.task)
+    var sessions: [SessionDataModel] = []
     
     init(mantra: String, isCountMode: Bool, goal: Int) {
         self.mantra = mantra
         self.isCountMode = isCountMode
         self.goal = goal
     }
-    
-    // Function to calculate running goal using a predicate
-    func updateRunningGoal(with todaysSessions: [String: (totalCount: Int, secondsPassed: TimeInterval)]) {
-        
-        // search dict to find this mantra in it
-        let sessionsForMantra = todaysSessions[self.mantra]
-        
-        // Calculate the running goal based on the task mode
-        if isCountMode{
-            runningCount = sessionsForMantra?.totalCount ?? 0
-        } else{
-            runningSeconds = sessionsForMantra?.secondsPassed ?? 0
-        }
 
+    /// Today's progress toward this task, computed from the sessions that were
+    /// explicitly started from it. Freestyle sessions with the same mantra do not
+    /// count, and one task's sessions never spill into another task with the same mantra.
+    func progress(in todaysSessions: [SessionDataModel]) -> TaskProgress {
+        let mine = todaysSessions.filter { $0.task?.persistentModelID == persistentModelID }
+        return TaskProgress(
+            count: mine.reduce(0) { $0 + $1.totalCount },
+            seconds: mine.reduce(0) { $0 + $1.secondsPassed }
+        )
     }
 
-//    func updateRunningGoal2(with todaysSessions: [SessionDataModel]) {
-//        // Define today's start and end times
-////        let todayStart = Calendar.current.startOfDay(for: Date())
-////        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-////
-////        // Store `mantra` locally for use in the predicate
-////        let mantraCopy = self.mantra
-////
-////        // Build a fetch descriptor with a predicate
-////        let fetchDescriptor = FetchDescriptor<SessionDataModel>(
-////            predicate: #Predicate<SessionDataModel> {
-////                $0.startTime >= todayStart &&
-////                $0.startTime <= todayEnd &&
-////                $0.title == mantraCopy // Use a local copy of `self.mantra`
-////            },
-////            sortBy: [SortDescriptor(\.startTime, order: .forward)]
-////        )
-////
-////        // Fetch sessions matching the criteria
-////        guard let todaysMantraSessions = try? context.fetch(fetchDescriptor) else {
-////            print("❌ (updateRunningGoal) Failed to fetch sessions.")
-////            return
-////        }
-//        
-//        let sessionsForMantra = todaysSessions.filter { $0.title == self.mantra }
-//
-//        // Calculate the running goal based on the task mode
-//        if isCountMode{
-//            runningCount = sessionsForMantra.reduce(0) { $0 + $1.totalCount }
-//        } else{
-//            runningSeconds = sessionsForMantra.reduce(0) { $0 + $1.secondsPassed }
-//        }
-//
-//    }
-    
+    func isCompleted(with progress: TaskProgress) -> Bool {
+        isCountMode ? (progress.count >= goal) : (progress.seconds >= Double(goal) * 60)
+    }
+}
+
+struct TaskProgress {
+    var count: Int = 0
+    var seconds: TimeInterval = 0
 }
 
 

@@ -12,23 +12,32 @@ import SwiftData
 struct DailyTasksView: View {
     // MARK: - Environment / Queries
     @EnvironmentObject var sharedState: SharedStateClass
-    @Environment(\.presentationMode) var presentationMode
     @Environment(\.modelContext) private var context
     
     @Query private var taskItems: [TaskModel]
+    /// Today's sessions, live. SwiftData re-runs this on every insert, so a card flips to
+    /// complete the moment a session saves — no onAppear / remount needed.
+    @Query private var todaysSessions: [SessionDataModel]
     
     // MARK: - Binding
     @Binding var showMantraSheetFromHomePage: Bool
     @Binding var showTasbeehPage: Bool
+    
+    init(showMantraSheetFromHomePage: Binding<Bool>, showTasbeehPage: Binding<Bool>) {
+        self._showMantraSheetFromHomePage = showMantraSheetFromHomePage
+        self._showTasbeehPage = showTasbeehPage
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        _todaysSessions = Query(
+            filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart },
+            sort: \.startTime
+        )
+    }
     
     // MARK: - State
     @State private var showAddTaskScreen: Bool = false
     @State private var taskToDelete: TaskModel? = nil
     @State private var showDeleteTaskAlert: Bool = false
     @State private var currentScrollTargetID: UUID? = nil
-//    @State private var showTaskScroller: Bool = true
-//    @State private var todaysSessions: [SessionDataModel] = []
-    @State private var todaysSessionsDict: [String: (totalCount: Int, secondsPassed: TimeInterval)] = [:]
     // “Select Zikr” logic
 //    @State private var chosenMantra: String? = ""
     
@@ -57,12 +66,6 @@ struct DailyTasksView: View {
 //                
 //            }
         }
-        .onAppear{
-            updateTodaysSessions()
-        }
-//        .onChange(of: showTasbeehPage) {_, newValue in
-//            updateTodaysSessions()
-//        }
         .fullScreenCover(isPresented: $showAddTaskScreen) {
             AddDailyTaskView(isPresented: $showAddTaskScreen, scrollProxy: $currentScrollTargetID)
         }
@@ -90,11 +93,14 @@ struct DailyTasksView: View {
 // MARK: - Subviews / Components
 extension DailyTasksView {
         
+    private func isCompleted(_ task: TaskModel) -> Bool {
+        task.isCompleted(with: task.progress(in: todaysSessions))
+    }
     private var incompleteTasksCount: Int {
-        taskItems.filter { !$0.isCompleted }.count
+        taskItems.filter { !isCompleted($0) }.count
     }
     private var completedTasksCount: Int {
-        taskItems.filter { $0.isCompleted }.count
+        taskItems.filter { isCompleted($0) }.count
     }
     private var subtitleText: String {
         completedTasksCount == taskItems.count ?
@@ -176,15 +182,11 @@ extension DailyTasksView {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 
-                let sortedTasks = taskItems.sorted { !$0.isCompleted && $1.isCompleted }
+                let sortedTasks = taskItems.sorted { !isCompleted($0) && isCompleted($1) }
                 
                 // 2) The Task Cards
                 ForEach(sortedTasks, id: \.self) { task in
                     taskCard(for: task)
-                        .onAppear{
-                            task.updateRunningGoal(with: todaysSessionsDict)
-//                            task.updateRunningGoal(with: todaysSessions/*using: context*/)
-                        }
                 }
                 .onAppear {
                     // When tasks appear, decide initial scroll selection
@@ -212,7 +214,7 @@ extension DailyTasksView {
     
     /// Create a Task Card with the “two-tap” logic
     private func taskCard(for task: TaskModel) -> some View {
-        TaskCardView(task: task)
+        TaskCardView(task: task, isCompleted: isCompleted(task))
             .id(task.id)
             .onLongPressGesture {
                 taskToDelete = task
@@ -234,7 +236,7 @@ extension DailyTasksView {
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        (currentScrollTargetID == task.id && !task.isCompleted ? Color.green : Color.gray).gradient.opacity(0.4),
+                        (currentScrollTargetID == task.id && !isCompleted(task) ? Color.green : Color.gray).gradient.opacity(0.4),
                         lineWidth: currentScrollTargetID == task.id ? 1 : 0.4
                     )
             )
@@ -255,53 +257,16 @@ extension DailyTasksView {
         
     // MARK: - Actions
     private func tapOnTaskCardAction(task: TaskModel) {
-        // Optionally do more logic here, e.g. adjusting sharedState’s goals/timers
-        presentationMode.wrappedValue.dismiss()
         sharedState.selectedTask = task
         showTasbeehPage = true
         sharedState.navPosition = .main
     }
     
-    // Function to fetch today's sessions from swiftdata
-    private func updateTodaysSessions() {
-        // Build a fetch descriptor with a predicate
-        let todayStart = Calendar.current.startOfDay(for: Date())
-        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
-        let fetchDescriptor = FetchDescriptor<SessionDataModel>(
-            predicate: #Predicate<SessionDataModel> {
-                $0.startTime >= todayStart &&
-                $0.startTime <= todayEnd
-            },
-            sortBy: [SortDescriptor(\.startTime, order: .forward)]
-        )
-
-        // Fetch sessions matching the criteria
-        guard let fetchedSessions = try? context.fetch(fetchDescriptor) else {
-            print("❌ (updateTodaysSessions) Failed to fetch sessions.")
-            return
-        }
-        
-//        todaysSessions = fetchedSessions
-        
-        // Create a dictionary to store the summed totals as tuples
-        var sessionDictInProgress: [String: (totalCount: Int, secondsPassed: TimeInterval)] = [:]
-        
-        // Parse through todaysSessions and build the dictionary
-        for session in fetchedSessions /*todaysSessions*/ {
-            sessionDictInProgress[session.title, default: (totalCount: 0, secondsPassed: 0)].totalCount += session.totalCount
-            sessionDictInProgress[session.title, default: (totalCount: 0, secondsPassed: 0)].secondsPassed += session.secondsPassed
-        }
-        
-        todaysSessionsDict = sessionDictInProgress
-        
-        // You can now use sessionSummary as needed
-        print("Session Summary: \(todaysSessionsDict)")
-        
-    }
 }
 
 struct TaskCardView: View {
     let task: TaskModel
+    let isCompleted: Bool
 
     var body: some View {
         VStack(alignment: .center) {
@@ -337,7 +302,7 @@ struct TaskCardView: View {
                     .foregroundColor(Color.green) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
-                    .opacity(task.isCompleted ? 1 : 0)
+                    .opacity(isCompleted ? 1 : 0)
                 }
             }
             

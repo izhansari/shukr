@@ -580,6 +580,11 @@ struct tasbeehView: View {
         
         secsToReport = paused ? secsPassedAtPause : secsPassed
         
+        // Only a session launched from a task card counts toward that task. Freestyle (mode 0)
+        // and the post-salah sequence never link, even if a card is still "selected" underneath.
+        let linkedTask = (sharedState.selectedMode != 0 && !sharedState.isDoingPostNamazZikr)
+            ? sharedState.selectedTask : nil
+        
         let item = SessionDataModel(
             title: placeholderTitle,
             sessionMode: sharedState.selectedMode,
@@ -589,7 +594,8 @@ struct tasbeehView: View {
             startTime: startTime ?? Date(),
             secondsPassed: secsToReport,
             avgTimePerClick: newAvrgTPC,
-            tasbeehRate: tasbeehRate
+            tasbeehRate: tasbeehRate,
+            task: linkedTask
         )
         print("adding a session card")
         context.insert(item)
