@@ -159,7 +159,7 @@ func inMinSecStyle2(from timeInterval: TimeInterval) -> String {
     
     if minutes > 0 { components.append("\(minutes)m") }
     
-    if minutes > 0 { components.append("\(seconds)s") } // Only show seconds if less than a minute
+    if hours == 0 { components.append("\(seconds)s") } // "24m 20s" / "43s"; drop seconds once we're in hours
 
     // Join components with a space and prepend "in "
     return "in " + components.joined(separator: " ")

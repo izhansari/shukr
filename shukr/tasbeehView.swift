@@ -1,6 +1,5 @@
 import SwiftUI
 import AVFAudio
-import WidgetKit
 import SwiftData
 import UIKit
 import AudioToolbox
@@ -426,6 +425,9 @@ struct tasbeehView: View {
                 print("scenePhase: \(newScenePhase) (session paused? \(paused)")
             }
         }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
+        }
 
         .preferredColorScheme(tasbeehColorMode ? .dark : .light)
     }
@@ -454,6 +456,12 @@ struct tasbeehView: View {
             isPresented = false
 //            sharedState.showingOtherPages = false
         }
+    }
+    
+    /// Keep the screen awake only while a session is actively counting.
+    /// Paused, stopped, or dismissed → hand control back to the system auto-lock.
+    private func updateIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = timerIsActive && !paused
     }
     
     private func startTimer() {
@@ -492,10 +500,7 @@ struct tasbeehView: View {
 
         
         triggerSomeVibration(type: .success)
-        
-//        UIApplication.shared.isIdleTimerDisabled = true
-        WidgetCenter.shared.reloadAllTimelines() // Ensure widget reflects this change
-
+        updateIdleTimer()
     }
     
         
@@ -511,10 +516,9 @@ struct tasbeehView: View {
         // skip resultsview if in sequence
         
         timerIsActive = false // this so functions only run during a sesh AND so timer checking when to stopTimer doesnt save multiple sessions.
+        updateIdleTimer()
         if tasbeeh > 0 {
             savedSession = saveSession()
-            // allow idle timer again
-//            UIApplication.shared.isIdleTimerDisabled = false
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
             sharedState.selectedTask = nil
@@ -606,7 +610,7 @@ struct tasbeehView: View {
     private func togglePause() {
         print("ran a togglePause().")
         paused.toggle()
-//        WidgetCenter.shared.reloadAllTimelines() // Ensure widget reflects this change
+        updateIdleTimer()
         triggerSomeVibration(type: .medium)
         if(paused){
             inactivityTimerHandler(run: "stop")
@@ -640,7 +644,6 @@ struct tasbeehView: View {
             newAvrgTPC = (tasbeeh > 0 ? (secsPassed / Double(tasbeeh)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
             vibrateOnFinishOfTasbeeh()
-            WidgetCenter.shared.reloadAllTimelines()
         }
     }
     
@@ -649,8 +652,6 @@ struct tasbeehView: View {
             tasbeeh = max(tasbeeh - 1, 0) // Adjust minimum value as needed
             newAvrgTPC = (tasbeeh > 0 ? (secsPassed / Double(tasbeeh)) : 0)
             triggerSomeVibration(type: .rigid)
-            WidgetCenter.shared.reloadAllTimelines()
-
         }
     }
     
@@ -658,7 +659,6 @@ struct tasbeehView: View {
         if timerIsActive {
             tasbeeh = 0
             triggerSomeVibration(type: .error)
-            WidgetCenter.shared.reloadAllTimelines()
         }
     }
         
