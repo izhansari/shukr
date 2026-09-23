@@ -60,6 +60,23 @@ struct PrayerTimesView: View {
         }
     }
     private let pageSpring = Animation.spring(response: 0.35, dampingFraction: 0.85)
+
+    /// The user finished a swipe. Mirror it into navPosition; coming back to Main restores
+    /// whichever of .main / .bottom we left from.
+    private func syncNavPosition(toSettledPage page: NavPage) {
+        guard page != self.page(for: sharedState.navPosition) else { return }
+        if sharedState.navPosition == .main || sharedState.navPosition == .bottom {
+            sharedState.cameFromNavPosition = sharedState.navPosition
+        }
+        let target: SharedStateClass.ViewPosition
+        switch page {
+        case .zikr:     target = .left
+        case .settings: target = .right
+        case .main:     target = (sharedState.cameFromNavPosition == .bottom ? .bottom : .main)
+        }
+        withAnimation(pageSpring) { sharedState.navPosition = target }
+        triggerSomeVibration(type: .light)
+    }
     private var chevDragValue: CGFloat{ // this is cool, i made it into an if, else if, else statement lol.
         showBottom ?
             max(0, dragOffset.height)  // Prevent upward movement when showing bottom
@@ -144,20 +161,25 @@ struct PrayerTimesView: View {
             // HStack, not lazy) so the main circle's timers and Settings' state survive paging.
             ScrollView(.horizontal) {
                 HStack(spacing: 0) {
+                    // Each page is clipped: the center page hides its side menu by pushing it 200pt
+                    // off-screen to the left, which would otherwise draw over the Zikr page.
                     ZikrPageView(
                         showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
                         showTasbeehPage: $showTasbeehPage
                     )
                     .containerRelativeFrame(.horizontal)
+                    .clipped()
                     .id(NavPage.zikr)
                     
                     centerPage
                         .containerRelativeFrame(.horizontal)
+                        .clipped()
                         .id(NavPage.main)
                     
                     SettingsView()
                         .environmentObject(viewModel)
                         .containerRelativeFrame(.horizontal)
+                        .clipped()
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
@@ -167,21 +189,16 @@ struct PrayerTimesView: View {
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
             .ignoresSafeArea(edges: .bottom)
-            .onChange(of: scrollPage) { _, page in
-                // The user paged. Mirror it into navPosition; coming back to Main restores
-                // whichever of .main / .bottom we left from.
-                guard let page, page != self.page(for: sharedState.navPosition) else { return }
-                if sharedState.navPosition == .main || sharedState.navPosition == .bottom {
-                    sharedState.cameFromNavPosition = sharedState.navPosition
-                }
-                let target: SharedStateClass.ViewPosition
-                switch page {
-                case .zikr:     target = .left
-                case .settings: target = .right
-                case .main:     target = (sharedState.cameFromNavPosition == .bottom ? .bottom : .main)
-                }
-                withAnimation(pageSpring) { sharedState.navPosition = target }
-                triggerSomeVibration(type: .light)
+            .onScrollPhaseChange { _, phase, context in
+                // Sync navPosition only once the scroll has settled. Doing it mid-drag (as the
+                // scrollPosition binding would) re-rendered the whole home screen while the
+                // page was still moving, which read as lag and collapsed the sheet early.
+                guard phase == .idle else { return }
+                let width = context.geometry.containerSize.width
+                guard width > 0 else { return }
+                let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
+                let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
+                syncNavPosition(toSettledPage: page)
             }
             .onChange(of: sharedState.navPosition) { _, position in
                 // Programmatic nav (bottom bar, widget deep links): scroll the pager to match.

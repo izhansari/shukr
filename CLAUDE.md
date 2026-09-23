@@ -1,9 +1,10 @@
 # shukr — working notes
 
-iOS SwiftUI app (iOS 17.5+, SwiftData, WidgetKit extension, adhan-swift). Prayer times +
+iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer times +
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
 beyond Xcode templates. Build/run happens in Xcode on the owner's machine; this repo has no
-scripts to run.
+scripts to run. A local agent can build with
+`xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`.
 
 Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehView.swift`),
 `shukr/Models/AllModels.swift` (SwiftData models + `SharedStateClass`), `shukrWidget/`
@@ -36,7 +37,8 @@ Quality (fix before launch):
 - [ ] 187 `print()` calls, some logging coordinates. Gate with `#if DEBUG`.
 - [ ] `NSMotionUsageDescription` declared but `PrayerTracker.swift` (only CMMotion user) is unreferenced. Drop both.
 - [ ] Dead files: `shukr/LocationMapView.swift`, `shukr/PrayerTimeAndTracker.swift` (0 bytes), `CommentedOutHistoryPageView.swift`.
-- [ ] Widget deployment target 18.0 vs app 17.5.
+- [x] Deployment target is 18.0 on every target now (was 17.5 app / 18.0 widget). Needed for `onScrollPhaseChange`.
+- [x] Removed stale `DEVELOPMENT_ASSET_PATHS = "shukr/Preview Content"` (folder deleted in 789632f; Xcode 27 errors on it).
 - [ ] 1024 icon has an (all-opaque) alpha channel; strip to be safe.
 
 ## Navigation (PrayerTimesAndTracker.swift)
@@ -46,9 +48,19 @@ Quality (fix before launch):
 (.main / .bottom) | Settings (.right)**. UIKit drives finger tracking, rubber-banding and
 settle, so no SwiftUI work happens per drag frame (the previous offset-based pager re-ran the
 whole body every frame and felt laggy). `@State scrollPage: NavPage?` is bound with
-`.scrollPosition(id:)`; two `onChange` handlers keep it and `navPosition` in step (user swipe
-→ navPosition; bottom bar / widget deep link → scroll). Returning to Main restores `.main` or
-`.bottom` via `cameFromNavPosition`. `.defaultScrollAnchor(.center)` starts on Main.
+`.scrollPosition(id:)` and is only ever *written* programmatically (bottom bar, widget deep
+link, via `onChange(of: navPosition)`). User swipes are mirrored into `navPosition` by
+`.onScrollPhaseChange` (iOS 18) **only when the phase hits `.idle`**, using
+`visibleRect.midX / containerSize.width` for the page index. Syncing from the `scrollPosition`
+binding instead fired mid-drag and re-rendered the whole home screen while the page was
+moving (read as lag, collapsed the sheet early). Returning to Main restores `.main` or
+`.bottom` via `cameFromNavPosition`. `.defaultScrollAnchor(.center)` starts on Main. Every
+page is `.clipped()`: the center page hides its side menu by offsetting it −200pt, which
+otherwise draws over the Zikr page (found in sim testing).
+
+Zikr page = `ZikrPageView`: `ZikrCircleView` ("Zikr / click to freestyle", the look the main
+circle used to take on the sheet's zikr tab; tap starts a freestyle session) above the
+`DailyTasksView` card frame, laid out like the old bottom sheet.
 
 Vertical on the center page is unchanged (swipe up → `.bottom` sheet, swipe down → refresh,
 `dragOffset.height` with resistance). `abstractedDragGesture` is vertical-only now and is
@@ -67,8 +79,7 @@ commented out in the body and there's no route to it now. `bottomTabPosition == 
 never set anymore (the sheet's zikr tab moved to the left page); the branches in
 `BottomSharedView`, `mainCircle.swift`, and `TopBar` that check it are dormant.
 `settingsViewNavBool` / the `.navigationDestination` push to Settings is also unused.
-Freestyle tasbeeh is the ∞ button in `DailyTasksView`'s header (was the main circle on the
-zikr tab).
+Freestyle tasbeeh is the `ZikrCircleView` on the Zikr page.
 
 ## Widget ↔ app
 
@@ -94,10 +105,19 @@ the app runs `PrayerViewModel.reconcileAfterWidgetWrites()`: if the flag is set 
 case an extension can't reach the app's notification center — unverified), and recomputes
 streak / day score. In-app completions call `pushCompletionsToWidget()` (save + reload).
 
+Sim-tested 2026-09-23 @ 0058a41: widget tap completed Asr in place (score 0.52, location
+recorded), widget advanced to Maghrib, app showed it complete on reopen. Still untested:
+tapping before a prayer starts; widget creating the row when the app hasn't opened that day;
+upgrading an install that has a legacy `default.store` (migration path); whether the nudge
+for a widget-completed prayer still fires on a real device.
 To verify on device: complete from the widget, check the nudge for that prayer does not fire;
 open the app and check the prayer shows complete with the right score. If the nudge still
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app
 schedules nudges as fewer, later-verified notifications).
+
+Compiler warnings worth a sweep (not blocking): `PrayerTimesAndTracker.swift` unused `context`
+/ `completedTime`; `PrayerViewModel.swift` `@State` in a class (line ~101), `objectsToCheck`
+should be `let`, unused `endOfDay`.
 
 ## Tasbeeh / zikr feature
 

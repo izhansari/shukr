@@ -90,9 +90,10 @@ struct DailyTasksView: View {
     }
 }
 
-/// Full-page home for the daily zikr tasks: the left page of the main pager.
-/// The pager is a horizontal ScrollView, so the task cards' own horizontal scroll
-/// nests inside it the UIKit way: cards scroll first, the page turns at their edge.
+/// Full-page home for zikr: the freestyle circle over the daily task cards, laid out like
+/// the old bottom-sheet Zikr tab. It's the left page of the main pager, which is a horizontal
+/// ScrollView, so the task cards' own horizontal scroll nests inside it the UIKit way:
+/// cards scroll first, the page turns at their edge.
 struct ZikrPageView: View {
     @Binding var showMantraSheetFromHomePage: Bool
     @Binding var showTasbeehPage: Bool
@@ -100,15 +101,71 @@ struct ZikrPageView: View {
     var body: some View {
         VStack {
             Spacer()
+            Spacer()
+            Spacer()
+            
+            ZikrCircleView(showTasbeehPage: $showTasbeehPage)
+            
+            Spacer()
+            Spacer()
+            
             DailyTasksView(
                 showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
                 showTasbeehPage: $showTasbeehPage
             )
             .frame(width: 260)
             .background(FlatBorder())
+            .padding(.bottom, 30)
+            
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The "Zikr / click to freestyle" circle that used to appear in MainCircleView when the
+/// bottom sheet was on its Zikr tab. Same look; tapping starts a freestyle tasbeeh session.
+struct ZikrCircleView: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+    @Binding var showTasbeehPage: Bool
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color(.clear))
+                .stroke(Color(.secondarySystemFill), lineWidth: 12)
+                .frame(width: 200, height: 200)
+            
+            VStack {
+                HStack(alignment: .center) {
+                    Image(systemName: "circle.hexagonpath")
+                    Text("Zikr")
+                        .fontWeight(.bold)
+                }
+                .font(.title)
+                Text("click to freestyle")
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.rounded)
+                    .fontWeight(.light)
+            }
+            
+            Circle()
+                .stroke(Color.green, lineWidth: 2)
+                .frame(width: 200, height: 200)
+                .shadow(color: Color.green.opacity(0.5), radius: 5)
+                .shadow(color: Color.green.opacity(0.3), radius: 10)
+                .shadow(color: Color.green.opacity(0.2), radius: 15)
+        }
+        .contentShape(Circle())
+        .onTapGesture {
+            triggerSomeVibration(type: .light)
+            sharedState.targetCount = ""
+            sharedState.titleForSession = ""
+            sharedState.selectedMinutes = 0
+            sharedState.selectedMode = 0
+            showTasbeehPage = true
+        }
     }
 }
 
@@ -175,15 +232,6 @@ extension DailyTasksView {
             
             
             HStack{
-                // Freestyle session (no task). The main circle used to do this from the
-                // bottom sheet's Zikr tab; now that Zikr is its own page this is the entry.
-                Button(action: {
-                    startFreestyleTasbeehSession()
-                }) {
-                    Image(systemName: "infinity")
-                        .foregroundColor(.green.opacity(0.7))
-                }
-                .padding(.leading, 5)
                 Spacer()
                 Button(action: {
                         showAddTaskScreen = true
@@ -192,8 +240,8 @@ extension DailyTasksView {
                         .foregroundColor(.green.opacity(0.7))
                 }
                 .padding(.trailing, 5)
-                .opacity(!taskItems.isEmpty ? 1 : 0)
             }
+            .opacity(!taskItems.isEmpty ? 1 : 0)
 //            .opacity(showTaskScroller && !taskItems.isEmpty ? 1 : 0)
             
 
