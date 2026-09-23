@@ -90,6 +90,31 @@ struct DailyTasksView: View {
     }
 }
 
+/// Full-page home for the daily zikr tasks: the left page of the main pager.
+/// Empty space falls through to the root drag layer, so swiping the page works
+/// everywhere except on the task cards themselves (which scroll).
+struct ZikrPageView: View {
+    @Binding var showMantraSheetFromHomePage: Bool
+    @Binding var showTasbeehPage: Bool
+    /// The pager drag. Attached to the card frame's background only, so the task
+    /// cards keep their own horizontal scroll while the space around them pages.
+    var dragGesture: _EndedGesture<_ChangedGesture<DragGesture>>
+
+    var body: some View {
+        VStack {
+            Spacer()
+            DailyTasksView(
+                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                showTasbeehPage: $showTasbeehPage
+            )
+            .frame(width: 260)
+            .background(FlatBorder().highPriorityGesture(dragGesture))
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - Subviews / Components
 extension DailyTasksView {
         
@@ -153,13 +178,15 @@ extension DailyTasksView {
             
             
             HStack{
-//                Button(action: {
-//                    startFreestyleTasbeehSession()
-//                }) {
-//                    Image(systemName: "infinity")
-//                        .foregroundColor(.green.opacity(0.7))
-//                }
-//                .padding(.leading, 5)
+                // Freestyle session (no task). The main circle used to do this from the
+                // bottom sheet's Zikr tab; now that Zikr is its own page this is the entry.
+                Button(action: {
+                    startFreestyleTasbeehSession()
+                }) {
+                    Image(systemName: "infinity")
+                        .foregroundColor(.green.opacity(0.7))
+                }
+                .padding(.leading, 5)
                 Spacer()
                 Button(action: {
                         showAddTaskScreen = true
@@ -168,8 +195,8 @@ extension DailyTasksView {
                         .foregroundColor(.green.opacity(0.7))
                 }
                 .padding(.trailing, 5)
+                .opacity(!taskItems.isEmpty ? 1 : 0)
             }
-            .opacity(!taskItems.isEmpty ? 1 : 0)
 //            .opacity(showTaskScroller && !taskItems.isEmpty ? 1 : 0)
             
 

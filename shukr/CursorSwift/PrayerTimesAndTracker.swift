@@ -44,7 +44,22 @@ struct PrayerTimesView: View {
     }
     
     @State private var isDraggingVertically: Bool? = nil  // Current drag direction
-    @State private var dragOffset = CGSize.zero       // Current offset of the view
+    @State private var dragOffset = CGSize.zero       // Vertical drag (with resistance) for the bottom sheet / refresh
+    @State private var pageDrag: CGFloat = 0          // Horizontal finger offset, 1:1, for the left/center/right pager
+
+    // MARK: - Horizontal pager
+    // Three pages side by side: Zikr (left) | Main (center) | Settings (right).
+    // The whole strip is offset by `pagerX`, so pages track the finger during a drag
+    // and spring to the resting position for the current navPosition on release.
+    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
+    private var basePageX: CGFloat {
+        switch sharedState.navPosition {
+        case .left:  return screenWidth
+        case .right: return -screenWidth
+        default:     return 0
+        }
+    }
+    private var pagerX: CGFloat { basePageX + pageDrag }
     private var chevDragValue: CGFloat{ // this is cool, i made it into an if, else if, else statement lol.
         showBottom ?
             max(0, dragOffset.height)  // Prevent upward movement when showing bottom
@@ -58,7 +73,6 @@ struct PrayerTimesView: View {
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
-    var showCenter: Bool { sharedState.navPosition == .main /*|| sharedState.navPosition == .top*/ || sharedState.navPosition == .bottom }
         
     private var switchToSalahDoubleTapSGesture: some Gesture{
         TapGesture(count: 2)
@@ -72,6 +86,7 @@ struct PrayerTimesView: View {
         let resistanceFactor = 0.5
         let maxOffset: CGFloat = 20
         let threshold: CGFloat = 30
+        let edgeResistance: CGFloat = 0.25 // rubber-band when dragging past the outermost page
 
         return DragGesture()
             .onChanged { value in
@@ -82,99 +97,69 @@ struct PrayerTimesView: View {
                 }
                 
                 if isDraggingVertically == true { // now, we will be updating only one of the two
+                    // Vertical only means something on the center page (bottom sheet / refresh).
+                    guard sharedState.navPosition == .main || sharedState.navPosition == .bottom else { return }
                     dragOffset.height = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
                 } else {
-                    dragOffset.width = min(max(value.translation.width * resistanceFactor, -maxOffset), maxOffset)
+                    var w = value.translation.width
+                    // Nothing beyond the left page to the right, or the right page to the left.
+                    if (sharedState.navPosition == .left && w > 0) || (sharedState.navPosition == .right && w < 0) {
+                        w *= edgeResistance
+                    }
+                    pageDrag = w
                 }
                 
             }
             .onEnded { value in
-                handleDragEnd(translation: value.translation, isDraggingVertically: isDraggingVertically)
+                handleDragEnd(value: value, isDraggingVertically: isDraggingVertically)
                 isDraggingVertically = nil
             }
         
         
         
-        func handleDragEnd(translation: CGSize, isDraggingVertically: Bool?) {
+        func handleDragEnd(value: DragGesture.Value, isDraggingVertically: Bool?) {
+            let translation = value.translation
             
-            var draggedDown = false, draggedRight = false, draggedUp = false, draggedLeft = false
-            // vertical check
-            if self.isDraggingVertically == true {
-                draggedDown = translation.height > threshold // positive
-                draggedUp = translation.height < -threshold // negative
-            }
-            else if self.isDraggingVertically == false {
-                draggedRight = translation.width > threshold // positive
-                draggedLeft = translation.width < -threshold // negative
-            }
-            
-            withAnimation(.spring()) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 dragOffset = .zero
+                pageDrag = 0
                 
-                guard draggedUp || draggedRight || draggedDown || draggedLeft else { return }
-                /*
-                switch sharedState.navPosition {
-                    case .main:
-                        sharedState.cameFromNavPosition = .main
-                        sharedState.bottomTabPosition = .salah
-                        if draggedUp { sharedState.navPosition = .bottom ; triggerSomeVibration(type: .light) }
-//                        if draggedDown { sharedState.navPosition = .top ; triggerSomeVibration(type: .light) }
-                        if draggedRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-                        if draggedLeft { settingsViewNavBool = true ; triggerSomeVibration(type: .light) }
-                    case .bottom:
-                        sharedState.cameFromNavPosition = .bottom
-                        if draggedDown { sharedState.navPosition = .main ; sharedState.bottomTabPosition = .salah ; triggerSomeVibration(type: .light) }
-                        if draggedRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-                        if draggedLeft { settingsViewNavBool = true ; triggerSomeVibration(type: .light) }
-                    case .top:
-//                        sharedState.cameFromNavPosition = .top
-//                        if draggedUp { sharedState.navPosition = .main ; triggerSomeVibration(type: .light) }
-//                        if draggedRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-//                        if draggedLeft { settingsViewNavBool = true ; triggerSomeVibration(type: .light) }
-                        print("not")
-                    case .left:
-                        if draggedLeft { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) ; }
-                    case .right:
-                        if draggedRight { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
+                if isDraggingVertically == true {
+                    let draggedDown = translation.height > threshold // positive
+                    let draggedUp = translation.height < -threshold // negative
+                    guard draggedUp || draggedDown else { return }
+                    
+                    switch sharedState.navPosition {
+                        case .main:
+                            sharedState.bottomTabPosition = .salah
+                            if draggedUp { sharedState.navPosition = .bottom ; triggerSomeVibration(type: .light) }
+                            if draggedDown { viewModel.refreshCityAndPrayerTimes()  ; triggerSomeVibration(type: .light) }
+                        case .bottom:
+                            if draggedDown { sharedState.navPosition = .main ; sharedState.bottomTabPosition = .salah ; triggerSomeVibration(type: .light) }
+                        default:
+                            break
+                    }
                 }
-                */
-                switch sharedState.navPosition {
-                    case .main:
-                        sharedState.cameFromNavPosition = .main
-                        sharedState.bottomTabPosition = .salah
-                        if draggedUp { sharedState.navPosition = .bottom ; triggerSomeVibration(type: .light) }
-                        if draggedDown { viewModel.refreshCityAndPrayerTimes()  ; triggerSomeVibration(type: .light) }
-                        if draggedRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-                        if draggedLeft { sharedState.navPosition = .bottom ; sharedState.bottomTabPosition = .zikr /*settingsViewNavBool = true*/ ; triggerSomeVibration(type: .light) }
-                    case .bottom:
-                        sharedState.cameFromNavPosition = .bottom
-                        if draggedDown { sharedState.navPosition = .main ; sharedState.bottomTabPosition = .salah ; triggerSomeVibration(type: .light) }
-                    if draggedRight {
-                        if sharedState.bottomTabPosition == .zikr{
-                            sharedState.bottomTabPosition = .salah ; triggerSomeVibration(type: .light)
-                        }
-                        else if sharedState.bottomTabPosition == .salah{
-                            sharedState.navPosition = .left ; triggerSomeVibration(type: .light)
-                        }
+                else if isDraggingVertically == false {
+                    // Commit to the neighbouring page on a third of the screen, or on a flick
+                    // (predicted end past half the screen), like a paging scroll view.
+                    let w = translation.width
+                    let predicted = value.predictedEndTranslation.width
+                    let goRight = w > screenWidth / 3 || predicted > screenWidth / 2   // finger → right reveals the left page
+                    let goLeft  = w < -screenWidth / 3 || predicted < -screenWidth / 2 // finger → left reveals the right page
+                    
+                    switch sharedState.navPosition {
+                        case .main, .bottom:
+                            sharedState.cameFromNavPosition = sharedState.navPosition
+                            if goRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
+                            else if goLeft { sharedState.navPosition = .right ; triggerSomeVibration(type: .light) }
+                        case .left:
+                            if goLeft { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
+                        case .right:
+                            if goRight { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
+                        case .top:
+                            break
                     }
-                    if draggedLeft {
-                        if sharedState.bottomTabPosition == .salah{
-                            sharedState.bottomTabPosition = .zikr ; triggerSomeVibration(type: .light)
-                        }
-                        else if sharedState.bottomTabPosition == .zikr{
-                            settingsViewNavBool = true ; triggerSomeVibration(type: .light)
-                        }
-                    }
-                    case .top:
-//                        sharedState.cameFromNavPosition = .top
-//                        if draggedUp { sharedState.navPosition = .main ; triggerSomeVibration(type: .light) }
-//                        if draggedRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-//                        if draggedLeft { settingsViewNavBool = true ; triggerSomeVibration(type: .light) }
-                        print("not")
-                    case .left:
-                        if draggedLeft { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) ; }
-                    case .right:
-                        if draggedRight { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
                 }
             }
         }
@@ -194,108 +179,119 @@ struct PrayerTimesView: View {
                 
             // MARK: - this one works vv
             
-            // Combined State
+            // MARK: - Center page (Main / bottom sheet). Always mounted so it can slide.
             ZStack {
-                if showCenter{
-                    VStack {
+                VStack {
 
+                    Spacer()
+                    
+                    if showBottom{
+                        Spacer()
+                        Spacer()
+                    }
+                    
+                    ZStack{
+                        MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                            .geometryGroup()
+                            .highPriorityGesture(abstractedDragGesture)
+                            .onAppear {
+                                print("⭐️ prayerTimesView onAppear")
+                                viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
+                                viewModel.loadTodaysPrayerObjects()
+                                viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
+                            }
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(3)
+
+                    
+                    Spacer()
+                    
+                    
+                    if showBottom {
                         Spacer()
                         
-                        if showBottom{
-                            Spacer()
-                            Spacer()
-                        }
-                        
-                        ZStack{
-                            MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
-                                .geometryGroup()
-                                .highPriorityGesture(abstractedDragGesture)
-                                .onAppear {
-                                    print("⭐️ prayerTimesView onAppear")
-                                    viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
-                                    viewModel.loadTodaysPrayerObjects()
-                                    viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
-                                }
-                        }
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .zIndex(3)
-
-                        
-                        Spacer()
-                        
-                        
-                        if showBottom {
-                            Spacer()
-                            
-                                BottomSharedView(
-                                    showChainZikrButton: $showChainZikrButton,
-                                    dismissChainZikrItem: $dismissChainZikrItem,
-                                    showDailyAyahView: $showDailyAyahView,
-                                    showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                                    showTasbeehPage: $showTasbeehPage,
-                                    dragGesture: abstractedDragGesture
-                                )
+                            BottomSharedView(
+                                showChainZikrButton: $showChainZikrButton,
+                                dismissChainZikrItem: $dismissChainZikrItem,
+                                showDailyAyahView: $showDailyAyahView,
+                                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                                showTasbeehPage: $showTasbeehPage,
+                                dragGesture: abstractedDragGesture
+                            )
 //                                        .fullScreenCover(isPresented: $showDailyAyahView){
 //                                            DailyAyahView()
 //                                        }
-                            .opacity(1 - Double(dragOffset.height / 90))
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            
-                            Spacer()
-                            
-
-                        }
+                        .opacity(1 - Double(dragOffset.height / 90))
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                         
-                        ZStack{
-                            Button {
-                                withAnimation {
-                                    print("tapped the chev")
-                                    sharedState.navPosition = showBottom ? .main : .bottom
-                                }
-                            } label: {
-                                Image(systemName: "chevron.up")
-                                    .font(.title3)
-                                    .foregroundStyle(chevDragValue != 0 ? Color.secondary : Color(.secondarySystemFill))
-                                    .animation(.smooth, value: dragOffset.height)
-//                                    .scaleEffect(x: 1, y: (dragOffset.height > 0 || showBottom) ? -1 : 1)
-                                    .padding(.bottom, 30)
-                                    .padding()
-                                    .offset(y: chevDragValue)
-                            }
-                            .opacity(showBottom ? 0 : 1)
-                            
-                            CustomBottomBar()
-                                .opacity(1 - Double(dragOffset.height / 90))
-                                .opacity(showBottom ? 1 : 0)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
+                        Spacer()
+                        
 
                     }
-                    .transition(.opacity)
                     
-                    
-                    
+                    ZStack{
+                        Button {
+                            withAnimation {
+                                print("tapped the chev")
+                                sharedState.navPosition = showBottom ? .main : .bottom
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.title3)
+                                .foregroundStyle(chevDragValue != 0 ? Color.secondary : Color(.secondarySystemFill))
+                                .animation(.smooth, value: dragOffset.height)
+//                                    .scaleEffect(x: 1, y: (dragOffset.height > 0 || showBottom) ? -1 : 1)
+                                .padding(.bottom, 30)
+                                .padding()
+                                .offset(y: chevDragValue)
+                        }
+                        .opacity(showBottom ? 0 : 1)
+                        
+                        CustomBottomBar()
+                            .opacity(1 - Double(dragOffset.height / 90))
+                            .opacity(showBottom ? 1 : 0)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
                 }
+                .transition(.opacity)
             }
+            .offset(x: pagerX)
             
 
             
-            // MARK: - Smooth DuaPageView
-            VStack{
-                DuaPageView()
-            }
-            .background(Color(.systemBackground))
-            .padding()
-            .offset(x: dragOffset.width < 0 ? dragOffset.width : 0)
-            .offset(x: sharedState.navPosition == .left ? 0 : -UIScreen.main.bounds.width)
-            .transition(.move(edge: .leading).combined(with: .opacity))
+            // MARK: - Left page: Zikr
+            ZikrPageView(
+                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                showTasbeehPage: $showTasbeehPage,
+                dragGesture: abstractedDragGesture
+            )
+            .offset(x: pagerX - screenWidth)
+            
+            // MARK: - Right page: Settings
+            // The Form scrolls vertically; a simultaneous drag lets horizontal swipes still page back.
+            SettingsView()
+                .environmentObject(viewModel)
+                .simultaneousGesture(abstractedDragGesture)
+                .offset(x: pagerX + screenWidth)
+            
+            // MARK: - (Parked) Duas page — used to live at .left. Kept in case we bring it back.
+            // VStack{
+            //     DuaPageView()
+            // }
+            // .background(Color(.systemBackground))
+            // .padding()
+            // .offset(x: dragOffset.width < 0 ? dragOffset.width : 0)
+            // .offset(x: sharedState.navPosition == .left ? 0 : -UIScreen.main.bounds.width)
+            // .transition(.move(edge: .leading).combined(with: .opacity))
 
 
             VStack {
                 // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
                 ZStack(alignment: .top) {
                     FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
-                    if sharedState.navPosition != .left && sharedState.navPosition != .right {
+                    Group {
                         TopBar()
                             .transition(.opacity)
                             // vvvthis is for visually showing refresh... need to make it change text, lag, then display new city
@@ -346,6 +342,7 @@ struct PrayerTimesView: View {
                 Spacer()
                 
             }
+            .offset(x: pagerX)
             .navigationBarHidden(true)
             
         }
@@ -378,9 +375,8 @@ struct PrayerTimesView: View {
                     
                     else if openTasbeehFromWidget{
                         withAnimation(.spring(duration: 0.3)) {
-//                            sharedState.navPosition = .top
-                            sharedState.bottomTabPosition = .zikr
-                            sharedState.navPosition = .bottom
+                            sharedState.cameFromNavPosition = .main
+                            sharedState.navPosition = .left
                         }
                     }
                 }
@@ -518,13 +514,14 @@ struct PrayerTimesView: View {
                         
                         Button(action: {
                             withAnimation(.spring()) {
+                                sharedState.cameFromNavPosition = .bottom
                                 sharedState.navPosition = .left
                             }
                         }) {
                             VStack(spacing: 6){
-                                Image(systemName: "square.and.pencil")
+                                Image(systemName: "circle.hexagonpath")
                                     .font(.system(size: 20))
-                                Text("Notes")
+                                Text("Zikr")
                                     .font(.system(size: 12))
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
@@ -556,18 +553,19 @@ struct PrayerTimesView: View {
                         
                         Button(action: {
                             withAnimation(.spring()) {
-                                sharedState.bottomTabPosition = .zikr
+                                sharedState.cameFromNavPosition = .bottom
+                                sharedState.navPosition = .right
                             }
                         }) {
                             VStack(spacing: 6) {
-                                Image(systemName: "circle.hexagonpath")
+                                Image(systemName: "gear")
                                     .font(.system(size: 20))
-                                Text("Zikr")
+                                Text("Settings")
                                     .font(.system(size: 12))
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor(sharedState.bottomTabPosition == .zikr ? .green : .gray)
+                            .foregroundColor(sharedState.navPosition == .right ? .green : .gray)
                             .frame(width: 100)
                         }
                     }

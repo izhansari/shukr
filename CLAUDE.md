@@ -39,6 +39,25 @@ Quality (fix before launch):
 - [ ] Widget deployment target 18.0 vs app 17.5.
 - [ ] 1024 icon has an (all-opaque) alpha channel; strip to be safe.
 
+## Navigation (PrayerTimesAndTracker.swift)
+
+`sharedState.navPosition` is the single nav state. Horizontal is a three-page pager that tracks
+the finger 1:1 (`pageDrag`) and springs on release: **Zikr (.left) | Main (.main / .bottom) |
+Settings (.right)**. `pagerX = basePageX + pageDrag`; every page and the top bar overlay are
+offset by it. Commit to a neighbour on 1/3 screen or a flick (predicted end > 1/2 screen);
+rubber-band past the ends. Vertical on the center page is unchanged: swipe up → `.bottom`
+(salah sheet), swipe down → refresh, with the old resistance/clamp (`dragOffset.height`).
+`cameFromNavPosition` remembers whether you left from `.main` or `.bottom` so swiping back
+returns there. The bottom bar mirrors the pager (Zikr | Salah | Settings).
+
+Parked, not deleted: `DuaPageView` ("Notes") used to be the `.left` page; the block is
+commented out in the body and there's no route to it now. `bottomTabPosition == .zikr` is
+never set anymore (the sheet's zikr tab moved to the left page); the branches in
+`BottomSharedView`, `mainCircle.swift`, and `TopBar` that check it are dormant.
+`settingsViewNavBool` / the `.navigationDestination` push to Settings is also unused.
+Freestyle tasbeeh is the ∞ button in `DailyTasksView`'s header (was the main circle on the
+zikr tab).
+
 ## Tasbeeh / zikr feature
 
 Entry: `tasbeehView` is a `fullScreenCover` at `PrayerTimesAndTracker.swift:412` driven by
@@ -73,6 +92,7 @@ Backlog / known oddities:
 - [ ] Dead code: empty `if selectedMode == 2 {}` in `estTimeLeft`, unused `resetTasbeeh()`, `NoteModalView`, `deleteMantra`, `timePassedAtPauseString`, `endTime` (written, never read). `secsPassed` returns 999 when `startTime` is nil.
 - [ ] Count widget (`shukrWidget/shukrWidget.swift`) is commented out of the bundle; nothing writes its `count`/`paused` keys. Delete or revive.
 - [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
+- [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe, pages follow the finger.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
 ## Planned: richer mantra model
