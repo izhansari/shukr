@@ -17,9 +17,14 @@ Branch: `claude/app-store-publish-requirements-7vrmcg` (not merged to `main`). E
 the first block is unbuilt by the agent that wrote it; the owner builds in Xcode / a local
 agent builds with xcodebuild. Nothing here has CI.
 
-1. **Verify on the owner's phone (2635e04):** the legacy-store import restored their tasks,
-   sessions, duas, history (console: `✅ legacy import: …`). If it printed `❌`, fix the cause;
-   the old file is still at `Application Support/default.store`, untouched.
+1. **Verify on the owner's phone:** the legacy-store import restored their tasks, sessions,
+   duas, history. First launch of the fixed build must print `✅ legacy import: tasks=N …`
+   (N > 0); the next launch prints nothing. `❌ …` → fix the cause and relaunch (it retries).
+   `ℹ️ legacy import: no legacy store found` → the file isn't at either known path; look for
+   `default.store` under the app group's `Library/Application Support` and the app's own
+   `Application Support` (Xcode → Devices → Download Container) before doing anything else.
+   The old file is never modified by the import. Sim-verified on an upgrade with real data
+   (see Widget ↔ app); the phone is the remaining case.
 2. **Verify horizontal paging on the phone.** Owner reported "dragging left/right does nothing"
    on an earlier commit while the simulator paged fine. b4071db moved the vertical gesture onto
    the ScrollView itself, which removes every known way a page could block paging. If it still
@@ -122,22 +127,32 @@ compiled into both targets) owns the schema and the store URL: `<app group>/shuk
 The app's `ModelContainer` comes from `SharedStore.makeContainer()`, immediately followed by
 `importLegacyStoreIfNeeded(into:)` in `shukrApp`.
 
+**Where the old data actually is.** With a default `ModelConfiguration()`, SwiftData puts
+`default.store` in the **app group's** `Library/Application Support/` whenever the app has an
+app-group entitlement (this app has had one since the widget's shared UserDefaults), *not* in
+the app sandbox. That is why the owner's data went missing (2026-09-23, f9f7685..4e157f3):
+both the file-copy migration and the first import looked at `URL.applicationSupportDirectory`
+(the sandbox), found nothing, and the app started on an empty group store. Reproduced in the
+sim: seed 46176a5 → install 4e157f3 → tasks gone, no `legacy import` line at all. The widget
+process compounds it (its Application Support is the *extension's* sandbox), but the path was
+wrong in the app too. `SharedStore.legacyURLs` now checks the group location first, then the
+sandbox.
+
 **Rule: the widget never creates the store.** `SharedStore.widgetContainer` opens the file only
 if it already exists (and retries on each access until it does). WidgetKit refreshes right
-after an install, so a widget-created store would be empty and would pre-empt the import
-below. This is how the owner's data went missing once (2026-09-23, f9f7685..b4071db): the
-first version copied the legacy file from `URL.applicationSupportDirectory`, which in the
-widget process is the *extension's* sandbox; the widget ran first, found nothing, created an
-empty group store, and the app then skipped its copy because the target existed.
+after an install, so a widget-created store would be empty and would pre-empt the import.
 
-**Legacy import** (`importLegacyStoreIfNeeded`, app only, gated by `legacyStoreImported` in the
-app-group defaults): copies `Application Support/default.store` (+wal/shm) to a temp dir, opens
-that copy as a second `ModelContainer`, and *merges* rows into the shared store — tasks (by
-id, first, so sessions can relink), sessions (by id), mantras (by text), duas (by id), prayers
-(by name+day; newer row wins unless it's incomplete and the old one is complete, then the
-completion fields are copied over), daily scores (by day). Ids are preserved. Flag is set only
-after a successful save; failure retries next launch. Old files are never modified or deleted.
-Logs `✅ legacy import: tasks=… sessions=… …`.
+**Legacy import** (`importLegacyStoreIfNeeded`, app only, gated by `legacyStoreImported.v2` in
+the app-group defaults — v2 because the v1 key was set by builds that found nothing): copies the
+legacy `default.store` (+wal/shm) to a temp dir, opens that copy as a second `ModelContainer`,
+and *merges* rows into the shared store — tasks (by id, first, so sessions can relink),
+sessions (by id), mantras (by text), duas (by id), prayers (by name+day; newer row wins unless
+it's incomplete and the old one is complete, then the completion fields are copied over), daily
+scores (by day). Ids are preserved. Flag is set only after a successful save; failure retries
+next launch; if no legacy file exists the flag is left unset (two `fileExists` per launch, and a
+false "done" is the failure mode we just had). Old files are never modified or deleted.
+Logs `✅ legacy import: tasks=… sessions=… …`, `❌ legacy import failed …`, or
+`ℹ️ legacy import: no legacy store found`.
 
 **Completing a prayer from the widget does not open the app.** `MarkCompleteIntent` carries the
 shown prayer's name/start/end, opens the shared store (`SharedStore.widgetContainer`, one per
@@ -151,10 +166,15 @@ case an extension can't reach the app's notification center — unverified), and
 streak / day score. In-app completions call `pushCompletionsToWidget()` (save + reload).
 
 Sim-tested 2026-09-23 @ 0058a41: widget tap completed Asr in place (score 0.52, location
-recorded), widget advanced to Maghrib, app showed it complete on reopen. Still untested:
-tapping before a prayer starts; widget creating the row when the app hasn't opened that day;
-the legacy import on an install that has real data (the owner's phone is the test case);
-whether the nudge for a widget-completed prayer still fires on a real device.
+recorded), widget advanced to Maghrib, app showed it complete on reopen.
+Sim-tested 2026-09-23, legacy import: seeded 46176a5 with a task, a linked 4-count session and
+a completed Asr; installed the fix over it (after a buggy build had already created an empty
+`shukr.store` and completed Dhuhr in it). First launch: `✅ legacy import: tasks=1 sessions=1
+mantras=0 duas=0 prayers=0 (merged 1) scores=0`; task/session back with original ids and link,
+Asr completion carried onto the new row, Dhuhr kept, legacy files' mtimes unchanged; second
+launch imported nothing. Still untested: tapping before a prayer starts; widget creating the
+row when the app hasn't opened that day; the import on the owner's phone; whether the nudge
+for a widget-completed prayer still fires on a real device.
 To verify on device: complete from the widget, check the nudge for that prayer does not fire;
 open the app and check the prayer shows complete with the right score. If the nudge still
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app

@@ -67,19 +67,33 @@ enum SharedStore {
 
     // MARK: One-time import of the pre-app-group store (app only)
 
-    static let legacyImportedKey = "legacyStoreImported"
+    /// "v2": the first version of this flag could be set without importing anything (it looked
+    /// for the legacy file in the wrong place), so a new key makes sure the import still runs
+    /// on an install that already carries the old flag.
+    static let legacyImportedKey = "legacyStoreImported.v2"
 
-    /// Where the store lived before it moved to the app group. Only meaningful in the app
-    /// process: an extension's Application Support is its own sandbox.
-    private static var legacyURL: URL {
-        URL.applicationSupportDirectory.appending(path: "default.store")
+    /// Where the store lived before it moved to `url`. With a default `ModelConfiguration()`,
+    /// SwiftData puts `default.store` in the *app group's* Library/Application Support when the
+    /// app has an app-group entitlement (this app has had one since the widget's shared
+    /// UserDefaults), and in the app's own Application Support otherwise. Checked in that order.
+    /// Only meaningful in the app process: an extension's Application Support is its own sandbox.
+    private static var legacyURLs: [URL] {
+        var urls: [URL] = []
+        if let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
+            urls.append(group.appending(path: "Library/Application Support/default.store"))
+        }
+        urls.append(URL.applicationSupportDirectory.appending(path: "default.store"))
+        return urls
     }
+    /// Sandbox location; also what `url` falls back to when the app group is missing.
+    private static var legacyURL: URL { URL.applicationSupportDirectory.appending(path: "default.store") }
 
-    /// Merge everything from the old `Application Support/default.store` into the shared
-    /// store, once. A merge, not a file swap: the shared store may already hold data written
-    /// since the update (prayers completed from the widget, for instance). The old files are
-    /// never modified or deleted; we work on a temporary copy. The done-flag is set only after
-    /// a successful save, so a failure retries next launch.
+    /// Merge everything from the old `default.store` into the shared store, once. A merge, not
+    /// a file swap: the shared store may already hold data written since the update (prayers
+    /// completed from the widget, for instance). The old files are never modified or deleted;
+    /// we work on a temporary copy. The done-flag is set only after a successful save, so a
+    /// failure retries next launch. If no legacy file exists the flag is left unset: the check
+    /// is two `fileExists` calls, and a wrong "done" is what lost the owner's data once.
     static func importLegacyStoreIfNeeded(into container: ModelContainer) {
         guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
         let defaults = UserDefaults(suiteName: appGroup)
@@ -87,8 +101,9 @@ enum SharedStore {
 
         let fm = FileManager.default
         // No app group (entitlement missing) means we're still running on the legacy file itself.
-        guard url != legacyURL, fm.fileExists(atPath: legacyURL.path) else {
-            defaults?.set(true, forKey: legacyImportedKey) // fresh install, or nothing to import
+        guard url != legacyURL,
+              let source = legacyURLs.first(where: { fm.fileExists(atPath: $0.path) }) else {
+            print("ℹ️ legacy import: no legacy store found (fresh install, or nothing to import)")
             return
         }
 
@@ -98,7 +113,7 @@ enum SharedStore {
         do {
             try fm.createDirectory(at: tmpDir, withIntermediateDirectories: true)
             for suffix in ["", "-shm", "-wal"] {
-                let from = URL(filePath: legacyURL.path + suffix)
+                let from = URL(filePath: source.path + suffix)
                 guard fm.fileExists(atPath: from.path) else { continue }
                 try fm.copyItem(at: from, to: URL(filePath: tmpStore.path + suffix))
             }
