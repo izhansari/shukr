@@ -21,7 +21,6 @@ struct PrayerTimesView: View {
     @Environment(\.modelContext) var context
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @Environment(\.scenePhase) var scenePhase
-    @AppStorage("widgetCompletion", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var widgetCompletion: Bool = false
     @AppStorage("widgetCompass", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var widgetCompass: Bool = false
     @AppStorage("widgetTasbeeh", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var widgetTasbeeh: Bool = false
     @AppStorage("widgetTextToggle", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var widgetTextToggle: Bool = false
@@ -350,25 +349,15 @@ struct PrayerTimesView: View {
             if newScenePhase == .active {
 
                 viewModel.loadTodaysPrayerObjects()
+                viewModel.applyPendingWidgetCompletions() // prayers completed from the widget while we were closed
                 
                 if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
-                    let completionFromStore     = store.bool(forKey: "widgetCompletion")
                     let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
                     let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
-                    store.setValue(false, forKey: "widgetCompletion")
                     store.setValue(false, forKey: "widgetCompass")
                     store.setValue(false, forKey: "widgetTasbeeh")
 
-                    if completionFromStore{
-                        withAnimation(.spring(duration: 0.3)) { sharedState.navPosition = .bottom }
-//                        sharedState.navPosition = .bottom
-                        if let relevantPrayer = viewModel.relevantPrayer {
-                            viewModel.togglePrayerCompletion(for: relevantPrayer)
-                            showTemporaryMessage(workItem: &dismissChainZikrItem, boolToShow: $showChainZikrButton, delay: 5)
-                        }
-                    }
-                    
-                    else if openCompassFromWidget{
+                    if openCompassFromWidget{
                         sharedState.navPosition = .main
                         showQiblaMap = true
                     }

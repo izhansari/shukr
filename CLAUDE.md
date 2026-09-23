@@ -58,6 +58,29 @@ never set anymore (the sheet's zikr tab moved to the left page); the branches in
 Freestyle tasbeeh is the ∞ button in `DailyTasksView`'s header (was the main circle on the
 zikr tab).
 
+## Widget ↔ app
+
+Widget buttons: compass → app `.main` + qibla map; tasbeeh → app `.left` (Zikr page); list /
+text toggles are in-widget. These use one-shot flags in the app group read on `scenePhase ==
+.active` in `PrayerTimesAndTracker`.
+
+**Completing a prayer from the widget does not open the app.** The widget can't reach the
+app's SwiftData store (it lives in the app container, and the widget target doesn't compile
+the models), so `MarkCompleteIntent` queues a `WidgetPrayerCompletion` {name, start, end,
+tappedAt} in the app group via `WidgetCompletionStore` (`SharedTargetForIntents.swift`,
+compiled into both targets). The widget treats queued + app-synced prayers as done
+(`entry.completedToday`), so its circle advances to the next prayer immediately. The app
+drains the queue in `PrayerViewModel.applyPendingWidgetCompletions()` on activation: scores
+at the tap time, cancels nudges (may already have fired), creates the prayer row if the app
+was never opened that day, then recomputes streak/day score. The app pushes its own
+completions back with `syncCompletionsToWidget` so the widget doesn't offer a prayer you
+already ticked in-app. Known gaps: no location recorded for widget completions; nudge
+notifications can still fire between the widget tap and the next app open.
+
+Bigger alternative if that gap matters: move the SwiftData store into the app group
+container (file-copy migration on first launch) and add `Models/` to the widget target's
+`fileSystemSynchronizedGroups` so the intent writes the store directly.
+
 ## Tasbeeh / zikr feature
 
 Entry: `tasbeehView` is a `fullScreenCover` at `PrayerTimesAndTracker.swift:412` driven by
@@ -92,6 +115,7 @@ Backlog / known oddities:
 - [ ] Dead code: empty `if selectedMode == 2 {}` in `estTimeLeft`, unused `resetTasbeeh()`, `NoteModalView`, `deleteMantra`, `timePassedAtPauseString`, `endTime` (written, never read). `secsPassed` returns 999 when `startTime` is nil.
 - [ ] Count widget (`shukrWidget/shukrWidget.swift`) is commented out of the bundle; nothing writes its `count`/`paused` keys. Delete or revive.
 - [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
+- [x] Widget "complete prayer" works in place, no app launch (queue in app group, applied on next open).
 - [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe, pages follow the finger.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 

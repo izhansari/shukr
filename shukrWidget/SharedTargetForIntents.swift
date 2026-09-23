@@ -4,17 +4,99 @@
 import AppIntents
 import WidgetKit
 
+// MARK: - Widget → App prayer completions
+//
+// The widget extension can't reach the app's SwiftData store, so completing a prayer from
+// the widget queues a record in the app group. The widget treats queued prayers as done
+// right away (so the circle moves on to the next prayer), and the app applies the queue
+// the next time it becomes active (`PrayerViewModel.applyPendingWidgetCompletions`),
+// scoring the prayer at the time of the tap rather than the time the app was opened.
+
+struct WidgetPrayerCompletion: Codable, Equatable {
+    let name: String
+    let prayerStart: Date
+    let prayerEnd: Date
+    let completedAt: Date
+}
+
+enum WidgetCompletionStore {
+    static let suite = "group.betternorms.shukr.shukrWidget"
+    private static let pendingKey = "pendingWidgetCompletions"        // [WidgetPrayerCompletion] as JSON
+    private static let appCompletedKey = "appCompletedPrayersToday"   // [String]
+    private static let appCompletedDateKey = "appCompletedPrayersDate" // Date the list above is for
+    private static var defaults: UserDefaults? { UserDefaults(suiteName: suite) }
+
+    static func pending() -> [WidgetPrayerCompletion] {
+        guard let data = defaults?.data(forKey: pendingKey),
+              let list = try? JSONDecoder().decode([WidgetPrayerCompletion].self, from: data) else { return [] }
+        return list
+    }
+
+    static func enqueue(_ completion: WidgetPrayerCompletion) {
+        var list = pending()
+        let alreadyQueued = list.contains {
+            $0.name == completion.name && Calendar.current.isDate($0.prayerStart, inSameDayAs: completion.prayerStart)
+        }
+        guard !alreadyQueued else { return }
+        list.append(completion)
+        save(list)
+    }
+
+    /// Returns everything queued and clears the queue. App side only.
+    static func drain() -> [WidgetPrayerCompletion] {
+        let list = pending()
+        save([])
+        return list
+    }
+
+    private static func save(_ list: [WidgetPrayerCompletion]) {
+        defaults?.set(try? JSONEncoder().encode(list), forKey: pendingKey)
+    }
+
+    /// App → widget: which of today's prayers the app itself has marked complete.
+    static func syncFromApp(completedNames: [String]) {
+        defaults?.set(completedNames, forKey: appCompletedKey)
+        defaults?.set(Date(), forKey: appCompletedDateKey)
+    }
+
+    /// Everything the widget should treat as done today: the app's list (if it's from today)
+    /// plus anything queued from the widget today.
+    static func completedNamesToday() -> Set<String> {
+        var names = Set<String>()
+        if let syncedOn = defaults?.object(forKey: appCompletedDateKey) as? Date,
+           Calendar.current.isDateInToday(syncedOn),
+           let synced = defaults?.stringArray(forKey: appCompletedKey) {
+            names.formUnion(synced)
+        }
+        for item in pending() where Calendar.current.isDateInToday(item.prayerStart) {
+            names.insert(item.name)
+        }
+        return names
+    }
+}
+
 struct MarkCompleteIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Prayers"
-    static var openAppWhenRun: Bool = true
+    static var title: LocalizedStringResource = "Mark Prayer Complete"
+    static var openAppWhenRun: Bool = false
+
+    @Parameter(title: "Prayer") var prayerName: String
+    @Parameter(title: "Start") var prayerStart: Date
+    @Parameter(title: "End") var prayerEnd: Date
+
+    init() {}
+    init(prayerName: String, prayerStart: Date, prayerEnd: Date) {
+        self.prayerName = prayerName
+        self.prayerStart = prayerStart
+        self.prayerEnd = prayerEnd
+    }
 
     func perform() async throws -> some IntentResult {
-        
-        if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
-            store.setValue(true, forKey: "widgetCompletion")
-            WidgetCenter.shared.reloadAllTimelines()
-            print("widgetCompletion: \(store.bool(forKey: "widgetCompletion"))")
-        }
+        // Same rule as the app: a prayer that hasn't started can't be completed.
+        guard prayerStart <= Date() else { return .result() }
+        WidgetCompletionStore.enqueue(
+            WidgetPrayerCompletion(name: prayerName, prayerStart: prayerStart, prayerEnd: prayerEnd, completedAt: Date())
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
         return .result()
     }
 }

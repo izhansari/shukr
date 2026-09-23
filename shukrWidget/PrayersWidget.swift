@@ -44,6 +44,8 @@ struct PrayersWidgetEntry: TimelineEntry {
     let todayPrayerTimes: PrayerTimes
     let locationName: String // New property
     let textToggle: Bool
+    /// Prayers already prayed today (app-synced + queued from this widget). Skipped by `relevantPrayer`.
+    var completedToday: Set<String> = []
 }
 
 
@@ -135,7 +137,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             latitude: latitude,
             longitude: longitude,
             toggleShowAllTImes: showLocation, prayerDict: windows,
-            todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle
+            todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
+            completedToday: WidgetCompletionStore.completedNamesToday()
         )
         
         return entry
@@ -262,8 +265,9 @@ struct PrayersWidgetView: View {
         var relevantPrayer: (name: String, current: Bool, start: Date, end: Date, window: TimeInterval) {
             let now = Date()
             
-            /// Check if indexed prayer is a current prayer -- else check if indexed prayer is the next one
-            for name in prayerOrder {
+            /// Check if indexed prayer is a current prayer -- else check if indexed prayer is the next one.
+            /// Prayers already completed today are skipped so the circle moves on after a widget tap.
+            for name in prayerOrder where !entry.completedToday.contains(name) {
                 if let prayer = entry.prayerDict[name] {
                     //if prayer.start <= now  && now < prayer.end && name != "Sunrise" { // current prayer
                     if prayer.start <= now  && now < prayer.end { // current prayer
@@ -378,14 +382,19 @@ struct PrayersWidgetView: View {
                 
                 VStack{
                     HStack{
-                        Button(intent: MarkCompleteIntent()) {
-                            Image(systemName: "circle")//"checkmark.circle")
+                        // Completes the shown prayer in place (no app launch). Only once it has started.
+                        let shown = relevantPrayer
+                        let canComplete = shown.start <= Date() && !entry.completedToday.contains(shown.name)
+                        Button(intent: MarkCompleteIntent(prayerName: shown.name, prayerStart: shown.start, prayerEnd: shown.end)) {
+                            Image(systemName: entry.completedToday.contains(shown.name) ? "checkmark.circle.fill" : "circle")
                                 .font(.system(size: 15)) // Adjust font size as needed
                                 .frame(width: 15, height: 15)
                                 .foregroundColor(.primary/*.white*/)
                         }
                         .padding(.all, 14)
                         .buttonStyle(.plain)
+                        .opacity(canComplete ? 1 : 0.35)
+                        .disabled(!canComplete)
                         Spacer()
                     }
                     Spacer()

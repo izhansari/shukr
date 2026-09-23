@@ -545,7 +545,59 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             calculatePrayerStreak()
             calculateDayScore(for: prayer.startTime)
 //            updatePrayerStreak()
+            syncCompletionsToWidget(reloadWidget: true)
         }
+    }
+    
+    // MARK: - Widget completions
+    
+    /// The widget can't write to SwiftData, so completions tapped there sit in the app group
+    /// (`WidgetCompletionStore`). Apply them here whenever the app becomes active. Idempotent:
+    /// a prayer the app already completed is left alone.
+    func applyPendingWidgetCompletions() {
+        let queued = WidgetCompletionStore.drain()
+        guard !queued.isEmpty else { return }
+        
+        var touchedDays: [Date] = []
+        for item in queued {
+            let prayer = fetchPrayer(named: item.name, on: item.prayerStart) ?? {
+                // App wasn't opened that day, so its prayer rows don't exist yet. Make just this one
+                // from the times the widget saw, so the completion isn't lost.
+                let made = PrayerModel(name: item.name, startTime: item.prayerStart, endTime: item.prayerEnd, dateAtMake: item.prayerStart)
+                context.insert(made)
+                return made
+            }()
+            guard !prayer.isCompleted, prayer.startTime <= Date() else { continue }
+            prayer.isCompleted = true
+            prayer.setPrayerScore(atDate: item.completedAt) // scored at the moment of the tap, not now
+            prayer.cancelUpcomingNudges()                    // best effort; they may have fired before the app opened
+            print("✅ applied widget completion: \(item.name) at \(item.completedAt)")
+            if !touchedDays.contains(where: { Calendar.current.isDate($0, inSameDayAs: item.prayerStart) }) {
+                touchedDays.append(item.prayerStart)
+            }
+        }
+        guard !touchedDays.isEmpty else { return }
+        try? context.save()
+        loadTodaysPrayerObjects()
+        calculatePrayerStreak()
+        for day in touchedDays { calculateDayScore(for: day) }
+        syncCompletionsToWidget(reloadWidget: true)
+    }
+    
+    /// Tell the widget which of today's prayers are already done so it skips them.
+    func syncCompletionsToWidget(reloadWidget: Bool) {
+        let done = todaysPrayers.filter { $0.isCompleted }.map { $0.name }
+        WidgetCompletionStore.syncFromApp(completedNames: done)
+        if reloadWidget { WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget") }
+    }
+    
+    private func fetchPrayer(named name: String, on day: Date) -> PrayerModel? {
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? day
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd }
+        )
+        return try? context.fetch(descriptor).first
     }
     
     /*
@@ -1054,6 +1106,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             print("❌ (loadLast5Prayers) Error occured during the fetch attempt. \(error.localizedDescription)")
         }
         
+        syncCompletionsToWidget(reloadWidget: false) // widget picks it up on its next natural refresh
         printTodaysPrayersOutput()
         
         func printTodaysPrayersOutput(){
