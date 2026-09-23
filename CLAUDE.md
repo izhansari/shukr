@@ -43,43 +43,48 @@ Quality (fix before launch):
 
 ## Navigation (PrayerTimesAndTracker.swift)
 
-`sharedState.navPosition` is the single nav state. Horizontal is a **native paging
-`ScrollView`** with three full-width pages in a plain `HStack`: **Zikr (.left) | Main
-(.main / .bottom) | Settings (.right)**. UIKit drives finger tracking, rubber-banding and
-settle, so no SwiftUI work happens per drag frame (the previous offset-based pager re-ran the
-whole body every frame and felt laggy). `@State scrollPage: NavPage?` is bound with
-`.scrollPosition(id:)` and is only ever *written* programmatically (bottom bar, widget deep
-link, via `onChange(of: navPosition)`). User swipes are mirrored into `navPosition` by
+Two independent pieces of nav state on `SharedStateClass`:
+- `horizontalPage: HorizontalPage` (.zikr / .main / .settings) — which pager page is showing.
+- `navPosition: ViewPosition` — the **center page's vertical state only** (.main = circle,
+  .bottom = salah sheet open). Paging away never changes it, so the center page comes back
+  exactly as it was left. `.left / .right / .top` and `cameFromNavPosition` are legacy, unused.
+
+Horizontal is a **native paging `ScrollView`** with three full-width pages in a plain `HStack`
+(all stay mounted), each `.clipped()`. `@State scrollPage` is bound with `.scrollPosition(id:)`
+and is written only from `onChange(of: horizontalPage)`; user swipes flow the other way via
 `.onScrollPhaseChange` (iOS 18) **only when the phase hits `.idle`**, using
-`visibleRect.midX / containerSize.width` for the page index. Syncing from the `scrollPosition`
-binding instead fired mid-drag and re-rendered the whole home screen while the page was
-moving (read as lag, collapsed the sheet early). Returning to Main restores `.main` or
-`.bottom` via `cameFromNavPosition`. `.defaultScrollAnchor(.center)` starts on Main. Every
-page is `.clipped()`: the center page hides its side menu by offsetting it −200pt, which
-otherwise draws over the Zikr page (found in sim testing).
+`visibleRect.midX / containerSize.width`. `.defaultScrollAnchor(.center)` starts on Main.
 
-Zikr page = `ZikrPageView`: `ZikrCircleView` ("Zikr / click to freestyle", the look the main
-circle used to take on the sheet's zikr tab; tap starts a freestyle session) above the
-`DailyTasksView` card frame, laid out like the old bottom sheet.
+**The vertical drag gesture is attached to the ScrollView itself, not to views inside it**
+(`.simultaneousGesture(abstractedDragGesture)` on the pager). The scroll view's pan gets first
+claim on every touch: horizontal → paging, vertical → our gesture. Nothing inside a page can
+block paging. The gesture only acts when `horizontalPage == .main` (so scrolling the Settings
+Form or vertical drags on Zikr do nothing). Do not re-add drag gestures inside pages.
 
-Vertical on the center page is unchanged (swipe up → `.bottom` sheet, swipe down → refresh,
-`dragOffset.height` with resistance). `abstractedDragGesture` is vertical-only now and is
-attached with `.simultaneousGesture` (never `highPriorityGesture`, which would steal horizontal
-drags from the pager) on the center page's background, the main circle, and the salah list.
-Nested horizontal scrolling (task cards on the Zikr page) works the UIKit way: inner first,
-then the page turns. The bottom bar mirrors the pager (Zikr | Salah | Settings).
+Hamburger = native `Menu` (Map, Daily Ayah, Mantras, Settings, `#if DEBUG` Dev's WIP) driving
+`.navigationDestination(isPresented:)` pushes on the root NavigationStack. The old drawer
+(`sideMenu` in Utils.swift, `showSideMenu`) is parked: toggling it published shared state and
+re-rendered the whole home screen to animate, which is why it felt laggy.
+
+Settings page has its own header row (back chevron → `horizontalPage = .main`, title,
+`ColorModeToggleButton` for light/dark/auto). Zikr page = `ZikrPageView`: `ZikrCircleView`
+("Zikr / click to freestyle") above the `DailyTasksView` card frame. The bottom bar mirrors the
+pager (Zikr | Salah | Settings).
 
 Known: the pager ignores the bottom safe area (to keep the bottom bar flush), so the Settings
-`Form`'s last row sits under the home indicator. Add bottom padding inside SettingsView if it
-bothers. `scrollPage` can flip mid-drag when the page crosses the midpoint, which collapses the
-bottom sheet slightly early; `onScrollPhaseChange` (iOS 18) would defer it if we raise the target.
+`Form`'s last row sits under the home indicator. Vertical on the center page is unchanged
+(swipe up → `.bottom` sheet, swipe down → refresh, `dragOffset.height` with resistance).
+
+Broader lag lever not yet pulled: `SharedStateClass` is an `ObservableObject`, so *any*
+`@Published` change re-renders every view holding `@EnvironmentObject sharedState` (nearly all
+of them). Migrating it to `@Observable` (per-property tracking) would cut most of that. Mechanical
+but wide: `@EnvironmentObject` → `@Environment(SharedStateClass.self)`, `$sharedState.x` needs
+`@Bindable`. Do it with a builder in the loop.
 
 Parked, not deleted: `DuaPageView` ("Notes") used to be the `.left` page; the block is
 commented out in the body and there's no route to it now. `bottomTabPosition == .zikr` is
-never set anymore (the sheet's zikr tab moved to the left page); the branches in
-`BottomSharedView`, `mainCircle.swift`, and `TopBar` that check it are dormant.
-`settingsViewNavBool` / the `.navigationDestination` push to Settings is also unused.
-Freestyle tasbeeh is the `ZikrCircleView` on the Zikr page.
+never set anymore; the branches in `BottomSharedView`, `mainCircle.swift`, and `TopBar` that
+check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push is unused.
 
 ## Widget ↔ app
 

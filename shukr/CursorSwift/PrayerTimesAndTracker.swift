@@ -48,35 +48,19 @@ struct PrayerTimesView: View {
     // MARK: - Horizontal pager
     // Three pages side by side in a native paging ScrollView: Zikr | Main | Settings.
     // UIKit drives the finger tracking, so nothing in SwiftUI re-renders per frame.
-    // `scrollPage` mirrors `sharedState.navPosition`; the two onChange handlers keep them in step.
-    enum NavPage: Hashable { case zikr, main, settings }
+    // `scrollPage` is written only programmatically (from sharedState.horizontalPage); user
+    // swipes flow the other way via onScrollPhaseChange once the scroll settles.
+    typealias NavPage = SharedStateClass.HorizontalPage
     @State private var scrollPage: NavPage? = .main
-
-    private func page(for position: SharedStateClass.ViewPosition) -> NavPage {
-        switch position {
-        case .left:  return .zikr
-        case .right: return .settings
-        default:     return .main
-        }
-    }
     private let pageSpring = Animation.spring(response: 0.35, dampingFraction: 0.85)
 
-    /// The user finished a swipe. Mirror it into navPosition; coming back to Main restores
-    /// whichever of .main / .bottom we left from.
-    private func syncNavPosition(toSettledPage page: NavPage) {
-        guard page != self.page(for: sharedState.navPosition) else { return }
-        if sharedState.navPosition == .main || sharedState.navPosition == .bottom {
-            sharedState.cameFromNavPosition = sharedState.navPosition
-        }
-        let target: SharedStateClass.ViewPosition
-        switch page {
-        case .zikr:     target = .left
-        case .settings: target = .right
-        case .main:     target = (sharedState.cameFromNavPosition == .bottom ? .bottom : .main)
-        }
-        withAnimation(pageSpring) { sharedState.navPosition = target }
-        triggerSomeVibration(type: .light)
-    }
+    // Menu destinations (native Menu on the hamburger; pushes on the root NavigationStack)
+    @State private var showMapPage = false
+    @State private var showDailyAyahPage = false
+    @State private var showMantrasPage = false
+    @State private var showSalahHistoryV1 = false
+    @State private var showSalahHistoryV2 = false
+    @State private var showZikrHistory = false
     private var chevDragValue: CGFloat{ // this is cool, i made it into an if, else if, else statement lol.
         showBottom ?
             max(0, dragOffset.height)  // Prevent upward movement when showing bottom
@@ -114,7 +98,7 @@ struct PrayerTimesView: View {
                 
                 if isDraggingVertically == true { // now, we will be updating only one of the two
                     // Vertical only means something on the center page (bottom sheet / refresh).
-                    guard sharedState.navPosition == .main || sharedState.navPosition == .bottom else { return }
+                    guard sharedState.horizontalPage == .main else { return }
                     dragOffset.height = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
                 }
                 // Horizontal: nothing to do, the paging ScrollView is moving the pages.
@@ -134,6 +118,7 @@ struct PrayerTimesView: View {
                 dragOffset = .zero
                 
                 if isDraggingVertically == true {
+                    guard sharedState.horizontalPage == .main else { return }
                     let draggedDown = translation.height > threshold // positive
                     let draggedUp = translation.height < -threshold // negative
                     guard draggedUp || draggedDown else { return }
@@ -189,20 +174,28 @@ struct PrayerTimesView: View {
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
             .ignoresSafeArea(edges: .bottom)
+            // The vertical drag (sheet open/close, pull-to-refresh) lives on the ScrollView
+            // itself, not on views inside it: the scroll view's pan gets first claim on every
+            // touch, takes horizontal ones for paging, and hands vertical ones to this gesture.
+            // Nothing inside a page can block paging that way.
+            .simultaneousGesture(abstractedDragGesture)
+            .simultaneousGesture(switchToSalahDoubleTapSGesture)
             .onScrollPhaseChange { _, phase, context in
-                // Sync navPosition only once the scroll has settled. Doing it mid-drag (as the
-                // scrollPosition binding would) re-rendered the whole home screen while the
-                // page was still moving, which read as lag and collapsed the sheet early.
+                // Record the page only once the scroll has settled. Doing it mid-drag (as the
+                // scrollPosition binding would) re-rendered the home screen while the page was
+                // still moving. navPosition is NOT touched: the center page keeps its state.
                 guard phase == .idle else { return }
                 let width = context.geometry.containerSize.width
                 guard width > 0 else { return }
                 let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
                 let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
-                syncNavPosition(toSettledPage: page)
+                if sharedState.horizontalPage != page {
+                    sharedState.horizontalPage = page
+                    triggerSomeVibration(type: .light)
+                }
             }
-            .onChange(of: sharedState.navPosition) { _, position in
-                // Programmatic nav (bottom bar, widget deep links): scroll the pager to match.
-                let wanted = page(for: position)
+            .onChange(of: sharedState.horizontalPage) { _, wanted in
+                // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match.
                 if scrollPage != wanted { withAnimation(pageSpring) { scrollPage = wanted } }
             }
             
@@ -232,10 +225,7 @@ struct PrayerTimesView: View {
                     }
                     
                     else if openTasbeehFromWidget{
-                        withAnimation(.spring(duration: 0.3)) {
-                            sharedState.cameFromNavPosition = .main
-                            sharedState.navPosition = .left
-                        }
+                        sharedState.horizontalPage = .zikr
                     }
                 }
                 
@@ -251,6 +241,14 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $settingsViewNavBool) {
             SettingsView()
         }
+        .navigationDestination(isPresented: $showMapPage) {
+            LocationMapContentView().onDisappear { sharedState.allowQiblaHaptics = true }
+        }
+        .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
+        .navigationDestination(isPresented: $showMantrasPage) { MantrasView() }
+        .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
+        .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
+        .navigationDestination(isPresented: $showZikrHistory) { HistoryPageView() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -283,12 +281,8 @@ struct PrayerTimesView: View {
     /// Main circle + bottom sheet, with the top bar / side menu overlaid. Lives inside the pager.
     private var centerPage: some View {
         ZStack {
-            // Vertical drag surface (bottom sheet / pull-to-refresh). Simultaneous, not high
-            // priority, so horizontal drags still reach the paging ScrollView.
             Color("bgColor").opacity(0.001)
                 .edgesIgnoringSafeArea(.all)
-                .simultaneousGesture(abstractedDragGesture)
-                .simultaneousGesture(switchToSalahDoubleTapSGesture)
             
             // Main circle + bottom sheet
             ZStack {
@@ -304,7 +298,6 @@ struct PrayerTimesView: View {
                     ZStack{
                         MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
                             .geometryGroup()
-                            .simultaneousGesture(abstractedDragGesture) // vertical; horizontal must reach the pager
                             .onAppear {
                                 print("⭐️ prayerTimesView onAppear")
                                 viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
@@ -327,8 +320,7 @@ struct PrayerTimesView: View {
                                 dismissChainZikrItem: $dismissChainZikrItem,
                                 showDailyAyahView: $showDailyAyahView,
                                 showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                                showTasbeehPage: $showTasbeehPage,
-                                dragGesture: abstractedDragGesture
+                                showTasbeehPage: $showTasbeehPage
                             )
 //                                        .fullScreenCover(isPresented: $showDailyAyahView){
 //                                            DailyAyahView()
@@ -380,43 +372,33 @@ struct PrayerTimesView: View {
                             // vvvthis is for visually showing refresh... need to make it change text, lag, then display new city
                             //.offset(y: dragOffset.height > 0 && sharedState.navPosition == .main && sharedState.bottomTabPosition == .salah ? dragOffset.height : 0)
 
-                        //Menu Button and Side Menu Stuff
+                        // Menu button: a native Menu instead of the hand-rolled drawer, which
+                        // toggled shared state and re-rendered the whole home screen to animate.
                         HStack{
-                                Button(action: {
-                                    withAnimation { sharedState.showSideMenu.toggle()}
-                                }) {
-                                    Image(systemName: "line.3.horizontal")
-                                        .background(.white.opacity(0.01))
-                                        .frame(width: 24, height: 24)
-                                        .font(.system(size: 20))
-                                        .fontWeight(.light)
-                                        .fontDesign(.rounded)
-                                        .foregroundColor(.gray.opacity(0.8))
-                                        .padding()
+                            Menu {
+                                Button { showMapPage = true } label: { Label("Map", systemImage: "map") }
+                                Button { showDailyAyahPage = true } label: { Label("Daily Ayah", systemImage: "book") }
+                                Button { showMantrasPage = true } label: { Label("Mantras", systemImage: "text.quote") }
+                                Button { sharedState.horizontalPage = .settings } label: { Label("Settings", systemImage: "gear") }
+                                #if DEBUG
+                                Menu {
+                                    Button("Salah History (V1)") { showSalahHistoryV1 = true }
+                                    Button("Salah History (V2)") { showSalahHistoryV2 = true }
+                                    Button("Zikr History (V1)") { showZikrHistory = true }
+                                } label: {
+                                    Label("Dev's WIP", systemImage: "hammer")
                                 }
-                            Spacer()
-                        }
-                        
-                        // Grayed Out Cover for SideMenu
-                        Color(.black).opacity(0.5)
-                            .edgesIgnoringSafeArea(.all)
-                            .onTapGesture {
-                                withAnimation{ sharedState.showSideMenu = false }
+                                #endif
+                            } label: {
+                                Image(systemName: "line.3.horizontal")
+                                    .background(.white.opacity(0.01))
+                                    .frame(width: 24, height: 24)
+                                    .font(.system(size: 20))
+                                    .fontWeight(.light)
+                                    .fontDesign(.rounded)
+                                    .foregroundColor(.gray.opacity(0.8))
+                                    .padding()
                             }
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                                    .onEnded { value in
-                                            withAnimation { sharedState.showSideMenu = false }
-                                    }
-                            )
-                            .opacity(sharedState.showSideMenu ? 1 : 0)
-
-                        
-                        HStack{
-                            sideMenu(viewState: sharedState.navPosition)
-                                .frame(width: 180)
-                                .offset(x: sharedState.showSideMenu ? 0 : -200)
-                                .animation(.spring, value: sharedState.showSideMenu)
                             Spacer()
                         }
                     }
@@ -446,7 +428,6 @@ struct PrayerTimesView: View {
         let days: [Date] = [Date(), Date().addingTimeInterval(-86400), Date().addingTimeInterval(-172800)]
         
         // Add a property to receive the gesture
-        var dragGesture: _EndedGesture<_ChangedGesture<DragGesture>>
 
 
         // DateFormatter for M/d format
@@ -466,7 +447,6 @@ struct PrayerTimesView: View {
                         dismissChainZikrItem: $dismissChainZikrItem,
                         showDailyAyahView: $showDailyAyahView
                     )
-                    .simultaneousGesture(dragGesture) // vertical only; horizontal must reach the pager
                     
                     
                     /*
@@ -522,10 +502,7 @@ struct PrayerTimesView: View {
                         
                         
                         Button(action: {
-                            withAnimation(.spring()) {
-                                sharedState.cameFromNavPosition = .bottom
-                                sharedState.navPosition = .left
-                            }
+                            sharedState.horizontalPage = .zikr
                         }) {
                             VStack(spacing: 6){
                                 Image(systemName: "circle.hexagonpath")
@@ -535,7 +512,7 @@ struct PrayerTimesView: View {
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor( sharedState.navPosition == .left ? .green : .gray)
+                            .foregroundColor( sharedState.horizontalPage == .zikr ? .green : .gray)
                             .frame(width: 100)
                         }
 
@@ -561,10 +538,7 @@ struct PrayerTimesView: View {
                         Spacer()
                         
                         Button(action: {
-                            withAnimation(.spring()) {
-                                sharedState.cameFromNavPosition = .bottom
-                                sharedState.navPosition = .right
-                            }
+                            sharedState.horizontalPage = .settings
                         }) {
                             VStack(spacing: 6) {
                                 Image(systemName: "gear")
@@ -574,7 +548,7 @@ struct PrayerTimesView: View {
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor(sharedState.navPosition == .right ? .green : .gray)
+                            .foregroundColor(sharedState.horizontalPage == .settings ? .green : .gray)
                             .frame(width: 100)
                         }
                     }

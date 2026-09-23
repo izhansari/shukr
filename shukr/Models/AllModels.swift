@@ -34,9 +34,17 @@ class SharedStateClass: ObservableObject {
 //    @Published var showingOtherPages: Bool = false
     @Published var allowQiblaHaptics: Bool = false
     @Published var showSalahTabOld: Bool = true
+    /// Vertical state of the center page only (.main = circle, .bottom = salah sheet open).
+    /// Paging to Zikr / Settings does NOT change this, so the center page comes back exactly
+    /// as it was left. (.left / .right / .top are legacy and no longer set.)
     @Published var navPosition: ViewPosition = .main
-    @Published var cameFromNavPosition: ViewPosition = .main
-    @Published var showSideMenu: Bool = false
+    @Published var cameFromNavPosition: ViewPosition = .main // legacy, unused
+    @Published var showSideMenu: Bool = false                  // legacy, unused (menu is a native Menu now)
+
+    /// Which page of the horizontal pager is showing. Written by the pager when a swipe
+    /// settles, and by anything that wants to navigate (bottom bar, widget deep link, menu).
+    enum HorizontalPage: Hashable { case zikr, main, settings }
+    @Published var horizontalPage: HorizontalPage = .main
     
     @Published var selectedTask: TaskModel? = nil {
         didSet {

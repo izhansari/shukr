@@ -124,34 +124,27 @@ struct SettingsView: View {
     var body: some View {
         ZStack{
             VStack{
-//                HStack {
-//                    Button(action: {
-//                        withAnimation(.spring(duration: 0.3)) {
-//                            sharedState.navPosition = sharedState.cameFromNavPosition
-//                        }
-//                    }) {
-//                        Image(systemName: "chevron.left") // Standard back arrow
-//                            .font(.title2)
-//                            .foregroundColor(.primary)
-//                    }
-//                    
-//                    Spacer()
-//                    
-//                    Text("Settings") // Center title
-//                        .font(.headline)
-//                    
-//                    Spacer()
-//                    
-////                    Button(action: {
-////                        // Placeholder action
-////                    }) {
-////                        Image(systemName: "gearshape") // Dummy trailing button (optional)
-////                            .font(.title2)
-////                            .foregroundColor(.primary)
-////                    }
-//                    ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
-//                }
-//                .padding(.horizontal)
+                // Page header: back to the main page, title, light/dark/auto toggle.
+                HStack {
+                    Button(action: {
+                        sharedState.horizontalPage = .main
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.title2)
+                            .foregroundColor(.primary)
+                    }
+                    
+                    Spacer()
+                    
+                    Text("Settings")
+                        .font(.headline)
+                    
+                    Spacer()
+                    
+                    ColorModeToggleButton(showFloatingMessage: $showFloatingMessage)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
                 
                 Form {
                     
