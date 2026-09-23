@@ -44,21 +44,22 @@ struct PrayerTimesView: View {
     
     @State private var isDraggingVertically: Bool? = nil  // Current drag direction
     @State private var dragOffset = CGSize.zero       // Vertical drag (with resistance) for the bottom sheet / refresh
-    @State private var pageDrag: CGFloat = 0          // Horizontal finger offset, 1:1, for the left/center/right pager
 
     // MARK: - Horizontal pager
-    // Three pages side by side: Zikr (left) | Main (center) | Settings (right).
-    // The whole strip is offset by `pagerX`, so pages track the finger during a drag
-    // and spring to the resting position for the current navPosition on release.
-    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
-    private var basePageX: CGFloat {
-        switch sharedState.navPosition {
-        case .left:  return screenWidth
-        case .right: return -screenWidth
-        default:     return 0
+    // Three pages side by side in a native paging ScrollView: Zikr | Main | Settings.
+    // UIKit drives the finger tracking, so nothing in SwiftUI re-renders per frame.
+    // `scrollPage` mirrors `sharedState.navPosition`; the two onChange handlers keep them in step.
+    enum NavPage: Hashable { case zikr, main, settings }
+    @State private var scrollPage: NavPage? = .main
+
+    private func page(for position: SharedStateClass.ViewPosition) -> NavPage {
+        switch position {
+        case .left:  return .zikr
+        case .right: return .settings
+        default:     return .main
         }
     }
-    private var pagerX: CGFloat { basePageX + pageDrag }
+    private let pageSpring = Animation.spring(response: 0.35, dampingFraction: 0.85)
     private var chevDragValue: CGFloat{ // this is cool, i made it into an if, else if, else statement lol.
         showBottom ?
             max(0, dragOffset.height)  // Prevent upward movement when showing bottom
@@ -85,7 +86,6 @@ struct PrayerTimesView: View {
         let resistanceFactor = 0.5
         let maxOffset: CGFloat = 20
         let threshold: CGFloat = 30
-        let edgeResistance: CGFloat = 0.25 // rubber-band when dragging past the outermost page
 
         return DragGesture()
             .onChanged { value in
@@ -99,14 +99,8 @@ struct PrayerTimesView: View {
                     // Vertical only means something on the center page (bottom sheet / refresh).
                     guard sharedState.navPosition == .main || sharedState.navPosition == .bottom else { return }
                     dragOffset.height = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
-                } else {
-                    var w = value.translation.width
-                    // Nothing beyond the left page to the right, or the right page to the left.
-                    if (sharedState.navPosition == .left && w > 0) || (sharedState.navPosition == .right && w < 0) {
-                        w *= edgeResistance
-                    }
-                    pageDrag = w
                 }
+                // Horizontal: nothing to do, the paging ScrollView is moving the pages.
                 
             }
             .onEnded { value in
@@ -121,7 +115,6 @@ struct PrayerTimesView: View {
             
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 dragOffset = .zero
-                pageDrag = 0
                 
                 if isDraggingVertically == true {
                     let draggedDown = translation.height > threshold // positive
@@ -139,141 +132,62 @@ struct PrayerTimesView: View {
                             break
                     }
                 }
-                else if isDraggingVertically == false {
-                    // Commit to the neighbouring page on a third of the screen, or on a flick
-                    // (predicted end past half the screen), like a paging scroll view.
-                    let w = translation.width
-                    let predicted = value.predictedEndTranslation.width
-                    let goRight = w > screenWidth / 3 || predicted > screenWidth / 2   // finger → right reveals the left page
-                    let goLeft  = w < -screenWidth / 3 || predicted < -screenWidth / 2 // finger → left reveals the right page
-                    
-                    switch sharedState.navPosition {
-                        case .main, .bottom:
-                            sharedState.cameFromNavPosition = sharedState.navPosition
-                            if goRight { sharedState.navPosition = .left ; triggerSomeVibration(type: .light) }
-                            else if goLeft { sharedState.navPosition = .right ; triggerSomeVibration(type: .light) }
-                        case .left:
-                            if goLeft { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
-                        case .right:
-                            if goRight { sharedState.navPosition = sharedState.cameFromNavPosition ; triggerSomeVibration(type: .light) }
-                        case .top:
-                            break
-                    }
-                }
             }
         }
     }
     
     var body: some View {
         ZStack {
-            
-            Color("bgColor").opacity(0.001)
-                .edgesIgnoringSafeArea(.all)
-                .highPriorityGesture(abstractedDragGesture)
-                .simultaneousGesture(switchToSalahDoubleTapSGesture)
-            
-            
-            
-            // This is a zstack with SwipeZikrMenu, pulseCircle, (and roundedrectangle just to push up.)
-                
-            // MARK: - this one works vv
-            
-            // MARK: - Center page (Main / bottom sheet). Always mounted so it can slide.
-            ZStack {
-                VStack {
-
-                    Spacer()
+            // MARK: - Pager: Zikr | Main | Settings
+            // Native paging ScrollView: pages track the finger at UIKit speed, rubber-band at the
+            // ends, and settle with the system's velocity curve. All three stay mounted (plain
+            // HStack, not lazy) so the main circle's timers and Settings' state survive paging.
+            ScrollView(.horizontal) {
+                HStack(spacing: 0) {
+                    ZikrPageView(
+                        showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                        showTasbeehPage: $showTasbeehPage
+                    )
+                    .containerRelativeFrame(.horizontal)
+                    .id(NavPage.zikr)
                     
-                    if showBottom{
-                        Spacer()
-                        Spacer()
-                    }
+                    centerPage
+                        .containerRelativeFrame(.horizontal)
+                        .id(NavPage.main)
                     
-                    ZStack{
-                        MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
-                            .geometryGroup()
-                            .highPriorityGesture(abstractedDragGesture)
-                            .onAppear {
-                                print("⭐️ prayerTimesView onAppear")
-                                viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
-                                viewModel.loadTodaysPrayerObjects()
-                                viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
-                            }
-                    }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(3)
-
-                    
-                    Spacer()
-                    
-                    
-                    if showBottom {
-                        Spacer()
-                        
-                            BottomSharedView(
-                                showChainZikrButton: $showChainZikrButton,
-                                dismissChainZikrItem: $dismissChainZikrItem,
-                                showDailyAyahView: $showDailyAyahView,
-                                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                                showTasbeehPage: $showTasbeehPage,
-                                dragGesture: abstractedDragGesture
-                            )
-//                                        .fullScreenCover(isPresented: $showDailyAyahView){
-//                                            DailyAyahView()
-//                                        }
-                        .opacity(1 - Double(dragOffset.height / 90))
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        
-                        Spacer()
-                        
-
-                    }
-                    
-                    ZStack{
-                        Button {
-                            withAnimation {
-                                print("tapped the chev")
-                                sharedState.navPosition = showBottom ? .main : .bottom
-                            }
-                        } label: {
-                            Image(systemName: "chevron.up")
-                                .font(.title3)
-                                .foregroundStyle(chevDragValue != 0 ? Color.secondary : Color(.secondarySystemFill))
-                                .animation(.smooth, value: dragOffset.height)
-//                                    .scaleEffect(x: 1, y: (dragOffset.height > 0 || showBottom) ? -1 : 1)
-                                .padding(.bottom, 30)
-                                .padding()
-                                .offset(y: chevDragValue)
-                        }
-                        .opacity(showBottom ? 0 : 1)
-                        
-                        CustomBottomBar()
-                            .opacity(1 - Double(dragOffset.height / 90))
-                            .opacity(showBottom ? 1 : 0)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-
+                    SettingsView()
+                        .environmentObject(viewModel)
+                        .containerRelativeFrame(.horizontal)
+                        .id(NavPage.settings)
                 }
-                .transition(.opacity)
+                .scrollTargetLayout()
             }
-            .offset(x: pagerX)
-            
-
-            
-            // MARK: - Left page: Zikr
-            ZikrPageView(
-                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                showTasbeehPage: $showTasbeehPage,
-                dragGesture: abstractedDragGesture
-            )
-            .offset(x: pagerX - screenWidth)
-            
-            // MARK: - Right page: Settings
-            // The Form scrolls vertically; a simultaneous drag lets horizontal swipes still page back.
-            SettingsView()
-                .environmentObject(viewModel)
-                .simultaneousGesture(abstractedDragGesture)
-                .offset(x: pagerX + screenWidth)
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: $scrollPage)
+            .defaultScrollAnchor(.center)
+            .ignoresSafeArea(edges: .bottom)
+            .onChange(of: scrollPage) { _, page in
+                // The user paged. Mirror it into navPosition; coming back to Main restores
+                // whichever of .main / .bottom we left from.
+                guard let page, page != self.page(for: sharedState.navPosition) else { return }
+                if sharedState.navPosition == .main || sharedState.navPosition == .bottom {
+                    sharedState.cameFromNavPosition = sharedState.navPosition
+                }
+                let target: SharedStateClass.ViewPosition
+                switch page {
+                case .zikr:     target = .left
+                case .settings: target = .right
+                case .main:     target = (sharedState.cameFromNavPosition == .bottom ? .bottom : .main)
+                }
+                withAnimation(pageSpring) { sharedState.navPosition = target }
+                triggerSomeVibration(type: .light)
+            }
+            .onChange(of: sharedState.navPosition) { _, position in
+                // Programmatic nav (bottom bar, widget deep links): scroll the pager to match.
+                let wanted = page(for: position)
+                if scrollPage != wanted { withAnimation(pageSpring) { scrollPage = wanted } }
+            }
             
             // MARK: - (Parked) Duas page — used to live at .left. Kept in case we bring it back.
             // VStack{
@@ -281,69 +195,7 @@ struct PrayerTimesView: View {
             // }
             // .background(Color(.systemBackground))
             // .padding()
-            // .offset(x: dragOffset.width < 0 ? dragOffset.width : 0)
-            // .offset(x: sharedState.navPosition == .left ? 0 : -UIScreen.main.bounds.width)
             // .transition(.move(edge: .leading).combined(with: .opacity))
-
-
-            VStack {
-                // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
-                ZStack(alignment: .top) {
-                    FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
-                    Group {
-                        TopBar()
-                            .transition(.opacity)
-                            // vvvthis is for visually showing refresh... need to make it change text, lag, then display new city
-                            //.offset(y: dragOffset.height > 0 && sharedState.navPosition == .main && sharedState.bottomTabPosition == .salah ? dragOffset.height : 0)
-
-                        //Menu Button and Side Menu Stuff
-                        HStack{
-                                Button(action: {
-                                    withAnimation { sharedState.showSideMenu.toggle()}
-                                }) {
-                                    Image(systemName: "line.3.horizontal")
-                                        .background(.white.opacity(0.01))
-                                        .frame(width: 24, height: 24)
-                                        .font(.system(size: 20))
-                                        .fontWeight(.light)
-                                        .fontDesign(.rounded)
-                                        .foregroundColor(.gray.opacity(0.8))
-                                        .padding()
-                                }
-                            Spacer()
-                        }
-                        
-                        // Grayed Out Cover for SideMenu
-                        Color(.black).opacity(0.5)
-                            .edgesIgnoringSafeArea(.all)
-                            .onTapGesture {
-                                withAnimation{ sharedState.showSideMenu = false }
-                            }
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                                    .onEnded { value in
-                                            withAnimation { sharedState.showSideMenu = false }
-                                    }
-                            )
-                            .opacity(sharedState.showSideMenu ? 1 : 0)
-
-                        
-                        HStack{
-                            sideMenu(viewState: sharedState.navPosition)
-                                .frame(width: 180)
-                                .offset(x: sharedState.showSideMenu ? 0 : -200)
-                                .animation(.spring, value: sharedState.showSideMenu)
-                            Spacer()
-                        }
-                    }
-                }
-                                    
-                Spacer()
-                
-            }
-            .offset(x: pagerX)
-            .navigationBarHidden(true)
-            
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .active {
@@ -409,6 +261,157 @@ struct PrayerTimesView: View {
     }
 
     
+
+    // MARK: - Center page
+    /// Main circle + bottom sheet, with the top bar / side menu overlaid. Lives inside the pager.
+    private var centerPage: some View {
+        ZStack {
+            // Vertical drag surface (bottom sheet / pull-to-refresh). Simultaneous, not high
+            // priority, so horizontal drags still reach the paging ScrollView.
+            Color("bgColor").opacity(0.001)
+                .edgesIgnoringSafeArea(.all)
+                .simultaneousGesture(abstractedDragGesture)
+                .simultaneousGesture(switchToSalahDoubleTapSGesture)
+            
+            // Main circle + bottom sheet
+            ZStack {
+                VStack {
+
+                    Spacer()
+                    
+                    if showBottom{
+                        Spacer()
+                        Spacer()
+                    }
+                    
+                    ZStack{
+                        MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                            .geometryGroup()
+                            .simultaneousGesture(abstractedDragGesture) // vertical; horizontal must reach the pager
+                            .onAppear {
+                                print("⭐️ prayerTimesView onAppear")
+                                viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
+                                viewModel.loadTodaysPrayerObjects()
+                                viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
+                            }
+                    }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(3)
+
+                    
+                    Spacer()
+                    
+                    
+                    if showBottom {
+                        Spacer()
+                        
+                            BottomSharedView(
+                                showChainZikrButton: $showChainZikrButton,
+                                dismissChainZikrItem: $dismissChainZikrItem,
+                                showDailyAyahView: $showDailyAyahView,
+                                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                                showTasbeehPage: $showTasbeehPage,
+                                dragGesture: abstractedDragGesture
+                            )
+//                                        .fullScreenCover(isPresented: $showDailyAyahView){
+//                                            DailyAyahView()
+//                                        }
+                        .opacity(1 - Double(dragOffset.height / 90))
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        
+                        Spacer()
+                        
+
+                    }
+                    
+                    ZStack{
+                        Button {
+                            withAnimation {
+                                print("tapped the chev")
+                                sharedState.navPosition = showBottom ? .main : .bottom
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up")
+                                .font(.title3)
+                                .foregroundStyle(chevDragValue != 0 ? Color.secondary : Color(.secondarySystemFill))
+                                .animation(.smooth, value: dragOffset.height)
+//                                    .scaleEffect(x: 1, y: (dragOffset.height > 0 || showBottom) ? -1 : 1)
+                                .padding(.bottom, 30)
+                                .padding()
+                                .offset(y: chevDragValue)
+                        }
+                        .opacity(showBottom ? 0 : 1)
+                        
+                        CustomBottomBar()
+                            .opacity(1 - Double(dragOffset.height / 90))
+                            .opacity(showBottom ? 1 : 0)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                }
+                .transition(.opacity)
+            }
+
+            // Top bar, menu button, side menu
+            VStack {
+                // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
+                ZStack(alignment: .top) {
+                    FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
+                    Group {
+                        TopBar()
+                            .transition(.opacity)
+                            // vvvthis is for visually showing refresh... need to make it change text, lag, then display new city
+                            //.offset(y: dragOffset.height > 0 && sharedState.navPosition == .main && sharedState.bottomTabPosition == .salah ? dragOffset.height : 0)
+
+                        //Menu Button and Side Menu Stuff
+                        HStack{
+                                Button(action: {
+                                    withAnimation { sharedState.showSideMenu.toggle()}
+                                }) {
+                                    Image(systemName: "line.3.horizontal")
+                                        .background(.white.opacity(0.01))
+                                        .frame(width: 24, height: 24)
+                                        .font(.system(size: 20))
+                                        .fontWeight(.light)
+                                        .fontDesign(.rounded)
+                                        .foregroundColor(.gray.opacity(0.8))
+                                        .padding()
+                                }
+                            Spacer()
+                        }
+                        
+                        // Grayed Out Cover for SideMenu
+                        Color(.black).opacity(0.5)
+                            .edgesIgnoringSafeArea(.all)
+                            .onTapGesture {
+                                withAnimation{ sharedState.showSideMenu = false }
+                            }
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 10, coordinateSpace: .global)
+                                    .onEnded { value in
+                                            withAnimation { sharedState.showSideMenu = false }
+                                    }
+                            )
+                            .opacity(sharedState.showSideMenu ? 1 : 0)
+
+                        
+                        HStack{
+                            sideMenu(viewState: sharedState.navPosition)
+                                .frame(width: 180)
+                                .offset(x: sharedState.showSideMenu ? 0 : -200)
+                                .animation(.spring, value: sharedState.showSideMenu)
+                            Spacer()
+                        }
+                    }
+                }
+                                    
+                Spacer()
+                
+            }
+            .navigationBarHidden(true)
+        }
+    }
+
     // MARK: - Other Helper Structs
     
     struct BottomSharedView: View {
@@ -446,7 +449,7 @@ struct PrayerTimesView: View {
                         dismissChainZikrItem: $dismissChainZikrItem,
                         showDailyAyahView: $showDailyAyahView
                     )
-                    .highPriorityGesture(dragGesture)
+                    .simultaneousGesture(dragGesture) // vertical only; horizontal must reach the pager
                     
                     
                     /*

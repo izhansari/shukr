@@ -41,14 +41,26 @@ Quality (fix before launch):
 
 ## Navigation (PrayerTimesAndTracker.swift)
 
-`sharedState.navPosition` is the single nav state. Horizontal is a three-page pager that tracks
-the finger 1:1 (`pageDrag`) and springs on release: **Zikr (.left) | Main (.main / .bottom) |
-Settings (.right)**. `pagerX = basePageX + pageDrag`; every page and the top bar overlay are
-offset by it. Commit to a neighbour on 1/3 screen or a flick (predicted end > 1/2 screen);
-rubber-band past the ends. Vertical on the center page is unchanged: swipe up → `.bottom`
-(salah sheet), swipe down → refresh, with the old resistance/clamp (`dragOffset.height`).
-`cameFromNavPosition` remembers whether you left from `.main` or `.bottom` so swiping back
-returns there. The bottom bar mirrors the pager (Zikr | Salah | Settings).
+`sharedState.navPosition` is the single nav state. Horizontal is a **native paging
+`ScrollView`** with three full-width pages in a plain `HStack`: **Zikr (.left) | Main
+(.main / .bottom) | Settings (.right)**. UIKit drives finger tracking, rubber-banding and
+settle, so no SwiftUI work happens per drag frame (the previous offset-based pager re-ran the
+whole body every frame and felt laggy). `@State scrollPage: NavPage?` is bound with
+`.scrollPosition(id:)`; two `onChange` handlers keep it and `navPosition` in step (user swipe
+→ navPosition; bottom bar / widget deep link → scroll). Returning to Main restores `.main` or
+`.bottom` via `cameFromNavPosition`. `.defaultScrollAnchor(.center)` starts on Main.
+
+Vertical on the center page is unchanged (swipe up → `.bottom` sheet, swipe down → refresh,
+`dragOffset.height` with resistance). `abstractedDragGesture` is vertical-only now and is
+attached with `.simultaneousGesture` (never `highPriorityGesture`, which would steal horizontal
+drags from the pager) on the center page's background, the main circle, and the salah list.
+Nested horizontal scrolling (task cards on the Zikr page) works the UIKit way: inner first,
+then the page turns. The bottom bar mirrors the pager (Zikr | Salah | Settings).
+
+Known: the pager ignores the bottom safe area (to keep the bottom bar flush), so the Settings
+`Form`'s last row sits under the home indicator. Add bottom padding inside SettingsView if it
+bothers. `scrollPage` can flip mid-drag when the page crosses the midpoint, which collapses the
+bottom sheet slightly early; `onScrollPhaseChange` (iOS 18) would defer it if we raise the target.
 
 Parked, not deleted: `DuaPageView` ("Notes") used to be the `.left` page; the block is
 commented out in the body and there's no route to it now. `bottomTabPosition == .zikr` is
@@ -64,22 +76,28 @@ Widget buttons: compass → app `.main` + qibla map; tasbeeh → app `.left` (Zi
 text toggles are in-widget. These use one-shot flags in the app group read on `scenePhase ==
 .active` in `PrayerTimesAndTracker`.
 
-**Completing a prayer from the widget does not open the app.** The widget can't reach the
-app's SwiftData store (it lives in the app container, and the widget target doesn't compile
-the models), so `MarkCompleteIntent` queues a `WidgetPrayerCompletion` {name, start, end,
-tappedAt} in the app group via `WidgetCompletionStore` (`SharedTargetForIntents.swift`,
-compiled into both targets). The widget treats queued + app-synced prayers as done
-(`entry.completedToday`), so its circle advances to the next prayer immediately. The app
-drains the queue in `PrayerViewModel.applyPendingWidgetCompletions()` on activation: scores
-at the tap time, cancels nudges (may already have fired), creates the prayer row if the app
-was never opened that day, then recomputes streak/day score. The app pushes its own
-completions back with `syncCompletionsToWidget` so the widget doesn't offer a prayer you
-already ticked in-app. Known gaps: no location recorded for widget completions; nudge
-notifications can still fire between the widget tap and the next app open.
+**One SwiftData store, shared.** `SharedStore` (`shukrWidget/SharedTargetForIntents.swift`,
+compiled into both targets) owns the schema and the store URL: `<app group>/shukr.store`.
+`Models/` is in both targets' `fileSystemSynchronizedGroups` (pbxproj) so the schema matches.
+On first launch after this change `migrateLegacyStoreIfNeeded()` copies the old
+`Application Support/default.store` (+ -wal/-shm) into the group; the old files are left in
+place and never read again. The app's `ModelContainer` comes from `SharedStore.makeContainer()`.
 
-Bigger alternative if that gap matters: move the SwiftData store into the app group
-container (file-copy migration on first launch) and add `Models/` to the widget target's
-`fileSystemSynchronizedGroups` so the intent writes the store directly.
+**Completing a prayer from the widget does not open the app.** `MarkCompleteIntent` carries the
+shown prayer's name/start/end, opens the shared store (`SharedStore.widgetContainer`, one per
+widget process), fetches or creates the row, marks it complete, scores it at the tap, records
+the app's last known location, cancels nudges, saves, sets `widgetWroteStore`, and reloads the
+widget. The widget's timeline reads completion state straight from the store
+(`completedPrayerNamesToday`) and skips done prayers when picking what to show. On activation
+the app runs `PrayerViewModel.reconcileAfterWidgetWrites()`: if the flag is set it saves, calls
+`context.rollback()` so cached rows refault, re-reads today's prayers, re-cancels nudges (in
+case an extension can't reach the app's notification center — unverified), and recomputes
+streak / day score. In-app completions call `pushCompletionsToWidget()` (save + reload).
+
+To verify on device: complete from the widget, check the nudge for that prayer does not fire;
+open the app and check the prayer shows complete with the right score. If the nudge still
+fires, the extension can't cancel app notifications and we need another approach (e.g. the app
+schedules nudges as fewer, later-verified notifications).
 
 ## Tasbeeh / zikr feature
 
@@ -115,8 +133,8 @@ Backlog / known oddities:
 - [ ] Dead code: empty `if selectedMode == 2 {}` in `estTimeLeft`, unused `resetTasbeeh()`, `NoteModalView`, `deleteMantra`, `timePassedAtPauseString`, `endTime` (written, never read). `secsPassed` returns 999 when `startTime` is nil.
 - [ ] Count widget (`shukrWidget/shukrWidget.swift`) is commented out of the bundle; nothing writes its `count`/`paused` keys. Delete or revive.
 - [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
-- [x] Widget "complete prayer" works in place, no app launch (queue in app group, applied on next open).
-- [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe, pages follow the finger.
+- [x] Widget "complete prayer" works in place, no app launch (shared SwiftData store in the app group; widget writes it directly).
+- [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe. Pager is a native paging ScrollView (first offset-based version was laggy on device).
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
 ## Planned: richer mantra model

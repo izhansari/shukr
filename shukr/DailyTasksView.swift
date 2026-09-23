@@ -91,14 +91,11 @@ struct DailyTasksView: View {
 }
 
 /// Full-page home for the daily zikr tasks: the left page of the main pager.
-/// Empty space falls through to the root drag layer, so swiping the page works
-/// everywhere except on the task cards themselves (which scroll).
+/// The pager is a horizontal ScrollView, so the task cards' own horizontal scroll
+/// nests inside it the UIKit way: cards scroll first, the page turns at their edge.
 struct ZikrPageView: View {
     @Binding var showMantraSheetFromHomePage: Bool
     @Binding var showTasbeehPage: Bool
-    /// The pager drag. Attached to the card frame's background only, so the task
-    /// cards keep their own horizontal scroll while the space around them pages.
-    var dragGesture: _EndedGesture<_ChangedGesture<DragGesture>>
 
     var body: some View {
         VStack {
@@ -108,7 +105,7 @@ struct ZikrPageView: View {
                 showTasbeehPage: $showTasbeehPage
             )
             .frame(width: 260)
-            .background(FlatBorder().highPriorityGesture(dragGesture))
+            .background(FlatBorder())
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
