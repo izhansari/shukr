@@ -91,24 +91,57 @@ final class LocationViewModel: ObservableObject {
     var filtersActive: Bool {
         selectedStartDate != defaultStartDate || selectedEndDate != defaultEndDate || selectedPrayerNames != defaultPrayerNames
     }
-    /// What the pins cover, for the status pill: "All time", "Since Jan 1", "Jan 1 – Mar 3",
-    /// plus the prayer names when not all five are on.
-    var rangeSummary: String {
-        let f = Date.FormatStyle().month(.abbreviated).day()
-        var parts: [String] = []
-        let startCustom = selectedStartDate != defaultStartDate
-        let endCustom = Calendar.current.startOfDay(for: selectedEndDate) != Calendar.current.startOfDay(for: defaultEndDate)
-        switch (startCustom, endCustom) {
-        case (false, false): parts.append("All time")
-        case (true, false): parts.append("Since \(selectedStartDate.formatted(f))")
-        case (false, true): parts.append("Until \(selectedEndDate.formatted(f))")
-        case (true, true): parts.append("\(selectedStartDate.formatted(f)) – \(selectedEndDate.formatted(f))")
+    /// Ready-made date ranges for the filter sheet. `custom` = the two pickers.
+    enum QuickRange: String, CaseIterable, Identifiable {
+        case allTime = "All time", thisWeek = "This week", last30 = "Last 30 days", thisYear = "This year", lastYear = "Last 12 months", custom = "Custom"
+        var id: String { rawValue }
+        /// Start/end of the range, nil for custom.
+        func dates(now: Date = Date()) -> (start: Date, end: Date)? {
+            let cal = Calendar.current
+            switch self {
+            case .allTime: return (.distantPast, now)
+            case .thisWeek: return (cal.dateInterval(of: .weekOfYear, for: now)?.start ?? now, now)
+            case .last30: return (cal.date(byAdding: .day, value: -30, to: now) ?? now, now)
+            case .thisYear: return (cal.dateInterval(of: .year, for: now)?.start ?? now, now)
+            case .lastYear: return (cal.date(byAdding: .year, value: -1, to: now) ?? now, now)
+            case .custom: return nil
+            }
         }
-        if selectedPrayerNames != defaultPrayerNames {
-            let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-            parts.append(order.filter { selectedPrayerNames.contains($0) }.joined(separator: ", "))
+    }
+    /// The quick range the current dates match, else custom.
+    var quickRange: QuickRange {
+        let cal = Calendar.current
+        for r in QuickRange.allCases {
+            guard let d = r.dates() else { continue }
+            let sameStart = r == .allTime ? selectedStartDate == .distantPast : cal.isDate(selectedStartDate, inSameDayAs: d.start)
+            if sameStart && cal.isDate(selectedEndDate, inSameDayAs: d.end) { return r }
         }
-        return parts.joined(separator: " · ")
+        return .custom
+    }
+    func apply(_ range: QuickRange) {
+        guard let d = range.dates() else { return }
+        selectedStartDate = d.start
+        selectedEndDate = d.end
+    }
+
+    /// The filter bar's sentence: what the pins on the map are, e.g. "Showing all your prayers",
+    /// "Showing Fajr, Isha from the last 30 days", "Showing prayers from Jan 1 – Mar 3".
+    var filterSentence: String {
+        let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+        let names = selectedPrayerNames == defaultPrayerNames
+            ? "prayers"
+            : order.filter { selectedPrayerNames.contains($0) }.joined(separator: ", ")
+        let f = Date.FormatStyle().month(.abbreviated).day().year(.twoDigits)
+        let when: String
+        switch quickRange {
+        case .allTime: return names == "prayers" ? "Showing all your prayers" : "Showing every \(names)"
+        case .thisWeek: when = "this week"
+        case .last30: when = "the last 30 days"
+        case .thisYear: when = "this year"
+        case .lastYear: when = "the last 12 months"
+        case .custom: when = "\(selectedStartDate.formatted(f)) – \(selectedEndDate.formatted(f))"
+        }
+        return "Showing \(names) from \(when)"
     }
 
     /// Every prayer with coordinates (set by the view from its @Query) and the filtered set the
@@ -459,15 +492,8 @@ struct LocationMapContentView: View {
                     // Status pill: compass hint in qibla mode, count in prayers mode.
                     HStack {
                         Spacer()
-                        VStack(spacing: 2) {
-                            Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
-                                .monospacedDigit()
-                            if viewModel.showPrayers {
-                                Text(viewModel.rangeSummary)   // which range the pins cover
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
+                        Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
+                            .monospacedDigit()
                             .font(.subheadline)
                             .foregroundStyle(.black)
                             .padding()
@@ -500,18 +526,38 @@ struct LocationMapContentView: View {
                                 Image(systemName: viewModel.showPrayers ? "mappin.circle.fill" : "mappin.circle")
                             }
                             .buttonStyle(MapPill())
-                            Button { showFilterSheet = true } label: {
-                                Image(systemName: viewModel.filtersActive ? "line.horizontal.3.decrease.circle.fill" : "line.horizontal.3.decrease.circle")
-                            }
-                            .buttonStyle(MapPill(filled: viewModel.filtersActive))
-                            .opacity(viewModel.showPrayers ? 1 : 0)
                         }
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
                 Spacer()
+
+                // Filter bar: says what the pins are; tap to change. Prayers mode only.
+                if viewModel.showPrayers {
+                    Button { showFilterSheet = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "line.3.horizontal.decrease.circle\(viewModel.filtersActive ? ".fill" : "")")
+                            Text(viewModel.filterSentence)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.up").font(.caption.weight(.semibold))
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(viewModel.filtersActive ? Color.white : Color.green)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(viewModel.filtersActive ? Color.green : Color.white)
+                        .clipShape(Capsule())
+                        .shadow(radius: 3)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
         }
         .onChange(of: viewModel.selection?.id) { _, id in
             // Sheet gone (swiped down or swapped): drop the pin highlight.
@@ -708,8 +754,8 @@ struct CheckboxStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
         Button(action: { configuration.isOn.toggle() }) {
             HStack {
-                Image(systemName: configuration.isOn ? "checkmark.square" : "square")
-                    .foregroundColor(configuration.isOn ? .blue : .primary)
+                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                    .foregroundColor(configuration.isOn ? .green : .secondary)
                 configuration.label
             }
         }
@@ -730,11 +776,45 @@ struct FilterView: View {
 
     @Environment(\.dismiss) var dismiss
 
+    private var currentRange: LocationViewModel.QuickRange {
+        let cal = Calendar.current
+        for r in LocationViewModel.QuickRange.allCases {
+            guard let d = r.dates() else { continue }
+            let sameStart = r == .allTime ? selectedStartDate == .distantPast : cal.isDate(selectedStartDate, inSameDayAs: d.start)
+            if sameStart && cal.isDate(selectedEndDate, inSameDayAs: d.end) { return r }
+        }
+        return .custom
+    }
+    private func apply(_ range: LocationViewModel.QuickRange) {
+        guard let d = range.dates() else { return }
+        selectedStartDate = d.start
+        selectedEndDate = d.end
+    }
+
     let allPrayerNames = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             Form {
+                Section(header: Text("When")) {
+                    // Ready-made ranges; the pickers below appear for Custom.
+                    ForEach(LocationViewModel.QuickRange.allCases) { range in
+                        Button {
+                            if range == .custom {
+                                if currentRange != .custom { selectedStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() }
+                            } else {
+                                apply(range)
+                            }
+                        } label: {
+                            HStack {
+                                Text(range.rawValue).foregroundStyle(.primary)
+                                Spacer()
+                                if currentRange == range { Image(systemName: "checkmark").foregroundStyle(.green) }
+                            }
+                        }
+                    }
+                }
+                if currentRange == .custom {
                 Section(header: Text("Date Range")) {
                     HStack {
                         VStack(alignment: .leading) {
@@ -766,6 +846,7 @@ struct FilterView: View {
                     }
                 }
 
+                }
                 Section(header: Text("Prayers")) {
                     ForEach(allPrayerNames, id: \.self) { prayerName in
                         Toggle(isOn: Binding(
@@ -785,6 +866,7 @@ struct FilterView: View {
                 }
             }
             .navigationBarTitle("Filter Prayers", displayMode: .inline)
+            .tint(.green)
             .navigationBarItems(
                 leading: Button("Reset") {
                     selectedStartDate = defaultStartDate

@@ -260,9 +260,12 @@ swapping `item` under a live sheet kept the old detent and sometimes came back f
 Compact detent (`fraction(0.32)`) for one prayer, `.medium` for a cluster. The visible count is
 our own pins inside `visibleMapRect` — `annotations(in:)` returns clusters *and* their members
 and double-counted. Default filter range is all time (`defaultStartDate = .distantPast`; the
-filter sheet's start picker shows the earliest pin instead of year 0001) and the status pill's
-second line says what the pins cover (`rangeSummary`: "All time" / "Since Jan 1" / prayer
-names). The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
+filter sheet's start picker shows the earliest pin instead of year 0001). A **filter bar** at
+the bottom of the map (prayers mode) says what the pins are as a sentence — `filterSentence`:
+"Showing all your prayers" / "Showing Fajr, Isha from the last 30 days" / "Showing prayers from
+Jan 1, 26 – Mar 3, 26" — and opens the filter sheet (green when a filter is active; the side
+filter button is gone). The sheet leads with `QuickRange` rows (All time / This week / Last 30
+days / This year / Last 12 months / Custom); the date pickers only appear under Custom. The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
 Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`
