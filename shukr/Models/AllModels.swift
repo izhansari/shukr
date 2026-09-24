@@ -515,3 +515,33 @@ class DailyPrayerScore {
 //        runningGoal = todaysMantraSessions.reduce(0) { $0 + $1.totalCount }
 //    }
 //}
+
+
+// MARK: - Mantra stats
+
+extension MantraModel {
+    /// What the sessions linked to this mantra add up to. Nothing is stored: sessions are the
+    /// record, so the numbers can't drift, and a session that's deleted or relinked is
+    /// reflected at once.
+    var totalCount: Int { sessions.reduce(0) { $0 + $1.totalCount } }
+    var totalSeconds: TimeInterval { sessions.reduce(0) { $0 + $1.secondsPassed } }
+
+    /// Average seconds per count, time-weighted over every session that counted something
+    /// (total seconds / total counts), so a long slow session weighs more than a quick one.
+    /// Nil until something has been counted.
+    var secondsPerCount: TimeInterval? {
+        let counted = sessions.filter { $0.totalCount > 0 && $0.secondsPassed > 0 }
+        let counts = counted.reduce(0) { $0 + $1.totalCount }
+        guard counts > 0 else { return nil }
+        return counted.reduce(0.0) { $0 + $1.secondsPassed } / Double(counts)
+    }
+}
+
+/// "1h 05m", "12m 03s" or "45s".
+func zikrDurationString(_ seconds: TimeInterval) -> String {
+    let total = Int(seconds.rounded())
+    let h = total / 3600, m = (total % 3600) / 60, sec = total % 60
+    if h > 0 { return String(format: "%dh %02dm", h, m) }
+    if m > 0 { return String(format: "%dm %02ds", m, sec) }
+    return "\(sec)s"
+}

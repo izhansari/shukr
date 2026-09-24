@@ -87,59 +87,41 @@ and is written only from `onChange(of: horizontalPage)`; user swipes flow the ot
 `.onScrollPhaseChange` (iOS 18) **only when the phase hits `.idle`**, using
 `visibleRect.midX / containerSize.width`. `.defaultScrollAnchor(.center)` starts on Main.
 
-**The vertical drag on the Salah page is a native vertical `ScrollView`** (`SalahPageContent`),
-nested inside the horizontal pager. Its content is an invisible track exactly `travel` taller
-than the page; the circle and the salah sheet ride inside it, pinned to the viewport by
-`.offset(y: live.sheetOffset)` and positioned from the open-progress `p = sheetOffset / travel`.
-UIKit supplies what the hand-rolled gesture never got right: 1:1 tracking, the deceleration
-curve, rubber-banding at both ends and direction locking against the pager (a drag that starts
-vertical stays vertical even if it drifts sideways; a horizontal one pages). `SheetSnap`
-(`ScrollTargetBehavior`) rounds the natural end point to 0 or `travel`, so a flick coasts on
-its own momentum and settles where it was heading, like `.paging`. Three earlier hand-rolled
-versions (fixed spring, projected velocity + interpolatingSpring + rubber band + axis lock) all
-felt wrong to the owner; don't go back to a `DragGesture` for this.
+**The salah sheet pops; the finger never drags it.** `SalahPageContent` is the old
+Spacer layout: `if showBottom` inserts the sheet (`.move(edge: .bottom)` + opacity) and two
+extra Spacers above the circle; all of it animates from the `withAnimation(.spring(response:
+0.35, dampingFraction: 0.85))` around the `navPosition` change. A vertical swipe past 30 pt on
+the pager (`abstractedDragGesture`, `.simultaneousGesture` on the pager itself, axis decided
+on the first move, ignored unless `horizontalPage == .main`) flips it: up opens, down closes,
+down-while-closed refreshes. While the finger is down only `live.pull` moves (resisted ×0.5,
+capped ±20): the chrome's chevron follows it and the open sheet fades a little. The bottom
+86 pt of the VStack is an empty placeholder where the chevron / bottom bar used to sit, so the
+Spacers split the page as before. `summaryCircle` crossfades score ↔ next-Fajr (opacity +
+scale) in the same animation instead of a hard switch.
 
-Coordinate gotcha: the scroll view applies the top safe area as a content inset, so the raw
-`contentOffset.y` at rest is `-inset` and `ScrollGeometry` reports it that way — `sheetOffset`
-is `contentOffset.y + contentInsets.top`. `ScrollTarget.rect` in `SheetSnap` and
-`ScrollPosition.scrollTo(y:)` are already inset-adjusted (0 = rest). Mixing the two spaces
-puts the open state ~60 pt short. The scrollable range from rest is `travel` with the track at
-`H + travel`; do not subtract the inset from the track.
+History, so nobody re-does it: on 2026-09-24 the owner asked for follow-the-finger, got a
+custom DragGesture (three iterations: fixed spring, projected velocity + interpolating spring +
+rubber band + axis lock), then a native vertical ScrollView with a snapping
+`ScrollTargetBehavior` (which worked, with the inset gotcha that `ScrollGeometry.contentOffset`
+carries the safe-area inset while `ScrollTarget` / `scrollTo(y:)` don't), then detent-style
+commits with a progress-driven crossfade — and then asked for the pop back. The pop is what
+they want. `git log 6de940a..2c5a110` has the other versions if ever needed.
 
-**Commit at the decision, not at rest.** `navPosition` (and the haptic) flip when the finger
-crosses the midpoint while dragging (the detent; coming back flips it back) and in
-`SheetSnap.updateTarget` the instant the finger lifts, where the destination is known — never
-when the scroll settles. Owner's complaint that drove this: on a slow flick the sheet landed,
-then the circle swapped content and the phone buzzed a beat later. For the same reason
-`summaryCircle` crossfades score ↔ next-Fajr from `live.sheetP` (fade across p = 0.35…0.65)
-instead of switching on `navPosition`; anything else that switches visually on open/closed
-should read `p` too. `onChange(of: navPosition)` → `scrollTo` is for programmatic changes
-(chevron, widget deep link) and is skipped while the phase is `.interacting` / `.decelerating`,
-since those commits came from the drag and the track is already heading there. A release from
-a >40 pt top bounce triggers the refresh (the circle dips a resisted 20 pt nudge meanwhile). The
-gesture only exists on the Salah page, so Settings' Form and vertical drags on Zikr are
-untouched. Do not add drag gestures inside pages.
-
-**Per-frame values live in `PagerLiveState` (`@Observable`, held as `@State live`)**: the
-Salah scroll writes `sheetOffset` / `sheetInset` / `sheetTravel` (computed `sheetP`,
-`pullNudge`), the pager's `.onScrollGeometryChange` writes `scrollProgress` (0 Zikr, 1 Salah,
-2 Settings). PrayerTimesView's body reads none of them, so only the two views that do re-render
-per frame: `SalahPageContent` and `PagerChromeView`. Keep it that way.
-
-**Layout by progress.** `SalahGeometry` reproduces the old Spacer layout at p = 0 and p = 1
-(circle 200 pt, bottom chrome 86 pt) and lerps between. The finger maps 1:1 onto the **sheet's**
-travel (parked below the screen → open), so the list moves exactly with the finger and the
-circle, which rises only sheetHeight / 2, follows slower — mapping the circle 1:1 made the list
-run ~3× the finger. The sheet is always in the tree, parked below the screen when closed
-(mounting it mid-drag stalled devices and changed the travel distance when its height got
-measured); `TodaysPrayerListView` only builds buttons for loaded prayers so `PrayerButton`
-can't fatalError before `loadTodaysPrayerObjects` runs.
+**Per-frame values live in `PagerLiveState` (`@Observable`, held as `@State live`)**: `pull`
+(the drag nudge), `scrollProgress` (0 Zikr, 1 Salah, 2 Settings, from the pager's
+`.onScrollGeometryChange`) and `pagerLocked`. PrayerTimesView's body reads none of them, so
+only the views that do re-render per frame: `SalahPageContent` and `PagerChromeView`. Keep it
+that way. The sheet is always built when open and `TodaysPrayerListView` only builds buttons
+for loaded prayers so `PrayerButton` can't fatalError before `loadTodaysPrayerObjects` runs.
 
 **Top bar and bottom bar are fixed chrome** (`PagerChromeView`, a sibling of the pager in the
 root ZStack): hamburger `Menu` + `TopBar` on Salah / "Zikr" title on Zikr; chevron hint on Salah
 with the sheet closed; `CustomBottomBar` on Salah with the sheet up and always on Zikr. Opacities
-come from `live` (sheet progress and `zikrness`), the whole thing fades with `settingsness` so
-Settings slides in over nothing and keeps its own header. Owner's call: no chrome on Settings.
+come from `navPosition` (animated by the same `withAnimation`) and `live.scrollProgress`
+(`zikrness`); the whole thing fades with `settingsness` so Settings slides in over nothing and
+keeps its own header. Owner's call: no chrome on Settings. Settings must not set
+`.navigationTitle`: it's inside the root NavigationStack, so its title became the back-button
+label on every pushed page.
 
 **The Zikr page's task strip holds the pager while touched.** Nested same-axis scroll views
 chain in UIKit (a drag on the strip at its last card turned the page, 2026-09-24). The strip
@@ -155,7 +137,8 @@ one arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
 `horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
 until the user paged away and back.
 
-Hamburger = native `Menu` (Map, Daily Ayah, Mantras, Settings, `#if DEBUG` Dev's WIP) driving
+Hamburger = native `Menu` (Map, Daily Ayah, Mantras, Zikr History, Settings, `#if DEBUG` Dev's
+WIP) driving
 `.navigationDestination(isPresented:)` pushes on the root NavigationStack. The old drawer
 (`sideMenu` in Utils.swift, `showSideMenu`) is parked: toggling it published shared state and
 re-rendered the whole home screen to animate, which is why it felt laggy.
@@ -292,6 +275,16 @@ Backlog / known oddities:
 - [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
 - [x] Widget "complete prayer" works in place, no app launch (shared SwiftData store in the app group; widget writes it directly).
 - [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe. Pager is a native paging ScrollView (first offset-based version was laggy on device).
+- [x] Zikr History (hamburger → `HistoryPageView`, 2026-09-24): a List of every session newest
+  first, grouped by day, under an all-time total; rows show mantra (live name, else the title
+  snapshot), time, mode + target, count, duration and pace. The old paged-by-day version had a
+  `scrollPosition(id:)` bound to an Int while the rows were keyed by Date, so it never tracked.
+  `DayView` / `SessionCardView` / `DailyStatToggleView` in that file are now unused.
+- [x] Mantra pace (2026-09-24): `MantraModel.totalCount` / `totalSeconds` / `secondsPerCount`
+  are computed from its sessions (time-weighted: total seconds / total counts), nothing is
+  stored, so no schema change and nothing to drift. Shown in the Mantras list row and the
+  editor's Stats section (pace per count + per 100). `zikrDurationString` in AllModels.swift
+  is the shared "1h 05m / 12m 03s / 45s" formatter.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
 ## Mantra model (schema V2)

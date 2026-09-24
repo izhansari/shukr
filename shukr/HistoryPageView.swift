@@ -10,142 +10,117 @@ import SwiftData
 
 import SwiftUI
 
+/// Zikr history: every saved session, newest first, grouped by day, under an all-time total.
+/// Reached from the hamburger menu. Rows show what the results screen showed for the session:
+/// mantra, time, mode + target, count, duration and pace.
 struct HistoryPageView: View {
-    @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
-    @Query private var sessionItems: [SessionDataModel]
-    @EnvironmentObject var sharedState: SharedStateClass
-    
-    @State private var selectedDateIndex: Int = 0
-    @State private var dailyStatBool = true
-    
-    private var calendar: Calendar { Calendar.current }
-    
-    private var availableDates: [Date] {
-        let dates = Set(sessionItems.map { calendar.startOfDay(for: $0.startTime) })
-        return Array(dates).sorted(by: <) // Ascending order (older dates first)
-    }
-    
-    private func sessions(for date: Date) -> [SessionDataModel] {
-        sessionItems
-            .filter { calendar.isDate($0.startTime, inSameDayAs: date) }
-            .sorted(by: { $0.startTime > $1.startTime })
-    }
-    
-    private func exitPage() {
-        triggerSomeVibration(type: .light)
-        dismiss()
-    }
-    
-    var body: some View {
-        ZStack{
-            VStack(alignment: .leading) {
-//                HStack {
-//                    DailyStatToggleView(dailyStatBool: $dailyStatBool)
-//
-//                    Spacer()
-//
-//                    Button(action: {
-//                        exitPage()
-//                    }) {
-//                        RoundedRectangle(cornerRadius: 15)
-//                            .fill(Color.clear.opacity(0.1))
-//                            .frame(width: 70, height: 70)
-//                            .overlay(
-//                                VStack(spacing: 10) {
-//                                    Image(systemName: "xmark")
-//                                        .frame(width: 30, height: 30)
-//                                        .foregroundColor(.gray)
-//                                }
-//                            )
-//                    }
-//                }
-//                .padding([.top, .leading])
-                
-                
-                
+    @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
 
-//                Text("Tasks")
-//                    .font(.title)
-//                    .fontWeight(.thin)
-//                    .padding(.leading, 30)
-//                
-//                DailyTasksView()
-//                    .padding(.bottom, 15)
-                
-                
-                Text("Sessions")
-                    .font(.title)
-                    .fontWeight(.thin)
-                    .padding(.leading, 30)
-                
-                Text(myDateLabel)
-                    .font(.subheadline)
-                    .underline()
-                    .foregroundStyle(.green)
-                    .bold()
-                    .frame(height: 50)
-                    .frame(maxWidth: .infinity)
-                
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(Array(availableDates.enumerated()), id: \.element) { index, date in
-                            DayView(date: date, sessions: sessions(for: date))
-                                .frame(width: UIScreen.main.bounds.width)
-                                .containerRelativeFrame(.horizontal, alignment: .center)
+    private var calendar: Calendar { Calendar.current }
+
+    /// Sessions grouped by day, newest day first (the query is already newest-first).
+    private var days: [(date: Date, sessions: [SessionDataModel])] {
+        var order: [Date] = []
+        var byDay: [Date: [SessionDataModel]] = [:]
+        for session in sessions {
+            let day = calendar.startOfDay(for: session.startTime)
+            if byDay[day] == nil { order.append(day) }
+            byDay[day, default: []].append(session)
+        }
+        return order.map { (date: $0, sessions: byDay[$0] ?? []) }
+    }
+
+    var body: some View {
+        List {
+            if sessions.isEmpty {
+                ContentUnavailableView(
+                    "No sessions yet",
+                    systemImage: "circle.hexagonpath",
+                    description: Text("Finished zikr sessions show up here.")
+                )
+            } else {
+                Section("All time") {
+                    LabeledContent("Sessions", value: sessions.count.formatted())
+                    LabeledContent("Total count", value: sessions.reduce(0) { $0 + $1.totalCount }.formatted())
+                    LabeledContent("Total time", value: zikrDurationString(sessions.reduce(0.0) { $0 + $1.secondsPassed }))
+                }
+                ForEach(days, id: \.date) { day in
+                    Section {
+                        ForEach(day.sessions) { session in
+                            SessionRow(session: session)
+                        }
+                    } header: {
+                        HStack {
+                            Text(dayLabel(day.date))
+                            Spacer()
+                            Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
                         }
                     }
                 }
-                .scrollTargetLayout()
-                .scrollTargetBehavior(.paging)
-                .defaultScrollAnchor(.trailing) // this is how we get it to show middle page on load.
-                .scrollPosition(id: .init(get: {
-                    selectedDateIndex
-                }, set: { newPosition in
-                    if let newPos = newPosition {
-                        selectedDateIndex = newPos
-                    }
-                }))
-            }
-            .onAppear {
-                // Set initial index to the last item (most recent date)
-                selectedDateIndex = 0
             }
         }
-//        .navigationBarBackButtonHidden(true)
-//        .navigationTitle("History")
-        .toolbar {
-            
-            ToolbarItem(placement: .principal) {
-                DailyStatToggleView(dailyStatBool: $dailyStatBool)
-            }
-        }
+        .fontDesign(.rounded)
+        .navigationTitle("Zikr History")
+        .navigationBarTitleDisplayMode(.inline)
+    }
 
+    private func dayLabel(_ date: Date) -> String {
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
     }
-    
-    private var myDateLabel: String {
-        let date = availableDates[safe: selectedDateIndex] ?? Date()
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "E, MMM d"
-            return formatter.string(from: date)
+}
+
+/// One session in the history list.
+private struct SessionRow: View {
+    let session: SessionDataModel
+
+    private var modeIcon: String {
+        switch session.sessionMode {
+        case 1: return "timer"
+        case 2: return "number"
+        default: return "infinity"
         }
     }
-    
-    private func dateLabel(for date: Date) -> String {
-        if Calendar.current.isDateInToday(date) {
-            return "Today"
-        } else if Calendar.current.isDateInYesterday(date) {
-            return "Yesterday"
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "E, MMM d"
-            return formatter.string(from: date)
+    private var target: String {
+        switch session.sessionMode {
+        case 1: return "\(session.targetMin)m"
+        case 2: return "\(session.targetCount)"
+        default: return "freestyle"
         }
+    }
+    /// Seconds per count, derived the same way the mantra's pace is (duration / count) so the
+    /// two pages agree; the stored `avgTimePerClick` was sampled mid-session and runs a little low.
+    private var pace: TimeInterval? {
+        guard session.totalCount > 0, session.secondsPassed > 0 else { return nil }
+        return session.secondsPassed / Double(session.totalCount)
+    }
+
+    var body: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.mantra?.name ?? session.title)
+                    .font(.body.weight(.medium))
+                HStack(spacing: 4) {
+                    Text(session.startTime, style: .time)
+                    Text("·")
+                    Image(systemName: modeIcon)
+                    Text(target)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                Text(session.totalCount.formatted())
+                    .font(.title3.weight(.semibold))
+                Text(pace.map { "\(zikrDurationString(session.secondsPassed)) · \(String(format: "%.1fs", $0)) each" }
+                     ?? zikrDurationString(session.secondsPassed))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 

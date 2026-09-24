@@ -39,6 +39,11 @@ struct MantrasView: View {
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
+                                if let pace = mantra.secondsPerCount {
+                                    Text("\(mantra.totalCount.formatted()) counted · \(String(format: "%.1fs", pace)) each")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                             Spacer()
                             if !mantra.notes.isEmpty {
@@ -157,6 +162,20 @@ struct MantraEditorView: View {
                     Section {
                         LabeledContent("Tasks", value: "\(mantra.tasks.count)")
                         LabeledContent("Sessions", value: "\(mantra.sessions.count)")
+                        if mantra.totalCount > 0 {
+                            LabeledContent("Total count", value: mantra.totalCount.formatted())
+                            LabeledContent("Total time", value: zikrDurationString(mantra.totalSeconds))
+                        }
+                        if let pace = mantra.secondsPerCount {
+                            LabeledContent("Average pace", value: String(format: "%.1fs per count", pace))
+                            LabeledContent("Per 100", value: zikrDurationString(pace * 100))
+                        }
+                    } header: {
+                        Text("Stats")
+                    } footer: {
+                        if mantra.secondsPerCount != nil {
+                            Text("Pace is time-weighted over every session of this mantra.")
+                        }
                     }
                 }
             }

@@ -431,8 +431,6 @@ struct SettingsView: View {
         // The status-bar strip above this page is painted by the pager (PrayerTimesAndTracker),
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(false)
         
         .toolbar {
