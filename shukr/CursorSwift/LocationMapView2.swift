@@ -179,7 +179,7 @@ struct MapView: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
-        static let closeSpan = MKCoordinateSpan(latitudeDelta: 0.03, longitudeDelta: 0.03)
+        static let closeSpan = MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008)   // ~900 m across: your block, not your borough
         var parent: MapView
         var didCentreOnUser = false
         private var prayerAnnotations: [CustomPrayerAnnotation] = []
@@ -350,7 +350,7 @@ struct LocationMapContentView: View {
         guard let mapView = viewModel.mapView,
               let here = mapView.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate else { return }
         let current = mapView.region.span
-        let zoomedOut = current.latitudeDelta > 0.04 || current.longitudeDelta > 0.04
+        let zoomedOut = current.latitudeDelta > 0.012 || current.longitudeDelta > 0.012
         let span = zoomedOut ? MapView.Coordinator.closeSpan : current
         mapView.setRegion(MKCoordinateRegion(center: here, span: span), animated: true)
     }
