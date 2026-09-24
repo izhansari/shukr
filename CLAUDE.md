@@ -246,7 +246,13 @@ ring, arc and triangle fade (`MapAnchor.zoomedOut`); the chevron stays on the do
 right". Prayer spots: all filtered prayers are added as annotations once per filter change and
 MapKit clusters/culls them (the old version tore every pin down and rebuilt it on each pan —
 that was the blink and the cost); pins are coloured by score like the app; the visible count
-comes from `mapView.annotations(in: visibleMapRect)`. Location comes from the app's
+comes from `mapView.annotations(in: visibleMapRect)`. Tapping a pin or a cluster opens
+`PrayerSpotSheet` (one view for both, via `PrayerSpotSelection`) as a half sheet
+(`.medium`/`.large`, background interaction enabled so the map stays usable): headline,
+per-prayer counts + average score for a cluster, then the prayers newest first by day — name,
+"prayed 6:34 PM", the window and how far into it ("2h 22m in" / "after it ended"), score % with
+the score-colour dot and the word (Optimal/Good/Poor/Kaza). The old full-screen sheets that
+re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
 Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`

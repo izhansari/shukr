@@ -46,8 +46,8 @@ class MeccaMarkerAnnotationView: MKMarkerAnnotationView {
 /// count and the Mecca proximity publish only when they change, so the SwiftUI shell isn't
 /// re-rendered while the map moves.
 final class LocationViewModel: ObservableObject {
-    @Published var selectedPrayer: PrayerModel?
-    @Published var selectedClusterPrayers: [PrayerModel]?
+    /// The pin (one prayer) or cluster (several) the user tapped; drives the half sheet.
+    @Published var selection: PrayerSpotSelection?
     @Published var mapType: MKMapType = .standard
     @Published var showPrayers: Bool = false
     @Published var visiblePrayerCount: Int = 0
@@ -323,9 +323,10 @@ struct MapView: UIViewRepresentable {
             defer { mapView.deselectAnnotation(view.annotation, animated: false) }   // so the same pin can be tapped again
             guard let annotation = view.annotation else { return }
             if let cluster = annotation as? MKClusterAnnotation {
-                parent.viewModel.selectedClusterPrayers = cluster.memberAnnotations.compactMap { ($0 as? CustomPrayerAnnotation)?.prayer }
+                let prayers = cluster.memberAnnotations.compactMap { ($0 as? CustomPrayerAnnotation)?.prayer }
+                parent.viewModel.selection = PrayerSpotSelection(prayers: prayers)
             } else if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
-                parent.viewModel.selectedPrayer = prayer
+                parent.viewModel.selection = PrayerSpotSelection(prayers: [prayer])
             }
         }
     }
@@ -442,14 +443,13 @@ struct LocationMapContentView: View {
                 Spacer()
             }
         }
-        .sheet(item: $viewModel.selectedPrayer) { prayer in
-            PrayerDetailView(prayer: prayer)
-        }
-        .sheet(isPresented: Binding(get: { viewModel.selectedClusterPrayers != nil },
-                                    set: { if !$0 { viewModel.selectedClusterPrayers = nil } })) {
-            if let prayers = viewModel.selectedClusterPrayers {
-                ClusterPrayersDetailView(prayers: prayers)
-            }
+        .sheet(item: $viewModel.selection) { selection in
+            // Half sheet: the pin is already on the map behind it, so just the data. The map
+            // stays usable underneath at the medium detent.
+            PrayerSpotSheet(prayers: selection.prayers)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .sheet(isPresented: $showFilterSheet) {
             FilterView(selectedStartDate: $viewModel.selectedStartDate,
@@ -718,119 +718,160 @@ struct FilterView: View {
 }
 
 // MARK: - PrayerDetailView
-struct PrayerDetailView: View {
-    let prayer: PrayerModel
+/// What was tapped on the map: the prayers at one pin or in one cluster.
+struct PrayerSpotSelection: Identifiable {
+    let id = UUID()
+    let prayers: [PrayerModel]
+}
+
+// MARK: - PrayerSpotSheet
+
+/// The half sheet for a tapped pin or cluster: a headline, per-prayer counts and the average
+/// score for a cluster, then every prayer newest first grouped by day with when it was prayed,
+/// where that fell in its window, and its score.
+struct PrayerSpotSheet: View {
+    let prayers: [PrayerModel]
+
+    private var sorted: [PrayerModel] {
+        prayers.sorted { ($0.timeAtComplete ?? $0.startTime) > ($1.timeAtComplete ?? $1.startTime) }
+    }
+    private var days: [(date: Date, prayers: [PrayerModel])] {
+        let cal = Calendar.current
+        var order: [Date] = []; var byDay: [Date: [PrayerModel]] = [:]
+        for p in sorted {
+            let day = cal.startOfDay(for: p.timeAtComplete ?? p.startTime)
+            if byDay[day] == nil { order.append(day) }
+            byDay[day, default: []].append(p)
+        }
+        return order.map { (date: $0, prayers: byDay[$0] ?? []) }
+    }
+    private var averageScore: Double? {
+        let scored = prayers.compactMap(\.numberScore)
+        return scored.isEmpty ? nil : scored.reduce(0, +) / Double(scored.count)
+    }
+    /// "Fajr 3 · Dhuhr 5 …" in prayer order.
+    private var countsLine: String {
+        ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].compactMap { name in
+            let n = prayers.filter { $0.name == name }.count
+            return n > 0 ? "\(name) \(n)" : nil
+        }.joined(separator: " · ")
+    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text(prayer.name)
-                .font(.largeTitle)
-                .bold()
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(prayers.count == 1 ? "1 prayer here" : "\(prayers.count) prayers here")
+                            .font(.title3.weight(.semibold))
+                        if prayers.count > 1 {
+                            Text(countsLine)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        if let avg = averageScore, prayers.count > 1 {
+                            HStack(spacing: 6) {
+                                ScoreDot(score: avg)
+                                Text("Average score \(Int((avg * 100).rounded()))%")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                }
 
-            if let latitude = prayer.latPrayedAt, let longitude = prayer.longPrayedAt {
-                Map(coordinateRegion: .constant(MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                )))
-                .frame(height: 200)
-                .cornerRadius(10)
+                ForEach(days, id: \.date) { day in
+                    Section(zikrDayLabel(day.date)) {
+                        ForEach(day.prayers) { prayer in
+                            PrayerSpotRow(prayer: prayer)
+                        }
+                    }
+                }
             }
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Start Time: \(prayer.startTime.formatted(date: .abbreviated, time: .shortened))")
-                Text("End Time: \(prayer.endTime.formatted(date: .abbreviated, time: .shortened))")
-                if let timeAtComplete = prayer.timeAtComplete {
-                    Text("Completed At: \(timeAtComplete.formatted(date: .abbreviated, time: .shortened))")
-                }
-                if let numberScore = prayer.numberScore {
-                    Text("Performance Score: \(numberScore, specifier: "%.1f")")
-                }
-                if let englishScore = prayer.englishScore {
-                    Text("Feedback: \(englishScore)")
-                }
-            }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.systemGray6))
-            .cornerRadius(10)
-
-            Spacer()
+            .fontDesign(.rounded)
+            .navigationTitle("Prayer spot")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .padding()
     }
 }
 
-// MARK: - ClusterPrayersDetailView
-struct ClusterPrayersDetailView: View {
-    let prayers: [PrayerModel]
+/// One prayer at the spot: name, when it was prayed and where in its window, and the score.
+private struct PrayerSpotRow: View {
+    let prayer: PrayerModel
+
+    private var icon: String {
+        switch prayer.name {
+        case "Fajr": return "sunrise.fill"
+        case "Dhuhr": return "sun.max.fill"
+        case "Asr": return "sun.haze.fill"
+        case "Maghrib": return "sunset.fill"
+        case "Isha": return "moon.stars.fill"
+        default: return "circle"
+        }
+    }
+    /// "12 min in" / "1h 20m in" — how far into the prayer window it was prayed.
+    private var intoWindow: String? {
+        guard let at = prayer.timeAtComplete else { return nil }
+        let secs = at.timeIntervalSince(prayer.startTime)
+        if secs < 0 { return "before it started" }
+        if at > prayer.endTime { return "after it ended" }
+        let m = Int(secs / 60)
+        return m < 60 ? "\(m) min in" : "\(m / 60)h \(m % 60)m in"
+    }
+    private var window: String {
+        "\(prayer.startTime.formatted(date: .omitted, time: .shortened)) – \(prayer.endTime.formatted(date: .omitted, time: .shortened))"
+    }
 
     var body: some View {
-        NavigationView {
-            VStack {
-                if let centerCoordinate = getClusterCenterCoordinate() {
-                    Map(coordinateRegion: .constant(MKCoordinateRegion(
-                        center: centerCoordinate,
-                        span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
-                    )), annotationItems: prayers) { prayer in
-                        MapAnnotation(coordinate: CLLocationCoordinate2D(latitude: prayer.latPrayedAt!, longitude: prayer.longPrayedAt!)) {
-                            Circle()
-                                .strokeBorder(Color.blue, lineWidth: 2)
-                                .frame(width: 10, height: 10)
-                        }
-                    }
-                    .frame(height: 200)
-                    .cornerRadius(10)
-                }
-
-                Text("You have \(prayers.count) prayers here")
-                    .font(.headline)
-                    .padding()
-
-                List(prayers) { prayer in
-                    VStack(alignment: .leading) {
-                        Text("\(prayer.name)")
-                            .font(.headline)
-                        if let timeAtComplete = prayer.timeAtComplete {
-                            Text("@ \(timeAtComplete.formatted(date: .omitted, time: .shortened))")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                        }
-
-                        if let latitude = prayer.latPrayedAt, let longitude = prayer.longPrayedAt {
-                            Text("Location: \(latitude), \(longitude)")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                        }
-                        if let engScore = prayer.englishScore {
-                            Text("\(engScore)")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                        }
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .frame(width: 28)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text(prayer.name).font(.body.weight(.medium))
+                    if let at = prayer.timeAtComplete {
+                        Text("prayed \(at.formatted(date: .omitted, time: .shortened))")
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .listStyle(PlainListStyle())
+                HStack(spacing: 4) {
+                    Text(window)
+                    if let intoWindow { Text("·"); Text(intoWindow) }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .navigationTitle("Prayers in Area")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-
-    // Helper function to calculate the center coordinate of the cluster
-    func getClusterCenterCoordinate() -> CLLocationCoordinate2D? {
-        let coordinates = prayers.compactMap { prayer -> CLLocationCoordinate2D? in
-            if let latitude = prayer.latPrayedAt, let longitude = prayer.longPrayedAt {
-                return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            Spacer()
+            VStack(alignment: .trailing, spacing: 3) {
+                HStack(spacing: 5) {
+                    ScoreDot(score: prayer.numberScore)
+                    Text(prayer.numberScore.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")
+                        .font(.body.weight(.semibold))
+                        .monospacedDigit()
+                }
+                if let words = prayer.englishScore {
+                    Text(words).font(.caption).foregroundStyle(.secondary)
+                }
             }
-            return nil
         }
-
-        guard !coordinates.isEmpty else { return nil }
-
-        let totalLatitude = coordinates.reduce(0) { $0 + $1.latitude }
-        let totalLongitude = coordinates.reduce(0) { $0 + $1.longitude }
-        let centerLatitude = totalLatitude / Double(coordinates.count)
-        let centerLongitude = totalLongitude / Double(coordinates.count)
-
-        return CLLocationCoordinate2D(latitude: centerLatitude, longitude: centerLongitude)
+        .padding(.vertical, 2)
     }
+}
+
+/// The score's colour as a dot, same scale as the pins and the app.
+private struct ScoreDot: View {
+    let score: Double?
+    var color: Color {
+        guard let score else { return .gray }
+        if score >= 0.5 { return .green }
+        if score >= 0.25 { return .yellow }
+        return .red
+    }
+    var body: some View { Circle().fill(color).frame(width: 9, height: 9) }
 }
