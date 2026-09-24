@@ -346,6 +346,10 @@ struct LocationMapContentView: View {
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
     @State private var anchor = MapAnchor()
+    /// The spot sheet's height: compact for one prayer, half for a cluster; reset per tap so a
+    /// new pin tapped while the sheet is up doesn't inherit a taller detent.
+    @State private var spotDetent: PresentationDetent = .medium
+    private static let compactDetent: PresentationDetent = .fraction(0.3)
 
     private func centreOnUser() {
         guard let mapView = viewModel.mapView,
@@ -443,11 +447,15 @@ struct LocationMapContentView: View {
                 Spacer()
             }
         }
+        .onChange(of: viewModel.selection?.id) { _, _ in
+            guard let selection = viewModel.selection else { return }
+            spotDetent = selection.prayers.count == 1 ? Self.compactDetent : .medium
+        }
         .sheet(item: $viewModel.selection) { selection in
             // Half sheet: the pin is already on the map behind it, so just the data. The map
-            // stays usable underneath at the medium detent.
+            // stays usable underneath up to the medium detent.
             PrayerSpotSheet(prayers: selection.prayers)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([Self.compactDetent, .medium, .large], selection: $spotDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
