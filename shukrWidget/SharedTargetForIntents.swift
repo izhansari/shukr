@@ -20,10 +20,10 @@ enum SharedStore {
     /// Set by the widget after it writes; the app clears it once it has re-read the store.
     static let widgetWroteStoreKey = "widgetWroteStore"
 
-    /// Current schema. Every container below opens with `ShukrMigrationPlan` so an old store is
-    /// upgraded the same way whichever process (app or widget) touches it first.
+    /// Current schema. Older stores are upgraded by SwiftData's inferred lightweight migration
+    /// when the APP opens them (no staged plan — see SchemaVersions.swift for why), followed by
+    /// `ShukrV2DataPass`. The widget only opens stores already at this version.
     static let schema = Schema(versionedSchema: ShukrSchemaV2.self)
-    static let migrationPlan: any SchemaMigrationPlan.Type = ShukrMigrationPlan.self
 
     /// The store file. Falls back to SwiftData's default location if the app group is missing
     /// (which would mean the entitlement is broken; the widget can't share in that case anyway).
@@ -39,7 +39,56 @@ enum SharedStore {
     /// `importLegacyStoreIfNeeded(into:)` right after, before anything reads data.
     static func makeContainer() throws -> ModelContainer {
         let config = ModelConfiguration(schema: schema, url: url)
-        return try ModelContainer(for: schema, migrationPlan: migrationPlan, configurations: [config])
+        return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    // MARK: Recovery when the shared store won't open (app only)
+
+    /// Last resort, app only: the shared store exists but `makeContainer()` threw (a migration
+    /// the OS won't infer, a store written by a model we can no longer match). Move the file
+    /// aside — never delete — clear the legacy-import flag, and open a fresh store. The caller
+    /// then runs the normal launch sequence, which re-imports the legacy `default.store` (still
+    /// in the group container) and the V2 data pass. What the set-aside file held beyond the
+    /// legacy store (activity since that file was last written) stays in it for salvage.
+    /// Returns nil if there is nothing to recover from or the fresh store fails too.
+    static func recoverFromUnopenableStore(after error: Error) -> ModelContainer? {
+        guard Bundle.main.bundleURL.pathExtension != "appex" else { return nil }
+        let fm = FileManager.default
+        guard url != legacyURL, fm.fileExists(atPath: url.path) else { return nil }
+        let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+        print("⚠️ store recovery: shared store won't open (\(error)); setting it aside as shukr.store.unopenable-\(stamp)")
+        for suffix in ["", "-shm", "-wal"] {
+            let from = URL(filePath: url.path + suffix)
+            guard fm.fileExists(atPath: from.path) else { continue }
+            let to = URL(filePath: url.deletingLastPathComponent().appending(path: "shukr.store.unopenable-\(stamp)").path + suffix)
+            do { try fm.moveItem(at: from, to: to) }
+            catch { print("❌ store recovery: couldn't move \(from.lastPathComponent): \(error)"); return nil }
+        }
+        UserDefaults(suiteName: appGroup)?.set(false, forKey: legacyImportedKey) // re-import from default.store
+        do {
+            let fresh = try makeContainer()
+            print("✅ store recovery: fresh store opened; legacy import + data pass follow")
+            return fresh
+        } catch {
+            print("❌ store recovery: fresh store failed too: \(error)")
+            return nil
+        }
+    }
+
+    // MARK: Schema V2 data pass (app only)
+
+    /// Seeds / links what the lightweight migration can't (see `ShukrV2DataPass`). Runs on
+    /// every app launch: it only reads the rows that still need linking, so on a healthy store
+    /// it costs a couple of tiny fetches, and any store shape (fresh, upgraded, half-migrated by
+    /// an earlier build) heals itself without a flag to get out of sync.
+    static func runV2DataPass(in container: ModelContainer) {
+        guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
+        do {
+            let summary = try ShukrV2DataPass.run(in: ModelContext(container))
+            print("✅ schema V2 data pass: \(summary)")
+        } catch {
+            print("❌ schema V2 data pass failed (will retry next launch): \(error)")
+        }
     }
 
     /// Widget side: open the shared store ONLY if the app has already created it AND it is at
@@ -131,9 +180,10 @@ enum SharedStore {
                 guard fm.fileExists(atPath: from.path) else { continue }
                 try fm.copyItem(at: from, to: URL(filePath: tmpStore.path + suffix))
             }
-            // The copy is at whatever version the old app wrote; the plan brings it to current.
+            // The copy is at whatever version the old app wrote; opening it with the current
+            // schema lightweight-migrates the copy (never the original).
             let legacyConfig = ModelConfiguration("legacy", schema: schema, url: tmpStore)
-            let legacy = try ModelContainer(for: schema, migrationPlan: migrationPlan, configurations: [legacyConfig])
+            let legacy = try ModelContainer(for: schema, configurations: [legacyConfig])
             let summary = try merge(from: ModelContext(legacy), into: ModelContext(container))
             defaults?.set(true, forKey: legacyImportedKey)
             print("✅ legacy import: \(summary)")

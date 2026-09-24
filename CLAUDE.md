@@ -173,7 +173,8 @@ install: a widget-created store would be empty and pre-empt the import, and a wi
 migration races the app's own — sim-reproduced 2026-09-23: the app's staged migration found the
 file already at 2.0.0 mid-flight and died with "model incompatible" (134110). Until the app has
 migrated, the widget renders its placeholder and the checkmark is inert; it retries on each
-access. The app's `makeContainer()` and the legacy temp copy open with `ShukrMigrationPlan`.
+access. The app's `makeContainer()` and the legacy temp copy open with the plain current schema
+and let SwiftData infer the lightweight migration (see Mantra model section).
 
 **Legacy import** (`importLegacyStoreIfNeeded`, app only, gated by `legacyStoreImported.v2` in
 the app-group defaults — v2 because the v1 key was set by builds that found nothing): copies the
@@ -270,16 +271,31 @@ migration numbers existing tasks in fetch order, new tasks get `TaskModel.nextSo
 the strip header's arrows button opens `ReorderTasksView` (drag handles, writes `sortOrder`).
 Before this the query was unsorted, which is why the cards looked arbitrary.
 
-**Schema versions live in `Models/SchemaVersions.swift`** (compiled into app + widget):
-`ShukrSchemaV1` = nested copies of the six original models (never edit — they must hash to what
-an old store contains), `ShukrSchemaV2` = the live classes, `ShukrMigrationPlan` with one custom
-stage. The store change is lightweight (`@Attribute(originalName:)` renames, defaulted columns,
-optional relationships); `didMigrate` seeds built-ins, gives every task a mantra row (creating
-one from its name if needed) and links sessions whose title matches a mantra. Sessions with an
-unmatched title stay unlinked on purpose (never invent mantras from history). Logs
-`✅ schema V1→V2: mantras=… tasks linked=… sessions linked=…`. **Only the app migrates** — see
-the widget rule under Widget ↔ app. Adding V3: new enum, append to `schemas`, add a stage, and
-point `SharedStore.currentVersionIdentifier` at it.
+**How the store is upgraded — no `SchemaMigrationPlan`.** `Models/SchemaVersions.swift` holds
+`ShukrSchemaV2` (the live classes; opening a store with it stamps "2.0.0" in the metadata) and
+`ShukrV2DataPass`. The store change is lightweight (`@Attribute(originalName:)` renames,
+defaulted columns, optional relationships), so SwiftData migrates an old store by inference
+when the app opens it — the mechanism that carried this store through every earlier model
+change. A staged plan with hand-copied V1 models was tried first: it matched on the iOS 18.5
+simulator and failed on the owner's iOS 27 phone with CoreData 134504 "Cannot use staged
+migration with an unknown model version" (app dead at launch, store untouched). Inferred
+migration has no hash dependency. The data work — seed built-ins, give every task a mantra row
+(creating from its name if needed), link sessions by title, number tasks — is
+`SharedStore.runV2DataPass` (app only, every launch; it fetches only rows that still need
+linking, so a healthy store costs a couple of tiny fetches, and any store shape heals itself —
+no flag to get out of sync). Logs `✅ schema V2 data pass: mantras=… tasks linked=… sessions
+linked=…`. Sessions with an unmatched title stay unlinked on purpose. **Only the app migrates**
+— see the widget rule under Widget ↔ app.
+
+`TaskModel`'s relationship is stored as `mantraRef` with `mantra` a computed accessor: the
+string snapshot `mantraName` has `originalName: "mantra"`, and inferred migration needs
+renaming identifiers to be unique per entity — a relationship also named `mantra` failed on
+iOS 27 with CoreData 134190. (The phone's store had already been given the V2 shape by the
+staged attempt's automatic-migration options, so this was the second failure mode there.)
+Next model change: keep it lightweight, never reuse a name that another property claims via
+`originalName`, bump `ShukrSchemaV2.versionIdentifier` (the widget's `storeIsCurrentVersion`
+compares against it), extend the data pass if rows need touching, and test on the newest iOS
+you can — iOS 18/26 simulators accepted two things iOS 27 rejected.
 
 Selection plumbing: `MantraPickerView` hands back `selectedMantra` (name) *and*
 `selectedMantraObject`; the object is set first so name-based `onChange`s can read it.

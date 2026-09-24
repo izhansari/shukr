@@ -28,13 +28,21 @@ struct shukrApp: App {
         // Store lives in the app group so the widget can read/write it too. Schema + location
         // are defined once in SharedStore (SharedTargetForIntents.swift), shared with the widget.
         do {
-            let container = try SharedStore.makeContainer()
+            let container: ModelContainer
+            do {
+                container = try SharedStore.makeContainer()
+            } catch {
+                // Store exists but can't be opened (see recoverFromUnopenableStore). Set it aside
+                // and rebuild from the legacy store rather than crash on every launch.
+                guard let recovered = SharedStore.recoverFromUnopenableStore(after: error) else { throw error }
+                container = recovered
+            }
             // One-time merge of the pre-app-group store (Application Support/default.store).
             // Must run before PrayerViewModel or any view reads data. Never deletes the old files.
             SharedStore.importLegacyStoreIfNeeded(into: container)
-            // Fresh installs never run the V1→V2 migration, so the built-in mantras are seeded here.
-            let seedContext = ModelContext(container)
-            if MantraModel.seedBuiltInsIfNeeded(in: seedContext) > 0 { try? seedContext.save() }
+            // Built-in mantras as rows, tasks/sessions linked to their mantra, task order.
+            // Every launch, cheap on a healthy store; covers upgrades and fresh installs alike.
+            SharedStore.runV2DataPass(in: container)
             return container
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.

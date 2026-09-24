@@ -299,7 +299,7 @@ class MantraModel: Identifiable {
     var notes: String = ""
     var createdAt: Date = Date()
 
-    @Relationship(deleteRule: .nullify, inverse: \TaskModel.mantra)
+    @Relationship(deleteRule: .nullify, inverse: \TaskModel.mantraRef)
     var tasks: [TaskModel] = []
     @Relationship(deleteRule: .nullify, inverse: \SessionDataModel.mantra)
     var sessions: [SessionDataModel] = []
@@ -399,8 +399,16 @@ class TaskModel: Identifiable {
     /// Name snapshot (was the only `mantra` field before V2). Fallback for display if the
     /// mantra row is gone; the editor keeps it in step with renames.
     @Attribute(originalName: "mantra") var mantraName: String
-    /// The mantra this task counts. Inverse of `MantraModel.tasks`.
-    var mantra: MantraModel?
+    /// The mantra this task counts. Inverse of `MantraModel.tasks`. Stored as `mantraRef`, not
+    /// `mantra`: `mantraName` carries the renaming identifier "mantra" (above), and Core Data's
+    /// inferred migration requires renaming identifiers to be unique within an entity — a
+    /// relationship also named `mantra` broke the upgrade on iOS 27 (CoreData 134190, "Each
+    /// property must have a unique renaming identifier"). Code keeps using `mantra` below.
+    var mantraRef: MantraModel?
+    var mantra: MantraModel? {
+        get { mantraRef }
+        set { mantraRef = newValue }
+    }
     var isCountMode: Bool
     var goal: Int
     /// Position on the Zikr page's card strip; the user sets it from the card's edit button.
@@ -416,7 +424,7 @@ class TaskModel: Identifiable {
     var displayName: String { mantra?.name ?? mantraName }
 
     init(mantra: MantraModel?, isCountMode: Bool, goal: Int, mantraName: String? = nil, sortOrder: Int = 0) {
-        self.mantra = mantra
+        self.mantraRef = mantra
         self.mantraName = mantraName ?? mantra?.name ?? ""
         self.isCountMode = isCountMode
         self.goal = goal
