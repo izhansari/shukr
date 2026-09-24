@@ -167,14 +167,13 @@ struct MantraEditorView: View {
                             LabeledContent("Total time", value: zikrDurationString(mantra.totalSeconds))
                         }
                         if let pace = mantra.secondsPerCount {
-                            LabeledContent("Average pace", value: String(format: "%.1fs per count", pace))
-                            LabeledContent("Per 100", value: zikrDurationString(pace * 100))
+                            PaceRow(secondsPerCount: pace)
                         }
                     } header: {
                         Text("Stats")
                     } footer: {
                         if mantra.secondsPerCount != nil {
-                            Text("Pace is time-weighted over every session of this mantra.")
+                            Text("Pace is time-weighted over every session of this mantra. Tap it to switch between per count and per tasbeeh (100).")
                         }
                     }
                 }
@@ -217,4 +216,37 @@ struct MantraEditorView: View {
         MantrasView()
     }
     .modelContainer(for: [MantraModel.self, TaskModel.self, SessionDataModel.self], inMemory: true)
+}
+
+
+/// "Average pace" row: tap flips between seconds per count and time per tasbeeh (100 counts),
+/// with the same slide-and-fade the Rate box on the tasbeeh pause screen uses.
+private struct PaceRow: View {
+    let secondsPerCount: TimeInterval
+    @State private var showingPerCount = true
+
+    var body: some View {
+        HStack {
+            Text("Average pace")
+            Spacer()
+            ZStack(alignment: .trailing) {
+                Text(String(format: "%.1fs per count", secondsPerCount))
+                    .opacity(showingPerCount ? 1 : 0)
+                    .offset(y: showingPerCount ? 0 : -14)
+                Text("\(zikrDurationString(secondsPerCount * 100)) per tasbeeh")
+                    .opacity(showingPerCount ? 0 : 1)
+                    .offset(y: showingPerCount ? 14 : 0)
+            }
+            .foregroundStyle(.secondary)
+            .monospacedDigit()
+            .clipped()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                triggerSomeVibration(type: .medium)
+                showingPerCount.toggle()
+            }
+        }
+    }
 }
