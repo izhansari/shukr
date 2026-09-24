@@ -305,8 +305,9 @@ struct MantraStatsBento: View {
     }
 }
 
-/// This mantra's tasks as rows: mode + goal, today's progress. Tap to edit the goal / mode,
-/// swipe to delete (sessions it produced keep their history).
+/// This mantra's tasks as rows: mode + goal, today's progress. Tap opens the task sheet in
+/// edit mode (goal / units; the mantra is locked); swipe to delete (sessions it produced keep
+/// their history).
 struct MantraTaskRows: View {
     let mantra: MantraModel
     @Environment(\.modelContext) private var context
@@ -360,65 +361,21 @@ struct MantraTaskRows: View {
             .onDelete { offsets in
                 for index in offsets { context.delete(tasks[index]) }
             }
-            .sheet(item: $editing) { task in
-                TaskGoalEditorView(task: task)
+            .fullScreenCover(item: $editing) { task in
+                // The "Create a New Task" sheet in edit mode: mantra locked, Save only once
+                // something changed, confirmation before it lands.
+                AddDailyTaskView(editing: task, isPresented: Binding(
+                    get: { editing != nil },
+                    set: { if !$0 { editing = nil } }
+                ))
             }
         }
     }
 }
 
-/// Edit a task's mode and goal in place. The mantra is the row it's opened from.
-struct TaskGoalEditorView: View {
-    @Environment(\.dismiss) private var dismiss
-    let task: TaskModel
-    @State private var isCountMode: Bool
-    @State private var goal: Int
-
-    init(task: TaskModel) {
-        self.task = task
-        _isCountMode = State(initialValue: task.isCountMode)
-        _goal = State(initialValue: task.goal)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    Picker("Type", selection: $isCountMode) {
-                        Text("Count").tag(true)
-                        Text("Minutes").tag(false)
-                    }
-                    .pickerStyle(.segmented)
-                    LabeledContent(isCountMode ? "Counts" : "Minutes") {
-                        TextField("Goal", value: $goal, format: .number)
-                            .keyboardType(.numberPad)
-                            .multilineTextAlignment(.trailing)
-                    }
-                } footer: {
-                    Text("Today's progress is recomputed from the sessions started from this task.")
-                }
-            }
-            .fontDesign(.rounded)
-            .navigationTitle(task.displayName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        task.isCountMode = isCountMode
-                        task.goal = goal
-                        dismiss()
-                    }
-                    .disabled(goal <= 0)
-                }
-            }
-        }
-        .presentationDetents([.medium])
-    }
-}
-
-/// This mantra's sessions under one "Sessions" header, newest first, with a day sub-header
-/// row before each day's rows — so "when did I last do this one" is the first row.
+/// This mantra's sessions under one "Sessions" header, newest first, as one card with a
+/// tinted day-divider row before each day's rows — so "when did I last do this one" is the
+/// first row. (Day rows with the page's background split the card and read as empty sections.)
 struct MantraSessionsSection: View {
     let mantra: MantraModel
 
@@ -439,16 +396,19 @@ struct MantraSessionsSection: View {
             if mantra.sessions.isEmpty {
                 Text("No sessions with this mantra yet.").foregroundStyle(.secondary)
             } else {
+                // One card: each day is a divider row inside it, then that day's sessions.
                 ForEach(days, id: \.date) { day in
                     HStack {
                         Text(zikrDayLabel(day.date))
                         Spacer()
                         Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
                     }
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .textCase(.uppercase)
-                    .listRowBackground(Color(.systemGroupedBackground))
+                    // Same card colour, faintly tinted (tertiary grouped equals the page
+                    // background in light mode and split the card).
+                    .listRowBackground(Color(.secondarySystemGroupedBackground).overlay(Color.primary.opacity(0.04)))
                     ForEach(day.sessions) { session in SessionRow(session: session) }
                 }
             }

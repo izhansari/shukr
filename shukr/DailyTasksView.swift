@@ -593,10 +593,41 @@ struct AddDailyTaskView: View {
     @State private var taskInMaking: TaskModel? = nil
     
     @State private var showBorder: Bool = false
-    
+    @State private var confirmSave: Bool = false
+
+    /// Edit mode: the task being changed. Its mantra is locked (the sheet is opened from that
+    /// mantra's page); only goal and units can change, saved after a confirmation.
+    private let editingTask: TaskModel?
+
     init( isPresented: Binding<Bool>, scrollProxy: Binding<UUID?>) {
         self._isPresented = isPresented
         self._scrollProxy = scrollProxy
+        self.editingTask = nil
+    }
+
+    /// Same sheet, prefilled from `task`, with the mantra locked.
+    init(editing task: TaskModel, isPresented: Binding<Bool>) {
+        self._isPresented = isPresented
+        self._scrollProxy = .constant(nil)
+        self.editingTask = task
+        _goal = State(initialValue: task.goal)
+        _taskIsCountMode = State(initialValue: task.isCountMode)
+        _selectedMantra = State(initialValue: task.mantra)
+    }
+
+    private var isEditing: Bool { editingTask != nil }
+    /// Edit mode: nothing to save until goal or units differ from the task.
+    private var unchanged: Bool {
+        guard let editingTask else { return false }
+        return goal == editingTask.goal && taskIsCountMode == editingTask.isCountMode
+    }
+
+    private func saveEdits() {
+        guard let editingTask, let goal, let taskIsCountMode else { return }
+        editingTask.goal = goal
+        editingTask.isCountMode = taskIsCountMode
+        isGoalFocused = false
+        isPresented = false
     }
 
     // Function to create and persist the TaskModel, then dismiss the view
@@ -646,7 +677,7 @@ struct AddDailyTaskView: View {
     }
     
     private var parametersIncomplete: Bool{
-        goal == nil || taskIsCountMode == nil || selectedMantra == nil
+        goal == nil || goal == 0 || taskIsCountMode == nil || (selectedMantra == nil && !isEditing)
     }
     // Create a NumberFormatter for formatting integers
     let numberFormatter: NumberFormatter = {
@@ -699,7 +730,7 @@ struct AddDailyTaskView: View {
                         
                         Spacer()
                         
-                        Text("Create a New Task")
+                        Text(isEditing ? "Edit Task" : "Create a New Task")
                             .font(.title2)
                             .fontWeight(.thin)
                             .onTapGesture {
@@ -801,22 +832,28 @@ struct AddDailyTaskView: View {
 //                            )
 //                    }
                     
-                    // NEW: Zikr Picker Sheet
+                    // NEW: Zikr Picker Sheet (locked in edit mode: it's that mantra's task)
                     Button(action: {
                         showMantraPicker = true
                     }) {
-                        Text(selectedMantra?.name ?? "Zikr")
+                        HStack(spacing: 4) {
+                            Text(selectedMantra?.name ?? editingTask?.displayName ?? "Zikr")
+                                .lineLimit(1)
+                            if isEditing {
+                                Image(systemName: "lock.fill").font(.caption2)
+                            }
+                        }
                             .font(.headline)
-                            .lineLimit(1)
-                            .foregroundColor(selectedMantra == nil ? Color.secondary.opacity(0.5) : accentColor.opacity(1))
+                            .foregroundColor(selectedMantra == nil && !isEditing ? Color.secondary.opacity(0.5) : accentColor.opacity(isEditing ? 0.6 : 1))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: 5)
-                                    .stroke(accentColor.opacity(0.5), lineWidth: 1)
-                                    .foregroundStyle(accentColor.opacity(0.15))
+                                    .stroke(accentColor.opacity(isEditing ? 0.25 : 0.5), lineWidth: 1)
+                                    .foregroundStyle(accentColor.opacity(isEditing ? 0.06 : 0.15))
                             )
                     }
+                    .disabled(isEditing)
                     .sheet(isPresented: $showMantraPicker) {
                         MantraPickerView(
                             isPresented: $showMantraPicker,
@@ -832,10 +869,10 @@ struct AddDailyTaskView: View {
                 Spacer()
                 
                 Button(action: {
-                    createTask()
+                    if isEditing { confirmSave = true } else { createTask() }
                 }) {
-                    Text("Confirm")
-                        .foregroundStyle(parametersIncomplete ? .secondary: Color.green.opacity(0.7))
+                    Text(isEditing ? "Save" : "Confirm")
+                        .foregroundStyle(parametersIncomplete || unchanged ? .secondary: Color.green.opacity(0.7))
                         .padding(.vertical, 8)
                         .frame(minWidth: 0, maxWidth: 150)
                     
@@ -852,8 +889,16 @@ struct AddDailyTaskView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.green)
-                .disabled(parametersIncomplete)
+                .disabled(parametersIncomplete || unchanged)
                 .padding(.horizontal)
+                .confirmationDialog("Save changes to this task?", isPresented: $confirmSave, titleVisibility: .visible) {
+                    Button("Save") { saveEdits() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    if let editingTask, let goal, let taskIsCountMode {
+                        Text("\(editingTask.displayName): \(goal) \(taskIsCountMode ? "counts" : "minutes") a day. Today's progress is recomputed from its sessions.")
+                    }
+                }
                 
             }
 //            .scrollDismissesKeyboard(.automatic)

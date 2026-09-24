@@ -293,10 +293,14 @@ Backlog / known oddities:
   lives in the section *header* because a grouped section clips its rows to its own corner
   shape (26 pt on iOS 26+) and cut the boxes' corners — header text is secondary and inset, so
   the bento forces `Color(.label)` and `-20` horizontal padding; then this mantra's tasks as
-  rows (mode + goal, today's progress; tap → `TaskGoalEditorView` edits mode/goal in place,
-  swipe → delete); then one "Sessions" section, newest first, with a day sub-header row before
-  each day (`SessionRow` / `zikrDayLabel`, shared with Zikr History) so "when did I last do
-  this" is the first row. A card strip was tried for the tasks and looked wrong with one task. `zikrDurationString` in AllModels.swift is the shared
+  rows (mode + goal, today's progress; tap → `AddDailyTaskView(editing:isPresented:)`, the
+  create-task sheet in edit mode: title "Edit Task", mantra locked, Save disabled until goal or
+  units differ, confirmation dialog before saving; swipe → delete); then one "Sessions"
+  section as one card, newest first, with a faintly tinted day-divider row before each day
+  (`SessionRow` / `zikrDayLabel`, shared with Zikr History) so "when did I last do this" is
+  the first row. Tried and rejected: a card strip for the tasks (wrong with one task), a plain
+  Form editor (lifeless), day rows in the page colour (split the card into "empty" sections —
+  and `tertiarySystemGroupedBackground` IS the page colour in light mode). `zikrDurationString` in AllModels.swift is the shared
   "1h 05m / 12m 03s / 45s" formatter.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
