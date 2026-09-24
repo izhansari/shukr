@@ -184,7 +184,7 @@ struct PrayerTimesView: View {
             .scrollIndicators(.hidden)
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
-            .scrollDisabled(live.pagerLocked)   // see PagerLiveState.pagerLocked
+            .modifier(PagerLock(live: live))     // .scrollDisabled(live.pagerLocked), see PagerLiveState
             .environment(live)
             .ignoresSafeArea(edges: .bottom)
             // The vertical drag (sheet open/close, pull-to-refresh) lives on the ScrollView
@@ -214,8 +214,14 @@ struct PrayerTimesView: View {
                 let index = Int(progress.rounded())
                 let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if sharedState.horizontalPage != page {
-                    sharedState.horizontalPage = page
-                    triggerSomeVibration(type: .light)
+                    // This closure runs inside the scroll view's layout pass; a @Published change
+                    // made there isn't delivered to every subscriber (the bottom bar kept the old
+                    // page highlighted). Publish on the next run-loop turn instead.
+                    DispatchQueue.main.async {
+                        guard sharedState.horizontalPage != page else { return }
+                        sharedState.horizontalPage = page
+                        triggerSomeVibration(type: .light)
+                    }
                 }
             }
             .simultaneousGesture(switchToSalahDoubleTapSGesture)
@@ -1259,5 +1265,16 @@ struct ScrollViewBounceDisabler: UIViewRepresentable {
             scrollView.bounces = false
             scrollView.alwaysBounceHorizontal = false
         }
+    }
+}
+
+
+/// `.scrollDisabled(live.pagerLocked)` in its own modifier: reading `pagerLocked` in
+/// PrayerTimesView's body re-rendered the whole tree on every touch-down and release on the
+/// task strip; here only this modifier re-evaluates.
+struct PagerLock: ViewModifier {
+    var live: PagerLiveState
+    func body(content: Content) -> some View {
+        content.scrollDisabled(live.pagerLocked)
     }
 }
