@@ -169,8 +169,8 @@ check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push 
 ## Prayer day rollover (PrayerDay.swift)
 
 The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this, Isha
-ended 11:59 PM and there was nothing to mark). Settings → "Day Rollover" → "Isha can be marked
-until" Midnight / 1 / 2 / 3 AM, stored in the app group as `prayerDayRolloverHours` so the
+ended 11:59 PM and there was nothing to mark). Settings → "Day Rollover" → "Isha end time"
+Midnight / 1 / 2 / 3 AM, stored in the app group as `prayerDayRolloverHours` so the
 widget agrees. `Models/PrayerDay.swift` (both targets) is the only place that knows about it:
 `PrayerDay.date()` / `start()` = which calendar day is "today" (before the rollover hour it's
 still yesterday's), `rowRange(forDayStarting:)` = the calendar-day bounds every "today's

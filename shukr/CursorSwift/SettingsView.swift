@@ -231,7 +231,7 @@ struct SettingsView: View {
                     
                     //MARK: - Day Rollover
                     Section(header: headerWithInfoButton(title: "Day Rollover", isPopupVisible: $isRolloverPopupVisible)) {
-                        Picker("Isha can be marked until", selection: $dayRolloverHours) {
+                        Picker("Isha end time", selection: $dayRolloverHours) {
                             Text("Midnight").tag(0)
                             Text("1 AM").tag(1)
                             Text("2 AM").tag(2)
