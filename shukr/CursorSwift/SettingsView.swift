@@ -43,6 +43,7 @@ struct SettingsView: View {
     @AppStorage(PrayerDay.rolloverKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var dayRolloverHours: Int = 0
     @State private var isNotifPopupVisible: Bool = false
     @State private var isStreakPopupVisible: Bool = false
+    @State private var isRolloverPopupVisible: Bool = false
     
     @State private var selectedPrayerToCancelNudges = "Fajr"
     @State private var rotationAngle: Double = 0 // For rotating the symbol
@@ -227,17 +228,16 @@ struct SettingsView: View {
                     
                     
                     //MARK: - Day Rollover
-                    Section {
+                    Section(header: headerWithInfoButton(title: "Day Rollover", isPopupVisible: $isRolloverPopupVisible)) {
                         Picker("Isha can be marked until", selection: $dayRolloverHours) {
                             Text("Midnight").tag(0)
                             Text("1 AM").tag(1)
                             Text("2 AM").tag(2)
                             Text("3 AM").tag(3)
                         }
-                    } header: {
-                        Text("Day Rollover")
-                    } footer: {
-                        Text("The day's prayers stay up until then, so a late Isha can still be marked and scored. Isha never runs past Fajr.")
+                        if isRolloverPopupVisible {
+                            RolloverDropdownInfo()
+                        }
                     }
                     .onChange(of: dayRolloverHours) { _, _ in
                         viewModel.fetchPrayerTimes(cameFrom: "onChange dayRolloverHours")
@@ -686,6 +686,28 @@ struct prayerCol: View {
 
 
 
+
+struct RolloverDropdownInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Information:")
+
+            HStack {
+                Image(systemName: "moon.stars.fill")
+                Text("The day's prayers stay up until this time, so a late Isha can still be marked and scored instead of vanishing at midnight.")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+
+            HStack {
+                Image(systemName: "sunrise.fill")
+                Text("Isha never runs past Fajr, whatever you pick here.")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+        }
+    }
+}
 
 struct NotificationDropdownInfo: View {
     @EnvironmentObject var viewModel: PrayerViewModel
