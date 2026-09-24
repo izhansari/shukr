@@ -68,7 +68,7 @@ Quality (fix before launch):
 - [ ] `fatalError` on `ModelContainer` failure (`shukrApp.swift:45`) — first schema migration failure hard-crashes existing users.
 - [ ] 187 `print()` calls, some logging coordinates. Gate with `#if DEBUG`.
 - [ ] `NSMotionUsageDescription` declared but `PrayerTracker.swift` (only CMMotion user) is unreferenced. Drop both.
-- [ ] Dead files: `shukr/LocationMapView.swift`, `shukr/PrayerTimeAndTracker.swift` (0 bytes), `CommentedOutHistoryPageView.swift`.
+- [ ] Dead files: `shukr/PrayerTimeAndTracker.swift` (0 bytes), `CommentedOutHistoryPageView.swift`. (Both LocationMapView.swift copies deleted 2026-09-25.)
 - [x] Deployment target is 18.0 on every target now (was 17.5 app / 18.0 widget). Needed for `onScrollPhaseChange`.
 - [x] Removed stale `DEVELOPMENT_ASSET_PATHS = "shukr/Preview Content"` (folder deleted in 789632f; Xcode 27 errors on it).
 - [ ] 1024 icon has an (all-opaque) alpha channel; strip to be safe.
@@ -222,6 +222,24 @@ circle's "yesterday", and the widget (`makeEntry`, `createWindowsFromTimes`,
 `completedPrayerNamesToday`) goes through PrayerDay now. History views that take an explicit
 date (`loadPrayerObjects(for:)`, PrayerScoreChartView, DayView) still mean the calendar day.
 Sim-verified 2026-09-25: rollover 2 → `Isha : 8:05 PM - 1:59 AM` in the launch log.
+
+## Map (CursorSwift/LocationMapView2.swift, branch claude/map-rework)
+
+Rewritten 2026-09-25. Two jobs: show the qibla so the user can line up with the buildings
+around them, and show every prayer they've marked. UIKit `MKMapView` on purpose — SwiftUI's
+`Map` has no clustering and the owner has ~800 pinned prayers. **North-up on purpose**: phone
+compasses are often off, so the map draws the computed direction — an `MKGeodesicPolyline`
+from the user's dot to the Kaaba (green) — which is right regardless of the compass; the
+centre ring repeats that bearing with its arrow and its chevron follows the compass (`CompassState`)
+so the user knows which way to turn. The status pill says "Facing Mecca / Turn left / Turn
+right". Prayer spots: all filtered prayers are added as annotations once per filter change and
+MapKit clusters/culls them (the old version tore every pin down and rebuilt it on each pan —
+that was the blink and the cost); pins are coloured by score like the app; the visible count
+comes from `mapView.annotations(in: visibleMapRect)`. Location comes from the app's
+`EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
+the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
+Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`
+(an older copy, unreferenced) was deleted.
 
 ## Widget ↔ app
 
