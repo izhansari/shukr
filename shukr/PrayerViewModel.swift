@@ -198,8 +198,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             return nil
         }
 
-        let midnight = Calendar.current.startOfDay(for: date.addingTimeInterval(24 * 60 * 60))
-        let midnightMinusOneSec = midnight.addingTimeInterval(-1)
+        // Isha runs to the day rollover (Settings), never past the next Fajr.
+        let nextFajr = Calendar.current.date(byAdding: .day, value: 1, to: date).flatMap { calcAdhanLibraryPrayerTimes(date: $0)?.fajr }
+        let ishaEnd = PrayerDay.ishaEnd(on: date, nextFajr: nextFajr)
 
         switch prayerName.lowercased() {
         case "fajr":
@@ -213,7 +214,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         case "maghrib":
             return (times.maghrib, times.isha)
         case "isha":
-            return (times.isha, midnightMinusOneSec)
+            return (times.isha, ishaEnd)
         default:
             print("Invalid prayer name: \(prayerName)")
             return nil
@@ -261,15 +262,17 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     // the current one im working on.
     func fetchPrayerTimes(cameFrom: String) {
         print("@@ came from: @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ \(cameFrom)")
-        guard let times = calcAdhanLibraryPrayerTimes(date: Date()) else{
+        // "Today" is the prayer day: before the rollover hour it's still yesterday's calendar date.
+        let prayerDate = PrayerDay.date()
+        guard let times = calcAdhanLibraryPrayerTimes(date: prayerDate) else{
             print("failed using calcAdhanLibraryPrayerTimes() to build a valid a PrayerTimes object")
             return
         }
         
         // My new proposed way of just having calc var shown on prayerButtons. Dont store nothing in persistence UNTIL COMPLETION or MISSED
         //-------------------------------------------------------------------
-        let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(24 * 60 * 60))
-        let midnightMinusOneSec = midnight.addingTimeInterval(-1)
+        let nextFajr = Calendar.current.date(byAdding: .day, value: 1, to: prayerDate).flatMap { calcAdhanLibraryPrayerTimes(date: $0)?.fajr }
+        let ishaEnd = PrayerDay.ishaEnd(on: prayerDate, nextFajr: nextFajr)
         
         func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
             return (starTime, endTime, endTime.timeIntervalSince(starTime))
@@ -288,7 +291,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             "Dhuhr": timesAndWindow(times.dhuhr, times.asr),
             "Asr": timesAndWindow(times.asr, times.maghrib),
             "Maghrib": timesAndWindow(times.maghrib, times.isha),
-            "Isha": timesAndWindow(times.isha, /*todayAt(23, 59)*/ midnightMinusOneSec)
+            "Isha": timesAndWindow(times.isha, ishaEnd)
         ]
 
         
@@ -306,9 +309,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         
         ////  CURRENT OBJECTIVE: 12/2 @ 5:04PM just commented this out and gonna try making it dependent on the calc vars from Adhan. Then create the persisted prayerModel objects on completion instead... this is the start of a big rethinking of our current archtiecture to handle the prayers. The current code as it stands will not work because now thelast5Prayers rely on the persisted objects which are then fed into PulseCircleView and PrayerButton.
         
-        // Format the current date
-        let todayStart = Calendar.current.startOfDay(for: Date())
-        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+        // The prayer day's rows: keyed by the calendar day of `prayerDate`.
+        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: Calendar.current.startOfDay(for: prayerDate))
         
         do {
             // Fetch prayers for the current day from the context
@@ -447,9 +449,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
 
     private func isNotCompletedToday(prayerName: String) -> Bool{
-        let calendar = Calendar.current
-        let todayStart = calendar.startOfDay(for: Date())
-        let todayEnd = calendar.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
         var fetchDescriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd && $0.name == prayerName }
         )
@@ -566,7 +566,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             prayer.cancelUpcomingNudges()   // the extension may not be able to reach our notification center
         }
         calculatePrayerStreak()
-        calculateDayScore(for: Date())
+        calculateDayScore(for: PrayerDay.date())
         print("✅ reconciled widget completions: \(todaysPrayers.filter { $0.isCompleted }.map { $0.name })")
     }
     
@@ -629,7 +629,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     
     func calculateDayScore(for date: Date) {
-        let today = Date()
+        let today = PrayerDay.date()
         let updatingToday = Calendar.current.isDate(date, inSameDayAs: today)
         var runningScore: Double = 0.0
         var objectsToCheck: [PrayerModel] = updatingToday ? todaysPrayers : loadPrayerObjects(for: date)
@@ -737,8 +737,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     //most recent one
     func calculatePrayerStreak() {
         let now = Date()
-        let todayStart = Calendar.current.startOfDay(for: now)
-        let lastStreakDateStart = Calendar.current.startOfDay(for: lastStreakDate)
+        let todayStart = PrayerDay.start(for: now)
+        let lastStreakDateStart = PrayerDay.start(for: lastStreakDate)
         
         checkToResetStreak()
                 
@@ -761,8 +761,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         
         func getTodaysPrayersFromContext() -> [PrayerModel]? {
-            let todayStart = Calendar.current.startOfDay(for: now)
-            let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)!.addingTimeInterval(-1)
+            let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start(for: now))
 
             // Fetch prayers for today
             let todayPrayersFetchDescriptor = FetchDescriptor<PrayerModel>(
@@ -791,9 +790,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     func checkToResetStreak() {
         let now = Date()
-        let todayStart = Calendar.current.startOfDay(for: now)
+        let todayStart = PrayerDay.start(for: now)
         let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart)!
-        let lastStreakDateStart = Calendar.current.startOfDay(for: lastStreakDate)
+        let lastStreakDateStart = PrayerDay.start(for: lastStreakDate)
         
         // Check if there's a gap between lastStreakDate and today
         let resetStreak = ( lastStreakDateStart != todayStart && lastStreakDateStart != yesterdayStart )
@@ -1005,7 +1004,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
      */
 
     func loadPrayerObjects(for date: Date? = nil) -> [PrayerModel] {
-        let targetDate = date ?? Date() // Use the provided date or default to the current date
+        let targetDate = date ?? PrayerDay.date() // the provided calendar day, else the current prayer day
         let dayStart = Calendar.current.startOfDay(for: targetDate)
         let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? Date()
         
@@ -1068,8 +1067,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     
     func loadTodaysPrayerObjects(){
-        let todayStart = Calendar.current.startOfDay(for: Date())
-        let todayEnd = Calendar.current.date(byAdding: .day, value: 1, to: todayStart)?.addingTimeInterval(-1) ?? Date()
+        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
         var fetchDescriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
@@ -1154,10 +1152,11 @@ extension PrayerViewModel{
 
 extension PrayerViewModel {
     
-    private func scheduleDailyRefresh() { // this doesnt work when app is closed... but if its open before midnight and left open until... then it should work
-        let calendar = Calendar.current
-        if let midnight = calendar.date(bySettingHour: 0, minute: 0, second: 0, of: Date().addingTimeInterval(86400)) {
-            let timeInterval = midnight.timeIntervalSince(Date())
+    private func scheduleDailyRefresh() { // this doesnt work when app is closed... but if its open before the rollover and left open until... then it should work
+        do {
+            // The prayer day turns over at the rollover hour (Settings), not midnight.
+            let midnight = PrayerDay.rolloverInstant(after: PrayerDay.date())
+            let timeInterval = max(midnight.timeIntervalSince(Date()), 1)
             
             print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
             refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in

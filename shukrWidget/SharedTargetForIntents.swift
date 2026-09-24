@@ -339,8 +339,7 @@ enum SharedStore {
     static func completedPrayerNamesToday() -> Set<String> {
         guard let container = widgetContainer else { return [] }
         let context = ModelContext(container)
-        let dayStart = Calendar.current.startOfDay(for: Date())
-        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? Date()
+        let (dayStart, dayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
         let descriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate<PrayerModel> { $0.isCompleted && $0.startTime >= dayStart && $0.startTime <= dayEnd }
         )
@@ -516,9 +515,9 @@ struct PrayerUtils {
         return params
     }
     
-    static func createWindowsFromTimes(_ times: PrayerTimes) -> [String : (Date, Date, TimeInterval)] {
-        let midnight = Calendar.current.startOfDay(for: Date().addingTimeInterval(24 * 60 * 60)) // Start of next day
-        let midnightMinusOneSec = midnight.addingTimeInterval(-1) // Subtract 1 second
+    /// `date` is the prayer day the times are for; `nextFajr` caps Isha (see PrayerDay).
+    static func createWindowsFromTimes(_ times: PrayerTimes, on date: Date = PrayerDay.date(), nextFajr: Date? = nil) -> [String : (Date, Date, TimeInterval)] {
+        let ishaEnd = PrayerDay.ishaEnd(on: date, nextFajr: nextFajr)
         
         func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
             return (starTime, endTime, endTime.timeIntervalSince(starTime))
@@ -530,7 +529,7 @@ struct PrayerUtils {
             "Dhuhr": timesAndWindow(times.dhuhr, times.asr),
             "Asr": timesAndWindow(times.asr, times.maghrib),
             "Maghrib": timesAndWindow(times.maghrib, times.isha),
-            "Isha": timesAndWindow(times.isha, /*todayAt(23, 59)*/ midnightMinusOneSec)
+            "Isha": timesAndWindow(times.isha, ishaEnd)
         ]
     }
     

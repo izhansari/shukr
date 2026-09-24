@@ -112,12 +112,16 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // Fallback if there's an error (e.g. location not yet available).
         var prayerTimes: PrayerTimes
         let coordinates = Coordinates(latitude: latitude, longitude: longitude)
-        let dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        // The prayer day (before the rollover hour it's still yesterday's date), like the app.
+        let prayerDate = PrayerDay.date()
+        let dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: prayerDate)
         var windows = PrayerUtils.createDummyWindows()
         do {
             let params = PrayerUtils.getCalculationParameters()
-            prayerTimes = try PrayerUtils.getPrayerTimes(for: Date(), coordinates: coordinates, params: params)
-            windows = PrayerUtils.createWindowsFromTimes(prayerTimes)
+            prayerTimes = try PrayerUtils.getPrayerTimes(for: prayerDate, coordinates: coordinates, params: params)
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: prayerDate) ?? prayerDate
+            let nextFajr = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params).fajr
+            windows = PrayerUtils.createWindowsFromTimes(prayerTimes, on: prayerDate, nextFajr: nextFajr)
         } catch {
             // If there's an error, either throw or use a fallback
             // For example, you could use dummy times or just return some default

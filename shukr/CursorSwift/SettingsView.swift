@@ -39,6 +39,8 @@ struct SettingsView: View {
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
+    /// Hours after midnight the prayer day ends (Isha stays markable until then). See PrayerDay.
+    @AppStorage(PrayerDay.rolloverKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var dayRolloverHours: Int = 0
     @State private var isNotifPopupVisible: Bool = false
     @State private var isStreakPopupVisible: Bool = false
     
@@ -224,6 +226,25 @@ struct SettingsView: View {
 
                     
                     
+                    //MARK: - Day Rollover
+                    Section {
+                        Picker("Isha can be marked until", selection: $dayRolloverHours) {
+                            Text("Midnight").tag(0)
+                            Text("1 AM").tag(1)
+                            Text("2 AM").tag(2)
+                            Text("3 AM").tag(3)
+                        }
+                    } header: {
+                        Text("Day Rollover")
+                    } footer: {
+                        Text("The day's prayers stay up until then, so a late Isha can still be marked and scored. Isha never runs past Fajr.")
+                    }
+                    .onChange(of: dayRolloverHours) { _, _ in
+                        viewModel.fetchPrayerTimes(cameFrom: "onChange dayRolloverHours")
+                        viewModel.loadTodaysPrayerObjects()
+                        WidgetCenter.shared.reloadAllTimelines()
+                    }
+
                     //MARK: - Calculation Method
                     Section(header: Text("Calculation Method")
                         .onTapGesture {

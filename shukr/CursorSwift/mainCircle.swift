@@ -280,7 +280,8 @@ struct summaryCircle: View{
         return Text(changeWithSign < 0 ? "↓\(percentageAbs)" : "↑\(percentageAbs)").foregroundStyle(improvement ? Color(.systemGreen) : Color(.systemRed))
         
         func getYesterdayScore() -> Double {
-            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+            // Yesterday's prayer day (before the rollover hour, "today" is still yesterday's date).
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: PrayerDay.date())!
             let startOfDay = Calendar.current.startOfDay(for: yesterday)
             
             let dailyScore = scores.first { score in

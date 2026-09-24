@@ -166,6 +166,24 @@ commented out in the body and there's no route to it now. `bottomTabPosition == 
 never set anymore; the branches in `BottomSharedView`, `mainCircle.swift`, and `TopBar` that
 check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push is unused.
 
+## Prayer day rollover (PrayerDay.swift)
+
+The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this, Isha
+ended 11:59 PM and there was nothing to mark). Settings → "Day Rollover" → "Isha can be marked
+until" Midnight / 1 / 2 / 3 AM, stored in the app group as `prayerDayRolloverHours` so the
+widget agrees. `Models/PrayerDay.swift` (both targets) is the only place that knows about it:
+`PrayerDay.date()` / `start()` = which calendar day is "today" (before the rollover hour it's
+still yesterday's), `rowRange(forDayStarting:)` = the calendar-day bounds every "today's
+prayers" fetch uses, `ishaEnd(on:nextFajr:)` = a second before the rollover, capped at the next
+Fajr, `rolloverInstant(after:)` = when the app's daily refresh timer fires. Prayer rows stay
+keyed by the calendar day their Fajr falls on; `fetchPrayerTimes` rewrites an uncompleted
+Isha's `endTime` when the setting changes, so the current day picks it up at once. Everything
+that used `Calendar.startOfDay(for: Date())` for "today" in PrayerViewModel, the summary
+circle's "yesterday", and the widget (`makeEntry`, `createWindowsFromTimes`,
+`completedPrayerNamesToday`) goes through PrayerDay now. History views that take an explicit
+date (`loadPrayerObjects(for:)`, PrayerScoreChartView, DayView) still mean the calendar day.
+Sim-verified 2026-09-25: rollover 2 → `Isha : 8:05 PM - 1:59 AM` in the launch log.
+
 ## Widget ↔ app
 
 Widget buttons: compass → app main page + qibla map; tasbeeh → `horizontalPage = .zikr`; list /
