@@ -895,9 +895,7 @@ struct AddDailyTaskView: View {
                     Button("Save") { saveEdits() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    if let editingTask, let goal, let taskIsCountMode {
-                        Text("\(editingTask.displayName): \(goal) \(taskIsCountMode ? "counts" : "minutes") a day. Today's progress is recomputed from its sessions.")
-                    }
+                    Text("Today's progress is recomputed from its sessions.")
                 }
                 
             }
