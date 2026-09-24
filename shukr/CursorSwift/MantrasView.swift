@@ -173,7 +173,7 @@ struct MantraEditorView: View {
                         Text("Stats")
                     } footer: {
                         if mantra.secondsPerCount != nil {
-                            Text("Pace is time-weighted over every session of this mantra. Tap it to switch between per count and per tasbeeh (100).")
+                            Text("Rate is time-weighted over every session of this mantra. Tap it to switch between per count and per tasbeeh (100).")
                         }
                     }
                 }
@@ -227,7 +227,7 @@ private struct PaceRow: View {
 
     var body: some View {
         HStack {
-            Text("Average pace")
+            Text("Average rate")
             Spacer()
             ZStack(alignment: .trailing) {
                 Text(String(format: "%.1fs per count", secondsPerCount))
