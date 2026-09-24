@@ -83,16 +83,25 @@ struct PrayerTimesView: View {
     // spring, the way it always did; while the finger is down only the chevron nudges
     // (resisted, capped) so the page acknowledges it. Attached to the pager itself so nothing
     // inside a page can block it; a no-op unless the Salah page is showing.
+    //
+    // Axis lock: `minimumDistance: 0` and the axis is decided after 6 pt of movement, before
+    // the pager's own pan reaches its 10 pt slop. Vertical → `live.pagerLocked` (the pager is
+    // `.scrollDisabled` while it's set) so sideways drift during a vertical drag can never
+    // turn into a page swipe; horizontal → this gesture stays out of it. Cleared on release.
     private var abstractedDragGesture: _EndedGesture<_ChangedGesture<DragGesture>> {
         let resistanceFactor = 0.5
         let maxOffset: CGFloat = 20
         let threshold: CGFloat = 30
+        let decideAt: CGFloat = 6
 
-        return DragGesture()
+        return DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if isDraggingVertically == nil { // decide the axis once per drag
+                    let t = value.translation
+                    guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
                     dismissKeyboard()
-                    isDraggingVertically = abs(value.translation.height) > abs(value.translation.width)
+                    isDraggingVertically = abs(t.height) > abs(t.width)
+                    if isDraggingVertically == true { live.pagerLocked = true }
                 }
                 if isDraggingVertically == true {
                     guard sharedState.horizontalPage == .main else { return }
@@ -103,6 +112,7 @@ struct PrayerTimesView: View {
             .onEnded { value in
                 let vertical = isDraggingVertically == true
                 isDraggingVertically = nil
+                live.pagerLocked = false
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     live.pull = 0
                     guard vertical, sharedState.horizontalPage == .main else { return }
@@ -1199,7 +1209,9 @@ struct ChevronTap2: View {
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it
     /// and the open sheet fades a little. Zero whenever no finger is down.
     var pull: CGFloat = 0
-    /// Set by the Zikr page's task strip while a finger is on it; the pager is scroll-disabled
-    /// meanwhile so a drag past the strip's last card can't chain into a page turn.
+    /// The pager is `.scrollDisabled` while this is set. Set by the pager's own drag gesture
+    /// once a drag is decided vertical (so sideways drift can't turn into a page swipe) and by
+    /// the Zikr page's task strip while a finger is on it (so a drag past the strip's last
+    /// card can't chain into a page turn). Cleared on release.
     var pagerLocked = false
 }

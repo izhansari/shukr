@@ -91,9 +91,13 @@ and is written only from `onChange(of: horizontalPage)`; user swipes flow the ot
 Spacer layout: `if showBottom` inserts the sheet (`.move(edge: .bottom)` + opacity) and two
 extra Spacers above the circle; all of it animates from the `withAnimation(.spring(response:
 0.35, dampingFraction: 0.85))` around the `navPosition` change. A vertical swipe past 30 pt on
-the pager (`abstractedDragGesture`, `.simultaneousGesture` on the pager itself, axis decided
-on the first move, ignored unless `horizontalPage == .main`) flips it: up opens, down closes,
-down-while-closed refreshes. While the finger is down only `live.pull` moves (resisted ×0.5,
+the pager (`abstractedDragGesture`, `.simultaneousGesture` on the pager itself, ignored unless
+`horizontalPage == .main`) flips it: up opens, down closes, down-while-closed refreshes.
+**Axis lock:** the gesture has `minimumDistance: 0` and decides the axis after 6 pt of
+movement, before the pager's own pan reaches its 10 pt slop. Vertical → `live.pagerLocked`
+(the pager is `.scrollDisabled` while set), so sideways drift during a vertical drag can never
+turn into a page swipe; horizontal → the gesture stays out of it. Cleared on release. Without
+this, a diagonal-ish vertical swipe both paged and flipped the sheet (owner, twice). While the finger is down only `live.pull` moves (resisted ×0.5,
 capped ±20): the chrome's chevron follows it and the open sheet fades a little. The bottom
 86 pt of the VStack is an empty placeholder where the chevron / bottom bar used to sit, so the
 Spacers split the page as before. `summaryCircle` crossfades score ↔ next-Fajr (opacity +
