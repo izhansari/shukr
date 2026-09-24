@@ -487,6 +487,7 @@ struct SettingsView: View {
         // The status-bar strip above this page is painted by the pager (PrayerTimesAndTracker),
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
+        .tint(.green)   // brand colour for every system-tinted control on this page (links, ⓘ, alerts, pickers)
         // A tap anywhere on the page puts the number pad away (simultaneous, so rows still work).
         .simultaneousGesture(TapGesture().onEnded { if stepFieldFocused { stepFieldFocused = false } })
         .navigationBarBackButtonHidden(false)
@@ -607,7 +608,7 @@ struct headerWithInfoButton: View {
                 }
             }) {
                 Image(systemName: /*isPopupVisible ? "xmark.circle" :*/ "info.circle")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.green)
             }
         }
     }
@@ -968,7 +969,7 @@ struct AlarmSettingsView: View {
                 }
             }) {
                 Image(systemName: "info.circle")
-                    .foregroundColor(.blue)
+                    .foregroundColor(.green)
             }
         }
         ) {
@@ -1072,13 +1073,17 @@ struct AlarmSettingsView: View {
                     }) {
                         HStack {
                             Text(isEditingAlarm ? "Save" : alarmDescription)
-                                .foregroundStyle(isEditingAlarm ? .blue : .gray)
-                                .font(isEditingAlarm ? .body : .subheadline)
+                                .foregroundStyle(isEditingAlarm ? Color.green : Color.gray)
+                                .font(isEditingAlarm ? .body.weight(.medium) : .subheadline)
                             Spacer()
                             Image(systemName: isEditingAlarm ? "square.and.arrow.down" : "pencil") // Add the pencil icon here
-                                .foregroundStyle(isEditingAlarm ? .blue : .gray) // Match the color with text
+                                .foregroundStyle(isEditingAlarm ? Color.green : Color.gray) // Match the color with text
                         }
+                        .contentShape(Rectangle())   // the whole row taps, not just the text
                     }
+                    // Plain: keep our colours and the full-width hit area. iOS 26 restyles a
+                    // Form's buttons (tint + label-only hit area), which broke this row's look.
+                    .buttonStyle(.plain)
             }
             
             // Info Block
