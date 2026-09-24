@@ -87,36 +87,45 @@ and is written only from `onChange(of: horizontalPage)`; user swipes flow the ot
 `.onScrollPhaseChange` (iOS 18) **only when the phase hits `.idle`**, using
 `visibleRect.midX / containerSize.width`. `.defaultScrollAnchor(.center)` starts on Main.
 
-**The vertical drag gesture is attached to the ScrollView itself, not to views inside it**
-(`.simultaneousGesture(abstractedDragGesture)` on the pager). The scroll view's pan gets first
-claim on every touch: horizontal → paging, vertical → our gesture. Nothing inside a page can
-block paging. The gesture only acts when `horizontalPage == .main` (so scrolling the Settings
-Form or vertical drags on Zikr do nothing). Do not re-add drag gestures inside pages.
+**The vertical drag on the Salah page is a native vertical `ScrollView`** (`SalahPageContent`),
+nested inside the horizontal pager. Its content is an invisible track exactly `travel` taller
+than the page; the circle and the salah sheet ride inside it, pinned to the viewport by
+`.offset(y: live.sheetOffset)` and positioned from the open-progress `p = sheetOffset / travel`.
+UIKit supplies what the hand-rolled gesture never got right: 1:1 tracking, the deceleration
+curve, rubber-banding at both ends and direction locking against the pager (a drag that starts
+vertical stays vertical even if it drifts sideways; a horizontal one pages). `SheetSnap`
+(`ScrollTargetBehavior`) rounds the natural end point to 0 or `travel`, so a flick coasts on
+its own momentum and settles where it was heading, like `.paging`. Three earlier hand-rolled
+versions (fixed spring, projected velocity + interpolatingSpring + rubber band + axis lock) all
+felt wrong to the owner; don't go back to a `DragGesture` for this.
+
+Coordinate gotcha: the scroll view applies the top safe area as a content inset, so the raw
+`contentOffset.y` at rest is `-inset` and `ScrollGeometry` reports it that way — `sheetOffset`
+is `contentOffset.y + contentInsets.top`. `ScrollTarget.rect` in `SheetSnap` and
+`ScrollPosition.scrollTo(y:)` are already inset-adjusted (0 = rest). Mixing the two spaces
+puts the open state ~60 pt short. The scrollable range from rest is `travel` with the track at
+`H + travel`; do not subtract the inset from the track.
+
+`onScrollPhaseChange` → `.idle` records open/closed in `navPosition` (with a haptic); a release
+from a >40 pt top bounce triggers the refresh (the circle dips a resisted 20 pt nudge meanwhile).
+Programmatic changes (chevron, widget deep link) go the other way through `onChange(of:
+navPosition)` → `scrollTo`. The gesture only exists on the Salah page, so Settings' Form and
+vertical drags on Zikr are untouched. Do not add drag gestures inside pages.
 
 **Per-frame values live in `PagerLiveState` (`@Observable`, held as `@State live`)**: the
-gesture writes `sheetDrag` / `pull`, `.onScrollGeometryChange` writes `scrollProgress`
-(0 Zikr, 1 Salah, 2 Settings). PrayerTimesView's body reads none of them, so only the two
-views that do re-render per frame: `SalahPageContent` and `PagerChromeView`. Keep it that way.
+Salah scroll writes `sheetOffset` / `sheetInset` / `sheetTravel` (computed `sheetP`,
+`pullNudge`), the pager's `.onScrollGeometryChange` writes `scrollProgress` (0 Zikr, 1 Salah,
+2 Settings). PrayerTimesView's body reads none of them, so only the two views that do re-render
+per frame: `SalahPageContent` and `PagerChromeView`. Keep it that way.
 
-**The Salah page follows the finger.** `SalahPageContent` positions the circle and the salah
-sheet from one open-progress `p = (navPosition == .bottom ? 1 : 0) + live.sheetDrag` via
-`SalahGeometry`, whose numbers reproduce the old Spacer layout at p = 0 and p = 1. The finger
-maps 1:1 onto the **sheet's** travel (parked below the screen → open), so the list moves
-exactly with the finger and the circle, which rises only sheetHeight / 2, follows slower —
-mapping the circle 1:1 made the list run ~3× the finger. Past either end the sheet rubber-bands
-(25% of the excess, max 0.12). Release works like a scroll view: the finger's velocity is
-projected 0.18 s ahead to pick open vs closed, then an `interpolatingSpring` (stiffness 170,
-damping 22, slightly under-damped) starts at the finger's velocity and carries it there with a
-small bounce; `navPosition` flips inside that animation so nothing jumps. Pull-down while
-closed is the old resisted 20 pt nudge + refresh. The sheet is always in the tree, parked below
-the screen when closed (mounting it mid-drag stalled devices and changed the travel distance
-when its height got measured); `TodaysPrayerListView` only builds buttons for loaded prayers so
-`PrayerButton` can't fatalError before `loadTodaysPrayerObjects` runs.
-
-**Axis lock.** The gesture has `minimumDistance: 0` and decides the axis after 6 pt of movement
-— before the pager's own pan reaches its 10 pt slop. Vertical → `live.verticalLock = true`,
-which the pager reads as `.scrollDisabled`, so sideways drift during a vertical drag can never
-turn into a page swipe; horizontal → the gesture stays out of it. The lock clears on release.
+**Layout by progress.** `SalahGeometry` reproduces the old Spacer layout at p = 0 and p = 1
+(circle 200 pt, bottom chrome 86 pt) and lerps between. The finger maps 1:1 onto the **sheet's**
+travel (parked below the screen → open), so the list moves exactly with the finger and the
+circle, which rises only sheetHeight / 2, follows slower — mapping the circle 1:1 made the list
+run ~3× the finger. The sheet is always in the tree, parked below the screen when closed
+(mounting it mid-drag stalled devices and changed the travel distance when its height got
+measured); `TodaysPrayerListView` only builds buttons for loaded prayers so `PrayerButton`
+can't fatalError before `loadTodaysPrayerObjects` runs.
 
 **Top bar and bottom bar are fixed chrome** (`PagerChromeView`, a sibling of the pager in the
 root ZStack): hamburger `Menu` + `TopBar` on Salah / "Zikr" title on Zikr; chevron hint on Salah

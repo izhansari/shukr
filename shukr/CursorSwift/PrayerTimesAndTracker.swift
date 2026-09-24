@@ -44,7 +44,6 @@ struct PrayerTimesView: View {
     /// The row behind `chosenMantra`; the picker sets it first, the onChange below forwards it.
     @State private var chosenMantraObject: MantraModel? = nil
     
-    @State private var isDraggingVertically: Bool? = nil  // Current drag direction
     /// Per-frame values written by the pager gesture / scroll (sheet drag, pull, scroll progress).
     /// An @Observable object: only the views that read a property re-render when it changes, so
     /// this screen's body is not re-evaluated on every finger move (that was the old lag).
@@ -66,7 +65,6 @@ struct PrayerTimesView: View {
     @State private var showSalahHistoryV1 = false
     @State private var showSalahHistoryV2 = false
     @State private var showZikrHistory = false
-    private var chevDragValue: CGFloat { live.pull }  // pull-to-refresh nudge (closed sheet only)
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -79,90 +77,6 @@ struct PrayerTimesView: View {
             }
     }
     
-    private var abstractedDragGesture: _EndedGesture<_ChangedGesture<DragGesture>> {
-        let pullResistance = 0.5
-        let maxPull: CGFloat = 20
-        let refreshThreshold: CGFloat = 30
-        let decideAfter: CGFloat = 6          // pt of movement before the axis is chosen (< UIKit's 10 pt slop)
-        let overshootGive: CGFloat = 0.25     // rubber band past either end: this fraction of the excess…
-        let overshootMax: CGFloat = 0.12      // …up to this much (progress units)
-        let coastHorizon: CGFloat = 0.18      // s: how far a flick "coasts", scroll-view style
-
-        /// Rubber-banded progress delta. `raw` is the finger's travel in progress units (up is
-        /// positive); the sheet follows it 1:1 inside [0, 1] and with resistance beyond.
-        func banded(_ raw: CGFloat, base: CGFloat) -> CGFloat {
-            let p = base + raw
-            if p > 1 { return (1 - base) + min((p - 1) * overshootGive, overshootMax) }
-            if p < 0 { return (0 - base) - min((0 - p) * overshootGive, overshootMax) }
-            return raw
-        }
-
-        // minimumDistance 0 so the axis is decided from the first points, before the pager's
-        // pan (10 pt slop) can start; simultaneousGesture keeps taps inside the pages working.
-        return DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                if isDraggingVertically == nil {
-                    let t = value.translation
-                    guard hypot(t.width, t.height) >= decideAfter else { return }
-                    dismissKeyboard()
-                    let vertical = abs(t.height) > abs(t.width)
-                    isDraggingVertically = vertical
-                    // Lock the axis for the rest of this gesture. Horizontal: the pager does the
-                    // work and we stay out of it. Vertical: the pager is switched off (see
-                    // .scrollDisabled) so sideways drift can't turn into a page swipe.
-                    live.verticalLock = vertical && sharedState.horizontalPage == .main
-                }
-                guard isDraggingVertically == true, sharedState.horizontalPage == .main else { return }
-                let h = value.translation.height
-                let travel = max(SalahGeometry(height: live.pageHeight, sheetHeight: live.sheetHeight).travel, 1)
-                let raw = -h / travel
-                if showBottom {
-                    live.sheetDrag = banded(raw, base: 1)
-                    live.pull = 0
-                } else if raw > 0 {
-                    live.sheetDrag = banded(raw, base: 0)
-                    live.pull = 0
-                } else {
-                    // Closed, dragging down: the small resisted pull-to-refresh nudge.
-                    live.sheetDrag = 0
-                    live.pull = min(h * pullResistance, maxPull)
-                }
-            }
-            .onEnded { value in
-                defer { isDraggingVertically = nil; live.verticalLock = false }
-                guard isDraggingVertically == true, sharedState.horizontalPage == .main else { return }
-                let travel = max(SalahGeometry(height: live.pageHeight, sheetHeight: live.sheetHeight).travel, 1)
-                let current = (showBottom ? 1 : 0) + live.sheetDrag
-                let velocity = -value.velocity.height / travel          // progress units / s, up positive
-                if !showBottom, live.sheetDrag == 0 {
-                    // Pull-to-refresh release (no sheet movement happened).
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { live.pull = 0 }
-                    if value.translation.height > refreshThreshold, value.velocity.height >= 0 {
-                        viewModel.refreshCityAndPrayerTimes()
-                        triggerSomeVibration(type: .light)
-                    }
-                    return
-                }
-                // Where a scroll view would coast to from this velocity decides open vs closed;
-                // then a spring that STARTS at the finger's velocity carries it there, slightly
-                // under-damped so it settles with a small bounce.
-                let projected = current + velocity * coastHorizon
-                let open = projected > 0.5
-                let target: CGFloat = open ? 1 : 0
-                let distance = max(abs(target - current), 0.001)
-                let towardTarget: CGFloat = target > current ? 1 : -1
-                let initialVelocity = max(velocity * towardTarget, 0) / distance   // relative to the distance
-                withAnimation(.interpolatingSpring(mass: 1, stiffness: 170, damping: 22, initialVelocity: initialVelocity)) {
-                    if open != showBottom {
-                        sharedState.bottomTabPosition = .salah
-                        sharedState.navPosition = open ? .bottom : .main
-                        triggerSomeVibration(type: .light)
-                    }
-                    live.sheetDrag = 0
-                    live.pull = 0
-                }
-            }
-    }
     var body: some View {
         ZStack {
             // The status-bar strip. Pages are clipped to the pager, which starts below the top
@@ -211,7 +125,6 @@ struct PrayerTimesView: View {
             // itself, not on views inside it: the scroll view's pan gets first claim on every
             // touch, takes horizontal ones for paging, and hands vertical ones to this gesture.
             // Nothing inside a page can block paging that way.
-            .scrollDisabled(live.verticalLock) // axis lock: a vertical drag never pages
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 // Page position, live: 0 = Zikr, 1 = Salah, 2 = Settings. Only the chrome reads it.
                 let width = geometry.containerSize.width
@@ -219,7 +132,6 @@ struct PrayerTimesView: View {
             } action: { _, progress in
                 live.scrollProgress = progress
             }
-            .simultaneousGesture(abstractedDragGesture)
             .simultaneousGesture(switchToSalahDoubleTapSGesture)
             .onScrollPhaseChange { _, phase, context in
                 // Record the page only once the scroll has settled. Doing it mid-drag (as the
@@ -351,14 +263,17 @@ struct PrayerTimesView: View {
         .navigationBarHidden(true)
     }
 
-    /// The Salah page body: main circle + salah sheet, positioned by one open-progress value
-    /// (0 = circle centred, sheet off the bottom; 1 = circle up, sheet in). The vertical drag
-    /// moves it with the finger; release springs it to 0 or 1. Separate view so per-frame
-    /// updates re-render this and nothing else.
+    /// The Salah page: a native vertical ScrollView owns the drag. Its content is an invisible
+    /// track exactly `travel` taller than the page; the circle and sheet ride inside it, held
+    /// fixed relative to the viewport (offset by the scroll offset) and positioned from the
+    /// open-progress `p = offset / travel`. UIKit gives the tracking, deceleration curve, bounce
+    /// and direction-locking against the horizontal pager; `SheetSnap` rounds the natural
+    /// deceleration end point to closed (0) or open (travel). Per-frame values go through
+    /// `live`, so only this view re-renders while dragging.
     struct SalahPageContent: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @EnvironmentObject var viewModel: PrayerViewModel
-        var live: PagerLiveState
+        @Bindable var live: PagerLiveState
         @Binding var showQiblaMap: Bool
         @Binding var showChainZikrButton: Bool
         @Binding var showTasbeehPage: Bool
@@ -367,48 +282,118 @@ struct PrayerTimesView: View {
         @Binding var showMantraSheetFromHomePage: Bool
 
         private var showBottom: Bool { sharedState.navPosition == .bottom }
+        private let refreshPull: CGFloat = 40   // pt of top bounce that triggers a refresh on release
 
         var body: some View {
             GeometryReader { geo in
-                let g = SalahGeometry(height: geo.size.height, sheetHeight: live.sheetHeight)
-                let p = min(max((showBottom ? 1 : 0) + live.sheetDrag, -0.15), 1.15)
+                let H = geo.size.height
                 let midX = geo.size.width / 2
+                let g = SalahGeometry(height: H, sheetHeight: live.sheetHeight)
+                let travel = max(g.travel, 1)
+                let offset = live.sheetOffset
+                let p = min(max(offset / travel, 0), 1.15)
+                let nudge = live.pullNudge   // top bounce: the circle dips a little, resisted
 
-                // Always mounted, parked below the screen while closed. Mounting it on the first
-                // pixel of a drag stalled the device (the salah list is heavy) and then changed
-                // the travel distance mid-drag when its height got measured — that was the jump.
-                BottomSharedView(
-                    showChainZikrButton: $showChainZikrButton,
-                    dismissChainZikrItem: $dismissChainZikrItem,
-                    showDailyAyahView: $showDailyAyahView,
-                    showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                    showTasbeehPage: $showTasbeehPage
-                )
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                    if h > 0, abs(h - live.sheetHeight) > 0.5 { live.sheetHeight = h }
-                }
-                .opacity(Double(min(max(p, 0), 1)))
-                .allowsHitTesting(p > 0.5)
-                .position(x: midX, y: g.sheetY(p))
+                ScrollView(.vertical) {
+                    ZStack(alignment: .top) {
+                        // The track: scroll room of exactly `travel` beyond the viewport. (The
+                        // scroll view's viewport is the page plus the top safe area, which it
+                        // applies as a content inset; the range from rest is still `travel`.)
+                        Color.clear.frame(height: H + travel)
 
-                MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
-                    .geometryGroup()
-                    .onAppear {
-                        print("⭐️ prayerTimesView onAppear")
-                        viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
-                        viewModel.loadTodaysPrayerObjects()
-                        viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
+                        // Visuals: one page tall, pinned to the viewport by cancelling the scroll.
+                        ZStack {
+                            BottomSharedView(
+                                showChainZikrButton: $showChainZikrButton,
+                                dismissChainZikrItem: $dismissChainZikrItem,
+                                showDailyAyahView: $showDailyAyahView,
+                                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                                showTasbeehPage: $showTasbeehPage
+                            )
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                                if h > 0, abs(h - live.sheetHeight) > 0.5 { live.sheetHeight = h }
+                            }
+                            .opacity(Double(min(p, 1)))
+                            .allowsHitTesting(p > 0.5)
+                            .position(x: midX, y: g.sheetY(p))
+
+                            MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                                .geometryGroup()
+                                .onAppear {
+                                    print("⭐️ prayerTimesView onAppear")
+                                    viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
+                                    viewModel.loadTodaysPrayerObjects()
+                                    viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
+                                }
+                                .position(x: midX, y: g.circleY(p) + nudge)
+                                .zIndex(3)
+
+                            // Post-salah chain-zikr prompt; floats near the top of this page only.
+                            FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        }
+                        .frame(width: geo.size.width, height: H)
+                        .offset(y: offset)   // pin to the viewport: cancel the scroll (measured from rest)
                     }
-                    .position(x: midX, y: g.circleY(p) + live.pull)
-                    .zIndex(3)
-
-                // Post-salah chain-zikr prompt; floats near the top of this page only.
-                FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(SheetSnap(travel: travel))
+                .scrollPosition($live.sheetPosition)
+                // The scroll view insets its content by the safe area, so the raw offset at rest
+                // is -inset; the track's progress is measured from the rest position.
+                .onScrollGeometryChange(for: CGSize.self) { g in
+                    CGSize(width: g.contentInsets.top, height: g.contentOffset.y)
+                } action: { _, v in
+                    live.sheetInset = v.width
+                    live.sheetOffset = v.height + v.width
+                    live.sheetTravel = travel
+                }
+                .onScrollPhaseChange { old, new, context in
+                    // Settled: record open/closed. Released from a deep top bounce: refresh.
+                    let settled = context.geometry.contentOffset.y + context.geometry.contentInsets.top
+                    if new == .idle {
+                        let open = settled > travel / 2
+                        if open != showBottom {
+                            sharedState.bottomTabPosition = .salah
+                            sharedState.navPosition = open ? .bottom : .main
+                            triggerSomeVibration(type: .light)
+                        }
+                    }
+                    if old == .interacting, !showBottom, settled < -refreshPull {
+                        viewModel.refreshCityAndPrayerTimes()
+                        triggerSomeVibration(type: .light)
+                    }
+                }
+                .onChange(of: sharedState.navPosition) { _, position in
+                    // Programmatic changes (chevron, widget deep link, code) scroll the track.
+                    let target: CGFloat = position == .bottom ? travel : 0
+                    if abs(live.sheetOffset - target) > 1 {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            live.sheetPosition.scrollTo(y: target)
+                        }
+                    }
+                }
+                .onAppear {
+                    if showBottom { live.sheetPosition.scrollTo(y: travel) }
+                }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { live.pageHeight = $0 }
         }
     }
+
+    /// Snap the vertical track to closed (0) or open (travel). `target` arrives as the point the
+    /// native deceleration would end at, so a flick coasts on its own momentum and then settles
+    /// wherever it was heading — the same rule a scroll view's paging uses.
+    struct SheetSnap: ScrollTargetBehavior {
+        let travel: CGFloat
+        func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+            // The target is measured from the rest position (content insets already applied),
+            // unlike the raw contentOffset ScrollGeometry reports.
+            let proposed = target.rect.origin.y
+            target.rect.origin.y = proposed > travel / 2 ? travel : 0
+        }
+    }
+
 
     /// Top bar (menu + TopBar on Salah, "Zikr" title on Zikr) and the chevron / bottom bar,
     /// fixed over the pager. Reads `live` so it alone re-renders while scrolling or dragging.
@@ -427,7 +412,7 @@ struct PrayerTimesView: View {
         private var zikrness: CGFloat { min(max(1 - live.scrollProgress, 0), 1) }
         private var settingsness: CGFloat { min(max(live.scrollProgress - 1, 0), 1) }
         /// Sheet open-progress on the Salah page, 0...1.
-        private var sheetP: CGFloat { min(max((showBottom ? 1 : 0) + live.sheetDrag, 0), 1) }
+        private var sheetP: CGFloat { live.sheetP }
 
         var body: some View {
             VStack(spacing: 0) {
@@ -483,10 +468,10 @@ struct PrayerTimesView: View {
                     } label: {
                         Image(systemName: "chevron.up")
                             .font(.title3)
-                            .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                            .foregroundStyle(live.pullNudge != 0 ? Color.secondary : Color(.secondarySystemFill))
                             .padding(.bottom, 30)
                             .padding()
-                            .offset(y: live.pull)
+                            .offset(y: live.pullNudge)
                     }
                     .opacity(Double((1 - sheetP) * (1 - zikrness)))
                     .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
@@ -1226,16 +1211,20 @@ struct ChevronTap2: View {
 @Observable final class PagerLiveState {
     /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
     var scrollProgress: CGFloat = 1
-    /// Vertical drag on the Salah page in sheet-progress units (finger travel / circle travel).
-    var sheetDrag: CGFloat = 0
-    /// Pull-to-refresh nudge in points; closed sheet only.
-    var pull: CGFloat = 0
-    /// True from the moment a drag is judged vertical until it ends: the pager's scrolling is
-    /// disabled for the rest of that gesture so sideways drift can't turn it into a page swipe.
-    var verticalLock = false
-    /// Measured by SalahPageContent; the gesture needs them to convert points to progress.
+    /// The Salah page's vertical track: offset in points (0 closed … `sheetTravel` open,
+    /// negative while bouncing at the top) and the position handle for programmatic scrolls.
+    var sheetOffset: CGFloat = 0      // measured from the rest position (inset-corrected)
+    var sheetInset: CGFloat = 0       // the scroll view's top content inset (safe area)
+    var sheetTravel: CGFloat = 1
+    var sheetPosition = ScrollPosition()
+    /// Measured by SalahPageContent; SalahGeometry needs them.
     var pageHeight: CGFloat = 0
     var sheetHeight: CGFloat = 320
+
+    /// Sheet open-progress, 0…1.
+    var sheetP: CGFloat { min(max(sheetOffset / max(sheetTravel, 1), 0), 1) }
+    /// Pull-to-refresh nudge in points, from the top bounce, resisted and capped.
+    var pullNudge: CGFloat { min(max(-sheetOffset, 0) * 0.5, 20) }
 }
 
 /// Where the main circle and the salah sheet sit for an open-progress `p` (0 closed, 1 open).
