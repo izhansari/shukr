@@ -19,6 +19,8 @@ struct MainCircleView: View {
     @Binding var showQiblaMap: Bool
     @Binding var showChainZikrButton: Bool
     @Binding var showTasbeehPage: Bool
+    /// The pager's live values; only `summaryCircle` reads them (per frame), this body doesn't.
+    var live: PagerLiveState? = nil
     let animationStyle: Animation = .spring
     
 //    private var prayer: PrayerModel? { viewModel.relevantPrayer }
@@ -140,7 +142,7 @@ struct MainCircleView: View {
                 }
             }
             else {
-                summaryCircle(ogText: $ogText)
+                summaryCircle(ogText: $ogText, live: live)
             }
             
             // tappable circle on top (cant mix with outer circle cuz then the progress goes under the circle stroke)
@@ -251,6 +253,7 @@ struct summaryCircle: View{
     @Query private var scores: [DailyPrayerScore]
 
     @Binding var ogText: Bool  // to control the toggle text in the middle
+    var live: PagerLiveState? = nil
     @State private var animationBool: Bool = false
     @State private var nextFajr: (start: Date, end: Date)?
 //    @State private var summaryInfo: [String : Double?] = [:]
@@ -306,53 +309,60 @@ struct summaryCircle: View{
     var body: some View{
 
                         
+        // Score ↔ next-Fajr content crossfades with the salah sheet's progress, so on a slow drag
+        // the swap happens under the finger; nothing is left to switch when the sheet settles.
+        // Off the pager (no `live`) it's a plain open/closed switch.
+        let p: CGFloat = live?.sheetP ?? (sharedState.navPosition == .bottom ? 1 : 0)
+        let scoreness: CGFloat = sharedState.bottomTabPosition == .salah ? min(max((p - 0.35) / 0.3, 0), 1) : 0
         ZStack{
-            if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah{
-                // The Summary Score
-                VStack{
-                    Text("Today's Score:")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
-                    Text(String(format: "%.1f%%", /*todaysScore*/ viewModel.todaysScore * 100))
-                        .font(.title)
-                        .fontWeight(.medium)
-                        .fontDesign(.rounded)
-                    changeInDailyScore()
-                        .opacity(0.7)
-                        .font(.caption)
-                        .fontDesign(.rounded)
-                }
-            }else {
-                // Fajr Icon, Title, Time:
-                VStack{
-                    HStack(alignment: .center){
-                        Image(systemName: prayerIcon(for: "Fajr"))
-                        Text("Fajr")
-                            .fontWeight(.bold)
-                    }
+            // The Summary Score
+            VStack{
+                Text("Today's Score:")
+                    .font(.headline)
+                    .foregroundColor(.secondary)
+                    .fontDesign(.rounded)
+                    .fontWeight(.light)
+                Text(String(format: "%.1f%%", /*todaysScore*/ viewModel.todaysScore * 100))
                     .font(.title)
-                    
-                    // Displayed Fajr Time:
-                    if let fajrTime = nextFajr{
-                        ZStack{
-                            if ogText{
-                                Text("in \(fajrTime.start, style: .relative)")
-                            }
-                            else {
-                                Text("\(shortTime(fajrTime.start)) - \(shortTimePM(fajrTime.end))")
-                            }
+                    .fontWeight(.medium)
+                    .fontDesign(.rounded)
+                changeInDailyScore()
+                    .opacity(0.7)
+                    .font(.caption)
+                    .fontDesign(.rounded)
+            }
+            .opacity(Double(scoreness))
+            .scaleEffect(0.9 + 0.1 * scoreness)
+
+            // Fajr Icon, Title, Time:
+            VStack{
+                HStack(alignment: .center){
+                    Image(systemName: prayerIcon(for: "Fajr"))
+                    Text("Fajr")
+                        .fontWeight(.bold)
+                }
+                .font(.title)
+
+                // Displayed Fajr Time:
+                if let fajrTime = nextFajr{
+                    ZStack{
+                        if ogText{
+                            Text("in \(fajrTime.start, style: .relative)")
                         }
-                        .fixedSize(horizontal: true, vertical: false)
-                        .foregroundColor(.primary.opacity(0.7))
-                        .multilineTextAlignment(.center)
-                        .fontDesign(.rounded)
-                        .fontWeight(.thin)
-                        .transition(.blurReplace)
+                        else {
+                            Text("\(shortTime(fajrTime.start)) - \(shortTimePM(fajrTime.end))")
+                        }
                     }
+                    .fixedSize(horizontal: true, vertical: false)
+                    .foregroundColor(.primary.opacity(0.7))
+                    .multilineTextAlignment(.center)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
+                    .transition(.blurReplace)
                 }
             }
+            .opacity(Double(1 - scoreness))
+            .scaleEffect(1 - 0.1 * scoreness)
         }
         .transition(.opacity)
 

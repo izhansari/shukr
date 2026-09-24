@@ -106,11 +106,19 @@ is `contentOffset.y + contentInsets.top`. `ScrollTarget.rect` in `SheetSnap` and
 puts the open state ~60 pt short. The scrollable range from rest is `travel` with the track at
 `H + travel`; do not subtract the inset from the track.
 
-`onScrollPhaseChange` → `.idle` records open/closed in `navPosition` (with a haptic); a release
-from a >40 pt top bounce triggers the refresh (the circle dips a resisted 20 pt nudge meanwhile).
-Programmatic changes (chevron, widget deep link) go the other way through `onChange(of:
-navPosition)` → `scrollTo`. The gesture only exists on the Salah page, so Settings' Form and
-vertical drags on Zikr are untouched. Do not add drag gestures inside pages.
+**Commit at the decision, not at rest.** `navPosition` (and the haptic) flip when the finger
+crosses the midpoint while dragging (the detent; coming back flips it back) and in
+`SheetSnap.updateTarget` the instant the finger lifts, where the destination is known — never
+when the scroll settles. Owner's complaint that drove this: on a slow flick the sheet landed,
+then the circle swapped content and the phone buzzed a beat later. For the same reason
+`summaryCircle` crossfades score ↔ next-Fajr from `live.sheetP` (fade across p = 0.35…0.65)
+instead of switching on `navPosition`; anything else that switches visually on open/closed
+should read `p` too. `onChange(of: navPosition)` → `scrollTo` is for programmatic changes
+(chevron, widget deep link) and is skipped while the phase is `.interacting` / `.decelerating`,
+since those commits came from the drag and the track is already heading there. A release from
+a >40 pt top bounce triggers the refresh (the circle dips a resisted 20 pt nudge meanwhile). The
+gesture only exists on the Salah page, so Settings' Form and vertical drags on Zikr are
+untouched. Do not add drag gestures inside pages.
 
 **Per-frame values live in `PagerLiveState` (`@Observable`, held as `@State live`)**: the
 Salah scroll writes `sheetOffset` / `sheetInset` / `sheetTravel` (computed `sheetP`,

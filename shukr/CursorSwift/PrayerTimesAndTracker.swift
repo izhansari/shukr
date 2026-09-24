@@ -317,7 +317,7 @@ struct PrayerTimesView: View {
                             .allowsHitTesting(p > 0.5)
                             .position(x: midX, y: g.sheetY(p))
 
-                            MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                            MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage, live: live)
                                 .geometryGroup()
                                 .onAppear {
                                     print("⭐️ prayerTimesView onAppear")
@@ -337,7 +337,11 @@ struct PrayerTimesView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
-                .scrollTargetBehavior(SheetSnap(travel: travel))
+                .scrollTargetBehavior(SheetSnap(travel: travel) { open in
+                    // Release: the destination is known now, so the state (and the tick)
+                    // happen here and the coast just glides into a state that's already true.
+                    commit(open: open)
+                })
                 .scrollPosition($live.sheetPosition)
                 // The scroll view insets its content by the safe area, so the raw offset at rest
                 // is -inset; the track's progress is measured from the rest position.
@@ -347,18 +351,16 @@ struct PrayerTimesView: View {
                     live.sheetInset = v.width
                     live.sheetOffset = v.height + v.width
                     live.sheetTravel = travel
+                    // Dragging past the midpoint is the detent: commit (and tick) right there,
+                    // like a sheet moving between detents. Coming back re-commits the other way.
+                    if live.sheetPhase == .interacting {
+                        commit(open: live.sheetOffset > travel / 2)
+                    }
                 }
                 .onScrollPhaseChange { old, new, context in
-                    // Settled: record open/closed. Released from a deep top bounce: refresh.
+                    live.sheetPhase = new
+                    // Released from a deep top bounce: refresh.
                     let settled = context.geometry.contentOffset.y + context.geometry.contentInsets.top
-                    if new == .idle {
-                        let open = settled > travel / 2
-                        if open != showBottom {
-                            sharedState.bottomTabPosition = .salah
-                            sharedState.navPosition = open ? .bottom : .main
-                            triggerSomeVibration(type: .light)
-                        }
-                    }
                     if old == .interacting, !showBottom, settled < -refreshPull {
                         viewModel.refreshCityAndPrayerTimes()
                         triggerSomeVibration(type: .light)
@@ -366,6 +368,9 @@ struct PrayerTimesView: View {
                 }
                 .onChange(of: sharedState.navPosition) { _, position in
                     // Programmatic changes (chevron, widget deep link, code) scroll the track.
+                    // Not while the finger or the coast owns the scroll: those commits come
+                    // from the drag itself and the track is already heading there.
+                    guard live.sheetPhase == .idle || live.sheetPhase == .animating else { return }
                     let target: CGFloat = position == .bottom ? travel : 0
                     if abs(live.sheetOffset - target) > 1 {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
@@ -379,6 +384,14 @@ struct PrayerTimesView: View {
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { live.pageHeight = $0 }
         }
+
+        /// Record open/closed once per decision, with the haptic. No-op when already there.
+        private func commit(open: Bool) {
+            guard open != showBottom else { return }
+            sharedState.bottomTabPosition = .salah
+            sharedState.navPosition = open ? .bottom : .main
+            triggerSomeVibration(type: .light)
+        }
     }
 
     /// Snap the vertical track to closed (0) or open (travel). `target` arrives as the point the
@@ -386,11 +399,14 @@ struct PrayerTimesView: View {
     /// wherever it was heading — the same rule a scroll view's paging uses.
     struct SheetSnap: ScrollTargetBehavior {
         let travel: CGFloat
+        /// Called with the chosen end (open?) the moment the finger lifts.
+        let onDecide: (Bool) -> Void
         func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
             // The target is measured from the rest position (content insets already applied),
             // unlike the raw contentOffset ScrollGeometry reports.
-            let proposed = target.rect.origin.y
-            target.rect.origin.y = proposed > travel / 2 ? travel : 0
+            let open = target.rect.origin.y > travel / 2
+            target.rect.origin.y = open ? travel : 0
+            onDecide(open)
         }
     }
 
@@ -1217,6 +1233,7 @@ struct ChevronTap2: View {
     var sheetInset: CGFloat = 0       // the scroll view's top content inset (safe area)
     var sheetTravel: CGFloat = 1
     var sheetPosition = ScrollPosition()
+    var sheetPhase: ScrollPhase = .idle
     /// Measured by SalahPageContent; SalahGeometry needs them.
     var pageHeight: CGFloat = 0
     var sheetHeight: CGFloat = 320
