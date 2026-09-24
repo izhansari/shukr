@@ -581,6 +581,7 @@ struct LocationMapContentView: View {
                        defaultEndDate: viewModel.defaultEndDate,
                        defaultPrayerNames: viewModel.defaultPrayerNames,
                        earliestPinDate: prayers.first?.startTime ?? Date())
+                .tint(.green)
         }
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -756,9 +757,10 @@ struct CheckboxStyle: ToggleStyle {
             HStack {
                 Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
                     .foregroundColor(configuration.isOn ? .green : .secondary)
-                configuration.label
+                configuration.label.foregroundStyle(.primary)
             }
         }
+        .buttonStyle(.plain)
     }
 }
 
@@ -807,11 +809,13 @@ struct FilterView: View {
                             }
                         } label: {
                             HStack {
-                                Text(range.rawValue).foregroundStyle(.primary)
+                                Text(range.rawValue)
                                 Spacer()
                                 if currentRange == range { Image(systemName: "checkmark").foregroundStyle(.green) }
                             }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 if currentRange == .custom {
@@ -866,7 +870,6 @@ struct FilterView: View {
                 }
             }
             .navigationBarTitle("Filter Prayers", displayMode: .inline)
-            .tint(.green)
             .navigationBarItems(
                 leading: Button("Reset") {
                     selectedStartDate = defaultStartDate
