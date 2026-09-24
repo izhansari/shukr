@@ -182,35 +182,39 @@ struct PrayerTimesView: View {
             // itself, not on views inside it: the scroll view's pan gets first claim on every
             // touch, takes horizontal ones for paging, and hands vertical ones to this gesture.
             // Nothing inside a page can block paging that way.
-            .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                // Page position, live: 0 = Zikr, 1 = Salah, 2 = Settings. Only the chrome reads it.
+            .onScrollGeometryChange(for: CGSize.self) { geometry in
+                // Page position, live: 0 = Zikr, 1 = Salah, 2 = Settings (the chrome reads it),
+                // plus the content width so the first, unlaid-out report can be ignored.
                 let width = geometry.containerSize.width
-                return width > 0 ? geometry.contentOffset.x / width : 1
-            } action: { _, progress in
+                return CGSize(width: geometry.contentSize.width / max(width, 1),
+                              height: width > 0 ? geometry.contentOffset.x / width : 1)
+            } action: { _, v in
+                let progress = v.height
                 live.scrollProgress = progress
-            }
-            .simultaneousGesture(switchToSalahDoubleTapSGesture)
-            .simultaneousGesture(abstractedDragGesture)
-            .onScrollPhaseChange { _, phase, context in
-                // Record the page only once the scroll has settled. Doing it mid-drag (as the
-                // scrollPosition binding would) re-rendered the home screen while the page was
-                // still moving. navPosition is NOT touched: the center page keeps its state.
-                guard phase == .idle else { return }
-                let width = context.geometry.containerSize.width
-                guard width > 0 else { return }
-                // The first idle report comes before the three pages are laid out (content one
-                // page wide, midX at 0.5 → "Zikr") and the centre anchor then jumps silently.
-                // Acting on it left horizontalPage = .zikr on the Salah page at launch.
-                guard context.geometry.contentSize.width >= width * 2.5 else { return }
-                let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
+                // Commit the page at the detent — the moment the nearest page changes — not when
+                // the scroll lands. A slow drag commits as it crosses the midpoint; a flick a few
+                // frames into the coast. Landing then confirms a state that's already true, so
+                // the tick isn't late. (The old idle-time commit felt like it fired after arrival.)
+                // Content narrower than 2.5 pages = the first report before the three pages are
+                // laid out (midX at 0.5 → "Zikr"); acting on it left the Salah page labelled Zikr.
+                guard v.width >= 2.5 else { return }
+                let index = Int(progress.rounded())
                 let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if sharedState.horizontalPage != page {
                     sharedState.horizontalPage = page
                     triggerSomeVibration(type: .light)
                 }
             }
+            .simultaneousGesture(switchToSalahDoubleTapSGesture)
+            .simultaneousGesture(abstractedDragGesture)
+            .onScrollPhaseChange { _, phase, _ in
+                live.pagerPhase = phase
+            }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
                 // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match.
+                // Not while the finger or the coast owns the pager: that commit came from the
+                // scroll itself and it's already heading there.
+                guard live.pagerPhase == .idle || live.pagerPhase == .animating else { return }
                 if scrollPage != wanted { withAnimation(pageSpring) { scrollPage = wanted } }
             }
             
@@ -1211,6 +1215,8 @@ struct ChevronTap2: View {
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it
     /// and the open sheet fades a little. Zero whenever no finger is down.
     var pull: CGFloat = 0
+    /// The pager's scroll phase; programmatic page changes only scroll it when it's idle.
+    var pagerPhase: ScrollPhase = .idle
     /// The pager is `.scrollDisabled` while this is set. Set by the pager's own drag gesture
     /// once a drag is decided vertical (so sideways drift can't turn into a page swipe) and by
     /// the Zikr page's task strip while a finger is on it (so a drag past the strip's last

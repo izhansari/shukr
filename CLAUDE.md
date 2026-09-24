@@ -83,9 +83,11 @@ Two independent pieces of nav state on `SharedStateClass`:
 
 Horizontal is a **native paging `ScrollView`** with three full-width pages in a plain `HStack`
 (all stay mounted), each `.clipped()`. `@State scrollPage` is bound with `.scrollPosition(id:)`
-and is written only from `onChange(of: horizontalPage)`; user swipes flow the other way via
-`.onScrollPhaseChange` (iOS 18) **only when the phase hits `.idle`**, using
-`visibleRect.midX / containerSize.width`. `.defaultScrollAnchor(.center)` starts on Main.
+and is written only from `onChange(of: horizontalPage)` (and only while the pager is idle —
+`live.pagerPhase`); user swipes flow the other way from `.onScrollGeometryChange`: the page is
+committed (with the haptic) **when the nearest page changes** — the midpoint crossing during a
+slow drag, a few frames into the coast for a flick — never at landing, which felt like the tick
+came after arrival (owner, 2026-09-25). `.defaultScrollAnchor(.center)` starts on Main.
 
 **The salah sheet pops; the finger never drags it.** `SalahPageContent` is the old
 Spacer layout: `if showBottom` inserts the sheet (`.move(edge: .bottom)` + opacity) and two
@@ -136,8 +138,8 @@ outside it). Centering a card is local state only: it used to write `sharedState
 whose `didSet` writes four more `@Published` properties — five home-screen re-renders per card
 passed, which is what made the strip stutter. The tap action sets `selectedTask`.
 
-`onScrollPhaseChange` ignores idle reports while `contentSize.width < 2.5 × width`: the first
-one arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
+The geometry handler ignores reports while `contentSize.width < 2.5 × width`: the first one
+arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
 `horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
 until the user paged away and back.
 
