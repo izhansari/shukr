@@ -237,15 +237,15 @@ extension DailyTasksView {
             
             
             HStack{
-                Spacer()
-                // Reorder the cards (drag handles in a sheet).
+                // Reorder the cards (drag handles in a sheet). Left corner; + keeps the right.
                 Button(action: {
                     showReorderSheet = true
                 }) {
                     Image(systemName: "arrow.up.arrow.down.circle")
                         .foregroundColor(.green.opacity(0.7))
                 }
-                .padding(.trailing, 8)
+                .padding(.leading, 5)
+                Spacer()
                 Button(action: {
                         showAddTaskScreen = true
                 }) {

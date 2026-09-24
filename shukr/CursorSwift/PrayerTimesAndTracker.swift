@@ -142,6 +142,14 @@ struct PrayerTimesView: View {
     
     var body: some View {
         ZStack {
+            // The status-bar strip. Pages are clipped to the pager, which starts below the top
+            // safe area, so no page can paint up there; this layer wears the current page's
+            // color instead (Settings is grouped-gray in light mode, everything else plain).
+            Color(sharedState.horizontalPage == .settings && colorScheme == .light
+                  ? .secondarySystemBackground : .systemBackground)
+                .ignoresSafeArea()
+                .animation(.easeInOut(duration: 0.15), value: sharedState.horizontalPage)
+
             // MARK: - Pager: Zikr | Main | Settings
             // Native paging ScrollView: pages track the finger at UIKit speed, rubber-band at the
             // ends, and settle with the system's velocity curve. All three stay mounted (plain
