@@ -307,6 +307,8 @@ extension DailyTasksView {
         .onScrollPhaseChange { _, phase, _ in
             if phase == .idle { live?.pagerLocked = false }
         }
+        // The pager's own gesture holds the pager for touches that start inside this frame.
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { live?.stripFrame = $0 }
         .padding(.bottom, 20)
     }
     

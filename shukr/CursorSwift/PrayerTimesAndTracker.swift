@@ -94,8 +94,13 @@ struct PrayerTimesView: View {
         let threshold: CGFloat = 30
         let decideAt: CGFloat = 6
 
-        return DragGesture(minimumDistance: 0)
+        return DragGesture(minimumDistance: 0, coordinateSpace: .global)
             .onChanged { value in
+                // A touch that starts on the Zikr page's task strip belongs to the strip: hold
+                // the pager from the first move so a drag past the strip's last card can't chain
+                // into a page turn. (The strip's own touch-down lock isn't always early enough
+                // on device; this gesture sits on the pager itself and always is.)
+                if !live.pagerLocked, live.stripFrame.contains(value.startLocation) { live.pagerLocked = true }
                 if isDraggingVertically == nil { // decide the axis once per drag
                     let t = value.translation
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
@@ -170,6 +175,10 @@ struct PrayerTimesView: View {
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
+                // No rubber band past Zikr or Settings: paging "further" than the last page
+                // read as a bug. SwiftUI has no bounce switch for content wider than the
+                // viewport, so this reaches the UIScrollView underneath.
+                .background(ScrollViewBounceDisabler())
             }
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
@@ -198,6 +207,10 @@ struct PrayerTimesView: View {
                 // Content narrower than 2.5 pages = the first report before the three pages are
                 // laid out (midX at 0.5 → "Zikr"); acting on it left the Salah page labelled Zikr.
                 guard v.width >= 2.5 else { return }
+                // Only the finger / its coast commits here. A programmatic scroll (tab, menu,
+                // deep link) already set horizontalPage; committing "nearest page" during its
+                // animation would flip it straight back to where it started.
+                guard live.pagerPhase == .interacting || live.pagerPhase == .decelerating else { return }
                 let index = Int(progress.rounded())
                 let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if sharedState.horizontalPage != page {
@@ -1217,9 +1230,34 @@ struct ChevronTap2: View {
     var pull: CGFloat = 0
     /// The pager's scroll phase; programmatic page changes only scroll it when it's idle.
     var pagerPhase: ScrollPhase = .idle
+    /// The Zikr page's task strip, in global coordinates (written by DailyTasksView); touches
+    /// that start inside it hold the pager.
+    var stripFrame: CGRect = .zero
     /// The pager is `.scrollDisabled` while this is set. Set by the pager's own drag gesture
     /// once a drag is decided vertical (so sideways drift can't turn into a page swipe) and by
     /// the Zikr page's task strip while a finger is on it (so a drag past the strip's last
     /// card can't chain into a page turn). Cleared on release.
     var pagerLocked = false
+}
+
+
+/// Turns off bouncing on the nearest enclosing UIScrollView. Placed as a background inside the
+/// pager's content; finds the scroll view once it's in a window.
+struct ScrollViewBounceDisabler: UIViewRepresentable {
+    func makeUIView(context: Context) -> BounceDisablerView { BounceDisablerView() }
+    func updateUIView(_ uiView: BounceDisablerView, context: Context) { uiView.apply() }
+
+    final class BounceDisablerView: UIView {
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+        }
+        func apply() {
+            var view: UIView? = superview
+            while let v = view, !(v is UIScrollView) { view = v.superview }
+            guard let scrollView = view as? UIScrollView else { return }
+            scrollView.bounces = false
+            scrollView.alwaysBounceHorizontal = false
+        }
+    }
 }

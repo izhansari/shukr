@@ -130,9 +130,14 @@ keeps its own header. Owner's call: no chrome on Settings. Settings must not set
 label on every pushed page.
 
 **The Zikr page's task strip holds the pager while touched.** Nested same-axis scroll views
-chain in UIKit (a drag on the strip at its last card turned the page, 2026-09-24). The strip
-sets `live.pagerLocked` on touch-down (`DragGesture(minimumDistance: 0)`, simultaneous) and the
-pager is `.scrollDisabled` while it's set; release or the strip settling clears it. `live`
+chain in UIKit (a drag on the strip at its last card turned the page, 2026-09-24). Two locks,
+both `live.pagerLocked` → the pager is `.scrollDisabled`: the strip sets it on touch-down
+(`DragGesture(minimumDistance: 0)`, simultaneous) and clears it on release / settle; and the
+pager's own gesture (`abstractedDragGesture`, global coordinates) sets it on the first move of
+any touch that started inside `live.stripFrame` (the strip's global frame, written by
+DailyTasksView) — the strip's own lock wasn't always early enough on device for a flick
+(owner, 2026-09-25). The pager also has `ScrollViewBounceDisabler` (reaches the UIScrollView
+and sets `bounces = false`): rubber-banding past Zikr or Settings read as a bug. `live`
 reaches `DailyTasksView` through `.environment(live)` on the pager (optional `@Environment`, nil
 outside it). Centering a card is local state only: it used to write `sharedState.selectedTask`,
 whose `didSet` writes four more `@Published` properties — five home-screen re-renders per card
