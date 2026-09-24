@@ -255,7 +255,11 @@ struct SettingsView: View {
                     //MARK: - Tasbeeh
                     Section(header: headerWithInfoButton(title: "Tasbeeh", isPopupVisible: $isTasbeehPopupVisible)) {
                         LabeledContent("Secondary button step") {
-                            TextField("Off", value: $tasbeehSecondaryStep, format: .number)
+                            // String-backed so 0 / empty shows the "Off" placeholder instead of "0".
+                            TextField("Off", text: Binding(
+                                get: { tasbeehSecondaryStep > 0 ? String(tasbeehSecondaryStep) : "" },
+                                set: { tasbeehSecondaryStep = min(Int($0.filter(\.isNumber)) ?? 0, 10_000) }
+                            ))
                                 .keyboardType(.numberPad)
                                 .multilineTextAlignment(.center)
                                 .monospacedDigit()
@@ -275,10 +279,6 @@ struct SettingsView: View {
                         if isTasbeehPopupVisible {
                             TasbeehDropdownInfo()
                         }
-                    }
-                    .onChange(of: tasbeehSecondaryStep) { _, new in
-                        if new < 0 { tasbeehSecondaryStep = 0 }
-                        if new > 10_000 { tasbeehSecondaryStep = 10_000 }
                     }
 
                     //MARK: - Calculation Method
