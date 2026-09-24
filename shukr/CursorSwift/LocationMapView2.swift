@@ -334,7 +334,6 @@ struct LocationMapContentView: View {
     @EnvironmentObject var compass: CompassState
     @EnvironmentObject var envLocation: EnvLocationManager
     @EnvironmentObject var sharedState: SharedStateClass
-    @Environment(\.scenePhase) var scenePhase
     @Environment(\.dismiss) private var dismiss
 
     /// Every prayer with a recorded spot.
@@ -450,12 +449,6 @@ struct LocationMapContentView: View {
                        defaultEndDate: viewModel.defaultEndDate,
                        defaultPrayerNames: viewModel.defaultPrayerNames)
         }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background {
-                sharedState.allowQiblaHaptics = true
-                dismiss()
-            }
-        }
         .toolbar(.hidden, for: .navigationBar)
     }
 }
@@ -468,10 +461,8 @@ struct AnchoredQiblaRing: View {
     let isAtMecca: Bool
     var body: some View {
         GeometryReader { geo in
-            CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca)
+            CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca, ringHidden: anchor.zoomedOut)
                 .position(anchor.userPoint ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2))
-                .opacity(anchor.zoomedOut ? 0 : 1)
-                .animation(.easeInOut(duration: 0.25), value: anchor.zoomedOut)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
@@ -500,6 +491,8 @@ struct CircleWithArrowOverlay: View {
     @EnvironmentObject var sharedState: SharedStateClass
     var degrees: Double
     var isAtMecca: Bool
+    /// Zoomed out: the ring and its bearing triangle fade; the compass chevron stays on the dot.
+    var ringHidden: Bool = false
     
     var body: some View {
         ZStack {
@@ -510,6 +503,8 @@ struct CircleWithArrowOverlay: View {
                 .foregroundColor(isAtMecca || compass.qibla.aligned ? .green : .white)
                 .shadow(color: isAtMecca || compass.qibla.aligned ? .white.opacity(0.7) : .black.opacity(0.1), radius: 10, x: 0, y: 0)
                 .animation(.default, value: compass.qibla.aligned)
+                .opacity(ringHidden ? 0 : 1)
+                .animation(.easeInOut(duration: 0.25), value: ringHidden)
 
             // Only show the arrows if we're not at Mecca
             if !isAtMecca {
@@ -520,6 +515,8 @@ struct CircleWithArrowOverlay: View {
                     .offset(y: -110)
                     .rotationEffect(.degrees(degrees))
                     .animation(.default, value: compass.qibla.aligned)
+                    .opacity(ringHidden ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.25), value: ringHidden)
 
                 // second (compass) arrow using your locationManager.
                 // This uses the compassHeading from your environment object.
