@@ -264,8 +264,14 @@ filter sheet's start picker shows the earliest pin instead of year 0001). A **fi
 the bottom of the map (prayers mode) says what the pins are as a sentence — `filterSentence`:
 "Showing all your prayers" / "Showing Fajr, Isha from the last 30 days" / "Showing prayers from
 Jan 1, 26 – Mar 3, 26" — and opens the filter sheet (green when a filter is active; the side
-filter button is gone). The sheet leads with `QuickRange` rows (All time / This week / Last 30
-days / This year / Last 12 months / Custom); the date pickers only appear under Custom. The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
+filter button is gone). The sheet is a chip grid of `QuickRange`s (All time / This week / Last 30 days / This year /
+Last 12 months / Custom, each with a symbol) and a row of five prayer icon chips
+(`prayerSymbol(_:)` is the shared icon set); the date pickers only appear under Custom. The
+tapped pin keeps its score colour and gets a green layer shadow + 1.35× scale (turning it
+green read as "Optimal"); `swappingSelection` stops the sheet-dismissed cleanup from
+deselecting the pin just tapped during a swap; `keepInView` pans so the pin isn't under the
+sheet or the top pills; `.presentationContentInteraction(.scrolls)` so scrolling the list
+doesn't drag the sheet up. The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
 Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`

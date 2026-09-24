@@ -58,16 +58,21 @@ final class LocationViewModel: ObservableObject {
     /// Show the sheet for a tapped pin. If one is already up, dismiss it first and present the
     /// new one after the dismissal: swapping `item` under a live sheet kept the old detent
     /// (and sometimes came back full height).
+    /// True while a sheet is being swapped for another pin's, so the "sheet went away → drop the
+    /// pin highlight" step doesn't deselect the pin that was just tapped.
+    private(set) var swappingSelection = false
     func present(_ new: PrayerSpotSelection) {
         let detent: PresentationDetent = new.prayers.count == 1 ? Self.compactDetent : .medium
         if selection == nil {
             spotDetent = detent
             selection = new
         } else {
+            swappingSelection = true
             selection = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.spotDetent = detent
                 self?.selection = new
+                self?.swappingSelection = false
             }
         }
     }
@@ -95,6 +100,16 @@ final class LocationViewModel: ObservableObject {
     enum QuickRange: String, CaseIterable, Identifiable {
         case allTime = "All time", thisWeek = "This week", last30 = "Last 30 days", thisYear = "This year", lastYear = "Last 12 months", custom = "Custom"
         var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .allTime: return "infinity"
+            case .thisWeek: return "calendar"
+            case .last30: return "30.circle"
+            case .thisYear: return "calendar.badge.clock"
+            case .lastYear: return "clock.arrow.circlepath"
+            case .custom: return "slider.horizontal.3"
+            }
+        }
         /// Start/end of the range, nil for custom.
         func dates(now: Date = Date()) -> (start: Date, end: Date)? {
             let cal = Calendar.current
@@ -406,24 +421,37 @@ struct MapView: UIViewRepresentable {
             } else if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
                 prayers = [prayer]
             } else { return }
-            // Highlight: bigger, brand green, on top of its neighbours.
+            // Highlight: bigger, a green glow, on top of its neighbours. The pin keeps its score
+            // colour (turning it green read as "Optimal").
             UIView.animate(withDuration: 0.2) {
-                view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
+                view.transform = CGAffineTransform(scaleX: 1.35, y: 1.35)
             }
-            (view as? MKMarkerAnnotationView)?.markerTintColor = .systemGreen
+            view.layer.shadowColor = UIColor.systemGreen.cgColor
+            view.layer.shadowOpacity = 0.9
+            view.layer.shadowRadius = 10
+            view.layer.shadowOffset = .zero
             view.zPriority = .max
-            parent.viewModel.present(PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate))
+            let selection = PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate)
+            parent.viewModel.present(selection)
+            keepInView(annotation.coordinate, on: mapView, sheetFraction: prayers.count == 1 ? 0.32 : 0.5)
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
             UIView.animate(withDuration: 0.2) { view.transform = .identity }
-            if let marker = view as? MKMarkerAnnotationView {
-                if view.annotation is MKClusterAnnotation { marker.markerTintColor = .systemGreen }
-                else if let prayer = (view.annotation as? CustomPrayerAnnotation)?.prayer {
-                    marker.markerTintColor = LocationViewModel.markerColor(for: prayer)
-                }
-            }
+            view.layer.shadowOpacity = 0
             view.zPriority = .defaultUnselected
+        }
+
+        /// Pan so the tapped pin isn't under the sheet (or the top controls) when it opens.
+        private func keepInView(_ coordinate: CLLocationCoordinate2D, on mapView: MKMapView, sheetFraction: CGFloat) {
+            let bounds = mapView.bounds
+            let point = mapView.convert(coordinate, toPointTo: mapView)
+            let top: CGFloat = 130                                     // below the pills
+            let bottom = bounds.height * (1 - sheetFraction) - 40      // above the sheet
+            guard point.y < top || point.y > bottom || point.x < 30 || point.x > bounds.width - 30 else { return }
+            let target = CGPoint(x: bounds.midX, y: (top + bottom) / 2)
+            let centre = CGPoint(x: bounds.midX + (point.x - target.x), y: bounds.midY + (point.y - target.y))
+            mapView.setCenter(mapView.convert(centre, toCoordinateFrom: mapView), animated: true)
         }
     }
 }
@@ -560,8 +588,9 @@ struct LocationMapContentView: View {
             .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
         }
         .onChange(of: viewModel.selection?.id) { _, id in
-            // Sheet gone (swiped down or swapped): drop the pin highlight.
-            if id == nil, let mapView = viewModel.mapView {
+            // Sheet gone (swiped down): drop the pin highlight. Not during a swap — the new pin
+            // is already selected and must stay so.
+            if id == nil, !viewModel.swappingSelection, let mapView = viewModel.mapView {
                 for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
             }
         }
@@ -572,6 +601,7 @@ struct LocationMapContentView: View {
                 .presentationDetents([LocationViewModel.compactDetent, .medium, .large], selection: $viewModel.spotDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationContentInteraction(.scrolls)   // scrolling scrolls the list; the grabber resizes
         }
         .sheet(isPresented: $showFilterSheet) {
             FilterView(selectedStartDate: $viewModel.selectedStartDate,
@@ -751,18 +781,6 @@ struct CircleWithArrowOverlay: View {
 
 
 // MARK: - Custom Checkbox ToggleStyle
-struct CheckboxStyle: ToggleStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        Button(action: { configuration.isOn.toggle() }) {
-            HStack {
-                Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
-                    .foregroundColor(configuration.isOn ? .green : .secondary)
-                configuration.label.foregroundStyle(.primary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
 
 // MARK: - FilterView
 struct FilterView: View {
@@ -792,95 +810,142 @@ struct FilterView: View {
         selectedStartDate = d.start
         selectedEndDate = d.end
     }
+    private var isDefault: Bool {
+        selectedStartDate == defaultStartDate && Calendar.current.isDate(selectedEndDate, inSameDayAs: defaultEndDate) && selectedPrayerNames == defaultPrayerNames
+    }
 
     let allPrayerNames = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section(header: Text("When")) {
-                    // Ready-made ranges; the pickers below appear for Custom.
-                    ForEach(LocationViewModel.QuickRange.allCases) { range in
-                        Button {
-                            if range == .custom {
-                                if currentRange != .custom { selectedStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() }
-                            } else {
-                                apply(range)
-                            }
-                        } label: {
-                            HStack {
-                                Text(range.rawValue)
-                                Spacer()
-                                if currentRange == range { Image(systemName: "checkmark").foregroundStyle(.green) }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                if currentRange == .custom {
-                Section(header: Text("Date Range")) {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text("Start Date")
-                                .font(.caption)
-                            DatePicker("", selection: Binding(
-                                get: { selectedStartDate == .distantPast ? earliestPinDate : selectedStartDate },
-                                set: { selectedStartDate = $0 }
-                            ), in: ...selectedEndDate, displayedComponents: [.date])
-                                .labelsHidden()
-                                .onChange(of: selectedStartDate) {_, newValue in
-                                    if selectedStartDate > selectedEndDate {
-                                        selectedEndDate = selectedStartDate
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    // WHEN: a grid of range chips
+                    VStack(alignment: .leading, spacing: 12) {
+                        sectionTitle("When")
+                        LazyVGrid(columns: columns, spacing: 10) {
+                            ForEach(LocationViewModel.QuickRange.allCases) { range in
+                                let on = currentRange == range
+                                Button {
+                                    withAnimation(.snappy(duration: 0.2)) {
+                                        if range == .custom {
+                                            if currentRange != .custom { selectedStartDate = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date() }
+                                        } else { apply(range) }
                                     }
-                                }
-                        }
-                        Spacer()
-                        VStack(alignment: .leading) {
-                            Text("End Date")
-                                .font(.caption)
-                            DatePicker("", selection: $selectedEndDate, in: selectedStartDate...Date(), displayedComponents: [.date])
-                                .labelsHidden()
-                                .onChange(of: selectedEndDate) {_, newValue in
-                                    if selectedEndDate < selectedStartDate {
-                                        selectedStartDate = selectedEndDate
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: range.symbol).font(.subheadline)
+                                        Text(range.rawValue).lineLimit(1).minimumScaleFactor(0.85)
                                     }
+                                    .font(.subheadline.weight(.medium))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .foregroundStyle(on ? Color.white : Color.primary)
+                                    .background(on ? Color.green : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        if currentRange == .custom {
+                            VStack(spacing: 0) {
+                                dateRow("From", selection: Binding(
+                                    get: { selectedStartDate == .distantPast ? earliestPinDate : selectedStartDate },
+                                    set: { selectedStartDate = $0 }
+                                ), in: ...selectedEndDate)
+                                Divider().padding(.leading, 16)
+                                dateRow("To", selection: $selectedEndDate, in: selectedStartDate...Date())
+                            }
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
-                }
 
-                }
-                Section(header: Text("Prayers")) {
-                    ForEach(allPrayerNames, id: \.self) { prayerName in
-                        Toggle(isOn: Binding(
-                            get: { selectedPrayerNames.contains(prayerName) },
-                            set: { isSelected in
-                                if isSelected {
-                                    selectedPrayerNames.insert(prayerName)
-                                } else {
-                                    selectedPrayerNames.remove(prayerName)
-                                }
+                    // PRAYERS: five icon chips
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            sectionTitle("Prayers")
+                            Spacer()
+                            Button(selectedPrayerNames == defaultPrayerNames ? "All on" : "Select all") {
+                                withAnimation(.snappy(duration: 0.2)) { selectedPrayerNames = defaultPrayerNames }
                             }
-                        )) {
-                            Text(prayerName)
+                            .font(.caption.weight(.medium))
+                            .disabled(selectedPrayerNames == defaultPrayerNames)
                         }
-                        .toggleStyle(CheckboxStyle())
+                        HStack(spacing: 8) {
+                            ForEach(allPrayerNames, id: \.self) { name in
+                                let on = selectedPrayerNames.contains(name)
+                                Button {
+                                    withAnimation(.snappy(duration: 0.2)) {
+                                        if on { selectedPrayerNames.remove(name) } else { selectedPrayerNames.insert(name) }
+                                    }
+                                } label: {
+                                    VStack(spacing: 6) {
+                                        Image(systemName: prayerSymbol(name)).font(.title3)
+                                        Text(name).font(.caption2.weight(.medium)).lineLimit(1).minimumScaleFactor(0.8)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .foregroundStyle(on ? Color.white : Color.secondary)
+                                    .background(on ? Color.green : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
                     }
                 }
+                .padding(20)
             }
-            .navigationBarTitle("Filter Prayers", displayMode: .inline)
-            .navigationBarItems(
-                leading: Button("Reset") {
-                    selectedStartDate = defaultStartDate
-                    selectedEndDate = defaultEndDate
-                    selectedPrayerNames = defaultPrayerNames
-                },
-                trailing: Button("Done") {
-                    dismiss()
+            .background(Color(.systemGroupedBackground))
+            .fontDesign(.rounded)
+            .navigationTitle("Filter Prayers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Reset") {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            selectedStartDate = defaultStartDate
+                            selectedEndDate = defaultEndDate
+                            selectedPrayerNames = defaultPrayerNames
+                        }
+                    }
+                    .disabled(isDefault)
                 }
-            )
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() }.fontWeight(.semibold) }
+            }
         }
+    }
+
+    private func sectionTitle(_ t: String) -> some View {
+        Text(t.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.leading, 4)
+    }
+    private func dateRow(_ label: String, selection: Binding<Date>, in range: ClosedRange<Date>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            DatePicker("", selection: selection, in: range, displayedComponents: [.date]).labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+    private func dateRow(_ label: String, selection: Binding<Date>, in range: PartialRangeThrough<Date>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            DatePicker("", selection: selection, in: range, displayedComponents: [.date]).labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+    }
+}
+
+/// The SF Symbol the app uses for each prayer (same set as the circle and the spot sheet).
+func prayerSymbol(_ name: String) -> String {
+    switch name {
+    case "Fajr": return "sunrise.fill"
+    case "Dhuhr": return "sun.max.fill"
+    case "Asr": return "sun.haze.fill"
+    case "Maghrib": return "sunset.fill"
+    case "Isha": return "moon.stars.fill"
+    default: return "circle"
     }
 }
 
@@ -992,16 +1057,7 @@ struct PrayerSpotSheet: View {
 private struct PrayerSpotRow: View {
     let prayer: PrayerModel
 
-    private var icon: String {
-        switch prayer.name {
-        case "Fajr": return "sunrise.fill"
-        case "Dhuhr": return "sun.max.fill"
-        case "Asr": return "sun.haze.fill"
-        case "Maghrib": return "sunset.fill"
-        case "Isha": return "moon.stars.fill"
-        default: return "circle"
-        }
-    }
+    private var icon: String { prayerSymbol(prayer.name) }
     /// "12 min in" / "1h 20m in" — how far into the prayer window it was prayed.
     private var intoWindow: String? {
         guard let at = prayer.timeAtComplete else { return nil }
