@@ -237,7 +237,12 @@ ring **sits on the user's dot** (`MapAnchor`, the dot's screen point written by 
 on every map frame via `mapViewDidChangeVisibleRegion`; `AnchoredQiblaRing` is the only view
 that reads it) and repeats that bearing with its arrow while its chevron follows the compass
 (`CompassState`) so the user knows which way to turn. It used to sit at the screen centre and
-drift off the dot on any pan — the owner's biggest annoyance. The status pill says "Facing Mecca / Turn left / Turn
+drift off the dot on any pan — the owner's biggest annoyance. **The ring is the gauge**: a green
+arc runs along it from the chevron (where you point) to the triangle (the Kaaba) — the short way
+round — and shrinks as you turn; the pill reads "← Turn left 47°" / "Turn right 47° →" /
+"Facing Mecca 🕋" (`signedAngleDifference`, + = clockwise). Aligned: `AlignedEdgeGlow`, a
+blurred green stroke hugging the whole screen edge. Zoomed out past `latitudeDelta 0.5` the
+ring, arc and triangle fade (`MapAnchor.zoomedOut`); the chevron stays on the dot. The status pill says "Facing Mecca / Turn left / Turn
 right". Prayer spots: all filtered prayers are added as annotations once per filter change and
 MapKit clusters/culls them (the old version tore every pin down and rebuilt it on each pan —
 that was the blink and the cost); pins are coloured by score like the app; the visible count

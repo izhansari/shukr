@@ -106,12 +106,7 @@ final class LocationViewModel: ObservableObject {
     }
 
     /// Shortest signed difference between two angles in degrees, -180…180.
-    func angleDifference(from: Double, to: Double) -> Double {
-        var diff = (from - to).truncatingRemainder(dividingBy: 360)
-        if diff < -180 { diff += 360 }
-        if diff > 180 { diff -= 360 }
-        return diff
-    }
+    func angleDifference(from: Double, to: Double) -> Double { signedAngleDifference(from: from, to: to) }
 
     /// Pin colour for a completed prayer, same scale as the app's score colouring.
     static func markerColor(for prayer: PrayerModel) -> UIColor {
@@ -128,6 +123,15 @@ final class LocationViewModel: ObservableObject {
     var userPoint: CGPoint? = nil
     /// Zoomed out past ~50 km across: the ring means nothing at that scale and hides.
     var zoomedOut = false
+}
+
+/// Shortest signed way from `to` (where you point) round to `from` (the target), -180…180:
+/// positive = turn right / clockwise.
+func signedAngleDifference(from: Double, to: Double) -> Double {
+    var diff = (from - to).truncatingRemainder(dividingBy: 360)
+    if diff < -180 { diff += 360 }
+    if diff > 180 { diff -= 360 }
+    return diff
 }
 
 // MARK: - MapView
@@ -351,10 +355,12 @@ struct LocationMapContentView: View {
         mapView.setRegion(MKCoordinateRegion(center: here, span: span), animated: true)
     }
 
-    /// The compass pill: aligned, or which way to turn.
+    /// The compass pill: aligned, or which way and how far to turn.
     private var compassHint: String {
         if compass.qibla.aligned { return "Facing Mecca 🕋" }
-        return viewModel.angleDifference(from: viewModel.qiblaBearing, to: compass.heading) < 0 ? "Turn left ←" : "Turn right →"
+        let diff = signedAngleDifference(from: viewModel.qiblaBearing, to: compass.heading)
+        let degrees = Int(abs(diff).rounded())
+        return diff < 0 ? "← Turn left \(degrees)°" : "Turn right \(degrees)° →"
     }
 
     var body: some View {
@@ -369,6 +375,9 @@ struct LocationMapContentView: View {
             AnchoredQiblaRing(anchor: anchor, degrees: viewModel.qiblaBearing, isAtMecca: viewModel.isAtMecca)
                 .opacity(viewModel.showPrayers ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
+
+            // Facing Mecca: the whole screen edge glows green.
+            AlignedEdgeGlow(on: compass.qibla.aligned && !viewModel.showPrayers)
 
             VStack {
                 ZStack(alignment: .top) {
@@ -386,7 +395,8 @@ struct LocationMapContentView: View {
                     // Status pill: compass hint in qibla mode, count in prayers mode.
                     HStack {
                         Spacer()
-                        Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : "Qibla: \(compassHint)")
+                        Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
+                            .monospacedDigit()
                             .font(.subheadline)
                             .foregroundStyle(.black)
                             .padding()
@@ -453,6 +463,25 @@ struct LocationMapContentView: View {
     }
 }
 
+/// A soft green glow hugging the screen edge while the user faces the Kaaba.
+struct AlignedEdgeGlow: View {
+    let on: Bool
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 56, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.9), lineWidth: 26)
+                .blur(radius: 26)
+            RoundedRectangle(cornerRadius: 56, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.8), lineWidth: 5)
+                .blur(radius: 5)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .opacity(on ? 1 : 0)
+        .animation(.easeInOut(duration: 0.4), value: on)
+    }
+}
+
 /// The qibla ring positioned on the user's dot (screen centre until there's a fix). Reads the
 /// anchor per map frame; only this view re-renders for it.
 struct AnchoredQiblaRing: View {
@@ -505,6 +534,20 @@ struct CircleWithArrowOverlay: View {
                 .animation(.default, value: compass.qibla.aligned)
                 .opacity(ringHidden ? 0 : 1)
                 .animation(.easeInOut(duration: 0.25), value: ringHidden)
+
+            // How far to turn: a green arc along the ring from where you point (chevron) to
+            // the Kaaba (triangle). It shrinks as you turn and is gone when aligned.
+            if !isAtMecca && !compass.qibla.aligned {
+                let diff = signedAngleDifference(from: degrees, to: compass.heading)   // + = clockwise
+                let start = diff >= 0 ? compass.heading : degrees                       // clockwise start
+                Circle()
+                    .trim(from: 0, to: abs(diff) / 360)
+                    .stroke(Color.green.opacity(0.85), style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(start - 90))   // trim starts at 3 o'clock; put it at `start`
+                    .opacity(ringHidden ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.25), value: ringHidden)
+            }
 
             // Only show the arrows if we're not at Mecca
             if !isAtMecca {
