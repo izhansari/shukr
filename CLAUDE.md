@@ -240,7 +240,11 @@ the old string survives as `mantraName` (snapshot + fallback; the editor keeps i
 rename; `displayName` prefers the live name). `SessionDataModel.mantra: MantraModel?` alongside
 `title`, which stays a history snapshot and is never rewritten. The four built-ins are ordinary
 rows — seeded by the migration on upgrade and by `MantraModel.seedBuiltInsIfNeeded` on fresh
-installs; `MantraModel.builtIn` is only the seed list.
+installs; `MantraModel.builtIn` is only the seed list. V2 also adds `TaskModel.sortOrder`: the
+Zikr card strip's `@Query` sorts by it (completed-today cards still move to the end), the
+migration numbers existing tasks in fetch order, new tasks get `TaskModel.nextSortOrder`, and
+the strip header's arrows button opens `ReorderTasksView` (drag handles, writes `sortOrder`).
+Before this the query was unsorted, which is why the cards looked arbitrary.
 
 **Schema versions live in `Models/SchemaVersions.swift`** (compiled into app + widget):
 `ShukrSchemaV1` = nested copies of the six original models (never edit — they must hash to what

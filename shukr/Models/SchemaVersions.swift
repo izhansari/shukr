@@ -146,7 +146,9 @@ enum ShukrMigrationPlan: SchemaMigrationPlan {
         }
 
         var tasksLinked = 0, tasksCreatedFor = 0
-        for task in try context.fetch(FetchDescriptor<TaskModel>()) {
+        // Enumerated: V1 had no order, so whatever order they come out in becomes the initial one.
+        for (position, task) in try context.fetch(FetchDescriptor<TaskModel>()).enumerated() {
+            task.sortOrder = position
             let name = task.mantraName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { continue }
             if byName[name.lowercased()] == nil {

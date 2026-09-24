@@ -170,7 +170,7 @@ enum SharedStore {
         for task in try dst.fetch(FetchDescriptor<TaskModel>()) { taskByID[task.id] = task }
         for old in try src.fetch(FetchDescriptor<TaskModel>()) where taskByID[old.id] == nil {
             let new = TaskModel(mantra: mantra(for: old.mantra), isCountMode: old.isCountMode,
-                                goal: old.goal, mantraName: old.mantraName)
+                                goal: old.goal, mantraName: old.mantraName, sortOrder: old.sortOrder)
             new.id = old.id
             dst.insert(new)
             taskByID[new.id] = new

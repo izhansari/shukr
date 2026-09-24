@@ -403,6 +403,9 @@ class TaskModel: Identifiable {
     var mantra: MantraModel?
     var isCountMode: Bool
     var goal: Int
+    /// Position on the Zikr page's card strip; the user sets it from the card's edit button.
+    /// New tasks go to the end. (Schema V2; the migration numbers existing tasks.)
+    var sortOrder: Int = 0
 
     /// Sessions started from this task's card. Inverse of `SessionDataModel.task`.
     /// Deleting a task keeps its sessions in history (nullify), it just unlinks them.
@@ -412,11 +415,17 @@ class TaskModel: Identifiable {
     /// What to show on the card: the live mantra name, or the snapshot if it was deleted.
     var displayName: String { mantra?.name ?? mantraName }
 
-    init(mantra: MantraModel?, isCountMode: Bool, goal: Int, mantraName: String? = nil) {
+    init(mantra: MantraModel?, isCountMode: Bool, goal: Int, mantraName: String? = nil, sortOrder: Int = 0) {
         self.mantra = mantra
         self.mantraName = mantraName ?? mantra?.name ?? ""
         self.isCountMode = isCountMode
         self.goal = goal
+        self.sortOrder = sortOrder
+    }
+
+    /// One past the highest `sortOrder` in the store, so a new task lands at the end.
+    static func nextSortOrder(in context: ModelContext) -> Int {
+        (((try? context.fetch(FetchDescriptor<TaskModel>())) ?? []).map(\.sortOrder).max() ?? -1) + 1
     }
 
     /// Today's progress toward this task, computed from the sessions that were

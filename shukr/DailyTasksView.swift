@@ -14,7 +14,7 @@ struct DailyTasksView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.modelContext) private var context
     
-    @Query private var taskItems: [TaskModel]
+    @Query(sort: \TaskModel.sortOrder) private var taskItems: [TaskModel]
     /// Today's sessions, live. SwiftData re-runs this on every insert, so a card flips to
     /// complete the moment a session saves — no onAppear / remount needed.
     @Query private var todaysSessions: [SessionDataModel]
@@ -35,6 +35,7 @@ struct DailyTasksView: View {
     
     // MARK: - State
     @State private var showAddTaskScreen: Bool = false
+    @State private var showReorderSheet: Bool = false
     @State private var taskToDelete: TaskModel? = nil
     @State private var showDeleteTaskAlert: Bool = false
     @State private var currentScrollTargetID: UUID? = nil
@@ -68,6 +69,10 @@ struct DailyTasksView: View {
         }
         .fullScreenCover(isPresented: $showAddTaskScreen) {
             AddDailyTaskView(isPresented: $showAddTaskScreen, scrollProxy: $currentScrollTargetID)
+        }
+        .sheet(isPresented: $showReorderSheet) {
+            ReorderTasksView()
+                .presentationDetents([.medium, .large])
         }
         .alert(isPresented: $showDeleteTaskAlert) {
             Alert(
@@ -233,6 +238,14 @@ extension DailyTasksView {
             
             HStack{
                 Spacer()
+                // Reorder the cards (drag handles in a sheet).
+                Button(action: {
+                    showReorderSheet = true
+                }) {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                        .foregroundColor(.green.opacity(0.7))
+                }
+                .padding(.trailing, 8)
                 Button(action: {
                         showAddTaskScreen = true
                 }) {
@@ -254,7 +267,8 @@ extension DailyTasksView {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 0) {
                 
-                let sortedTasks = taskItems.sorted { !isCompleted($0) && isCompleted($1) }
+                // User's order (sortOrder), with today's completed ones moved to the end.
+                let sortedTasks = taskItems.filter { !isCompleted($0) } + taskItems.filter { isCompleted($0) }
                 
                 // 2) The Task Cards
                 ForEach(sortedTasks, id: \.self) { task in
@@ -333,6 +347,46 @@ extension DailyTasksView {
         showTasbeehPage = true
     }
     
+}
+
+/// Sheet from the tasks card's edit button: drag to set the order the cards appear in.
+/// Writes `sortOrder` straight onto the models; the card strip's query is sorted by it.
+struct ReorderTasksView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(tasks) { task in
+                    HStack {
+                        Text(task.displayName)
+                        Spacer()
+                        Text(task.isCountMode ? "#\(task.goal)" : "\(task.goal) min")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onMove(perform: move)
+            }
+            .environment(\.editMode, .constant(.active)) // handles always showing; this sheet is the edit mode
+            .fontDesign(.rounded)
+            .navigationTitle("Reorder Tasks")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func move(from source: IndexSet, to destination: Int) {
+        var ordered = tasks
+        ordered.move(fromOffsets: source, toOffset: destination)
+        for (position, task) in ordered.enumerated() where task.sortOrder != position {
+            task.sortOrder = position
+        }
+    }
 }
 
 struct TaskCardView: View {
@@ -541,7 +595,8 @@ struct AddDailyTaskView: View {
         let task = TaskModel(
             mantra: selectedMantra,
             isCountMode: taskIsCountMode ?? false,
-            goal: goal ?? 0
+            goal: goal ?? 0,
+            sortOrder: TaskModel.nextSortOrder(in: context) // new cards go to the end
         )
 
         // Save the task to the persistent context
