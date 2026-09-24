@@ -122,6 +122,12 @@ final class LocationViewModel: ObservableObject {
     }
 }
 
+/// Where the user's dot is on screen, updated continuously while the map moves so the qibla
+/// ring can sit on the dot instead of the screen centre. @Observable: only the ring reads it.
+@Observable final class MapAnchor {
+    var userPoint: CGPoint? = nil
+}
+
 // MARK: - MapView
 
 /// The MKMapView. North-up on purpose: the compass on a phone is often off, and a north-up map
@@ -130,6 +136,7 @@ final class LocationViewModel: ObservableObject {
 struct MapView: UIViewRepresentable {
     @ObservedObject var viewModel: LocationViewModel
     var envLocation: EnvLocationManager
+    var anchor: MapAnchor
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -225,6 +232,17 @@ struct MapView: UIViewRepresentable {
             if abs(parent.viewModel.qiblaBearing - bearing) > 0.5 { parent.viewModel.qiblaBearing = bearing }
         }
 
+        /// The ring sits on the user's dot: report where the dot is on screen. Called on every
+        /// frame of a pan/zoom (`mapViewDidChangeVisibleRegion`) and on every fix.
+        private func updateAnchor(on mapView: MKMapView) {
+            guard let coordinate = mapView.userLocation.location?.coordinate else {
+                parent.anchor.userPoint = nil
+                return
+            }
+            let point = mapView.convert(coordinate, toPointTo: mapView)
+            if parent.anchor.userPoint != point { parent.anchor.userPoint = point }
+        }
+
         // MARK: MKMapViewDelegate
 
         func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
@@ -234,21 +252,28 @@ struct MapView: UIViewRepresentable {
                 mapView.setRegion(MKCoordinateRegion(center: coordinate, span: Self.closeSpan), animated: true)
             }
             userMoved(to: coordinate, on: mapView)
+            updateAnchor(on: mapView)
+        }
+
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            updateAnchor(on: mapView)
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             updateVisibleCount(on: mapView)
-            // Without a fix the ring's arrow follows the map centre instead.
+            updateAnchor(on: mapView)
+            // Without a fix the ring sits at the screen centre and its arrow follows the map centre.
             if lineOrigin == nil {
                 let bearing = LocationViewModel.bearingToMecca(from: mapView.centerCoordinate)
                 if abs(parent.viewModel.qiblaBearing - bearing) > 0.5 { parent.viewModel.qiblaBearing = bearing }
             }
-            // "At Mecca" when the Kaaba sits inside the ring (100 pt around the centre).
-            let centre = mapView.centerCoordinate
+            // "At Mecca" when the Kaaba sits inside the ring (100 pt around the user / centre).
+            let origin = mapView.userLocation.location?.coordinate ?? mapView.centerCoordinate
             let ringEdge = mapView.convert(CGPoint(x: mapView.bounds.midX, y: mapView.bounds.midY - 100), toCoordinateFrom: mapView)
+            let centre = mapView.centerCoordinate
             let ringMetres = CLLocation(latitude: centre.latitude, longitude: centre.longitude)
                 .distance(from: CLLocation(latitude: ringEdge.latitude, longitude: ringEdge.longitude))
-            let toMecca = CLLocation(latitude: centre.latitude, longitude: centre.longitude)
+            let toMecca = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
                 .distance(from: CLLocation(latitude: LocationViewModel.meccaCoordinate.latitude, longitude: LocationViewModel.meccaCoordinate.longitude))
             let atMecca = toMecca < ringMetres
             if parent.viewModel.isAtMecca != atMecca { parent.viewModel.isAtMecca = atMecca }
@@ -312,6 +337,7 @@ struct LocationMapContentView: View {
     @Query(filter: #Predicate<PrayerModel> { $0.latPrayedAt != nil && $0.longPrayedAt != nil },
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
+    @State private var anchor = MapAnchor()
 
     private func centreOnUser() {
         guard let mapView = viewModel.mapView,
@@ -330,15 +356,14 @@ struct LocationMapContentView: View {
 
     var body: some View {
         ZStack {
-            MapView(viewModel: viewModel, envLocation: envLocation)
+            MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor)
                 .ignoresSafeArea()
                 .onAppear { viewModel.prayers = prayers }
                 .onChange(of: prayers.count) { _, _ in viewModel.prayers = prayers }
 
-            // Qibla ring: shown in qibla mode. The green line on the map is the direction; the
-            // ring's arrow repeats it from the screen centre and the chevron follows the compass.
-            CircleWithArrowOverlay(degrees: viewModel.qiblaBearing, isAtMecca: viewModel.isAtMecca)
-                .allowsHitTesting(false)
+            // Qibla ring, sitting on the user's dot: the green line is the direction, the
+            // ring's arrow repeats it and the chevron follows the compass.
+            AnchoredQiblaRing(anchor: anchor, degrees: viewModel.qiblaBearing, isAtMecca: viewModel.isAtMecca)
                 .opacity(viewModel.showPrayers ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
 
@@ -428,6 +453,22 @@ struct LocationMapContentView: View {
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+}
+
+/// The qibla ring positioned on the user's dot (screen centre until there's a fix). Reads the
+/// anchor per map frame; only this view re-renders for it.
+struct AnchoredQiblaRing: View {
+    var anchor: MapAnchor
+    let degrees: Double
+    let isAtMecca: Bool
+    var body: some View {
+        GeometryReader { geo in
+            CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca)
+                .position(anchor.userPoint ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2))
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
     }
 }
 

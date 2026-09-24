@@ -230,8 +230,11 @@ around them, and show every prayer they've marked. UIKit `MKMapView` on purpose 
 `Map` has no clustering and the owner has ~800 pinned prayers. **North-up on purpose**: phone
 compasses are often off, so the map draws the computed direction — an `MKGeodesicPolyline`
 from the user's dot to the Kaaba (green) — which is right regardless of the compass; the
-centre ring repeats that bearing with its arrow and its chevron follows the compass (`CompassState`)
-so the user knows which way to turn. The status pill says "Facing Mecca / Turn left / Turn
+ring **sits on the user's dot** (`MapAnchor`, the dot's screen point written by the coordinator
+on every map frame via `mapViewDidChangeVisibleRegion`; `AnchoredQiblaRing` is the only view
+that reads it) and repeats that bearing with its arrow while its chevron follows the compass
+(`CompassState`) so the user knows which way to turn. It used to sit at the screen centre and
+drift off the dot on any pan — the owner's biggest annoyance. The status pill says "Facing Mecca / Turn left / Turn
 right". Prayer spots: all filtered prayers are added as annotations once per filter change and
 MapKit clusters/culls them (the old version tore every pin down and rebuilt it on each pan —
 that was the blink and the cost); pins are coloured by score like the app; the visible count
