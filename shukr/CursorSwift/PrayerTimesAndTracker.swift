@@ -1225,8 +1225,10 @@ struct SalahGeometry {
     var circleOpenY: CGFloat { free / 2 + Self.circle / 2 }
     var sheetOpenY: CGFloat { 5 * free / 6 + Self.circle + sheetHeight / 2 }
     var sheetClosedY: CGFloat { height + sheetHeight / 2 + 40 }
-    /// How far the circle rises between closed and open; the finger maps 1:1 onto this.
-    var travel: CGFloat { circleClosedY - circleOpenY }
+    /// How far the sheet travels between parked-below and open. The finger maps 1:1 onto THIS,
+    /// so the list moves exactly with the finger; the circle (which rises only sheetHeight / 2)
+    /// follows at a fraction of that. Mapping the circle 1:1 made the list run ~3× the finger.
+    var travel: CGFloat { sheetClosedY - sheetOpenY }
 
     func circleY(_ p: CGFloat) -> CGFloat { circleClosedY + (circleOpenY - circleClosedY) * p }
     func sheetY(_ p: CGFloat) -> CGFloat { sheetClosedY + (sheetOpenY - sheetClosedY) * p }

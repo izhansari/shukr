@@ -100,9 +100,11 @@ views that do re-render per frame: `SalahPageContent` and `PagerChromeView`. Kee
 
 **The Salah page follows the finger.** `SalahPageContent` positions the circle and the salah
 sheet from one open-progress `p = (navPosition == .bottom ? 1 : 0) + live.sheetDrag` via
-`SalahGeometry`, whose numbers reproduce the old Spacer layout at p = 0 and p = 1 (circle
-travel = sheetHeight / 2; the finger maps 1:1 onto it). Release: past 35% of the travel or a
-600 pt/s flick commits, and `navPosition` flips inside the same spring that returns
+`SalahGeometry`, whose numbers reproduce the old Spacer layout at p = 0 and p = 1. The finger
+maps 1:1 onto the **sheet's** travel (parked below the screen → open), so the list moves
+exactly with the finger and the circle, which rises only sheetHeight / 2, follows slower —
+mapping the circle 1:1 made the list run ~3× the finger. Release: past 35% of the travel or a
+1000 pt/s flick with some travel commits, and `navPosition` flips inside the same spring that returns
 `sheetDrag` to 0, so nothing jumps. Pull-down while closed is the old resisted 20 pt nudge +
 refresh. The sheet is only in the tree while `p > 0`: `PrayerButton` fatalErrors if today's
 prayers aren't loaded, and they load in the circle's `onAppear`.
