@@ -103,11 +103,20 @@ sheet from one open-progress `p = (navPosition == .bottom ? 1 : 0) + live.sheetD
 `SalahGeometry`, whose numbers reproduce the old Spacer layout at p = 0 and p = 1. The finger
 maps 1:1 onto the **sheet's** travel (parked below the screen → open), so the list moves
 exactly with the finger and the circle, which rises only sheetHeight / 2, follows slower —
-mapping the circle 1:1 made the list run ~3× the finger. Release: past 35% of the travel or a
-1000 pt/s flick with some travel commits, and `navPosition` flips inside the same spring that returns
-`sheetDrag` to 0, so nothing jumps. Pull-down while closed is the old resisted 20 pt nudge +
-refresh. The sheet is only in the tree while `p > 0`: `PrayerButton` fatalErrors if today's
-prayers aren't loaded, and they load in the circle's `onAppear`.
+mapping the circle 1:1 made the list run ~3× the finger. Past either end the sheet rubber-bands
+(25% of the excess, max 0.12). Release works like a scroll view: the finger's velocity is
+projected 0.18 s ahead to pick open vs closed, then an `interpolatingSpring` (stiffness 170,
+damping 22, slightly under-damped) starts at the finger's velocity and carries it there with a
+small bounce; `navPosition` flips inside that animation so nothing jumps. Pull-down while
+closed is the old resisted 20 pt nudge + refresh. The sheet is always in the tree, parked below
+the screen when closed (mounting it mid-drag stalled devices and changed the travel distance
+when its height got measured); `TodaysPrayerListView` only builds buttons for loaded prayers so
+`PrayerButton` can't fatalError before `loadTodaysPrayerObjects` runs.
+
+**Axis lock.** The gesture has `minimumDistance: 0` and decides the axis after 6 pt of movement
+— before the pager's own pan reaches its 10 pt slop. Vertical → `live.verticalLock = true`,
+which the pager reads as `.scrollDisabled`, so sideways drift during a vertical drag can never
+turn into a page swipe; horizontal → the gesture stays out of it. The lock clears on release.
 
 **Top bar and bottom bar are fixed chrome** (`PagerChromeView`, a sibling of the pager in the
 root ZStack): hamburger `Menu` + `TopBar` on Salah / "Zikr" title on Zikr; chevron hint on Salah
