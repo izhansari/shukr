@@ -232,8 +232,21 @@ struct PrayerTimesView: View {
             }
             .simultaneousGesture(switchToSalahDoubleTapSGesture)
             .simultaneousGesture(abstractedDragGesture)
-            .onScrollPhaseChange { _, phase, _ in
+            .onScrollPhaseChange { _, phase, context in
                 live.pagerPhase = phase
+                // Settled after a user scroll: bring the scrollPosition binding to the page we
+                // actually landed on (the user-driven commit above skips it while moving). Left
+                // stale, SwiftUI re-applies the old value whenever it re-lays the pager out —
+                // returning from the home screen snapped the pager back to Salah.
+                guard phase == .idle else { return }
+                let width = context.geometry.containerSize.width
+                guard width > 0, context.geometry.contentSize.width >= width * 2.5 else { return }
+                let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
+                let landed: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
+                if scrollPage != landed {
+                    var t = Transaction(); t.disablesAnimations = true
+                    withTransaction(t) { scrollPage = landed }
+                }
             }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
                 // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match.

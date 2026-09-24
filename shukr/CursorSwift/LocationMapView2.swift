@@ -126,6 +126,8 @@ final class LocationViewModel: ObservableObject {
 /// ring can sit on the dot instead of the screen centre. @Observable: only the ring reads it.
 @Observable final class MapAnchor {
     var userPoint: CGPoint? = nil
+    /// Zoomed out past ~50 km across: the ring means nothing at that scale and hides.
+    var zoomedOut = false
 }
 
 // MARK: - MapView
@@ -241,6 +243,8 @@ struct MapView: UIViewRepresentable {
             }
             let point = mapView.convert(coordinate, toPointTo: mapView)
             if parent.anchor.userPoint != point { parent.anchor.userPoint = point }
+            let zoomedOut = mapView.region.span.latitudeDelta > 0.5
+            if parent.anchor.zoomedOut != zoomedOut { parent.anchor.zoomedOut = zoomedOut }
         }
 
         // MARK: MKMapViewDelegate
@@ -466,6 +470,8 @@ struct AnchoredQiblaRing: View {
         GeometryReader { geo in
             CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca)
                 .position(anchor.userPoint ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2))
+                .opacity(anchor.zoomedOut ? 0 : 1)
+                .animation(.easeInOut(duration: 0.25), value: anchor.zoomedOut)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)

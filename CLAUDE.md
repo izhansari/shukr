@@ -87,7 +87,10 @@ and is written only from `onChange(of: horizontalPage)` (and only while the page
 `live.pagerPhase`); user swipes flow the other way from `.onScrollGeometryChange`: the page is
 committed (with the haptic) **when the nearest page changes** — the midpoint crossing during a
 slow drag, a few frames into the coast for a flick — never at landing, which felt like the tick
-came after arrival (owner, 2026-09-25). `.defaultScrollAnchor(.center)` starts on Main.
+came after arrival (owner, 2026-09-25). When the scroll settles, `scrollPage` is synced to the
+landed page without animation: left stale, SwiftUI re-applied the old value on the next
+re-layout and coming back from the home screen snapped the pager to Salah.
+`.defaultScrollAnchor(.center)` starts on Main.
 
 **The salah sheet pops; the finger never drags it.** `SalahPageContent` is the old
 Spacer layout: `if showBottom` inserts the sheet (`.move(edge: .bottom)` + opacity) and two
