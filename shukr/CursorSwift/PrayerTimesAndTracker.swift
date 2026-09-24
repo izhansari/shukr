@@ -120,6 +120,8 @@ struct PrayerTimesView: View {
             .scrollIndicators(.hidden)
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
+            .scrollDisabled(live.pagerLocked)   // see PagerLiveState.pagerLocked
+            .environment(live)
             .ignoresSafeArea(edges: .bottom)
             // The vertical drag (sheet open/close, pull-to-refresh) lives on the ScrollView
             // itself, not on views inside it: the scroll view's pan gets first claim on every
@@ -1234,6 +1236,9 @@ struct ChevronTap2: View {
     var sheetTravel: CGFloat = 1
     var sheetPosition = ScrollPosition()
     var sheetPhase: ScrollPhase = .idle
+    /// Set by the Zikr page's task strip while a finger is on it; the pager is scroll-disabled
+    /// meanwhile so a drag past the strip's last card can't chain into a page turn.
+    var pagerLocked = false
     /// Measured by SalahPageContent; SalahGeometry needs them.
     var pageHeight: CGFloat = 0
     var sheetHeight: CGFloat = 320

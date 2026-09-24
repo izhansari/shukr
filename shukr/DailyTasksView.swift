@@ -39,6 +39,10 @@ struct DailyTasksView: View {
     @State private var taskToDelete: TaskModel? = nil
     @State private var showDeleteTaskAlert: Bool = false
     @State private var currentScrollTargetID: UUID? = nil
+    /// The main pager's live state (nil outside the pager). The strip holds the pager still
+    /// while a finger is on it: nested same-axis scroll views chain in UIKit, so a drag past
+    /// the last card would otherwise turn the page.
+    @Environment(PagerLiveState.self) private var live: PagerLiveState?
     // “Select Zikr” logic
 //    @State private var chosenMantra: String? = ""
     
@@ -294,6 +298,15 @@ extension DailyTasksView {
         .padding(.horizontal)
         .frame(width: 260)
         .scrollTargetBehavior(.viewAligned)
+        // Touch-down on the strip locks the pager; release or the strip settling unlocks it.
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in if live?.pagerLocked == false { live?.pagerLocked = true } }
+                .onEnded { _ in live?.pagerLocked = false }
+        )
+        .onScrollPhaseChange { _, phase, _ in
+            if phase == .idle { live?.pagerLocked = false }
+        }
         .padding(.bottom, 20)
     }
     
@@ -308,7 +321,6 @@ extension DailyTasksView {
             }
             .onTapGesture {
                 withAnimation{
-                    sharedState.selectedTask = task
                     // If already centered => do the main action
                     if currentScrollTargetID == task.id {
                         tapOnTaskCardAction(task: task)
@@ -326,12 +338,10 @@ extension DailyTasksView {
                         lineWidth: currentScrollTargetID == task.id ? 1 : 0.4
                     )
             )
-            .onChange(of: currentScrollTargetID) {_, newValue in
-                if currentScrollTargetID == task.id {
-//                    triggerSomeVibration(type: .light) herè
-                    withAnimation{sharedState.selectedTask = task}
-                }
-            }
+            // Centering a card is local state only. It used to write sharedState.selectedTask,
+            // whose didSet writes four more @Published properties: five whole-home-screen
+            // re-renders per card the strip passed, which is what made scrolling it stutter.
+            // The tap action sets selectedTask when it's actually needed.
             .containerRelativeFrame(.horizontal, count: 1, spacing: 16)
             .scrollTransition { content, phase in
                 content
