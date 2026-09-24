@@ -372,27 +372,43 @@ struct MarkCompleteIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        return .result()
+    }
+}
+
+extension SharedStore {
+    /// Marks the prayer `name` on the day of `start` complete, scored at the tap. The widget's
+    /// checkmark (`MarkCompleteIntent`) and the notification action "I already prayed"
+    /// (`NotificationDelegate`) both come here. Writes through its own container and sets
+    /// `widgetWroteStoreKey`, so the app re-reads on its next activation. Returns false when
+    /// the prayer hasn't started, is already complete, or the store can't be opened.
+    @discardableResult
+    static func markPrayerComplete(named name: String, start: Date, end: Date) -> Bool {
         // Same rule as the app: a prayer that hasn't started can't be completed.
-        guard prayerStart <= Date(), let container = SharedStore.widgetContainer else { return .result() }
+        guard start <= Date(), let container = widgetContainer else { return false }
         let context = ModelContext(container)
 
         // The app creates today's rows when it opens; if it hasn't opened today, make this one.
-        let prayer = SharedStore.fetchPrayer(named: prayerName, on: prayerStart, in: context) ?? {
-            let made = PrayerModel(name: prayerName, startTime: prayerStart, endTime: prayerEnd, dateAtMake: prayerStart)
+        let prayer = fetchPrayer(named: name, on: start, in: context) ?? {
+            let made = PrayerModel(name: name, startTime: start, endTime: end, dateAtMake: start)
             context.insert(made)
             return made
         }()
-        guard !prayer.isCompleted else { return .result() }
+        guard !prayer.isCompleted else { return false }
 
         prayer.isCompleted = true
         prayer.setPrayerScore()                                        // scored now, at the tap
-        prayer.setPrayerLocation(with: SharedStore.lastKnownLocation())
+        prayer.setPrayerLocation(with: lastKnownLocation())
         prayer.cancelUpcomingNudges()                                  // app repeats this on next open in case extensions can't
-        try context.save()
+        do { try context.save() } catch {
+            print("❌ markPrayerComplete(\(name)) save failed: \(error)")
+            return false
+        }
 
-        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+        UserDefaults(suiteName: appGroup)?.set(true, forKey: widgetWroteStoreKey)
         WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
-        return .result()
+        return true
     }
 }
 

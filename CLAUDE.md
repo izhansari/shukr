@@ -256,6 +256,27 @@ open the app and check the prayer shows complete with the right score. If the nu
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app
 schedules nudges as fewer, later-verified notifications).
 
+**Notification actions** (`NotificationDelegate` in shukrApp.swift). Every prayer notification
+carries `Round1_Snooze`: "I already prayed" / "Nudge in 5 minutes" / "Nudge in 10 minutes";
+the follow-ups carry the same three (plus the round-2 jokes). Two things that broke them
+before 2026-09-25: (1) `completionHandler()` ran before the follow-up was added — an action
+tapped with the app not running launches it in the background only until that handler, so
+the "5 minutes later" nudge often never got scheduled; every branch now completes from inside
+`UNUserNotificationCenter.add`'s callback. (2) Round-2 "Yes" re-nudged after 5 *seconds*.
+"I already prayed" calls `SharedStore.markPrayerComplete(named:start:end:)` — the routine the
+widget's checkmark uses (extracted from `MarkCompleteIntent`): own container, scored at the
+tap, nudges cancelled, `widgetWroteStoreKey` set so the app reconciles on activation. It
+needs the prayer's name/start/end in the notification's `userInfo`, which
+`scheduleThisPrayerNotifAt` sets and the snooze follow-ups pass along; the Settings-page test
+notifications have none, so the action is a no-op there. The "Test Start" button is only a
+different trigger for the same category; the sim's notification list wouldn't expand on
+long-press, so the action path is verified by reading, not by tapping.
+
+**Qibla accuracy** (`qibla_sensitivity`): the compass reads it from the app-group suite
+(`QiblaSettings`), and until 2026-09-25 the Settings stepper wrote it to the standard suite, so
+it never did anything. Everything uses the group suite now; `QiblaSettings.migrateFromStandardDefaultsIfNeeded()`
+(launch) carries an old value over once.
+
 Compiler warnings worth a sweep (not blocking): `PrayerTimesAndTracker.swift` unused `context`
 / `completedTime`; `PrayerViewModel.swift` `@State` in a class (line ~101), `objectsToCheck`
 should be `let`, unused `endOfDay`.

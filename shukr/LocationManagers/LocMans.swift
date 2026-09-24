@@ -14,6 +14,15 @@ struct QiblaSettings {
     @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) static var alignmentThreshold: Double = 3.5
     static let minThreshold: Double = 1.0  // More precise
     static let maxThreshold: Double = 15.0 // More forgiving
+
+    /// Older builds' Settings page saved the value to the standard suite while this read the app
+    /// group, so the stepper never took. Carry a value set back then over, once.
+    static func migrateFromStandardDefaultsIfNeeded() {
+        guard let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"),
+              group.object(forKey: "qibla_sensitivity") == nil,
+              let old = UserDefaults.standard.object(forKey: "qibla_sensitivity") as? Double else { return }
+        group.set(old, forKey: "qibla_sensitivity")
+    }
 }
 
 //MARK: - Env Location Manager

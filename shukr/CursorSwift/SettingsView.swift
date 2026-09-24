@@ -9,7 +9,9 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
-    @AppStorage("qibla_sensitivity") private var qiblaSensitivity: Double = 3.5
+    // The compass reads this from the app-group suite (QiblaSettings); writing it to the standard
+    // suite here is why the stepper never changed anything.
+    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var qiblaSensitivity: Double = 3.5
     
     @AppStorage("fajrNotif") var fajrNotif: Bool = true
     @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = true

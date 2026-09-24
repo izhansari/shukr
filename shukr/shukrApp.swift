@@ -156,8 +156,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
+        QiblaSettings.migrateFromStandardDefaultsIfNeeded()
         
         // Register notification categories
+        // "I already prayed": marks that prayer complete in place, the way the widget's
+        // checkmark does (SharedStore.markPrayerComplete). On every prayer category.
+        let markPrayed = UNNotificationAction(
+            identifier: "MARK_PRAYED_ACTION",
+            title: "I already prayed",
+            options: []
+        )
         let snooze5 = UNNotificationAction(
             identifier: "SNOOZE_5_ACTION",
             title: "Nudge in 5 minutes",
@@ -170,7 +178,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         )
         let round1Actions = UNNotificationCategory(
             identifier: "Round1_Snooze",
-            actions: [snooze5, snooze10],
+            actions: [markPrayed, snooze5, snooze10],
             intentIdentifiers: [],
             options: []
         )
@@ -182,7 +190,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         )
         let round2Actions = UNNotificationCategory(
             identifier: "Round2_Snooze",
-            actions: [round2_snooze5],
+            actions: [markPrayed, round2_snooze5],
             intentIdentifiers: [],
             options: []
         )
@@ -199,7 +207,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         )
         let round2Confirmation = UNNotificationCategory(
             identifier: "Round2_Confirm",
-            actions: [round2_conf, round2_deny],
+            actions: [markPrayed, round2_conf, round2_deny],
             intentIdentifiers: [],
             options: []
         )
@@ -220,56 +228,85 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         completionHandler([.banner, .sound, .badge])
     }
 
+    // An action tapped while the app isn't running launches it in the background just long
+    // enough to handle the response; iOS can suspend it as soon as `completionHandler` runs.
+    // Calling it before the follow-up notification was actually added is why "Nudge in 5
+    // minutes" rarely produced one. Every branch now completes from inside `add`'s callback.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        // The prayer the original notification was about: its userInfo (set when the app
+        // scheduled it) rides along on every follow-up so "I already prayed" works from those too.
+        let original = response.notification.request.content
+        let subject = original.subtitle.isEmpty ? original.title : original.subtitle
+        let userInfo = original.userInfo
         switch response.actionIdentifier {
+        case "MARK_PRAYED_ACTION":
+            if let name = userInfo["prayerName"] as? String,
+               let start = userInfo["prayerStart"] as? TimeInterval,
+               let end = userInfo["prayerEnd"] as? TimeInterval {
+                let done = SharedStore.markPrayerComplete(named: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
+                print(done ? "✅ \(name) marked complete from the notification" : "ℹ️ \(name) not marked (not started, already complete, or store unavailable)")
+            } else {
+                print("ℹ️ MARK_PRAYED_ACTION on a notification without prayer info (a test one?)")
+            }
+            completionHandler()
+
         case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION":
-            let firstOption = (response.actionIdentifier == "SNOOZE_5_ACTION" ? true : false)
-            print(firstOption ? "SNOOZE_5_ACTION action tapped" : "SNOOZE_10_ACTION action tapped")
+            let minutes = response.actionIdentifier == "SNOOZE_5_ACTION" ? 5 : 10
+            print("SNOOZE_\(minutes)_ACTION action tapped")
             makeNextSnoozeNotifBe(
-                after: firstOption ? 5*60 : 10*60,
-                body: firstOption ? "It's been 5 minutes" : "It's been 10 minutes",
-                withActionsFromCatId: "Round2_Snooze"
+                after: TimeInterval(minutes * 60),
+                title: "It's been \(minutes) minutes",
+                body: subject,
+                userInfo: userInfo,
+                withActionsFromCatId: "Round2_Snooze",
+                then: completionHandler
             )
 
-            
         case "ROUND2_SNOOZE_5_ACTION", "ROUND2_SNOOZE_10_ACTION": //got rid of snooze 10
-            let firstOption = (response.actionIdentifier == "ROUND2_SNOOZE_5_ACTION" ? true : false)
-            print(firstOption ? "ROUND2_SNOOZE_5_ACTION action tapped" : "ROUND2_SNOOZE_10_ACTION action tapped")
+            let minutes = response.actionIdentifier == "ROUND2_SNOOZE_5_ACTION" ? 5 : 10
+            print("ROUND2_SNOOZE_\(minutes)_ACTION action tapped")
             makeNextSnoozeNotifBe(
-                after: 0.1,
-                body: "😑 Are you being serious? Another \(firstOption ? "5" : "10") minutes?",
-                withActionsFromCatId: "Round2_Confirm"
+                after: 1,
+                title: "😑 Are you being serious? Another \(minutes) minutes?",
+                body: subject,
+                userInfo: userInfo,
+                withActionsFromCatId: "Round2_Confirm",
+                then: completionHandler
             )
-            
+
         case "ROUND2_CONFIRM_ACTION":
             print("ROUND2_CONFIRM_ACTION action tapped")
             makeNextSnoozeNotifBe(
-                after: 5,
-                body: "5 more minutes have passed!",
-                withActionsFromCatId: nil
+                after: 5 * 60,   // was 5 seconds
+                title: "5 more minutes have passed!",
+                body: subject,
+                userInfo: userInfo,
+                withActionsFromCatId: "Round1_Snooze",   // still offers "I already prayed"
+                then: completionHandler
             )
 
         case "ROUND2_DENY_ACTION":
             print("ROUND2_DENY_ACTION action tapped")
-            // open the app
-            
+            completionHandler() // .foreground: iOS opens the app
+
         default:
-            break
+            completionHandler()
         }
-        completionHandler()
     }
 
-    private func makeNextSnoozeNotifBe(after seconds: TimeInterval, body: String, withActionsFromCatId: String?) {
+    private func makeNextSnoozeNotifBe(after seconds: TimeInterval, title: String, body: String, userInfo: [AnyHashable: Any], withActionsFromCatId: String?, then done: @escaping () -> Void) {
         let content = UNMutableNotificationContent()
-        let identifier = UUID().uuidString
-        content.title = body
+        let identifier = "snooze-\(UUID().uuidString)"
+        content.title = title
+        content.body = body
+        content.userInfo = userInfo
         content.sound = UNNotificationSound.default
         content.interruptionLevel = .timeSensitive
         if let withActionsFromCatId {
             content.categoryIdentifier = withActionsFromCatId
         }
         
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(seconds, 1), repeats: false)
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         
         UNUserNotificationCenter.current().add(request) { error in
@@ -278,6 +315,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
             } else {
                 print("✅ Scheduled \(identifier): in \(seconds)s")
             }
+            done()
         }
     }
 }

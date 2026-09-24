@@ -899,7 +899,7 @@ struct CustomArc: Shape {
 }
 
 struct RingStyle0 {
-    @AppStorage("qibla_sensitivity") static var alignmentThreshold: Double = 3.5
+    @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) static var alignmentThreshold: Double = 3.5
     let prayer: PrayerModel
     let progress: Double
     let progressColor: Color

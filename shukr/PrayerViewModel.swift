@@ -433,6 +433,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     content.sound = .default
                     content.interruptionLevel = .timeSensitive
                     content.categoryIdentifier = "Round1_Snooze"
+                    // "I already prayed" (NotificationDelegate) needs to know which prayer this is.
+                    content.userInfo = [
+                        "prayerName": prayerName,
+                        "prayerStart": prayerTimeData.start.timeIntervalSince1970,
+                        "prayerEnd": prayerTimeData.end.timeIntervalSince1970,
+                    ]
                     let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: schedDate)
                     let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
                     let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
