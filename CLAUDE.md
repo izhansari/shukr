@@ -287,12 +287,16 @@ Backlog / known oddities:
 - [x] Mantra pace (2026-09-24): `MantraModel.totalCount` / `totalSeconds` / `secondsPerCount`
   are computed from its sessions (time-weighted: total seconds / total counts), nothing is
   stored, so no schema change and nothing to drift. Shown in the Mantras list row and in the
-  editor, whose lower half (`MantraStatsBento` / `MantraTasksStrip` / `MantraSessionsSections`
-  in MantrasView.swift) is: count · time · rate as the pause screen's bento boxes (tap the rate
-  box to flip per count ↔ per tasbeeh), this mantra's tasks as the Zikr page's card strip
-  (`TaskCardView`, today's completion; long-press → delete task), then its sessions newest
-  first by day (`SessionRow` / `zikrDayLabel`, shared with Zikr History) so "when did I last
-  do this" is the first row. `zikrDurationString` in AllModels.swift is the shared
+  editor, whose lower half (`MantraStatsBento` / `MantraTaskRows` / `TaskGoalEditorView` /
+  `MantraSessionsSection` in MantrasView.swift) is: "Lifetime Stats" — count · time · rate as
+  the pause screen's bento boxes (tap the rate box to flip per count ↔ per tasbeeh); the bento
+  lives in the section *header* because a grouped section clips its rows to its own corner
+  shape (26 pt on iOS 26+) and cut the boxes' corners — header text is secondary and inset, so
+  the bento forces `Color(.label)` and `-20` horizontal padding; then this mantra's tasks as
+  rows (mode + goal, today's progress; tap → `TaskGoalEditorView` edits mode/goal in place,
+  swipe → delete); then one "Sessions" section, newest first, with a day sub-header row before
+  each day (`SessionRow` / `zikrDayLabel`, shared with Zikr History) so "when did I last do
+  this" is the first row. A card strip was tried for the tasks and looked wrong with one task. `zikrDurationString` in AllModels.swift is the shared
   "1h 05m / 12m 03s / 45s" formatter.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 

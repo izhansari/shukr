@@ -159,18 +159,20 @@ struct MantraEditorView: View {
                 }
 
                 if let mantra {
-                    // Count / time / rate as the pause screen's bento boxes, then this mantra's
-                    // tasks as the Zikr page's card strip, then its sessions as in Zikr History.
-                    Section("Stats") {
-                        MantraStatsBento(mantra: mantra)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
+                    // Count / time / rate as the pause screen's bento boxes. They live in the
+                    // section header: a grouped section clips its rows to its own corner shape
+                    // (26 pt on iOS 26+), which cut the boxes' corners when they were a row.
+                    Section {
+                        MantraTaskRows(mantra: mantra)
+                    } header: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Lifetime Stats")
+                            MantraStatsBento(mantra: mantra)
+                                .padding(.bottom, 16)
+                            Text("Tasks")
+                        }
                     }
-                    Section("Tasks") {
-                        MantraTasksStrip(mantra: mantra)
-                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-                    }
-                    MantraSessionsSections(mantra: mantra)
+                    MantraSessionsSection(mantra: mantra)
                 }
             }
             .fontDesign(.rounded)
@@ -223,6 +225,7 @@ struct MantraStatsBento: View {
     let mantra: MantraModel
     @State private var showingPerCount = true
     private let gap: CGFloat = 10
+    private let boxHeight: CGFloat = 56
 
     var body: some View {
         let pace = mantra.secondsPerCount
@@ -232,22 +235,30 @@ struct MantraStatsBento: View {
                     HStack {
                         Image(systemName: "circle.hexagonpath").font(.system(size: 20))
                         Spacer()
-                        Text(mantra.totalCount.formatted()).font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        VStack(spacing: 2) {
+                            Text(mantra.totalCount.formatted())
+                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                            Text("total count").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
                         Spacer()
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(height: 44)
+                .frame(height: boxHeight)
                 box {
                     HStack {
                         Image(systemName: "gauge.with.needle").font(.system(size: 20))
                         Spacer()
-                        Text(zikrDurationString(mantra.totalSeconds)).font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        VStack(spacing: 2) {
+                            Text(zikrDurationString(mantra.totalSeconds))
+                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                            Text("total time").font(.system(size: 12)).foregroundStyle(.secondary)
+                        }
                         Spacer()
                     }
                     .padding(.horizontal, 12)
                 }
-                .frame(height: 44)
+                .frame(height: boxHeight)
             }
 
             box {
@@ -257,21 +268,21 @@ struct MantraStatsBento: View {
                         VStack(spacing: 2) {
                             Text(pace.map { String(format: "%.1fs", $0) } ?? "–")
                                 .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("per count").font(.system(size: 12)).foregroundColor(.secondary)
+                            Text("per count").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         .opacity(showingPerCount ? 1 : 0)
                         .offset(y: showingPerCount ? 0 : -20)
                         VStack(spacing: 2) {
                             Text(pace.map { zikrDurationString($0 * 100) } ?? "–")
                                 .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("per tasbeeh").font(.system(size: 12)).foregroundColor(.secondary)
+                            Text("per tasbeeh").font(.system(size: 12)).foregroundStyle(.secondary)
                         }
                         .opacity(showingPerCount ? 0 : 1)
                         .offset(y: showingPerCount ? 20 : 0)
                     }
                 }
             }
-            .frame(height: 44 * 2 + gap)
+            .frame(height: boxHeight * 2 + gap)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard pace != nil else { return }
@@ -281,23 +292,26 @@ struct MantraStatsBento: View {
                 }
             }
         }
+        .foregroundStyle(Color(.label))   // the header styles its text secondary; values are primary
+        .textCase(nil)
+        .padding(.horizontal, -20)        // the header is inset from the section cards; line up with them
     }
 
     private func box<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemGroupedBackground))
-            .cornerRadius(12)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
-/// This mantra's tasks as the Zikr page's card strip (same `TaskCardView`, same today's
-/// completion). Long-press a card to delete the task; sessions it produced keep their history.
-struct MantraTasksStrip: View {
+/// This mantra's tasks as rows: mode + goal, today's progress. Tap to edit the goal / mode,
+/// swipe to delete (sessions it produced keep their history).
+struct MantraTaskRows: View {
     let mantra: MantraModel
     @Environment(\.modelContext) private var context
     @Query private var todaysSessions: [SessionDataModel]
+    @State private var editing: TaskModel? = nil
 
     init(mantra: MantraModel) {
         self.mantra = mantra
@@ -309,34 +323,103 @@ struct MantraTasksStrip: View {
 
     var body: some View {
         if tasks.isEmpty {
-            Text("No tasks use this mantra.")
-                .foregroundStyle(.secondary)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+            Text("No tasks use this mantra.").foregroundStyle(.secondary)
         } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(tasks) { task in
-                        TaskCardView(task: task, isCompleted: task.isCompleted(with: task.progress(in: todaysSessions)))
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.gradient.opacity(0.4), lineWidth: 0.4))
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    context.delete(task)
-                                } label: {
-                                    Label("Delete task", systemImage: "trash")
-                                }
-                            }
+            ForEach(tasks) { task in
+                let progress = task.progress(in: todaysSessions)
+                let done = task.isCompleted(with: progress)
+                Button {
+                    editing = task
+                } label: {
+                    HStack {
+                        Image(systemName: task.isCountMode ? "number" : "timer")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22)
+                        Text(task.isCountMode ? "\(task.goal) counts" : "\(task.goal) min")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if done {
+                            Label("Done today", systemImage: "checkmark")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        } else {
+                            Text(task.isCountMode
+                                 ? "\(progress.count) / \(task.goal) today"
+                                 : "\(Int(progress.seconds / 60)) / \(task.goal) min today")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
                     }
                 }
-                .padding(.horizontal)
+                .tint(.primary)
+            }
+            .onDelete { offsets in
+                for index in offsets { context.delete(tasks[index]) }
+            }
+            .sheet(item: $editing) { task in
+                TaskGoalEditorView(task: task)
             }
         }
     }
 }
 
-/// This mantra's sessions, newest first, one section per day — the Zikr History layout, so
-/// "when did I last do this one" is the first row.
-struct MantraSessionsSections: View {
+/// Edit a task's mode and goal in place. The mantra is the row it's opened from.
+struct TaskGoalEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    let task: TaskModel
+    @State private var isCountMode: Bool
+    @State private var goal: Int
+
+    init(task: TaskModel) {
+        self.task = task
+        _isCountMode = State(initialValue: task.isCountMode)
+        _goal = State(initialValue: task.goal)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Type", selection: $isCountMode) {
+                        Text("Count").tag(true)
+                        Text("Minutes").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    LabeledContent(isCountMode ? "Counts" : "Minutes") {
+                        TextField("Goal", value: $goal, format: .number)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                } footer: {
+                    Text("Today's progress is recomputed from the sessions started from this task.")
+                }
+            }
+            .fontDesign(.rounded)
+            .navigationTitle(task.displayName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        task.isCountMode = isCountMode
+                        task.goal = goal
+                        dismiss()
+                    }
+                    .disabled(goal <= 0)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+}
+
+/// This mantra's sessions under one "Sessions" header, newest first, with a day sub-header
+/// row before each day's rows — so "when did I last do this one" is the first row.
+struct MantraSessionsSection: View {
     let mantra: MantraModel
 
     private var days: [(date: Date, sessions: [SessionDataModel])] {
@@ -352,20 +435,21 @@ struct MantraSessionsSections: View {
     }
 
     var body: some View {
-        if mantra.sessions.isEmpty {
-            Section("Sessions") {
+        Section("Sessions") {
+            if mantra.sessions.isEmpty {
                 Text("No sessions with this mantra yet.").foregroundStyle(.secondary)
-            }
-        } else {
-            ForEach(days, id: \.date) { day in
-                Section {
-                    ForEach(day.sessions) { session in SessionRow(session: session) }
-                } header: {
+            } else {
+                ForEach(days, id: \.date) { day in
                     HStack {
                         Text(zikrDayLabel(day.date))
                         Spacer()
                         Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
                     }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .listRowBackground(Color(.systemGroupedBackground))
+                    ForEach(day.sessions) { session in SessionRow(session: session) }
                 }
             }
         }
