@@ -93,6 +93,31 @@ claim on every touch: horizontal → paging, vertical → our gesture. Nothing i
 block paging. The gesture only acts when `horizontalPage == .main` (so scrolling the Settings
 Form or vertical drags on Zikr do nothing). Do not re-add drag gestures inside pages.
 
+**Per-frame values live in `PagerLiveState` (`@Observable`, held as `@State live`)**: the
+gesture writes `sheetDrag` / `pull`, `.onScrollGeometryChange` writes `scrollProgress`
+(0 Zikr, 1 Salah, 2 Settings). PrayerTimesView's body reads none of them, so only the two
+views that do re-render per frame: `SalahPageContent` and `PagerChromeView`. Keep it that way.
+
+**The Salah page follows the finger.** `SalahPageContent` positions the circle and the salah
+sheet from one open-progress `p = (navPosition == .bottom ? 1 : 0) + live.sheetDrag` via
+`SalahGeometry`, whose numbers reproduce the old Spacer layout at p = 0 and p = 1 (circle
+travel = sheetHeight / 2; the finger maps 1:1 onto it). Release: past 35% of the travel or a
+600 pt/s flick commits, and `navPosition` flips inside the same spring that returns
+`sheetDrag` to 0, so nothing jumps. Pull-down while closed is the old resisted 20 pt nudge +
+refresh. The sheet is only in the tree while `p > 0`: `PrayerButton` fatalErrors if today's
+prayers aren't loaded, and they load in the circle's `onAppear`.
+
+**Top bar and bottom bar are fixed chrome** (`PagerChromeView`, a sibling of the pager in the
+root ZStack): hamburger `Menu` + `TopBar` on Salah / "Zikr" title on Zikr; chevron hint on Salah
+with the sheet closed; `CustomBottomBar` on Salah with the sheet up and always on Zikr. Opacities
+come from `live` (sheet progress and `zikrness`), the whole thing fades with `settingsness` so
+Settings slides in over nothing and keeps its own header. Owner's call: no chrome on Settings.
+
+`onScrollPhaseChange` ignores idle reports while `contentSize.width < 2.5 × width`: the first
+one arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
+`horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
+until the user paged away and back.
+
 Hamburger = native `Menu` (Map, Daily Ayah, Mantras, Settings, `#if DEBUG` Dev's WIP) driving
 `.navigationDestination(isPresented:)` pushes on the root NavigationStack. The old drawer
 (`sideMenu` in Utils.swift, `showSideMenu`) is parked: toggling it published shared state and
@@ -104,8 +129,7 @@ Settings page has its own header row (back chevron → `horizontalPage = .main`,
 pager (Zikr | Salah | Settings).
 
 Known: the pager ignores the bottom safe area (to keep the bottom bar flush), so the Settings
-`Form`'s last row sits under the home indicator. Vertical on the center page is unchanged
-(swipe up → `.bottom` sheet, swipe down → refresh, `dragOffset.height` with resistance).
+`Form`'s last row sits under the home indicator.
 
 Broader lag lever not yet pulled: `SharedStateClass` is an `ObservableObject`, so *any*
 `@Published` change re-renders every view holding `@EnvironmentObject sharedState` (nearly all

@@ -45,7 +45,10 @@ struct PrayerTimesView: View {
     @State private var chosenMantraObject: MantraModel? = nil
     
     @State private var isDraggingVertically: Bool? = nil  // Current drag direction
-    @State private var dragOffset = CGSize.zero       // Vertical drag (with resistance) for the bottom sheet / refresh
+    /// Per-frame values written by the pager gesture / scroll (sheet drag, pull, scroll progress).
+    /// An @Observable object: only the views that read a property re-render when it changes, so
+    /// this screen's body is not re-evaluated on every finger move (that was the old lag).
+    @State private var live = PagerLiveState()
 
     // MARK: - Horizontal pager
     // Three pages side by side in a native paging ScrollView: Zikr | Main | Settings.
@@ -63,16 +66,7 @@ struct PrayerTimesView: View {
     @State private var showSalahHistoryV1 = false
     @State private var showSalahHistoryV2 = false
     @State private var showZikrHistory = false
-    private var chevDragValue: CGFloat{ // this is cool, i made it into an if, else if, else statement lol.
-        showBottom ?
-            max(0, dragOffset.height)  // Prevent upward movement when showing bottom
-//        : showTop ?
-//            min(0, dragOffset.height)  // Prevent downward movement when showing top
-        :
-            dragOffset.height  // Normal behavior when neither top nor bottom is showing
-    }
-
-
+    private var chevDragValue: CGFloat { live.pull }  // pull-to-refresh nudge (closed sheet only)
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -86,60 +80,65 @@ struct PrayerTimesView: View {
     }
     
     private var abstractedDragGesture: _EndedGesture<_ChangedGesture<DragGesture>> {
-        let resistanceFactor = 0.5
-        let maxOffset: CGFloat = 20
-        let threshold: CGFloat = 30
+        let pullResistance = 0.5
+        let maxPull: CGFloat = 20
+        let refreshThreshold: CGFloat = 30
+        let commitFraction: CGFloat = 0.35   // of the circle's travel
+        let flickVelocity: CGFloat = 600     // pt/s: commit on a flick even if short
 
         return DragGesture()
             .onChanged { value in
-                
                 if isDraggingVertically == nil { // to decide if up/down or left/right
                     dismissKeyboard()
                     isDraggingVertically = abs(value.translation.height) > abs(value.translation.width)
                 }
-                
-                if isDraggingVertically == true { // now, we will be updating only one of the two
-                    // Vertical only means something on the center page (bottom sheet / refresh).
-                    guard sharedState.horizontalPage == .main else { return }
-                    dragOffset.height = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
-                }
+                // Vertical only means something on the center page (bottom sheet / refresh).
                 // Horizontal: nothing to do, the paging ScrollView is moving the pages.
-                
+                guard isDraggingVertically == true, sharedState.horizontalPage == .main else { return }
+                let h = value.translation.height
+                let travel = max(SalahGeometry(height: live.pageHeight, sheetHeight: live.sheetHeight).travel, 1)
+                if showBottom {
+                    // Open: dragging down pulls the sheet closed with the finger; up only nudges.
+                    live.sheetDrag = h > 0 ? -min(h / travel, 1.15) : max(h * pullResistance, -maxPull) / travel
+                    live.pull = 0
+                } else if h < 0 {
+                    // Closed: dragging up brings the sheet in with the finger.
+                    live.sheetDrag = min(-h / travel, 1.15)
+                    live.pull = 0
+                } else {
+                    // Closed, dragging down: the small resisted pull-to-refresh nudge.
+                    live.sheetDrag = 0
+                    live.pull = min(h * pullResistance, maxPull)
+                }
             }
             .onEnded { value in
-                handleDragEnd(value: value, isDraggingVertically: isDraggingVertically)
-                isDraggingVertically = nil
-            }
-        
-        
-        
-        func handleDragEnd(value: DragGesture.Value, isDraggingVertically: Bool?) {
-            let translation = value.translation
-            
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                dragOffset = .zero
-                
-                if isDraggingVertically == true {
-                    guard sharedState.horizontalPage == .main else { return }
-                    let draggedDown = translation.height > threshold // positive
-                    let draggedUp = translation.height < -threshold // negative
-                    guard draggedUp || draggedDown else { return }
-                    
-                    switch sharedState.navPosition {
-                        case .main:
+                if isDraggingVertically == true, sharedState.horizontalPage == .main {
+                    let h = value.translation.height
+                    let vy = value.velocity.height
+                    // navPosition flips inside the same animation that returns sheetDrag to 0, so
+                    // the circle and sheet spring on from wherever the finger left them.
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        if showBottom {
+                            if live.sheetDrag < -commitFraction || vy > flickVelocity {
+                                sharedState.navPosition = .main
+                                sharedState.bottomTabPosition = .salah
+                                triggerSomeVibration(type: .light)
+                            }
+                        } else if live.sheetDrag > commitFraction || vy < -flickVelocity {
                             sharedState.bottomTabPosition = .salah
-                            if draggedUp { sharedState.navPosition = .bottom ; triggerSomeVibration(type: .light) }
-                            if draggedDown { viewModel.refreshCityAndPrayerTimes()  ; triggerSomeVibration(type: .light) }
-                        case .bottom:
-                            if draggedDown { sharedState.navPosition = .main ; sharedState.bottomTabPosition = .salah ; triggerSomeVibration(type: .light) }
-                        default:
-                            break
+                            sharedState.navPosition = .bottom
+                            triggerSomeVibration(type: .light)
+                        } else if h > refreshThreshold, live.pull > 0 {
+                            viewModel.refreshCityAndPrayerTimes()
+                            triggerSomeVibration(type: .light)
+                        }
+                        live.sheetDrag = 0
+                        live.pull = 0
                     }
                 }
+                isDraggingVertically = nil
             }
-        }
     }
-    
     var body: some View {
         ZStack {
             // The status-bar strip. Pages are clipped to the pager, which starts below the top
@@ -188,6 +187,13 @@ struct PrayerTimesView: View {
             // itself, not on views inside it: the scroll view's pan gets first claim on every
             // touch, takes horizontal ones for paging, and hands vertical ones to this gesture.
             // Nothing inside a page can block paging that way.
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                // Page position, live: 0 = Zikr, 1 = Salah, 2 = Settings. Only the chrome reads it.
+                let width = geometry.containerSize.width
+                return width > 0 ? geometry.contentOffset.x / width : 1
+            } action: { _, progress in
+                live.scrollProgress = progress
+            }
             .simultaneousGesture(abstractedDragGesture)
             .simultaneousGesture(switchToSalahDoubleTapSGesture)
             .onScrollPhaseChange { _, phase, context in
@@ -197,6 +203,10 @@ struct PrayerTimesView: View {
                 guard phase == .idle else { return }
                 let width = context.geometry.containerSize.width
                 guard width > 0 else { return }
+                // The first idle report comes before the three pages are laid out (content one
+                // page wide, midX at 0.5 → "Zikr") and the centre anchor then jumps silently.
+                // Acting on it left horizontalPage = .zikr on the Salah page at launch.
+                guard context.geometry.contentSize.width >= width * 2.5 else { return }
                 let index = Int((context.geometry.visibleRect.midX / width).rounded(.down))
                 let page: NavPage = (index <= 0) ? .zikr : (index >= 2) ? .settings : .main
                 if sharedState.horizontalPage != page {
@@ -216,6 +226,16 @@ struct PrayerTimesView: View {
             // .background(Color(.systemBackground))
             // .padding()
             // .transition(.move(edge: .leading).combined(with: .opacity))
+
+            // Fixed chrome: top bar (menu + location / page title) and bottom bar, over the
+            // pager so they don't travel with the Salah page. Salah + Zikr only; fades out as
+            // Settings slides in (Settings brings its own header).
+            PagerChromeView(
+                live: live,
+                showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
+                showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
+                showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory
+            )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .active {
@@ -295,136 +315,189 @@ struct PrayerTimesView: View {
         ZStack {
             Color("bgColor").opacity(0.001)
                 .edgesIgnoringSafeArea(.all)
-            
-            // Main circle + bottom sheet
-            ZStack {
-                VStack {
 
-                    Spacer()
-                    
-                    if showBottom{
-                        Spacer()
-                        Spacer()
+            SalahPageContent(
+                live: live,
+                showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton,
+                showTasbeehPage: $showTasbeehPage, dismissChainZikrItem: $dismissChainZikrItem,
+                showDailyAyahView: $showDailyAyahView, showMantraSheetFromHomePage: $showMantraSheetFromHomePage
+            )
+        }
+        .navigationBarHidden(true)
+    }
+
+    /// The Salah page body: main circle + salah sheet, positioned by one open-progress value
+    /// (0 = circle centred, sheet off the bottom; 1 = circle up, sheet in). The vertical drag
+    /// moves it with the finger; release springs it to 0 or 1. Separate view so per-frame
+    /// updates re-render this and nothing else.
+    struct SalahPageContent: View {
+        @EnvironmentObject var sharedState: SharedStateClass
+        @EnvironmentObject var viewModel: PrayerViewModel
+        var live: PagerLiveState
+        @Binding var showQiblaMap: Bool
+        @Binding var showChainZikrButton: Bool
+        @Binding var showTasbeehPage: Bool
+        @Binding var dismissChainZikrItem: DispatchWorkItem?
+        @Binding var showDailyAyahView: Bool
+        @Binding var showMantraSheetFromHomePage: Bool
+
+        private var showBottom: Bool { sharedState.navPosition == .bottom }
+
+        var body: some View {
+            GeometryReader { geo in
+                let g = SalahGeometry(height: geo.size.height, sheetHeight: live.sheetHeight)
+                let p = min(max((showBottom ? 1 : 0) + live.sheetDrag, -0.15), 1.15)
+                let midX = geo.size.width / 2
+
+                // Only in the tree while it's at least partly on screen: the salah list builds
+                // PrayerButtons that fatalError if today's prayers aren't loaded yet, and they
+                // load in the circle's onAppear below. Same lifetime the old `if showBottom` had;
+                // it mounts on the first pixel of an upward drag.
+                if p > 0 {
+                    BottomSharedView(
+                        showChainZikrButton: $showChainZikrButton,
+                        dismissChainZikrItem: $dismissChainZikrItem,
+                        showDailyAyahView: $showDailyAyahView,
+                        showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                        showTasbeehPage: $showTasbeehPage
+                    )
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                        if h > 0, abs(h - live.sheetHeight) > 0.5 { live.sheetHeight = h }
                     }
-                    
-                    ZStack{
-                        MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
-                            .geometryGroup()
-                            .onAppear {
-                                print("⭐️ prayerTimesView onAppear")
-                                viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
-                                viewModel.loadTodaysPrayerObjects()
-                                viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
-                            }
+                    .opacity(Double(min(p, 1)))
+                    .allowsHitTesting(p > 0.5)
+                    .position(x: midX, y: g.sheetY(p))
+                }
+
+                MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                    .geometryGroup()
+                    .onAppear {
+                        print("⭐️ prayerTimesView onAppear")
+                        viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
+                        viewModel.loadTodaysPrayerObjects()
+                        viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
                     }
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .position(x: midX, y: g.circleY(p) + live.pull)
                     .zIndex(3)
 
-                    
-                    Spacer()
-                    
-                    
-                    if showBottom {
-                        Spacer()
-                        
-                            BottomSharedView(
-                                showChainZikrButton: $showChainZikrButton,
-                                dismissChainZikrItem: $dismissChainZikrItem,
-                                showDailyAyahView: $showDailyAyahView,
-                                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                                showTasbeehPage: $showTasbeehPage
-                            )
-//                                        .fullScreenCover(isPresented: $showDailyAyahView){
-//                                            DailyAyahView()
-//                                        }
-                        .opacity(1 - Double(dragOffset.height / 90))
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        
-                        Spacer()
-                        
-
-                    }
-                    
-                    ZStack{
-                        Button {
-                            withAnimation {
-                                print("tapped the chev")
-                                sharedState.navPosition = showBottom ? .main : .bottom
-                            }
-                        } label: {
-                            Image(systemName: "chevron.up")
-                                .font(.title3)
-                                .foregroundStyle(chevDragValue != 0 ? Color.secondary : Color(.secondarySystemFill))
-                                .animation(.smooth, value: dragOffset.height)
-//                                    .scaleEffect(x: 1, y: (dragOffset.height > 0 || showBottom) ? -1 : 1)
-                                .padding(.bottom, 30)
-                                .padding()
-                                .offset(y: chevDragValue)
-                        }
-                        .opacity(showBottom ? 0 : 1)
-                        
-                        CustomBottomBar()
-                            .opacity(1 - Double(dragOffset.height / 90))
-                            .opacity(showBottom ? 1 : 0)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-
-                }
-                .transition(.opacity)
+                // Post-salah chain-zikr prompt; floats near the top of this page only.
+                FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-
-            // Top bar, menu button, side menu
-            VStack {
-                // This ZStack holds the manraSelector, floatingChainZikrButton, and TopBar
-                ZStack(alignment: .top) {
-                    FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
-                    Group {
-                        TopBar()
-                            .transition(.opacity)
-                            // vvvthis is for visually showing refresh... need to make it change text, lag, then display new city
-                            //.offset(y: dragOffset.height > 0 && sharedState.navPosition == .main && sharedState.bottomTabPosition == .salah ? dragOffset.height : 0)
-
-                        // Menu button: a native Menu instead of the hand-rolled drawer, which
-                        // toggled shared state and re-rendered the whole home screen to animate.
-                        HStack{
-                            Menu {
-                                Button { showMapPage = true } label: { Label("Map", systemImage: "map") }
-                                Button { showDailyAyahPage = true } label: { Label("Daily Ayah", systemImage: "book") }
-                                Button { showMantrasPage = true } label: { Label("Mantras", systemImage: "text.quote") }
-                                Button { sharedState.horizontalPage = .settings } label: { Label("Settings", systemImage: "gear") }
-                                #if DEBUG
-                                Menu {
-                                    Button("Salah History (V1)") { showSalahHistoryV1 = true }
-                                    Button("Salah History (V2)") { showSalahHistoryV2 = true }
-                                    Button("Zikr History (V1)") { showZikrHistory = true }
-                                } label: {
-                                    Label("Dev's WIP", systemImage: "hammer")
-                                }
-                                #endif
-                            } label: {
-                                Image(systemName: "line.3.horizontal")
-                                    .background(.white.opacity(0.01))
-                                    .frame(width: 24, height: 24)
-                                    .font(.system(size: 20))
-                                    .fontWeight(.light)
-                                    .fontDesign(.rounded)
-                                    .foregroundColor(.gray.opacity(0.8))
-                                    .padding()
-                            }
-                            Spacer()
-                        }
-                    }
-                }
-                                    
-                Spacer()
-                
-            }
-            .navigationBarHidden(true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { live.pageHeight = $0 }
         }
     }
 
-    // MARK: - Other Helper Structs
-    
+    /// Top bar (menu + TopBar on Salah, "Zikr" title on Zikr) and the chevron / bottom bar,
+    /// fixed over the pager. Reads `live` so it alone re-renders while scrolling or dragging.
+    struct PagerChromeView: View {
+        @EnvironmentObject var sharedState: SharedStateClass
+        var live: PagerLiveState
+        @Binding var showMapPage: Bool
+        @Binding var showDailyAyahPage: Bool
+        @Binding var showMantrasPage: Bool
+        @Binding var showSalahHistoryV1: Bool
+        @Binding var showSalahHistoryV2: Bool
+        @Binding var showZikrHistory: Bool
+
+        private var showBottom: Bool { sharedState.navPosition == .bottom }
+        /// How far onto the Zikr / Settings page we are, 0...1 each, live from the scroll offset.
+        private var zikrness: CGFloat { min(max(1 - live.scrollProgress, 0), 1) }
+        private var settingsness: CGFloat { min(max(live.scrollProgress - 1, 0), 1) }
+        /// Sheet open-progress on the Salah page, 0...1.
+        private var sheetP: CGFloat { min(max((showBottom ? 1 : 0) + live.sheetDrag, 0), 1) }
+
+        var body: some View {
+            VStack(spacing: 0) {
+                ZStack(alignment: .top) {
+                    Group {
+                        if sharedState.horizontalPage == .zikr {
+                            ZikrPageTitle()
+                        } else {
+                            TopBar()
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: sharedState.horizontalPage)
+
+                    // Menu button: a native Menu instead of the hand-rolled drawer, which
+                    // toggled shared state and re-rendered the whole home screen to animate.
+                    HStack {
+                        Menu {
+                            Button { showMapPage = true } label: { Label("Map", systemImage: "map") }
+                            Button { showDailyAyahPage = true } label: { Label("Daily Ayah", systemImage: "book") }
+                            Button { showMantrasPage = true } label: { Label("Mantras", systemImage: "text.quote") }
+                            Button { sharedState.horizontalPage = .settings } label: { Label("Settings", systemImage: "gear") }
+                            #if DEBUG
+                            Menu {
+                                Button("Salah History (V1)") { showSalahHistoryV1 = true }
+                                Button("Salah History (V2)") { showSalahHistoryV2 = true }
+                                Button("Zikr History (V1)") { showZikrHistory = true }
+                            } label: {
+                                Label("Dev's WIP", systemImage: "hammer")
+                            }
+                            #endif
+                        } label: {
+                            Image(systemName: "line.3.horizontal")
+                                .background(.white.opacity(0.01))
+                                .frame(width: 24, height: 24)
+                                .font(.system(size: 20))
+                                .fontWeight(.light)
+                                .fontDesign(.rounded)
+                                .foregroundColor(.gray.opacity(0.8))
+                                .padding()
+                        }
+                        Spacer()
+                    }
+                }
+
+                Spacer()
+
+                ZStack(alignment: .bottom) {
+                    // Chevron hint: Salah page, sheet closed. Follows the pull-to-refresh nudge.
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            sharedState.navPosition = showBottom ? .main : .bottom
+                        }
+                    } label: {
+                        Image(systemName: "chevron.up")
+                            .font(.title3)
+                            .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                            .padding(.bottom, 30)
+                            .padding()
+                            .offset(y: live.pull)
+                    }
+                    .opacity(Double((1 - sheetP) * (1 - zikrness)))
+                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
+
+                    // Bottom bar: Salah with the sheet up, and always on Zikr.
+                    CustomBottomBar()
+                        .opacity(Double(max(sheetP, zikrness)))
+                        .allowsHitTesting(max(sheetP, zikrness) > 0.5)
+                }
+            }
+            .opacity(Double(1 - settingsness))
+            .allowsHitTesting(settingsness < 0.5)
+            .ignoresSafeArea(edges: .bottom)
+        }
+    }
+
+    /// The Zikr page's title in the fixed top bar, styled like TopBar's location label.
+    struct ZikrPageTitle: View {
+        var body: some View {
+            // Same metrics as TopBar's location row so the title sits where the city does.
+            HStack {
+                Image(systemName: "circle.hexagonpath")
+                    .foregroundColor(.secondary)
+                Text("Zikr")
+            }
+            .padding()
+            .frame(height: 24, alignment: .center)
+            .font(.caption)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .padding()
+        }
+    }
     struct BottomSharedView: View {
         @EnvironmentObject var sharedState: SharedStateClass
         
@@ -533,6 +606,7 @@ struct PrayerTimesView: View {
                         Button(action: {
                             withAnimation(.spring()) {
                                 sharedState.bottomTabPosition = .salah
+                                sharedState.horizontalPage = .main
                             }
                         }) {
                             VStack(spacing: 6) {
@@ -543,7 +617,7 @@ struct PrayerTimesView: View {
                                     .fontWeight(.light)
                                     .fontDesign(.rounded)
                             }
-                            .foregroundColor( sharedState.bottomTabPosition == .salah ? .green : .gray)
+                            .foregroundColor(sharedState.horizontalPage == .main ? .green : .gray) // by page, like its siblings
                             .frame(width: 100)
                         }
                         
@@ -1118,3 +1192,41 @@ struct ChevronTap2: View {
     }
 }
 
+
+
+// MARK: - Pager live state + salah page geometry
+
+/// Per-frame values from the pager's gesture and scroll. @Observable so only the views that
+/// read a given property re-render when it changes; PrayerTimesView's body reads none of them.
+@Observable final class PagerLiveState {
+    /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
+    var scrollProgress: CGFloat = 1
+    /// Vertical drag on the Salah page in sheet-progress units (finger travel / circle travel).
+    var sheetDrag: CGFloat = 0
+    /// Pull-to-refresh nudge in points; closed sheet only.
+    var pull: CGFloat = 0
+    /// Measured by SalahPageContent; the gesture needs them to convert points to progress.
+    var pageHeight: CGFloat = 0
+    var sheetHeight: CGFloat = 320
+}
+
+/// Where the main circle and the salah sheet sit for an open-progress `p` (0 closed, 1 open).
+/// The constants reproduce the old Spacer-based layout at both ends: closed = circle centred
+/// above the bottom chrome; open = the previous 3-spacers-above / sheet-between-spacers split.
+struct SalahGeometry {
+    let height: CGFloat
+    let sheetHeight: CGFloat
+    static let circle: CGFloat = 200
+    static let bottomChrome: CGFloat = 86   // CustomBottomBar's height
+
+    private var free: CGFloat { max(height - Self.circle - sheetHeight - Self.bottomChrome, 0) }
+    var circleClosedY: CGFloat { (height - Self.bottomChrome) / 2 }
+    var circleOpenY: CGFloat { free / 2 + Self.circle / 2 }
+    var sheetOpenY: CGFloat { 5 * free / 6 + Self.circle + sheetHeight / 2 }
+    var sheetClosedY: CGFloat { height + sheetHeight / 2 + 40 }
+    /// How far the circle rises between closed and open; the finger maps 1:1 onto this.
+    var travel: CGFloat { circleClosedY - circleOpenY }
+
+    func circleY(_ p: CGFloat) -> CGFloat { circleClosedY + (circleOpenY - circleClosedY) * p }
+    func sheetY(_ p: CGFloat) -> CGFloat { sheetClosedY + (sheetOpenY - sheetClosedY) * p }
+}
