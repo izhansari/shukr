@@ -141,6 +141,15 @@ with the sheet closed; `CustomBottomBar` on Salah with the sheet up and always o
 come from `live` (sheet progress and `zikrness`), the whole thing fades with `settingsness` so
 Settings slides in over nothing and keeps its own header. Owner's call: no chrome on Settings.
 
+**The Zikr page's task strip holds the pager while touched.** Nested same-axis scroll views
+chain in UIKit (a drag on the strip at its last card turned the page, 2026-09-24). The strip
+sets `live.pagerLocked` on touch-down (`DragGesture(minimumDistance: 0)`, simultaneous) and the
+pager is `.scrollDisabled` while it's set; release or the strip settling clears it. `live`
+reaches `DailyTasksView` through `.environment(live)` on the pager (optional `@Environment`, nil
+outside it). Centering a card is local state only: it used to write `sharedState.selectedTask`,
+whose `didSet` writes four more `@Published` properties — five home-screen re-renders per card
+passed, which is what made the strip stutter. The tap action sets `selectedTask`.
+
 `onScrollPhaseChange` ignores idle reports while `contentSize.width < 2.5 × width`: the first
 one arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
 `horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
