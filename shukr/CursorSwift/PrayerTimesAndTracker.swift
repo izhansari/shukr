@@ -241,8 +241,10 @@ struct PrayerTimesView: View {
                 if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
                     let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
                     let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
-                    store.setValue(false, forKey: "widgetCompass")
-                    store.setValue(false, forKey: "widgetTasbeeh")
+                    // Clear only when set: every write to the group suite invalidates every
+                    // @AppStorage bound to it and re-renders Settings.
+                    if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
+                    if openTasbeehFromWidget { store.setValue(false, forKey: "widgetTasbeeh") }
 
                     if openCompassFromWidget{
                         sharedState.navPosition = .main

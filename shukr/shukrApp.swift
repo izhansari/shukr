@@ -121,6 +121,7 @@ struct shukrApp: App {
         }
         .modelContainer(sharedModelContainer)
         .environmentObject(environmentLocationManager)
+        .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
         .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
 //            .environmentObject(prayerViewModel) // Inject PrayerViewModel
         /*

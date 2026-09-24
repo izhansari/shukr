@@ -8,6 +8,7 @@
 import SwiftUI
 import CoreLocation
 import WidgetKit
+import Combine
 
 //used by pulseCircle
 struct QiblaSettings {
@@ -28,19 +29,37 @@ struct QiblaSettings {
 //MARK: - Env Location Manager
 /// (merged MainCircleLocationManager into GlobalLocationManager)
 
+/// The compass stream: heading and qibla, many updates a second on a phone. Its own object so
+/// only the views that draw the compass (`@EnvironmentObject var compass: CompassState`)
+/// re-render per update. It used to be two @Published properties on EnvLocationManager, which
+/// the root view holds as @StateObject — so every heading tick re-rendered the whole app
+/// (Settings, the pager, the chrome), which is what made every Menu picker flicker on the
+/// phone (2026-09-25). No compass in the simulator, so it never showed there.
+final class CompassState: ObservableObject {
+    @Published var heading: Double = 0
+    @Published var qibla: (aligned: Bool, heading: Double) = (false, 0)
+}
+
 class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate { //locman_flag used for the compass in MainCircle and with injection on @Main
     @ObservationIgnored let manager = CLLocationManager()
     
     // Location and Heading Data
-    @Published var userLocation: CLLocation?
-    @Published var compassHeading: Double = 0
+    /// Not @Published: no view reads it (the qibla math does), and the root view observes this
+    /// object — publishing every GPS fix re-rendered the whole app once a second. PrayerViewModel
+    /// follows fixes through `locationUpdates` instead.
+    var userLocation: CLLocation?
+    let locationUpdates = PassthroughSubject<CLLocation?, Never>()
     @Published var isAuthorized: Bool = false
-    @Published var qibla: (aligned: Bool, heading: Double) = (false, 0) // Stores the latest Qibla data
+    /// Heading + qibla live here (see CompassState). Not @Published on this object on purpose.
+    let compass = CompassState()
+    var compassHeading: Double { compass.heading }
+    var qibla: (aligned: Bool, heading: Double) { compass.qibla }
 
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = /*kCLLocationAccuracyBest*/ kCLLocationAccuracyNearestTenMeters
+        manager.headingFilter = 1   // degrees; no delegate call for sub-degree jitter
 //        startLocationServices()
     }
     
@@ -83,12 +102,14 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     // CL Location Manager Delegate method for location updates
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         userLocation = locations.last
+        locationUpdates.send(locations.last)
         updateQibla()
     }
     
     // CL Location Manager Delegate method for heading updates
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        compassHeading = newHeading.magneticHeading
+        guard abs(newHeading.magneticHeading - compass.heading) >= 0.5 else { return }
+        compass.heading = newHeading.magneticHeading
         updateQibla()
     }
     
@@ -101,7 +122,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     private func updateQibla() {
         let qiblaHeading = calculateQiblaDirection()
         let qiblaAligned = abs(qiblaHeading) <= QiblaSettings.alignmentThreshold
-        qibla = (qiblaAligned, qiblaHeading)
+        compass.qibla = (qiblaAligned, qiblaHeading)
     }
 
     func calculateQiblaDirection() -> Double {

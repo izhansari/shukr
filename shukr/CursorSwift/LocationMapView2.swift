@@ -388,7 +388,7 @@ struct MapView: UIViewRepresentable {
 // MARK: - ContentView
 struct LocationMapContentView: View {
     @StateObject var viewModel = LocationViewModel()
-    @EnvironmentObject var envLocationManager: EnvLocationManager
+    @EnvironmentObject var compass: CompassState
     @Environment(\.modelContext) private var context
     @Environment(\.scenePhase) var scenePhase
 
@@ -482,14 +482,14 @@ struct LocationMapContentView: View {
                             }
                             else{
 //                                Text("Qibla: \(Int(round(viewModel.qiblaDirection + viewModel.mapHeading)))°")
-                                //                        let diff = viewModel.angleDifference(from: viewModel.qiblaDirection, to: locationManager.compassHeading)
+                                //                        let diff = viewModel.angleDifference(from: viewModel.qiblaDirection, to: compass.heading)
   
                                 Text("""
-                                Qibla: \(envLocationManager.qibla.aligned
+                                Qibla: \(compass.qibla.aligned
                                     ? "Facing Mecca 🕋"
                                     : (viewModel.angleDifference(
                                         from: viewModel.qiblaDirection,
-                                        to: envLocationManager.compassHeading
+                                        to: compass.heading
                                       ) < 0
                                       ? "Turn left ←"
                                       : "Turn right →"
@@ -501,9 +501,9 @@ struct LocationMapContentView: View {
 
 
 //                                Text("Qibla: \(
-//                                    envLocationManager.qibla.aligned
+//                                    compass.qibla.aligned
 //                                    ? "Facing Mecca 🕋"
-//                                    : viewModel.angleDifference(from: viewModel.qiblaDirection, to: envLocationManager.compassHeading) < 0
+//                                    : viewModel.angleDifference(from: viewModel.qiblaDirection, to: compass.heading) < 0
 //                                    ? "Turn left ←"
 //                                    : "Turn right →")"
 //                                )
@@ -516,7 +516,7 @@ struct LocationMapContentView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(!viewModel.showPrayers && envLocationManager.qibla.aligned ? Color.green : Color.clear, lineWidth: 2)
+                                .stroke(!viewModel.showPrayers && compass.qibla.aligned ? Color.green : Color.clear, lineWidth: 2)
                         )
                         .shadow(radius: 2)
                         Spacer()
@@ -661,7 +661,7 @@ struct LocationMapContentView: View {
 
 // MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
-    @EnvironmentObject var locationManager: EnvLocationManager
+    @EnvironmentObject var compass: CompassState
     @EnvironmentObject var sharedState: SharedStateClass
     var degrees: Double
     var isAtMecca: Bool
@@ -670,28 +670,28 @@ struct CircleWithArrowOverlay: View {
         ZStack {
             // Change the circle's color based on isAtMecca:
             Circle()
-                .stroke(lineWidth: isAtMecca || locationManager.qibla.aligned ? 4 : 2)
+                .stroke(lineWidth: isAtMecca || compass.qibla.aligned ? 4 : 2)
                 .frame(width: 200, height: 200)
-                .foregroundColor(isAtMecca || locationManager.qibla.aligned ? .green : .white)
-                .shadow(color: isAtMecca || locationManager.qibla.aligned ? .white.opacity(0.7) : .black.opacity(0.1), radius: 10, x: 0, y: 0)
-                .animation(.default, value: locationManager.qibla.aligned)
+                .foregroundColor(isAtMecca || compass.qibla.aligned ? .green : .white)
+                .shadow(color: isAtMecca || compass.qibla.aligned ? .white.opacity(0.7) : .black.opacity(0.1), radius: 10, x: 0, y: 0)
+                .animation(.default, value: compass.qibla.aligned)
 
             // Only show the arrows if we're not at Mecca
             if !isAtMecca {
                 Image(systemName: "arrowtriangle.up.fill")
                     .resizable()
-                    .foregroundColor(locationManager.qibla.aligned ? .green : .white)
+                    .foregroundColor(compass.qibla.aligned ? .green : .white)
                     .frame(width: 20, height: 20)
                     .offset(y: -110)
                     .rotationEffect(.degrees(degrees))
-                    .animation(.default, value: locationManager.qibla.aligned)
+                    .animation(.default, value: compass.qibla.aligned)
 
                 // second (compass) arrow using your locationManager.
                 // This uses the compassHeading from your environment object.
                 Image(systemName: "chevron.up")
                     .font(.subheadline)
                     .fontWeight(.bold)
-                    .foregroundColor(locationManager.qibla.aligned ? .green : Color(.systemBlue))
+                    .foregroundColor(compass.qibla.aligned ? .green : Color(.systemBlue))
                     .background(
                         Circle() // to increase tappable area
                             .fill(Color.white.opacity(0.001))
@@ -700,7 +700,7 @@ struct CircleWithArrowOverlay: View {
                     .shadow(radius: 2)
 //                    .opacity(0.7)
                     .offset(y: -20)
-                    .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? degrees : locationManager.compassHeading))
+                    .rotationEffect(Angle(degrees: compass.qibla.aligned ? degrees : compass.heading))
                     .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: degrees)
             }
         }
@@ -725,7 +725,7 @@ struct CircleWithArrowOverlay: View {
             // Compass Based Qibla Arrow
             Image(systemName: "chevron.up")
                 .font(.subheadline)
-                .foregroundColor(locationManager.qibla.aligned ? .green : .primary)
+                .foregroundColor(compass.qibla.aligned ? .green : .primary)
                 .background(
                     Circle() // this is to increase tappable aread
                         .fill(Color.white.opacity(0.001))
@@ -733,10 +733,10 @@ struct CircleWithArrowOverlay: View {
                 )
                 .opacity(0.7)
                 .offset(y: -80)
-//                            .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? 0 : locationManager.qibla.heading))
-                .rotationEffect(Angle(degrees: locationManager.compassHeading))
-                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
-//                            .onChange(of: locationManager.qibla.aligned) { _, newIsAligned in
+//                            .rotationEffect(Angle(degrees: compass.qibla.aligned ? 0 : compass.qibla.heading))
+                .rotationEffect(Angle(degrees: compass.heading))
+                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
+//                            .onChange(of: compass.qibla.aligned) { _, newIsAligned in
 //                                checkToTriggerQiblaHaptic(aligned: newIsAligned)
 //                            }
 //                            .onTapGesture { showQiblaMap = true }

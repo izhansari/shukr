@@ -41,11 +41,15 @@ struct SettingsView: View {
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
+    /// Counts the secondary tasbeeh button adds per tap; 0 hides it. Read by tasbeehView.
+    @AppStorage("tasbeehSecondaryStep") private var tasbeehSecondaryStep: Int = 0
     /// Hours after midnight the prayer day ends (Isha stays markable until then). See PrayerDay.
     @AppStorage(PrayerDay.rolloverKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var dayRolloverHours: Int = 0
     @State private var isNotifPopupVisible: Bool = false
     @State private var isStreakPopupVisible: Bool = false
     @State private var isRolloverPopupVisible: Bool = false
+    @State private var isTasbeehPopupVisible: Bool = false
+    @FocusState private var stepFieldFocused: Bool
     
     @State private var selectedPrayerToCancelNudges = "Fajr"
     @State private var rotationAngle: Double = 0 // For rotating the symbol
@@ -231,7 +235,7 @@ struct SettingsView: View {
                     
                     //MARK: - Day Rollover
                     Section(header: headerWithInfoButton(title: "Day Rollover", isPopupVisible: $isRolloverPopupVisible)) {
-                        Picker("Isha end time", selection: $dayRolloverHours) {
+                        Picker("Isha End Time", selection: $dayRolloverHours) {
                             Text("Midnight").tag(0)
                             Text("1 AM").tag(1)
                             Text("2 AM").tag(2)
@@ -245,6 +249,35 @@ struct SettingsView: View {
                         viewModel.fetchPrayerTimes(cameFrom: "onChange dayRolloverHours")
                         viewModel.loadTodaysPrayerObjects()
                         WidgetCenter.shared.reloadAllTimelines()
+                    }
+
+                    //MARK: - Tasbeeh
+                    Section(header: headerWithInfoButton(title: "Tasbeeh", isPopupVisible: $isTasbeehPopupVisible)) {
+                        LabeledContent("Secondary button step") {
+                            TextField("Off", value: $tasbeehSecondaryStep, format: .number)
+                                .keyboardType(.numberPad)
+                                .multilineTextAlignment(.center)
+                                .monospacedDigit()
+                                .focused($stepFieldFocused)
+                                .frame(width: 72)
+                                .padding(.vertical, 6)
+                                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(stepFieldFocused ? Color.green.opacity(0.6) : Color.clear, lineWidth: 1))
+                                .onChange(of: stepFieldFocused) { _, focused in
+                                    // Select the whole value on focus so typing replaces it.
+                                    guard focused else { return }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                        UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
+                                    }
+                                }
+                        }
+                        if isTasbeehPopupVisible {
+                            TasbeehDropdownInfo()
+                        }
+                    }
+                    .onChange(of: tasbeehSecondaryStep) { _, new in
+                        if new < 0 { tasbeehSecondaryStep = 0 }
+                        if new > 10_000 { tasbeehSecondaryStep = 10_000 }
                     }
 
                     //MARK: - Calculation Method
@@ -264,15 +297,15 @@ struct SettingsView: View {
                             }
                         }
                         
-                        // Qibla sensitivity slider
-                        VStack(alignment: .leading){
-                            HStack{
-                                Image(systemName: "location.north.line")
-                                Stepper("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°",
-                                        value: $qiblaSensitivity,
-                                        in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
-                                        step: 0.5)
-                            }
+                        // Qibla sensitivity: ± buttons that repeat (and speed up) while held.
+                        HStack {
+                            Image(systemName: "location.north.line")
+                            Text("Qibla Accuracy: ± \(qiblaSensitivity, specifier: "%.1f")°")
+                                .monospacedDigit()
+                            Spacer()
+                            HoldRepeatStepper(value: $qiblaSensitivity,
+                                              in: QiblaSettings.minThreshold...QiblaSettings.maxThreshold,
+                                              step: 0.5)
                         }
                         
                     }
@@ -454,6 +487,8 @@ struct SettingsView: View {
         // The status-bar strip above this page is painted by the pager (PrayerTimesAndTracker),
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
+        // A tap anywhere on the page puts the number pad away (simultaneous, so rows still work).
+        .simultaneousGesture(TapGesture().onEnded { if stepFieldFocused { stepFieldFocused = false } })
         .navigationBarBackButtonHidden(false)
         
         .toolbar {
@@ -688,6 +723,28 @@ struct prayerCol: View {
 
 
 
+
+struct TasbeehDropdownInfo: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Information:")
+
+            HStack {
+                Image(systemName: "plus.circle")
+                Text("Adds a button to the active tasbeeh, between − and ∞, that counts this many at once — for when you're reciting on your own and want one tap to record several.")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+
+            HStack {
+                Image(systemName: "0.circle")
+                Text("0 hides the button.")
+                    .font(.caption)
+            }
+            .foregroundColor(.gray)
+        }
+    }
+}
 
 struct RolloverDropdownInfo: View {
     var body: some View {
@@ -1101,5 +1158,79 @@ struct AlarmSettingsView: View {
             .padding(.horizontal)
 
         }
+    }
+}
+
+
+/// A ± control whose buttons repeat while held — one step on touch-down, then after 0.4 s a
+/// step every 0.12 s, and after 1.5 s every 0.05 s — for values a long way apart, like the
+/// qibla accuracy's 1…15° in 0.5° steps. SwiftUI's Stepper needed a press per step.
+struct HoldRepeatStepper: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    @State private var timer: Timer?
+    @State private var pressedAt: Date?
+
+    init(value: Binding<Double>, in range: ClosedRange<Double>, step: Double) {
+        self._value = value
+        self.range = range
+        self.step = step
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            button("minus", direction: -1)
+            Divider().frame(height: 18)
+            button("plus", direction: 1)
+        }
+        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
+        .onDisappear { stop() }
+    }
+
+    private func button(_ symbol: String, direction: Double) -> some View {
+        let atLimit = direction < 0 ? value <= range.lowerBound : value >= range.upperBound
+        return Image(systemName: symbol)
+            .font(.body.weight(.medium))
+            .foregroundStyle(atLimit ? Color.secondary.opacity(0.4) : Color.primary)
+            .frame(width: 44, height: 32)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        if pressedAt == nil {                 // touch-down: one step, start repeating
+                            pressedAt = Date()
+                            bump(direction)
+                            start(direction)
+                        } else if abs(drag.translation.height) > 12 || abs(drag.translation.width) > 12 {
+                            stop()                            // finger drifted: it's a scroll, not a hold
+                        }
+                    }
+                    .onEnded { _ in stop() }
+            )
+    }
+
+    private func bump(_ direction: Double) {
+        let next = min(max(value + direction * step, range.lowerBound), range.upperBound)
+        guard next != value else { return }
+        value = next
+        triggerSomeVibration(type: .light)
+    }
+
+    private func start(_ direction: Double) {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            guard let pressedAt else { return }
+            let held = Date().timeIntervalSince(pressedAt)
+            // 0.4 s grace, then every 0.12 s, then every 0.05 s after 1.5 s.
+            let interval: TimeInterval = held < 1.5 ? 0.12 : 0.05
+            if held >= 0.4, Int((held - 0.4) / 0.05) % Int(interval / 0.05) == 0 { bump(direction) }
+        }
+    }
+
+    private func stop() {
+        timer?.invalidate()
+        timer = nil
+        pressedAt = nil
     }
 }

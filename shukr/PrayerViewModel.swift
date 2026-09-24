@@ -27,7 +27,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     private func subscribeToChanges(){
         // Subscribe to userLocation changes
-        ENV_LocationManager.$userLocation
+        ENV_LocationManager.locationUpdates
             .sink { [weak self] newVal in
                 self?.handleLocationChange(for: newVal)
             }
@@ -145,8 +145,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
         // If we return out of the if block, update location and proceed with geocoding
         locationPrinter("🌍 Triggering geocoding and prayer times fetch...")
-        self.lastLatitude = location.coordinate.latitude
-        self.lastLongitude = location.coordinate.longitude
+        storeLastCoordinate(location.coordinate)
         self.lastGeocodeRequestTime = Date()
         self.lastAppLocation = location
         updateCityName(for: location)
@@ -172,9 +171,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     self?.locationPrinter("⚠️ No placemark found")
                     self?.cityName = "Unknown"
                 }
-                let oldCityName = self?.lastCityName
-                self?.lastCityName = self?.cityName ?? "Error."
-                if oldCityName != self?.lastCityName {
+                // Write the group suite only on a real change (every write invalidates the
+                // app's @AppStorage bindings and re-renders Settings).
+                let newCityName = self?.cityName ?? "Error."
+                if self?.lastCityName != newCityName {
+                    self?.lastCityName = newCityName
                     WidgetCenter.shared.reloadAllTimelines()
                 }
             }
@@ -242,8 +243,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         
         // Update latitude and longitude
-        lastLatitude = location.coordinate.latitude
-        lastLongitude = location.coordinate.longitude
+        storeLastCoordinate(location.coordinate)
 
         // Set up Adhan parameters
         let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
@@ -255,6 +255,15 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             return nil
         }
         return times
+    }
+
+    /// Writes the app-group `lastLatitude` / `lastLongitude` only when they actually moved. Every
+    /// write to that suite invalidates every @AppStorage bound to it (Settings, the root), so
+    /// rewriting the same coordinate on each prayer-time calculation re-rendered them for nothing.
+    private func storeLastCoordinate(_ c: CLLocationCoordinate2D) {
+        // ~50 m: GPS jitter is metres per fix and can't change prayer times or the qibla.
+        if abs(lastLatitude - c.latitude) > 5e-4 { lastLatitude = c.latitude }
+        if abs(lastLongitude - c.longitude) > 5e-4 { lastLongitude = c.longitude }
     }
 
     // MARK: - Prayer Scheduling

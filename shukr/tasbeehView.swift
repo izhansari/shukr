@@ -21,6 +21,8 @@ struct tasbeehView: View {
     
     // AppStorage properties
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
+    /// Settings → Tasbeeh: counts the secondary button adds per tap; 0 = no button.
+    @AppStorage("tasbeehSecondaryStep") private var secondaryStep: Int = 0
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
     
@@ -295,6 +297,12 @@ struct tasbeehView: View {
                             TopOfSessionButton( // Minus Button
                                 symbol: "minus", actionToDo: decrementTasbeeh,
                                 paused: paused, togglePause: togglePause)
+                            
+                            if secondaryStep > 0 {
+                                TopOfSessionButton( // Secondary button: +N in one tap (Settings → Tasbeeh)
+                                    text: "+\(secondaryStep)", actionToDo: { simulateTasbeehClicks(times: secondaryStep) },
+                                    paused: paused, togglePause: togglePause)
+                            }
                             
                             TopOfSessionButton( // Plus 100 Button (for testing)
                                 symbol: "infinity", actionToDo: {simulateTasbeehClicks(times: 100)},
@@ -1258,17 +1266,36 @@ struct tasbeehView: View {
 
     
     struct TopOfSessionButton: View{
-        let symbol: String
+        var symbol: String? = nil   // an SF Symbol…
+        var text: String? = nil     // …or a short label like "+10"
         let actionToDo: () -> Void
         let paused: Bool
         let togglePause: () -> Void
+
+        init(symbol: String, actionToDo: @escaping () -> Void, paused: Bool, togglePause: @escaping () -> Void) {
+            self.symbol = symbol; self.actionToDo = actionToDo; self.paused = paused; self.togglePause = togglePause
+        }
+        init(text: String, actionToDo: @escaping () -> Void, paused: Bool, togglePause: @escaping () -> Void) {
+            self.text = text; self.actionToDo = actionToDo; self.paused = paused; self.togglePause = togglePause
+        }
         
         var body: some View{
             Button(action: paused ? togglePause : actionToDo) {
-                Image(systemName: symbol)
-                    .font(.system(size: 20, weight: .bold))
+                Group {
+                    if let symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: 20, weight: .bold))
+                            .frame(width: 20, height: 20)
+                    } else {
+                        Text(text ?? "")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .frame(minWidth: 20, minHeight: 20)
+                    }
+                }
                     .foregroundColor(.gray.opacity(0.3))
-                    .frame(width: 20, height: 20)
                     .padding()
                     .background(paused ? .clear : .gray.opacity(0.08))
                     .cornerRadius(100)

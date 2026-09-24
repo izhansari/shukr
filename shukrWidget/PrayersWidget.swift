@@ -55,7 +55,10 @@ import CoreLocation
 import Adhan
 
 struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
-    let locationManager = PrayersWidgetLocationManager()
+    // No location manager in the widget: the app stores lastLatitude / lastLongitude /
+    // lastCityName in the app group and the widget reads those. The widget's own GPS + compass
+    // manager rewrote lastCityName on every fix, and cross-process defaults changes invalidate
+    // every @AppStorage in the app — the Settings pickers flickered because of it (2026-09-25).
 
     func placeholder(in context: Context) -> PrayersWidgetEntry {
         // Provide a placeholder with *dummy* prayer times so SwiftUI can render a preview
@@ -106,7 +109,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
 //        let latitude = locationManager.latitude
 //        let longitude = locationManager.longitude
 //        let locationName = locationManager.locationName // Fetch updated location name
-        let heading = locationManager.heading
+        let heading: Double = 0   // a widget is a snapshot; no live compass
 
         // Attempt to get real prayer times from your utility
         // Fallback if there's an error (e.g. location not yet available).
@@ -152,7 +155,6 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
 
 
 struct PrayersWidgetView: View {
-    @ObservedObject var locationManager = PrayersWidgetLocationManager()
     var entry: PrayersWidgetEntry
     let prayerOrder = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
         

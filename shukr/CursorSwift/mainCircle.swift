@@ -7,7 +7,8 @@ import SwiftData
 struct MainCircleView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
-    @EnvironmentObject var locationManager: EnvLocationManager
+    @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
+    @EnvironmentObject var compass: CompassState                 // heading/qibla, per update
     @Environment(\.colorScheme) var colorScheme
     
     @State private var currentTime = Date()
@@ -166,7 +167,7 @@ struct MainCircleView: View {
                 // Qibla Arrow
                 Image(systemName: "chevron.up")
                     .font(.subheadline)
-                    .foregroundColor(locationManager.qibla.aligned ? .green : .primary)
+                    .foregroundColor(compass.qibla.aligned ? .green : .primary)
                     .background(
                         Circle() // this is to increase tappable aread
                             .fill(Color.white.opacity(0.001))
@@ -174,9 +175,9 @@ struct MainCircleView: View {
                     )
                     .opacity(0.5)
                     .offset(y: -80)
-                    .rotationEffect(Angle(degrees: locationManager.qibla.aligned ? 0 : locationManager.qibla.heading))
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
-                    .onChange(of: locationManager.qibla.aligned) { _, newIsAligned in
+                    .rotationEffect(Angle(degrees: compass.qibla.aligned ? 0 : compass.qibla.heading))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
+                    .onChange(of: compass.qibla.aligned) { _, newIsAligned in
                         checkToTriggerQiblaHaptic(aligned: newIsAligned)
                     }
                     .onTapGesture { showQiblaMap = true }
@@ -187,8 +188,8 @@ struct MainCircleView: View {
                     .fill(Color(.systemGray)/*.primary*/)
                     .frame(width: 8, height: 8)
                     .offset(y: -100)
-                    .opacity(locationManager.qibla.aligned ? 1.0 : 0)
-//                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: locationManager.qibla.aligned)
+                    .opacity(compass.qibla.aligned ? 1.0 : 0)
+//                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
             }
             
 

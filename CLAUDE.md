@@ -155,6 +155,31 @@ pager (Zikr | Salah | Settings).
 Known: the pager ignores the bottom safe area (to keep the bottom bar flush), so the Settings
 `Form`'s last row sits under the home indicator.
 
+**Re-render hygiene (the "every picker flickers" bug, 2026-09-25).** On the phone every Menu
+picker and the hamburger blinked; the iOS 18 sim was clean. `Self._printChanges()` on the phone
+showed the root re-rendering ~1×/s and Settings with it. Causes, all fixed: (1) the compass —
+`EnvLocationManager` published heading/qibla on every tick and the root holds it as
+`@StateObject`, so every heading update re-rendered the whole app; heading/qibla now live in
+`CompassState` (`@EnvironmentObject var compass`), subscribed to only by `MainCircleView` and
+the map, with `headingFilter = 1` and a 0.5° change guard. (2) GPS — `userLocation` was
+`@Published` on the same object; it's a plain var now and `PrayerViewModel` follows fixes via
+`locationUpdates` (a `PassthroughSubject`). (3) App-group writes — every write to the group
+suite (even the same value) invalidates every `@AppStorage` bound to it, i.e. Settings and the
+root; `lastLatitude`/`lastLongitude` are written only when moved >50 m (`storeLastCoordinate`),
+`lastCityName` only on change, the widget one-shot flags only when set, and the widget no
+longer runs its own GPS + compass manager (`PrayersWidgetLocationManager` is unused; it
+rewrote `lastCityName` on every fix from the extension process). Reading `_printChanges`:
+a "`_qiblaSensitivity, _calculationMethod, … changed`" line on SettingsView is an artifact of
+the struct being re-created by its parent (each `@AppStorage(store: UserDefaults(suiteName:))`
+makes a new store instance), not evidence of a defaults write — look at the line before it.
+Remaining renders are interaction-driven (`scenePhase`, `scrollPage`, `sharedState`).
+
+Settings has a hold-to-repeat `HoldRepeatStepper` (qibla accuracy; SwiftUI's Stepper needed a
+press per step) and a "Tasbeeh → Secondary button step" number field (`tasbeehSecondaryStep`,
+standard suite) that `tasbeehView` reads: > 0 shows a "+N" `TopOfSessionButton` (text variant)
+between − and ∞ that calls `simulateTasbeehClicks(times:)`. Owner plans to move that control
+onto the tasbeeh pause screen later.
+
 Broader lag lever not yet pulled: `SharedStateClass` is an `ObservableObject`, so *any*
 `@Published` change re-renders every view holding `@EnvironmentObject sharedState` (nearly all
 of them). Migrating it to `@Observable` (per-property tracking) would cut most of that. Mechanical
