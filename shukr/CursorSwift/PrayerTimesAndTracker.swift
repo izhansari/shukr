@@ -84,7 +84,8 @@ struct PrayerTimesView: View {
         let maxPull: CGFloat = 20
         let refreshThreshold: CGFloat = 30
         let commitFraction: CGFloat = 0.35   // of the circle's travel
-        let flickVelocity: CGFloat = 600     // pt/s: commit on a flick even if short
+        let flickVelocity: CGFloat = 1000    // pt/s: a real flick commits even if short…
+        let flickMinimum: CGFloat = 0.08     // …but not a twitch (in progress units)
 
         return DragGesture()
             .onChanged { value in
@@ -119,12 +120,12 @@ struct PrayerTimesView: View {
                     // the circle and sheet spring on from wherever the finger left them.
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         if showBottom {
-                            if live.sheetDrag < -commitFraction || vy > flickVelocity {
+                            if live.sheetDrag < -commitFraction || (vy > flickVelocity && live.sheetDrag < -flickMinimum) {
                                 sharedState.navPosition = .main
                                 sharedState.bottomTabPosition = .salah
                                 triggerSomeVibration(type: .light)
                             }
-                        } else if live.sheetDrag > commitFraction || vy < -flickVelocity {
+                        } else if live.sheetDrag > commitFraction || (vy < -flickVelocity && live.sheetDrag > flickMinimum) {
                             sharedState.bottomTabPosition = .salah
                             sharedState.navPosition = .bottom
                             triggerSomeVibration(type: .light)
@@ -349,25 +350,22 @@ struct PrayerTimesView: View {
                 let p = min(max((showBottom ? 1 : 0) + live.sheetDrag, -0.15), 1.15)
                 let midX = geo.size.width / 2
 
-                // Only in the tree while it's at least partly on screen: the salah list builds
-                // PrayerButtons that fatalError if today's prayers aren't loaded yet, and they
-                // load in the circle's onAppear below. Same lifetime the old `if showBottom` had;
-                // it mounts on the first pixel of an upward drag.
-                if p > 0 {
-                    BottomSharedView(
-                        showChainZikrButton: $showChainZikrButton,
-                        dismissChainZikrItem: $dismissChainZikrItem,
-                        showDailyAyahView: $showDailyAyahView,
-                        showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                        showTasbeehPage: $showTasbeehPage
-                    )
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-                        if h > 0, abs(h - live.sheetHeight) > 0.5 { live.sheetHeight = h }
-                    }
-                    .opacity(Double(min(p, 1)))
-                    .allowsHitTesting(p > 0.5)
-                    .position(x: midX, y: g.sheetY(p))
+                // Always mounted, parked below the screen while closed. Mounting it on the first
+                // pixel of a drag stalled the device (the salah list is heavy) and then changed
+                // the travel distance mid-drag when its height got measured — that was the jump.
+                BottomSharedView(
+                    showChainZikrButton: $showChainZikrButton,
+                    dismissChainZikrItem: $dismissChainZikrItem,
+                    showDailyAyahView: $showDailyAyahView,
+                    showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
+                    showTasbeehPage: $showTasbeehPage
+                )
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                    if h > 0, abs(h - live.sheetHeight) > 0.5 { live.sheetHeight = h }
                 }
+                .opacity(Double(min(max(p, 0), 1)))
+                .allowsHitTesting(p > 0.5)
+                .position(x: midX, y: g.sheetY(p))
 
                 MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
                     .geometryGroup()
@@ -692,7 +690,10 @@ struct TodaysPrayerListView: View {
     var body: some View {
         VStack{
             VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
-                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
+                // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
+                // this list is now in the tree from launch, before loadTodaysPrayerObjects runs.
+                let loaded = viewModel.orderedPrayerNames.filter { name in viewModel.todaysPrayers.contains { $0.name == name } }
+                ForEach(loaded, id: \.self) { prayerName in
                     PrayerButton(
                         showChainZikrButton: $showChainZikrButton, dismissChainZikrItem: $dismissChainZikrItem,
                         name: prayerName,

@@ -297,6 +297,18 @@ Next model change: keep it lightweight, never reuse a name that another property
 compares against it), extend the data pass if rows need touching, and test on the newest iOS
 you can — iOS 18/26 simulators accepted two things iOS 27 rejected.
 
+**If the shared store won't open** (`makeContainer()` throws), `shukrApp` calls
+`SharedStore.recoverFromUnopenableStore`: the file is set aside as
+`shukr.store.unopenable-<timestamp>` (never deleted), the legacy-import flag is cleared, a
+fresh store is opened, and the normal launch re-imports `default.store`. Then
+`salvageSetAsideStoresIfNeeded` reads every set-aside file once with raw SQLite
+(`SetAsideStoreSalvage`; the app links SQLite3 for the Quran DBs) and copies back what the
+fresh store lacks: mantra fullText/notes into empty fields (by name), prayer completions onto
+incomplete rows (by name + day), tasks and sessions missing by id. Flag per file name; a
+failure leaves the flag unset so a fixed build retries. Don't assume a set-aside store has
+every column (the owner's had no `ZSORTORDER`). This is what put the owner's phone back on
+its feet on 2026-09-24 after the staged-plan attempt.
+
 Selection plumbing: `MantraPickerView` hands back `selectedMantra` (name) *and*
 `selectedMantraObject`; the object is set first so name-based `onChange`s can read it.
 `SharedStateClass.mantraForSession` rides alongside `titleForSession`; `saveSession` links it,

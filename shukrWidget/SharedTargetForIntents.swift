@@ -14,6 +14,7 @@ import WidgetKit
 import SwiftData
 import CoreData
 import CoreLocation
+import SQLite3
 
 enum SharedStore {
     static let appGroup = "group.betternorms.shukr.shukrWidget"
@@ -40,6 +41,31 @@ enum SharedStore {
     static func makeContainer() throws -> ModelContainer {
         let config = ModelConfiguration(schema: schema, url: url)
         return try ModelContainer(for: schema, configurations: [config])
+    }
+
+    // MARK: Salvage from set-aside stores (app only)
+
+    /// After a recovery, copy back what the fresh store lacks from each
+    /// `shukr.store.unopenable-*` file: mantra fullText/notes (by name, into empty fields),
+    /// prayer completions (by name + day, onto incomplete rows), and tasks / sessions missing by
+    /// id. Read-only raw SQLite: SwiftData can't open the file, that's why it was set aside.
+    /// Once per file (flag per file name); the file is left in place.
+    static func salvageSetAsideStoresIfNeeded(into container: ModelContainer) {
+        guard Bundle.main.bundleURL.pathExtension != "appex", url != legacyURL else { return }
+        let dir = url.deletingLastPathComponent()
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
+        let defaults = UserDefaults(suiteName: appGroup)
+        for name in names.sorted() where name.hasPrefix("shukr.store.unopenable-") && !name.hasSuffix("-wal") && !name.hasSuffix("-shm") {
+            let key = "salvaged." + name
+            guard defaults?.bool(forKey: key) != true else { continue }
+            do {
+                let summary = try SetAsideStoreSalvage.run(file: dir.appending(path: name), into: ModelContext(container))
+                defaults?.set(true, forKey: key)
+                print("✅ salvage from \(name): \(summary)")
+            } catch {
+                print("❌ salvage from \(name) failed (will retry next launch): \(error)")
+            }
+        }
     }
 
     // MARK: Recovery when the shared store won't open (app only)
@@ -938,3 +964,147 @@ struct PrayerTimeShortcuts: AppShortcutsProvider {
     }
 }
 
+
+// MARK: - Raw SQLite salvage of a store SwiftData can no longer open
+
+/// Reads a set-aside `shukr.store` with the SQLite C API (the app already links it for the
+/// Quran databases) and merges what the live store lacks. Core Data table/column names are the
+/// model's with a Z prefix; dates are seconds since 2001; UUIDs are 16-byte blobs.
+enum SetAsideStoreSalvage {
+    struct Failure: Error, CustomStringConvertible {
+        let description: String
+    }
+
+    static func run(file: URL, into context: ModelContext) throws -> String {
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(file.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db = handle else {
+            let msg = handle.map { String(cString: sqlite3_errmsg($0)) } ?? "no handle"
+            sqlite3_close(handle)
+            throw Failure(description: "open: \(msg)")
+        }
+        defer { sqlite3_close(db) }
+        let cal = Calendar.current
+
+        // Mantras: text and notes, only where the live row has none.
+        var mantraByName: [String: MantraModel] = [:]
+        for m in try context.fetch(FetchDescriptor<MantraModel>()) { mantraByName[m.name.lowercased()] = m }
+        var mantrasUpdated = 0
+        for r in try rows(db, "SELECT ZNAME, ZFULLTEXT, ZNOTES FROM ZMANTRAMODEL") {
+            guard let live = mantraByName[str(r, "ZNAME").lowercased()] else { continue }
+            var changed = false
+            let full = str(r, "ZFULLTEXT"), notes = str(r, "ZNOTES")
+            if live.fullText.isEmpty, !full.isEmpty { live.fullText = full; changed = true }
+            if live.notes.isEmpty, !notes.isEmpty { live.notes = notes; changed = true }
+            if changed { mantrasUpdated += 1 }
+        }
+
+        // Tasks missing by id (rare; created after the legacy snapshot).
+        var taskByID: [UUID: TaskModel] = [:]
+        for t in try context.fetch(FetchDescriptor<TaskModel>()) { taskByID[t.id] = t }
+        var oldTaskPKToID: [Int64: UUID] = [:]
+        var tasksAdded = 0
+        // No ZSORTORDER: a set-aside store may predate it (the owner's did). Added tasks go last.
+        let nextOrder = TaskModel.nextSortOrder(in: context)
+        for r in try rows(db, "SELECT Z_PK, ZID, ZMANTRANAME, ZISCOUNTMODE, ZGOAL FROM ZTASKMODEL") {
+            guard let id = uuid(r, "ZID"), let pk = r["Z_PK"] as? Int64 else { continue }
+            oldTaskPKToID[pk] = id
+            if taskByID[id] != nil { continue }
+            let name = str(r, "ZMANTRANAME")
+            let task = TaskModel(mantra: mantraByName[name.lowercased()], isCountMode: int(r, "ZISCOUNTMODE") != 0,
+                                 goal: Int(int(r, "ZGOAL")), mantraName: name, sortOrder: nextOrder + tasksAdded)
+            task.id = id
+            context.insert(task)
+            taskByID[id] = task
+            tasksAdded += 1
+        }
+
+        // Sessions missing by id.
+        let sessionIDs = Set(try context.fetch(FetchDescriptor<SessionDataModel>()).map { $0.id })
+        var sessionsAdded = 0
+        for r in try rows(db, "SELECT ZID, ZTITLE, ZSESSIONMODE, ZTARGETMIN, ZTARGETCOUNT, ZTOTALCOUNT, ZSTARTTIME, ZSECONDSPASSED, ZAVGTIMEPERCLICK, ZTASBEEHRATE, ZTIMEDURATIONSTRING, ZTASK FROM ZSESSIONDATAMODEL") {
+            guard let id = uuid(r, "ZID"), !sessionIDs.contains(id), let start = date(r, "ZSTARTTIME") else { continue }
+            let title = str(r, "ZTITLE")
+            let task = (r["ZTASK"] as? Int64).flatMap { oldTaskPKToID[$0] }.flatMap { taskByID[$0] }
+            let s = SessionDataModel(
+                title: title, sessionMode: Int(int(r, "ZSESSIONMODE")), targetMin: Int(int(r, "ZTARGETMIN")),
+                targetCount: Int(int(r, "ZTARGETCOUNT")), totalCount: Int(int(r, "ZTOTALCOUNT")), startTime: start,
+                secondsPassed: dbl(r, "ZSECONDSPASSED") ?? 0, avgTimePerClick: dbl(r, "ZAVGTIMEPERCLICK") ?? 0,
+                tasbeehRate: str(r, "ZTASBEEHRATE"), task: task, mantra: mantraByName[title.lowercased()]
+            )
+            s.id = id
+            if !str(r, "ZTIMEDURATIONSTRING").isEmpty { s.timeDurationString = str(r, "ZTIMEDURATIONSTRING") }
+            context.insert(s)
+            sessionsAdded += 1
+        }
+
+        // Prayer completions onto live rows that aren't complete (name + day).
+        var prayerByKey: [String: PrayerModel] = [:]
+        for p in try context.fetch(FetchDescriptor<PrayerModel>()) {
+            prayerByKey["\(p.name)|\(cal.startOfDay(for: p.startTime).timeIntervalSince1970)"] = p
+        }
+        var prayersCompleted = 0
+        for r in try rows(db, "SELECT ZNAME, ZSTARTTIME, ZTIMEATCOMPLETE, ZNUMBERSCORE, ZENGLISHSCORE, ZLATPRAYEDAT, ZLONGPRAYEDAT, ZPRAYERSTARTEDAT, ZPRAYERCOMPLETEDAT, ZDURATION FROM ZPRAYERMODEL WHERE ZISCOMPLETED = 1") {
+            guard let start = date(r, "ZSTARTTIME"),
+                  let live = prayerByKey["\(str(r, "ZNAME"))|\(cal.startOfDay(for: start).timeIntervalSince1970)"],
+                  !live.isCompleted else { continue }
+            live.isCompleted = true
+            live.timeAtComplete = date(r, "ZTIMEATCOMPLETE")
+            live.numberScore = dbl(r, "ZNUMBERSCORE")
+            live.englishScore = r["ZENGLISHSCORE"] as? String
+            live.latPrayedAt = dbl(r, "ZLATPRAYEDAT")
+            live.longPrayedAt = dbl(r, "ZLONGPRAYEDAT")
+            live.prayerStartedAt = date(r, "ZPRAYERSTARTEDAT")
+            live.prayerCompletedAt = date(r, "ZPRAYERCOMPLETEDAT")
+            live.duration = dbl(r, "ZDURATION")
+            prayersCompleted += 1
+        }
+
+        if context.hasChanges { try context.save() }
+        return "mantras updated=\(mantrasUpdated) tasks added=\(tasksAdded) sessions added=\(sessionsAdded) prayers completed=\(prayersCompleted)"
+    }
+
+    // MARK: SQLite helpers
+
+    private static func rows(_ db: OpaquePointer, _ sql: String) throws -> [[String: Any]] {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
+            throw Failure(description: "prepare: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        defer { sqlite3_finalize(stmt) }
+        var out: [[String: Any]] = []
+        let count = sqlite3_column_count(stmt)
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            var row: [String: Any] = [:]
+            for i in 0..<count {
+                let name = String(cString: sqlite3_column_name(stmt, i))
+                switch sqlite3_column_type(stmt, i) {
+                case SQLITE_INTEGER: row[name] = sqlite3_column_int64(stmt, i)
+                case SQLITE_FLOAT: row[name] = sqlite3_column_double(stmt, i)
+                case SQLITE_TEXT: row[name] = String(cString: sqlite3_column_text(stmt, i))
+                case SQLITE_BLOB:
+                    if let bytes = sqlite3_column_blob(stmt, i) {
+                        row[name] = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, i)))
+                    }
+                default: break
+                }
+            }
+            out.append(row)
+        }
+        return out
+    }
+
+    private static func str(_ r: [String: Any], _ k: String) -> String { (r[k] as? String) ?? "" }
+    private static func int(_ r: [String: Any], _ k: String) -> Int64 { (r[k] as? Int64) ?? Int64((r[k] as? Double) ?? 0) }
+    private static func dbl(_ r: [String: Any], _ k: String) -> Double? {
+        if let d = r[k] as? Double { return d }
+        if let i = r[k] as? Int64 { return Double(i) }
+        return nil
+    }
+    private static func date(_ r: [String: Any], _ k: String) -> Date? {
+        dbl(r, k).map { Date(timeIntervalSinceReferenceDate: $0) }
+    }
+    private static func uuid(_ r: [String: Any], _ k: String) -> UUID? {
+        guard let data = r[k] as? Data, data.count == 16 else { return nil }
+        return UUID(uuid: data.withUnsafeBytes { $0.load(as: uuid_t.self) })
+    }
+}

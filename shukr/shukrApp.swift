@@ -40,6 +40,9 @@ struct shukrApp: App {
             // One-time merge of the pre-app-group store (Application Support/default.store).
             // Must run before PrayerViewModel or any view reads data. Never deletes the old files.
             SharedStore.importLegacyStoreIfNeeded(into: container)
+            // What a set-aside (unopenable) store held beyond the legacy one: mantra text/notes,
+            // prayer completions, newer sessions. Once per file.
+            SharedStore.salvageSetAsideStoresIfNeeded(into: container)
             // Built-in mantras as rows, tasks/sessions linked to their mantra, task order.
             // Every launch, cheap on a healthy store; covers upgrades and fresh installs alike.
             SharedStore.runV2DataPass(in: container)
