@@ -188,6 +188,7 @@ struct SettingsView: View {
                             viewModel.refreshCityAndPrayerTimes()
                             viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
                         }
+                        .tint(.green)
                     }
                     
                     
@@ -361,6 +362,7 @@ struct SettingsView: View {
                         Button("Suggest Feature") {
                             // Add action for suggesting a feature.
                         }
+                        .tint(.green)
                     }
 
                     
@@ -487,9 +489,9 @@ struct SettingsView: View {
         // The status-bar strip above this page is painted by the pager (PrayerTimesAndTracker),
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
-        .tint(.green)   // brand colour for every system-tinted control on this page (links, ⓘ, alerts, pickers)
-        // A tap anywhere on the page puts the number pad away (simultaneous, so rows still work).
-        .simultaneousGesture(TapGesture().onEnded { if stepFieldFocused { stepFieldFocused = false } })
+        // A tap anywhere on the page puts the number pad away. The gesture exists only while the
+        // pad is up: attached permanently (even as simultaneous) it swallowed the Menu pickers.
+        .gesture(TapGesture().onEnded { stepFieldFocused = false }, including: stepFieldFocused ? .all : .subviews)
         .navigationBarBackButtonHidden(false)
         
         .toolbar {
