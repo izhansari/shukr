@@ -251,8 +251,18 @@ comes from `mapView.annotations(in: visibleMapRect)`. Tapping a pin or a cluster
 (`.medium`/`.large`, background interaction enabled so the map stays usable): headline,
 per-prayer counts + average score for a cluster, then the prayers newest first by day — name,
 "prayed 6:34 PM", the window and how far into it ("2h 22m in" / "after it ended"), score % with
-the score-colour dot and the word (Optimal/Good/Poor/Kaza). The old full-screen sheets that
-re-drew a map of the pin are gone. Location comes from the app's
+the score-colour dot and the word (Optimal/Good/Poor/Kaza), with the spot's address
+(reverse-geocoded once per rounded coordinate, cached on the view model). The tapped pin stays
+selected — scaled 1.3×, green, on top — until the sheet goes (`didSelect`/`didDeselect`; the
+view deselects when `selection` becomes nil). Tapping another pin while a sheet is up goes
+through `LocationViewModel.present`: dismiss, then present the new one 0.4 s later, because
+swapping `item` under a live sheet kept the old detent and sometimes came back full height.
+Compact detent (`fraction(0.32)`) for one prayer, `.medium` for a cluster. The visible count is
+our own pins inside `visibleMapRect` — `annotations(in:)` returns clusters *and* their members
+and double-counted. Default filter range is all time (`defaultStartDate = .distantPast`; the
+filter sheet's start picker shows the earliest pin instead of year 0001) and the status pill's
+second line says what the pins cover (`rangeSummary`: "All time" / "Since Jan 1" / prayer
+names). The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
 Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`

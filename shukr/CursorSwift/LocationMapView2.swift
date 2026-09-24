@@ -48,6 +48,29 @@ class MeccaMarkerAnnotationView: MKMarkerAnnotationView {
 final class LocationViewModel: ObservableObject {
     /// The pin (one prayer) or cluster (several) the user tapped; drives the half sheet.
     @Published var selection: PrayerSpotSelection?
+    /// The sheet's height: compact for one prayer, half for a cluster. Set before the sheet is
+    /// presented, never while it's up.
+    @Published var spotDetent: PresentationDetent = .medium
+    static let compactDetent: PresentationDetent = .fraction(0.32)
+    /// Reverse-geocoded addresses, keyed by rounded coordinate, so a pin is looked up once.
+    var addressCache: [String: String] = [:]
+
+    /// Show the sheet for a tapped pin. If one is already up, dismiss it first and present the
+    /// new one after the dismissal: swapping `item` under a live sheet kept the old detent
+    /// (and sometimes came back full height).
+    func present(_ new: PrayerSpotSelection) {
+        let detent: PresentationDetent = new.prayers.count == 1 ? Self.compactDetent : .medium
+        if selection == nil {
+            spotDetent = detent
+            selection = new
+        } else {
+            selection = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.spotDetent = detent
+                self?.selection = new
+            }
+        }
+    }
     @Published var mapType: MKMapType = .standard
     @Published var showPrayers: Bool = false
     @Published var visiblePrayerCount: Int = 0
@@ -68,6 +91,25 @@ final class LocationViewModel: ObservableObject {
     var filtersActive: Bool {
         selectedStartDate != defaultStartDate || selectedEndDate != defaultEndDate || selectedPrayerNames != defaultPrayerNames
     }
+    /// What the pins cover, for the status pill: "All time", "Since Jan 1", "Jan 1 – Mar 3",
+    /// plus the prayer names when not all five are on.
+    var rangeSummary: String {
+        let f = Date.FormatStyle().month(.abbreviated).day()
+        var parts: [String] = []
+        let startCustom = selectedStartDate != defaultStartDate
+        let endCustom = Calendar.current.startOfDay(for: selectedEndDate) != Calendar.current.startOfDay(for: defaultEndDate)
+        switch (startCustom, endCustom) {
+        case (false, false): parts.append("All time")
+        case (true, false): parts.append("Since \(selectedStartDate.formatted(f))")
+        case (false, true): parts.append("Until \(selectedEndDate.formatted(f))")
+        case (true, true): parts.append("\(selectedStartDate.formatted(f)) – \(selectedEndDate.formatted(f))")
+        }
+        if selectedPrayerNames != defaultPrayerNames {
+            let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+            parts.append(order.filter { selectedPrayerNames.contains($0) }.joined(separator: ", "))
+        }
+        return parts.joined(separator: " · ")
+    }
 
     /// Every prayer with coordinates (set by the view from its @Query) and the filtered set the
     /// map shows. The coordinator subscribes to `filteredPrayers` and rebuilds its pins once
@@ -79,9 +121,9 @@ final class LocationViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     init() {
+        // Default range: everything ever (the owner wants lifetime, not "this year").
         let now = Date()
-        let year = Calendar.current.component(.year, from: now)
-        defaultStartDate = Calendar.current.date(from: DateComponents(year: year, month: 1, day: 1)) ?? now
+        defaultStartDate = .distantPast
         defaultEndDate = now
         selectedStartDate = defaultStartDate
         selectedEndDate = defaultEndDate
@@ -217,12 +259,16 @@ struct MapView: UIViewRepresentable {
 
         /// Count the prayer pins in view (cluster members included) — MapKit's own bookkeeping.
         private func updateVisibleCount(on mapView: MKMapView) {
-            var count = 0
-            for annotation in mapView.annotations(in: mapView.visibleMapRect) {
-                if annotation is CustomPrayerAnnotation { count += 1 }
-                else if let cluster = annotation as? MKClusterAnnotation { count += cluster.memberAnnotations.count }
-            }
+            // Our own pins in the visible rect. `annotations(in:)` returns clusters *and* their
+            // members, which double-counted everything that was clustered.
+            let rect = mapView.visibleMapRect
+            let count = prayerAnnotations.reduce(0) { $0 + (rect.contains(MKMapPoint($1.coordinate)) ? 1 : 0) }
             if parent.viewModel.visiblePrayerCount != count { parent.viewModel.visiblePrayerCount = count }
+        }
+
+        /// The tapped pin stays selected (bigger, green) while its sheet is up.
+        func deselectAll(on mapView: MKMapView) {
+            for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
         }
 
         /// The user moved: redraw the great-circle line to the Kaaba and update the bearing.
@@ -320,14 +366,31 @@ struct MapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-            defer { mapView.deselectAnnotation(view.annotation, animated: false) }   // so the same pin can be tapped again
             guard let annotation = view.annotation else { return }
+            let prayers: [PrayerModel]
             if let cluster = annotation as? MKClusterAnnotation {
-                let prayers = cluster.memberAnnotations.compactMap { ($0 as? CustomPrayerAnnotation)?.prayer }
-                parent.viewModel.selection = PrayerSpotSelection(prayers: prayers)
+                prayers = cluster.memberAnnotations.compactMap { ($0 as? CustomPrayerAnnotation)?.prayer }
             } else if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
-                parent.viewModel.selection = PrayerSpotSelection(prayers: [prayer])
+                prayers = [prayer]
+            } else { return }
+            // Highlight: bigger, brand green, on top of its neighbours.
+            UIView.animate(withDuration: 0.2) {
+                view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3)
             }
+            (view as? MKMarkerAnnotationView)?.markerTintColor = .systemGreen
+            view.zPriority = .max
+            parent.viewModel.present(PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate))
+        }
+
+        func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
+            UIView.animate(withDuration: 0.2) { view.transform = .identity }
+            if let marker = view as? MKMarkerAnnotationView {
+                if view.annotation is MKClusterAnnotation { marker.markerTintColor = .systemGreen }
+                else if let prayer = (view.annotation as? CustomPrayerAnnotation)?.prayer {
+                    marker.markerTintColor = LocationViewModel.markerColor(for: prayer)
+                }
+            }
+            view.zPriority = .defaultUnselected
         }
     }
 }
@@ -346,10 +409,6 @@ struct LocationMapContentView: View {
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
     @State private var anchor = MapAnchor()
-    /// The spot sheet's height: compact for one prayer, half for a cluster; reset per tap so a
-    /// new pin tapped while the sheet is up doesn't inherit a taller detent.
-    @State private var spotDetent: PresentationDetent = .medium
-    private static let compactDetent: PresentationDetent = .fraction(0.3)
 
     private func centreOnUser() {
         guard let mapView = viewModel.mapView,
@@ -400,8 +459,15 @@ struct LocationMapContentView: View {
                     // Status pill: compass hint in qibla mode, count in prayers mode.
                     HStack {
                         Spacer()
-                        Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
-                            .monospacedDigit()
+                        VStack(spacing: 2) {
+                            Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
+                                .monospacedDigit()
+                            if viewModel.showPrayers {
+                                Text(viewModel.rangeSummary)   // which range the pins cover
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                             .font(.subheadline)
                             .foregroundStyle(.black)
                             .padding()
@@ -447,15 +513,17 @@ struct LocationMapContentView: View {
                 Spacer()
             }
         }
-        .onChange(of: viewModel.selection?.id) { _, _ in
-            guard let selection = viewModel.selection else { return }
-            spotDetent = selection.prayers.count == 1 ? Self.compactDetent : .medium
+        .onChange(of: viewModel.selection?.id) { _, id in
+            // Sheet gone (swiped down or swapped): drop the pin highlight.
+            if id == nil, let mapView = viewModel.mapView {
+                for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
+            }
         }
         .sheet(item: $viewModel.selection) { selection in
             // Half sheet: the pin is already on the map behind it, so just the data. The map
             // stays usable underneath up to the medium detent.
-            PrayerSpotSheet(prayers: selection.prayers)
-                .presentationDetents([Self.compactDetent, .medium, .large], selection: $spotDetent)
+            PrayerSpotSheet(selection: selection, viewModel: viewModel)
+                .presentationDetents([LocationViewModel.compactDetent, .medium, .large], selection: $viewModel.spotDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
@@ -465,7 +533,8 @@ struct LocationMapContentView: View {
                        selectedPrayerNames: $viewModel.selectedPrayerNames,
                        defaultStartDate: viewModel.defaultStartDate,
                        defaultEndDate: viewModel.defaultEndDate,
-                       defaultPrayerNames: viewModel.defaultPrayerNames)
+                       defaultPrayerNames: viewModel.defaultPrayerNames,
+                       earliestPinDate: prayers.first?.startTime ?? Date())
         }
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -656,6 +725,8 @@ struct FilterView: View {
     let defaultStartDate: Date
     let defaultEndDate: Date
     let defaultPrayerNames: Set<String>
+    /// What the start picker shows while the range is "all time" (`.distantPast` would read 0001).
+    var earliestPinDate: Date = Date()
 
     @Environment(\.dismiss) var dismiss
 
@@ -669,7 +740,10 @@ struct FilterView: View {
                         VStack(alignment: .leading) {
                             Text("Start Date")
                                 .font(.caption)
-                            DatePicker("", selection: $selectedStartDate, in: ...selectedEndDate, displayedComponents: [.date])
+                            DatePicker("", selection: Binding(
+                                get: { selectedStartDate == .distantPast ? earliestPinDate : selectedStartDate },
+                                set: { selectedStartDate = $0 }
+                            ), in: ...selectedEndDate, displayedComponents: [.date])
                                 .labelsHidden()
                                 .onChange(of: selectedStartDate) {_, newValue in
                                     if selectedStartDate > selectedEndDate {
@@ -730,6 +804,7 @@ struct FilterView: View {
 struct PrayerSpotSelection: Identifiable {
     let id = UUID()
     let prayers: [PrayerModel]
+    let coordinate: CLLocationCoordinate2D
 }
 
 // MARK: - PrayerSpotSheet
@@ -738,7 +813,23 @@ struct PrayerSpotSelection: Identifiable {
 /// score for a cluster, then every prayer newest first grouped by day with when it was prayed,
 /// where that fell in its window, and its score.
 struct PrayerSpotSheet: View {
-    let prayers: [PrayerModel]
+    let selection: PrayerSpotSelection
+    let viewModel: LocationViewModel
+    @State private var address: String? = nil
+    private var prayers: [PrayerModel] { selection.prayers }
+
+    /// Street + city for the pin, reverse-geocoded once per spot (cached on the view model).
+    private func loadAddress() async {
+        let c = selection.coordinate
+        let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
+        if let cached = viewModel.addressCache[key] { address = cached; return }
+        let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
+        let street = [placemark?.subThoroughfare, placemark?.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        let place = [street.isEmpty ? placemark?.name : street, placemark?.locality].compactMap { $0 }.joined(separator: ", ")
+        guard !place.isEmpty else { return }
+        viewModel.addressCache[key] = place
+        address = place
+    }
 
     private var sorted: [PrayerModel] {
         prayers.sorted { ($0.timeAtComplete ?? $0.startTime) > ($1.timeAtComplete ?? $1.startTime) }
@@ -772,6 +863,10 @@ struct PrayerSpotSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(prayers.count == 1 ? "1 prayer here" : "\(prayers.count) prayers here")
                             .font(.title3.weight(.semibold))
+                        Label(address ?? "Locating…", systemImage: "mappin.and.ellipse")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         if prayers.count > 1 {
                             Text(countsLine)
                                 .font(.subheadline)
@@ -804,6 +899,7 @@ struct PrayerSpotSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
         }
+        .task(id: selection.id) { await loadAddress() }
     }
 }
 
