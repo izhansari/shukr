@@ -450,11 +450,9 @@ struct PrayerTimesView: View {
                     // toggled shared state and re-rendered the whole home screen to animate.
                     HStack {
                         Menu {
-                            Button { showMapPage = true } label: { Label("Map", systemImage: "map") }
                             Button { showDailyAyahPage = true } label: { Label("Daily Ayah", systemImage: "book") }
                             Button { showMantrasPage = true } label: { Label("Mantras", systemImage: "text.quote") }
                             Button { showZikrHistory = true } label: { Label("Zikr History", systemImage: "clock.arrow.circlepath") }
-                            Button { sharedState.horizontalPage = .settings } label: { Label("Settings", systemImage: "gear") }
                             #if DEBUG
                             Menu {
                                 Button("Salah History (V1)") { showSalahHistoryV1 = true }
