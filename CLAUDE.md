@@ -48,7 +48,7 @@ agent builds with xcodebuild. Nothing here has CI.
 Audit done 2026-09. Nothing below is fixed yet unless marked.
 
 Hard blockers (rejection or upload failure):
-- [ ] Location denied → infinite `GradientAnimationLoad()`; `if true` hardcoded at `shukrApp.swift:79`. Reviewers test denial. Needs the real "Location Access Required" UI and ideally manual city entry.
+- [ ] Location denied → infinite `GradientAnimationLoad()`; `if true` hardcoded at `shukrApp.swift:79`. Reviewers test denial. Needs the real "Location Access Required" UI and ideally manual city entry. (The welcome screen now holds after permission is granted until its button — which turns into "continue" — is tapped: `awaitingContinue` in shukrApp; a launch that's already authorized skips it.)
 - [ ] Widget config placeholder strings ("the title wip...") in `shukrWidget/AppIntent.swift:18-22`, visible in Edit Widget.
 - [ ] Template Live Activity ("Hello 😀", `http://www.apple.com`) registered in `shukrWidgetBundle.swift:15`. Delete.
 - [ ] Dev UI reachable by users: "My Dev Stuff" settings section toggled by tapping the "Calculation Method" header (`SettingsView.swift`, `showDevStuff`). Wrap in `#if DEBUG`. (The "Dev's WIP" menu entries are already `#if DEBUG` in the new hamburger `Menu`; the old `sideMenu` in Utils.swift still has them but is unreachable.)
@@ -136,8 +136,9 @@ both `live.pagerLocked` → the pager is `.scrollDisabled`: the strip sets it on
 pager's own gesture (`abstractedDragGesture`, global coordinates) sets it on the first move of
 any touch that started inside `live.stripFrame` (the strip's global frame, written by
 DailyTasksView) — the strip's own lock wasn't always early enough on device for a flick
-(owner, 2026-09-25). The pager also has `ScrollViewBounceDisabler` (reaches the UIScrollView
-and sets `bounces = false`): rubber-banding past Zikr or Settings read as a bug. `live`
+(owner, 2026-09-25). Don't turn off the pager's bounce (`bounces = false` on the UIScrollView
+was tried for the rubber band past Zikr / Settings): paging's settle physics ride on bounce
+and the owner felt the paging go stiff within minutes. `live`
 reaches `DailyTasksView` through `.environment(live)` on the pager (optional `@Environment`, nil
 outside it). Centering a card is local state only: it used to write `sharedState.selectedTask`,
 whose `didSet` writes four more `@Published` properties — five home-screen re-renders per card

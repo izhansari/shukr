@@ -175,10 +175,6 @@ struct PrayerTimesView: View {
                         .id(NavPage.settings)
                 }
                 .scrollTargetLayout()
-                // No rubber band past Zikr or Settings: paging "further" than the last page
-                // read as a bug. SwiftUI has no bounce switch for content wider than the
-                // viewport, so this reaches the UIScrollView underneath.
-                .background(ScrollViewBounceDisabler())
             }
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
@@ -1282,28 +1278,6 @@ struct ChevronTap2: View {
     /// the Zikr page's task strip while a finger is on it (so a drag past the strip's last
     /// card can't chain into a page turn). Cleared on release.
     var pagerLocked = false
-}
-
-
-/// Turns off bouncing on the nearest enclosing UIScrollView. Placed as a background inside the
-/// pager's content; finds the scroll view once it's in a window.
-struct ScrollViewBounceDisabler: UIViewRepresentable {
-    func makeUIView(context: Context) -> BounceDisablerView { BounceDisablerView() }
-    func updateUIView(_ uiView: BounceDisablerView, context: Context) { uiView.apply() }
-
-    final class BounceDisablerView: UIView {
-        override func didMoveToWindow() {
-            super.didMoveToWindow()
-            apply()
-        }
-        func apply() {
-            var view: UIView? = superview
-            while let v = view, !(v is UIScrollView) { view = v.superview }
-            guard let scrollView = view as? UIScrollView else { return }
-            scrollView.bounces = false
-            scrollView.alwaysBounceHorizontal = false
-        }
-    }
 }
 
 

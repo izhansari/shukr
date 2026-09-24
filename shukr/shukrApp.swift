@@ -23,6 +23,9 @@ struct shukrApp: App {
 
 //    @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
+    /// Set when the welcome screen asks for location; the app waits for its "continue" instead
+    /// of jumping in the instant permission lands. A launch that's already authorized skips it.
+    @State private var awaitingContinue = false
 
     var sharedModelContainer: ModelContainer = {
         // Store lives in the app group so the widget can read/write it too. Schema + location
@@ -78,7 +81,7 @@ struct shukrApp: App {
             
             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
             NavigationStack{
-                if environmentLocationManager.isAuthorized/* && false*/{
+                if environmentLocationManager.isAuthorized && !awaitingContinue {
                     PrayerTimesView()
                         .transition(.blurReplace())
                     //.transition(.opacity.animation(.easeInOut(duration: 0.3)))
@@ -87,7 +90,7 @@ struct shukrApp: App {
                 else{
                     ZStack{
                         if true {
-                            GradientAnimationLoad()
+                            GradientAnimationLoad(awaitingContinue: $awaitingContinue)
                         }
                         else{
                             VStack {
@@ -330,6 +333,7 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 import SwiftUI
 
 struct GradientAnimationLoad: View {
+    @Binding var awaitingContinue: Bool
     @State private var noiseOpacity: Double = 0.2
     @State private var dummyDarkOn: Bool = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
@@ -358,7 +362,7 @@ struct GradientAnimationLoad: View {
             
             VStack{
                 Spacer()
-                GlassmorphicButton()
+                GlassmorphicButton(awaitingContinue: $awaitingContinue)
                     .frame(width: 200, height: 50)
             }
         }
@@ -469,7 +473,10 @@ struct GlassmorphicCard: View {
 // MARK: - Glassmorphic Button
 struct GlassmorphicButton: View {
     @EnvironmentObject var envLocationManager: EnvLocationManager
+    @Binding var awaitingContinue: Bool
     let settingsURL = URL(string: UIApplication.openSettingsURLString)
+    /// Permission is in: the same button becomes "continue" and the user goes in when ready.
+    private var readyToContinue: Bool { envLocationManager.isAuthorized && awaitingContinue }
     var body: some View {
         RoundedRectangle(cornerRadius: 15)
             .fill(Color.white.opacity(0.1))
@@ -480,19 +487,25 @@ struct GlassmorphicButton: View {
             .overlay(
                 VStack {
                     Button(action: {
-                        if envLocationManager.manager.authorizationStatus == .denied{
+                        if readyToContinue {
+                            withAnimation(.easeInOut(duration: 0.4)) { awaitingContinue = false }
+                        } else if envLocationManager.manager.authorizationStatus == .denied{
                             if let url = settingsURL {
                                 UIApplication.shared.open(url)
                             }
                         } else{
+                            awaitingContinue = true   // hold the welcome screen until "continue"
                             envLocationManager.requestLocationPermission()
                         }
                     }) {
-                        Label("allow location access", systemImage: "location")
+                        Label(readyToContinue ? "continue" : "allow location access",
+                              systemImage: readyToContinue ? "arrow.right" : "location")
                             .font(.footnote)
                             .fontWeight(.light)
                             .fontDesign(.rounded)
-                            .foregroundColor(.white.opacity(0.6))
+                            .foregroundColor(.white.opacity(readyToContinue ? 0.9 : 0.6))
+                            .contentTransition(.opacity)
+                            .animation(.easeInOut(duration: 0.3), value: readyToContinue)
 //                            .padding()
                     }
                     .buttonStyle(.plain)
@@ -500,6 +513,16 @@ struct GlassmorphicButton: View {
                 .padding()
             )
             .shadow(radius: 5)
+            .onAppear {
+                // The welcome screen is up and permission isn't in yet (the system prompt
+                // fires on its own at first launch): hold here until "continue" even if the
+                // prompt is answered before this button is ever tapped. Checked synchronously
+                // so an already-authorized launch never arms the hold.
+                switch envLocationManager.manager.authorizationStatus {
+                case .authorizedWhenInUse, .authorizedAlways: break
+                default: awaitingContinue = true
+                }
+            }
     }
 }
 //// MARK: - Preview
