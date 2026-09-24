@@ -138,7 +138,9 @@ any touch that started inside `live.stripFrame` (the strip's global frame, writt
 DailyTasksView) — the strip's own lock wasn't always early enough on device for a flick
 (owner, 2026-09-25). Don't turn off the pager's bounce (`bounces = false` on the UIScrollView
 was tried for the rubber band past Zikr / Settings): paging's settle physics ride on bounce
-and the owner felt the paging go stiff within minutes. `live`
+and the owner felt the paging go stiff within minutes. The rubber band is prevented at the
+gesture instead: when the pager gesture decides a drag is horizontal, a drag that could only
+overscroll (finger moving right on Zikr, left on Settings) sets `pagerLocked` for that drag. `live`
 reaches `DailyTasksView` through `.environment(live)` on the pager (optional `@Environment`, nil
 outside it). Centering a card is local state only: it used to write `sharedState.selectedTask`,
 whose `didSet` writes four more `@Published` properties — five home-screen re-renders per card

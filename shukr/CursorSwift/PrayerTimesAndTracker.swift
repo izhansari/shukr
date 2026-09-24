@@ -106,7 +106,17 @@ struct PrayerTimesView: View {
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
                     dismissKeyboard()
                     isDraggingVertically = abs(t.height) > abs(t.width)
-                    if isDraggingVertically == true { live.pagerLocked = true }
+                    if isDraggingVertically == true {
+                        live.pagerLocked = true
+                    } else {
+                        // No overscroll: a horizontal drag that could only rubber-band (finger
+                        // moving right on the first page, left on the last) is refused for the
+                        // whole drag. Bounce stays on, so real page turns keep their physics.
+                        let page = sharedState.horizontalPage
+                        if (page == .zikr && t.width > 0) || (page == .settings && t.width < 0) {
+                            live.pagerLocked = true
+                        }
+                    }
                 }
                 if isDraggingVertically == true {
                     guard sharedState.horizontalPage == .main else { return }
