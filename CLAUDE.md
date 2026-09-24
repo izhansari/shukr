@@ -286,9 +286,14 @@ Backlog / known oddities:
   `DayView` / `SessionCardView` / `DailyStatToggleView` in that file are now unused.
 - [x] Mantra pace (2026-09-24): `MantraModel.totalCount` / `totalSeconds` / `secondsPerCount`
   are computed from its sessions (time-weighted: total seconds / total counts), nothing is
-  stored, so no schema change and nothing to drift. Shown in the Mantras list row and the
-  editor's Stats section (pace per count + per 100). `zikrDurationString` in AllModels.swift
-  is the shared "1h 05m / 12m 03s / 45s" formatter.
+  stored, so no schema change and nothing to drift. Shown in the Mantras list row and in the
+  editor, whose lower half (`MantraStatsBento` / `MantraTasksStrip` / `MantraSessionsSections`
+  in MantrasView.swift) is: count · time · rate as the pause screen's bento boxes (tap the rate
+  box to flip per count ↔ per tasbeeh), this mantra's tasks as the Zikr page's card strip
+  (`TaskCardView`, today's completion; long-press → delete task), then its sessions newest
+  first by day (`SessionRow` / `zikrDayLabel`, shared with Zikr History) so "when did I last
+  do this" is the first row. `zikrDurationString` in AllModels.swift is the shared
+  "1h 05m / 12m 03s / 45s" formatter.
 - [x] Side menu → "Mantras" page (`CursorSwift/MantrasView.swift`): list built-ins read-only, add/rename/delete custom `MantraModel`s. Rename propagates to `TaskModel.mantra` strings; sessions keep their historical title. `MantraModel.builtIn` is now the single source for the four defaults (picker reads it too).
 
 ## Mantra model (schema V2)

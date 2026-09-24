@@ -64,15 +64,19 @@ struct HistoryPageView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func dayLabel(_ date: Date) -> String {
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
-    }
+    private func dayLabel(_ date: Date) -> String { zikrDayLabel(date) }
 }
 
-/// One session in the history list.
-private struct SessionRow: View {
+/// "Today", "Yesterday" or "Wed, Sep 24, 2026" — section headers in the history lists.
+func zikrDayLabel(_ date: Date) -> String {
+    let calendar = Calendar.current
+    if calendar.isDateInToday(date) { return "Today" }
+    if calendar.isDateInYesterday(date) { return "Yesterday" }
+    return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())
+}
+
+/// One session in a history list (Zikr History, and a mantra's sessions in its editor).
+struct SessionRow: View {
     let session: SessionDataModel
 
     private var modeIcon: String {

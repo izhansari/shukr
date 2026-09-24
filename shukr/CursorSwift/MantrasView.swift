@@ -159,23 +159,18 @@ struct MantraEditorView: View {
                 }
 
                 if let mantra {
-                    Section {
-                        LabeledContent("Tasks", value: "\(mantra.tasks.count)")
-                        LabeledContent("Sessions", value: "\(mantra.sessions.count)")
-                        if mantra.totalCount > 0 {
-                            LabeledContent("Total count", value: mantra.totalCount.formatted())
-                            LabeledContent("Total time", value: zikrDurationString(mantra.totalSeconds))
-                        }
-                        if let pace = mantra.secondsPerCount {
-                            PaceRow(secondsPerCount: pace)
-                        }
-                    } header: {
-                        Text("Stats")
-                    } footer: {
-                        if mantra.secondsPerCount != nil {
-                            Text("Rate is time-weighted over every session of this mantra. Tap it to switch between per count and per tasbeeh (100).")
-                        }
+                    // Count / time / rate as the pause screen's bento boxes, then this mantra's
+                    // tasks as the Zikr page's card strip, then its sessions as in Zikr History.
+                    Section("Stats") {
+                        MantraStatsBento(mantra: mantra)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
                     }
+                    Section("Tasks") {
+                        MantraTasksStrip(mantra: mantra)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                    }
+                    MantraSessionsSections(mantra: mantra)
                 }
             }
             .fontDesign(.rounded)
@@ -219,33 +214,159 @@ struct MantraEditorView: View {
 }
 
 
-/// "Average pace" row: tap flips between seconds per count and time per tasbeeh (100 counts),
-/// with the same slide-and-fade the Rate box on the tasbeeh pause screen uses.
-private struct PaceRow: View {
-    let secondsPerCount: TimeInterval
+// MARK: - Editor: stats, tasks, sessions
+
+/// Count · time · rate for one mantra, laid out like the pause screen's stats grid (count and
+/// time stacked on the left, the rate box on the right). Tap the rate box to flip between
+/// seconds per count and time per tasbeeh (100 counts), same slide-and-fade as there.
+struct MantraStatsBento: View {
+    let mantra: MantraModel
     @State private var showingPerCount = true
+    private let gap: CGFloat = 10
 
     var body: some View {
-        HStack {
-            Text("Average rate")
-            Spacer()
-            ZStack(alignment: .trailing) {
-                Text(String(format: "%.1fs per count", secondsPerCount))
-                    .opacity(showingPerCount ? 1 : 0)
-                    .offset(y: showingPerCount ? 0 : -14)
-                Text("\(zikrDurationString(secondsPerCount * 100)) per tasbeeh")
-                    .opacity(showingPerCount ? 0 : 1)
-                    .offset(y: showingPerCount ? 14 : 0)
+        let pace = mantra.secondsPerCount
+        HStack(alignment: .top, spacing: gap) {
+            VStack(spacing: gap) {
+                box {
+                    HStack {
+                        Image(systemName: "circle.hexagonpath").font(.system(size: 20))
+                        Spacer()
+                        Text(mantra.totalCount.formatted()).font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .frame(height: 44)
+                box {
+                    HStack {
+                        Image(systemName: "gauge.with.needle").font(.system(size: 20))
+                        Spacer()
+                        Text(zikrDurationString(mantra.totalSeconds)).font(.system(size: 14, weight: .medium)).monospacedDigit()
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                }
+                .frame(height: 44)
             }
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .clipped()
+
+            box {
+                VStack(spacing: 6) {
+                    Text("Rate").font(.system(size: 18, weight: .medium)).underline()
+                    ZStack {
+                        VStack(spacing: 2) {
+                            Text(pace.map { String(format: "%.1fs", $0) } ?? "–")
+                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                            Text("per count").font(.system(size: 12)).foregroundColor(.secondary)
+                        }
+                        .opacity(showingPerCount ? 1 : 0)
+                        .offset(y: showingPerCount ? 0 : -20)
+                        VStack(spacing: 2) {
+                            Text(pace.map { zikrDurationString($0 * 100) } ?? "–")
+                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
+                            Text("per tasbeeh").font(.system(size: 12)).foregroundColor(.secondary)
+                        }
+                        .opacity(showingPerCount ? 0 : 1)
+                        .offset(y: showingPerCount ? 20 : 0)
+                    }
+                }
+            }
+            .frame(height: 44 * 2 + gap)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard pace != nil else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    triggerSomeVibration(type: .medium)
+                    showingPerCount.toggle()
+                }
+            }
         }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.3)) {
-                triggerSomeVibration(type: .medium)
-                showingPerCount.toggle()
+    }
+
+    private func box<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, 10)
+            .background(Color(.secondarySystemGroupedBackground))
+            .cornerRadius(12)
+    }
+}
+
+/// This mantra's tasks as the Zikr page's card strip (same `TaskCardView`, same today's
+/// completion). Long-press a card to delete the task; sessions it produced keep their history.
+struct MantraTasksStrip: View {
+    let mantra: MantraModel
+    @Environment(\.modelContext) private var context
+    @Query private var todaysSessions: [SessionDataModel]
+
+    init(mantra: MantraModel) {
+        self.mantra = mantra
+        let todayStart = Calendar.current.startOfDay(for: Date())
+        _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart })
+    }
+
+    private var tasks: [TaskModel] { mantra.tasks.sorted { $0.sortOrder < $1.sortOrder } }
+
+    var body: some View {
+        if tasks.isEmpty {
+            Text("No tasks use this mantra.")
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(tasks) { task in
+                        TaskCardView(task: task, isCompleted: task.isCompleted(with: task.progress(in: todaysSessions)))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.gray.gradient.opacity(0.4), lineWidth: 0.4))
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    context.delete(task)
+                                } label: {
+                                    Label("Delete task", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+/// This mantra's sessions, newest first, one section per day — the Zikr History layout, so
+/// "when did I last do this one" is the first row.
+struct MantraSessionsSections: View {
+    let mantra: MantraModel
+
+    private var days: [(date: Date, sessions: [SessionDataModel])] {
+        let calendar = Calendar.current
+        var order: [Date] = []
+        var byDay: [Date: [SessionDataModel]] = [:]
+        for session in mantra.sessions.sorted(by: { $0.startTime > $1.startTime }) {
+            let day = calendar.startOfDay(for: session.startTime)
+            if byDay[day] == nil { order.append(day) }
+            byDay[day, default: []].append(session)
+        }
+        return order.map { (date: $0, sessions: byDay[$0] ?? []) }
+    }
+
+    var body: some View {
+        if mantra.sessions.isEmpty {
+            Section("Sessions") {
+                Text("No sessions with this mantra yet.").foregroundStyle(.secondary)
+            }
+        } else {
+            ForEach(days, id: \.date) { day in
+                Section {
+                    ForEach(day.sessions) { session in SessionRow(session: session) }
+                } header: {
+                    HStack {
+                        Text(zikrDayLabel(day.date))
+                        Spacer()
+                        Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
+                    }
+                }
             }
         }
     }
