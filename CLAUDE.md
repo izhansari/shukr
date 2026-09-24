@@ -148,9 +148,12 @@ arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
 `horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
 until the user paged away and back.
 
-Hamburger = native `Menu` (Daily Ayah, Mantras, Zikr History, `#if DEBUG` Dev's WIP — Map and
-Settings were dropped from it 2026-09-25; the map opens from the circle's qibla arrow, Settings
-is a pager page) driving
+Hamburger = a `.popover` (`presentationCompactAdaptation(.popover)`) with the "shukr" wordmark
+on top like the old sidebar, then Daily Ayah, Mantras, Zikr History, `#if DEBUG` Salah History
+V1/V2 — a native `Menu` can't show the wordmark. Rows set `pendingMenuAction` and close the
+popover; the action runs 0.25 s after it's gone so the push doesn't collide with the dismissal.
+Map and Settings were dropped from it 2026-09-25 (the map opens from the circle's qibla arrow,
+Settings is a pager page). It drives
 `.navigationDestination(isPresented:)` pushes on the root NavigationStack. The old drawer
 (`sideMenu` in Utils.swift, `showSideMenu`) is parked: toggling it published shared state and
 re-rendered the whole home screen to animate, which is why it felt laggy.

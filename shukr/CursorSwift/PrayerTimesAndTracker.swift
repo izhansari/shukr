@@ -427,6 +427,26 @@ struct PrayerTimesView: View {
         @Binding var showSalahHistoryV2: Bool
         @Binding var showZikrHistory: Bool
 
+        @State private var showMenu = false
+        @State private var pendingMenuAction: (() -> Void)? = nil
+
+        /// One row of the hamburger popover; closes it and runs `action` after it's gone.
+        private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+            Button {
+                pendingMenuAction = action
+                showMenu = false
+            } label: {
+                Label(title, systemImage: symbol)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+
         private var showBottom: Bool { sharedState.navPosition == .bottom }
         /// How far onto the Zikr / Settings page we are, 0...1 each, live from the scroll offset.
         private var zikrness: CGFloat { min(max(1 - live.scrollProgress, 0), 1) }
@@ -449,19 +469,9 @@ struct PrayerTimesView: View {
                     // Menu button: a native Menu instead of the hand-rolled drawer, which
                     // toggled shared state and re-rendered the whole home screen to animate.
                     HStack {
-                        Menu {
-                            Button { showDailyAyahPage = true } label: { Label("Daily Ayah", systemImage: "book") }
-                            Button { showMantrasPage = true } label: { Label("Mantras", systemImage: "text.quote") }
-                            Button { showZikrHistory = true } label: { Label("Zikr History", systemImage: "clock.arrow.circlepath") }
-                            #if DEBUG
-                            Menu {
-                                Button("Salah History (V1)") { showSalahHistoryV1 = true }
-                                Button("Salah History (V2)") { showSalahHistoryV2 = true }
-                            } label: {
-                                Label("Dev's WIP", systemImage: "hammer")
-                            }
-                            #endif
-                        } label: {
+                        // The menu is a popover (a native Menu can't show the wordmark):
+                        // "shukr" on top like the old sidebar, then the destinations.
+                        Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
                                 .background(.white.opacity(0.01))
                                 .frame(width: 24, height: 24)
@@ -470,6 +480,36 @@ struct PrayerTimesView: View {
                                 .fontDesign(.rounded)
                                 .foregroundColor(.gray.opacity(0.8))
                                 .padding()
+                        }
+                        .popover(isPresented: $showMenu, arrowEdge: .top) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text("shukr")
+                                    .font(.largeTitle)
+                                    .fontWeight(.thin)
+                                    .fontDesign(.rounded)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 18)
+                                    .padding(.bottom, 10)
+                                Divider()
+                                menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
+                                menuRow("Mantras", "text.quote") { showMantrasPage = true }
+                                menuRow("Zikr History", "clock.arrow.circlepath") { showZikrHistory = true }
+                                #if DEBUG
+                                Divider()
+                                menuRow("Salah History (V1)", "hammer") { showSalahHistoryV1 = true }
+                                menuRow("Salah History (V2)", "hammer") { showSalahHistoryV2 = true }
+                                #endif
+                            }
+                            .padding(.bottom, 8)
+                            .frame(width: 250)
+                            .presentationCompactAdaptation(.popover)
+                        }
+                        .onChange(of: showMenu) { _, open in
+                            // Run the chosen action once the popover is away, so the push isn't
+                            // attempted while a presentation is still dismissing.
+                            guard !open, let action = pendingMenuAction else { return }
+                            pendingMenuAction = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
                         }
                         Spacer()
                     }
