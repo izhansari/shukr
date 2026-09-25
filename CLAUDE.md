@@ -167,12 +167,12 @@ location, on-device), screenshots 6.9"/6.5", description/keywords/category/age r
 Quality (fix before launch):
 - [x] (2026-09-24) Arabic font never loads: `DailyAyah.swift:420` passes the filename to `.custom()`, and the app target's `Info.plist` has no `UIAppFonts` (only the widget's does).
 - [ ] `fatalError` on `ModelContainer` failure (`shukrApp.swift:45`) — first schema migration failure hard-crashes existing users.
-- [ ] 187 `print()` calls, some logging coordinates. Gate with `#if DEBUG`.
-- [ ] `NSMotionUsageDescription` declared but `PrayerTracker.swift` (only CMMotion user) is unreferenced. Drop both.
-- [ ] Dead files: `shukr/PrayerTimeAndTracker.swift` (0 bytes), `CommentedOutHistoryPageView.swift`. (Both LocationMapView.swift copies deleted 2026-09-25.)
+- [x] (2026-09-25) ~190 `print()` calls, some logging coordinates: a release-only no-op `print` in SharedTargetForIntents.swift (both targets) shadows `Swift.print`.
+- [x] (2026-09-25) `NSMotionUsageDescription` and the unreferenced `PrayerTracker.swift` removed.
+- [x] (2026-09-25) `shukr/PrayerTimeAndTracker.swift` deleted. Still there: `CommentedOutHistoryPageView.swift`. (Both LocationMapView.swift copies deleted 2026-09-25.)
 - [x] Deployment target is 18.0 on every target now (was 17.5 app / 18.0 widget). Needed for `onScrollPhaseChange`.
 - [x] Removed stale `DEVELOPMENT_ASSET_PATHS = "shukr/Preview Content"` (folder deleted in 789632f; Xcode 27 errors on it).
-- [ ] 1024 icon has an (all-opaque) alpha channel; strip to be safe.
+- [x] (2026-09-25) App icons flattened to RGB (the alpha was all-opaque).
 
 ## Navigation (PrayerTimesAndTracker.swift)
 

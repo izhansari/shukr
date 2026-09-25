@@ -14,6 +14,13 @@ import WidgetKit
 import SwiftData
 import CoreData
 import CoreLocation
+
+#if !DEBUG
+/// Release builds log nothing: ~190 debug `print`s (some with coordinates) stay useful in DEBUG,
+/// and this module-level function shadows `Swift.print` everywhere in the app and the widget
+/// (this file is compiled into both targets).
+func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {}
+#endif
 import SQLite3
 
 enum SharedStore {
