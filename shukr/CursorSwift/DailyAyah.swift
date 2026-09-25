@@ -367,7 +367,7 @@ struct DailyAyahView: View {
     @State private var isUnlocked = false
     @State private var blurRadius: CGFloat = 10
     @State private var scale: CGFloat = 0.5
-    @State private var showShareSheet = false
+    @State private var showShareOptions = false
     
     // Timer publisher to update countdown every second
     @State private var timer: AnyCancellable?
@@ -375,7 +375,15 @@ struct DailyAyahView: View {
     // For showing settings
     @State private var showingSettings = false
     
+    /// Revealed once, it stays revealed for the rest of the day.
+    private static let revealedDayKey = "dailyAyah.revealedDay"
+    private var revealedToday: Bool {
+        (UserDefaults.standard.object(forKey: Self.revealedDayKey) as? Date).map { Calendar.current.isDateInToday($0) } ?? false
+    }
+
     func handleUnlock(){
+        guard !isUnlocked else { return }
+        UserDefaults.standard.set(Date(), forKey: Self.revealedDayKey)
         withAnimation(.easeInOut(duration: 2)) {
             blurRadius = 0
             scale = 0.7
@@ -404,25 +412,14 @@ struct DailyAyahView: View {
                     DailyAyahCountdownView(viewModel: viewModel)
                         .font(.footnote)
                     Spacer()
-                    if let ayah = viewModel.currentAyah {
-                        Button(action: {
-                            showShareSheet = true
-                        }) {
+                    // Opens the look picker (AyahShareOptionsSheet). Its sheet hangs off the page's
+                    // root: attached here, inside a view that also presents the translation sheet,
+                    // SwiftUI never presented it.
+                    if viewModel.currentAyah != nil {
+                        Button { showShareOptions = true } label: {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.title2)
                                 .padding()
-                        }
-                        .sheet(isPresented: $showShareSheet) {
-                            // Prepare text to share.
-                            let shareText = """
-                        \(ayah.arabic)
-                        \(ayah.surah):\(ayah.ayah)
-                        
-                        \(ayah.english)
-                        — \(ayah.translator)
-                        """
-                            AyahShareSheet(activityItems: [shareText])
-                                .presentationDetents([.medium]) // Custom detents
                         }
                         .buttonStyle(.plain)
                     }
@@ -430,10 +427,6 @@ struct DailyAyahView: View {
                 .foregroundColor(.primary)
                 .padding(.top, 10)
                 .opacity(isUnlocked ? 1 : 0) // Only show once unlocked, if desired.
-                .sheet(isPresented: $showingSettings) {
-                    AyahTranslationView(selectedTranslation: $viewModel.selectedTranslation, showingSettings: $showingSettings)
-                        .presentationDetents([.fraction(0.3)/*, .height(100)*/]) // Custom detents
-                }
                 Spacer()
             }
             
@@ -504,6 +497,7 @@ struct DailyAyahView: View {
                                 
                                 Link("Continue reading on Quran.com", destination: url)
                                     .font(.footnote)
+                                    .tint(.green)
                             }
                         } else {
                             Text("Surah data not found.")
@@ -516,6 +510,24 @@ struct DailyAyahView: View {
         }
         .background(Color(UIColor.systemBackground))
         .toolbar(.hidden, for:.navigationBar)
+        .sheet(isPresented: $showingSettings) {
+            AyahTranslationView(selectedTranslation: $viewModel.selectedTranslation, showingSettings: $showingSettings)
+                .presentationDetents([.fraction(0.3)])
+        }
+        .sheet(isPresented: $showShareOptions) {
+            if let ayah = viewModel.currentAyah {
+                let surahName = viewModel.surahs.first(where: { $0.number == ayah.surah })?.englishName ?? "Surah \(ayah.surah)"
+                AyahShareOptionsSheet(arabic: ayah.arabic, english: ayah.english, translator: ayah.translator,
+                                      reference: "\(surahName) · \(ayah.surah):\(ayah.ayah)")
+            }
+        }
+        .onAppear {
+            if revealedToday {   // already revealed today: open straight to it
+                blurRadius = 0
+                scale = 0.7
+                isUnlocked = true
+            }
+        }
         
     }
 }
@@ -595,8 +607,9 @@ struct DailyAyahCountdownView: View {
     private func singleDigitBox(value: Int) -> some View {
         Text("\(value)")
             .fontWeight(.bold)
+            .foregroundStyle(Color.green)
             .frame(width: 15, height: 20)
-            .background(Color(.secondarySystemFill).blur(radius: 2))
+            .background(Color.green.opacity(0.15).blur(radius: 2))
             .cornerRadius(5)
     }
     

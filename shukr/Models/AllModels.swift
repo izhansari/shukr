@@ -473,13 +473,33 @@ extension MantraModel {
     var totalSeconds: TimeInterval { sessions.reduce(0) { $0 + $1.secondsPassed } }
 
     /// Average seconds per count, time-weighted over every session that counted something
-    /// (total seconds / total counts), so a long slow session weighs more than a quick one.
-    /// Nil until something has been counted.
+    /// (active seconds / total counts), so a long slow session weighs more than a quick one.
+    /// Uses each session's `activeSeconds`, so time left running after the last count doesn't
+    /// inflate it. Nil until something has been counted.
     var secondsPerCount: TimeInterval? {
-        let counted = sessions.filter { $0.totalCount > 0 && $0.secondsPassed > 0 }
+        let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 }
         let counts = counted.reduce(0) { $0 + $1.totalCount }
         guard counts > 0 else { return nil }
-        return counted.reduce(0.0) { $0 + $1.secondsPassed } / Double(counts)
+        return counted.reduce(0.0) { $0 + $1.activeSeconds } / Double(counts)
+    }
+}
+
+extension SessionDataModel {
+    /// Time actually spent counting: up to the last count, pauses excluded. `secondsPassed` runs
+    /// until the session was stopped, so a session left running after the last tap (phone set
+    /// down, app in the background, stopped for inactivity) showed e.g. 33.6 s per count for a
+    /// real pace of 5.1 s (owner's data, 2026-09-25). `avgTimePerClick` is recomputed at every
+    /// count as (time so far − pauses) / count, so × count = the time at the last count.
+    /// Falls back to `secondsPassed` for sessions saved without it.
+    var activeSeconds: TimeInterval {
+        guard avgTimePerClick > 0, totalCount > 0 else { return secondsPassed }
+        return min(avgTimePerClick * Double(totalCount), secondsPassed > 0 ? secondsPassed : .infinity)
+    }
+
+    /// Seconds per count over the active time; nil if nothing was counted.
+    var secondsPerCount: TimeInterval? {
+        guard totalCount > 0, activeSeconds > 0 else { return nil }
+        return activeSeconds / Double(totalCount)
     }
 }
 

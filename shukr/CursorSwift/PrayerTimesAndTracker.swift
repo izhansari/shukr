@@ -67,6 +67,7 @@ struct PrayerTimesView: View {
     @State private var showSalahHistoryV2 = false
     @State private var showZikrHistory = false
     @State private var showInsightsPage = false
+    @State private var showOldInsights = false
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -274,7 +275,7 @@ struct PrayerTimesView: View {
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
                 showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
                 showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory,
-                showInsightsPage: $showInsightsPage
+                showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
@@ -309,6 +310,27 @@ struct PrayerTimesView: View {
             // Simulator check of the completion moment: launch with -demoPrayerCompletion. Uses
             // the dev "test prayer times" (minutes around now), opens the salah sheet, then
             // marks the current prayer and a missed one.
+            if ProcessInfo.processInfo.arguments.contains("-demoShareCard") {
+                // Writes today's ayah share card to <app data>/tmp/share-card.png.
+                let vm = DailyAyahViewModel()
+                try? await Task.sleep(for: .seconds(1))
+                if let ayah = vm.currentAyah {
+                    let name = vm.surahs.first(where: { $0.number == ayah.surah })?.englishName ?? "Surah \(ayah.surah)"
+                    let card = AyahShareCard(arabic: ayah.arabic, english: ayah.english, translator: ayah.translator,
+                                             reference: "\(name) · \(ayah.surah):\(ayah.ayah)")
+                    var lightGrain = card; lightGrain.style = .grain; lightGrain.darkBase = false
+                    if let data = lightGrain.render()?.pngData() {
+                        try? data.write(to: FileManager.default.temporaryDirectory.appending(path: "share-card-grain-light.png"))
+                    }
+                    for style in AyahShareStyle.allCases {
+                        var styled = card; styled.style = style
+                        if let data = styled.render()?.pngData() {
+                            try? data.write(to: FileManager.default.temporaryDirectory.appending(path: "share-card-\(style.rawValue).png"))
+                        }
+                    }
+
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoInsights") {
                 try? await Task.sleep(for: .seconds(1))
                 showInsightsPage = true
@@ -356,6 +378,7 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
         .navigationDestination(isPresented: $showZikrHistory) { HistoryPageView() }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
+        .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -491,6 +514,7 @@ struct PrayerTimesView: View {
         @Binding var showSalahHistoryV2: Bool
         @Binding var showZikrHistory: Bool
         @Binding var showInsightsPage: Bool
+        @Binding var showOldInsights: Bool
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
@@ -569,6 +593,7 @@ struct PrayerTimesView: View {
                                     NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
                                     NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
                                 }
+                                menuRow("Old Insights", "chart.bar.xaxis") { showOldInsights = true }
                                 menuRow("Test Perfect Day", "sparkles") {
                                     NotificationCenter.default.post(name: .perfectDay, object: true)   // true = demo
                                 }

@@ -3,7 +3,7 @@
 //  shukr
 //
 //  Hamburger → Insights (2026-09-25): streaks, day score trend, per-prayer averages, how the
-//  prayers split across grades, and a 12-week heatmap, on one page. Everything is computed
+//  prayers split across grades, and a 14-day prayer trends grid, on one page. Everything is computed
 //  from the prayer rows with PrayerScoring, so it always matches the current rules.
 //  Days with no rows (app not opened) aren't counted; today is left out of day averages
 //  until it's over.
@@ -14,6 +14,12 @@ import SwiftData
 import Charts
 
 struct InsightsView: View {
+    /// `.sections` is the page. `.old` is the flat version from 2026-09-25 (progress, ring +
+    /// range, streaks + grid, no headers), kept under the DEBUG hamburger as "Old Insights" in
+    /// case we want it back.
+    enum Layout { case sections, old }
+    var layout: Layout = .sections
+
     @Query(sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @AppStorage("prayerStreak") private var streak: Int = 0
     @AppStorage("maxPrayerStreak") private var maxStreak: Int = 0
@@ -23,32 +29,68 @@ struct InsightsView: View {
     @State private var range: InsightsRange = .month
     /// Flips on appear and on every range change; the numbers and rings animate from zero.
     @State private var revealed = false
-    /// Tapped prayer ring: its numbers show in the caption under the rings.
-    @State private var selectedPrayer: String?
     /// Tapped hero circle: the caption under it shows how the prayers split instead of the trend.
     @State private var showSplit = false
-    @State private var hideSplit: DispatchWorkItem?
+    /// Tapped prayer ring: its average and how often it was prayed show under the rings.
+    @State private var selectedPrayer: String?
+
 
     var body: some View {
         let stats = InsightsStats(prayers: prayers, range: range)
-        VStack(spacing: 28) {
-            Picker("Range", selection: $range) {
-                ForEach(InsightsRange.allCases) { Text($0.rawValue).tag($0) }
+        Group {
+            if layout == .old {
+                // The flat version (2026-09-25): progress, the score ring with its range switch,
+                // then streaks and the 14-day grid. Felt flat — no hierarchy. Scrolls only if it
+                // doesn't fit.
+                ScrollView {
+                    VStack(spacing: 26) {
+                        PrayerProgressList(prayers: prayers)
+                        VStack(spacing: 12) {
+                            hero(stats)
+                            rangePicker
+                        }
+                        VStack(spacing: 16) {
+                            streaks
+                            PrayerTrendsGrid(prayers: prayers, revealed: revealed)
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 8)
+                    .padding(.bottom, 16)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            } else {
+                // One page per question, swiped sideways (owner, 2026-09-25: "pages for each
+                // section — the cleanest way for now"). Drags on the sparklines and the grid
+                // scrub them; swipe anywhere else to change page.
+                TabView {
+                    page("am I getting better?") {
+                        PrayerProgressList(prayers: prayers)
+                    }
+                    page("how am I scoring?") {
+                        VStack(spacing: 22) {
+                            VStack(spacing: 12) {
+                                hero(stats)
+                                rangePicker
+                            }
+                            prayerRings(stats)
+                        }
+                    }
+                    page("how consistent am I?") {
+                        VStack(spacing: 20) {
+                            streaks
+                            PrayerTrendsGrid(prayers: prayers, revealed: revealed)
+                        }
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .always))
             }
-            .pickerStyle(.segmented)
-            .frame(width: 240)
-
-            hero(stats)
-            streaks
-            prayerRings(stats)
-            HeatmapGrid(days: stats.heatmap, revealed: revealed)
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 8)
         .fontDesign(.rounded)
         .navigationTitle("Insights")
         .navigationBarTitleDisplayMode(.inline)
+
         .sensoryFeedback(.selection, trigger: range)
         .onAppear { reveal() }
         .onChange(of: range) { _, _ in
@@ -58,98 +100,31 @@ struct InsightsView: View {
         }
     }
 
-    private func reveal() {
-        DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.9, dampingFraction: 0.85)) { revealed = true }
+    private var rangePicker: some View {
+        Picker("Range", selection: $range) {
+            ForEach(InsightsRange.allCases) { Text($0.rawValue).tag($0) }
         }
+        .pickerStyle(.segmented)
+        .frame(width: 220)
+        .controlSize(.small)
     }
 
-    // MARK: Hero — the average day score, in a circle like the main page's
-
-    private func hero(_ stats: InsightsStats) -> some View {
-        let avg = stats.average ?? 0
-        let shown = revealed ? Int((avg * 100).rounded()) : 0
-        return VStack(spacing: 10) {
-            ZStack {
-                Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
-                Circle()
-                    .trim(from: 0, to: revealed ? avg : 0)
-                    .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: 2) {
-                    Text(stats.average == nil ? "–" : "\(shown)")
-                        .font(.system(size: 48, weight: .light, design: .rounded))
-                        .contentTransition(.numericText(value: Double(shown)))
-                    Text("day score")
-                        .font(.footnote)
-                        .fontWeight(.thin)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 180, height: 180)
-            .contentShape(Circle())
-            .onTapGesture { toggleSplit() }
-
-            Group {
-                if showSplit {
-                    Text(splitLine(stats))
-                } else if let prev = stats.previousAverage, stats.average != nil {
-                    let delta = Int(((avg - prev) * 100).rounded())
-                    Text("\(delta >= 0 ? "↑" : "↓") \(abs(delta)) vs the \(range.previousPhrase)")
-                } else {
-                    Text(range.phrase)
-                }
-            }
-            .font(.caption)
-            .fontWeight(.light)
-            .foregroundStyle(.secondary)
-            .transition(.blurReplace)
-            .id(showSplit)
+    /// One Insights page: its question as the title, then its content, above the page dots.
+    private func page<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(spacing: 24) {
+            Text(title)
+                .font(.title3.weight(.light))
+                .frame(maxWidth: .infinity, alignment: .center)
+            content()
+                .frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 56)   // clear of the page dots
     }
 
-    private func toggleSplit() {
-        triggerSomeVibration(type: .light)
-        hideSplit?.cancel()
-        withAnimation { showSplit.toggle() }
-        guard showSplit else { return }
-        let work = DispatchWorkItem { withAnimation { showSplit = false } }
-        hideSplit = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4, execute: work)
-    }
-
-    private func splitLine(_ stats: InsightsStats) -> String {
-        let total = max(stats.grades.map(\.count).reduce(0, +), 1)
-        return stats.grades
-            .filter { $0.count > 0 }
-            .map { "\($0.grade.rawValue.lowercased()) \(Int((Double($0.count) / Double(total) * 100).rounded()))%" }
-            .joined(separator: " · ")
-    }
-
-    // MARK: Streaks — one quiet line
-
-    private var streaks: some View {
-        HStack(spacing: 22) {
-            streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
-            streakItem("sparkles", value: onTimeStreak, label: "on time", best: maxOnTimeStreak)
-        }
-    }
-
-    private func streakItem(_ symbol: String, value: Int, label: String, best: Int) -> some View {
-        let shown = revealed ? value : 0
-        return HStack(spacing: 6) {
-            Image(systemName: symbol).foregroundStyle(.green)
-            Text("\(shown)")
-                .fontWeight(.medium)
-                .contentTransition(.numericText(value: Double(shown)))
-            Text(label).foregroundStyle(.secondary)
-            Text("· best \(best)").foregroundStyle(.tertiary)
-        }
-        .font(.subheadline)
-        .fontWeight(.light)
-    }
-
-    // MARK: Prayer rings — tap one for its numbers
+    // MARK: Prayer rings — tap one for its numbers (back by request, 2026-09-25)
 
     private func prayerRings(_ stats: InsightsStats) -> some View {
         VStack(spacing: 12) {
@@ -188,10 +163,10 @@ struct InsightsView: View {
             Group {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
                     Text("\(name) · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–") · prayed \(stat.prayedRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")")
-                } else if let best = stats.bestPrayer, let weakest = stats.weakestPrayer, best.name != weakest.name {
-                    Text("\(best.name) is your strongest · \(weakest.name) needs the most love")
                 } else {
-                    Text("tap a prayer")
+                    // Best / worst is the progress section's job now.
+                    Text("tap a prayer for its average and how often you prayed it")
+                        .foregroundStyle(.tertiary)
                 }
             }
             .font(.caption)
@@ -201,6 +176,127 @@ struct InsightsView: View {
             .id(selectedPrayer ?? "")
         }
     }
+
+
+    private func reveal() {
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.9, dampingFraction: 0.85)) { revealed = true }
+        }
+    }
+
+    // MARK: Hero — the average day score, in a circle like the main page's
+
+    /// Tap the circle: the ring becomes the makeup of the range's prayers — the filled part is
+    /// the share prayed, split into Early / On time / Late / Qaza; the empty track is Missed.
+    private func hero(_ stats: InsightsStats) -> some View {
+        let avg = stats.average ?? 0
+        let total = max(stats.grades.map(\.count).reduce(0, +), 1)
+        let prayedShare = Double(total - (stats.grades.first { $0.grade == .missed }?.count ?? 0)) / Double(total)
+        let number = showSplit ? Int((prayedShare * 100).rounded()) : (revealed ? Int((avg * 100).rounded()) : 0)
+        return VStack(spacing: 10) {
+            ZStack {
+                Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
+                if showSplit {
+                    ForEach(Array(segments(stats, total: total).enumerated()), id: \.offset) { index, seg in
+                        // Same thin, round-capped line as the day-score arc, just in pieces.
+                        Circle()
+                            .trim(from: seg.from, to: seg.to)
+                            .stroke(seg.color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .transition(.opacity.animation(.easeOut(duration: 0.3).delay(0.06 * Double(index))))
+                    }
+                } else {
+                    Circle()
+                        .trim(from: 0, to: revealed ? avg : 0)
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .transition(.opacity)
+                }
+                VStack(spacing: 2) {
+                    Text(stats.average == nil ? "–" : "\(number)\(showSplit ? "%" : "")")
+                        .font(.system(size: 48, weight: .light, design: .rounded))
+                        .contentTransition(.numericText(value: Double(number)))
+                    Text(showSplit ? "prayed" : "avg score")
+                        .font(.footnote)
+                        .fontWeight(.thin)
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                }
+            }
+            .frame(width: 160, height: 160)
+            .contentShape(Circle())
+            .onTapGesture {
+                triggerSomeVibration(type: .light)
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showSplit.toggle() }
+            }
+
+            Group {
+                if showSplit {
+                    // Legend for the coloured ring.
+                    HStack(spacing: 10) {
+                        ForEach(stats.grades.filter { $0.count > 0 }, id: \.grade) { item in
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(item.grade == .missed ? Color(.secondarySystemFill) : item.grade.color)
+                                    .frame(width: 7, height: 7)
+                                Text("\(item.grade.rawValue.lowercased()) \(Int((Double(item.count) / Double(total) * 100).rounded()))%")
+                            }
+                        }
+                    }
+                } else if let prev = stats.previousAverage, stats.average != nil {
+                    let delta = Int(((avg - prev) * 100).rounded())
+                    Text("\(delta >= 0 ? "↑" : "↓") \(abs(delta)) vs the \(range.previousPhrase)")
+                } else {
+                    Text(range.phrase)
+                }
+            }
+            .font(.caption)
+            .fontWeight(.light)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .transition(.blurReplace)
+            .id(showSplit)
+        }
+    }
+
+    /// Consecutive arcs for Early, On time, Late, Qaza (Missed is the bare track), with a small
+    /// gap between them.
+    private func segments(_ stats: InsightsStats, total: Int) -> [(from: Double, to: Double, color: Color)] {
+        var start = 0.0
+        var result: [(Double, Double, Color)] = []
+        for item in stats.grades where item.grade != .missed && item.count > 0 {
+            let length = Double(item.count) / Double(total)
+            // Leave room for the round caps so neighbouring pieces read as separate.
+            result.append((start + 0.006, start + max(length - 0.006, 0.007), item.grade.color))
+            start += length
+        }
+        return result
+    }
+
+    // MARK: Streaks — one quiet line
+
+    private var streaks: some View {
+        HStack(spacing: 22) {
+            streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
+            streakItem("sparkles", value: onTimeStreak, label: "on time", best: maxOnTimeStreak)
+        }
+    }
+
+    private func streakItem(_ symbol: String, value: Int, label: String, best: Int) -> some View {
+        let shown = revealed ? value : 0
+        return HStack(spacing: 6) {
+            Image(systemName: symbol).foregroundStyle(.green)
+            Text("\(shown)")
+                .fontWeight(.medium)
+                .contentTransition(.numericText(value: Double(shown)))
+            Text(label).foregroundStyle(.secondary)
+            Text("· best \(best)").foregroundStyle(.tertiary)
+        }
+        .font(.subheadline)
+        .fontWeight(.light)
+    }
+
 }
 
 // MARK: - Range & stats
@@ -260,7 +356,6 @@ struct InsightsStats {
     let previousAverage: Double?       // the period before, same length
     let perPrayer: [PrayerStat]
     let grades: [(grade: InsightsGrade, count: Int)]
-    let heatmap: [(day: Date, score: Double?)]   // last 12 weeks, week-aligned
 
     init(prayers: [PrayerModel], range: InsightsRange, now: Date = Date()) {
         let cal = Calendar.current
@@ -305,14 +400,6 @@ struct InsightsStats {
         }
         grades = InsightsGrade.allCases.map { ($0, counts[$0] ?? 0) }
 
-        // Heatmap: 12 full weeks ending with this week, starting on the locale's first weekday.
-        let weekStart = cal.dateInterval(of: .weekOfYear, for: today)?.start ?? today
-        let gridStart = cal.date(byAdding: .day, value: -7 * 11, to: weekStart) ?? weekStart
-        heatmap = (0..<84).map { i in
-            let day = cal.date(byAdding: .day, value: i, to: gridStart) ?? gridStart
-            let score: Double? = (day < today) ? byDay[day].map { PrayerScoring.dayScore(for: $0) } : nil
-            return (day, score)
-        }
     }
 
     var bestPrayer: PrayerStat? {
@@ -327,42 +414,151 @@ struct InsightsStats {
     }
 }
 
-// MARK: - Heatmap
+// MARK: - Prayer trends
 
-/// 12 weeks, columns = weeks, rows = weekdays; darker green = higher day score. Outline = no
-/// data (app not opened); gray = opened but nothing marked. Fades in as a diagonal wave.
-private struct HeatmapGrid: View {
-    let days: [(day: Date, score: Double?)]
+/// Five rows (Fajr … Isha) × the last 14 days. A prayed one is a quiet filled square, a missed
+/// one an outline, a day without data a faint dot — so it reads as "how many did I pray" at a
+/// glance. Tap one to reveal its colour (the score) and its details underneath; colours stay
+/// hidden otherwise (owner: "I don't want all the colors seen right away"). Today is the last
+/// column; its upcoming prayers are faint.
+private struct PrayerTrendsGrid: View {
+    let prayers: [PrayerModel]
     let revealed: Bool
 
+    private static let dayCount = 14
+    private struct Cell: Hashable { let name: String; let day: Int }
+    @State private var selected: Cell?
+    @State private var gridWidth: CGFloat = 0
+    /// What was selected when the finger went down: lifting on that same square without moving
+    /// to another one deselects it (tap again to hide).
+    @State private var selectionAtTouch: Cell??
+    @State private var movedToOther = false
+
+    private static let labelWidth: CGFloat = 50
+    private static let spacing: CGFloat = 5
+    private var cellSize: CGFloat {
+        max((gridWidth - Self.labelWidth - Self.spacing * CGFloat(Self.dayCount)) / CGFloat(Self.dayCount), 1)
+    }
+
+    /// The square under a point in the grid's own coordinates.
+    private func cell(at point: CGPoint) -> Cell? {
+        let step = cellSize + Self.spacing
+        let col = Int(floor((point.x - Self.labelWidth - Self.spacing) / step))
+        let row = Int(floor(point.y / step))
+        guard (0..<Self.dayCount).contains(col), InsightsStats.names.indices.contains(row) else { return nil }
+        return Cell(name: InsightsStats.names[row], day: col)
+    }
+
+    /// Touch down anywhere on the grid and slide: the square under the finger is selected, with a
+    /// light tick on each new one. A tap is the same gesture without the slide.
+    private var scrub: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                if selectionAtTouch == nil { selectionAtTouch = .some(selected); movedToOther = false }
+                guard let hit = cell(at: value.location), hit != selected else { return }
+                movedToOther = true
+                triggerSomeVibration(type: .light)
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { selected = hit }
+            }
+            .onEnded { value in
+                // Tapped the square that was already showing: hide it.
+                if case .some(let start) = selectionAtTouch, let start, !movedToOther,
+                   cell(at: value.location) == start, abs(value.translation.width) < 6, abs(value.translation.height) < 6 {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { selected = nil }
+                }
+                selectionAtTouch = nil
+            }
+    }
+
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 3) {
-                ForEach(0..<12, id: \.self) { week in
-                    VStack(spacing: 3) {
-                        ForEach(0..<7, id: \.self) { weekday in
-                            let entry = days[week * 7 + weekday]
-                            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                .fill(entry.score.map { $0 > 0 ? Color.green.opacity(0.15 + 0.85 * $0) : Color(.secondarySystemFill) } ?? .clear)
-                                .overlay {
-                                    if entry.score == nil {
-                                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                            .strokeBorder(Color(.secondarySystemFill), lineWidth: 1)
-                                    }
-                                }
-                                .frame(width: 17, height: 17)
+        let cal = Calendar.current
+        let today = PrayerDay.start()
+        let days = (0..<Self.dayCount).map { cal.date(byAdding: .day, value: $0 - (Self.dayCount - 1), to: today) ?? today }
+        var rows: [Date: [String: PrayerModel]] = [:]
+        let first = days.first ?? today
+        for p in prayers where p.startTime >= first {
+            rows[cal.startOfDay(for: p.startTime), default: [:]][p.name] = p
+        }
+        let selectedPrayer = selected.flatMap { rows[days[$0.day]]?[$0.name] }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: Self.spacing) {
+                ForEach(InsightsStats.names, id: \.self) { name in
+                    HStack(spacing: Self.spacing) {
+                        Text(name.lowercased())
+                            .font(.caption2)
+                            .fontWeight(.light)
+                            .foregroundStyle(.secondary)
+                            .frame(width: Self.labelWidth, alignment: .trailing)
+                        ForEach(days.indices, id: \.self) { i in
+                            let cell = Cell(name: name, day: i)
+                            square(for: rows[days[i]]?[name], selected: selected == cell)
                                 .opacity(revealed ? 1 : 0)
-                                .scaleEffect(revealed ? 1 : 0.4)
-                                .animation(.spring(response: 0.5, dampingFraction: 0.75)
-                                            .delay(0.012 * Double(week + weekday) + 0.15), value: revealed)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.015 * Double(i) + 0.1), value: revealed)
                         }
                     }
                 }
             }
-            Text("last 12 weeks")
-                .font(.caption2)
-                .fontWeight(.light)
-                .foregroundStyle(.tertiary)
+            .contentShape(Rectangle())
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
+            .gesture(scrub)
+
+            Group {
+                if let cell = selected {
+                    detail(name: cell.name, day: days[cell.day], prayer: selectedPrayer)
+                } else {
+                    Text("last 14 days · tap a square to see it")
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .font(.caption)
+            .fontWeight(.light)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+            .transition(.blurReplace)
+            .id(selected)
+        }
+    }
+
+    private func square(for prayer: PrayerModel?, selected: Bool) -> some View {
+        let prayed = prayer?.isCompleted == true
+        let over = prayer.map { $0.isCompleted || $0.endTime < Date() } ?? false
+        return RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(selected && prayed ? PrayerScoring.color(for: prayer?.numberScore)
+                  : prayed ? Color.primary.opacity(0.28)
+                  : .clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(selected ? Color.primary.opacity(0.6)
+                                  : over ? Color.primary.opacity(0.18) : Color.primary.opacity(0.06),
+                                  lineWidth: selected ? 1.5 : 1)
+            }
+            .aspectRatio(1, contentMode: .fit)
+            .scaleEffect(selected ? 1.18 : 1)
+            .shadow(color: selected && prayed ? PrayerScoring.color(for: prayer?.numberScore).opacity(0.5) : .clear, radius: 4)
+            .contentShape(Rectangle())
+    }
+
+    private func detail(name: String, day: Date, prayer: PrayerModel?) -> some View {
+        VStack(spacing: 3) {
+            Text("\(name) · \(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))")
+                .fontWeight(.medium)
+                .foregroundStyle(.primary)
+            if let prayer {
+                if prayer.isCompleted, let score = prayer.numberScore {
+                    let prayedAt = prayer.timeAtComplete.map { " · prayed \(shortTimePM($0))" } ?? ""
+                    Text("\(PrayerScoring.summary(for: score))\(prayedAt)")
+                        .foregroundStyle(PrayerScoring.color(for: score))
+                } else if prayer.endTime < Date() {
+                    Text("Missed").foregroundStyle(.secondary)
+                } else {
+                    Text("Not yet").foregroundStyle(.secondary)
+                }
+                Text("window \(shortTime(prayer.startTime)) – \(shortTimePM(prayer.endTime))")
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("no data for this day").foregroundStyle(.secondary)
+            }
         }
     }
 }

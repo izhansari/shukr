@@ -96,12 +96,9 @@ struct SessionRow: View {
         default: return "freestyle"
         }
     }
-    /// Seconds per count, derived the same way the mantra's pace is (duration / count) so the
-    /// two pages agree; the stored `avgTimePerClick` was sampled mid-session and runs a little low.
-    private var pace: TimeInterval? {
-        guard session.totalCount > 0, session.secondsPassed > 0 else { return nil }
-        return session.secondsPassed / Double(session.totalCount)
-    }
+    /// Seconds per count over the time actually spent counting — the same measure as the
+    /// mantra's pace, so the two pages agree. (duration / count counted idle time after the last tap.)
+    private var pace: TimeInterval? { session.secondsPerCount }   // active time only (see activeSeconds)
 
     var body: some View {
         HStack(alignment: .center) {

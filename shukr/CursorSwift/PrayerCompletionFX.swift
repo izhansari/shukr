@@ -99,12 +99,14 @@ struct CompletionFlourish: View {
 
             if showText {
                 VStack(spacing: 4) {
-                    HStack(alignment: .center) {
+                    HStack(alignment: .center, spacing: 8) {
                         Image(systemName: "checkmark")
-                        Text(event.name).fontWeight(.bold)
+                            .font(.system(size: 22, weight: .light))
+                        Text(event.name)
+                            .font(.system(size: 32, weight: .light, design: .rounded))
                     }
-                    .font(.title)
                     Text(PrayerScoring.summary(for: event.score))
+                        .font(.subheadline)
                         .fontDesign(.rounded)
                         .fontWeight(.thin)
                         .foregroundStyle(color)

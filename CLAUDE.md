@@ -77,6 +77,15 @@ agent builds with xcodebuild. Nothing here has CI.
    before building a third version.
 9. Then the App Store blockers below.
 
+## Share card — CHECK ON RELEASE
+
+The Daily Ayah share button (`DailyAyahView`, a `ShareLink`) sends only the image
+(`AyahShareCard`, three looks) — no caption or link (owner, 2026-09-25). The card itself says
+"download on the App Store", which is only true once shukr is live: until then testers get it
+through TestFlight (public link `https://testflight.apple.com/join/GW5j85jk`). When a
+TestFlight build goes out or the app is released, remind the owner to check the card's wording
+(and whether to add a link back).
+
 ## Immediate goal: App Store submission
 
 Audit done 2026-09. Nothing below is fixed yet unless marked.
@@ -270,7 +279,70 @@ is the average") on the day score; the "all five on time" streak.
 for summers far north), no longer at the rollover. The rollover ("Day Rolls Over At" in
 Settings) only keeps the day's prayers up so a late Isha can still be marked — as Qaza.
 
+## Streaks, celebrations, completion moment (2026-09-24/25)
 
+- **Streak** (`prayerStreak`, standard suite) counts a day once: `calculatePrayerStreak` runs on
+  every mark / time edit / widget reconcile and used to +1 each time once all five were in, and
+  −1 on every call after an unmark (streaks went negative; clamped at 0 now). Posts
+  `.prayerStreakContinued` once.
+- **On-time streak** (`onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`): consecutive days
+  with all five Early / On time (≥ 80). **Perfect day** (`lastPerfectDay`): all five **Early**.
+  Both in `updateDayMilestones`, once a day, posting `.onTimeStreakContinued` / `.perfectDay`.
+- **Top bar** (`TopBar` + `StreakLabel` in Utils.swift): tap the city → the streak for 5 s; tap
+  the streak → on time → max. Once the day's done (the circle's summary condition) the streak
+  stays up instead of the city (owner: keep the city otherwise). Celebrations: heart goes green,
+  number rolls up, hearts float; the on-time beat follows ~2.4 s later with sparkles.
+- **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
+  the circle's `CompletionFlourish` (arc sweeps closed in the score colour, glow, "✓ Asr ·
+  On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a "✓ N done"
+  line (tap to show them); all five come back when the day's complete; perfect day pops the
+  dots in turn and shows "✦ perfect day".
+- **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when
+  there's text to flip. Type matches the Insights ring (2026-09-25): name 32 pt light rounded,
+  icon 22 pt light, captions subheadline thin secondary, score 44 pt light over "today's score".
+  Between the rollover and Fajr the summary circle shows **yesterday's** stored score ("yesterday's
+  score") instead of the empty new day's 0 (owner's call; `showingYesterday` in `summaryCircle`).
+- **Edit time** (`PrayerTimeEditSheet`): range = the prayer's start … min(now, the day's
+  rollover), so a Qaza after midnight can be set. `PrayerTimeWheel` is our own UIPickerView
+  (hour / minute / AM-PM; hours loop and AM/PM follows like the system wheel): system wheels
+  either knew one day (Isha's 12 AM snapped to the start) or showed a day column (owner: no).
+  Invalid times are grayed and *not* corrected; Save is disabled and a line says why (before the
+  start / not yet / after the rollover). A picked clock time lands on the prayer's day or the
+  next, whichever is in range; after midnight a line spells out the day and time. The window bar
+  (Early / On time / Late) is a scrubber; a Qaza time parks the marker at the end, gray.
+- DEBUG-only: hamburger "Test Streak Celebration" / "Test Perfect Day" / "Old Insights"; launch
+  args `-demoStreakCelebration`, `-demoDayMilestones`, `-demoPrayerCompletion` (switches to the
+  dev test prayer times and marks prayers), `-demoInsights`, `-demoShareCard` (writes every share
+  look to `<app data>/tmp/share-card-*.png`); any `-demo…` arg skips the notification prompt.
+
+**Mantras / sessions:** Mantras page is searchable (name, full text, notes). The editor is a
+viewer first: title = the mantra's name, Cancel / Save appear only after an edit, revert / save
+in place (sheet stays, keyboard goes). **Rates use active time**: `SessionDataModel.activeSeconds`
+= `avgTimePerClick × totalCount` (time at the last count, pauses excluded) — `secondsPassed`
+runs until Stop, so a session left running idle showed e.g. 33.6 s/count for a real 5.1 s.
+`secondsPerCount` (session row, Zikr History) and `MantraModel.secondsPerCount` both use it.
+Hold a session row to feel its pace (`PaceHoldGesture`, a 0.2 s UIKit long press so scrolls that
+start on a row still scroll): tick + edge glow at once, then the pill border fills over one count
+(drawn from the clock in a TimelineView), tick, repeat, until the finger lifts.
+
+**Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
+(a page `TabView`), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
+prayers ranked by their last-4-weeks score, missed = 0, with an 8-week sparkline you can scrub
+and the change vs the 4 weeks before), "how am I scoring?" (avg-score ring — tap for the grade
+makeup as coloured arcs — the Week / Month / All time switch, which only affects this page, and
+the five prayer rings, tap for avg / % prayed), "how consistent am I?" (streaks + the 14-day
+prayer grid: filled = prayed, tap / drag to reveal a square's colour and details). The flat
+single-page version is `InsightsView(layout: .old)` (DEBUG "Old Insights"). Rethink still open
+(Start here #8).
+
+**Daily Ayah**: reveal once, it stays revealed for the day (`dailyAyah.revealedDay`); share →
+`AyahShareOptionsSheet` picks a look (`ayahShareStyle`, remembered) and shares only the image —
+9:16 `AyahShareCard` in mint / grain (the light welcome screen: `AnimatedWavyGradient` +
+`NoiseOverlay` on white) / forest. Both of the page's sheets hang off its root: a sheet attached
+inside the top bar never presented (the share button used to do nothing). See "Share card —
+CHECK ON RELEASE".
+
+## Prayer day rollover (PrayerDay.swift)
 
 The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this there was
 nothing to mark it against after midnight). Since 2026-09-24 Isha's *window* still ends at 11:59
@@ -336,8 +408,7 @@ Last 12 months / Custom, each with a symbol) and a row of five prayer icon chips
 (`prayerSymbol(_:)` is the shared icon set); the date pickers only appear under Custom. The
 tapped pin keeps its score colour and gets a green layer shadow + 1.35× scale (turning it
 green read as "Optimal"); `swappingSelection` stops the sheet-dismissed cleanup from
-deselecting the pin just tapped during a swap; `keepInView` pans so the pin isn't under the
-sheet or the top pills; `.presentationContentInteraction(.scrolls)` so scrolling the list
+deselecting the pin just tapped during a swap; `keepInView` always centres the tapped pin between the top pills and the sheet (2026-09-25; it used to move only pins near an edge or under the sheet); `.presentationContentInteraction(.scrolls)` so scrolling the list
 doesn't drag the sheet up. The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.

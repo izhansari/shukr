@@ -445,8 +445,11 @@ struct MapView: UIViewRepresentable {
             let point = mapView.convert(coordinate, toPointTo: mapView)
             let top: CGFloat = 130                                     // below the pills
             let bottom = bounds.height * (1 - sheetFraction) - 40      // above the sheet
-            guard point.y < top || point.y > bottom || point.x < 30 || point.x > bounds.width - 30 else { return }
+            // Always centre the tapped pin in the part of the map the sheet leaves visible (it
+            // used to move only when the pin was near an edge or under the sheet — owner wanted
+            // every tap to land it in the middle).
             let target = CGPoint(x: bounds.midX, y: (top + bottom) / 2)
+            guard hypot(point.x - target.x, point.y - target.y) > 2 else { return }
             let centre = CGPoint(x: bounds.midX + (point.x - target.x), y: bounds.midY + (point.y - target.y))
             mapView.setCenter(mapView.convert(centre, toCoordinateFrom: mapView), animated: true)
         }

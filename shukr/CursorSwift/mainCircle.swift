@@ -102,35 +102,44 @@ struct MainCircleView: View {
                         // Inner content
                         ZStack{
                             VStack{
-                                HStack(alignment: .center){
+                                // Same type as the Insights ring: large, light, rounded.
+                                HStack(alignment: .center, spacing: 8){
                                     Image(systemName: prayerIcon(for: prayer.name))
+                                        .font(.system(size: 22, weight: .light))
                                     Text(prayer.name)
-                                        .fontWeight(.bold)
+                                        .font(.system(size: 32, weight: .light, design: .rounded))
                                 }
                                 .animation(animationStyle, value: prayer.name)
-                                .font(.title)
                                // Going back to the old way (want h and m with no comma. Better cleaner transition):
                                 if prayer.status() == .current{
                                     ExternalToggleText(
                                         originalText: "ends \(shortTimePM(prayer.endTime))",
                                         toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
                                         externalTrigger: $ogText,  // Pass the binding
+                                        font: .subheadline,
                                         fontDesign: .rounded,
                                         fontWeight: .thin,
                                         hapticFeedback: true
                                     )
+                                    .foregroundStyle(.secondary)
                                 }
                                 else if prayer.status() ==  .upcoming{
                                     ExternalToggleText(
                                         originalText: "at \(shortTimePM(prayer.startTime))",
                                         toggledText: timeUntilStart(prayer.startTime),
                                         externalTrigger: $ogText,  // Pass the binding
+                                        font: .subheadline,
                                         fontDesign: .rounded,
                                         fontWeight: .thin,
                                         hapticFeedback: true
                                     )
+                                    .foregroundStyle(.secondary)
                                 }else {
-                                    Text("Missed")
+                                    Text("missed")
+                                        .font(.subheadline)
+                                        .fontDesign(.rounded)
+                                        .fontWeight(.thin)
+                                        .foregroundStyle(.secondary)
                                 }
                             
                             
@@ -312,26 +321,29 @@ struct summaryCircle: View{
 //        todaysScore = todaysScore / 5
 //        
 //    }
+    /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
+    private func storedScore(daysBack: Int) -> Double {
+        let day = Calendar.current.date(byAdding: .day, value: -daysBack, to: PrayerDay.date()) ?? PrayerDay.date()
+        return scores.first { Calendar.current.isDate($0.date, inSameDayAs: day) }?.averageScore ?? 0
+    }
+
+    /// Between the day's rollover and Fajr the new prayer day has nothing to mark yet, so the
+    /// circle shows the day that just finished instead of a 0 (owner, 2026-09-25).
+    private var showingYesterday: Bool {
+        guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return false }
+        return Date() < fajr.startTime && !fajr.isCompleted
+    }
+    private var shownScore: Double { showingYesterday ? storedScore(daysBack: 1) : viewModel.todaysScore }
+
     private func changeInDailyScore() -> Text {
-        let changeWithSign = viewModel.todaysScore - getYesterdayScore()
+        let previous = storedScore(daysBack: showingYesterday ? 2 : 1)
+        let changeWithSign = shownScore - previous
         let improvement = changeWithSign > 0
         let absChange = abs(changeWithSign)
         let percentageAbs = String(format: "%.1f%%", absChange * 100)
         return Text(changeWithSign < 0 ? "↓\(percentageAbs)" : "↑\(percentageAbs)").foregroundStyle(improvement ? Color(.systemGreen) : Color(.systemRed))
-        
-        func getYesterdayScore() -> Double {
-            // Yesterday's prayer day (before the rollover hour, "today" is still yesterday's date).
-            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: PrayerDay.date())!
-            let startOfDay = Calendar.current.startOfDay(for: yesterday)
-            
-            let dailyScore = scores.first { score in
-                Calendar.current.isDate(score.date, inSameDayAs: startOfDay)
-            }
-            
-            return dailyScore?.averageScore ?? 0
-        }
     }
-    
+
     func getTheNextFajrTime() {
         if let todaysFajr = viewModel.getPrayerTime(for: "Fajr", on: Date()){
             if todaysFajr.start > Date(){
@@ -353,32 +365,33 @@ struct summaryCircle: View{
         let scoreness: CGFloat = sharedState.bottomTabPosition == .salah ? min(max((p - 0.35) / 0.3, 0), 1) : 0
         ZStack{
             // The Summary Score
-            VStack{
-                Text("Today's Score:")
-                    .font(.headline)
+            // Same type as the Insights ring: a large light number over a thin caption.
+            VStack(spacing: 2){
+                Text(String(format: "%.1f", shownScore * 100))
+                    .font(.system(size: 44, weight: .light, design: .rounded))
+                    .contentTransition(.numericText(value: shownScore))
+                Text(showingYesterday ? "yesterday's score" : "today's score")
+                    .font(.footnote)
+                    .fontDesign(.rounded)
+                    .fontWeight(.thin)
                     .foregroundColor(.secondary)
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                Text(String(format: "%.1f%%", /*todaysScore*/ viewModel.todaysScore * 100))
-                    .font(.title)
-                    .fontWeight(.medium)
-                    .fontDesign(.rounded)
                 changeInDailyScore()
                     .opacity(0.7)
                     .font(.caption)
                     .fontDesign(.rounded)
+                    .padding(.top, 2)
             }
             .opacity(Double(scoreness))
             .scaleEffect(0.9 + 0.1 * scoreness)
 
             // Fajr Icon, Title, Time:
             VStack{
-                HStack(alignment: .center){
+                HStack(alignment: .center, spacing: 8){
                     Image(systemName: prayerIcon(for: "Fajr"))
+                        .font(.system(size: 22, weight: .light))
                     Text("Fajr")
-                        .fontWeight(.bold)
+                        .font(.system(size: 32, weight: .light, design: .rounded))
                 }
-                .font(.title)
 
                 // Displayed Fajr Time:
                 if let fajrTime = nextFajr{
@@ -391,7 +404,8 @@ struct summaryCircle: View{
                         }
                     }
                     .fixedSize(horizontal: true, vertical: false)
-                    .foregroundColor(.primary.opacity(0.7))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .fontDesign(.rounded)
                     .fontWeight(.thin)
