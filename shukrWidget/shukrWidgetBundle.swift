@@ -12,7 +12,6 @@ import SwiftUI
 struct shukrWidgetBundle: WidgetBundle {
     var body: some Widget {
 //        shukrWidget()
-        shukrWidgetLiveActivity()
 //        CompassWidget()
         PrayersWidget()
     }

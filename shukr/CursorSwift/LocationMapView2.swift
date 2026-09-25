@@ -200,10 +200,7 @@ final class LocationViewModel: ObservableObject {
 
     /// Pin colour for a completed prayer, same scale as the app's score colouring.
     static func markerColor(for prayer: PrayerModel) -> UIColor {
-        guard let score = prayer.numberScore else { return .systemGray }
-        if score >= 0.5 { return .systemGreen }
-        if score >= 0.25 { return .systemYellow }
-        return .systemRed
+        UIColor(PrayerScoring.color(for: prayer.numberScore))
     }
 }
 
@@ -1096,7 +1093,7 @@ private struct PrayerSpotRow: View {
             VStack(alignment: .trailing, spacing: 3) {
                 HStack(spacing: 5) {
                     ScoreDot(score: prayer.numberScore)
-                    Text(prayer.numberScore.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")
+                    Text(prayer.numberScore.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
                         .font(.body.weight(.semibold))
                         .monospacedDigit()
                 }
@@ -1113,10 +1110,7 @@ private struct PrayerSpotRow: View {
 private struct ScoreDot: View {
     let score: Double?
     var color: Color {
-        guard let score else { return .gray }
-        if score >= 0.5 { return .green }
-        if score >= 0.25 { return .yellow }
-        return .red
+        PrayerScoring.color(for: score)
     }
     var body: some View { Circle().fill(color).frame(width: 9, height: 9) }
 }

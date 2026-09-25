@@ -6,6 +6,7 @@ import WidgetKit
 struct SettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var sharedState: SharedStateClass
+    @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
     @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
@@ -51,7 +52,6 @@ struct SettingsView: View {
     @State private var isTasbeehPopupVisible: Bool = false
     @FocusState private var stepFieldFocused: Bool
     
-    @State private var selectedPrayerToCancelNudges = "Fajr"
     @State private var rotationAngle: Double = 0 // For rotating the symbol
     
     // for the floating message
@@ -59,6 +59,7 @@ struct SettingsView: View {
     
     // For minimizing and expanding the devSection
     @State private var showDevStuff = false
+    @State private var showCityPicker = false
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -70,8 +71,7 @@ struct SettingsView: View {
         sneakPeekItem(image: "lightbulb.max.fill", title: "Hadith Motivator", description: "Sometimes we lose sight of the intention behind our actions and just go through the motions. A daily Hadith page would be a cool way to stay reminded of our purpose in this dunya"),
         sneakPeekItem(image: "fork.knife", title: "Food Finder", description: "Finding food is hard. Finding halal food - even harder. I wanna partner with another organization for this iA (cough cough HalalEatsNC?!)"),
         sneakPeekItem(image: "character.book.closed", title: "Quranic Vocab", description: "Explore and learn common words from the Quran to make it easier to focus during prayer."),
-        sneakPeekItem(image: "gift", title: "Sadaqah Links", description: "A list of trustworthy links to help the ummah. Ideally, Apple Pay integration and donation history in app would be nice!"),
-        sneakPeekItem(image: "figure.2.left.holdinghands", title: "Muslim Brand Explorer", description: "I love seeing fellow Muslims doing cool things. So let's make a space for discovering & supporting Muslim brands / influencers.")
+        sneakPeekItem(image: "gift", title: "Sadaqah Links", description: "A list of trustworthy links to help the ummah. Ideally, Apple Pay integration and donation history in app would be nice!")
     ]
     
     // Define a model for each suggestion.
@@ -80,24 +80,6 @@ struct SettingsView: View {
         let image: String
         let title: String
         let description: String
-    }
-    
-    let coolBrandLinks: [LinkItem] = [
-        LinkItem(title: "DoD", subtitle: "Clothing", imageURL: "https://p19-pu-sign-useast8.tiktokcdn-us.com/tos-useast8-avt-0068-tx2/007b5c7aeffcc3fd7ec601d4aedb7a40~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=25b1007b&x-expires=1742065200&x-signature=JuvqpjsNen2Kg6HKzH4tyABzt4g%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5", url: URL(string: "https://www.instagram.com/deenoverdunya.us")!),
-        LinkItem(title: "Dilkash Gajray", subtitle: "Bridal", imageURL: "https://scontent-iad3-1.cdninstagram.com/v/t51.2885-19/475291630_1150609400015701_4344322516214829308_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-1.cdninstagram.com&_nc_cat=101&_nc_oc=Q6cZ2AFR2xxAghsyZBtFl8VgJyYRmtoNqGoIGKe-YfwWPlCu-UW4oTMOyHnFmqxtxEtT9R6wYxP0VbMSmyugCvgjpu3B&_nc_ohc=lCsBLE5msEcQ7kNvgE2RxzX&_nc_gid=10ecb374516d49a5b36b500b6f0165c5&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYGiDEE9wHMJ-6eGZniwzmdnb-ercaQ7-NnfRXI27zOwBQ&oe=67D92853&_nc_sid=8b3546", url: URL(string: "https://www.instagram.com/dilkashgajray/")!),
-        LinkItem(title: "Nadrah", subtitle: "Clothing", imageURL: "https://cdn.shopify.com/s/files/1/0729/2695/3760/files/About_us_d0764397-3562-4654-aea7-946c12e50987_1024x1024.png?v=1705556031", url: URL(string: "https://www.tiktok.com/@nadrah.nc")!),
-        LinkItem(title: "Ali Hida", subtitle: "Influencer", imageURL: "https://scontent-iad3-2.cdninstagram.com/v/t51.2885-19/454593944_2865268120441221_8097741733498839294_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-2.cdninstagram.com&_nc_cat=109&_nc_oc=Q6cZ2AHwpE4kUetl7Gc497wkyNvqc_bK6phXMDOx95Wux8IgltUoNc3CZB1Q_GqVNkb5uNTwDRNm4qYf9e9KndVW2dIr&_nc_ohc=nFWa3LhqFQoQ7kNvgEA1t3m&_nc_gid=047fd04209f847caa7b805713890c49d&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYG9zthcKzwptBHhx7Wit8548ghKRdUAnbDcGk0GdldUiw&oe=67D91259&_nc_sid=8b3546", url: URL(string: "https://www.tiktok.com/@hida_feva")!),
-        LinkItem(title: "Latieh", subtitle: "Coffee", imageURL: "https://scontent-iad3-2.cdninstagram.com/v/t51.2885-19/482596401_1338600897348126_7182827564811311299_n.jpg?stp=dst-jpg_s320x320_tt6&_nc_ht=scontent-iad3-2.cdninstagram.com&_nc_cat=106&_nc_oc=Q6cZ2AHb8Pk0sjECcu7JwTINW3VQdrEupMfAX3LHkGu4G_7SUWB9apX5VYQWCsUXtAizxiAZ6Uoo-c02uObz_VPyq6fL&_nc_ohc=uFOUE9IrHD0Q7kNvgFUQFOk&_nc_gid=dec115a7c05d4134a9b7acbbea4f8268&edm=AOQ1c0wBAAAA&ccb=7-5&oh=00_AYF89YIkZxi3uje_bmY3-UVQdekIr8nC94rw1XRR_8T6Lg&oe=67D91181&_nc_sid=8b3546", url: URL(string: "https://www.instagram.com/latiehcoffee")!),
-        LinkItem(title: "Zachariah Elkordy", subtitle: "Influencer", imageURL: "https://p19-pu-sign-useast8.tiktokcdn-us.com/tos-useast5-avt-0068-tx/7324462037096988714~tplv-tiktokx-cropcenter:1080:1080.jpeg?dr=9640&refresh_token=d98ef622&x-expires=1742065200&x-signature=O1IDoHqY4kSAPtui3Cw70zQS8Go%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5", url: URL(string: "https://www.instagram.com/zachelkordy")!),
-        LinkItem(title: "Sohaib Ashraf", subtitle: "YouTuber", imageURL: "https://yt3.googleusercontent.com/gqmOeoEHqNlRn0zATH93p2uYxaJ0BN7o0YFmO9bTxBp9a-3EgnIsYojQPfW13koaTHO8qZFThA=s160-c-k-c0x00ffffff-no-rj", url: URL(string: "https://www.youtube.com/@SohaibAshraf")!)
-    ]
-    
-    struct LinkItem: Identifiable {
-        let id = UUID()
-        let title: String
-        let subtitle: String
-        let imageURL: String
-        let url: URL
     }
     
     let calculationMethods = [
@@ -184,11 +166,27 @@ struct SettingsView: View {
                             Text(String(format: "%.6f", lastLongitude))
                         }
                         
-                        Button("Refresh Location") {
-                            viewModel.refreshCityAndPrayerTimes()
-                            viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
+                        if envLocationManager.isAuthorized {
+                            Button("Refresh Location") {
+                                viewModel.refreshCityAndPrayerTimes()
+                                viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
+                            }
+                            .tint(.green)
+                        } else {
+                            // No location permission: prayer times come from a picked city.
+                            Button("Choose City") { showCityPicker = true }
+                                .tint(.green)
+                            Button("Use My Location") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .tint(.green)
                         }
-                        .tint(.green)
+                    }
+                    .sheet(isPresented: $showCityPicker) {
+                        CityPickerSheet()
+                            .environmentObject(envLocationManager)
                     }
                     
                     
@@ -236,7 +234,7 @@ struct SettingsView: View {
                     
                     //MARK: - Day Rollover
                     Section(header: headerWithInfoButton(title: "Day Rollover", isPopupVisible: $isRolloverPopupVisible)) {
-                        Picker("Isha End Time", selection: $dayRolloverHours) {
+                        Picker("Day Rolls Over At", selection: $dayRolloverHours) {
                             Text("Midnight").tag(0)
                             Text("1 AM").tag(1)
                             Text("2 AM").tag(2)
@@ -283,9 +281,11 @@ struct SettingsView: View {
 
                     //MARK: - Calculation Method
                     Section(header: Text("Calculation Method")
+                        #if DEBUG
                         .onTapGesture {
                             showDevStuff.toggle()
                         }
+                        #endif
                     ) {
                         Picker("Method", selection: $calculationMethod) {
                             ForEach(calculationMethods, id: \.0) { method in
@@ -359,14 +359,11 @@ struct SettingsView: View {
                             }
                         }
                         
-                        Button("Suggest Feature") {
-                            // Add action for suggesting a feature.
-                        }
-                        .tint(.green)
                     }
 
                     
                     //MARK: - Dev Stuff
+                    #if DEBUG
                     if(showDevStuff){
                         Section(header: Text("My Dev Stuff")) {
                             Picker("Ring Style", selection: $selectedRingStyle) {
@@ -393,18 +390,10 @@ struct SettingsView: View {
                                 didShowAlarmSetupAlert = false
                                 alarmEnabled = false
                             }
-                            Picker("Cancel nudges for", selection: $selectedPrayerToCancelNudges) {
-                                ForEach(viewModel.orderedPrayerNames, id: \.self) { prayer in
-                                    Text(prayer)
-                                }
-                            }
-                            Button("Cancel for \(selectedPrayerToCancelNudges)") {
-//                                viewModel.cancelUpcomingNudges(for: selectedPrayerToCancelNudges) //so it cancels... but when we fetch, we put it right back.
-//                                selectedPrayerToCancelNudges.canccel //this new function doesnt work with passing in a string. we have to use the prayerObject.
-                            }
                         }
 
                     }
+                    #endif
                     
                 }
             }
@@ -434,48 +423,6 @@ struct SettingsView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
                 
-                if feature.image == "figure.2.left.holdinghands" {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(coolBrandLinks) { link in
-                            Link(destination: link.url) {
-                                HStack (spacing: 10){
-                                    AsyncImage(url: URL(string: link.imageURL)) { phase in
-                                        switch phase {
-                                        case .empty:
-                                            ProgressView() // Show a loading indicator
-                                        case .success(let image):
-                                            image
-                                                .resizable()
-                                                .aspectRatio(contentMode: .fill)
-                                                .frame(width: 50, height: 50)
-                                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        case .failure:
-                                            Image(systemName: "xmark.circle.fill") // Show a default error image
-                                                .foregroundColor(.red)
-                                                .font(.largeTitle)
-                                        @unknown default:
-                                            EmptyView() // Handle future cases
-                                        }
-                                    }
-                                    VStack(alignment: .leading){
-                                        Text(link.title)
-                                            .foregroundColor(.primary)
-                                        Text(link.subtitle)
-                                            .foregroundColor(.secondary)
-                                            .font(.caption)
-                                    }
-                                    Spacer()
-                                    Image(systemName: "arrow.up.right.square")
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                }
                 Spacer()
             }
                 
@@ -756,14 +703,14 @@ struct RolloverDropdownInfo: View {
 
             HStack {
                 Image(systemName: "moon.stars.fill")
-                Text("The day's prayers stay up until this time, so a late Isha can still be marked and scored instead of vanishing at midnight.")
+                Text("The day's prayers stay up until this time, so an Isha you prayed late can still be marked instead of vanishing at midnight.")
                     .font(.caption)
             }
             .foregroundColor(.gray)
 
             HStack {
-                Image(systemName: "sunrise.fill")
-                Text("Isha never runs past Fajr, whatever you pick here.")
+                Image(systemName: "clock.badge.exclamationmark")
+                Text("Isha's time still ends at 11:59 PM. Marking it after that counts as Qaza.")
                     .font(.caption)
             }
             .foregroundColor(.gray)
@@ -1094,8 +1041,10 @@ struct AlarmSettingsView: View {
             }
         }
         .onAppear{
-            nextSunriseTime = viewModel.getNextPrayerTime(for: "sunrise")!
-            nextFajrTime = viewModel.getNextPrayerTime(for: "fajr")!
+            // nil until there's a location (no GPS fix yet at first launch); Settings is mounted
+            // at launch, so a force unwrap here crashed the app.
+            if let sunrise = viewModel.getNextPrayerTime(for: "sunrise") { nextSunriseTime = sunrise }
+            if let fajr = viewModel.getNextPrayerTime(for: "fajr") { nextFajrTime = fajr }
         }
         .onChange(of: alarmEnabled){_, newValue in
                 if newValue {

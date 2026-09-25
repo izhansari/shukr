@@ -3,9 +3,11 @@
 //  shukr
 //
 //  The "prayer day" can run past midnight. With a rollover of 2 (hours), 1 AM still belongs to
-//  yesterday's prayers and Isha can be marked until 2 AM; before this, Isha ended at 11:59 PM
-//  and a late Isha had nothing to be marked against. The rollover is a Settings-page setting,
-//  stored in the app group so the widget agrees with the app.
+//  yesterday's prayers, so a late Isha can still be marked until 2 AM — as a Qaza: Isha's
+//  window itself ends at 11:59 PM (see `ishaEnd`). The rollover is a Settings-page setting
+//  ("Day rolls over at"), stored in the app group so the widget agrees with the app.
+//  (2026-09-25 → 09-24: for a day the rollover also moved Isha's end, which inflated Isha
+//  scores; owner asked for the end to stay at 11:59 PM.)
 //
 //  Prayer rows are still keyed by the calendar day their Fajr falls on (every fetch of "a day's
 //  prayers" uses that calendar day); only two things move: which calendar day counts as
@@ -48,10 +50,18 @@ enum PrayerDay {
         return calendar.date(byAdding: .hour, value: rolloverHours, to: midnight) ?? midnight
     }
 
-    /// Isha's end on the calendar day of `date`: a second before the rollover (as the old
-    /// 11:59:59 PM was a second before midnight), but never past the next Fajr when it's known.
-    static func ishaEnd(on date: Date, nextFajr: Date?) -> Date {
-        let end = rolloverInstant(after: date).addingTimeInterval(-1)
+    /// Shortest Isha window: where Isha starts late (far north in summer, it can start after
+    /// 11 PM or even after midnight), 11:59 PM would leave it minutes long or make every Isha a
+    /// Qaza.
+    static let minimumIshaWindow: TimeInterval = 60 * 60
+
+    /// Isha's end: 11:59:59 PM on the calendar day of `date`, independent of the rollover — or
+    /// an hour after `ishaStart` if that's later — and never past the next Fajr when it's known.
+    static func ishaEnd(on date: Date, ishaStart: Date? = nil, nextFajr: Date?) -> Date {
+        let calendar = Calendar.current
+        let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date)) ?? date
+        var end = midnight.addingTimeInterval(-1)
+        if let ishaStart { end = max(end, ishaStart.addingTimeInterval(minimumIshaWindow)) }
         if let nextFajr, nextFajr < end { return nextFajr }
         return end
     }

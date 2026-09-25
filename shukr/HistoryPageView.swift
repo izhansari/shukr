@@ -78,6 +78,9 @@ func zikrDayLabel(_ date: Date) -> String {
 /// One session in a history list (Zikr History, and a mantra's sessions in its editor).
 struct SessionRow: View {
     let session: SessionDataModel
+    /// Off inside a mantra's own page, where every row would repeat the same name: the time
+    /// becomes the headline instead.
+    var showsMantraName = true
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -103,11 +106,18 @@ struct SessionRow: View {
     var body: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.mantra?.name ?? session.title)
-                    .font(.body.weight(.medium))
-                HStack(spacing: 4) {
+                if showsMantraName {
+                    Text(session.mantra?.name ?? session.title)
+                        .font(.body.weight(.medium))
+                } else {
                     Text(session.startTime, style: .time)
-                    Text("·")
+                        .font(.body.weight(.medium))
+                }
+                HStack(spacing: 4) {
+                    if showsMantraName {
+                        Text(session.startTime, style: .time)
+                        Text("·")
+                    }
                     Image(systemName: modeIcon)
                     Text(target)
                 }

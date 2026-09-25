@@ -97,29 +97,29 @@ struct PrayerScoreChartView: View {
                             }
                         }
                         
-                        RuleMark(y: .value("Optimal", 90))
+                        RuleMark(y: .value("On time", 80))
                             .foregroundStyle(Color.green.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                             .annotation(position: .leading) {
-                                Text("Optimal")
+                                Text("On time")
                                     .font(.caption)
                                     .foregroundColor(.green)
                             }
                         
-                        RuleMark(y: .value("Good", 75))
+                        RuleMark(y: .value("Late", 60))
                             .foregroundStyle(Color.yellow.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                             .annotation(position: .leading) {
-                                Text("Good")
+                                Text("Late")
                                     .font(.caption)
                                     .foregroundColor(.yellow)
                             }
                         
-                        RuleMark(y: .value("Poor", 50))
+                        RuleMark(y: .value("Qaza", 40))
                             .foregroundStyle(Color.red.opacity(0.5))
                             .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                             .annotation(position: .leading) {
-                                Text("Poor")
+                                Text("Qaza")
                                     .font(.caption)
                                     .foregroundColor(.red)
                             }
@@ -491,15 +491,15 @@ import Charts
                     }
                     
                     // Reference lines
-                    RuleMark(y: .value("Optimal", 90))
+                    RuleMark(y: .value("On time", 80))
                         .foregroundStyle(Color.green.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Good", 75))
+                    RuleMark(y: .value("Late", 60))
                         .foregroundStyle(Color.yellow.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Poor", 50))
+                    RuleMark(y: .value("Qaza", 40))
                         .foregroundStyle(Color.red.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                 }
@@ -1040,15 +1040,15 @@ struct ScrollablePrayerScoreView: View {
             } else {
                 Chart {
                     // Reference lines
-                    RuleMark(y: .value("Optimal", 90))
+                    RuleMark(y: .value("On time", 80))
                         .foregroundStyle(Color.green.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Good", 75))
+                    RuleMark(y: .value("Late", 60))
                         .foregroundStyle(Color.yellow.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
-                    RuleMark(y: .value("Poor", 50))
+                    RuleMark(y: .value("Qaza", 40))
                         .foregroundStyle(Color.red.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     
@@ -2379,7 +2379,7 @@ struct SimpleDailyScoreView: View {
                     if let engScore = prayer.englishScore, let score = prayer.numberScore  {
                         Text("\(engScore)")
                             .font(.callout)
-                            .foregroundColor(getColorForScore(score))
+                            .foregroundColor(PrayerScoring.color(for: score))
                     }
 //                    if let score = prayer.numberScore {
 //                        // Show score percentage

@@ -183,7 +183,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
     
     func refreshCityAndPrayerTimes() { // used outside of viewmodel.
-        guard let location = ENV_LocationManager.manager.location else {
+        guard let location = ENV_LocationManager.effectiveLocation else {
             print("Location not available")
             return
         }
@@ -199,9 +199,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             return nil
         }
 
-        // Isha runs to the day rollover (Settings), never past the next Fajr.
+        // Isha ends at 11:59 PM (PrayerDay.ishaEnd); the rollover only extends marking it, as Qaza.
         let nextFajr = Calendar.current.date(byAdding: .day, value: 1, to: date).flatMap { calcAdhanLibraryPrayerTimes(date: $0)?.fajr }
-        let ishaEnd = PrayerDay.ishaEnd(on: date, nextFajr: nextFajr)
+        let ishaEnd = PrayerDay.ishaEnd(on: date, ishaStart: times.isha, nextFajr: nextFajr)
 
         switch prayerName.lowercased() {
         case "fajr":
@@ -237,7 +237,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
 
     func calcAdhanLibraryPrayerTimes(date: Date) -> PrayerTimes?{ //PrayerUtilsFlag
-        guard let location = ENV_LocationManager.manager.location else {
+        guard let location = ENV_LocationManager.effectiveLocation else {
             print("Location not available")
             return nil
         }
@@ -281,7 +281,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         // My new proposed way of just having calc var shown on prayerButtons. Dont store nothing in persistence UNTIL COMPLETION or MISSED
         //-------------------------------------------------------------------
         let nextFajr = Calendar.current.date(byAdding: .day, value: 1, to: prayerDate).flatMap { calcAdhanLibraryPrayerTimes(date: $0)?.fajr }
-        let ishaEnd = PrayerDay.ishaEnd(on: prayerDate, nextFajr: nextFajr)
+        let ishaEnd = PrayerDay.ishaEnd(on: prayerDate, ishaStart: times.isha, nextFajr: nextFajr)
         
         func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
             return (starTime, endTime, endTime.timeIntervalSince(starTime))
@@ -484,66 +484,6 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
 // MARK: - PrayerObject Utils
 
-    /*
-     moved to using Model based functions and calling directly on prayer instead of constantly passing it in. Cleaner seperation of responsibilities.
-     func togglePrayerCompletion(for prayer: PrayerModel) {
-         triggerSomeVibration(type: .medium)
-         
-         if prayer.startTime <= Date() {
-             prayer.isCompleted.toggle()
-             if prayer.isCompleted {
-                 setPrayerScore(for: prayer)
-                 setPrayerLocation(for: prayer)
-                 cancelUpcomingNudges(for: prayer.name)
-             } else {
-                 prayer.resetPrayer()
-             }
-             calculatePrayerStreak()
-         }
-     }
-
-    func setPrayerScore(for prayer: PrayerModel, atDate: Date = Date()) {
-        print("setting time at complete as: ", atDate)
-        prayer.timeAtComplete = atDate
-
-        if let completedTime = prayer.timeAtComplete {
-            let timeLeft = prayer.endTime.timeIntervalSince(completedTime)
-            let totalInterval = prayer.endTime.timeIntervalSince(prayer.startTime)
-            let score = timeLeft / totalInterval
-            prayer.numberScore = max(0, min(score, 1))
-
-            if let percentage = prayer.numberScore {
-                if percentage > 0.50 {
-                    prayer.englishScore = "Optimal"
-                } else if percentage > 0.25 {
-                    prayer.englishScore = "Good"
-                } else if percentage > 0 {
-                    prayer.englishScore = "Poor"
-                } else {
-                    prayer.englishScore = "Kaza"
-                }
-            }
-        }
-    }
-    
-    func setPrayerLocation(for prayer: PrayerModel) {
-        guard let location = ENV_LocationManager.manager.location else {
-            print("Location not available")
-            return
-        }
-        print("setting location at complete as: ", location.coordinate.latitude, "and ", location.coordinate.longitude)
-        prayer.latPrayedAt = location.coordinate.latitude
-        prayer.longPrayedAt = location.coordinate.longitude
-
-    }
-     
-     func cancelUpcomingNudges(for prayerName: String){
-         let center = UNUserNotificationCenter.current()
-         let identifiers = ["\(prayerName)Mid", "\(prayerName)End"]
-         center.removePendingNotificationRequests(withIdentifiers: identifiers)
-         print("✅ Canceled notifications for \(prayerName): [\(identifiers)]")
-     }
-     */
 
     func togglePrayerCompletion(for prayer: PrayerModel) {
         triggerSomeVibration(type: .medium)
@@ -646,21 +586,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func calculateDayScore(for date: Date) {
         let today = PrayerDay.date()
         let updatingToday = Calendar.current.isDate(date, inSameDayAs: today)
-        var runningScore: Double = 0.0
-        var objectsToCheck: [PrayerModel] = updatingToday ? todaysPrayers : loadPrayerObjects(for: date)
-        
-        for name in /*viewModel.*/orderedPrayerNames {
-            if let prayer = /*viewModel.*/objectsToCheck.first(where: { $0.name == name }){
-                let thisWeightedScore = prayer.weightedSummaryScoreFromNumberScore()
-                runningScore += thisWeightedScore
-                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with score: \(thisWeightedScore)")
-            }
-        }
-//        let returnVal = runningScore / 5
-//        if updatingToday {todaysScore = /*todaysScore*/ returnVal}
-//        else {dailyScores[date] = returnVal}
-        
-        let dayScore = runningScore / 5
+        let objectsToCheck: [PrayerModel] = updatingToday ? todaysPrayers : loadPrayerObjects(for: date)
+        // Average of the five prayers' points, unmarked = 0 (PrayerScoring).
+        let dayScore = PrayerScoring.dayScore(for: objectsToCheck)
 //        dailyScores[Calendar.current.startOfDay(for: date)] = dayScore
         if updatingToday { todaysScore = dayScore }
         saveDailyScore(for: date, score: dayScore)
@@ -796,10 +724,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         switch prayerStreakMode {
         case 1:
             return prayer.isCompleted
-        case 2:
-            return (prayer.numberScore ?? 0) > 0
-        default:
-            return (prayer.numberScore ?? 0) > 0.25
+        case 2:   // prayed within its window (not Qaza)
+            return prayer.isCompleted && (prayer.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001
+        default:  // on time or early
+            return prayer.isCompleted && (prayer.numberScore ?? 0) >= 0.8
         }
     }
     

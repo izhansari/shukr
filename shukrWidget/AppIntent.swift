@@ -9,18 +9,8 @@ import WidgetKit
 import AppIntents
 
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
-//    static var title: LocalizedStringResource = "Configuration"
-//    static var description = IntentDescription("This is an example widget.")
-//
-//    // An example configurable parameter.
-//    @Parameter(title: "this guy", default: "🛎️")
-//    var favoriteEmoji: String
-    static var title: LocalizedStringResource = "the title wip..."
-    static var description = IntentDescription("the description wip...")
-
-    // An example configurable parameter.
-    @Parameter(title: "this guy wip...", default: true)
-    var defaultViewIsCurrent: Bool
-
+    // The Prayers widget has nothing to configure; with no parameters, Edit Widget has no
+    // options to show.
+    static var title: LocalizedStringResource = "Prayers"
+    static var description = IntentDescription("Today's prayers and how much time is left.")
 }
-

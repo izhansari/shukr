@@ -50,6 +50,21 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     var userLocation: CLLocation?
     let locationUpdates = PassthroughSubject<CLLocation?, Never>()
     @Published var isAuthorized: Bool = false
+    @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
+    /// A city the user picked instead of sharing their location (App Review tests denial, and
+    /// prayer times shouldn't need GPS). Its coordinate lives in the app group's lastLatitude /
+    /// lastLongitude, which the widget already reads. GPS wins whenever it's authorized.
+    @Published private(set) var hasManualLocation: Bool =
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.bool(forKey: "manualLocation") ?? false
+    /// GPS when authorized, otherwise the picked city.
+    var effectiveLocation: CLLocation? {
+        if isAuthorized, let gps = manager.location { return gps }
+        return manualLocation
+    }
+    private var manualLocation: CLLocation? {
+        guard hasManualLocation, let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") else { return nil }
+        return CLLocation(latitude: group.double(forKey: "lastLatitude"), longitude: group.double(forKey: "lastLongitude"))
+    }
     /// Heading + qibla live here (see CompassState). Not @Published on this object on purpose.
     let compass = CompassState()
     var compassHeading: Double { compass.heading }
@@ -73,11 +88,34 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         startLocationServices()
     }
     
+    /// Use a picked city for prayer times and the qibla (see `hasManualLocation`).
+    func setManualLocation(_ coordinate: CLLocationCoordinate2D, name: String) {
+        let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        group?.set(coordinate.latitude, forKey: "lastLatitude")
+        group?.set(coordinate.longitude, forKey: "lastLongitude")
+        group?.set(name, forKey: "lastCityName")
+        group?.set(true, forKey: "manualLocation")
+        hasManualLocation = true
+        if !isAuthorized { useManualLocation() }
+    }
+
+    /// Feed the picked city through the same path a GPS fix takes. The compass works without
+    /// location permission, so the qibla still turns.
+    private func useManualLocation() {
+        guard let location = manualLocation else { return }
+        userLocation = location
+        locationUpdates.send(location)
+        manager.startUpdatingHeading()
+        updateQibla()
+    }
+
     // Function to start location services
     func startLocationServices() {
+        authorizationStatus = manager.authorizationStatus
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             isAuthorized = true
+            UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "locationWasAuthorized")
             manager.startUpdatingLocation()
             manager.startUpdatingHeading()
         case .notDetermined:
@@ -86,6 +124,16 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         case .denied, .restricted:
             isAuthorized = false
             print("Location services are denied or restricted.")
+            // Location was on and has just been turned off: drop the picked city so the
+            // welcome screen asks again — the best chance of getting it back. Someone who
+            // denied from the start and picked a city keeps it.
+            let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+            if group?.bool(forKey: "locationWasAuthorized") == true {
+                group?.set(false, forKey: "locationWasAuthorized")
+                group?.set(false, forKey: "manualLocation")
+                hasManualLocation = false
+            }
+            useManualLocation()
         @unknown default:
             isAuthorized = false
             print("Unknown authorization status.")

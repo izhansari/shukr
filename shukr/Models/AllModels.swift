@@ -152,28 +152,12 @@ class PrayerModel {
         else{ return .missed }
     }
     
+    /// Scores the prayer as marked at `atDate` (PrayerScoring has the rule).
     func setPrayerScore(atDate: Date = Date()) {
-        print("setting time at complete as: ", atDate)
         timeAtComplete = atDate
-
-        if let completedTime = timeAtComplete {
-            let timeLeft = endTime.timeIntervalSince(completedTime)
-            let totalInterval = endTime.timeIntervalSince(startTime)
-            let score = timeLeft / totalInterval
-            numberScore = max(0, min(score, 1))
-
-            if let percentage = numberScore {
-                if percentage > 0.50 {
-                    englishScore = "Optimal"
-                } else if percentage > 0.25 {
-                    englishScore = "Good"
-                } else if percentage > 0 {
-                    englishScore = "Poor"
-                } else {
-                    englishScore = "Kaza"
-                }
-            }
-        }
+        let score = PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
+        numberScore = score
+        englishScore = PrayerScoring.grade(for: score).rawValue
     }
     
     func setPrayerLocation(with location: CLLocation?) {
@@ -203,45 +187,7 @@ class PrayerModel {
     }
     
     func getColorForPrayerScore() -> Color {
-        guard let score = numberScore else { return .gray }
-
-        if score >= 0.50 {
-            return .green
-        } else if score >= 0.25 {
-            return .yellow
-        } else if score > 0 {
-            return .red
-        } else {
-            return .gray
-        }
-    }
-    
-    func weightedSummaryScoreFromNumberScore() -> Double {
-        guard let score = numberScore else { return 0 }
-        
-        // If prayed in the first 25% of the window, return 100%
-        if score >= 0.75 {
-            return 1.0
-        }
-        
-        // For prayers after the 25% mark
-        // Map the score from [0, 0.75] to [0.65, 0.9]
-        let scaledScore = (score / 0.75) * 0.25 + 0.65
-        
-        return scaledScore
-        
-//        guard let score = numberScore else { return 0 }
-//        if score >= 0.75 {
-//            return 1
-//        } else if score >= 0.5 {
-//            return 0.9
-//        } else if score > 0.25 {
-//            return 0.8
-//        } else if score > 0 {
-//            return 0.7
-//        } else {
-//            return 0.0
-//        }
+        PrayerScoring.color(for: numberScore)
     }
     
 //    func weightedSummaryScoreFromEnglishScore() -> Double {

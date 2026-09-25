@@ -533,7 +533,7 @@ struct PrayerUtils {
     
     /// `date` is the prayer day the times are for; `nextFajr` caps Isha (see PrayerDay).
     static func createWindowsFromTimes(_ times: PrayerTimes, on date: Date = PrayerDay.date(), nextFajr: Date? = nil) -> [String : (Date, Date, TimeInterval)] {
-        let ishaEnd = PrayerDay.ishaEnd(on: date, nextFajr: nextFajr)
+        let ishaEnd = PrayerDay.ishaEnd(on: date, ishaStart: times.isha, nextFajr: nextFajr)
         
         func timesAndWindow(_ starTime: Date, _ endTime: Date) -> (Date, Date, TimeInterval) {
             return (starTime, endTime, endTime.timeIntervalSince(starTime))

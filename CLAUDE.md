@@ -41,30 +41,40 @@ agent builds with xcodebuild. Nothing here has CI.
    to migrate. Still unverified on a real device.
 5. **General sluggishness lever:** migrate `SharedStateClass` from `ObservableObject` to
    `@Observable` (see Navigation section). Do it with a compiler in the loop.
-6. Then the App Store blockers below.
+6. **Compass freezes while moving** (owner, 2026-09-24, on device). The qibla arrow on the
+   circle stops updating while walking/driving and works again when standing still; the iOS
+   Compass app is fine at the same time, so it's ours. Not investigated yet. Leads, all
+   unverified: every GPS fix while moving goes through `PrayerViewModel.handleLocationChange`
+   (reverse geocode + `fetchPrayerTimes` + SwiftData save + notification rescheduling every
+   500 m / 30 s) and `storeLastCoordinate` writes the app group every ~50 m, which invalidates
+   every `@AppStorage` on it (see Re-render hygiene); `didUpdateHeading`'s 0.5° guard compares
+   against `compass.heading`; and whether `updateQibla()` from location fixes races the heading
+   path. Reproduce on device by walking with the app open, and check `Self._printChanges()` /
+   heading callback frequency.
+7. Then the App Store blockers below.
 
 ## Immediate goal: App Store submission
 
 Audit done 2026-09. Nothing below is fixed yet unless marked.
 
 Hard blockers (rejection or upload failure):
-- [ ] Location denied → infinite `GradientAnimationLoad()`; `if true` hardcoded at `shukrApp.swift:79`. Reviewers test denial. Needs the real "Location Access Required" UI and ideally manual city entry. (The welcome screen now holds after permission is granted until its button — which turns into "continue" — is tapped: `awaitingContinue` in shukrApp; a launch that's already authorized skips it.)
-- [ ] Widget config placeholder strings ("the title wip...") in `shukrWidget/AppIntent.swift:18-22`, visible in Edit Widget.
-- [ ] Template Live Activity ("Hello 😀", `http://www.apple.com`) registered in `shukrWidgetBundle.swift:15`. Delete.
-- [ ] Dev UI reachable by users: "My Dev Stuff" settings section toggled by tapping the "Calculation Method" header (`SettingsView.swift`, `showDevStuff`). Wrap in `#if DEBUG`. (The "Dev's WIP" menu entries are already `#if DEBUG` in the new hamburger `Menu`; the old `sideMenu` in Utils.swift still has them but is unreachable.)
-- [ ] Dead buttons: "Suggest Feature" (`SettingsView.swift:312`), "Cancel for X" (`:351`).
-- [ ] "Muslim Brand Explorer" links use expired signed CDN image URLs (`SettingsView.swift:77-83`) + third-party photos/marks. Remove or bundle own assets.
-- [ ] No `PrivacyInfo.xcprivacy` in app or widget. UserDefaults is a required-reason API (`NSPrivacyAccessedAPICategoryUserDefaults`, `CA92.1`). Declare location collection.
-- [ ] `TARGETED_DEVICE_FAMILY = "1,2"` but UI is phone-only and icon set lacks 76x76@2x iPad slot. Set to `"1"`.
-- [ ] Portal: App IDs need Time Sensitive Notifications + app group `group.betternorms.shukr.shukrWidget` enabled or archive signing fails.
+- [x] Location denied → infinite `GradientAnimationLoad()`. Fixed 2026-09-24: denied shows "open settings" + "or enter your city instead" (`CityPickerSheet`, MKLocalSearch); a picked city (`manualLocation` + lastLatitude/lastLongitude in the app group, `EnvLocationManager.effectiveLocation`) drives prayer times, widget and qibla; GPS wins when authorized. Revoking location after it was once allowed (`locationWasAuthorized`) drops the city so the welcome screen asks again. The welcome screen then asks for notifications (`NotificationStatus`); a quiet "continue without reminders" link keeps it non-blocking (App Review 4.5.4 / 5.1.1 — don't make it a hard gate). Unverified on device: whether heading updates arrive while location is denied (manual-city qibla may not turn).
+- [x] (2026-09-24) Widget config placeholder strings ("the title wip...") in `shukrWidget/AppIntent.swift:18-22`, visible in Edit Widget.
+- [x] (2026-09-24, removed from the bundle; file left) Template Live Activity ("Hello 😀", `http://www.apple.com`) registered in `shukrWidgetBundle.swift:15`. Delete.
+- [x] (2026-09-24, `#if DEBUG`) Dev UI reachable by users: "My Dev Stuff" settings section toggled by tapping the "Calculation Method" header (`SettingsView.swift`, `showDevStuff`). Wrap in `#if DEBUG`. (The "Dev's WIP" menu entries are already `#if DEBUG` in the new hamburger `Menu`; the old `sideMenu` in Utils.swift still has them but is unreachable.)
+- [x] (2026-09-24, removed) Dead buttons: "Suggest Feature" (`SettingsView.swift:312`), "Cancel for X" (`:351`).
+- [x] (2026-09-24, removed) "Muslim Brand Explorer" links use expired signed CDN image URLs (`SettingsView.swift:77-83`) + third-party photos/marks. Remove or bundle own assets.
+- [x] (2026-09-24: both targets, UserDefaults CA92.1 + 1C8F.1, no collected data — nothing leaves the device) No `PrivacyInfo.xcprivacy` in app or widget. UserDefaults is a required-reason API (`NSPrivacyAccessedAPICategoryUserDefaults`, `CA92.1`). Declare location collection.
+- [x] (2026-09-24) `TARGETED_DEVICE_FAMILY = "1,2"` but UI is phone-only and icon set lacks 76x76@2x iPad slot. Set to `"1"`.
+- [x] (signing works: 2.0 (3) uploaded to TestFlight 2026-09-24) Portal: App IDs need Time Sensitive Notifications + app group `group.betternorms.shukr.shukrWidget` enabled or archive signing fails.
 
 App Store Connect (outside repo): privacy policy URL, support URL, App Privacy label (precise
 location, on-device), screenshots 6.9"/6.5", description/keywords/category/age rating,
-`ITSAppUsesNonExemptEncryption = false` in Info.plist, content-rights docs for `quran.sqlite`,
+`ITSAppUsesNonExemptEncryption = false` in Info.plist (done 2026-09-24), content-rights docs for `quran.sqlite`,
 `english_hilali.sqlite` (KFGQPC copyright) and `KFGQPCUthmanTahaNaskh.ttf`.
 
 Quality (fix before launch):
-- [ ] Arabic font never loads: `DailyAyah.swift:420` passes the filename to `.custom()`, and the app target's `Info.plist` has no `UIAppFonts` (only the widget's does).
+- [x] (2026-09-24) Arabic font never loads: `DailyAyah.swift:420` passes the filename to `.custom()`, and the app target's `Info.plist` has no `UIAppFonts` (only the widget's does).
 - [ ] `fatalError` on `ModelContainer` failure (`shukrApp.swift:45`) — first schema migration failure hard-crashes existing users.
 - [ ] 187 `print()` calls, some logging coordinates. Gate with `#if DEBUG`.
 - [ ] `NSMotionUsageDescription` declared but `PrayerTracker.swift` (only CMMotion user) is unreferenced. Drop both.
@@ -208,16 +218,45 @@ commented out in the body and there's no route to it now. `bottomTabPosition == 
 never set anymore; the branches in `BottomSharedView`, `mainCircle.swift`, and `TopBar` that
 check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push is unused.
 
-## Prayer day rollover (PrayerDay.swift)
+## Prayer scoring (Models/PrayerScoring.swift)
 
-The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this, Isha
-ended 11:59 PM and there was nothing to mark). Settings → "Day Rollover" → "Isha end time"
+Agreed with the owner 2026-09-24; the one rule, used by the app, the widget checkmark, the
+"I already prayed" notification action and the time editor (`PrayerModel.setPrayerScore`).
+`numberScore` = points / 100: **Early** (≤ 30 min after the adhan) 100 · **On time** (first
+half of the rest of the window) 99–80 · **Late** (second half) 79–60 · **Qaza** (after the
+window) 40 · **Missed** nil/0. Linear from 100 at 30 min to 60 at the window's end, so the
+only drop is 60 → 40. Qaza counts on purpose (the app gamifies praying; late beats never).
+Day score = average of the five, unmarked = 0 (`PrayerScoring.dayScore`). Colours: Early green,
+On time yellow, Late red, Qaza gray (`PrayerScoring.color`, also the map pins). Day-chart
+reference lines at 80 / 60 / 40. Streak modes 2 / 3 now mean "in window" / "on time or better".
+Before this, `numberScore` was the fraction of the window left (0 = Kaza) and the day score
+reshaped it (first quarter 100 %, else 65–90 %, Kaza 65 % — no reason to beat the deadline).
+`recalculateHistoryIfNeeded` (launch, once, flag `prayerScoringV2Recalculated` in the app
+group) rescored every completed row from `timeAtComplete` (2 rows without one got a tap time
+back from the old score), moved old Isha ends to 11:59 PM and rewrote every `DailyPrayerScore`.
+It first copies the store to `<group>/Library/Backups/shukr.store.before-scoring-v2` (Library is
+reachable with `devicectl device copy from`; the store at the group root is not). Ran on the
+owner's phone 2026-09-24; a copy of that backup is on their Desktop
+(`shukr-backup-2026-09-24-before-scoring`). Owner's 802 completed prayers: Early 142, On time
+222, Late 289, Qaza 149; average day score 29.3 → 28.2.
+Not done yet: a "How scoring works" ⓘ card (Early / On time·Late / Qaza / Missed + "day score
+is the average") on the day score; the "all five on time" streak.
+
+**Isha ends at 11:59 PM** (`PrayerDay.ishaEnd`, or an hour after Isha starts if that's later,
+for summers far north), no longer at the rollover. The rollover ("Day Rolls Over At" in
+Settings) only keeps the day's prayers up so a late Isha can still be marked — as Qaza.
+
+
+
+The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this there was
+nothing to mark it against after midnight). Since 2026-09-24 Isha's *window* still ends at 11:59
+PM — see Prayer scoring. Settings → "Day Rollover" → "Isha end time"
 Midnight / 1 / 2 / 3 AM, stored in the app group as `prayerDayRolloverHours` so the
 widget agrees. `Models/PrayerDay.swift` (both targets) is the only place that knows about it:
 `PrayerDay.date()` / `start()` = which calendar day is "today" (before the rollover hour it's
 still yesterday's), `rowRange(forDayStarting:)` = the calendar-day bounds every "today's
-prayers" fetch uses, `ishaEnd(on:nextFajr:)` = a second before the rollover, capped at the next
-Fajr, `rolloverInstant(after:)` = when the app's daily refresh timer fires. Prayer rows stay
+prayers" fetch uses, `ishaEnd(on:ishaStart:nextFajr:)` = 11:59:59 PM (or Isha
+start + 1 h), capped at the next Fajr — not the rollover, `rolloverInstant(after:)` = when the app's daily refresh timer fires. Prayer rows stay
 keyed by the calendar day their Fajr falls on; `fetchPrayerTimes` rewrites an uncompleted
 Isha's `endTime` when the setting changes, so the current day picks it up at once. Everything
 that used `Calendar.startOfDay(for: Date())` for "today" in PrayerViewModel, the summary

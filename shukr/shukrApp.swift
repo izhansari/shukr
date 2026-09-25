@@ -7,6 +7,9 @@
 
 import SwiftUI
 import SwiftData
+import CoreLocation
+import UserNotifications
+import CoreHaptics
 
 
 @main
@@ -18,6 +21,9 @@ struct shukrApp: App {
     // First define the two @StateObject properties *without* immediate assignment:
     @StateObject var environmentLocationManager: EnvLocationManager
     @StateObject var prayerViewModel: PrayerViewModel
+    /// Notifications turned off while shukr is in the background: the welcome screen asks again
+    /// when it comes back, same as at launch.
+    @ObservedObject private var notificationStatus = NotificationStatus.shared
 
 
 
@@ -25,7 +31,9 @@ struct shukrApp: App {
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     /// Set when the welcome screen asks for location; the app waits for its "continue" instead
     /// of jumping in the instant permission lands. A launch that's already authorized skips it.
-    @State private var awaitingContinue = false
+    /// Also set at launch when notifications were last seen off, so the welcome screen asks for
+    /// them again (read from a cached flag so there's no flash of the main page first).
+    @State private var awaitingContinue = NotificationStatus.lastSeenDenied
 
     var sharedModelContainer: ModelContainer = {
         // Store lives in the app group so the widget can read/write it too. Schema + location
@@ -49,6 +57,8 @@ struct shukrApp: App {
             // Built-in mantras as rows, tasks/sessions linked to their mantra, task order.
             // Every launch, cheap on a healthy store; covers upgrades and fresh installs alike.
             SharedStore.runV2DataPass(in: container)
+            // Rows scored by the old rule (fraction of window left) → points, once.
+            PrayerScoring.recalculateHistoryIfNeeded(in: container)
             return container
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
@@ -81,39 +91,25 @@ struct shukrApp: App {
             
             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
             NavigationStack{
-                if environmentLocationManager.isAuthorized && !awaitingContinue {
+                if (environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation) && !awaitingContinue {
                     PrayerTimesView()
                         .transition(.blurReplace())
                     //.transition(.opacity.animation(.easeInOut(duration: 0.3)))
                     //.toolbar(.hidden, for: .tabBar) /// <-- Hiding the TabBar for a ProfileView.
                 }
                 else{
-                    ZStack{
-                        if true {
-                            GradientAnimationLoad(awaitingContinue: $awaitingContinue)
-                        }
-                        else{
-                            VStack {
-                                Text("Location Access Required")
-                                    .font(.headline)
-                                    .padding()
-                                Text("Please allow location access to fetch accurate prayer times.")
-                                    .multilineTextAlignment(.center)
-                                    .padding()
-                                Button("Allow Location Access") {
-                                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                                        UIApplication.shared.open(url)
-                                    }
-                                }
-                                .padding()
-                            }
-                        }
-                    }
-                    .transition(.blurReplace())
+                    GradientAnimationLoad(awaitingContinue: $awaitingContinue)
+                        .transition(.blurReplace())
                 }
                 
             }
             .environmentObject(prayerViewModel)
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+                Task { await notificationStatus.refresh() }
+            }
+            .onChange(of: notificationStatus.isOn) { _, isOn in
+                if isOn == false { awaitingContinue = true }
+            }
             .preferredColorScheme(
                 colorModeToggleNew == 0 ? .light :
                     colorModeToggleNew == 1 ? .dark :
@@ -142,6 +138,36 @@ struct shukrApp: App {
 
 
 
+/// Notification permission for the welcome screen: nil = not asked yet, true = on, false = off.
+/// One shared instance so the AppDelegate's permission request can refresh it when answered.
+final class NotificationStatus: ObservableObject {
+    static let shared = NotificationStatus()
+    private static let deniedKey = "notificationsLastSeenDenied"
+    static var lastSeenDenied: Bool { UserDefaults.standard.bool(forKey: deniedKey) }
+
+    @Published private(set) var isOn: Bool? = NotificationStatus.lastSeenDenied ? false : nil
+
+    @MainActor
+    func refresh() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        let value: Bool?
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral: value = true
+        case .denied: value = false
+        default: value = nil
+        }
+        if isOn != value { isOn = value }
+        UserDefaults.standard.set(value == false, forKey: Self.deniedKey)
+    }
+
+    /// Ask (first time) — the system shows its prompt once; after that it's Settings only.
+    func request() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+            Task { await self.refresh() }
+        }
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
     let notificationDelegate = NotificationDelegate()
     
@@ -155,6 +181,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             } else {
                 print("Notification permission denied")
             }
+            Task { await NotificationStatus.shared.refresh() }
         }
     }
     
@@ -334,6 +361,10 @@ import SwiftUI
 
 struct GradientAnimationLoad: View {
     @Binding var awaitingContinue: Bool
+    /// "continue" was tapped: rings ripple in from the edges to the circle, haptics follow them,
+    /// the circle blooms, then the app dissolves in. Longer than a plain crossfade on purpose
+    /// (owner wanted it to feel magical). Timings live in `WelcomeRipple`.
+    @State private var entering = false
     @State private var noiseOpacity: Double = 0.2
     @State private var dummyDarkOn: Bool = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
@@ -350,9 +381,26 @@ struct GradientAnimationLoad: View {
                 .opacity(noiseOpacity)
                 .ignoresSafeArea()
             
+            // Rings that ripple in from the screen edges to the circle on "continue".
+            WelcomeRippleRings(active: entering)
+                .allowsHitTesting(false)
+
             // Glassmorphic Card
             GlassmorphicCard()
                 .frame(width: 200, height: 200)
+                // A small bounce as each ring lands, then a bloom as the app comes in.
+                .keyframeAnimator(initialValue: 1.0, trigger: entering) { content, scale in
+                    content.scaleEffect(scale).brightness((scale - 1) * 0.8)
+                } keyframes: { _ in
+                    KeyframeTrack {
+                        LinearKeyframe(1, duration: WelcomeRipple.arrivals[0])
+                        CubicKeyframe(1.035, duration: 0.08)
+                        CubicKeyframe(1, duration: WelcomeRipple.gap - 0.08)
+                        CubicKeyframe(1.045, duration: 0.08)
+                        CubicKeyframe(1, duration: WelcomeRipple.gap - 0.08)
+                        SpringKeyframe(1.14, duration: 0.5, spring: .bouncy)
+                    }
+                }
                 .onTapGesture {
                     dummyDarkOn.toggle()
                     if dummyDarkOn{colorModeToggleNew = 0}
@@ -360,11 +408,16 @@ struct GradientAnimationLoad: View {
                     print(dummyDarkOn)
                 }
             
-            VStack{
+            VStack(spacing: 14){
                 Spacer()
-                GlassmorphicButton(awaitingContinue: $awaitingContinue)
+                WelcomeStatusText()
+                GlassmorphicButton(awaitingContinue: $awaitingContinue, onEnter: enterApp)
                     .frame(width: 200, height: 50)
+                WelcomeSecondaryLinks(onEnter: enterApp)
             }
+            .opacity(entering ? 0 : 1)
+            .animation(.easeOut(duration: 0.35), value: entering)
+            .allowsHitTesting(!entering)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) {
@@ -372,6 +425,154 @@ struct GradientAnimationLoad: View {
             }
         }
 //        .preferredColorScheme(dummyDarkOn ? .dark : .light)
+    }
+
+    private func enterApp() {
+        guard !entering else { return }
+        entering = true
+        WelcomeHaptics.playRipple()
+        DispatchQueue.main.asyncAfter(deadline: .now() + WelcomeRipple.dissolveAt) {
+            withAnimation(.easeInOut(duration: 0.8)) { awaitingContinue = false }
+        }
+    }
+}
+
+// MARK: - Welcome Ripple
+/// Timings shared by the rings, the circle's bounces and the haptics so they stay in step.
+enum WelcomeRipple {
+    static let travel = 0.8          // edge → circle
+    static let gap = 0.2             // between rings
+    static let starts: [Double] = [0, gap, gap * 2]
+    static var arrivals: [Double] { starts.map { $0 + travel } }
+    static var dissolveAt: Double { arrivals[2] + 0.15 }
+}
+
+/// Three faint rings drifting in from past the screen edges to the welcome circle, one after
+/// another — sharpening and speeding up as they close in, landing with a slight overshoot like
+/// a wave meeting the shore — then a soft glow at the circle. Invisible until `active` flips.
+struct WelcomeRippleRings: View {
+    var active: Bool
+
+    private struct Frame {
+        var scale: Double = 7
+        var opacity: Double = 0
+        var blur: Double = 6
+    }
+
+    var body: some View {
+        ZStack {
+            ForEach(WelcomeRipple.starts.indices, id: \.self) { i in
+                Circle()
+                    .stroke(Color.white.opacity(0.22), lineWidth: 1.5)
+                    .frame(width: 200, height: 200)
+                    .keyframeAnimator(initialValue: Frame(), trigger: active) { content, f in
+                        content.scaleEffect(f.scale).opacity(f.opacity).blur(radius: f.blur)
+                    } keyframes: { _ in
+                        let start = WelcomeRipple.starts[i]
+                        let travel = WelcomeRipple.travel
+                        KeyframeTrack(\.scale) {
+                            LinearKeyframe(7, duration: start)
+                            // Ease in: slow from the edge, quickening as it's pulled to the centre.
+                            CubicKeyframe(1.08, duration: travel * 0.85)
+                            CubicKeyframe(0.94, duration: travel * 0.15)   // overshoot into the circle
+                            CubicKeyframe(1.0, duration: 0.12)
+                        }
+                        KeyframeTrack(\.opacity) {
+                            LinearKeyframe(0, duration: start)
+                            CubicKeyframe(1, duration: travel * 0.6)
+                            LinearKeyframe(1, duration: travel * 0.4)
+                            CubicKeyframe(0, duration: 0.18)
+                        }
+                        KeyframeTrack(\.blur) {
+                            LinearKeyframe(6, duration: start)
+                            CubicKeyframe(0, duration: travel)
+                        }
+                    }
+            }
+
+            // Glow at the circle once the last ring lands.
+            Circle()
+                .fill(Color.white.opacity(0.18))
+                .frame(width: 200, height: 200)
+                .keyframeAnimator(initialValue: Frame(scale: 1, opacity: 0, blur: 30), trigger: active) { content, f in
+                    content.scaleEffect(f.scale).opacity(f.opacity).blur(radius: f.blur)
+                } keyframes: { _ in
+                    KeyframeTrack(\.scale) {
+                        LinearKeyframe(1, duration: WelcomeRipple.arrivals[2])
+                        CubicKeyframe(1.7, duration: 0.7)
+                    }
+                    KeyframeTrack(\.opacity) {
+                        LinearKeyframe(0, duration: WelcomeRipple.arrivals[2])
+                        CubicKeyframe(1, duration: 0.2)
+                        CubicKeyframe(0, duration: 0.6)
+                    }
+                }
+        }
+    }
+}
+
+// MARK: - Welcome Haptics
+/// The rings, felt: each one a soft swell that builds as it closes in and a tap as it lands on
+/// the circle (a little stronger each time), then a low bloom that fades as the app appears.
+/// Falls back to plain impacts on hardware without Core Haptics.
+enum WelcomeHaptics {
+    private static var engine: CHHapticEngine?
+
+    static func playRipple() {
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            fallback()
+            return
+        }
+        do {
+            if engine == nil {
+                engine = try CHHapticEngine()
+                engine?.isAutoShutdownEnabled = true
+            }
+            try engine?.start()
+
+            func param(_ id: CHHapticEvent.ParameterID, _ value: Float) -> CHHapticEventParameter {
+                CHHapticEventParameter(parameterID: id, value: value)
+            }
+            var events: [CHHapticEvent] = []
+            for (i, start) in WelcomeRipple.starts.enumerated() {
+                let arrival = start + WelcomeRipple.travel
+                let strength = Float(i) * 0.12
+                // The approach: rises from nothing to a hum, the way the ring sharpens on screen.
+                let swellStart = start + WelcomeRipple.travel * 0.35
+                events.append(CHHapticEvent(eventType: .hapticContinuous, parameters: [
+                    param(.hapticIntensity, 0.28 + strength),
+                    param(.hapticSharpness, 0.1),
+                    param(.attackTime, Float(arrival - swellStart)),
+                    param(.releaseTime, 0.05)
+                ], relativeTime: swellStart, duration: arrival - swellStart))
+                // The landing.
+                events.append(CHHapticEvent(eventType: .hapticTransient, parameters: [
+                    param(.hapticIntensity, 0.55 + strength),
+                    param(.hapticSharpness, 0.3)
+                ], relativeTime: arrival))
+            }
+            // The bloom, fading out as the app dissolves in.
+            let bloomAt = WelcomeRipple.arrivals[2] + 0.02
+            events.append(CHHapticEvent(eventType: .hapticContinuous, parameters: [
+                param(.hapticIntensity, 0.5),
+                param(.hapticSharpness, 0.05),
+                param(.decayTime, 0.6),
+                param(.sustained, 0)
+            ], relativeTime: bloomAt, duration: 0.7))
+
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            try engine?.makePlayer(with: pattern).start(atTime: CHHapticTimeImmediate)
+        } catch {
+            fallback()
+        }
+    }
+
+    private static func fallback() {
+        let soft = UIImpactFeedbackGenerator(style: .soft)
+        let arrivals = WelcomeRipple.arrivals
+        for (delay, intensity) in [(arrivals[0], 0.55), (arrivals[1], 0.7), (arrivals[2], 0.85)] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { soft.impactOccurred(intensity: intensity) }
+        }
     }
 }
 
@@ -473,10 +674,44 @@ struct GlassmorphicCard: View {
 // MARK: - Glassmorphic Button
 struct GlassmorphicButton: View {
     @EnvironmentObject var envLocationManager: EnvLocationManager
+    @ObservedObject private var notifications = NotificationStatus.shared
     @Binding var awaitingContinue: Bool
+    var onEnter: () -> Void
     let settingsURL = URL(string: UIApplication.openSettingsURLString)
-    /// Permission is in: the same button becomes "continue" and the user goes in when ready.
-    private var readyToContinue: Bool { envLocationManager.isAuthorized && awaitingContinue }
+
+    /// One step at a time: location (or a picked city), then notifications, then "continue".
+    private enum Step { case location, openSettings, allowNotifications, notificationSettings, proceed }
+    private var locationReady: Bool { envLocationManager.isAuthorized || envLocationManager.hasManualLocation }
+    private var locationDenied: Bool {
+        envLocationManager.authorizationStatus == .denied || envLocationManager.authorizationStatus == .restricted
+    }
+    private var step: Step {
+        if !locationReady { return locationDenied ? .openSettings : .location }
+        switch notifications.isOn {
+        case .none: return .allowNotifications
+        case .some(false): return .notificationSettings
+        case .some(true): return .proceed
+        }
+    }
+    /// Permissions are in: the same button becomes "continue" and the user goes in when ready.
+    private var readyToContinue: Bool { step == .proceed && awaitingContinue }
+    private var title: String {
+        switch step {
+        case .location: "allow location access"
+        case .openSettings: "open settings"
+        case .allowNotifications: "allow notifications"
+        case .notificationSettings: "turn on notifications"
+        case .proceed: "continue"
+        }
+    }
+    private var symbol: String {
+        switch step {
+        case .location: "location"
+        case .openSettings: "gear"
+        case .allowNotifications, .notificationSettings: "bell"
+        case .proceed: "arrow.right"
+        }
+    }
     var body: some View {
         RoundedRectangle(cornerRadius: 15)
             .fill(Color.white.opacity(0.1))
@@ -487,25 +722,30 @@ struct GlassmorphicButton: View {
             .overlay(
                 VStack {
                     Button(action: {
-                        if readyToContinue {
-                            withAnimation(.easeInOut(duration: 0.4)) { awaitingContinue = false }
-                        } else if envLocationManager.manager.authorizationStatus == .denied{
-                            if let url = settingsURL {
-                                UIApplication.shared.open(url)
-                            }
-                        } else{
+                        switch step {
+                        case .proceed:
+                            onEnter()
+                        case .openSettings:
+                            if let url = settingsURL { UIApplication.shared.open(url) }
+                        case .location:
                             awaitingContinue = true   // hold the welcome screen until "continue"
                             envLocationManager.requestLocationPermission()
+                        case .allowNotifications:
+                            awaitingContinue = true
+                            notifications.request()
+                        case .notificationSettings:
+                            if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
                         }
                     }) {
-                        Label(readyToContinue ? "continue" : "allow location access",
-                              systemImage: readyToContinue ? "arrow.right" : "location")
+                        Label(title, systemImage: symbol)
                             .font(.footnote)
                             .fontWeight(.light)
                             .fontDesign(.rounded)
                             .foregroundColor(.white.opacity(readyToContinue ? 0.9 : 0.6))
                             .contentTransition(.opacity)
-                            .animation(.easeInOut(duration: 0.3), value: readyToContinue)
+                            .animation(.easeInOut(duration: 0.3), value: title)
 //                            .padding()
                     }
                     .buttonStyle(.plain)
@@ -525,6 +765,125 @@ struct GlassmorphicButton: View {
             }
     }
 }
+// MARK: - Welcome Status Text
+/// A line of copy above the welcome button saying where things stand, and which permissions
+/// are on. Same light, rounded type as the rest of the welcome screen.
+struct WelcomeStatusText: View {
+    @EnvironmentObject var envLocationManager: EnvLocationManager
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("lastCityName", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var cityName: String = ""
+    @ObservedObject private var notifications = NotificationStatus.shared
+    private var notificationsOn: Bool? { notifications.isOn }
+
+    private var status: CLAuthorizationStatus { envLocationManager.authorizationStatus }
+    private var locationDenied: Bool { status == .denied || status == .restricted }
+    private var locationReady: Bool { envLocationManager.isAuthorized || envLocationManager.hasManualLocation }
+
+    /// Speaks to the step the button is on: location first, then notifications.
+    private var message: String {
+        if !locationReady {
+            if locationDenied { return "location is off. turn it on in settings, or pick a city below." }
+            return "shukr uses your location to set prayer times and find the qibla."
+        }
+        if notificationsOn == false {
+            return "notifications are off, so shukr can't tell you when it's time to pray. turn them on in settings."
+        }
+        if notificationsOn == nil {
+            return "allow notifications so shukr can tell you when it's time to pray."
+        }
+        if !envLocationManager.isAuthorized, !cityName.isEmpty {
+            return "prayer times are set for \(cityName). turn on location anytime for your exact spot."
+        }
+        return "you're all set. prayer times and the qibla follow where you are, and shukr will remind you to pray."
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text(message)
+                .font(.caption)
+                .fontWeight(.light)
+                .fontDesign(.rounded)
+                .foregroundColor(.white.opacity(0.75))
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 260)
+                .contentTransition(.opacity)
+
+            HStack(spacing: 14) {
+                permission("location",
+                           on: envLocationManager.isAuthorized ? true : (locationDenied ? false : nil),
+                           onSymbol: "location.fill", offSymbol: "location.slash")
+                permission("notifications", on: notificationsOn,
+                           onSymbol: "bell.fill", offSymbol: "bell.slash")
+            }
+        }
+        // The gradient is pale green down here; a faint shadow keeps the light text legible.
+        .shadow(color: .black.opacity(0.25), radius: 3)
+        .animation(.easeInOut(duration: 0.3), value: message)
+        .task { await notifications.refresh() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await notifications.refresh() } }
+        }
+    }
+
+    /// on: true = granted, false = denied, nil = not asked yet.
+    private func permission(_ name: String, on: Bool?, onSymbol: String, offSymbol: String) -> some View {
+        Label(name, systemImage: on == false ? offSymbol : onSymbol)
+            .font(.caption2)
+            .fontWeight(.light)
+            .fontDesign(.rounded)
+            .foregroundColor(.white.opacity(on == true ? 0.8 : 0.45))
+            .strikethrough(on == false, color: .white.opacity(0.45))
+    }
+}
+
+// MARK: - Welcome Secondary Links
+/// The quiet way forward under the welcome button: pick a city when location is off, and go in
+/// without reminders when notifications are off. The big button always asks for the permission;
+/// these keep the app usable without it (App Review: permissions can't be required).
+struct WelcomeSecondaryLinks: View {
+    @EnvironmentObject var envLocationManager: EnvLocationManager
+    @ObservedObject private var notifications = NotificationStatus.shared
+    var onEnter: () -> Void
+    @State private var showCityPicker = false
+
+    private var locationDenied: Bool {
+        envLocationManager.authorizationStatus == .denied || envLocationManager.authorizationStatus == .restricted
+    }
+    private var locationReady: Bool { envLocationManager.isAuthorized || envLocationManager.hasManualLocation }
+    private var showCityLink: Bool { locationDenied && (!envLocationManager.hasManualLocation || notifications.isOn == true) }
+    private var showSkipNotifications: Bool { locationReady && notifications.isOn == false }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            if showCityLink {
+                link(envLocationManager.hasManualLocation ? "change city" : "or enter your city instead") {
+                    showCityPicker = true
+                }
+            }
+            if showSkipNotifications {
+                link("continue without reminders", action: onEnter)
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: showCityLink)
+        .animation(.easeInOut(duration: 0.3), value: showSkipNotifications)
+        .sheet(isPresented: $showCityPicker) {
+            CityPickerSheet()
+                .environmentObject(envLocationManager)
+        }
+    }
+
+    private func link(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(title, action: action)
+            .font(.footnote)
+            .fontWeight(.light)
+            .fontDesign(.rounded)
+            .foregroundColor(.white.opacity(0.7))
+            .underline()
+            .buttonStyle(.plain)
+            .shadow(color: .black.opacity(0.25), radius: 3)
+    }
+}
+
 //// MARK: - Preview
 //struct GradientAnimationLoad_Previews: PreviewProvider {
 //    static var previews: some View {

@@ -387,6 +387,13 @@ struct PrayerTimesView: View {
         /// VStack; they're fixed chrome now, so their room is kept and the Spacers split the
         /// page the same way.
         private let bottomChromeHeight: CGFloat = 86
+        /// With the sheet closed the circle sits at the centre of the safe area, exactly where the
+        /// welcome screen's circle is, so "continue" reads as that circle becoming this one. The
+        /// pager ignores the bottom safe area, so reserving the home-indicator inset (instead of
+        /// the bar's 86 pt) centres it; 86 pt put it ~26 pt high.
+        private let closedBottomReserve: CGFloat = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }
+            .first ?? 34
 
         var body: some View {
             VStack {
@@ -425,7 +432,7 @@ struct PrayerTimesView: View {
                     Spacer()
                 }
 
-                Color.clear.frame(height: bottomChromeHeight)
+                Color.clear.frame(height: showBottom ? bottomChromeHeight : closedBottomReserve)
             }
             .overlay(alignment: .top) {
                 // Post-salah chain-zikr prompt; floats near the top of this page only.
@@ -1007,12 +1014,9 @@ struct PrayerButton: View {
 //        return Date()
     }
     
+    /// "On time · 88" (PrayerScoring).
     private var completedTimeAndScore: String {
-        if let score = prayerObject.numberScore, score != 0 {
-            String(format: "%.0f%% left", score * 100)
-        }else{
-            "Kaza"
-        }
+        prayerObject.numberScore.map(PrayerScoring.summary(for:)) ?? "Missed"
     }
     
     

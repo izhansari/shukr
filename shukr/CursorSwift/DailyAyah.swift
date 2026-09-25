@@ -445,7 +445,7 @@ struct DailyAyahView: View {
                 if let ayah = viewModel.currentAyah {
                     VStack(spacing: 10) {
                         Text(ayah.arabic)
-                            .font(.custom("KFGQPCUthmanTahaNaskh.ttf", size: 36))
+                            .font(.custom("KFGQPCUthmanTahaNaskh", size: 36))
                             .lineLimit(nil)
                             .lineSpacing(5) // Adjust this value to increase or decrease line spacing
                             .padding()

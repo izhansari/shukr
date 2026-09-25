@@ -100,6 +100,10 @@ struct MantraEditorView: View {
     @State private var name: String
     @State private var fullText: String
     @State private var notes: String
+    // Field descriptions sit behind an info button in each header, like Settings.
+    @State private var showNameInfo = false
+    @State private var showFullTextInfo = false
+    @State private var showNotesInfo = false
 
     init(mantra: MantraModel?) {
         self.mantra = mantra
@@ -122,20 +126,30 @@ struct MantraEditorView: View {
         !trimmedName.isEmpty && !isDuplicate
     }
 
+    /// The row an info button reveals — same look as Settings' dropdown info.
+    private func fieldInfo(_ text: String) -> some View {
+        HStack(alignment: .top) {
+            Image(systemName: "info.circle")
+            Text(text).font(.caption)
+        }
+        .foregroundColor(.gray)
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     TextField("e.g. Durood", text: $name)
                         .autocorrectionDisabled(true)
+                    if showNameInfo {
+                        fieldInfo("Shown on task cards, in the picker and in history.")
+                    }
                 } header: {
-                    Text("Name")
+                    headerWithInfoButton(title: "Name", isPopupVisible: $showNameInfo)
                 } footer: {
                     if isDuplicate {
                         Text("A mantra with this name already exists.")
                             .foregroundStyle(.red)
-                    } else {
-                        Text("Shown on task cards, in the picker and in history.")
                     }
                 }
 
@@ -143,19 +157,21 @@ struct MantraEditorView: View {
                     TextEditor(text: $fullText)
                         .frame(minHeight: 80)
                         .autocorrectionDisabled(true)
+                    if showFullTextInfo {
+                        fieldInfo("The complete wording, Arabic or transliterated.")
+                    }
                 } header: {
-                    Text("Full mantra")
-                } footer: {
-                    Text("The complete wording, Arabic or transliterated.")
+                    headerWithInfoButton(title: "Full mantra", isPopupVisible: $showFullTextInfo)
                 }
 
                 Section {
                     TextEditor(text: $notes)
                         .frame(minHeight: 80)
+                    if showNotesInfo {
+                        fieldInfo("Why or when to read it, who recommended it, anything you want to remember.")
+                    }
                 } header: {
-                    Text("Notes")
-                } footer: {
-                    Text("Why or when to read it, who recommended it, anything you want to remember.")
+                    headerWithInfoButton(title: "Notes", isPopupVisible: $showNotesInfo)
                 }
 
                 if let mantra {
@@ -409,7 +425,7 @@ struct MantraSessionsSection: View {
                     // Same card colour, faintly tinted (tertiary grouped equals the page
                     // background in light mode and split the card).
                     .listRowBackground(Color(.secondarySystemGroupedBackground).overlay(Color.primary.opacity(0.04)))
-                    ForEach(day.sessions) { session in SessionRow(session: session) }
+                    ForEach(day.sessions) { session in SessionRow(session: session, showsMantraName: false) }
                 }
             }
         }
