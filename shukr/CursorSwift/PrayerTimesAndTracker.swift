@@ -1158,9 +1158,11 @@ struct PrayerButton: View {
 //        return Date()
     }
     
-    /// When the prayer can be marked as prayed: from its start (never before) up to now.
+    /// When the prayer can be marked as prayed: from its start (never before) up to now, and no
+    /// later than the day's rollover (past the window is Qaza, e.g. Isha at 12:30 AM).
     private var editTimeRange: ClosedRange<Date> {
-        prayerObject.startTime...max(prayerObject.startTime, Date())
+        let latest = min(Date(), PrayerDay.rolloverInstant(after: prayerObject.startTime))
+        return prayerObject.startTime...max(prayerObject.startTime, latest)
     }
 
     /// "On time · 88" (PrayerScoring).
@@ -1358,7 +1360,7 @@ struct PrayerButton: View {
                             // keeps the date it starts with: starting from a tap after midnight
                             // (rollover) put every picked time on the next day — always Qaza.
                             let marked = prayerObject.timeAtComplete ?? Date()
-                            selectedEditTimeDate = min(max(min(marked, prayerObject.endTime), prayerObject.startTime), editTimeRange.upperBound)
+                            selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
                             showTimePicker = true
                         }
                     }

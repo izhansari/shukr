@@ -134,11 +134,27 @@ struct SessionRow: View {
                         Text(" · ")
                         Text("\(String(format: "%.1fs", pace)) each")
                             .foregroundStyle(feelingPace ? Color.green : Color.secondary)
-                            .padding(.horizontal, 5)   // fixed: a layout change mid-hold must not disturb the touch
-                            .background {
-                                Capsule()
-                                    .fill(Color.green.opacity(feelingPace ? 0.15 : 0))
-                                    .overlay { PacePulseRing(beat: paceBeat) }
+                            .padding(.horizontal, 6)   // fixed: a layout change mid-hold must not disturb the touch
+                            .padding(.vertical, 2)
+                            .overlay {
+                                // While held: the pill's border fills once per count; when it
+                                // closes, the tick fires and the row glows.
+                                if feelingPace, let paceStart {
+                                    // The fill comes straight from the clock (no animation to
+                                    // reset each count, which sometimes coalesced and left the
+                                    // ring sitting full for a count).
+                                    TimelineView(.animation) { context in
+                                        let elapsed = max(context.date.timeIntervalSince(paceStart), 0)
+                                        let fill = elapsed.truncatingRemainder(dividingBy: paceInterval) / paceInterval
+                                        ZStack {
+                                            Capsule().stroke(Color.green.opacity(0.2), lineWidth: 1.5)
+                                            Capsule()
+                                                .trim(from: 0, to: fill)
+                                                .stroke(Color.green, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                                        }
+                                    }
+                                    .transition(.opacity)
+                                }
                             }
                     }
                 }
@@ -152,39 +168,51 @@ struct SessionRow: View {
         // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
         // lifts. A @GestureState resets itself on release *and* when the list takes the touch
         // for a scroll (onLongPressGesture's pressing callback ended after the first beat).
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .updating($isHolding) { value, holding, _ in
-                    holding = abs(value.translation.width) < 12 && abs(value.translation.height) < 12
-                }
-        )
-        .onChange(of: isHolding) { _, holding in
+        // Hold the row to feel the session's pace. UIKit's long press, not a SwiftUI gesture:
+        // scrolling comes first — any movement in the first 0.2 s fails the hold and the list
+        // scrolls (SwiftUI drag / long-press versions swallowed scrolls that began on a row).
+        // Once it has begun the list doesn't scroll, and it lasts until the finger lifts.
+        .gesture(PaceHoldGesture { holding in
             guard let pace else { return }
             holding ? startFeelingPace(pace) : stopFeelingPace()
-        }
+        })
         .onDisappear { stopFeelingPace() }
+        // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
+        .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
         // The whole row tints while held — the finger covers the pace text.
-        .listRowBackground(feelingPace ? Color.green.opacity(0.12) : nil)
+        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
     }
 
-    @GestureState private var isHolding = false
     @State private var feelingPace = false
     @State private var paceBeat = 0
+    @State private var paceStart: Date?
+    @State private var paceInterval: TimeInterval = 1
     @State private var paceTask: Task<Void, Never>?
 
     private func startFeelingPace(_ pace: TimeInterval) {
         paceTask?.cancel()
         paceTask = Task { @MainActor in
-            // A short hold first, so a touch that starts a scroll doesn't tick.
-            try? await Task.sleep(for: .milliseconds(250))
-            guard !Task.isCancelled else { return }
-            feelingPace = true
             let interval = min(max(pace, 0.12), 5)
+            let start = Date()
+            paceInterval = interval
+            paceStart = start
+            withAnimation(.easeOut(duration: 0.2)) { feelingPace = true }
             let generator = UIImpactFeedbackGenerator(style: .rigid)
+            generator.prepare()
+            // Count zero: tick and glow the moment the hold starts, then one per fill.
+            generator.impactOccurred(intensity: 0.8)
+            paceBeat += 1
+            // Each time the pill closes (every `interval` from `start`, the same clock the fill
+            // reads): the tick and the glow, together. Sleeping to the absolute beat time keeps
+            // the rhythm from drifting.
+            var beat = 1
             while !Task.isCancelled {
+                let next = start.addingTimeInterval(interval * Double(beat))
+                try? await Task.sleep(for: .seconds(max(next.timeIntervalSinceNow, 0)))
+                guard !Task.isCancelled else { break }
                 generator.impactOccurred(intensity: 0.8)
                 paceBeat += 1
-                try? await Task.sleep(for: .seconds(interval))
+                beat += 1
             }
         }
     }
@@ -192,31 +220,33 @@ struct SessionRow: View {
     private func stopFeelingPace() {
         paceTask?.cancel()
         paceTask = nil
-        feelingPace = false
+        withAnimation(.easeOut(duration: 0.2)) { feelingPace = false }
+        paceStart = nil
     }
 }
 
-/// A green ring that swells out of the pace capsule on each beat, fading to nothing as it goes.
-private struct PacePulseRing: View {
+/// A soft green glow hugging the row's edge that flashes once per `beat` — the same blurred
+/// double stroke as the qibla map's aligned-with-Mecca edge glow, at row size.
+private struct PaceEdgeGlow: View {
     let beat: Int
-    private struct Frame { var scale: Double = 1; var opacity: Double = 0 }
-
     var body: some View {
-        Capsule()
-            .stroke(Color.green, lineWidth: 1.5)
-            .keyframeAnimator(initialValue: Frame(), trigger: beat) { content, f in
-                content.scaleEffect(f.scale).opacity(f.opacity)
-            } keyframes: { _ in
-                KeyframeTrack(\.scale) {
-                    LinearKeyframe(1, duration: 0.01)
-                    CubicKeyframe(1.7, duration: 0.6)
-                }
-                KeyframeTrack(\.opacity) {
-                    LinearKeyframe(0.9, duration: 0.01)
-                    CubicKeyframe(0, duration: 0.6)   // gone by the time it's fully out
-                }
+        ZStack {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.7), lineWidth: 8)
+                .blur(radius: 8)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.green.opacity(0.6), lineWidth: 2)
+                .blur(radius: 2)
+        }
+        .keyframeAnimator(initialValue: 0.0, trigger: beat) { content, glow in
+            content.opacity(glow)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(1, duration: 0.08)
+                CubicKeyframe(0, duration: 0.5)
             }
-            .allowsHitTesting(false)
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -729,5 +759,23 @@ struct MantraPickerView: View {
     }
 }
 
+/// Long press that yields to scrolling: fails if the finger moves before `minimumPressDuration`.
+struct PaceHoldGesture: UIGestureRecognizerRepresentable {
+    var onChange: (Bool) -> Void
 
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let recognizer = UILongPressGestureRecognizer()
+        recognizer.minimumPressDuration = 0.2
+        recognizer.allowableMovement = 10
+        recognizer.cancelsTouchesInView = false
+        return recognizer
+    }
 
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began: onChange(true)
+        case .ended, .cancelled, .failed: onChange(false)
+        default: break
+        }
+    }
+}
