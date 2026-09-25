@@ -37,6 +37,13 @@ enum PrayerDay {
         Calendar.current.startOfDay(for: date(for: now))
     }
 
+    /// When the current prayer day began, as an instant: its calendar day plus the rollover
+    /// hours. Zikr sessions are timestamped, so "today's sessions" (task progress) means
+    /// sessions since this — a session at 1 AM with a 3 AM rollover counts for yesterday.
+    static func sessionDayStart(for now: Date = Date()) -> Date {
+        Calendar.current.date(byAdding: .hour, value: rolloverHours, to: start(for: now)) ?? start(for: now)
+    }
+
     /// Calendar-day bounds for fetching the prayer rows of the day that starts on `dayStart`.
     static func rowRange(forDayStarting dayStart: Date) -> (start: Date, end: Date) {
         let end = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? dayStart

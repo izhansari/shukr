@@ -66,6 +66,7 @@ struct PrayerTimesView: View {
     @State private var showSalahHistoryV1 = false
     @State private var showSalahHistoryV2 = false
     @State private var showZikrHistory = false
+    @State private var showInsightsPage = false
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -178,7 +179,8 @@ struct PrayerTimesView: View {
                         .clipped()
                         .id(NavPage.main)
                     
-                    SettingsView()
+                    SettingsPage { sharedState.horizontalPage = .main }
+                        .equatable()
                         .environmentObject(viewModel)
                         .containerRelativeFrame(.horizontal)
                         .clipped()
@@ -271,7 +273,8 @@ struct PrayerTimesView: View {
                 live: live,
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
                 showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
-                showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory
+                showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory,
+                showInsightsPage: $showInsightsPage
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
@@ -301,6 +304,40 @@ struct PrayerTimesView: View {
 
             }
         }
+        #if DEBUG
+        .task {
+            // Simulator check of the completion moment: launch with -demoPrayerCompletion. Uses
+            // the dev "test prayer times" (minutes around now), opens the salah sheet, then
+            // marks the current prayer and a missed one.
+            if ProcessInfo.processInfo.arguments.contains("-demoInsights") {
+                try? await Task.sleep(for: .seconds(1))
+                showInsightsPage = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
+                // Streak (fake 12) + on-time streak (fake 5) in the top bar, perfect day in the list.
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                try? await Task.sleep(for: .seconds(1.5))
+                NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
+                NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
+                NotificationCenter.default.post(name: .perfectDay, object: true)
+                return
+            }
+            guard ProcessInfo.processInfo.arguments.contains("-demoPrayerCompletion") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            viewModel.useTestPrayers = true
+            viewModel.fetchPrayerTimes(cameFrom: "demoPrayerCompletion")
+            viewModel.loadTodaysPrayerObjects()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+            for name in ["Asr", "Dhuhr", "Fajr"] {
+                try? await Task.sleep(for: .seconds(3))
+                if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }), !prayer.isCompleted {
+                    viewModel.togglePrayerCompletion(for: prayer)
+                }
+            }
+        }
+        #endif
 //        .onChange(of: sharedState.navPosition){ oldValue, newValue in
 //            if oldValue == .top && newValue == .main  {
 //                sharedState.resetTasbeehInputs()
@@ -318,6 +355,7 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
         .navigationDestination(isPresented: $showZikrHistory) { HistoryPageView() }
+        .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -452,6 +490,7 @@ struct PrayerTimesView: View {
         @Binding var showSalahHistoryV1: Bool
         @Binding var showSalahHistoryV2: Bool
         @Binding var showZikrHistory: Bool
+        @Binding var showInsightsPage: Bool
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
@@ -517,6 +556,7 @@ struct PrayerTimesView: View {
                                     .padding(.top, 18)
                                     .padding(.bottom, 10)
                                 Divider()
+                                menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("Mantras", "text.quote") { showMantrasPage = true }
                                 menuRow("Zikr History", "clock.arrow.circlepath") { showZikrHistory = true }
@@ -524,6 +564,14 @@ struct PrayerTimesView: View {
                                 Divider()
                                 menuRow("Salah History (V1)", "hammer") { showSalahHistoryV1 = true }
                                 menuRow("Salah History (V2)", "hammer") { showSalahHistoryV2 = true }
+                                menuRow("Test Streak Celebration", "heart") {
+                                    // Fake values (streak 11 → 12, on time 4 → 5); the real ones are untouched.
+                                    NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
+                                    NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
+                                }
+                                menuRow("Test Perfect Day", "sparkles") {
+                                    NotificationCenter.default.post(name: .perfectDay, object: true)   // true = demo
+                                }
                                 #endif
                             }
                             .padding(.bottom, 8)
@@ -779,32 +827,126 @@ struct TodaysPrayerListView: View {
     @Binding var dismissChainZikrItem: DispatchWorkItem?
     @Binding var showDailyAyahView: Bool
     let spacing: CGFloat = 6
-    
+
+    /// Done prayers fold out of the list so it only shows what's left; all five come back once
+    /// the day is complete. A prayer just marked lingers ~1 s so its dot can pop first.
+    @State private var lingering: Set<String> = []
+    /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
+    @State private var showDone = false
+    /// Perfect day: bumps to bounce the footer's sparkles; `demoPerfect` shows the footer
+    /// for the DEBUG "Test Perfect Day" row even when today isn't one.
+    @State private var perfectPulse = 0
+    @State private var demoPerfect = false
+    /// When the perfect-day cascade starts after the notification (rows are back by then).
+    static let perfectDayCascadeStart: Double = 1.5
+
     var body: some View {
+        // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
+        // this list is now in the tree from launch, before loadTodaysPrayerObjects runs.
+        let loaded = viewModel.orderedPrayerNames.filter { name in viewModel.todaysPrayers.contains { $0.name == name } }
+        let done = Set(loaded.filter { name in viewModel.todaysPrayers.first { $0.name == name }?.isCompleted == true })
+        let allDone = !loaded.isEmpty && done.count == loaded.count
+        let visible = loaded.filter { name in
+            !done.contains(name) || lingering.contains(name) || showDone || (allDone && lingering.isEmpty)
+        }
+        let foldedCount = loaded.count - visible.count
+        let perfect = allDone && loaded.allSatisfy { name in   // all five Early
+            (viewModel.todaysPrayers.first { $0.name == name }?.numberScore ?? 0) >= 0.9999
+        }
+
         VStack{
             VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
-                // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
-                // this list is now in the tree from launch, before loadTodaysPrayerObjects runs.
-                let loaded = viewModel.orderedPrayerNames.filter { name in viewModel.todaysPrayers.contains { $0.name == name } }
-                ForEach(loaded, id: \.self) { prayerName in
-                    PrayerButton(
-                        showChainZikrButton: $showChainZikrButton, dismissChainZikrItem: $dismissChainZikrItem,
-                        name: prayerName,
-                        viewModel: viewModel
-                    )
-                    .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
-                    
-                    if prayerName != "Isha" {
-                        Divider()
-                            .frame(height: 1)
-                            .background(Color(.secondarySystemFill))
-                            .padding(.top, -spacing / 2 - 0.5)
-                            .padding(.horizontal, 25)
+                ForEach(Array(visible.enumerated()), id: \.element) { index, prayerName in
+                    VStack(spacing: 0) {
+                        PrayerButton(
+                            showChainZikrButton: $showChainZikrButton, dismissChainZikrItem: $dismissChainZikrItem,
+                            name: prayerName,
+                            viewModel: viewModel
+                        )
+                        .padding(.bottom, index == visible.count - 1 ? 0 : spacing)
+
+                        if index < visible.count - 1 {
+                            Divider()
+                                .frame(height: 1)
+                                .background(Color(.secondarySystemFill))
+                                .padding(.top, -spacing / 2 - 0.5)
+                                .padding(.horizontal, 25)
+                        }
                     }
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading))))
+                }
+
+                // The folded ones, as one quiet line.
+                if (foldedCount > 0 || showDone) && !allDone {
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: showDone ? "chevron.up" : "checkmark.circle")
+                            Text(showDone ? "hide done" : "\(done.count) done")
+                        }
+                        .font(.caption)
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, visible.isEmpty ? 0 : 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
+                }
+
+                // All five Early today.
+                if (perfect && lingering.isEmpty) || demoPerfect {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.green)
+                            .symbolEffect(.bounce, value: perfectPulse)
+                        Text("perfect day")
+                    }
+                    .font(.caption)
+                    .fontDesign(.rounded)
+                    .fontWeight(.light)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 10)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
             .padding(.horizontal)
             .padding(.vertical, 12)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { note in
+            if note.object as? Bool == true {
+                withAnimation { demoPerfect = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 6) { withAnimation { demoPerfect = false } }
+            }
+            // A light tap per dot as they pop (PrayerButton), then the sparkles bounce.
+            let start = Self.perfectDayCascadeStart
+            for i in 0..<5 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.13 * Double(i)) {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5 + 0.1 * Double(i))
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.75) {
+                perfectPulse += 1
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
+            guard let event = note.object as? PrayerCompletionEvent else { return }
+            lingering.insert(event.name)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                    _ = lingering.remove(event.name)
+                }
+            }
+        }
+        .onChange(of: allDone) { _, isDone in
+            if isDone { showDone = false }   // the day's complete: everything's back anyway
         }
     }
  
@@ -862,6 +1004,8 @@ struct PrayerButton: View {
     @Binding var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
     
     @State private var toggledText: Bool = false
+    /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
+    @State private var completionPulse = 0
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
@@ -1014,6 +1158,11 @@ struct PrayerButton: View {
 //        return Date()
     }
     
+    /// When the prayer can be marked as prayed: from its start (never before) up to now.
+    private var editTimeRange: ClosedRange<Date> {
+        prayerObject.startTime...max(prayerObject.startTime, Date())
+    }
+
     /// "On time · 88" (PrayerScoring).
     private var completedTimeAndScore: String {
         prayerObject.numberScore.map(PrayerScoring.summary(for:)) ?? "Missed"
@@ -1051,6 +1200,7 @@ struct PrayerButton: View {
                                     .resizable()
                                     .foregroundStyle(overlayCircleColor.opacity(overlayCircleColor == .red  && colorScheme == .dark ? 0.5 : overlayCircleColor == .yellow  && colorScheme == .light ? 1 : 0.7))
                                     .frame(width: 12, height: 12)
+                                    .modifier(CompletionDotPop(pulse: completionPulse, color: overlayCircleColor))
                             }
                         
                         // Inner circle that’s filled (or clear) depending on whether the prayer is completed.
@@ -1144,6 +1294,17 @@ struct PrayerButton: View {
                  */
             )
             .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
+            .onChange(of: prayerObject.isCompleted) { _, done in
+                if done { completionPulse += 1 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { _ in
+                // Perfect day: the five dots pop one after another, once the list has all
+                // five back (TodaysPrayerListView brings them back ~1 s after the last mark).
+                let index = Double(viewModel.orderedPrayerNames.firstIndex(of: name) ?? 0)
+                DispatchQueue.main.asyncAfter(deadline: .now() + TodaysPrayerListView.perfectDayCascadeStart + 0.13 * index) {
+                    completionPulse += 1
+                }
+            }
             .alert(isPresented: $showMarkIncompleteAlert) {
                         Alert(
                             title: Text("Confirm Action"),
@@ -1158,42 +1319,14 @@ struct PrayerButton: View {
                         )
                     }
             .sheet(isPresented: $showTimePicker) {
-                VStack {
-                    Text("Edit Prayer Details for \(name)")
-                        .font(.headline)
-                        .padding()
-                    
-                    Text("\(prayerObject.name) Range:")
-                    Text("\(shortTime(prayerObject.startTime)) - \(shortTimePM(prayerObject.endTime))")
-                    
-//                    Text("Completion Time")
-                    DatePicker("", selection: $selectedEditTimeDate, displayedComponents: [.hourAndMinute])
-                        .datePickerStyle(WheelDatePickerStyle())
-                        .padding()
-                    
-//                    // Add a small map view
-//                    MiniMapView(coordinate: $selectedLocation)
-//                        .frame(height: 200)
-//                        .cornerRadius(10)
-//                        .padding()
-
-                    // Add a search bar
-//                    TextField("Search location", text: $searchQuery)
-//                        .textFieldStyle(RoundedBorderTextFieldStyle())
-//                        .padding()
-//                        .onSubmit {
-//                            searchLocation()
-//                        }
-                    
-                    Button("Save") {
-//                        viewModel.setPrayerScore(for: prayerObject, atDate: selectedEditTimeDate)
-                        prayerObject.setPrayerScore(atDate: selectedEditTimeDate)
-                        viewModel.calculatePrayerStreak()
-                        viewModel.calculateDayScore(for: prayerObject.startTime)
-                        showTimePicker = false
-                    }
-                    .padding()
-                }
+                PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
+                                    onCancel: { showTimePicker = false },
+                                    onSave: { date in
+                                        prayerObject.setPrayerScore(atDate: date)
+                                        viewModel.calculatePrayerStreak()
+                                        viewModel.calculateDayScore(for: prayerObject.startTime)
+                                        showTimePicker = false
+                                    })
             }
             .onTapGesture {
                 if isFuturePrayer {
@@ -1221,7 +1354,11 @@ struct PrayerButton: View {
                 LongPressGesture()
                     .onEnded { _ in
                         if prayerObject.isCompleted {
-                            selectedEditTimeDate = prayerObject.timeAtComplete ?? Date()
+                            // Open on the prayer's own day. The wheel only edits hour/minute and
+                            // keeps the date it starts with: starting from a tap after midnight
+                            // (rollover) put every picked time on the next day — always Qaza.
+                            let marked = prayerObject.timeAtComplete ?? Date()
+                            selectedEditTimeDate = min(max(min(marked, prayerObject.endTime), prayerObject.startTime), editTimeRange.upperBound)
                             showTimePicker = true
                         }
                     }
@@ -1316,4 +1453,14 @@ struct PagerLock: ViewModifier {
     func body(content: Content) -> some View {
         content.scrollDisabled(live.pagerLocked)
     }
+}
+
+/// The pager's Settings page. Equatable and always equal: it has no inputs that change, so when
+/// the pager re-renders (every page turn publishes `sharedState`) SwiftUI skips it instead of
+/// rebuilding the whole Settings Form. Settings still updates from its own state, @AppStorage
+/// and the view model.
+struct SettingsPage: View, Equatable {
+    var onBack: () -> Void
+    static func == (lhs: SettingsPage, rhs: SettingsPage) -> Bool { true }
+    var body: some View { SettingsView(onBack: onBack) }
 }

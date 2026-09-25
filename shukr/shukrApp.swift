@@ -16,7 +16,12 @@ import CoreHaptics
 struct shukrApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
-    @StateObject var sharedState = SharedStateClass()
+    /// @State, not @StateObject: the root only hands it down, it never reads it. As a
+    /// @StateObject every published change (each page turn) re-ran this body and rebuilt the
+    /// whole tree — the home screen rendered twice per change and Settings up to three times
+    /// (measured on device 2026-09-24: 944 Settings renders in 90 s of paging). Views that read
+    /// it still observe it through @EnvironmentObject.
+    @State private var sharedState = SharedStateClass()
     
     // First define the two @StateObject properties *without* immediate assignment:
     @StateObject var environmentLocationManager: EnvLocationManager
@@ -172,6 +177,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     let notificationDelegate = NotificationDelegate()
     
     func requestUserNotificationPermission() {
+        #if DEBUG
+        // Simulator demo launches (-demoPrayerCompletion / -demoStreakCelebration) record the
+        // screen; the permission alert would sit on top of what they're showing.
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") }) { return }
+        #endif
         // Request notification permissions (if not already requested)
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             if let error = error {

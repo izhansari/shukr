@@ -5,7 +5,9 @@ import WidgetKit
 
 struct SettingsView: View {
     @EnvironmentObject var viewModel: PrayerViewModel
-    @EnvironmentObject var sharedState: SharedStateClass
+    /// The header's back chevron. Passed in rather than read from `sharedState`, so this big
+    /// Form doesn't re-render on every page turn (it only ever wrote `horizontalPage`).
+    var onBack: () -> Void = {}
     @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
@@ -118,7 +120,7 @@ struct SettingsView: View {
                 // Page header: back to the main page, title, light/dark/auto toggle.
                 HStack {
                     Button(action: {
-                        sharedState.horizontalPage = .main
+                        onBack()
                     }) {
                         Image(systemName: "chevron.left")
                             .font(.title2)

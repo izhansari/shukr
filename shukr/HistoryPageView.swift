@@ -128,13 +128,95 @@ struct SessionRow: View {
             VStack(alignment: .trailing, spacing: 3) {
                 Text(session.totalCount.formatted())
                     .font(.title3.weight(.semibold))
-                Text(pace.map { "\(zikrDurationString(session.secondsPassed)) · \(String(format: "%.1fs", $0)) each" }
-                     ?? zikrDurationString(session.secondsPassed))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 0) {
+                    Text(zikrDurationString(session.secondsPassed))
+                    if let pace {
+                        Text(" · ")
+                        Text("\(String(format: "%.1fs", pace)) each")
+                            .foregroundStyle(feelingPace ? Color.green : Color.secondary)
+                            .padding(.horizontal, 5)   // fixed: a layout change mid-hold must not disturb the touch
+                            .background {
+                                Capsule()
+                                    .fill(Color.green.opacity(feelingPace ? 0.15 : 0))
+                                    .overlay { PacePulseRing(beat: paceBeat) }
+                            }
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: feelingPace)
             }
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
+        // lifts. A @GestureState resets itself on release *and* when the list takes the touch
+        // for a scroll (onLongPressGesture's pressing callback ended after the first beat).
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .updating($isHolding) { value, holding, _ in
+                    holding = abs(value.translation.width) < 12 && abs(value.translation.height) < 12
+                }
+        )
+        .onChange(of: isHolding) { _, holding in
+            guard let pace else { return }
+            holding ? startFeelingPace(pace) : stopFeelingPace()
+        }
+        .onDisappear { stopFeelingPace() }
+        // The whole row tints while held — the finger covers the pace text.
+        .listRowBackground(feelingPace ? Color.green.opacity(0.12) : nil)
+    }
+
+    @GestureState private var isHolding = false
+    @State private var feelingPace = false
+    @State private var paceBeat = 0
+    @State private var paceTask: Task<Void, Never>?
+
+    private func startFeelingPace(_ pace: TimeInterval) {
+        paceTask?.cancel()
+        paceTask = Task { @MainActor in
+            // A short hold first, so a touch that starts a scroll doesn't tick.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            feelingPace = true
+            let interval = min(max(pace, 0.12), 5)
+            let generator = UIImpactFeedbackGenerator(style: .rigid)
+            while !Task.isCancelled {
+                generator.impactOccurred(intensity: 0.8)
+                paceBeat += 1
+                try? await Task.sleep(for: .seconds(interval))
+            }
+        }
+    }
+
+    private func stopFeelingPace() {
+        paceTask?.cancel()
+        paceTask = nil
+        feelingPace = false
+    }
+}
+
+/// A green ring that swells out of the pace capsule on each beat, fading to nothing as it goes.
+private struct PacePulseRing: View {
+    let beat: Int
+    private struct Frame { var scale: Double = 1; var opacity: Double = 0 }
+
+    var body: some View {
+        Capsule()
+            .stroke(Color.green, lineWidth: 1.5)
+            .keyframeAnimator(initialValue: Frame(), trigger: beat) { content, f in
+                content.scaleEffect(f.scale).opacity(f.opacity)
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    LinearKeyframe(1, duration: 0.01)
+                    CubicKeyframe(1.7, duration: 0.6)
+                }
+                KeyframeTrack(\.opacity) {
+                    LinearKeyframe(0.9, duration: 0.01)
+                    CubicKeyframe(0, duration: 0.6)   // gone by the time it's fully out
+                }
+            }
+            .allowsHitTesting(false)
     }
 }
 

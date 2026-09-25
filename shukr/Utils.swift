@@ -2874,6 +2874,164 @@ struct sideMenu: View {
 }
 
 
+// MARK: - Streak label
+/// "♥ 12 Day Streak" in the top bar. A tap steps it to "✦ 4 Days On Time" (all five Early /
+/// On time), then "Max 20 Days", then back; it returns to the streak on its own after 3 s.
+/// Celebrations, each when its `…Celebration` counter bumps:
+/// - streak continued: the heart bounces and goes green, little hearts float up, the number
+///   rolls up from yesterday's to today's, success haptic;
+/// - on-time streak continued: right after that (or on its own), it flips to the on-time
+///   count, sparkles float up, the number rolls up, a second success haptic.
+struct StreakLabel: View {
+    let streak: Int
+    let maxStreak: Int
+    let onTimeStreak: Int
+    let celebration: Int
+    let onTimeCelebration: Int
+    var onTap: () -> Void = {}
+
+    private enum Mode { case streak, onTime, max }
+    @State private var mode: Mode = .streak
+    @State private var revert: DispatchWorkItem?
+    @State private var shownStreak: Int?
+    @State private var shownOnTime: Int?
+    @State private var celebrating = false
+    @State private var heartBurst = 0
+    @State private var sparkleBurst = 0
+
+    /// When the on-time beat plays after the streak's, this long after the streak's starts.
+    private static let secondBeatDelay: Double = 2.4
+
+    private var icon: String { mode == .onTime ? "sparkles" : "heart.fill" }
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Image(systemName: icon)
+                .foregroundColor(celebrating ? .green : .secondary)
+                .symbolEffect(.bounce, value: heartBurst + sparkleBurst)
+                .contentTransition(.symbolEffect(.replace))
+                .overlay {
+                    FloatingSymbols(symbol: "heart.fill", trigger: heartBurst)
+                    FloatingSymbols(symbol: "sparkle", trigger: sparkleBurst)
+                }
+            Group {
+                switch mode {
+                case .streak:
+                    count(shownStreak ?? streak, " Day Streak")
+                case .onTime:
+                    let n = shownOnTime ?? onTimeStreak
+                    count(n, n == 1 ? " Day On Time" : " Days On Time")
+                case .max:
+                    Text("Max \(maxStreak) Days").transition(.blurReplace)
+                }
+            }
+            .fixedSize()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            triggerSomeVibration(type: .light)
+            onTap()
+            let next: Mode = mode == .streak ? .onTime : mode == .onTime ? .max : .streak
+            show(next, for: next == .streak ? nil : 3)
+        }
+        .onChange(of: celebration) { _, _ in celebrateStreak() }
+        .onChange(of: onTimeCelebration) { _, _ in
+            // Just after the streak's own beat when both fire together (they usually do).
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.secondBeatDelay) { celebrateOnTime() }
+        }
+    }
+
+    private func count(_ n: Int, _ suffix: String) -> some View {
+        HStack(spacing: 0) {
+            Text("\(n)").contentTransition(.numericText(value: Double(n)))
+            Text(suffix)
+        }
+        .transition(.blurReplace)
+    }
+
+    /// Switch mode; `seconds` = come back to the streak after that long.
+    private func show(_ newMode: Mode, for seconds: Double?) {
+        revert?.cancel()
+        withAnimation { mode = newMode }
+        guard let seconds else { return }
+        let work = DispatchWorkItem { withAnimation { mode = .streak } }
+        revert = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func celebrateStreak() {
+        show(.streak, for: nil)
+        shownStreak = max(streak - 1, 0)          // start from yesterday's count…
+        withAnimation(.easeOut(duration: 0.25)) { celebrating = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            heartBurst += 1
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                shownStreak = streak               // …and roll up to today's
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            withAnimation(.easeInOut(duration: 0.6)) { celebrating = false }
+            shownStreak = nil
+        }
+    }
+
+    private func celebrateOnTime() {
+        shownOnTime = max(onTimeStreak - 1, 0)
+        show(.onTime, for: 3.2)
+        withAnimation(.easeOut(duration: 0.25)) { celebrating = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            sparkleBurst += 1
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { shownOnTime = onTimeStreak }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            withAnimation(.easeInOut(duration: 0.6)) { celebrating = false }
+            shownOnTime = nil
+        }
+    }
+}
+
+/// A few small symbols that rise from the streak icon and fade, on each `trigger` bump.
+private struct FloatingSymbols: View {
+    let symbol: String
+    let trigger: Int
+    private let spread: [(x: CGFloat, delay: Double)] = [(-12, 0), (0, 0.06), (12, 0.12), (-6, 0.2), (7, 0.26)]
+
+    private struct Frame { var y: CGFloat = 0; var opacity: Double = 0; var scale: Double = 0.4 }
+
+    var body: some View {
+        ZStack {
+            ForEach(spread.indices, id: \.self) { i in
+                Image(systemName: symbol)
+                    .font(.system(size: 8))
+                    .foregroundColor(.green)
+                    .keyframeAnimator(initialValue: Frame(), trigger: trigger) { content, f in
+                        content
+                            .scaleEffect(f.scale)
+                            .opacity(f.opacity)
+                            .offset(x: spread[i].x * min(-f.y / 30, 1), y: f.y)   // fan out as they rise
+                    } keyframes: { _ in
+                        KeyframeTrack(\.y) {
+                            LinearKeyframe(0, duration: spread[i].delay)
+                            CubicKeyframe(-30, duration: 1.0)
+                        }
+                        KeyframeTrack(\.opacity) {
+                            LinearKeyframe(0, duration: spread[i].delay)
+                            LinearKeyframe(1, duration: 0.12)
+                            CubicKeyframe(0, duration: 0.88)
+                        }
+                        KeyframeTrack(\.scale) {
+                            LinearKeyframe(0.4, duration: spread[i].delay)
+                            SpringKeyframe(1, duration: 0.4)
+                        }
+                    }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 struct TopBar: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: PrayerViewModel
@@ -2882,10 +3040,37 @@ struct TopBar: View {
     
     @AppStorage("prayerStreak") var prayerStreak: Int = 0 //prayerstreak_flag
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
+    @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
 
     @State private var showMaxStreakToggle: Bool = false
+    /// Tapping the city swaps it for the streak for a few seconds (same slide + fade the streak
+    /// label used before it was parked). A continued streak shows it too, with a celebration.
+    @State private var showStreak = false
+    @State private var hideStreakWork: DispatchWorkItem?
+    @State private var streakCelebration = 0
+    /// DEBUG only: the "Test Streak Celebration" menu row / -demoStreakCelebration post a fake
+    /// streak (the notification's object) so the roll-up is visible; the real one is untouched.
+    @State private var demoStreak: Int?
+    @State private var onTimeCelebration = 0
+    @State private var demoOnTime: Int?
 
     var viewState: SharedStateClass.ViewPosition { sharedState.navPosition }
+
+    /// The day's done: the circle shows the day's score (MainCircleView's summary condition),
+    /// and the top bar shows the streak for good instead of the city.
+    private var dayIsDone: Bool {
+        guard let prayer = viewModel.relevantPrayer else { return true }
+        return prayer.status() == .upcoming && prayer.name == "Fajr"
+    }
+    private var streakShowing: Bool { showStreak || dayIsDone }
+
+    private func revealStreak(for seconds: Double) {
+        hideStreakWork?.cancel()
+        withAnimation(.spring) { showStreak = true }
+        let work = DispatchWorkItem { withAnimation(.spring) { showStreak = false } }
+        hideStreakWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
 
     private var showZikr: Bool {
         sharedState.bottomTabPosition == .zikr
@@ -2899,9 +3084,8 @@ struct TopBar: View {
     
     static var descriptor: FetchDescriptor<SessionDataModel> {
         let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
+        let today = PrayerDay.sessionDayStart()   // the prayer day, rollover included
         let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
-        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
         
         let predicate = #Predicate<SessionDataModel> { session in
             session.startTime >= today && session.startTime < tomorrow
@@ -2990,14 +3174,31 @@ struct TopBar: View {
                     }
                      */
                     ZStack{
-                        // location label
+                        // location label — tap for the streak
                         HStack{
                             Image(systemName: "location.fill")
                                 .foregroundColor(.secondary)
                             Text(cityName)
                         }
-                        .opacity(showSalahList  ? 1 : 0)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            triggerSomeVibration(type: .light)
+                            revealStreak(for: 5)
+                        }
+                        .opacity(showSalahList && !streakShowing ? 1 : 0)
                         .offset(x: showSalahList || showMain ? 0 : -10) // move left
+                        .offset(y: streakShowing ? -10 : 0)             // up and out for the streak
+                        .allowsHitTesting(showSalahList && !streakShowing)
+
+                        // streak label //prayerstreak_flag
+                        StreakLabel(streak: demoStreak ?? max(prayerStreak, 0), maxStreak: max(maxPrayerStreak, demoStreak ?? 0),
+                                    onTimeStreak: demoOnTime ?? onTimeStreak,
+                                    celebration: streakCelebration, onTimeCelebration: onTimeCelebration) {
+                            revealStreak(for: 5)   // a tap on it keeps it up a little longer
+                        }
+                        .opacity(showSalahList && streakShowing ? 1 : 0)
+                        .offset(y: streakShowing ? 0 : 10)              // in from below
+                        .allowsHitTesting(showSalahList && streakShowing)
                         
                         HStack{
                             Image(systemName: dailyStatBool ? "circle.hexagonpath" : "clock")
@@ -3015,6 +3216,32 @@ struct TopBar: View {
                     .padding()
                     .frame(height: 24, alignment: .center)
                     .animation(.spring, value: viewState)
+                    .animation(.spring, value: dayIsDone)
+                    .onReceive(NotificationCenter.default.publisher(for: .prayerStreakContinued)) { note in
+                        demoStreak = note.object as? Int
+                        streakCelebration += 1
+                        revealStreak(for: 5)
+                        if demoStreak != nil {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { demoStreak = nil }
+                        }
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: .onTimeStreakContinued)) { note in
+                        demoOnTime = note.object as? Int
+                        onTimeCelebration += 1
+                        revealStreak(for: 8)   // long enough for both beats
+                        if demoOnTime != nil {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { demoOnTime = nil }
+                        }
+                    }
+                    #if DEBUG
+                    .task {
+                        // Simulator check of the celebration: launch with -demoStreakCelebration.
+                        guard ProcessInfo.processInfo.arguments.contains("-demoStreakCelebration") else { return }
+                        try? await Task.sleep(for: .seconds(2.5))
+                        NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
+                        NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
+                    }
+                    #endif
                 } else {
                     HStack {
                         Image(systemName: "location.circle")

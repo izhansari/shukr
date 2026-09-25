@@ -14,6 +14,9 @@ struct MainCircleView: View {
     @State private var currentTime = Date()
     @State private var timer: Timer?
     @State private var ogText = true  // to control the toggle text in the middle
+    /// A prayer was just marked done: the flourish plays over the circle, then clears.
+    @State private var flourish: PrayerCompletionEvent?
+    @State private var flourishID = 0
     @State private var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
     
     
@@ -34,114 +37,126 @@ struct MainCircleView: View {
                 .stroke(Color(.secondarySystemFill), lineWidth: 12)
                 .frame(width: 200, height: 200)
             
-            //Inner Content
-            if sharedState.bottomTabPosition == .zikr {
-//                Text("Zikr")
-                VStack{
-                    HStack(alignment: .center){
-                        Image(systemName: "circle.hexagonpath")
-                        Text("Zikr")
-                            .fontWeight(.bold)
+            //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
+            Group {
+                //Inner Content
+                if sharedState.bottomTabPosition == .zikr {
+    //                Text("Zikr")
+                    VStack{
+                        HStack(alignment: .center){
+                            Image(systemName: "circle.hexagonpath")
+                            Text("Zikr")
+                                .fontWeight(.bold)
+                        }
+                        .font(.title)
+                        Text("click to freestyle")
+                            .font(.callout)
+                            .foregroundColor(.secondary)
+                            .fontDesign(.rounded)
+                            .fontWeight(.light)
                     }
-                    .font(.title)
-                    Text("click to freestyle")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
-                }
-                Circle()
-                    .stroke(Color.green, lineWidth: 2) // Green outline
-                    .frame(width: 200, height: 200)
-                    .shadow(color: Color.green.opacity(0.5), radius: 5)
-                    .shadow(color: Color.green.opacity(0.3), radius: 10)
-                    .shadow(color: Color.green.opacity(0.2), radius: 15)
-                    .background(Color.clear) // Ensures the inside remains transparent
-            }
-            else if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
-                var progress: Double {
-                    guard prayer.status() == .current else { return 1 }
-                    let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
-                    let elapsed = currentTime.timeIntervalSince(prayer.startTime)
-                    let endVal = elapsed / totalDuration
-                    return endVal
-                }
-                var progressColor: Color {
-                    if progress >= 1 { return .clear }
-                    else if progress >= 0.75 { return .red }
-                    else if progress >= 0.5 { return .yellow }
-                    else { return .green }
-                }
-                var timeText: Text{
-                    switch prayer.status() {
-                    case .current:
-                        return Text(prayer.endTime, style: ogText ? .relative : .time)
-                    case .upcoming:
-                        if ogText { return Text("in \(prayer.startTime, style: .relative)") }
-                        else { return Text("at \(prayer.startTime, style: .time)") }
-                    default :
-                        return Text("Missed")
-                    }
-                }
-                ZStack{
-                    // progress arc
                     Circle()
-                        .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
-                        .stroke( progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .butt)
-                        )
-                        .rotationEffect(.degrees(-90))
+                        .stroke(Color.green, lineWidth: 2) // Green outline
                         .frame(width: 200, height: 200)
-                        .animation(animationStyle, value: currentTime/*progress*/)
-                        .animation(animationStyle, value: prayer.name)
-                    
-                    // Inner content
+                        .shadow(color: Color.green.opacity(0.5), radius: 5)
+                        .shadow(color: Color.green.opacity(0.3), radius: 10)
+                        .shadow(color: Color.green.opacity(0.2), radius: 15)
+                        .background(Color.clear) // Ensures the inside remains transparent
+                }
+                else if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+                    var progress: Double {
+                        guard prayer.status() == .current else { return 1 }
+                        let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
+                        let elapsed = currentTime.timeIntervalSince(prayer.startTime)
+                        let endVal = elapsed / totalDuration
+                        return endVal
+                    }
+                    /// The score you'd get marking it now (PrayerScoring): green Early, yellow On time,
+                    /// red Late. Was elapsed-time bands (yellow past 50 %) that didn't match the score.
+                    var progressColor: Color {
+                        if progress >= 1 { return .clear }
+                        return PrayerScoring.color(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: currentTime))
+                    }
+                    var timeText: Text{
+                        switch prayer.status() {
+                        case .current:
+                            return Text(prayer.endTime, style: ogText ? .relative : .time)
+                        case .upcoming:
+                            if ogText { return Text("in \(prayer.startTime, style: .relative)") }
+                            else { return Text("at \(prayer.startTime, style: .time)") }
+                        default :
+                            return Text("Missed")
+                        }
+                    }
                     ZStack{
-                        VStack{
-                            HStack(alignment: .center){
-                                Image(systemName: prayerIcon(for: prayer.name))
-                                Text(prayer.name)
-                                    .fontWeight(.bold)
-                            }
+                        // progress arc
+                        Circle()
+                            .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
+                            .stroke( progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .butt)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 200, height: 200)
+                            .animation(animationStyle, value: currentTime/*progress*/)
                             .animation(animationStyle, value: prayer.name)
-                            .font(.title)
-                           // Going back to the old way (want h and m with no comma. Better cleaner transition):
-                            if prayer.status() == .current{
-                                ExternalToggleText(
-                                    originalText: "ends \(shortTimePM(prayer.endTime))",
-                                    toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
-                                    externalTrigger: $ogText,  // Pass the binding
-                                    fontDesign: .rounded,
-                                    fontWeight: .thin,
-                                    hapticFeedback: true
-                                )
-                            }
-                            else if prayer.status() ==  .upcoming{
-                                ExternalToggleText(
-                                    originalText: "at \(shortTimePM(prayer.startTime))",
-                                    toggledText: timeUntilStart(prayer.startTime),
-                                    externalTrigger: $ogText,  // Pass the binding
-                                    fontDesign: .rounded,
-                                    fontWeight: .thin,
-                                    hapticFeedback: true
-                                )
-                            }else {
-                                Text("Missed")
-                            }
+                    
+                        // Inner content
+                        ZStack{
+                            VStack{
+                                HStack(alignment: .center){
+                                    Image(systemName: prayerIcon(for: prayer.name))
+                                    Text(prayer.name)
+                                        .fontWeight(.bold)
+                                }
+                                .animation(animationStyle, value: prayer.name)
+                                .font(.title)
+                               // Going back to the old way (want h and m with no comma. Better cleaner transition):
+                                if prayer.status() == .current{
+                                    ExternalToggleText(
+                                        originalText: "ends \(shortTimePM(prayer.endTime))",
+                                        toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
+                                        externalTrigger: $ogText,  // Pass the binding
+                                        fontDesign: .rounded,
+                                        fontWeight: .thin,
+                                        hapticFeedback: true
+                                    )
+                                }
+                                else if prayer.status() ==  .upcoming{
+                                    ExternalToggleText(
+                                        originalText: "at \(shortTimePM(prayer.startTime))",
+                                        toggledText: timeUntilStart(prayer.startTime),
+                                        externalTrigger: $ogText,  // Pass the binding
+                                        fontDesign: .rounded,
+                                        fontWeight: .thin,
+                                        hapticFeedback: true
+                                    )
+                                }else {
+                                    Text("Missed")
+                                }
                             
                             
-//                            timeText
-////                                .foregroundColor(.primary.opacity(0.7))
-//                                .fontDesign(.rounded)
-//                                .fontWeight(.thin)
-//                                .foregroundStyle(.secondary)
-//                                .multilineTextAlignment(.center)
-////                                .animation(animationStyle, value: ogText)
+    //                            timeText
+    ////                                .foregroundColor(.primary.opacity(0.7))
+    //                                .fontDesign(.rounded)
+    //                                .fontWeight(.thin)
+    //                                .foregroundStyle(.secondary)
+    //                                .multilineTextAlignment(.center)
+    ////                                .animation(animationStyle, value: ogText)
+                            }
                         }
                     }
                 }
+                else {
+                    summaryCircle(ogText: $ogText)
+                }
             }
-            else {
-                summaryCircle(ogText: $ogText)
+            .opacity(flourish == nil ? 1 : 0)
+            .blur(radius: flourish == nil ? 0 : 8)
+            .animation(.easeInOut(duration: 0.45), value: flourish == nil)
+
+            if let flourish {
+                CompletionFlourish(event: flourish)
+                    .id(flourishID)
+                    .transition(.opacity)
             }
             
             // tappable circle on top (cant mix with outer circle cuz then the progress goes under the circle stroke)
@@ -204,11 +219,23 @@ struct MainCircleView: View {
             locationManager.startUpdating() // Start location updates
             sharedState.allowQiblaHaptics = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                viewModel.calculateDayScore(for: Date())
+                // The prayer day, not the calendar date: after midnight (before the rollover)
+                // Date() is tomorrow's rows, so today's score was never set and read 0 %.
+                viewModel.calculateDayScore(for: PrayerDay.date())
             }
         }
         .onDisappear {
             sharedState.allowQiblaHaptics = false
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
+            guard let event = note.object as? PrayerCompletionEvent else { return }
+            flourishID += 1
+            let id = flourishID
+            withAnimation(.easeInOut(duration: 0.3)) { flourish = event }
+            DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
+                guard flourishID == id else { return }   // a newer completion took over
+                withAnimation(.easeInOut(duration: 0.45)) { flourish = nil }
+            }
         }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
             currentTime = newTime
@@ -224,8 +251,20 @@ struct MainCircleView: View {
     
     private func handleTap() {
         if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
+        // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
+        // there felt like a broken button); the prayer's "ends / at" text is an
+        // ExternalToggleText that buzzes by itself (this used to buzz a second time).
+        let flipsOwnText: Bool   // true = ExternalToggleText, haptic included
+        if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+            guard prayer.status() == .current || prayer.status() == .upcoming else { return }
+            flipsOwnText = true
+        } else {
+            // Summary circle: the next-Fajr side flips; the score side (salah sheet open) doesn't.
+            guard !(sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah) else { return }
+            flipsOwnText = false
+        }
         timer?.invalidate()
-        triggerSomeVibration(type: .light)
+        if !flipsOwnText { triggerSomeVibration(type: .light) }
         withAnimation{ ogText.toggle() }
         guard !ogText else {return}
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in

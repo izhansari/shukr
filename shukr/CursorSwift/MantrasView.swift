@@ -18,14 +18,28 @@ struct MantrasView: View {
 
     @State private var editing: MantraModel? = nil
     @State private var showingNewMantra = false
+    @State private var search = ""
+
+    /// Matches the name, the full wording or the notes.
+    private var shown: [MantraModel] {
+        let q = search.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return mantras }
+        return mantras.filter {
+            $0.name.localizedCaseInsensitiveContains(q) || $0.fullText.localizedCaseInsensitiveContains(q)
+                || $0.notes.localizedCaseInsensitiveContains(q)
+        }
+    }
 
     var body: some View {
         List {
             if mantras.isEmpty {
                 Text("No mantras yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
+            } else if shown.isEmpty {
+                Text("No mantras match “\(search)”.")
+                    .foregroundStyle(.secondary)
             } else {
-                ForEach(mantras) { mantra in
+                ForEach(shown) { mantra in
                     Button {
                         editing = mantra
                     } label: {
@@ -61,6 +75,7 @@ struct MantrasView: View {
                 .onDelete(perform: delete)
             }
         }
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search mantras")
         .fontDesign(.rounded)
         .navigationTitle("Mantras")
         .navigationBarTitleDisplayMode(.inline)
@@ -83,8 +98,9 @@ struct MantrasView: View {
     }
 
     private func delete(at offsets: IndexSet) {
+        let rows = shown
         for index in offsets {
-            context.delete(mantras[index]) // relationships are .nullify: tasks/sessions survive, unlinked
+            context.delete(rows[index]) // relationships are .nullify: tasks/sessions survive, unlinked
         }
     }
 }
@@ -120,6 +136,11 @@ struct MantraEditorView: View {
     private var isDuplicate: Bool {
         let lower = trimmedName.lowercased()
         return allMantras.contains { $0.name.lowercased() == lower && $0.persistentModelID != mantra?.persistentModelID }
+    }
+
+    private var hasEdits: Bool {
+        guard let mantra else { return true }
+        return name != mantra.name || fullText != mantra.fullText || notes != mantra.notes
     }
 
     private var canSave: Bool {
@@ -192,22 +213,30 @@ struct MantraEditorView: View {
                 }
             }
             .fontDesign(.rounded)
-            .navigationTitle(mantra == nil ? "New Mantra" : "Edit Mantra")
+            // Opening a mantra is mostly for its stats: title is its name, and Cancel / Save
+            // only appear once a field actually changes (a new mantra always has them).
+            .navigationTitle(mantra?.name ?? "New Mantra")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
-                        .disabled(!canSave)
+                if hasEdits {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { cancelEdits() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save") { save() }
+                            .disabled(!canSave)
+                    }
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: hasEdits)
+            // Don't lose typed edits to a swipe; with no edits it swipes away like any sheet.
+            .interactiveDismissDisabled(mantra != nil && hasEdits)
         }
     }
 
     private func save() {
         guard canSave else { return }
+        dismissKeyboard()
         let fullTextTrimmed = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         let notesTrimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
         if let mantra {
@@ -217,10 +246,24 @@ struct MantraEditorView: View {
             // Tasks read the live name through the relationship; keep their snapshot in step too
             // so a later deletion still shows the right name. Sessions keep their historical title.
             for task in mantra.tasks { task.mantraName = trimmedName }
+            // Stay on the mantra: the fields now match it, so Cancel / Save go away.
+            withAnimation {
+                name = mantra.name; fullText = mantra.fullText; notes = mantra.notes
+            }
+            triggerSomeVibration(type: .light)
         } else {
             context.insert(MantraModel(name: trimmedName, fullText: fullTextTrimmed, notes: notesTrimmed))
+            dismiss()
         }
-        dismiss()
+    }
+
+    /// Existing mantra: put the fields back as they were (the sheet stays). New: close.
+    private func cancelEdits() {
+        dismissKeyboard()
+        guard let mantra else { dismiss(); return }
+        withAnimation {
+            name = mantra.name; fullText = mantra.fullText; notes = mantra.notes
+        }
     }
 }
 
@@ -332,7 +375,7 @@ struct MantraTaskRows: View {
 
     init(mantra: MantraModel) {
         self.mantra = mantra
-        let todayStart = Calendar.current.startOfDay(for: Date())
+        let todayStart = PrayerDay.sessionDayStart()   // the prayer day, rollover included
         _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart })
     }
 

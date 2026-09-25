@@ -63,6 +63,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
         set { dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970 }
     }
+    /// Days in a row with all five Early / On time (score ≥ 80), and the last day that counted.
+    @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
+    @AppStorage("maxOnTimeStreak") var maxOnTimeStreak: Int = 0
+    @AppStorage("lastOnTimeStreakDate") var lastOnTimeStreakDate_TI: Double = 0
+    /// Last day celebrated as a perfect day (all five within their windows), so it fires once.
+    @AppStorage("lastPerfectDay") var lastPerfectDay_TI: Double = 0
     @AppStorage("lastStreakDate") var lastStreakDate_TI: Double = Date().timeIntervalSince1970
     var lastStreakDate: Date {
         get { return Date(timeIntervalSince1970: lastStreakDate_TI) }
@@ -486,15 +492,20 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
 
     func togglePrayerCompletion(for prayer: PrayerModel) {
-        triggerSomeVibration(type: .medium)
-        
         if prayer.startTime <= Date() {
             prayer.isCompleted.toggle()
             if prayer.isCompleted {
                 prayer.setPrayerScore()
                 prayer.setPrayerLocation(with: ENV_LocationManager.manager.location)
                 prayer.cancelUpcomingNudges()
+                // The completion moment: haptic + flourish on the circle + the row's pop (PrayerCompletionFX).
+                PrayerCompletionHaptics.play()
+                let window = prayer.endTime.timeIntervalSince(prayer.startTime)
+                let progress = window > 0 ? Date().timeIntervalSince(prayer.startTime) / window : 1
+                NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
+                    name: prayer.name, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1)))
             } else {
+                triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
             }
             calculatePrayerStreak()
@@ -684,17 +695,27 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         let lastStreakDateStart = PrayerDay.start(for: lastStreakDate)
         
         checkToResetStreak()
-                
+        // The old unmark path could subtract on every call and left some streaks negative.
+        if prayerStreak < 0 { prayerStreak = 0 }
+
         guard let todayPrayers = getTodaysPrayersFromContext() else{ return }
         let validPrayersToday = todayPrayers.filter { gradingCriteria(for: $0) }.count
         self.validPrayersToday = validPrayersToday
         let decrementStreak = validPrayersToday < 5 && lastStreakDateStart == todayStart
 
-        if validPrayersToday == 5 { // if we get 5 then increment and move the streak date up
-            prayerStreak += 1
-            lastStreakDate = now
-        } else if decrementStreak { // only decrement if we have gotten to 5 alteady and they came donw.
-            prayerStreak -= 1
+        if validPrayersToday == 5 {
+            // A day continues the streak once. This runs on every mark, time edit and widget
+            // reconcile, and used to add 1 each time once all five were in (2026-09-24).
+            if lastStreakDateStart != todayStart {
+                prayerStreak += 1
+                lastStreakDate = now
+                NotificationCenter.default.post(name: .prayerStreakContinued, object: nil)
+            }
+        } else if decrementStreak { // today had counted and a prayer was unmarked
+            prayerStreak = max(prayerStreak - 1, 0)
+            // Today no longer counts: back to "counted through yesterday", so this can't
+            // decrement again on the next call and re-completing today counts it again.
+            lastStreakDate = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
         }
 
         // Update max streak if necessary
@@ -702,6 +723,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             maxPrayerStreak = prayerStreak
             dateOfMaxPrayerStreak = now
         }
+
+        updateDayMilestones(todayPrayers: todayPrayers, todayStart: todayStart, now: now)
         
         func getTodaysPrayersFromContext() -> [PrayerModel]? {
             let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start(for: now))
@@ -731,6 +754,40 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
+    /// The on-time streak (all five Early / On time) and the perfect day (all five within their
+    /// windows, no Qaza), each counted once a day like the main streak. Posted after the main
+    /// streak's notification so the top bar can play them in order.
+    private func updateDayMilestones(todayPrayers: [PrayerModel], todayStart: Date, now: Date) {
+        func doneNames(minScore: Double) -> Set<String> {
+            Set(todayPrayers.filter { $0.isCompleted && ($0.numberScore ?? 0) >= minScore - 0.0001 }.map(\.name))
+        }
+        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
+
+        // On-time streak
+        let lastOnTime = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI))
+        if lastOnTime != todayStart && lastOnTime != yesterdayStart && onTimeStreak != 0 {
+            onTimeStreak = 0   // a gap
+        }
+        if doneNames(minScore: 0.8).count == 5 {
+            if lastOnTime != todayStart {
+                onTimeStreak += 1
+                lastOnTimeStreakDate_TI = now.timeIntervalSince1970
+                maxOnTimeStreak = max(maxOnTimeStreak, onTimeStreak)
+                NotificationCenter.default.post(name: .onTimeStreakContinued, object: nil)
+            }
+        } else if lastOnTime == todayStart {   // today had counted; a prayer was unmarked or re-timed
+            onTimeStreak = max(onTimeStreak - 1, 0)
+            lastOnTimeStreakDate_TI = yesterdayStart.timeIntervalSince1970
+        }
+
+        // Perfect day: all five Early (owner, 2026-09-25 — "only when everything is green")
+        if doneNames(minScore: 1).count == 5,
+           PrayerDay.start(for: Date(timeIntervalSince1970: lastPerfectDay_TI)) != todayStart {
+            lastPerfectDay_TI = now.timeIntervalSince1970
+            NotificationCenter.default.post(name: .perfectDay, object: nil)
+        }
+    }
+
     func checkToResetStreak() {
         let now = Date()
         let todayStart = PrayerDay.start(for: now)
@@ -1133,4 +1190,14 @@ extension PrayerViewModel {
         
         return newPrayer
     }
+}
+
+extension Notification.Name {
+    /// Posted once when today's five prayers continue the streak; the top bar celebrates it.
+    /// (object: an Int only from the DEBUG test triggers — a fake streak to show.)
+    static let prayerStreakContinued = Notification.Name("prayerStreakContinued")
+    /// Posted once when all five were Early / On time today; the top bar celebrates it.
+    static let onTimeStreakContinued = Notification.Name("onTimeStreakContinued")
+    /// Posted once when all five were Early today; the list celebrates it.
+    static let perfectDay = Notification.Name("perfectDay")
 }

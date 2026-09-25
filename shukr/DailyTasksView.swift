@@ -26,7 +26,7 @@ struct DailyTasksView: View {
     init(showMantraSheetFromHomePage: Binding<Bool>, showTasbeehPage: Binding<Bool>) {
         self._showMantraSheetFromHomePage = showMantraSheetFromHomePage
         self._showTasbeehPage = showTasbeehPage
-        let todayStart = Calendar.current.startOfDay(for: Date())
+        let todayStart = PrayerDay.sessionDayStart()   // the prayer day, rollover included
         _todaysSessions = Query(
             filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart },
             sort: \.startTime

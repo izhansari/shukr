@@ -51,7 +51,31 @@ agent builds with xcodebuild. Nothing here has CI.
    against `compass.heading`; and whether `updateQibla()` from location fixes races the heading
    path. Reproduce on device by walking with the app open, and check `Self._printChanges()` /
    heading callback frequency.
-7. Then the App Store blockers below.
+7. **Paging lag fix — committed, still to re-measure on device (owner wants to do it later).**
+   2026-09-24, measured with `Self._printChanges()` + a main-thread watchdog on the owner's
+   phone (Release): 90 s of fast paging = 944 SettingsView renders, 395 PrayerTimesView, only
+   two >150 ms stalls — death by re-render. Cause: `shukrApp` held `sharedState` as
+   `@StateObject`, so every page-turn publish re-ran the root body and rebuilt the whole tree
+   (home rendered twice per change, Settings up to 3×). Fix: root holds it as `@State`;
+   Settings takes `onBack` instead of observing `sharedState` and is wrapped in an always-equal
+   `SettingsPage` (`.equatable()`). To re-measure: add `let _ = Self._printChanges()` to the
+   bodies of PrayerTimesView / SalahPageContent / PagerChromeView / SettingsView /
+   MainCircleView / DailyTasksView plus a main-thread ping watchdog, Release build to the phone,
+   `devicectl device process launch --console` for 90 s (phone unlocked!) while the owner
+   pages, compare with the numbers above, then remove it again. Remaining per-page-turn renders
+   (MainCircleView, DailyTasksView, SalahPageContent via `_sharedState`) are item 5.
+   Also seen: three `.ips` reports on 2026-09-24 (builds 1.0 (1) and 2.0 (4)), all a UIKit
+   `NSAssertionHandler` abort in `_updateSnapshotAndStateRestorationWithAction` while going to
+   the background. Not investigated.
+8. **Insights page needs a rethink (owner, 2026-09-25: "still not happy with it, need to give it
+   more thought").** `CursorSwift/InsightsView.swift`, hamburger → Insights. Second version is a
+   minimal one-screen layout: range picker, a main-circle-style day-score hero (tap → grade
+   split), one streak line, five prayer rings (tap → avg / % prayed), 12-week heatmap. First
+   version (cards, area chart, stacked bar) was "information overload". Owner didn't know what
+   "on time" meant there (the on-time streak: consecutive days with all five Early / On time;
+   started counting 2026-09-25, so it read 0). Ask the owner what they want to learn from it
+   before building a third version.
+9. Then the App Store blockers below.
 
 ## Immediate goal: App Store submission
 
@@ -264,6 +288,10 @@ circle's "yesterday", and the widget (`makeEntry`, `createWindowsFromTimes`,
 `completedPrayerNamesToday`) goes through PrayerDay now. History views that take an explicit
 date (`loadPrayerObjects(for:)`, PrayerScoreChartView, DayView) still mean the calendar day.
 Sim-verified 2026-09-25: rollover 2 → `Isha : 8:05 PM - 1:59 AM` in the launch log.
+Zikr sessions follow it too (2026-09-25): "today's sessions" for task progress (DailyTasksView,
+MantraTaskRows, TopBar's stats) start at `PrayerDay.sessionDayStart()` = the prayer day's date +
+the rollover hours, so a 1 AM session with a 3 AM rollover counts for yesterday. The circle's
+day score is computed for `PrayerDay.date()` (it used `Date()` and read 0 % after midnight).
 
 ## Map (CursorSwift/LocationMapView2.swift, branch claude/map-rework)
 
