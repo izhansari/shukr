@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 
 struct DailyTasksView: View {
@@ -99,36 +100,557 @@ struct DailyTasksView: View {
     }
 }
 
-/// Full-page home for zikr: the freestyle circle over the daily task cards, laid out like
-/// the old bottom-sheet Zikr tab. It's the left page of the main pager, which is a horizontal
-/// ScrollView, so the task cards' own horizontal scroll nests inside it the UIKit way:
-/// cards scroll first, the page turns at their edge.
+/// The Zikr page (redesigned 2026-09-25 — owner: keep the circle theme, give the tasks the
+/// room the fixed freestyle circle was using): a vertical wheel of circles — freestyle first,
+/// then each daily task as a circle with today's progress as its ring, then a dashed "new
+/// task" circle. Scrolls up and down one circle at a time; the ones off-centre shrink and fade
+/// (the old card strip's effect, turned on its side). Tap a circle to bring it to the middle,
+/// tap the middle one to start. Long-press a task for edit / reorder / delete. Dots on the left (drag them to scrub)
+/// show where you are, green for the tasks done today. The old strip (`DailyTasksView`) is kept
+/// below, unused.
 struct ZikrPageView: View {
     @Binding var showMantraSheetFromHomePage: Bool
     @Binding var showTasbeehPage: Bool
 
     var body: some View {
-        VStack {
-            Spacer()
-            Spacer()
-            Spacer()
-            
-            ZikrCircleView(showTasbeehPage: $showTasbeehPage)
-            
-            Spacer()
-            Spacer()
-            
-            DailyTasksView(
-                showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                showTasbeehPage: $showTasbeehPage
-            )
-            .frame(width: 260)
-            .background(FlatBorder())
-            .padding(.bottom, 30)
-            
-            Spacer()
+        ZikrCircleWheel(showTasbeehPage: $showTasbeehPage)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct ZikrCircleWheel: View {
+    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(\.modelContext) private var context
+    @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
+    @Query private var todaysSessions: [SessionDataModel]
+    @Binding var showTasbeehPage: Bool
+
+    @State private var centered: String? = Item.freestyle.id
+    @State private var showAddTask = false
+    @State private var newTaskScrollTarget: UUID?
+    @State private var editingTask: TaskModel?
+    /// Home-screen-style arranging: long-press a task → the tasks jiggle in a grid with −
+    /// badges; drag to reorder, tap to edit the goal, Done (or a tap on the background) to leave.
+    @State private var arranging = false
+    @State private var arrangeOrder: [TaskModel] = []
+    @State private var draggingID: UUID?
+    /// The lifted circle follows the finger here (in the grid's own coordinates).
+    @State private var dragPoint: CGPoint = .zero
+    @State private var gridWidth: CGFloat = 360
+    @Environment(PagerLiveState.self) private var live: PagerLiveState?
+    @State private var taskToDelete: TaskModel?
+    /// A task tapped with some of today's goal already done: continue or start over?
+    @State private var resumeAsk: TaskModel?
+    /// A finger on the dots: they become a scrubber (like dragging a page's scroll bar).
+    @State private var scrubbing = false
+
+    init(showTasbeehPage: Binding<Bool>) {
+        self._showTasbeehPage = showTasbeehPage
+        let dayStart = PrayerDay.sessionDayStart()   // the prayer day (Fajr to Fajr)
+        _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= dayStart },
+                                sort: \.startTime)
+    }
+
+    enum Item: Identifiable, Hashable {
+        case freestyle, task(TaskModel), add
+        var id: String {
+            switch self {
+            case .freestyle: "freestyle"
+            case .task(let task): task.id.uuidString
+            case .add: "add"
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private let itemHeight: CGFloat = 250
+
+    private func progress(_ task: TaskModel) -> TaskProgress { task.progress(in: todaysSessions) }
+    private func isDone(_ task: TaskModel) -> Bool { task.isCompleted(with: progress(task)) }
+
+    /// Freestyle, the tasks in the user's order with today's finished ones moved to the end
+    /// (as the strip did), then "new task".
+    private var items: [Item] {
+        let open = tasks.filter { !isDone($0) }, done = tasks.filter { isDone($0) }
+        return [.freestyle] + (open + done).map { .task($0) } + [.add]
+    }
+
+    var body: some View {
+        ZStack {
+            wheel
+                .overlay(alignment: .bottom) { tasksSummary.padding(.bottom, 108) }
+                .opacity(arranging ? 0 : 1)
+                .scaleEffect(arranging ? 0.94 : 1)
+                .allowsHitTesting(!arranging)
+            if arranging {
+                arrangeGrid
+                    .transition(.opacity.combined(with: .scale(scale: 1.06)))
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: arranging)
+        .onChange(of: arranging) { _, on in live?.holdForArranging = on }
+        // Leaving the page (the bottom bar still works while arranging) ends arranging, or the
+        // pager stayed held and the Salah page couldn't be swiped at all (owner, 2026-09-25).
+        .onChange(of: sharedState.horizontalPage) { _, page in
+            if page != .zikr && arranging { stopArranging() }
+        }
+        .onDisappear { live?.holdForArranging = false }
+    }
+
+    /// "1 of 3 tasks done" under the wheel (the old strip's "1 of 3 Completed"); all done → sage.
+    @ViewBuilder private var tasksSummary: some View {
+        if !tasks.isEmpty {
+            let done = tasks.filter { isDone($0) }.count
+            HStack(spacing: 5) {
+                if done == tasks.count { Image(systemName: "checkmark") }
+                Text(done == tasks.count ? "all \(tasks.count) tasks done today" : "\(done) of \(tasks.count) tasks done")
+                    .contentTransition(.numericText())
+            }
+            .font(.footnote)
+            .fontWeight(.light)
+            .fontDesign(.rounded)
+            .foregroundStyle(done == tasks.count ? Color.sage : .secondary)
+            .animation(.snappy, value: done)
+        }
+    }
+
+    private var wheel: some View {
+        let items = items
+        return GeometryReader { geo in
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(spacing: 0) {
+                    ForEach(items) { item in
+                        circle(for: item)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: itemHeight)
+                            .contentShape(Rectangle())
+                            .onTapGesture { tapped(item) }
+                            .id(item.id)
+                            // Size and fade follow the circle's distance from the middle in rows,
+                            // easing out (owner: more dramatic, and not at its smallest the moment it
+                            // leaves the middle): one row away ≈ 0.62×, two ≈ 0.45×, never below
+                            // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
+                            .visualEffect { [itemHeight] content, proxy in
+                                let frame = proxy.frame(in: .scrollView(axis: .vertical))
+                                let viewport = proxy.bounds(of: .scrollView(axis: .vertical))?.height ?? frame.height
+                                let rows = (frame.midY - viewport / 2) / itemHeight
+                                let d = min(abs(rows), 3)
+                                let ease = 1 - exp(-1.1 * d)
+                                let scale = 1 - 0.62 * ease
+                                return content
+                                    .scaleEffect(scale)
+                                    .opacity(1 - 0.7 * ease)
+                                    .offset(y: -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.45 * min(d, 1.5))
+                            }
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .contentMargins(.vertical, max((geo.size.height - itemHeight) / 2, 0), for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+            .scrollPosition(id: $centered, anchor: .center)
+            // Soft edges under the page's title and bottom bar.
+            .mask(
+                LinearGradient(stops: [.init(color: .clear, location: 0.06), .init(color: .black, location: 0.2),
+                                       .init(color: .black, location: 0.8), .init(color: .clear, location: 0.94)],
+                               startPoint: .top, endPoint: .bottom)
+            )
+            .overlay(alignment: .leading) { scrubber(items) }   // left edge (owner)
+            // Centre the focused circle on the SCREEN (owner): the page starts under the status
+            // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
+            // whole wheel up by the difference (scroll snapping always centres in its own frame).
+            .offset(y: -screenCentreShift(geo))
+        }
+        .onChange(of: centered) { _, _ in triggerSomeVibration(type: .light) }
+        .onAppear {
+            if let task = sharedState.selectedTask { centered = task.id.uuidString }
+        }
+        .fullScreenCover(isPresented: $showAddTask) {
+            AddDailyTaskView(isPresented: $showAddTask, scrollProxy: $newTaskScrollTarget)
+        }
+        .onChange(of: newTaskScrollTarget) { _, id in
+            if let id { withAnimation { centered = id.uuidString } }
+        }
+        .sheet(item: $editingTask) { task in
+            AddDailyTaskView(editing: task, isPresented: Binding(get: { editingTask != nil }, set: { if !$0 { editingTask = nil } }))
+        }
+        .alert(resumeAsk?.displayName ?? "",
+               isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
+               presenting: resumeAsk) { task in
+            Button(resumeLabel(task)) { start(task, resume: true); resumeAsk = nil }
+            Button("Start over") { start(task); resumeAsk = nil }
+            Button("Cancel", role: .cancel) { resumeAsk = nil }
+        } message: { task in
+            let p = progress(task)
+            Text(task.isCountMode
+                 ? "You've done \(p.count) of \(task.goal) today. Pick up from there, or count a fresh \(task.goal)?"
+                 : "You've done \(zikrDurationString(p.seconds)) of \(task.goal) min today. Pick up from there, or start a fresh \(task.goal) min?")
+        }
+        .alert("Delete this task?",
+               isPresented: Binding(get: { taskToDelete != nil }, set: { if !$0 { taskToDelete = nil } }),
+               presenting: taskToDelete) { task in
+            Button("Delete", role: .destructive) {
+                withAnimation {
+                    arrangeOrder.removeAll { $0.id == task.id }
+                    context.delete(task)
+                    sharedState.resetTasbeehInputs()
+                }
+                taskToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { taskToDelete = nil }
+        } message: { task in
+            Text("\(task.displayName) · its sessions stay in your history.")
+        }
+    }
+
+    /// How far the page's middle sits below the screen's middle.
+    private func screenCentreShift(_ geo: GeometryProxy) -> CGFloat {
+        let screenHeight = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.height
+            ?? geo.frame(in: .global).maxY
+        let pageMid = geo.frame(in: .global).minY + geo.size.height / 2
+        return min(max(pageMid - screenHeight / 2, 0), 80)
+    }
+
+    // MARK: arranging (home-screen style)
+
+    private func startArranging() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        arrangeOrder = tasks   // the user's order (done ones aren't moved to the end here)
+        arranging = true
+    }
+
+    private func stopArranging() {
+        commitArrangeOrder()
+        draggingID = nil
+        arranging = false
+    }
+
+    private func commitArrangeOrder() {
+        for (position, task) in arrangeOrder.enumerated() where task.sortOrder != position {
+            task.sortOrder = position
+        }
+        try? context.save()
+    }
+
+    private var arrangeGrid: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text("drag to reorder · tap to edit")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    triggerSomeVibration(type: .light)
+                    stopArranging()
+                } label: {
+                    Text("Done")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.sage)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Capsule().fill(Color.sage.opacity(0.16)))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 22)
+
+            ScrollView(showsIndicators: false) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: gridSpacing), count: 3), spacing: rowSpacing) {
+                    ForEach(Array(arrangeOrder.enumerated()), id: \.element.id) { index, task in
+                        arrangeCell(task, index: index)
+                    }
+                }
+                .padding(.horizontal, gridPad.width)
+                .padding(.vertical, gridPad.height)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
+                // The lifted circle, drawn above the grid at the finger.
+                .overlay(alignment: .topLeading) {
+                    if let id = draggingID, let task = arrangeOrder.first(where: { $0.id == id }) {
+                        circle(forArranging: task)
+                            .scaleEffect(1.15)
+                            .shadow(color: .black.opacity(0.18), radius: 12, y: 8)
+                            .position(dragPoint)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .coordinateSpace(.named("arrange"))
+            }
+            .scrollDisabled(draggingID != nil)
+        }
+        .fontDesign(.rounded)
+        .padding(.top, 58)
+        .padding(.bottom, 96)
+        .contentShape(Rectangle())
+        .onTapGesture { stopArranging() }   // a tap between circles leaves, like the home screen
+    }
+
+    private let gridPad = CGSize(width: 16, height: 20)
+    private let gridSpacing: CGFloat = 8
+    private let rowSpacing: CGFloat = 26
+    private let cellSize: CGFloat = 108
+
+    /// The slot under a point in the grid (3 columns): the lifted circle takes that place.
+    private func slot(at point: CGPoint) -> Int {
+        let columnWidth = (gridWidth - gridPad.width * 2) / 3
+        let column = min(max(Int((point.x - gridPad.width) / max(columnWidth, 1)), 0), 2)
+        let row = max(Int((point.y - gridPad.height + rowSpacing / 2) / (cellSize + rowSpacing)), 0)
+        return min(row * 3 + column, arrangeOrder.count - 1)
+    }
+
+    /// Hold a circle briefly, then drag: it lifts and follows the finger, the others make room.
+    private func arrangeDrag(_ task: TaskModel) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.2)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("arrange")))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                if draggingID == nil {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    draggingID = task.id
+                }
+                dragPoint = drag.location
+                let to = slot(at: drag.location)
+                if let from = arrangeOrder.firstIndex(where: { $0.id == task.id }), from != to {
+                    withAnimation(.snappy(duration: 0.25)) {
+                        arrangeOrder.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+                    }
+                    triggerSomeVibration(type: .light)
+                }
+            }
+            .onEnded { _ in
+                withAnimation(.snappy(duration: 0.25)) { draggingID = nil }
+                commitArrangeOrder()
+            }
+    }
+
+    private func arrangeCell(_ task: TaskModel, index: Int) -> some View {
+        ZStack(alignment: .topLeading) {
+            circle(forArranging: task)
+            Button {
+                triggerSomeVibration(type: .light)
+                taskToDelete = task
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(.regularMaterial))
+                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
+            }
+            .buttonStyle(.plain)
+            .offset(x: 4, y: 4)
+            .accessibilityLabel("Delete \(task.displayName)")
+        }
+        .frame(width: cellSize, height: cellSize)
+        // The home screen's wobble; slightly different speeds so they don't move in step.
+        .phaseAnimator([-1.8, 1.8]) { view, angle in
+            view.rotationEffect(.degrees(angle))
+        } animation: { _ in .easeInOut(duration: 0.13 + Double(index % 3) * 0.018) }
+        .opacity(draggingID == task.id ? 0 : 1)   // it's drawn at the finger instead
+        .contentShape(Circle())
+        .onTapGesture { editingTask = task }
+        .gesture(arrangeDrag(task))
+    }
+
+    private func circle(forArranging task: TaskModel) -> some View {
+        let p = progress(task)
+        let done = task.isCompleted(with: p)
+        let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
+                                        : p.seconds / Double(max(task.goal * 60, 1))
+        return ZikrCircleFace(title: task.displayName, icon: nil,
+                              subtitle: done ? "done" : progressText(task, p),
+                              ring: .progress(min(fraction, 1)), done: done)
+            .scaleEffect(0.5)
+            .frame(width: 100, height: 100)
+    }
+
+    // MARK: circles
+
+    @ViewBuilder
+    private func circle(for item: Item) -> some View {
+        switch item {
+        case .freestyle:
+            ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full)
+        case .add:
+            ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
+        case .task(let task):
+            let p = progress(task)
+            let done = task.isCompleted(with: p)
+            let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
+                                            : p.seconds / Double(max(task.goal * 60, 1))
+            ZikrCircleFace(title: task.displayName, icon: nil,
+                           subtitle: done ? "done today" : progressText(task, p),
+                           ring: .progress(min(fraction, 1)), done: done)
+                .onLongPressGesture(minimumDuration: 0.45) { startArranging() }
+        }
+    }
+
+    private func progressText(_ task: TaskModel, _ p: TaskProgress) -> String {
+        task.isCountMode ? "\(p.count) of \(task.goal)" : "\(Int(p.seconds / 60)) of \(task.goal) min"
+    }
+
+    private let dotSlot: CGFloat = 14
+    private let scrubberPad: CGFloat = 10
+
+    /// Down the left edge: one dot per circle, the centred one bigger; tasks done today are sage. Put a finger on
+    /// them and drag to fly through the circles (owner: like grabbing a page's scroll bar); a
+    /// pill beside the finger names the circle it's on.
+    private func scrubber(_ items: [Item]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(items) { item in
+                let current = item.id == centered
+                let done: Bool = { if case .task(let t) = item { return isDone(t) } else { return false } }()
+                Circle()
+                    .fill(done ? Color.sage : Color.primary.opacity(current ? 0.55 : 0.18))
+                    .frame(width: current ? 7 : 5, height: current ? 7 : 5)
+                    .frame(width: 24, height: dotSlot)
+            }
+        }
+        .padding(.vertical, scrubberPad)
+        .background(Capsule().fill(Color.primary.opacity(scrubbing ? 0.07 : 0)))
+        .scaleEffect(scrubbing ? 1.15 : 1, anchor: .leading)
+        .overlay(alignment: .topLeading) {
+            if scrubbing, let index = items.firstIndex(where: { $0.id == centered }) {
+                Text(label(items[index]))
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .lineLimit(1)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(.regularMaterial))
+                    .shadow(color: .black.opacity(0.1), radius: 6, y: 3)
+                    .fixedSize()
+                    .offset(x: 40, y: scrubberPad + dotSlot * CGFloat(index) - 8)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .contentShape(Rectangle().inset(by: -12))
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !scrubbing { withAnimation(.snappy(duration: 0.2)) { scrubbing = true } }
+                    let index = min(max(Int((value.location.y - scrubberPad) / dotSlot), 0), items.count - 1)
+                    if centered != items[index].id {
+                        withAnimation(.snappy(duration: 0.18)) { centered = items[index].id }
+                    }
+                }
+                .onEnded { _ in withAnimation(.snappy(duration: 0.25)) { scrubbing = false } }
+        )
+        .animation(.snappy(duration: 0.2), value: centered)
+        .padding(.leading, 8)
+    }
+
+    private func label(_ item: Item) -> String {
+        switch item {
+        case .freestyle: "Freestyle"
+        case .task(let task): task.displayName
+        case .add: "New task"
+        }
+    }
+
+    // MARK: actions
+
+    /// `resume`: begin with today's progress on the ring (only new counts are saved).
+    private func start(_ task: TaskModel, resume: Bool = false) {
+        sharedState.selectedTask = task   // its didSet loads the mode / goal / mantra
+        let p = progress(task)
+        sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
+        sharedState.resumeSeconds = resume && !task.isCountMode ? p.seconds : 0
+        showTasbeehPage = true
+    }
+
+    private func resumeLabel(_ task: TaskModel) -> String {
+        let p = progress(task)
+        return task.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))"
+    }
+
+    private func tapped(_ item: Item) {
+        guard centered == item.id else {
+            withAnimation(.snappy) { centered = item.id }
+            return
+        }
+        triggerSomeVibration(type: .light)
+        switch item {
+        case .freestyle:
+            sharedState.targetCount = ""
+            sharedState.titleForSession = ""
+            sharedState.mantraForSession = nil
+            sharedState.selectedMinutes = 0
+            sharedState.selectedMode = 0
+            showTasbeehPage = true
+        case .task(let task):
+            let p = progress(task)
+            if !isDone(task) && (p.count > 0 || p.seconds >= 1) {
+                resumeAsk = task
+            } else {
+                start(task)
+            }
+        case .add:
+            showAddTask = true
+        }
+    }
+}
+
+/// One circle on the Zikr page, in the Salah circle's type (light rounded name, thin caption):
+/// the thick gray track with a glowing green ring on top — full for freestyle, today's progress
+/// for a task (full + a check once done), dashed for "new task".
+struct ZikrCircleFace: View {
+    enum Ring { case full, progress(Double), dashed }
+    let title: String
+    let icon: String?
+    let subtitle: String
+    let ring: Ring
+    var done = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(.secondarySystemFill), lineWidth: 12)
+            switch ring {
+            case .full:
+                glow(Circle())
+            case .progress(let fraction):
+                glow(Circle().trim(from: 0, to: max(fraction, 0.001)).rotation(.degrees(-90)))
+                    .opacity(fraction > 0 ? 1 : 0)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.85), value: fraction)
+            case .dashed:
+                Circle()
+                    .stroke(Color.sage.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 6]))
+            }
+
+            VStack(spacing: 4) {
+                HStack(alignment: .center, spacing: 8) {
+                    if let icon {
+                        Image(systemName: icon)
+                            .font(.system(size: 22, weight: .light))
+                    }
+                    Text(title)
+                        .font(.system(size: 30, weight: .light, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.55)
+                }
+                .frame(maxWidth: 150)
+                HStack(spacing: 4) {
+                    if done { Image(systemName: "checkmark") }
+                    Text(subtitle)
+                        .monospacedDigit()
+                }
+                .font(.subheadline)
+                .fontWeight(.thin)
+                .foregroundStyle(done ? Color.sage : .secondary)
+            }
+            .fontDesign(.rounded)
+        }
+        .frame(width: 200, height: 200)
+    }
+
+    private func glow<S: Shape>(_ shape: S) -> some View {
+        shape
+            .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .shadow(color: Color.green.opacity(0.5), radius: 5)
+            .shadow(color: Color.green.opacity(0.3), radius: 10)
+            .shadow(color: Color.green.opacity(0.2), radius: 15)
     }
 }
 

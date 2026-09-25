@@ -13,8 +13,8 @@ import SwiftUI
 struct PrayerTimeEditSheet: View {
     let prayer: PrayerModel
     @Binding var time: Date
-    /// From the prayer's start (never earlier) to now or the day's rollover, whichever is first.
-    /// After the window it's Qaza, e.g. Isha at 12:30 AM with a 3 AM rollover.
+    /// From the prayer's start (never earlier) to now or the next Fajr (the day's rollover),
+    /// whichever is first. After the window it's Qaza, e.g. Isha at 12:30 AM.
     let range: ClosedRange<Date>
     var onCancel: () -> Void
     var onSave: (Date) -> Void
@@ -45,7 +45,7 @@ struct PrayerTimeEditSheet: View {
         }
         // The upper bound is now unless the day already rolled over before now.
         if range.upperBound < Date().addingTimeInterval(-60) {
-            return "That's after your day ended at \(shortTimePM(range.upperBound))."
+            return "That's after Fajr at \(shortTimePM(range.upperBound)) — the next day had started."
         }
         return "That hasn't happened yet — it's \(shortTimePM(range.upperBound)) now."
     }

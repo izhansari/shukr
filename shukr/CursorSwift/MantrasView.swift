@@ -106,6 +106,245 @@ struct MantrasView: View {
 }
 
 
+/// "Count in sets  [off / +5]  [− | +]" bound to any step value (the editor's draft, or live).
+/// Shown as "count in sets" (owner, 2026-09-25: "quick add" didn't say what it's for — you
+/// recite a set on your own, counting on your fingers or in your head, then tap once).
+struct QuickAddStepper: View {
+    @Binding var step: Int
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Count in sets")
+                Text(step > 0 ? "one tap counts \(step)" : "read a few on your own, then tap once")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+            }
+            Spacer()
+            Text(step > 0 ? "+\(step)" : "off")
+                .font(.system(.body, design: .rounded).weight(.medium))
+                .monospacedDigit()
+                .foregroundStyle(step > 0 ? Color.sage : .secondary)
+                .contentTransition(.numericText())
+                .frame(minWidth: 40, alignment: .trailing)
+            HoldRepeatStepper(
+                value: Binding(get: { Double(step) }, set: { step = Int($0) }),
+                in: Double(QuickAddSteps.range.lowerBound)...Double(QuickAddSteps.range.upperBound),
+                step: 1)
+        }
+        .animation(.snappy(duration: 0.2), value: step)
+    }
+}
+
+/// The quick-add step for one mantra (or no mantra), saved as it changes. The mantra's page and
+/// the pause screen.
+struct QuickAddStepRow: View {
+    let mantra: MantraModel?
+    @Environment(\.modelContext) private var context
+    @AppStorage(QuickAddSteps.noMantraKey) private var noMantraStep = 0
+
+    var body: some View {
+        QuickAddStepper(step: Binding(
+            get: { mantra?.quickAddStep ?? noMantraStep },
+            set: { newValue in
+                if let mantra {
+                    mantra.quickAddStep = newValue
+                    try? context.save()
+                } else {
+                    noMantraStep = newValue
+                }
+            }))
+    }
+}
+
+/// The pause screen's ✎: the mantra card itself, editable — the same glass card, name in the
+/// same light type, the full mantra in its inset box, notes, quick add — over the pause
+/// screen's colour (owner, 2026-09-25: the Form editor was "a really ugly view" after that card).
+/// Opens straight into editing; Save stays gray until something changes, and a swipe can't
+/// throw away edits.
+struct MantraCardEditor: View {
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @Query private var allMantras: [MantraModel]
+    let mantra: MantraModel
+
+    @State private var name: String
+    @State private var fullText: String
+    @State private var notes: String
+    @State private var quickAdd: Int
+
+    init(mantra: MantraModel) {
+        self.mantra = mantra
+        _name = State(initialValue: mantra.name)
+        _fullText = State(initialValue: mantra.fullText)
+        _notes = State(initialValue: mantra.notes)
+        _quickAdd = State(initialValue: mantra.quickAddStep)
+    }
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var isDuplicate: Bool {
+        let lower = trimmedName.lowercased()
+        return allMantras.contains { $0.name.lowercased() == lower && $0.persistentModelID != mantra.persistentModelID }
+    }
+    private var hasEdits: Bool {
+        name != mantra.name || fullText != mantra.fullText || notes != mantra.notes || quickAdd != mantra.quickAddStep
+    }
+    private var canSave: Bool { hasEdits && !trimmedName.isEmpty && !isDuplicate }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
+                                 isDuplicate: isDuplicate)
+                    .padding(16)
+                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                    .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Color("pauseColor").ignoresSafeArea())
+            .fontDesign(.rounded)
+            .navigationTitle("Edit mantra")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                }
+            }
+            .interactiveDismissDisabled(hasEdits)
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    private func save() {
+        guard canSave else { return }
+        dismissKeyboard()
+        mantra.name = trimmedName
+        mantra.fullText = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+        mantra.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        mantra.quickAddStep = quickAdd
+        for task in mantra.tasks { task.mantraName = trimmedName }   // as MantraEditorView does
+        try? context.save()
+        triggerSomeVibration(type: .success)
+        dismiss()
+    }
+}
+
+/// A mantra as the pause card shows it, editable: the name in large light type, the full mantra
+/// in its centred inset box, notes beside the note icon, then count in sets. No background —
+/// the pause-screen editor puts it on glass, the Mantras page on a grouped card.
+struct MantraCardFields: View {
+    @Binding var name: String
+    @Binding var fullText: String
+    @Binding var notes: String
+    @Binding var quickAdd: Int
+    var isDuplicate = false
+    @FocusState private var focus: Field?
+    private enum Field { case name, fullText, notes }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("name", text: $name)
+                    .font(.system(size: 24, weight: .light, design: .rounded))
+                    .autocorrectionDisabled(true)
+                    .focused($focus, equals: .name)
+                if isDuplicate {
+                    Text("another mantra already has this name")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+
+            editorBox(text: $fullText, field: .fullText,
+                      placeholder: "the full mantra — Arabic, transliteration, meaning",
+                      minHeight: 110, centered: true)
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "note.text")
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 9)
+                editorBox(text: $notes, field: .notes,
+                          placeholder: "notes — why or when you read it, who taught you",
+                          minHeight: 70, centered: false, inset: false)
+            }
+            .font(.footnote)
+
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+            QuickAddStepper(step: $quickAdd)
+                .font(.subheadline)
+        }
+        .fontDesign(.rounded)
+    }
+
+    /// A text editor with a placeholder, in the card's inset box (or bare, for notes).
+    private func editorBox(text: Binding<String>, field: Field, placeholder: String,
+                           minHeight: CGFloat, centered: Bool, inset: Bool = true) -> some View {
+        ZStack(alignment: centered ? .top : .topLeading) {
+            if text.wrappedValue.isEmpty {
+                Text(placeholder)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(centered ? .center : .leading)
+                    .padding(.top, 8)
+                    .padding(.horizontal, 5)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: text)
+                .scrollContentBackground(.hidden)
+                .multilineTextAlignment(centered ? .center : .leading)
+                .focused($focus, equals: field)
+                .frame(minHeight: minHeight)
+        }
+        .font(centered ? .system(size: 17, weight: .light, design: .rounded) : .subheadline)
+        .padding(.horizontal, inset ? 8 : 0)
+        .padding(.vertical, inset ? 4 : 0)
+        .background {
+            if inset {
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.04))
+            }
+        }
+    }
+}
+
+/// Zikr History and Mantras as one page (2026-09-25 — owner: they're the same subject and
+/// shouldn't be two hamburger rows): a History | Mantras switch in the navigation bar over the
+/// two existing pages. Reached from the Zikr tab's top-left button (the hamburger stays on
+/// Salah), and from the old routes (`showZikrHistory` / `showMantrasPage`).
+struct ZikrLibraryView: View {
+    enum Tab: String, CaseIterable { case history = "History", mantras = "Mantras" }
+    @State private var tab: Tab
+
+    init(start: Tab) { _tab = State(initialValue: start) }
+
+    var body: some View {
+        Group {
+            switch tab {
+            case .history: HistoryPageView()
+            case .mantras: MantrasView()
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("Section", selection: $tab) {
+                    ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 210)
+            }
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.selection, trigger: tab)
+    }
+}
+
 /// Create or edit one mantra. `mantra == nil` means create.
 struct MantraEditorView: View {
     @Environment(\.modelContext) private var context
@@ -116,16 +355,14 @@ struct MantraEditorView: View {
     @State private var name: String
     @State private var fullText: String
     @State private var notes: String
-    // Field descriptions sit behind an info button in each header, like Settings.
-    @State private var showNameInfo = false
-    @State private var showFullTextInfo = false
-    @State private var showNotesInfo = false
+    @State private var quickAdd: Int
 
     init(mantra: MantraModel?) {
         self.mantra = mantra
         _name = State(initialValue: mantra?.name ?? "")
         _fullText = State(initialValue: mantra?.fullText ?? "")
         _notes = State(initialValue: mantra?.notes ?? "")
+        _quickAdd = State(initialValue: mantra?.quickAddStep ?? 0)
     }
 
     private var trimmedName: String {
@@ -141,77 +378,50 @@ struct MantraEditorView: View {
     private var hasEdits: Bool {
         guard let mantra else { return true }
         return name != mantra.name || fullText != mantra.fullText || notes != mantra.notes
+            || quickAdd != mantra.quickAddStep
     }
 
     private var canSave: Bool {
         !trimmedName.isEmpty && !isDuplicate
     }
 
-    /// The row an info button reveals — same look as Settings' dropdown info.
-    private func fieldInfo(_ text: String) -> some View {
-        HStack(alignment: .top) {
-            Image(systemName: "info.circle")
-            Text(text).font(.caption)
-        }
-        .foregroundColor(.gray)
-    }
-
+    /// Restyled 2026-09-25 to match the pause screen (owner: "very plain"): the same card as
+    /// its ✎ editor, the lifetime stats as `ZikrBento` tiles, and sessions grouped by day like
+    /// Zikr History.
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 Section {
-                    TextField("e.g. Durood", text: $name)
-                        .autocorrectionDisabled(true)
-                    if showNameInfo {
-                        fieldInfo("Shown on task cards, in the picker and in history.")
-                    }
-                } header: {
-                    headerWithInfoButton(title: "Name", isPopupVisible: $showNameInfo)
-                } footer: {
-                    if isDuplicate {
-                        Text("A mantra with this name already exists.")
-                            .foregroundStyle(.red)
-                    }
+                    MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
+                                     isDuplicate: isDuplicate)
+                        .padding(16)
+                        .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(Color(.secondarySystemGroupedBackground)))
                 }
-
-                Section {
-                    TextEditor(text: $fullText)
-                        .frame(minHeight: 80)
-                        .autocorrectionDisabled(true)
-                    if showFullTextInfo {
-                        fieldInfo("The complete wording, Arabic or transliterated.")
-                    }
-                } header: {
-                    headerWithInfoButton(title: "Full mantra", isPopupVisible: $showFullTextInfo)
-                }
-
-                Section {
-                    TextEditor(text: $notes)
-                        .frame(minHeight: 80)
-                    if showNotesInfo {
-                        fieldInfo("Why or when to read it, who recommended it, anything you want to remember.")
-                    }
-                } header: {
-                    headerWithInfoButton(title: "Notes", isPopupVisible: $showNotesInfo)
-                }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
 
                 if let mantra {
-                    // Count / time / rate as the pause screen's bento boxes. They live in the
-                    // section header: a grouped section clips its rows to its own corner shape
-                    // (26 pt on iOS 26+), which cut the boxes' corners when they were a row.
                     Section {
-                        MantraTaskRows(mantra: mantra)
+                        ZikrBento(count: mantra.totalCount, seconds: mantra.totalSeconds,
+                                  secondsPerCount: mantra.secondsPerCount ?? 0,
+                                  perTasbeeh: mantra.secondsPerCount.map { zikrDurationString($0 * 100) } ?? "–",
+                                  timeText: zikrDurationString(mantra.totalSeconds),
+                                  countCaption: "total count", timeCaption: "total time", grouped: true)
                     } header: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Lifetime Stats")
-                            MantraStatsBento(mantra: mantra)
-                                .padding(.bottom, 16)
-                            Text("Tasks")
-                        }
+                        Text("Lifetime")
+                            .padding(.leading, 16)   // the zero row insets pull the header left too
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+
+                    Section("Tasks") {
+                        MantraTaskRows(mantra: mantra)
                     }
                     MantraSessionsSection(mantra: mantra)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .fontDesign(.rounded)
             // Opening a mantra is mostly for its stats: title is its name, and Cancel / Save
             // only appear once a field actually changes (a new mantra always has them).
@@ -243,16 +453,19 @@ struct MantraEditorView: View {
             mantra.name = trimmedName
             mantra.fullText = fullTextTrimmed
             mantra.notes = notesTrimmed
+            mantra.quickAddStep = quickAdd
             // Tasks read the live name through the relationship; keep their snapshot in step too
             // so a later deletion still shows the right name. Sessions keep their historical title.
             for task in mantra.tasks { task.mantraName = trimmedName }
             // Stay on the mantra: the fields now match it, so Cancel / Save go away.
             withAnimation {
-                name = mantra.name; fullText = mantra.fullText; notes = mantra.notes
+                name = mantra.name; fullText = mantra.fullText; notes = mantra.notes; quickAdd = mantra.quickAddStep
             }
             triggerSomeVibration(type: .light)
         } else {
-            context.insert(MantraModel(name: trimmedName, fullText: fullTextTrimmed, notes: notesTrimmed))
+            let new = MantraModel(name: trimmedName, fullText: fullTextTrimmed, notes: notesTrimmed)
+            new.quickAddStep = quickAdd
+            context.insert(new)
             dismiss()
         }
     }
@@ -262,7 +475,7 @@ struct MantraEditorView: View {
         dismissKeyboard()
         guard let mantra else { dismiss(); return }
         withAnimation {
-            name = mantra.name; fullText = mantra.fullText; notes = mantra.notes
+            name = mantra.name; fullText = mantra.fullText; notes = mantra.notes; quickAdd = mantra.quickAddStep
         }
     }
 }
@@ -275,94 +488,7 @@ struct MantraEditorView: View {
 }
 
 
-// MARK: - Editor: stats, tasks, sessions
-
-/// Count · time · rate for one mantra, laid out like the pause screen's stats grid (count and
-/// time stacked on the left, the rate box on the right). Tap the rate box to flip between
-/// seconds per count and time per tasbeeh (100 counts), same slide-and-fade as there.
-struct MantraStatsBento: View {
-    let mantra: MantraModel
-    @State private var showingPerCount = true
-    private let gap: CGFloat = 10
-    private let boxHeight: CGFloat = 56
-
-    var body: some View {
-        let pace = mantra.secondsPerCount
-        HStack(alignment: .top, spacing: gap) {
-            VStack(spacing: gap) {
-                box {
-                    HStack {
-                        Image(systemName: "circle.hexagonpath").font(.system(size: 20))
-                        Spacer()
-                        VStack(spacing: 2) {
-                            Text(mantra.totalCount.formatted())
-                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("total count").font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                }
-                .frame(height: boxHeight)
-                box {
-                    HStack {
-                        Image(systemName: "gauge.with.needle").font(.system(size: 20))
-                        Spacer()
-                        VStack(spacing: 2) {
-                            Text(zikrDurationString(mantra.totalSeconds))
-                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("total time").font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .padding(.horizontal, 12)
-                }
-                .frame(height: boxHeight)
-            }
-
-            box {
-                VStack(spacing: 6) {
-                    Text("Rate").font(.system(size: 18, weight: .medium)).underline()
-                    ZStack {
-                        VStack(spacing: 2) {
-                            Text(pace.map { String(format: "%.1fs", $0) } ?? "–")
-                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("per count").font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        .opacity(showingPerCount ? 1 : 0)
-                        .offset(y: showingPerCount ? 0 : -20)
-                        VStack(spacing: 2) {
-                            Text(pace.map { zikrDurationString($0 * 100) } ?? "–")
-                                .font(.system(size: 14, weight: .medium)).monospacedDigit()
-                            Text("per tasbeeh").font(.system(size: 12)).foregroundStyle(.secondary)
-                        }
-                        .opacity(showingPerCount ? 0 : 1)
-                        .offset(y: showingPerCount ? 20 : 0)
-                    }
-                }
-            }
-            .frame(height: boxHeight * 2 + gap)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard pace != nil else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    triggerSomeVibration(type: .medium)
-                    showingPerCount.toggle()
-                }
-            }
-        }
-        .foregroundStyle(Color(.label))   // the header styles its text secondary; values are primary
-        .textCase(nil)
-        .padding(.horizontal, -20)        // the header is inset from the section cards; line up with them
-    }
-
-    private func box<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.vertical, 10)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}
+// MARK: - Editor: tasks, sessions
 
 /// This mantra's tasks as rows: mode + goal, today's progress. Tap opens the task sheet in
 /// edit mode (goal / units; the mantra is locked); swipe to delete (sessions it produced keep
@@ -450,25 +576,22 @@ struct MantraSessionsSection: View {
         return order.map { (date: $0, sessions: byDay[$0] ?? []) }
     }
 
+    /// A section per day, headed "Today · 249 counted" — the same look as Zikr History.
     var body: some View {
-        Section("Sessions") {
-            if mantra.sessions.isEmpty {
+        if mantra.sessions.isEmpty {
+            Section("Sessions") {
                 Text("No sessions with this mantra yet.").foregroundStyle(.secondary)
-            } else {
-                // One card: each day is a divider row inside it, then that day's sessions.
-                ForEach(days, id: \.date) { day in
+            }
+        } else {
+            ForEach(days, id: \.date) { day in
+                Section {
+                    ForEach(day.sessions) { session in SessionRow(session: session, showsMantraName: false) }
+                } header: {
                     HStack {
                         Text(zikrDayLabel(day.date))
                         Spacer()
                         Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
                     }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    // Same card colour, faintly tinted (tertiary grouped equals the page
-                    // background in light mode and split the card).
-                    .listRowBackground(Color(.secondarySystemGroupedBackground).overlay(Color.primary.opacity(0.04)))
-                    ForEach(day.sessions) { session in SessionRow(session: session, showsMantraName: false) }
                 }
             }
         }

@@ -327,8 +327,9 @@ struct summaryCircle: View{
         return scores.first { Calendar.current.isDate($0.date, inSameDayAs: day) }?.averageScore ?? 0
     }
 
-    /// Between the day's rollover and Fajr the new prayer day has nothing to mark yet, so the
-    /// circle shows the day that just finished instead of a 0 (owner, 2026-09-25).
+    /// Before Fajr with nothing marked in a new prayer day, show the day that just finished
+    /// instead of a 0 (owner, 2026-09-25). Since the day rolls over at Fajr this only happens
+    /// without a saved location (the day then turns at 3 AM).
     private var showingYesterday: Bool {
         guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return false }
         return Date() < fajr.startTime && !fajr.isCompleted

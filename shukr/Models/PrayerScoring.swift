@@ -136,7 +136,7 @@ enum PrayerScoring {
     /// Copies the shared store (+ -wal / -shm) to `<app group>/Library/Backups/` before a
     /// rewrite of old rows. Library is where `devicectl device copy from` can reach it (the store
     /// itself sits at the group root, which it can't). Runs at launch before anything writes.
-    private static func backUpStore(label: String) {
+    static func backUpStore(label: String) {
         let fm = FileManager.default
         guard let group = fm.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget") else { return }
         let dir = group.appending(path: "Library/Backups")

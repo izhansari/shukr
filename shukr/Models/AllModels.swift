@@ -51,6 +51,12 @@ class SharedStateClass: ObservableObject {
     /// then falls back to a lookup by name.
     @Published var mantraForSession: MantraModel? = nil
 
+    /// "Continue from where you left off" on a task (Zikr page): the next session starts with
+    /// today's count / time already on the ring. Read and cleared by `tasbeehView.startTimer`;
+    /// only the new counts are saved, so today's total isn't counted twice.
+    var resumeCount: Int = 0
+    var resumeSeconds: TimeInterval = 0
+
     @Published var selectedTask: TaskModel? = nil {
         didSet {
             if let task = selectedTask{
@@ -243,6 +249,9 @@ class MantraModel: Identifiable {
     var fullText: String = ""
     /// Free-form notes ("sheikh said read this every morning…").
     var notes: String = ""
+    /// The tasbeeh's quick-add step for this mantra: a "+N" button that counts N in one tap;
+    /// 0 = no button (schema 2.1.0, 2026-09-25; briefly lived in UserDefaults before that).
+    var quickAddStep: Int = 0
     var createdAt: Date = Date()
 
     @Relationship(deleteRule: .nullify, inverse: \TaskModel.mantraRef)
@@ -510,4 +519,46 @@ func zikrDurationString(_ seconds: TimeInterval) -> String {
     if h > 0 { return String(format: "%dh %02dm", h, m) }
     if m > 0 { return String(format: "%dm %02ds", m, sec) }
     return "\(sec)s"
+}
+
+// MARK: - Quick add
+
+/// The tasbeeh's quick-add step: a "+N" button in a running session that counts N in one tap
+/// (Durood +5, Bismillah +20…); 0 = no button. Each mantra keeps its own on the row
+/// (`MantraModel.quickAddStep`); sessions without a mantra have no row, so theirs is a setting.
+enum QuickAddSteps {
+    static let range = 0...500
+    /// Sessions with no mantra.
+    static let noMantraKey = "quickAddStepNoMantra"
+    /// Before schema 2.1.0 the steps lived here as "uuid:5,uuid:20,none:3" (a day, 2026-09-25),
+    /// and before that as one global Settings value, `tasbeehSecondaryStep`.
+    private static let legacyKey = "mantraQuickAddSteps"
+
+    static func step(for mantra: MantraModel?) -> Int {
+        mantra?.quickAddStep ?? UserDefaults.standard.integer(forKey: noMantraKey)
+    }
+
+    /// Carries the UserDefaults steps onto the rows once, then drops the old key. Run by the
+    /// app's data pass (standard defaults are the app's own, so never from the widget).
+    @discardableResult
+    static func moveLegacySteps(into mantras: [MantraModel]) -> Int {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: noMantraKey) == nil {
+            defaults.set(defaults.integer(forKey: "tasbeehSecondaryStep"), forKey: noMantraKey)
+        }
+        guard let raw = defaults.string(forKey: legacyKey), !raw.isEmpty else { return 0 }
+        var moved = 0
+        for pair in raw.split(separator: ",") {
+            let parts = pair.split(separator: ":")
+            guard parts.count == 2, let n = Int(parts[1]) else { continue }
+            if parts[0] == "none" {
+                defaults.set(n, forKey: noMantraKey)
+            } else if let mantra = mantras.first(where: { $0.id.uuidString == parts[0] }) {
+                mantra.quickAddStep = n
+                moved += 1
+            }
+        }
+        defaults.removeObject(forKey: legacyKey)
+        return moved
+    }
 }

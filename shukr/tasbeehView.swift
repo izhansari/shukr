@@ -21,8 +21,12 @@ struct tasbeehView: View {
     
     // AppStorage properties
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
-    /// Settings → Tasbeeh: counts the secondary button adds per tap; 0 = no button.
-    @AppStorage("tasbeehSecondaryStep") private var secondaryStep: Int = 0
+    /// Sessions without a mantra keep their quick-add step here (mantras keep theirs on the row).
+    @AppStorage(QuickAddSteps.noMantraKey) private var noMantraQuickAdd = 0
+    /// The session's mantra row: the picked object, else looked up by the session title
+    /// (post-salah sequences and older launchers only set the title).
+    @State private var sessionMantra: MantraModel?
+    private var secondaryStep: Int { sessionMantra?.quickAddStep ?? noMantraQuickAdd }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
     
@@ -32,6 +36,11 @@ struct tasbeehView: View {
     @State private var timerbb: Timer? = nil
     @State private var paused = false
     @State private var tasbeeh = 0
+    /// Counts / seconds already done today when continuing a task: on the ring, not saved again.
+    @State private var countOffset = 0
+    @State private var timeOffset: TimeInterval = 0
+    /// What this session itself counted (the saved total).
+    private var sessionCount: Int { tasbeeh - countOffset }
     @State private var startTime: Date? = nil
     @State private var endTime: Date? = nil
     @State private var pauseStartTime: Date? = nil
@@ -57,12 +66,8 @@ struct tasbeehView: View {
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
     
-    @State private var postNamazSequence: [(title: String, targetCount: Int)] = [
-                (title: "Subhanallah", targetCount: 33),
-                (title: "Alhamdulillah", targetCount: 33),
-                (title: "Allahu Akbar", targetCount: 34)
-            ]
-    @State private var currentSessionIndex: Int = 0
+    /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
+    @State private var postSalahPhase = 0
     @State private var tasbeehColorMode = false
 
     
@@ -249,6 +254,7 @@ struct tasbeehView: View {
                 // middle screen when paused
                 pauseScreen_StatsSettingsBG(
                     paused: paused,
+                    mantra: sessionMantra,
                     tasbeeh: tasbeeh,
                     secsToReport: secsPassedAtPause,
                     newAvrgTPC: newAvrgTPC,
@@ -270,27 +276,9 @@ struct tasbeehView: View {
                 
                 // The Top Buttons During Session
                 HStack {
-                    // exit button top left when paused
-                    if paused{
-                        Button(action: {stopTimer()} ) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.red.opacity(0.4))
-                                .padding()
-                                .background(.gray.opacity(0.08))
-                                .cornerRadius(10)
-//                            Label {
-//                                Text("Exit")
-//                                    .font(.system(size: 20, weight: .medium))
-//                            } icon: {
-//                                Image(systemName: "xmark")
-//                                    .font(.system(size: 24, weight: .bold))
-//                            }
-//                                .foregroundColor(.red.opacity(0.4))
-//                                .padding()
-//                                .background(.gray.opacity(0.08))
-//                                .cornerRadius(10)
-                        }
+                    // Paused: nothing up here — Finish / Resume are at the bottom of the pause screen.
+                    if paused {
+                        EmptyView()
                     }
                     else {
                         HStack{
@@ -299,14 +287,11 @@ struct tasbeehView: View {
                                 paused: paused, togglePause: togglePause)
                             
                             if secondaryStep > 0 {
-                                TopOfSessionButton( // Secondary button: +N in one tap (Settings → Tasbeeh)
+                                TopOfSessionButton( // Quick add: +N in one tap (the mantra's own step)
                                     text: "+\(secondaryStep)", actionToDo: { simulateTasbeehClicks(times: secondaryStep) },
                                     paused: paused, togglePause: togglePause)
                             }
                             
-                            TopOfSessionButton( // Plus 100 Button (for testing)
-                                symbol: "infinity", actionToDo: {simulateTasbeehClicks(times: 100)},
-                                paused: paused, togglePause: togglePause)
                             
 //                            TopOfSessionButton( // Add Note Button (new feature coming soon)
 //                                symbol: "note", actionToDo: {showNotesModal = true},
@@ -322,6 +307,8 @@ struct tasbeehView: View {
                     
                     // dynamic pause / play button shown in active session
                     PlayPauseButton(togglePause: togglePause, paused: paused)
+                        .opacity(paused ? 0 : 1)
+                        .disabled(paused)
                 }
                 .animation(paused ? .easeOut : .easeIn, value: paused)
                 .padding()
@@ -352,21 +339,26 @@ struct tasbeehView: View {
                 // The Bottom Inactivity Alert During Session
                 VStack{
                     if sharedState.isDoingPostNamazZikr {
-                        Text("\(sharedState.titleForSession)")
-                            .frame(width: 150, height: 40)
-                            .font(.footnote)
-                            .fontDesign(.rounded)
-                            .fontWeight(.thin)
-                            .multilineTextAlignment(.center)
-                            .padding()
-                            .background(.gray.opacity(0.08))
-                            .cornerRadius(10)
-                            .padding(.top, 130)
+                        PostSalahPhaseStrip(count: tasbeeh)
+                            .padding(.top, 120)
+                            .allowsHitTesting(false)
                     }
                     Spacer()
                     inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
                 }
                 .zIndex(1)
+
+                // Post-salah: why it's worth it, low on the screen, clear of the beads.
+                if sharedState.isDoingPostNamazZikr && !paused {
+                    VStack {
+                        Spacer()
+                        PostSalahReminder()
+                            .padding(.horizontal, 36)
+                            .padding(.bottom, 12)
+                    }
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+                }
             }
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
             
@@ -394,24 +386,50 @@ struct tasbeehView: View {
         
         .onAppear {
             tasbeehColorMode = colorScheme == .dark ? true : false
+            resolveSessionMantra()
             
             if !timerIsActive{
 //                timerIsActive = true // ensures functions dont happen outside of session AND not reenabling the onAppear
                 print("a1 tasbeehView onappear (timerIsActive?: \(timerIsActive) @ \(Date())) ")
                 if sharedState.isDoingPostNamazZikr {
-                    startSequentialSession()
-                } else{
-                    startTimer()
+                    PostSalahTasbeeh.prepare(sharedState, in: context)
+                    resolveSessionMantra()
                 }
+                startTimer()
                 paused = false // sometimes appstorage had paused = true. so clear it.
                 inactivityTimerHandler(run: "restart")
             }
         }
+        .onChange(of: sharedState.titleForSession) { _, _ in resolveSessionMantra() }
+        #if DEBUG
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("-demoPostSalah") {
+                try? await Task.sleep(for: .seconds(1.5))
+                simulateTasbeehClicks(times: 45)
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
+                try? await Task.sleep(for: .seconds(1))
+                simulateTasbeehClicks(times: 12)
+                try? await Task.sleep(for: .seconds(1))
+                togglePause()
+                if ProcessInfo.processInfo.arguments.contains("-demoResults") {
+                    try? await Task.sleep(for: .seconds(1))
+                    stopTimer()
+                }
+            }
+        }
+        #endif
         .onChange(of: tasbeehColorMode){oldVal, newVal in
             print("tasbeehView: old tasbeehColorMode: \(oldVal), newVal: \(newVal)")
         }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
+            if sharedState.isDoingPostNamazZikr {
+                // A phrase finished (33, 66): a success buzz as the next one starts.
+                let phase = PostSalahTasbeeh.phase(at: newTasbeeh).index
+                if phase > postSalahPhase { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                postSalahPhase = phase
+            }
             
             if(sharedState.selectedMode == 0){
                 //made it so that it never actually gets to 100% (cuz auto stop ends at 100%)
@@ -434,6 +452,7 @@ struct tasbeehView: View {
             }
         }
         .onDisappear {
+            sharedState.isDoingPostNamazZikr = false
             UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
         }
 
@@ -441,31 +460,15 @@ struct tasbeehView: View {
     }
 //--------------------------------------functions--------------------------------------
 
-    private func startSequentialSession() {
-        print("ran a startSequentialSession().")
-        let currentSession = postNamazSequence[currentSessionIndex]
-        sharedState.selectedMode = 2 // Count target mode
-        sharedState.selectedMinutes = 0
-        sharedState.targetCount = String(currentSession.targetCount)
-        sharedState.titleForSession = currentSession.title // should be set as true from outside to enter sequence anyways
-        startTimer() // Start the first sequence session
-    }
-    
-    private func handleSessionCompletion() {
-        print("ran a handleSessionCompletion().")
-        // Check if there's a next session in the sequence
-        if currentSessionIndex < postNamazSequence.count - 1 {
-            currentSessionIndex += 1
-            startSequentialSession() // Start the next session
+    private func resolveSessionMantra() {
+        let title = sharedState.titleForSession
+        if let picked = sharedState.mantraForSession, picked.name == title || title.isEmpty {
+            sessionMantra = picked
         } else {
-            // Reset state when all sessions are complete
-            currentSessionIndex = 0
-            sharedState.isDoingPostNamazZikr = false
-            isPresented = false
-//            sharedState.showingOtherPages = false
+            sessionMantra = title.isEmpty ? nil : MantraModel.find(named: title, in: context)
         }
     }
-    
+
     /// Keep the screen awake only while a session is actively counting.
     /// Paused, stopped, or dismissed → hand control back to the system auto-lock.
     private func updateIdleTimer() {
@@ -480,7 +483,11 @@ struct tasbeehView: View {
         
         // Reset necessary variables for a new session
         print("ran a start.")
-        tasbeeh = 0
+        countOffset = sharedState.resumeCount
+        timeOffset = sharedState.resumeSeconds
+        sharedState.resumeCount = 0
+        sharedState.resumeSeconds = 0
+        tasbeeh = countOffset
         
         savedSession = nil
         startTime = Date()
@@ -493,7 +500,7 @@ struct tasbeehView: View {
         
             withAnimation {
                 if !paused && (sharedState.selectedMode == 1){
-                    progressFraction = CGFloat(Int(secsPassed))/TimeInterval(totalTime)
+                    progressFraction = CGFloat(Int(secsPassed + timeOffset))/TimeInterval(totalTime)
                 }
             }
            
@@ -525,20 +532,13 @@ struct tasbeehView: View {
         
         timerIsActive = false // this so functions only run during a sesh AND so timer checking when to stopTimer doesnt save multiple sessions.
         updateIdleTimer()
-        if tasbeeh > 0 {
+        if sessionCount > 0 {
             savedSession = saveSession()
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
             sharedState.selectedTask = nil
-            // if in middle of sequence, run stoptimer() asap
-            if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/{
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self.completeStopTimer()
-            }
-            // else do with wait
-            else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.completeStopTimer()
-                }
             }
         } else {
             completeStopTimer()
@@ -571,13 +571,10 @@ struct tasbeehView: View {
         paused = false
         
         
-        if tasbeeh == 0 {
+        if sessionCount <= 0 {
             isPresented = false
 //            sharedState.showingOtherPages = false
             resetSharedState()
-        }
-        if sharedState.isDoingPostNamazZikr /*isSequentialModeActive*/ {
-            handleSessionCompletion() // Trigger the next session
         }
     }
     
@@ -598,13 +595,13 @@ struct tasbeehView: View {
             sessionMode: sharedState.selectedMode,
             targetMin: sharedState.selectedMinutes,
             targetCount: Int(sharedState.targetCount) ?? 0,
-            totalCount: tasbeeh,
+            totalCount: sessionCount,
             startTime: startTime ?? Date(),
             secondsPassed: secsToReport,
             avgTimePerClick: newAvrgTPC,
             tasbeehRate: tasbeehRate,
             task: linkedTask,
-            // Picked from a task/picker → we have the row; post-salah sequence only has a name.
+            // Picked from a task/picker (or Tasbih Fatimah for post-salah) → we have the row.
             mantra: sharedState.mantraForSession ?? MantraModel.find(named: placeholderTitle, in: context)
         )
         print("adding a session card")
@@ -658,7 +655,7 @@ struct tasbeehView: View {
     private func incrementTasbeeh() {
         if timerIsActive {
             tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
-            newAvrgTPC = (tasbeeh > 0 ? (secsPassed / Double(tasbeeh)) : 0)
+            newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
             vibrateOnFinishOfTasbeeh()
         }
@@ -666,8 +663,8 @@ struct tasbeehView: View {
     
     private func decrementTasbeeh() {
         if timerIsActive {
-            tasbeeh = max(tasbeeh - 1, 0) // Adjust minimum value as needed
-            newAvrgTPC = (tasbeeh > 0 ? (secsPassed / Double(tasbeeh)) : 0)
+            tasbeeh = max(tasbeeh - 1, countOffset) // never below where a continued task started
+            newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: .rigid)
         }
     }
@@ -687,261 +684,171 @@ struct tasbeehView: View {
     
     // MARK: - Helper Structs (basically moved from Utils)
     
+    /// After Finish (restyled 2026-09-25 to match the pause screen): a sage check that pops in,
+    /// "saved to your history", the mantra card (tap to put the session on another mantra —
+    /// not for a task's session, which stays on its task's mantra), the shared bento, and Done.
     struct ResultsView: View {
-        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
         @Environment(\.modelContext) private var context
         @EnvironmentObject var sharedState: SharedStateClass
         @Binding var isPresented: Bool
-        let savedSession: SessionDataModel  // Add this
+        let savedSession: SessionDataModel
 
-        // UI state
-        private let textSize: CGFloat = 14
-        private let gapSize: CGFloat = 10
-        @State private var countRotation: Double = 0
-        @State private var timerRotation: Double = 0
-        @State private var showingPerCount = true
-        @State private var showMantraSheetFromResultsPage = false
-        @State private var chosenMantraFromResultsPage: String? = ""
-        @State private var chosenMantraObjectFromResultsPage: MantraModel? = nil
-        
-        // Computed properties from savedSession
-        private var tasbeeh: Int { savedSession.totalCount }
-        private var secsToReport: Double { savedSession.secondsPassed }
-        private var tasbeehRate: String { savedSession.tasbeehRate }
-        private var newAvrgTPC: Double { savedSession.avgTimePerClick }
-        
+        @State private var showMantraPicker = false
+        @State private var chosenMantraName: String? = ""
+        @State private var chosenMantraObject: MantraModel? = nil
+        @State private var checkShown = false
+        @State private var showHistory = false
+
+        private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+        private var locked: Bool { savedSession.task != nil }
+        private var title: String { savedSession.mantra?.name ?? savedSession.title }
+
+        /// A task's session: where the task stands today ("5 of 100 today"), since a continued
+        /// session saves only its own counts.
+        private var taskToday: String? {
+            guard let task = savedSession.task else { return nil }
+            let mine = task.sessions.filter { $0.startTime >= PrayerDay.sessionDayStart() }
+            let p = TaskProgress(count: mine.reduce(0) { $0 + $1.totalCount },
+                                 seconds: mine.reduce(0) { $0 + $1.secondsPassed })
+            return task.isCountMode ? "\(p.count) of \(task.goal) today"
+                                    : "\(Int(p.seconds / 60)) of \(task.goal) min today"
+        }
+
+        private var sessionLabel: String {
+            switch savedSession.sessionMode {
+            case 1: return "\(savedSession.targetMin) min session"
+            case 2: return "\(savedSession.targetCount) count session"
+            default: return "freestyle session"
+            }
+        }
+
         var body: some View {
             ZStack {
-                
                 Color("pauseColor")
                     .edgesIgnoringSafeArea(.all)
-                
-                completionCard
-                    .padding(.horizontal, 16)
-                
-                VStack {
-                    Spacer()
-                    
-                    CloseButton(
-                        action: {
-                            isPresented = false
-    //                        sharedState.showingOtherPages = false
-                            sharedState.titleForSession = ""
-                        }
-                    )
-                    .padding(.bottom)
-                }
-            }
-        }
-        
-        private var completionCard: some View {
-            VStack(alignment: .center, spacing: 12) {
-                // TOP:
-                // TOP1. Checkmark circle
-                Circle()
-                    .fill(Color(colorScheme == .dark ? .systemGray4 : .white))
-                    .frame(width: 40, height: 40)
-                    .overlay {
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: 20)
+                    VStack(spacing: 10) {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundColor(.green)
+                            .font(.system(size: 22, weight: .medium))
+                            .foregroundStyle(Color.sage)
+                            .frame(width: 52, height: 52)
+                            .background(Circle().fill(Color.sage.opacity(0.16)))
+                            .scaleEffect(checkShown ? 1 : 0.4)
+                            .opacity(checkShown ? 1 : 0)
+                        Text("saved to your history")
+                            .font(.system(size: 17, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
                     }
-                
-                // TOP2. Message
-                Text("Nice! I'll add this to your history!")
-                    .font(.system(size: 16, weight: .regular))
-                    .multilineTextAlignment(.center)
-                
-                // Boxes
-                VStack(alignment: .center, spacing: gapSize) {
-                    // Mantra selector
-                    mantraSelector
-                        .transition(.opacity)
-                    
-                    // Stats Grid
-                    HStack(alignment: .top, spacing: gapSize) {
-                        // Left Column
-                        VStack(spacing: gapSize) {
-                            // Count Box
-                            statsBox {
-                                HStack {
-                                    Image(systemName: "circle.hexagonpath")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.primary)
-                                        .rotationEffect(.degrees(-countRotation))
-                                        .animation(.spring(duration: 0.5), value: countRotation)
-                                    Spacer()
-                                    Text("\(tasbeeh)")
-                                        .font(.system(size: textSize, weight: .medium))
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 12)
-                            }
-                            .frame(height: 44)  // Fixed height for count
-                            .onTapGesture {
-                                triggerSomeVibration(type: .medium)
-                                countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
-                            }
+                    .padding(.bottom, 22)
 
-                            // Timer Box
-                            statsBox {
-                                HStack {
-                                    Image(systemName: "gauge.with.needle")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.primary)
-                                        .rotationEffect(.degrees(timerRotation))
-                                        .animation(.spring(duration: 0.3), value: timerRotation)
-                                    Spacer()
-                                    Text(timerStyle(secsToReport))
-                                        .font(.system(size: textSize, weight: .medium))
-                                        .monospacedDigit()
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 12)
-                            }
-                            .frame(height: 44)  // Fixed height for timer
-                            .onTapGesture {
-                                triggerSomeVibration(type: .medium)
-                                timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
-                             }
+                    VStack(spacing: 12) {
+                        mantraCard
+                        ZikrBento(count: savedSession.totalCount, seconds: savedSession.secondsPassed,
+                                  secondsPerCount: savedSession.avgTimePerClick,
+                                  perTasbeeh: savedSession.tasbeehRate)
+                    }
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 20)
 
-                        }
-                        
-                        // Rate Box
-                        statsBox {
-                            VStack(spacing: 6) {
-                                Text("Rate")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .underline()
-                                
-                                ZStack {
-                                    // Per count view
-                                    VStack(spacing: 2) {
-                                        Text(String(format: "%.2fs", newAvrgTPC))
-                                            .font(.system(size: textSize, weight: .medium))
-                                            .monospacedDigit()
-                                        Text("per count")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .opacity(showingPerCount ? 1 : 0)
-                                    .offset(y: showingPerCount ? 0 : -20)
-                                    
-                                    // Per tasbeeh view
-                                    VStack(spacing: 2) {
-                                        Text(tasbeehRate)
-                                            .font(.system(size: textSize, weight: .medium))
-                                            .monospacedDigit()
-                                        Text("per tasbeeh")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .opacity(showingPerCount ? 0 : 1)
-                                    .offset(y: showingPerCount ? 20 : 0)
-                                }
-                            }
-                        }
-                        .frame(height: 96)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                triggerSomeVibration(type: .medium)
-                                showingPerCount.toggle()
-                            }
-                        }
-                    }
-                }
-                .frame(maxHeight: 150)
-            }
-            .padding(20)
-            .frame(width: 280)
-            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
-            .cornerRadius(20)
-            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
-        }
-        
-        private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 10)
-                .background(Color(.tertiarySystemBackground))
-                .cornerRadius(12)
-        }
-        
-        // zikrflag 3
-        private var mantraSelector: some View {
-            Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
-                .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 12)
-                .background(Color(.tertiarySystemBackground))
-                .cornerRadius(12)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    showMantraSheetFromResultsPage = true
-                }
-                .onChange(of: chosenMantraFromResultsPage) {
-                    if let newSetMantra = chosenMantraFromResultsPage {
-                        withAnimation {
-                            sharedState.titleForSession = newSetMantra
-                            sharedState.mantraForSession = chosenMantraObjectFromResultsPage
-                            savedSession.title = newSetMantra  // Update the saved session directly
-                            savedSession.mantra = chosenMantraObjectFromResultsPage
-                            do {
-                                try context.save()  // Save the context to persist the changes
-                            } catch {
-                                print("Error saving context: \(error)")
-                            }
-                        }
-                    }
-                }
-                .sheet(isPresented: $showMantraSheetFromResultsPage) {
-                    MantraPickerView(
-                        isPresented: $showMantraSheetFromResultsPage,
-                        selectedMantra: $chosenMantraFromResultsPage,
-                        selectedMantraObject: $chosenMantraObjectFromResultsPage,
-                        presentation: [.large]
-                    )
-                }
-        }
-        
-        struct CloseButton: View {
-            let action: () -> Void
-            @State private var isPressed = false
-            
-            var body: some View {
-                Button(action: {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+                    Spacer(minLength: 20)
+
+                    Button {
                         triggerSomeVibration(type: .success)
-                        isPressed = true
+                        isPresented = false
+                        sharedState.titleForSession = ""
+                    } label: {
+                        Text("Done")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .foregroundStyle(Color.sage)
+                            .background(Capsule().fill(Color.sage.opacity(0.18)))
+                            .contentShape(Capsule())
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        isPressed = false
-                        action()
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 20)
+
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        showHistory = true
+                    } label: {
+                        Label("View zikr history", systemImage: "clock.arrow.circlepath")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                     }
-                }) {
-                    ZStack {
-                        // Background
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.gray.opacity(0.08))
-                        
-                        // Outline
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
-                        
-                        // Content
-                        Text("close")
-                            .fontDesign(.rounded)
-                            .fontWeight(.thin)
-                            .foregroundColor(.primary)
-                    }
-                    .frame(width: 100, height: 50)
-                    .scaleEffect(isPressed ? 0.95 : 1.0)
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 4)
                 }
-                .buttonStyle(PlainButtonStyle())
+                .fontDesign(.rounded)
             }
+            .onAppear {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.6).delay(0.15)) { checkShown = true }
+            }
+            .onChange(of: chosenMantraName) {
+                guard let newName = chosenMantraName, !newName.isEmpty else { return }
+                withAnimation {
+                    sharedState.titleForSession = newName
+                    sharedState.mantraForSession = chosenMantraObject
+                    savedSession.title = newName   // the saved session moves to that mantra
+                    savedSession.mantra = chosenMantraObject
+                    do { try context.save() } catch { print("Error saving context: \(error)") }
+                }
+            }
+            .sheet(isPresented: $showMantraPicker) {
+                MantraPickerView(
+                    isPresented: $showMantraPicker,
+                    selectedMantra: $chosenMantraName,
+                    selectedMantraObject: $chosenMantraObject,
+                    presentation: [.large]
+                )
+            }
+            .sheet(isPresented: $showHistory) {
+                NavigationStack {
+                    HistoryPageView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showHistory = false }
+                            }
+                        }
+                }
+            }
+        }
+
+        private var mantraCard: some View {
+            Button { showMantraPicker = true } label: {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(title.isEmpty ? "choose a mantra" : title)
+                                .font(.system(size: 24, weight: .light, design: .rounded))
+                                .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                                .multilineTextAlignment(.leading)
+                                .lineLimit(2)
+                            if !locked {
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        Text(locked ? "\(sessionLabel) · \(taskToday ?? "from your task")" : sessionLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
+                .background(cardShape.fill(.ultraThinMaterial))
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                .contentShape(cardShape)
+            }
+            .buttonStyle(.plain)
+            .disabled(locked)
         }
     }
 
@@ -964,42 +871,35 @@ struct tasbeehView: View {
     }
 
     
+    /// The pause screen (redesigned 2026-09-25 — owner: the bottom buttons "didn't feel on
+    /// brand", keep the bento, and make the mantra's full text and notes reachable). Top to
+    /// bottom: "paused · 33 count session", the mantra card (name → picker, the full mantra, notes,
+    /// its quick-add step, ✎ → the mantra's page), the stats bento, the finish estimate, then
+    /// labelled setting chips and Finish / Resume. Tapping the dimmed background still resumes.
     struct pauseScreen_StatsSettingsBG: View {
-        @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
         @EnvironmentObject var sharedState: SharedStateClass
-        @State private var showMantraSheetFromPausedPage = false
-        @State private var chosenMantra: String? = ""
-        @State private var rateTextToggle = false  // to control the toggle text in the middle
-            
         let paused: Bool
+        let mantra: MantraModel?
         let tasbeeh: Int
         let secsToReport: TimeInterval
         let newAvrgTPC: TimeInterval
         let tasbeehRate: String
-        let togglePause: () -> Void // Closure for the togglePause function
-        let stopTimer: () -> Void // Closure for the togglePause function
+        let togglePause: () -> Void
+        let stopTimer: () -> Void
         let takingNotes: Bool
         @Binding var toggleInactivityTimer: Bool
         @Binding var inactivityDimmer: Double
         @Binding var autoStop: Bool
         @Binding var tasbeehColorMode: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
-        
-        @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
 
-
-
-        
         // UI state
-        private let textSize: CGFloat = 14
-        private let gapSize: CGFloat = 10
-        @State private var countRotation: Double = 0
-        @State private var timerRotation: Double = 0
-        @State private var showingPerCount = true
-        @State private var showMantraSheetFromResultsPage = false
-        @State private var chosenMantraFromResultsPage: String? = ""
-        @State private var chosenMantraObjectFromResultsPage: MantraModel? = nil
-        
+        @State private var showMantraPicker = false
+        @State private var chosenMantraName: String? = ""
+        @State private var chosenMantraObject: MantraModel? = nil
+        @State private var editingMantra: MantraModel?
+        @State private var fullTextExpanded = false
+
         // Computed variables for est time completion (only for target count mode)
         private var remainingCount: Int{
             return (Int(sharedState.targetCount) ?? 0) - Int(tasbeeh)
@@ -1011,255 +911,359 @@ struct tasbeehView: View {
             return Date().addingTimeInterval(timeLeft)
         }
 
+        /// Count goal, not post-salah, started and not done: the bento adds the finish tile.
+        private var showsFinishEstimate: Bool {
+            sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0
+        }
 
-        
+        private var sessionLabel: String {
+            switch sharedState.selectedMode {
+            case 1: return "\(sharedState.selectedMinutes) min session"
+            case 2: return "\(sharedState.targetCount) count session"
+            default: return "freestyle session"
+            }
+        }
+
+        /// Launched from a task card: the session counts toward that task, so its mantra stays
+        /// (same rule as `saveSession`'s task link).
+        private var isTaskSession: Bool {
+            sharedState.selectedMode != 0 && !sharedState.isDoingPostNamazZikr && sharedState.selectedTask != nil
+        }
+        /// Task and post-salah sessions keep their mantra; only free sessions can switch.
+        private var mantraLocked: Bool { isTaskSession || sharedState.isDoingPostNamazZikr }
+
+        private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+
         var body: some View {
-            
-            
             Color("pauseColor")
                 .edgesIgnoringSafeArea(.all)
                 .animation(.easeOut(duration: 0.3), value: paused)
                 .opacity(paused ? 1 : 0.0)
                 .onTapGesture { togglePause() }
-            
-            VStack{
-                VStack {
-                    completionCard
-                        .padding(.horizontal, 16)
+                .allowsHitTesting(paused)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "pause.fill").font(.caption2)
+                    Text("paused · \(sessionLabel)")
                 }
-                
-                if sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0 {
-                    estimatedFinishTime
+                .font(.subheadline.weight(.light))
+                .foregroundStyle(.secondary)
+                .padding(.top, 18)
+
+                ScrollView {
+                    VStack(spacing: 12) {
+                        mantraCard
+                        ZikrBento(count: tasbeeh, seconds: secsToReport, secondsPerCount: newAvrgTPC,
+                                  perTasbeeh: tasbeehRate,
+                                  finish: showsFinishEstimate ? (timeLeft, finishTime) : nil)
+                    }
+                    .frame(maxWidth: 420)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
                 }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+
+                controls
             }
+            .fontDesign(.rounded)
             .opacity(paused ? 1.0 : 0.0)
             .animation(.easeInOut, value: paused)
-            
-            VStack {
-                Spacer()
-                
-                // bottom settings bar when paused
-                VStack {
-                    if(toggleInactivityTimer){
-                        Slider(value: $inactivityDimmer, in: 0...1.0)
-                        .tint(.white)
-                        .frame(width: 250)
-                        .padding()
+            .allowsHitTesting(paused)
+            .onChange(of: chosenMantraName) {
+                if let newSetMantra = chosenMantraName, !newSetMantra.isEmpty {
+                    withAnimation {
+                        sharedState.mantraForSession = chosenMantraObject
+                        sharedState.titleForSession = newSetMantra
+                        fullTextExpanded = false
                     }
-                    HStack{
-                        AutoStopToggleButton(autoStop: $autoStop)
-                        SleepModeToggleButton(toggleInactivityTimer: $toggleInactivityTimer, tasbeehColorMode: $tasbeehColorMode)
-                        VibrationModeToggleButton(currentVibrationMode: $currentVibrationMode)
-                        ColorSchemeModeToggleButton(tasbeehColorMode: $tasbeehColorMode)
-                    }
-//                    HStack{
-//                        Spacer()
-//                        Button(action: {
-//                            stopTimer()
-//                        }) {
-//                            Text("Complete")
-//                                .font(.headline)
-//                                .bold()
-//                                .foregroundColor(Color(.secondaryLabel))
-//                                .padding()
-//                                .cornerRadius(10)
-//                        }
-//                        .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the exit button
-//                        .cornerRadius(15)
-//                        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 7)
-//
-//                        Spacer()
-//                    }
                 }
-                .padding()
-                .padding(.bottom, 20)
-                .opacity(paused ? 1.0 : 0.0)
             }
-            
+            .sheet(isPresented: $showMantraPicker) {
+                MantraPickerView(
+                    isPresented: $showMantraPicker,
+                    selectedMantra: $chosenMantraName,
+                    selectedMantraObject: $chosenMantraObject,
+                    presentation: [.large]
+                )
+            }
+            .sheet(item: $editingMantra, onDismiss: {
+                // A rename: the session's title (what gets saved and shown) follows the mantra.
+                if let mantra, sharedState.titleForSession != mantra.name {
+                    sharedState.mantraForSession = mantra
+                    sharedState.titleForSession = mantra.name
+                }
+            }) { mantra in
+                MantraCardEditor(mantra: mantra)
+            }
         }
-        
-        
-        private var completionCard: some View {
-            VStack(alignment: .center, spacing: 12) {
-                
-                //TOP: The Mode Text
-                switch sharedState.selectedMode {
-                case 1:
-                    Text("\(sharedState.selectedMinutes)m Session")
-                        .font(.title3)
-                        .bold()
-                case 2:
-                    Text("\(sharedState.targetCount) Count Session")
-                        .font(.title3)
-                        .bold()
-                default:
-                    Text("Freestyle Session")
-                        .font(.title3)
-                        .bold()
+
+        // MARK: mantra card
+
+        private var mantraCard: some View {
+            let title = sharedState.titleForSession
+            return VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .center, spacing: 8) {
+                    Button { showMantraPicker = true } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(title.isEmpty ? "choose a mantra" : title)
+                                    .font(.system(size: 24, weight: .light, design: .rounded))
+                                    .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                                    .multilineTextAlignment(.leading)
+                                    .lineLimit(2)
+                                if !mantraLocked {
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            if isTaskSession {
+                                Label("from your task", systemImage: "checklist")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(mantraLocked)
+                    Spacer(minLength: 8)
+                    if let mantra {
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            editingMantra = mantra
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.sage)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(Color.sage.opacity(0.14)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit mantra")
+                    }
                 }
 
-                
-                // Boxes
-                VStack(alignment: .center, spacing: gapSize) {
-                    // Mantra selector
-                    mantraSelector
-                        .transition(.opacity)
-                    
-                    // Stats Grid
-                    HStack(alignment: .top, spacing: gapSize) {
-                        // Left Column
-                        VStack(spacing: gapSize) {
-                            // Count Box
-                            statsBox {
-                                HStack {
-                                    Image(systemName: "circle.hexagonpath")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.primary)
-                                        .rotationEffect(.degrees(-countRotation))
-                                        .animation(.spring(duration: 0.5), value: countRotation)
-                                    Spacer()
-                                    Text("\(tasbeeh)")
-                                        .font(.system(size: textSize, weight: .medium))
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 12)
-                            }
-                            .frame(height: 44)  // Fixed height for count
-                            .onTapGesture {
-                                triggerSomeVibration(type: .medium)
-                                countRotation += 60 // Rotate by 45 degrees (360° ÷ 8)
-                            }
-
-                            // Timer Box
-                            statsBox {
-                                HStack {
-                                    Image(systemName: "gauge.with.needle")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(.primary)
-                                        .rotationEffect(.degrees(timerRotation))
-                                        .animation(.spring(duration: 0.3), value: timerRotation)
-                                    Spacer()
-                                    Text(timerStyle(secsToReport))
-                                        .font(.system(size: textSize, weight: .medium))
-                                        .monospacedDigit()
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 12)
-                            }
-                            .frame(height: 44)  // Fixed height for timer
-                            .onTapGesture {
-                                triggerSomeVibration(type: .medium)
-                                timerRotation += 45 // Rotate by 45 degrees (360° ÷ 8)
-                             }
-
-                        }
-                        
-                        // Rate Box
-                        statsBox {
-                            VStack(spacing: 6) {
-                                Text("Rate")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .underline()
-                                
-                                ZStack {
-                                    // Per count view
-                                    VStack(spacing: 2) {
-                                        Text(String(format: "%.2fs", newAvrgTPC))
-                                            .font(.system(size: textSize, weight: .medium))
-                                            .monospacedDigit()
-                                        Text("per count")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .opacity(showingPerCount ? 1 : 0)
-                                    .offset(y: showingPerCount ? 0 : -20)
-                                    
-                                    // Per tasbeeh view
-                                    VStack(spacing: 2) {
-                                        Text(tasbeehRate)
-                                            .font(.system(size: textSize, weight: .medium))
-                                            .monospacedDigit()
-                                        Text("per tasbeeh")
-                                            .font(.system(size: 12))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    .opacity(showingPerCount ? 0 : 1)
-                                    .offset(y: showingPerCount ? 20 : 0)
+                if let mantra {
+                    let full = mantra.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let notes = mantra.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !full.isEmpty {
+                        // Arabic lines in the Uthmani face, the rest (transliteration,
+                        // meaning) in the app's light rounded type.
+                        VStack(spacing: 6) {
+                            ForEach(Array(full.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, line in
+                                let text = line.trimmingCharacters(in: .whitespaces)
+                                if !text.isEmpty {
+                                    let arabic = text.unicodeScalars.contains { (0x0600...0x06FF).contains($0.value) }
+                                    Text(text)
+                                        .font(arabic ? .custom("KFGQPCUthmanTahaNaskh", size: 26) : .system(size: 15, weight: .light, design: .rounded))
+                                        .foregroundStyle(arabic ? .primary : .secondary)
+                                        .lineSpacing(arabic ? 8 : 2)
+                                        .multilineTextAlignment(.center)
                                 }
                             }
                         }
-                        .frame(height: 96)
+                        .lineLimit(fullTextExpanded ? nil : 4)
+                        .frame(maxWidth: .infinity)
+                        .frame(maxHeight: fullTextExpanded ? nil : 190, alignment: .top)
+                        .clipped()
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 10)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.04)))
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            withAnimation(.easeInOut(duration: 0.3)) {
-                                triggerSomeVibration(type: .medium)
-                                showingPerCount.toggle()
-                            }
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.snappy) { fullTextExpanded.toggle() }
                         }
                     }
+                    if !notes.isEmpty {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "note.text")
+                                .foregroundStyle(.tertiary)
+                            Text(notes)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.footnote)
+                    }
+                    if full.isEmpty && notes.isEmpty {
+                        Button { editingMantra = mantra } label: {
+                            Label("add the full mantra or notes", systemImage: "plus")
+                                .font(.footnote)
+                                .foregroundStyle(Color.sage)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else if title.isEmpty {
+                    Text("its full text, notes and sets show up here")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxHeight: 150)
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.5)
+                QuickAddStepRow(mantra: mantra)
+                    .font(.subheadline)
             }
-            .padding(20)
-            .frame(width: 280)
-            .background(BlurView(style: .systemUltraThinMaterial)) // Blur effect for the stats box
-            .cornerRadius(20)
-            .shadow(color: Color.black.opacity(0.4), radius: 10, x: 0, y: 10)
+            .padding(16)
+            .background(cardShape.fill(.ultraThinMaterial))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
         }
-        
-        private var estimatedFinishTime: some View {
-            ExternalToggleText(
-                originalText: "you'll finish \(inMinSecStyle2(from: timeLeft))",
-                toggledText: "you'll finish around \(shortTime(finishTime))",
-                externalTrigger: $rateTextToggle,  // Pass the binding
-                font: .caption,
-                fontDesign: .rounded,
-                fontWeight: .thin,
-                hapticFeedback: true
-            )
-            .opacity(0.8)
-            .padding()
-            .background(Color("pauseColor").opacity(0.001))
-        }
-        
-        private func statsBox<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-            content()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.vertical, 10)
-                .background(Color(.tertiarySystemBackground))
-                .cornerRadius(12)
-        }
-        
-        // zikrflag 2
-        private var mantraSelector: some View {
-            Text(sharedState.titleForSession.isEmpty ? "no selected zikr" : sharedState.titleForSession)
-                .font(.system(size: 16, weight: sharedState.titleForSession.isEmpty ? .ultraLight : .regular))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .padding(.horizontal, 12)
-                .background(Color(.tertiarySystemBackground))
-                .cornerRadius(12)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    showMantraSheetFromResultsPage = true
+
+        // MARK: controls
+
+        private var controls: some View {
+            VStack(spacing: 14) {
+                if toggleInactivityTimer {
+                    // Sleep mode's dimmer.
+                    HStack(spacing: 10) {
+                        Image(systemName: "moon.fill").font(.caption)
+                        Slider(value: $inactivityDimmer, in: 0...1.0)
+                            .tint(Color.sage)
+                        Image(systemName: "sun.max.fill").font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
-                .onChange(of: chosenMantraFromResultsPage) {
-                    if let newSetMantra = chosenMantraFromResultsPage {
-                        withAnimation {
-                            sharedState.titleForSession = newSetMantra
-                            sharedState.mantraForSession = chosenMantraObjectFromResultsPage
-                        }
+                HStack(spacing: 8) {
+                    if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
+                        chip(autoStop ? "stops at goal" : "keeps going",
+                             icon: autoStop ? "flag.checkered" : "arrow.clockwise",
+                             on: !autoStop) { autoStop.toggle() }
+                    }
+                    chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
+                        toggleInactivityTimer.toggle()
+                        if toggleInactivityTimer && !tasbeehColorMode { tasbeehColorMode = true }
+                    }
+                hapticsChip
+                    chip(tasbeehColorMode ? "dark" : "light", icon: tasbeehColorMode ? "moon.fill" : "sun.max.fill",
+                         on: false) { tasbeehColorMode.toggle() }
+                }
+                HStack(spacing: 12) {
+                    Button {
+                        triggerSomeVibration(type: .medium)
+                        stopTimer()
+                    } label: {
+                        Text("Finish")
+                            .fontWeight(.medium)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .foregroundStyle(.primary)
+                            .background(Capsule().strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
+                            .contentShape(Capsule())
+                    }
+                    Button { togglePause() } label: {
+                        Label("Resume", systemImage: "play.fill")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .foregroundStyle(Color.sage)
+                            .background(Capsule().fill(Color.sage.opacity(0.18)))
+                            .contentShape(Capsule())
                     }
                 }
-                .sheet(isPresented: $showMantraSheetFromResultsPage) {
-                    MantraPickerView(
-                        isPresented: $showMantraSheetFromResultsPage,
-                        selectedMantra: $chosenMantraFromResultsPage,
-                        selectedMantraObject: $chosenMantraObjectFromResultsPage,
-                        presentation: [.large]
-                    )
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: 420)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 12)
+            .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
+        }
+
+        /// The phone with waves either side: one wave lit for light taps, two for medium, all
+        /// three for strong (the symbols' variable value); the waves ripple outward and the
+        /// phone buzzes each time it changes. Off: the phone with every wave dimmed.
+        private var hapticsChip: some View {
+            let level: Double = switch currentVibrationMode {
+            case .off: 0
+            case .light: 0.2     // a wave lights once the value passes 0, ⅓, ⅔
+            case .heavy: 1
+            default: 0.5
+            }
+            return Button {
+                withAnimation(.snappy(duration: 0.2)) { cycleHaptics() }
+            } label: {
+                VStack(spacing: 6) {
+                    // Our own "iphone.radiowaves": the phone between two three-wave symbols
+                    // (the stock one has only two waves a side, so medium = strong).
+                    HStack(spacing: 1) {
+                        Image(systemName: "wave.3.left", variableValue: level)
+                            .symbolEffect(.variableColor.iterative.nonReversing, options: .speed(1.6), value: currentVibrationMode)
+                        Image(systemName: "iphone")
+                            .font(.system(size: 17, weight: .light))
+                            .symbolEffect(.bounce, value: currentVibrationMode)
+                        Image(systemName: "wave.3.right", variableValue: level)
+                            .symbolEffect(.variableColor.iterative.nonReversing, options: .speed(1.6), value: currentVibrationMode)
+                    }
+                    .font(.system(size: 11, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(height: 20)
+                    Text(hapticLabel)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .contentTransition(.opacity)
                 }
+                .foregroundStyle(Color.primary.opacity(currentVibrationMode == .off ? 0.45 : 0.75))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06)))
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+
+        private var hapticLabel: String {
+            switch currentVibrationMode {
+            case .off: return "no taps"
+            case .light: return "light taps"
+            case .heavy: return "strong taps"
+            default: return "medium taps"
+            }
+        }
+
+        private func cycleHaptics() {
+            switch currentVibrationMode {
+            case .off: currentVibrationMode = .light
+            case .light: currentVibrationMode = .medium
+            case .medium: currentVibrationMode = .heavy
+            case .heavy: currentVibrationMode = .off
+            default: currentVibrationMode = .medium
+            }
+            triggerSomeVibration(type: currentVibrationMode)
+        }
+
+        /// A labelled setting: symbol over a short word, soft tile; sage while on.
+        private func chip(_ title: String, icon: String, on: Bool, action: @escaping () -> Void) -> some View {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(.snappy(duration: 0.2)) { action() }
+            } label: {
+                VStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 17, weight: .light))
+                        .contentTransition(.symbolEffect(.replace))
+                        .frame(height: 20)
+                    Text(title)
+                        .font(.caption2)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .foregroundStyle(on ? Color.sage : Color.primary.opacity(0.75))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
         }
 
     }
@@ -1400,6 +1404,278 @@ struct tasbeehView: View {
     
 }
 
+
+/// Post-salah zikr (redesigned 2026-09-25): one 100-count session — Subhanallah ×33,
+/// Alhamdulillah ×33, Allahu Akbar ×34 — saved once, under a "Tasbih Fatimah" mantra (the
+/// traditional name for it), instead of three chained sessions that each reset the count, saved
+/// separately and ended without a results screen. The phrase follows the count.
+enum PostSalahTasbeeh {
+    static let mantraName = "Tasbih Fatimah"
+    static let phases: [(name: String, arabic: String, count: Int)] = [
+        ("Subhanallah", "سُبْحَانَ ٱللَّٰهِ", 33),
+        ("Alhamdulillah", "ٱلْحَمْدُ لِلَّٰهِ", 33),
+        ("Allahu Akbar", "ٱللَّٰهُ أَكْبَرُ", 34),
+    ]
+    static var total: Int { phases.reduce(0) { $0 + $1.count } }
+
+    /// The phrase at a total count, and how far into it (0-based index; `done` of `of`).
+    static func phase(at count: Int) -> (index: Int, done: Int, of: Int) {
+        var start = 0
+        for (i, p) in phases.enumerated() {
+            if count < start + p.count || i == phases.count - 1 {
+                return (i, min(count - start, p.count), p.count)
+            }
+            start += p.count
+        }
+        return (0, 0, phases[0].count)
+    }
+
+    /// Sets up the session: a 100-count goal on the Tasbih Fatimah mantra (made on first use,
+    /// with the three phrases as its full text so the pause card shows them).
+    static func prepare(_ state: SharedStateClass, in context: ModelContext) {
+        let mantra = MantraModel.find(named: mantraName, in: context) ?? {
+            let text = phases.map { "\($0.arabic)  ×\($0.count)" }.joined(separator: "\n")
+                + "\nSubhanallah · Alhamdulillah · Allahu Akbar"
+            let new = MantraModel(name: mantraName, fullText: text,
+                                  notes: "After each obligatory prayer: 33, 33 and 34 — 100 in all.")
+            context.insert(new)
+            return new
+        }()
+        state.selectedMode = 2
+        state.selectedMinutes = 0
+        state.targetCount = String(total)
+        state.mantraForSession = mantra
+        state.titleForSession = mantra.name
+    }
+}
+
+/// Under the circle during post-salah zikr: why it's worth the minute (owner asked for a
+/// reminder of its significance). Both narrations are the well-known ones: the 33/33/34 after
+/// each obligatory prayer (Sahih Muslim, from Ka'b ibn 'Ujrah) and the Prophet ﷺ teaching the
+/// same words to Fatimah as better than a servant (Bukhari and Muslim, from 'Ali).
+struct PostSalahReminder: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("“Words said after every obligatory prayer — the one who says them is never disappointed: Subhanallah 33, Alhamdulillah 33, Allahu Akbar 34.”")
+                .font(.footnote.weight(.light))
+                .foregroundStyle(.secondary)
+            Text("Sahih Muslim")
+                .font(.caption2)
+                .foregroundStyle(Color.sage)
+            Text("The Prophet ﷺ taught these to his daughter Fatimah as better for her than a servant. A minute, a hundred words, after every salah.")
+                .font(.caption.weight(.light))
+                .foregroundStyle(.tertiary)
+        }
+        .multilineTextAlignment(.center)
+        .fontDesign(.rounded)
+    }
+}
+
+/// Above the circle during post-salah zikr: the current phrase (Arabic + name), its own count,
+/// and three segments that fill phrase by phrase.
+struct PostSalahPhaseStrip: View {
+    let count: Int
+
+    var body: some View {
+        let now = PostSalahTasbeeh.phase(at: count)
+        let phrase = PostSalahTasbeeh.phases[now.index]
+        VStack(spacing: 8) {
+            Text(phrase.arabic)
+                .font(.custom("KFGQPCUthmanTahaNaskh", size: 30))
+                .id(now.index)
+                .transition(.blurReplace)
+            HStack(spacing: 6) {
+                Text(phrase.name)
+                Text("·").foregroundStyle(.tertiary)
+                Text("\(now.done) of \(now.of)")
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(now.done)))
+            }
+            .font(.subheadline.weight(.light))
+            .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                ForEach(Array(PostSalahTasbeeh.phases.enumerated()), id: \.offset) { i, p in
+                    let fill: Double = i < now.index ? 1 : i > now.index ? 0 : Double(now.done) / Double(p.count)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.08))
+                            Capsule().fill(Color.sage).frame(width: geo.size.width * fill)
+                        }
+                    }
+                    .frame(width: 44, height: 4)
+                }
+            }
+        }
+        .fontDesign(.rounded)
+        .animation(.snappy(duration: 0.3), value: count)
+    }
+}
+
+/// Count, time and rate as glass tiles (same material and light rounded type as the pause
+/// screen's mantra card), shared by the pause and results screens. Count and time stacked on
+/// the left, rate on the right — tap it to flip per count ↔ per tasbeeh; the icons turn when
+/// tapped. With `finish` (a count goal in progress) a full-width tile underneath says when
+/// you'll be done — "in 1m 20s", tap → "6:42 PM" — a tile so it reads as something to tap
+/// (owner, 2026-09-25; it used to be loose caption text under the boxes).
+struct ZikrBento: View {
+    let count: Int
+    let seconds: TimeInterval
+    let secondsPerCount: Double
+    let perTasbeeh: String
+    var finish: (timeLeft: TimeInterval, at: Date)? = nil
+    /// Lifetime use (a mantra's page): "25m 56s" instead of a stopwatch, other captions, and
+    /// flat grouped-list tiles instead of glass.
+    var timeText: String? = nil
+    var countCaption = "count"
+    var timeCaption = "time"
+    var grouped = false
+
+    @State private var countRotation: Double = 0
+    @State private var timerRotation: Double = 0
+    @State private var showingPerCount = true
+    @State private var showingFinishTime = false
+
+    private let gap: CGFloat = 10
+    private let tileHeight: CGFloat = 64
+
+    var body: some View {
+        VStack(spacing: gap) {
+            HStack(alignment: .top, spacing: gap) {
+                VStack(spacing: gap) {
+                    tile {
+                        row(icon: "circle.hexagonpath", rotation: -countRotation, value: count.formatted(), caption: countCaption)
+                    }
+                    .onTapGesture {
+                        triggerSomeVibration(type: .medium)
+                        withAnimation(.spring(duration: 0.5)) { countRotation += 60 }
+                    }
+                    tile {
+                        row(icon: "gauge.with.needle", rotation: timerRotation, value: timeText ?? timerStyle(seconds), caption: timeCaption)
+                    }
+                    .onTapGesture {
+                        triggerSomeVibration(type: .medium)
+                        withAnimation(.spring(duration: 0.3)) { timerRotation += 45 }
+                    }
+                }
+
+                tile {
+                    VStack(spacing: 4) {
+                        Text("rate")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        flip(showingPerCount,
+                             String(format: "%.2fs", secondsPerCount), "per count",
+                             perTasbeeh, "per tasbeeh", size: 30)
+                    }
+                }
+                .frame(height: tileHeight * 2 + gap)
+                .onTapGesture {
+                    triggerSomeVibration(type: .medium)
+                    withAnimation(.easeInOut(duration: 0.3)) { showingPerCount.toggle() }
+                }
+            }
+
+            if let finish {
+                tile {
+                    HStack(spacing: 12) {
+                        Image(systemName: "flag.checkered")
+                            .font(.system(size: 19, weight: .light))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26)
+                        ZStack(alignment: .leading) {
+                            sentence(String(inMinSecStyle2(from: finish.timeLeft).dropFirst(3)), "left until you finish")
+                                .opacity(showingFinishTime ? 0 : 1)
+                                .offset(y: showingFinishTime ? -16 : 0)
+                            sentence(shortTime(finish.at), "is your estimated finish")
+                                .opacity(showingFinishTime ? 1 : 0)
+                                .offset(y: showingFinishTime ? 0 : 16)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: tileHeight)
+                }
+                .onTapGesture {
+                    triggerSomeVibration(type: .medium)
+                    withAnimation(.easeInOut(duration: 0.3)) { showingFinishTime.toggle() }
+                }
+                .transition(.opacity)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)   // tiles keep their height outside a ScrollView
+    }
+
+    /// "1m 37s left until you finish" as one line: the number first in the tiles' type, the
+    /// words after it, quiet (owner, 2026-09-25).
+    private func sentence(_ value: String, _ words: String) -> some View {
+        (Text(value).font(.system(size: 22, weight: .light, design: .rounded))
+            + Text(" " + words).font(.subheadline).foregroundColor(.secondary))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
+
+    private func tile<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(minHeight: tileHeight)
+            .background {
+                if grouped {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground))
+                } else {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial)
+                }
+            }
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.primary.opacity(grouped ? 0 : 0.05), lineWidth: 0.5))
+            .shadow(color: .black.opacity(grouped ? 0 : 0.1), radius: 10, y: 5)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func row(icon: String, rotation: Double, value: String, caption: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 19, weight: .light))
+                .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(rotation))
+                .frame(width: 26)
+            valueStack(value, caption, size: 22, leading: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: tileHeight)
+    }
+
+    /// Two value / caption pairs in one place; the shown one slides up and out as the other
+    /// slides in (the rate box's old flip).
+    private func flip(_ showFirst: Bool, _ v1: String, _ c1: String, _ v2: String, _ c2: String,
+                      size: CGFloat, leading: Bool = false) -> some View {
+        ZStack(alignment: leading ? .leading : .center) {
+            valueStack(v1, c1, size: size, leading: leading)
+                .opacity(showFirst ? 1 : 0)
+                .offset(y: showFirst ? 0 : -16)
+            valueStack(v2, c2, size: size, leading: leading)
+                .opacity(showFirst ? 0 : 1)
+                .offset(y: showFirst ? 16 : 0)
+        }
+    }
+
+    private func valueStack(_ value: String, _ caption: String, size: CGFloat, leading: Bool) -> some View {
+        VStack(alignment: leading ? .leading : .center, spacing: leading ? 0 : 2) {
+            Text(value)
+                .font(.system(size: size, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, leading ? 0 : 10)
+    }
+}
 
 #Preview {
     @Previewable @StateObject var sharedState = SharedStateClass()

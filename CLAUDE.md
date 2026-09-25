@@ -11,9 +11,68 @@ Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehV
 (PrayersWidget + AppIntents shared with the app via `SharedTargetForIntents.swift`).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
+## Feature list (for the App Store listing)
+
+What shukr does, meatiest first — keep this current; it's the source for the description,
+keywords, "What's New" and screenshot captions.
+
+**Prayer**
+- Accurate daily prayer times for where you are (GPS, or a city you pick), with the
+  calculation method and madhab (Hanafi / Shafi'i) of your choice.
+- The main circle: the current or next prayer with a live ring of how much of its window is
+  left, coloured by the score you'd get right now; tap to flip between "ends at" and time left.
+- Prayer tracker: mark each prayer as prayed; it's scored by *when* — Early (first 30 min) ·
+  On time · Late · Qaza (after the window) · Missed — and each day gets a score.
+- A satisfying completion moment (the ring sweeps closed, a haptic, "✓ Asr · On time · 88"),
+  done prayers fold away, all five come back with a "perfect day" flourish.
+- Edit when you prayed with a custom time wheel that won't let you pick an impossible time.
+- The prayer day runs Fajr to Fajr, so a late Isha after midnight still counts for its day.
+- Streaks: the day streak, "in-time days" (no Qaza), best streaks, with celebrations.
+- Notifications at each prayer with "I already prayed" / "nudge me in 5 / 10 min" actions,
+  per-prayer on / off / nudge settings, and an optional daily Fajr alarm.
+- Home-screen widget: the current prayer's ring and time, mark it prayed right from the
+  widget, jump to the qibla or tasbeeh.
+
+**Qibla & map**
+- Qibla direction on the main circle; a full map with the great-circle line to the Kaaba from
+  where you stand, a compass ring on your dot that tells you which way to turn, and a glow
+  when you're facing Mecca.
+- Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
+  cluster for the prayers there; filter by prayer and date range.
+
+**Insights**
+- "Am I getting better?" — each prayer ranked by its recent score with an 8-week trend.
+- "How am I scoring?" — average score ring with the grade makeup, per-prayer rings, week /
+  month / all time.
+- "How consistent am I?" — streaks and a 14-day prayer grid you can scrub.
+
+**Zikr (tasbeeh)**
+- A tap-anywhere tasbeeh counter with haptics (light / medium / strong), bead animation,
+  sleep mode that dims the screen, and auto-stop at your goal.
+- Freestyle, count goals (e.g. 100) or time goals (e.g. 10 min), with a live finish estimate.
+- Daily zikr tasks shown as a wheel of circles, each ringed with today's progress; continue
+  where you left off or start over; arrange them home-screen style.
+- Mantras: your own library of dhikr with the full Arabic / transliteration and notes (who
+  taught you, why), shown right on the pause screen; lifetime count, time and pace per mantra.
+- Count in sets: a per-mantra "+N" button for when you count on your fingers and tap once.
+- Post-salah tasbih (Tasbih Fatimah): 33 · 33 · 34 in one flowing session, the phrase
+  changing as you go, with the hadith on why it matters.
+- Zikr history: all-time total, a 14-day chart you can scrub, every session with its pace;
+  swipe to delete or jump to the mantra.
+
+**Quran & more**
+- Daily Ayah: a verse a day (Arabic in the Uthmani script + translation) to reveal, with a
+  beautiful 9:16 share card for Stories.
+- 99 Names of Allah: each name with its meaning and explanation, and flashcards to learn
+  them (with a "known" progress ring).
+
+**Privacy & feel**
+- Nothing leaves the device: no accounts, no tracking; location is used only on-device.
+- Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
+
 ## Start here: outstanding work, in priority order
 
-Branch: `claude/app-store-publish-requirements-7vrmcg` (not merged to `main`). Everything below
+Branch: `claude/tasbeeh-zikr-updates` (from `claude/map-rework`; neither merged to `main`). Everything below
 the first block is unbuilt by the agent that wrote it; the owner builds in Xcode / a local
 agent builds with xcodebuild. Nothing here has CI.
 
@@ -165,6 +224,13 @@ only the views that do re-render per frame: `SalahPageContent` and `PagerChromeV
 that way. The sheet is always built when open and `TodaysPrayerListView` only builds buttons
 for loaded prayers so `PrayerButton` can't fatalError before `loadTodaysPrayerObjects` runs.
 
+**Backdrop and chrome while paging (2026-09-25).** `PagerBackdrop` (behind the pager, its own
+view so only it re-renders per frame) is three page-coloured panels offset by
+`live.scrollProgress`, status-bar strip included — it used to be one colour switched at the page
+commit, which flashed the transparent Salah page gray mid-swipe. Toward Settings the chrome now
+slides out with the Salah page (`visualEffect` offset by `settingsness`) instead of fading on
+top of Settings.
+
 **Top bar and bottom bar are fixed chrome** (`PagerChromeView`, a sibling of the pager in the
 root ZStack): hamburger `Menu` + `TopBar` on Salah / "Zikr" title on Zikr; chevron hint on Salah
 with the sheet closed; `CustomBottomBar` on Salah with the sheet up and always on Zikr. Opacities
@@ -173,6 +239,11 @@ come from `navPosition` (animated by the same `withAnimation`) and `live.scrollP
 keeps its own header. Owner's call: no chrome on Settings. Settings must not set
 `.navigationTitle`: it's inside the root NavigationStack, so its title became the back-button
 label on every pushed page.
+
+**The Zikr page is a vertical wheel of circles since 2026-09-25** (`ZikrCircleWheel` in
+DailyTasksView.swift; see Tasbeeh → Zikr page). It scrolls on the other axis from the pager, so
+the strip locks below no longer apply to it (the old `DailyTasksView` strip is kept, unused, and
+still has them). History of the strip:
 
 **The Zikr page's task strip holds the pager while touched.** Nested same-axis scroll views
 chain in UIKit (a drag on the strip at its last card turned the page, 2026-09-24). Two locks,
@@ -196,7 +267,7 @@ arrives before the three pages exist (midX/width = 0.5 → "Zikr") and left
 `horizontalPage = .zikr` on the Salah page at launch, which also disabled the vertical drag
 until the user paged away and back.
 
-Hamburger = a `.popover` (`presentationCompactAdaptation(.popover)`) with the "shukr" wordmark
+Hamburger (Salah page only since 2026-09-25; the Zikr page has the History & Mantras button there) = a `.popover` (`presentationCompactAdaptation(.popover)`) with the "shukr" wordmark
 on top like the old sidebar, then Daily Ayah, Mantras, Zikr History, `#if DEBUG` Salah History
 V1/V2 — a native `Menu` can't show the wordmark. Rows set `pendingMenuAction` and close the
 popover; the action runs 0.25 s after it's gone so the push doesn't collide with the dismissal.
@@ -234,10 +305,9 @@ makes a new store instance), not evidence of a defaults write — look at the li
 Remaining renders are interaction-driven (`scenePhase`, `scrollPage`, `sharedState`).
 
 Settings has a hold-to-repeat `HoldRepeatStepper` (qibla accuracy; SwiftUI's Stepper needed a
-press per step) and a "Tasbeeh → Secondary button step" number field (`tasbeehSecondaryStep`,
-standard suite) that `tasbeehView` reads: > 0 shows a "+N" `TopOfSessionButton` (text variant)
-between − and ∞ that calls `simulateTasbeehClicks(times:)`. Owner plans to move that control
-onto the tasbeeh pause screen later.
+press per step). The tasbeeh's "+N" quick-add button is per mantra now (see Tasbeeh → Pause
+screen); the old Settings field (`tasbeehSecondaryStep`) is gone and its value only seeds the
+no-mantra step.
 
 Broader lag lever not yet pulled: `SharedStateClass` is an `ObservableObject`, so *any*
 `@Published` change re-renders every view holding `@EnvironmentObject sharedState` (nearly all
@@ -374,6 +444,16 @@ Design the paste format to be parseable (e.g. numbered `n. Name — dua` lines o
 duas locally (SwiftData model keyed by name id), and let the user edit / re-paste.
 
 ## Prayer day rollover (PrayerDay.swift)
+
+**Since 2026-09-25 the day turns at Fajr** (owner's call; the Settings "Day Rollover" picker is
+gone, `prayerDayRolloverHours` is no longer read). `PrayerDay.fajr(onCalendarDayOf:)` computes
+Fajr from the app group's lastLatitude / lastLongitude / calculationMethod / school via
+`PrayerUtils` (both targets, cached per day + location + method); before today's Fajr it's still
+yesterday. No location → 3 AM (`fallbackHours`, owner's pick). `sessionDayStart()` = the prayer
+day's Fajr, `rolloverInstant(after:)` = the next day's Fajr (time editor's latest time, daily
+refresh timer). The summary circle's `showingYesterday` only triggers in the no-location case
+now. Sim-checked: `next refresh scheduled for` the next day's Fajr. The rest of this section
+is the hour-based history:
 
 The prayer day can run past midnight (owner prays Isha at 1 AM sometimes; before this there was
 nothing to mark it against after midnight). Since 2026-09-24 Isha's *window* still ends at 11:59
@@ -569,6 +649,101 @@ Done:
 - [x] `inMinSecStyle2` dropped the seconds when under a minute ("you'll finish in ").
 - [x] Two tasks with the same mantra completed together, and cards only refreshed on remount. Sessions now link to their task; progress is a live `@Query`. Minutes tasks now complete at `>=` goal.
 
+**Pause screen** (`pauseScreen_StatsSettingsBG`, redesigned 2026-09-25 — owner: the bottom
+buttons "didn't feel on brand", keep the bento, surface the mantra's full text and notes):
+"paused · 33 count session", then a mantra card (name → `MantraPickerView`; the full mantra,
+Arabic lines in the Uthmani face and the rest light rounded, 4 lines then tap to expand; notes;
+the quick-add row; ✎ → `MantraEditorView`), then `ZikrBento` (end of tasbeehView.swift, shared
+with the results screen): count / time / rate as glass tiles (same material and light rounded
+type as the mantra card — the old white `tertiarySystemBackground` boxes glared in light mode
+and went black in dark) plus, in a count goal, a full-width finish tile ("in 1m 20s" ⇄ "6:42
+PM", a tile so it reads as tappable — owner), then labelled chips (stops at goal ↔ keeps going — hidden in freestyle —, sleep +
+its dimmer, haptics, light / dark). The haptics chip is our own radio-waves icon (`iphone`
+between `wave.3.left` / `wave.3.right`; the stock symbol has only two waves a side): variable
+value 0.2 / 0.5 / 1 lights 1 / 2 / 3 waves for light / medium / strong, the waves ripple
+(`variableColor.iterative`) and the phone bounces on each change. The mantra is locked (no
+picker) in task sessions (mode ≠ 0 with `selectedTask`, "from your task") and post-salah ones. At the bottom, Finish (outlined) / Resume (sage). The red ✕ and
+the top-right play button are hidden while paused; tapping the dimmed background still resumes.
+`tasbeehView.sessionMantra` = `mantraForSession`, else `MantraModel.find(named:)` on the title.
+**Count in sets** (was "quick add"; owner: the name didn't say what it's for — recite a set on
+your own, on your fingers or in your head, then tap once): the "+N" button in a running session.
+Per mantra on the row, `MantraModel.quickAddStep` (**schema 2.1.0**, 2026-09-25 — a defaulted
+Int, lightweight; the data pass's `QuickAddSteps.moveLegacySteps` carried the one-day
+UserDefaults version `mantraQuickAddSteps` onto the rows and deleted the key). Sessions without a
+mantra keep theirs in `quickAddStepNoMantra` (standard defaults, seeded from the old Settings
+`tasbeehSecondaryStep`). UI: `QuickAddStepper` (binding) / `QuickAddStepRow` (live, saves) in
+MantrasView.swift — mantra page section and the pause card. Migrated on the owner's 13 Pro Max
+2026-09-25 (`quick add moved=1`, no errors); pre-migration backup on their Desktop
+(`shukr-backup-2026-09-25-before-2.1.0`).
+**Backup before any migration**: `SharedStore.makeContainer()` (app only) copies the store to
+`<group>/Library/Backups/shukr.store.before-<version>` whenever it's about to open a store that
+isn't at the current version — the group root isn't reachable with `devicectl`, Library is.
+**Pause card ✎** opens `MantraCardEditor` (MantrasView.swift): the card itself, editable (name,
+full mantra in the inset box, notes, count in sets) on the pause colour; Save gray until a change,
+no swipe-dismiss with edits; a rename updates the session title on dismiss. The Mantras page still
+uses the Form `MantraEditorView`.
+**Results screen** (`ResultsView`, same style): a sage check that pops in, "saved to your
+history", a mantra card (tap to move the saved session to another mantra; locked for a task's
+session), `ZikrBento`, Done, and a quiet "View zikr history" (HistoryPageView in a sheet).
+The bento's finish tile reads as one sentence: "you'll finish in 1m 20s" ⇄ "you'll finish
+around 6:42 PM".
+DEBUG `-demoPauseScreen` (add `-demoResults` to finish it) opens a paused 33-count Alhamdulillah session (and gives that mantra
+sample text if it has none — simulator only).
+
+**Zikr page** (`ZikrPageView` → `ZikrCircleWheel` + `ZikrCircleFace`, DailyTasksView.swift,
+2026-09-25 — owner: keep the circle theme, the fixed freestyle circle wasted the page and the
+tasks were squeezed into a 260 pt strip): a vertical `ScrollView` of 250 pt rows, `.viewAligned`
+one at a time, `scrollPosition(id:)` on string ids ("freestyle", task uuid, "add"), content
+margins that centre the current one; `scrollTransition` shrinks (×0.78) and fades (×0.45) the
+others — the strip's effect on its side. Freestyle circle first, then tasks (user order, done
+today moved to the end) with today's progress as the glowing ring and "12 of 33" / "done
+today", then a dashed "New task". Tap = bring to centre, tap the centre one = start; long-press
+a task → **arranging** (home-screen style, owner): the wheel fades out for a 3-column grid of
+small jiggling circles (`phaseAnimator` wobble) with − badges (delete, alert); hold one 0.2 s and
+drag — it lifts and follows the finger, the others move aside (a custom LongPress→Drag in the
+grid's "arrange" coordinate space, slot = 3 columns × 134 pt rows; `onDrag`/`onDrop` was tried
+first but simulated touches never start a system drag, so it couldn't be tested); order saved
+as it changes; tap a circle → Edit goal; Done or a tap between circles leaves. While arranging
+the pager is held (`PagerLiveState.holdForArranging`, separate from `pagerLocked`, which the
+pager gesture clears on every lift); leaving the page (the bottom bar still works) ends
+arranging — it used to leave the pager held and the Salah page frozen. The top-right chrome
+slot is free again. The focused
+circle sits at the screen's centre, not the page's (the whole wheel is offset up by the
+difference, `screenCentreShift` — asymmetric content margins don't move scroll snapping). Dots down the **left** edge (owner), sage for done tasks, double as a scrubber: a
+finger on them drags through the circles (14 pt per dot) with a pill naming the current one —
+"like grabbing a page's scroll bar". "1 of 3 tasks done" / "all 3 tasks done today" under the
+wheel, above the bottom bar. Circle size / fade follow distance from the middle in rows via
+`visualEffect` (eased: 1 row ≈ 0.62×, 2 ≈ 0.45×, floor 0.38×; neighbours pulled in) — owner
+wanted it more dramatic and not at its smallest the moment a circle leaves the middle.
+**Continue or start over**: tapping a task that's partly done today asks (centred alert):
+"Continue from 4" starts the session with today's count on the ring (`SharedStateClass.resumeCount`
+/ `resumeSeconds` → `tasbeehView.countOffset` / `timeOffset`; − can't go below it; only
+`sessionCount` = tasbeeh − offset is saved, so nothing is counted twice), "Start over" counts a
+fresh goal. The results card of a task session says "5 of 100 today". Sim-verified: 3 → continue
+→ +2 saved 2, task showed 5. DEBUG `-demoZikrPage` (adds three tasks if there are none — simulator).
+
+**Zikr History header** (`ZikrHistoryHeader`, HistoryPageView.swift, 2026-09-25 — owner: the
+"All time" rows looked plain): the all-time count at 48 pt light, the last 14 days as bars (tap /
+drag to read a day's count and time — a two-line label above the bars: "last 14 days" or the
+day, rounded medium, over "N counted · time" in plain SF), and sessions · time tiles (per-count tile removed, owner).
+DEBUG `-demoZikrHistory`.
+**History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): a History | Mantras
+segmented switch in the nav bar over `HistoryPageView` / `MantrasView`. On the Zikr tab the
+chrome's top-left is a books button to it (the hamburger shows on Salah only); the hamburger's
+Mantras / Zikr History rows are gone; `showZikrHistory` / `showMantrasPage` push it on either tab.
+
+**Post-salah zikr** (`PostSalahTasbeeh` / `PostSalahPhaseStrip`, tasbeehView.swift, 2026-09-25):
+one 100-count session (Subhanallah 33 · Alhamdulillah 33 · Allahu Akbar 34) saved once under a
+"Tasbih Fatimah" mantra (created on first use with the phrases as full text and a note). Above
+the circle: the phrase in Uthmani, "Alhamdulillah · 12 of 33", three segments; a success buzz
+as each phrase ends; normal results screen at 100. Replaces three chained sessions
+(`postNamazSequence`) that each reset the count, saved separately and closed with no results.
+`isDoingPostNamazZikr` is cleared when the tasbeeh cover goes away. Under the circle while
+counting, `PostSalahReminder`: the Sahih Muslim narration (Ka'b ibn 'Ujrah — "never
+disappointed", 33/33/34 after every obligatory prayer) and the Prophet ﷺ teaching it to Fatimah
+as better than a servant (Bukhari and Muslim). No hadith numbers on purpose — add them only
+once checked. DEBUG `-demoPostSalah`.
+
 Backlog / known oddities:
 - [ ] Infinity button (`tasbeehView.swift:302`, `simulateTasbeehClicks(100)`): owner wants this to become a user-set step size (e.g. +10) rather than a hidden +100.
 - [ ] Mode 2 `progressFraction = tasbeeh / (Int(targetCount) ?? 0)` → `inf` on empty/zero target; ring fills and autostop fires on first tap. Mode 1 has the same hole if `selectedMinutes == 0`.
@@ -622,6 +797,8 @@ Zikr card strip's `@Query` sorts by it (completed-today cards still move to the 
 migration numbers existing tasks in fetch order, new tasks get `TaskModel.nextSortOrder`, and
 the strip header's arrows button opens `ReorderTasksView` (drag handles, writes `sortOrder`).
 Before this the query was unsorted, which is why the cards looked arbitrary.
+
+(2.1.0, 2026-09-25: `MantraModel.quickAddStep` — see Tasbeeh → Count in sets.)
 
 **How the store is upgraded — no `SchemaMigrationPlan`.** `Models/SchemaVersions.swift` holds
 `ShukrSchemaV2` (the live classes; opening a store with it stamps "2.0.0" in the metadata) and

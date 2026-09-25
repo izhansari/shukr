@@ -152,13 +152,11 @@ struct PrayerTimesView: View {
 
     var body: some View {
         ZStack {
-            // The status-bar strip. Pages are clipped to the pager, which starts below the top
-            // safe area, so no page can paint up there; this layer wears the current page's
-            // color instead (Settings is grouped-gray in light mode, everything else plain).
-            Color(sharedState.horizontalPage == .settings && colorScheme == .light
-                  ? .secondarySystemBackground : .systemBackground)
-                .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.15), value: sharedState.horizontalPage)
+            // The backdrop, status-bar strip included: pages are clipped to the pager, which
+            // starts below the top safe area, and the Salah page is transparent. It slides with
+            // the pager (see PagerBackdrop) — it used to switch colour at the page commit, which
+            // flashed the whole Salah page gray mid-swipe (owner, 2026-09-25).
+            PagerBackdrop(live: live)
 
             // MARK: - Pager: Zikr | Main | Settings
             // Native paging ScrollView: pages track the finger at UIKit speed, rubber-band at the
@@ -341,6 +339,52 @@ struct PrayerTimesView: View {
 
                 }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
+                try? await Task.sleep(for: .seconds(1))
+                showMantrasPage = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoZikrHistory") {
+                try? await Task.sleep(for: .seconds(1))
+                showZikrHistory = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoZikrPage") {
+                // The Zikr page's circle wheel, with a few tasks if there are none (simulator).
+                try? await Task.sleep(for: .seconds(1))
+                if ((try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0) == 0 {
+                    for (i, (name, count, goal)) in [("Alhamdulillah", true, 100), ("Astaghfirullah", true, 33),
+                                                     ("Subhanallah", false, 10)].enumerated() {
+                        context.insert(TaskModel(mantra: MantraModel.find(named: name, in: context),
+                                                 isCountMode: count, goal: goal, sortOrder: i))
+                    }
+                    try? context.save()
+                }
+                sharedState.horizontalPage = .zikr
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoPostSalah") {
+                try? await Task.sleep(for: .seconds(1))
+                sharedState.isDoingPostNamazZikr = true
+                showTasbeehPage = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
+                // A 33-count Alhamdulillah session, paused (tasbeehView counts and pauses it).
+                try? await Task.sleep(for: .seconds(1))
+                if let mantra = MantraModel.find(named: "Alhamdulillah", in: context) {
+                    if mantra.fullText.isEmpty {
+                        mantra.fullText = "الْحَمْدُ لِلَّهِ\nAl-ḥamdu lillāh — all praise is for Allah"
+                        mantra.notes = "Read after every salah, 33 times."
+                    }
+                    sharedState.mantraForSession = mantra
+                }
+                sharedState.titleForSession = "Alhamdulillah"
+                sharedState.selectedMode = 2
+                sharedState.targetCount = "33"
+                showTasbeehPage = true
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoNames") {
                 try? await Task.sleep(for: .seconds(1))
                 showNamesPage = true
@@ -388,10 +432,10 @@ struct PrayerTimesView: View {
             LocationMapContentView().onDisappear { sharedState.allowQiblaHaptics = true }
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
-        .navigationDestination(isPresented: $showMantrasPage) { MantrasView() }
+        .navigationDestination(isPresented: $showMantrasPage) { ZikrLibraryView(start: .mantras) }
         .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
-        .navigationDestination(isPresented: $showZikrHistory) { HistoryPageView() }
+        .navigationDestination(isPresented: $showZikrHistory) { ZikrLibraryView(start: .history) }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
@@ -577,6 +621,24 @@ struct PrayerTimesView: View {
                     HStack {
                         // The menu is a popover (a native Menu can't show the wordmark):
                         // "shukr" on top like the old sidebar, then the destinations.
+                        ZStack {
+                        // Zikr page: History & Mantras (one page) instead of the hamburger.
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            showZikrHistory = true
+                        } label: {
+                            Image(systemName: "books.vertical")
+                                .frame(width: 24, height: 24)
+                                .font(.system(size: 19))
+                                .fontWeight(.light)
+                                .foregroundColor(.gray.opacity(0.8))
+                                .padding()
+                                .contentShape(Rectangle())
+                        }
+                        .opacity(Double(zikrness))
+                        .allowsHitTesting(zikrness > 0.5)
+                        .accessibilityLabel("Zikr history and mantras")
+
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
                                 .background(.white.opacity(0.01))
@@ -600,22 +662,6 @@ struct PrayerTimesView: View {
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
-                                menuRow("Mantras", "text.quote") { showMantrasPage = true }
-                                menuRow("Zikr History", "clock.arrow.circlepath") { showZikrHistory = true }
-                                #if DEBUG
-                                Divider()
-                                menuRow("Salah History (V1)", "hammer") { showSalahHistoryV1 = true }
-                                menuRow("Salah History (V2)", "hammer") { showSalahHistoryV2 = true }
-                                menuRow("Test Streak Celebration", "heart") {
-                                    // Fake values (streak 11 → 12, on time 4 → 5); the real ones are untouched.
-                                    NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
-                                    NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
-                                }
-                                menuRow("Old Insights", "chart.bar.xaxis") { showOldInsights = true }
-                                menuRow("Test Perfect Day", "sparkles") {
-                                    NotificationCenter.default.post(name: .perfectDay, object: true)   // true = demo
-                                }
-                                #endif
                             }
                             .padding(.bottom, 8)
                             .frame(width: 250)
@@ -627,6 +673,9 @@ struct PrayerTimesView: View {
                             guard !open, let action = pendingMenuAction else { return }
                             pendingMenuAction = nil
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
+                        }
+                        .opacity(Double(1 - zikrness))
+                        .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
                     }
@@ -657,9 +706,13 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(max(sheetP, zikrness) > 0.5)
                 }
             }
-            .opacity(Double(1 - settingsness))
             .allowsHitTesting(settingsness < 0.5)
             .ignoresSafeArea(edges: .bottom)
+            // Toward Settings the chrome leaves WITH the Salah page, so Settings slides over
+            // empty space instead of under a fading top bar (owner, 2026-09-25).
+            .visualEffect { [settingsness] content, proxy in
+                content.offset(x: -settingsness * proxy.size.width)
+            }
         }
     }
 
@@ -1472,6 +1525,9 @@ struct ChevronTap2: View {
 /// Per-frame values from the pager's gesture and scroll. @Observable so only the views that
 /// read a given property re-render when it changes; PrayerTimesView's body reads none of them.
 @Observable final class PagerLiveState {
+    /// The Zikr page is arranging its task circles (home-screen jiggle): the pager stays put so
+    /// sideways drags move circles. Separate from `pagerLocked`, which releases on every lift.
+    var holdForArranging = false
     /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
     var scrollProgress: CGFloat = 1
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it
@@ -1490,13 +1546,34 @@ struct ChevronTap2: View {
 }
 
 
+/// Behind the pager: one panel per page (Zikr, Salah plain; Settings grouped-gray in light mode)
+/// offset by the live scroll position, so each page's colour — status-bar strip included —
+/// moves with its page. Its own view so only it re-renders per scroll frame.
+struct PagerBackdrop: View {
+    let live: PagerLiveState
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            HStack(spacing: 0) {
+                Color(.systemBackground).frame(width: width * 2)
+                Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)
+            }
+            .frame(width: width * 3, alignment: .leading)
+            .offset(x: -live.scrollProgress * width)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 /// `.scrollDisabled(live.pagerLocked)` in its own modifier: reading `pagerLocked` in
 /// PrayerTimesView's body re-rendered the whole tree on every touch-down and release on the
 /// task strip; here only this modifier re-evaluates.
 struct PagerLock: ViewModifier {
     var live: PagerLiveState
     func body(content: Content) -> some View {
-        content.scrollDisabled(live.pagerLocked)
+        content.scrollDisabled(live.pagerLocked || live.holdForArranging)
     }
 }
 

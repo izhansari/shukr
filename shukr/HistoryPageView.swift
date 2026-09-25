@@ -44,11 +44,11 @@ struct HistoryPageView: View {
                     description: Text("Finished zikr sessions show up here.")
                 )
             } else {
-                Section("All time") {
-                    LabeledContent("Sessions", value: sessions.count.formatted())
-                    LabeledContent("Total count", value: sessions.reduce(0) { $0 + $1.totalCount }.formatted())
-                    LabeledContent("Total time", value: zikrDurationString(sessions.reduce(0.0) { $0 + $1.secondsPassed }))
+                Section {
+                    ZikrHistoryHeader(sessions: sessions)
                 }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
                 ForEach(days, id: \.date) { day in
                     Section {
                         ForEach(day.sessions) { session in
@@ -105,6 +105,132 @@ struct HistoryPageView: View {
     }
 
     private func dayLabel(_ date: Date) -> String { zikrDayLabel(date) }
+}
+
+/// The top of Zikr History (2026-09-25 — owner: the "All time" rows looked plain): the
+/// all-time count big in the app's light rounded type, the last 14 days as bars (tap or drag
+/// across them to read a day's count and time), then sessions / time as tiles (the per-count
+/// tile went, owner).
+struct ZikrHistoryHeader: View {
+    let sessions: [SessionDataModel]
+    @State private var picked: Date?
+
+    private struct Day: Identifiable { let date: Date; let count: Int; let seconds: TimeInterval; var id: Date { date } }
+
+    private var last14: [Day] {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        var counts: [Date: Int] = [:]
+        var seconds: [Date: TimeInterval] = [:]
+        let from = calendar.date(byAdding: .day, value: -13, to: today) ?? today
+        for session in sessions where session.startTime >= from {
+            let day = calendar.startOfDay(for: session.startTime)
+            counts[day, default: 0] += session.totalCount
+            seconds[day, default: 0] += session.secondsPassed
+        }
+        return (0..<14).reversed().compactMap { back in
+            calendar.date(byAdding: .day, value: -back, to: today)
+                .map { Day(date: $0, count: counts[$0] ?? 0, seconds: seconds[$0] ?? 0) }
+        }
+    }
+
+    var body: some View {
+        let total = sessions.reduce(0) { $0 + $1.totalCount }
+        let time = sessions.reduce(0.0) { $0 + $1.secondsPassed }
+        let days = last14
+        let peak = max(days.map(\.count).max() ?? 0, 1)
+        let shown = picked.flatMap { p in days.first { $0.date == p } }
+
+        VStack(spacing: 18) {
+            VStack(spacing: 2) {
+                Text(total.formatted())
+                    .font(.system(size: 48, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                Text("counted, all time")
+                    .font(.subheadline.weight(.light))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 6)
+
+            VStack(spacing: 8) {
+                // What the bars show: the 14 days, or the day under the finger — the day on top
+                // (rounded), its count and time underneath (plain SF), owner's layout.
+                VStack(spacing: 2) {
+                    Text(shown.map { zikrDayLabel($0.date) } ?? "last 14 days")
+                        .font(.subheadline.weight(.medium))
+                        .contentTransition(.opacity)
+                    Text("\((shown?.count ?? days.reduce(0) { $0 + $1.count }).formatted()) counted · \(zikrDurationString(shown?.seconds ?? days.reduce(0) { $0 + $1.seconds }))")
+                        .font(.caption)
+                        .fontDesign(.default)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+                .padding(.bottom, 4)
+                GeometryReader { geo in
+                    HStack(alignment: .bottom, spacing: 5) {
+                        ForEach(days) { day in
+                            let isToday = Calendar.current.isDateInToday(day.date)
+                            let isPicked = day.date == picked
+                            VStack(spacing: 5) {
+                                Capsule()
+                                    .fill(isPicked || (picked == nil && isToday) ? Color.green
+                                          : Color.sage.opacity(day.count > 0 ? 0.55 : 0.18))
+                                    .frame(height: max(4, 64 * CGFloat(day.count) / CGFloat(peak)))
+                                Text(day.date.formatted(.dateTime.weekday(.narrow)))
+                                    .font(.system(size: 9, weight: .medium, design: .rounded))
+                                    .foregroundStyle(isPicked ? .primary : .tertiary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                let slot = geo.size.width / CGFloat(days.count)
+                                let i = min(max(Int(value.location.x / slot), 0), days.count - 1)
+                                if picked != days[i].date {
+                                    triggerSomeVibration(type: .light)
+                                    picked = days[i].date
+                                }
+                            }
+                            .onEnded { _ in
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { picked = nil } }
+                            }
+                    )
+                }
+                .frame(height: 84)
+            }
+            .padding(.horizontal, 4)
+
+            HStack(spacing: 10) {
+                tile(sessions.count.formatted(), "sessions", icon: "circle.hexagonpath")
+                tile(zikrDurationString(time), "time", icon: "gauge.with.needle")
+            }
+        }
+        .fontDesign(.rounded)
+        .animation(.snappy(duration: 0.2), value: picked)
+    }
+
+    private func tile(_ value: String, _ caption: String, icon: String) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .light))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 20, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+    }
 }
 
 /// "Today", "Yesterday" or "Wed, Sep 24, 2026" — section headers in the history lists.

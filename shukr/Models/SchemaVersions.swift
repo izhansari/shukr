@@ -25,10 +25,11 @@
 import Foundation
 import SwiftData
 
-/// The current schema. Opening a store with it stamps "2.0.0" into its metadata, which is what
+/// The current schema. Opening a store with it stamps "2.1.0" into its metadata, which is what
 /// the widget's `storeIsCurrentVersion` looks for. Bump the version when the models change.
 enum ShukrSchemaV2: VersionedSchema {
-    static let versionIdentifier = Schema.Version(2, 0, 0)
+    /// 2.1.0 (2026-09-25): `MantraModel.quickAddStep` (a defaulted Int — lightweight).
+    static let versionIdentifier = Schema.Version(2, 1, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }
@@ -86,7 +87,9 @@ enum ShukrV2DataPass {
             }
         }
 
+        let quickAddMoved = QuickAddSteps.moveLegacySteps(into: Array(byName.values))
+
         if context.hasChanges { try context.save() }
-        return "mantras=\(byName.count) (seeded \(seeded), from tasks \(tasksCreatedFor)) tasks linked=\(tasksLinked) numbered=\(numbered) sessions linked=\(sessionsLinked)"
+        return "mantras=\(byName.count) (seeded \(seeded), from tasks \(tasksCreatedFor)) tasks linked=\(tasksLinked) numbered=\(numbered) sessions linked=\(sessionsLinked) quick add moved=\(quickAddMoved)"
     }
 }

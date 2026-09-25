@@ -39,6 +39,12 @@ enum SharedStore {
     /// App side: open the shared store, creating it if needed. Call
     /// `importLegacyStoreIfNeeded(into:)` right after, before anything reads data.
     static func makeContainer() throws -> ModelContainer {
+        // About to migrate an existing store (the app is the only one that does): copy it to
+        // Library/Backups first, where `devicectl device copy from` can reach it.
+        if Bundle.main.bundleURL.pathExtension != "appex",
+           FileManager.default.fileExists(atPath: url.path), !storeIsCurrentVersion(at: url) {
+            PrayerScoring.backUpStore(label: "before-\(currentVersionIdentifier)")
+        }
         let config = ModelConfiguration(schema: schema, url: url)
         return try ModelContainer(for: schema, configurations: [config])
     }

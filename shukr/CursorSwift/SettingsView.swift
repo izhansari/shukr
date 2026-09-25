@@ -44,15 +44,8 @@ struct SettingsView: View {
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
-    /// Counts the secondary tasbeeh button adds per tap; 0 hides it. Read by tasbeehView.
-    @AppStorage("tasbeehSecondaryStep") private var tasbeehSecondaryStep: Int = 0
-    /// Hours after midnight the prayer day ends (Isha stays markable until then). See PrayerDay.
-    @AppStorage(PrayerDay.rolloverKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var dayRolloverHours: Int = 0
     @State private var isNotifPopupVisible: Bool = false
     @State private var isStreakPopupVisible: Bool = false
-    @State private var isRolloverPopupVisible: Bool = false
-    @State private var isTasbeehPopupVisible: Bool = false
-    @FocusState private var stepFieldFocused: Bool
     
     @State private var rotationAngle: Double = 0 // For rotating the symbol
     
@@ -235,53 +228,6 @@ struct SettingsView: View {
 
                     
                     
-                    //MARK: - Day Rollover
-                    Section(header: headerWithInfoButton(title: "Day Rollover", isPopupVisible: $isRolloverPopupVisible)) {
-                        Picker("Day Rolls Over At", selection: $dayRolloverHours) {
-                            Text("Midnight").tag(0)
-                            Text("1 AM").tag(1)
-                            Text("2 AM").tag(2)
-                            Text("3 AM").tag(3)
-                        }
-                        if isRolloverPopupVisible {
-                            RolloverDropdownInfo()
-                        }
-                    }
-                    .onChange(of: dayRolloverHours) { _, _ in
-                        viewModel.fetchPrayerTimes(cameFrom: "onChange dayRolloverHours")
-                        viewModel.loadTodaysPrayerObjects()
-                        WidgetCenter.shared.reloadAllTimelines()
-                    }
-
-                    //MARK: - Tasbeeh
-                    Section(header: headerWithInfoButton(title: "Tasbeeh", isPopupVisible: $isTasbeehPopupVisible)) {
-                        LabeledContent("Secondary button step") {
-                            // String-backed so 0 / empty shows the "Off" placeholder instead of "0".
-                            TextField("Off", text: Binding(
-                                get: { tasbeehSecondaryStep > 0 ? String(tasbeehSecondaryStep) : "" },
-                                set: { tasbeehSecondaryStep = min(Int($0.filter(\.isNumber)) ?? 0, 10_000) }
-                            ))
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.center)
-                                .monospacedDigit()
-                                .focused($stepFieldFocused)
-                                .frame(width: 72)
-                                .padding(.vertical, 6)
-                                .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8))
-                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(stepFieldFocused ? Color.green.opacity(0.6) : Color.clear, lineWidth: 1))
-                                .onChange(of: stepFieldFocused) { _, focused in
-                                    // Select the whole value on focus so typing replaces it.
-                                    guard focused else { return }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                                        UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
-                                    }
-                                }
-                        }
-                        if isTasbeehPopupVisible {
-                            TasbeehDropdownInfo()
-                        }
-                    }
-
                     //MARK: - Calculation Method
                     Section(header: Text("Calculation Method")
                         #if DEBUG
@@ -442,9 +388,6 @@ struct SettingsView: View {
         // The status-bar strip above this page is painted by the pager (PrayerTimesAndTracker),
         // because pages are clipped to the pager's frame and can't reach it from here.
         .background(Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground))
-        // A tap anywhere on the page puts the number pad away. The gesture exists only while the
-        // pad is up: attached permanently (even as simultaneous) it swallowed the Menu pickers.
-        .gesture(TapGesture().onEnded { stepFieldFocused = false }, including: stepFieldFocused ? .all : .subviews)
         .navigationBarBackButtonHidden(false)
         
         .toolbar {
@@ -679,50 +622,6 @@ struct prayerCol: View {
 
 
 
-
-struct TasbeehDropdownInfo: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Information:")
-
-            HStack {
-                Image(systemName: "plus.circle")
-                Text("Adds a button to the active tasbeeh, between − and ∞, that counts this many at once — for when you're reciting on your own and want one tap to record several.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-
-            HStack {
-                Image(systemName: "0.circle")
-                Text("0 hides the button.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-        }
-    }
-}
-
-struct RolloverDropdownInfo: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Information:")
-
-            HStack {
-                Image(systemName: "moon.stars.fill")
-                Text("The day's prayers stay up until this time, so an Isha you prayed late can still be marked instead of vanishing at midnight.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-
-            HStack {
-                Image(systemName: "clock.badge.exclamationmark")
-                Text("Isha's time still ends at 11:59 PM. Marking it after that counts as Qaza.")
-                    .font(.caption)
-            }
-            .foregroundColor(.gray)
-        }
-    }
-}
 
 struct NotificationDropdownInfo: View {
     @EnvironmentObject var viewModel: PrayerViewModel
