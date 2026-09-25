@@ -56,14 +56,15 @@ struct AyahShareCard: View {
                 Text("daily ayah · \(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))".lowercased())
                     .font(.system(size: 9, weight: .light, design: .rounded))
                     .tracking(1.8)
-                    .foregroundStyle(ink.opacity(0.45))
+                    .foregroundStyle(ink.opacity(style == .grain ? 0.7 : 0.45))
                     .padding(.top, 104)
 
                 Spacer(minLength: 16)
 
                 Text(arabic)
                     .font(.custom("KFGQPCUthmanTahaNaskh", size: 29))
-                    .foregroundStyle(ink.opacity(0.92))
+                    .foregroundStyle(ink.opacity(style == .grain ? 1 : 0.92))
+                    .shadow(color: style == .grain ? .black.opacity(0.35) : .clear, radius: 6)
                     .multilineTextAlignment(.center)
                     .lineSpacing(9)
                     .minimumScaleFactor(0.35)
@@ -76,7 +77,8 @@ struct AyahShareCard: View {
 
                 Text(english)
                     .font(.system(size: 13.5, weight: .light, design: .rounded))
-                    .foregroundStyle(ink.opacity(style == .mint ? 0.68 : 0.72))
+                    .foregroundStyle(ink.opacity(style == .mint ? 0.68 : style == .grain ? 0.9 : 0.72))
+                    .shadow(color: style == .grain ? .black.opacity(0.35) : .clear, radius: 4)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .minimumScaleFactor(0.45)
@@ -100,7 +102,7 @@ struct AyahShareCard: View {
                 Text("download on the App Store")
                     .font(.system(size: 8, weight: .light, design: .rounded))
                     .tracking(0.8)
-                    .foregroundStyle(ink.opacity(0.4))
+                    .foregroundStyle(ink.opacity(style == .grain ? 0.7 : 0.4))
                     .padding(.top, 5)
                     .padding(.bottom, 128)
             }
@@ -124,6 +126,12 @@ struct AyahShareCard: View {
             NoiseOverlay()
                 .blendMode(.overlay)
                 .opacity(0.3)
+            // The light base leaves pale edges and a pale band at the bottom, where the white
+            // text washed out: a soft dark veil down the text column keeps it readable.
+            LinearGradient(colors: [Color.black.opacity(0.28), Color.black.opacity(0.18), Color.black.opacity(0.34)],
+                           startPoint: .top, endPoint: .bottom)
+            RadialGradient(colors: [Color.black.opacity(0.22), .clear],
+                           center: UnitPoint(x: 0.5, y: 0.45), startRadius: 40, endRadius: 330)
         case .forest:
             LinearGradient(colors: [Color(red: 0.06, green: 0.16, blue: 0.11), Color(red: 0.02, green: 0.04, blue: 0.03)],
                            startPoint: .top, endPoint: .bottom)
@@ -244,7 +252,7 @@ struct AyahShareOptionsSheet: View {
             if let image = images[style] {
                 // Only the image is sent; iOS wants a title for the share sheet's preview row.
                 ShareLink(item: Image(uiImage: image),
-                          preview: SharePreview("shukr", image: Image(uiImage: image))) {
+                          preview: SharePreview("today's daily ayah from shukr", image: Image(uiImage: image))) {
                     Label("Share", systemImage: "square.and.arrow.up")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)

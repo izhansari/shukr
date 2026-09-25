@@ -31,6 +31,8 @@ struct InsightsView: View {
     @State private var revealed = false
     /// Tapped hero circle: the caption under it shows how the prayers split instead of the trend.
     @State private var showSplit = false
+    /// The Insights page in view (0 progress, 1 score, 2 consistency).
+    @State private var pageIndex: Int? = 0
     /// Tapped prayer ring: its average and how often it was prayed show under the rings.
     @State private var selectedPrayer: String?
 
@@ -60,31 +62,67 @@ struct InsightsView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
             } else {
-                // One page per question, swiped sideways (owner, 2026-09-25: "pages for each
-                // section — the cleanest way for now"). Drags on the sparklines and the grid
-                // scrub them; swipe anywhere else to change page.
-                TabView {
-                    page("am I getting better?") {
-                        PrayerProgressList(prayers: prayers)
+                // One page per question, swiped sideways (owner, 2026-09-25). The question sits at
+                // the top and blurs over to the next one; each page's content is centred; paging
+                // revolves — the leaving page fades, shrinks and turns away while the next grows
+                // in. Drags on the sparklines and the grid scrub them; swipe elsewhere to page.
+                VStack(spacing: 0) {
+                    ZStack {
+                        Text(Self.questions[pageIndex ?? 0])
+                            .font(.title3.weight(.light))
+                            .id(pageIndex ?? 0)
+                            .transition(.asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.9)).combined(with: .offset(y: 6)),
+                                removal: .opacity.combined(with: .scale(scale: 1.08)).combined(with: .offset(y: -6))))
                     }
-                    page("how am I scoring?") {
-                        VStack(spacing: 22) {
-                            VStack(spacing: 12) {
-                                hero(stats)
-                                rangePicker
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 12)
+                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: pageIndex)
+
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 0) {
+                            ForEach(Self.questions.indices, id: \.self) { i in
+                                VStack {
+                                    Spacer(minLength: 0)
+                                    pageContent(i, stats: stats)
+                                        .padding(.horizontal, 24)
+                                    Spacer(minLength: 0)
+                                }
+                                .frame(maxHeight: .infinity)
+                                .containerRelativeFrame(.horizontal)
+                                .scrollTransition(.interactive, axis: .horizontal) { content, phase in
+                                    content
+                                        .opacity(1 - min(abs(phase.value), 1))
+                                        .scaleEffect(1 - min(abs(phase.value), 1) * 0.4)
+                                        // Pages on the outside of a drum in front of you: a page
+                                        // leaving to the left turns its face left (its outer edge
+                                        // recedes), like a wheel revolving. The negative-angle
+                                        // version felt like standing inside the wheel.
+                                        .rotation3DEffect(.degrees(phase.value * 65), axis: (x: 0, y: 1, z: 0),
+                                                          anchor: .center, perspective: 0.45)
+                                }
+                                .id(i)
                             }
-                            prayerRings(stats)
+                        }
+                        .scrollTargetLayout()
+                    }
+                    .frame(maxHeight: .infinity)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $pageIndex)
+                    .scrollIndicators(.hidden)
+                    .sensoryFeedback(.selection, trigger: pageIndex)
+
+                    // Page dots.
+                    HStack(spacing: 7) {
+                        ForEach(Self.questions.indices, id: \.self) { i in
+                            Capsule()
+                                .fill(i == (pageIndex ?? 0) ? Color.primary.opacity(0.7) : Color.primary.opacity(0.18))
+                                .frame(width: i == (pageIndex ?? 0) ? 18 : 6, height: 6)
                         }
                     }
-                    page("how consistent am I?") {
-                        VStack(spacing: 20) {
-                            streaks
-                            PrayerTrendsGrid(prayers: prayers, revealed: revealed)
-                        }
-                    }
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pageIndex)
+                    .padding(.vertical, 14)
                 }
-                .tabViewStyle(.page(indexDisplayMode: .always))
-                .indexViewStyle(.page(backgroundDisplayMode: .always))
             }
         }
         .fontDesign(.rounded)
@@ -109,19 +147,26 @@ struct InsightsView: View {
         .controlSize(.small)
     }
 
-    /// One Insights page: its question as the title, then its content, above the page dots.
-    private func page<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 24) {
-            Text(title)
-                .font(.title3.weight(.light))
-                .frame(maxWidth: .infinity, alignment: .center)
-            content()
-                .frame(maxWidth: .infinity)
-            Spacer(minLength: 0)
+    static let questions = ["am I getting better?", "how am I scoring?", "how consistent am I?"]
+
+    @ViewBuilder private func pageContent(_ i: Int, stats: InsightsStats) -> some View {
+        switch i {
+        case 0:
+            PrayerProgressList(prayers: prayers)
+        case 1:
+            // The range switch only changes this page, so it sits at its bottom.
+            VStack(spacing: 22) {
+                hero(stats)
+                prayerRings(stats)
+                rangePicker
+                    .padding(.top, 6)
+            }
+        default:
+            VStack(spacing: 20) {
+                streaks
+                PrayerTrendsGrid(prayers: prayers, revealed: revealed)
+            }
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 12)
-        .padding(.bottom, 56)   // clear of the page dots
     }
 
     // MARK: Prayer rings — tap one for its numbers (back by request, 2026-09-25)
@@ -162,7 +207,11 @@ struct InsightsView: View {
             }
             Group {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
-                    Text("\(name) · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–") · prayed \(stat.prayedRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")")
+                    VStack(spacing: 2) {
+                        Text("\(name) · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–") · prayed \(stat.prayedRate.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")")
+                        Text("\(stat.prayed) prayed of \(stat.recorded) recorded")
+                            .foregroundStyle(.tertiary)
+                    }
                 } else {
                     // Best / worst is the progress section's job now.
                     Text("tap a prayer for its average and how often you prayed it")
@@ -246,8 +295,12 @@ struct InsightsView: View {
                 } else if let prev = stats.previousAverage, stats.average != nil {
                     let delta = Int(((avg - prev) * 100).rounded())
                     Text("\(delta >= 0 ? "↑" : "↓") \(abs(delta)) vs the \(range.previousPhrase)")
+                } else if range == .all, let first = stats.dayScores.first?.day {
+                    // No "before" for all time: say what it covers.
+                    Text("since \(first.formatted(.dateTime.month(.abbreviated).day().year())) · \(stats.dayScores.count) days")
                 } else {
-                    Text(range.phrase)
+                    // No data for the period before (days the app wasn't used have no rows).
+                    Text("\(range.phrase) · nothing before to compare")
                 }
             }
             .font(.caption)
@@ -279,7 +332,7 @@ struct InsightsView: View {
     private var streaks: some View {
         HStack(spacing: 22) {
             streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
-            streakItem("sparkles", value: onTimeStreak, label: "on time", best: maxOnTimeStreak)
+            streakItem("sparkles", value: onTimeStreak, label: "in-time days", best: maxOnTimeStreak)
         }
     }
 
@@ -346,6 +399,8 @@ struct InsightsStats {
         let name: String
         let average: Double?     // points of the prayed ones, 0…1
         let prayedRate: Double?  // prayed / (prayed + missed)
+        var prayed = 0           // marked in the range
+        var recorded = 0         // marked + missed (window over) in the range
         var id: String { name }
     }
 
@@ -383,7 +438,8 @@ struct InsightsStats {
             let rows = inRange.filter { $0.name == name }
             let prayed = rows.filter(\.isCompleted)
             let avg = prayed.isEmpty ? nil : prayed.compactMap(\.numberScore).reduce(0, +) / Double(prayed.count)
-            return PrayerStat(name: name, average: avg, prayedRate: rows.isEmpty ? nil : Double(prayed.count) / Double(rows.count))
+            return PrayerStat(name: name, average: avg, prayedRate: rows.isEmpty ? nil : Double(prayed.count) / Double(rows.count),
+                              prayed: prayed.count, recorded: rows.count)
         }
         var counts: [InsightsGrade: Int] = [:]
         for p in inRange {

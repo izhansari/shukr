@@ -63,7 +63,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         get { return Date(timeIntervalSince1970: dateOfMaxPrayerStreakTimeInterval) }
         set { dateOfMaxPrayerStreakTimeInterval = newValue.timeIntervalSince1970 }
     }
-    /// Days in a row with all five Early / On time (score ≥ 80), and the last day that counted.
+    /// In-time days: days in a row with all five prayed within their windows (no Qaza, none
+    /// missed; score ≥ 60), and the last day that counted. Keys keep their old "onTime" names.
+    /// (Was all five Early / On time until 2026-09-25.)
     @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
     @AppStorage("maxOnTimeStreak") var maxOnTimeStreak: Int = 0
     @AppStorage("lastOnTimeStreakDate") var lastOnTimeStreakDate_TI: Double = 0
@@ -754,8 +756,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
     
-    /// The on-time streak (all five Early / On time) and the perfect day (all five within their
-    /// windows, no Qaza), each counted once a day like the main streak. Posted after the main
+    /// The in-time days streak (all five within their windows: no Qaza, none missed) and the
+    /// perfect day (all five Early), each counted once a day like the main streak. Posted after the main
     /// streak's notification so the top bar can play them in order.
     private func updateDayMilestones(todayPrayers: [PrayerModel], todayStart: Date, now: Date) {
         func doneNames(minScore: Double) -> Set<String> {
@@ -763,12 +765,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
 
-        // On-time streak
+        // In-time days (owner, 2026-09-25: "days where there was no qaza")
         let lastOnTime = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI))
         if lastOnTime != todayStart && lastOnTime != yesterdayStart && onTimeStreak != 0 {
             onTimeStreak = 0   // a gap
         }
-        if doneNames(minScore: 0.8).count == 5 {
+        if doneNames(minScore: PrayerScoring.inWindowFloor).count == 5 {
             if lastOnTime != todayStart {
                 onTimeStreak += 1
                 lastOnTimeStreakDate_TI = now.timeIntervalSince1970

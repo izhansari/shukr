@@ -314,10 +314,6 @@ struct PrayersWidgetView: View {
             else {return .gray}
         }
 
-        private var timeStyle: Text.DateStyle {
-            if entry.textToggle { return .relative }
-            else { return .time }
-        }
 
         
         var body: some View {
@@ -342,19 +338,30 @@ struct PrayersWidgetView: View {
                                 )
                                 .rotationEffect(.degrees(-90))
                             
-                            VStack(spacing: 4) {
+                            // Same type as the app's main circle and Insights ring (light, rounded,
+                            // thin secondary caption), scaled from the 200 pt ring to this 90 pt one.
+                            VStack(spacing: 2) {
                                 HStack(alignment: .center, spacing: 4){
                                     Image(systemName: prayerIcon(for: relevantPrayer.name))
-                                        .font(.system(size: 15))
-                                        .foregroundColor(.primary/*.white*/)
+                                        .font(.system(size: 11, weight: .light))
                                     Text(relevantPrayer.name)
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.primary/*.white*/)
+                                        .font(.system(size: 15, weight: .light, design: .rounded))
                                 }
-                                Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: timeStyle)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.primary/*.white*/.opacity(0.7))
-                                    .multilineTextAlignment(.center)
+                                .foregroundColor(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                Group {
+                                    if entry.textToggle {
+                                        Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .relative)
+                                    } else {
+                                        Text(relevantPrayer.current ? "ends " : "at ")
+                                            + Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .time)
+                                    }
+                                }
+                                .font(.system(size: 10, weight: .thin, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 8)
                             }
                         }
                         .frame(width: 90, height: 90) // Scaled for widget size

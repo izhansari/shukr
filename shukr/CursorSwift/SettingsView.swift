@@ -62,6 +62,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     @State private var showDevStuff = false
     @State private var showCityPicker = false
+    @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.alive.rawValue
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -368,6 +369,9 @@ struct SettingsView: View {
                     #if DEBUG
                     if(showDevStuff){
                         Section(header: Text("My Dev Stuff")) {
+                            Picker("Tasbeeh Ring", selection: $tasbeehRingStyle) {
+                                ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                            }
                             Picker("Ring Style", selection: $selectedRingStyle) {
                                 ForEach(0..<10) { index in
                                     Text("\(index)").tag(index)

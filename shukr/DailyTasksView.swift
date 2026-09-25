@@ -145,18 +145,19 @@ struct ZikrCircleView: View {
                 .stroke(Color(.secondarySystemFill), lineWidth: 12)
                 .frame(width: 200, height: 200)
             
-            VStack {
-                HStack(alignment: .center) {
+            // Same type as the Salah circle / Insights ring: large, light, rounded.
+            VStack(spacing: 2) {
+                HStack(alignment: .center, spacing: 8) {
                     Image(systemName: "circle.hexagonpath")
+                        .font(.system(size: 22, weight: .light))
                     Text("Zikr")
-                        .fontWeight(.bold)
+                        .font(.system(size: 32, weight: .light, design: .rounded))
                 }
-                .font(.title)
                 Text("click to freestyle")
-                    .font(.callout)
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
                     .fontDesign(.rounded)
-                    .fontWeight(.light)
+                    .fontWeight(.thin)
             }
             
             Circle()

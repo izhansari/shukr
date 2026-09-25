@@ -68,6 +68,7 @@ struct PrayerTimesView: View {
     @State private var showZikrHistory = false
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
+    @State private var showNamesPage = false
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -275,7 +276,8 @@ struct PrayerTimesView: View {
                 showMapPage: $showMapPage, showDailyAyahPage: $showDailyAyahPage,
                 showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
                 showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory,
-                showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights
+                showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
+                showNamesPage: $showNamesPage
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
@@ -310,6 +312,14 @@ struct PrayerTimesView: View {
             // Simulator check of the completion moment: launch with -demoPrayerCompletion. Uses
             // the dev "test prayer times" (minutes around now), opens the salah sheet, then
             // marks the current prayer and a missed one.
+            if ProcessInfo.processInfo.arguments.contains("-demoTasbeehRing") {
+                // Writes the tasbeeh progress ring at 65 % to <app data>/tmp/tasbeeh-ring.png.
+                let renderer = ImageRenderer(content: NeuCircularProgressView(progress: 0.65).padding(40).background(Color(.systemBackground)))
+                renderer.scale = 3
+                if let data = renderer.uiImage?.pngData() {
+                    try? data.write(to: FileManager.default.temporaryDirectory.appending(path: "tasbeeh-ring.png"))
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoShareCard") {
                 // Writes today's ayah share card to <app data>/tmp/share-card.png.
                 let vm = DailyAyahViewModel()
@@ -330,6 +340,11 @@ struct PrayerTimesView: View {
                     }
 
                 }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoNames") {
+                try? await Task.sleep(for: .seconds(1))
+                showNamesPage = true
+                return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoInsights") {
                 try? await Task.sleep(for: .seconds(1))
@@ -379,6 +394,7 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showZikrHistory) { HistoryPageView() }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
+        .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
@@ -515,6 +531,7 @@ struct PrayerTimesView: View {
         @Binding var showZikrHistory: Bool
         @Binding var showInsightsPage: Bool
         @Binding var showOldInsights: Bool
+        @Binding var showNamesPage: Bool
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
@@ -582,6 +599,7 @@ struct PrayerTimesView: View {
                                 Divider()
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
+                                menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 menuRow("Mantras", "text.quote") { showMantrasPage = true }
                                 menuRow("Zikr History", "clock.arrow.circlepath") { showZikrHistory = true }
                                 #if DEBUG

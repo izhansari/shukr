@@ -72,9 +72,8 @@ agent builds with xcodebuild. Nothing here has CI.
    minimal one-screen layout: range picker, a main-circle-style day-score hero (tap → grade
    split), one streak line, five prayer rings (tap → avg / % prayed), 12-week heatmap. First
    version (cards, area chart, stacked bar) was "information overload". Owner didn't know what
-   "on time" meant there (the on-time streak: consecutive days with all five Early / On time;
-   started counting 2026-09-25, so it read 0). Ask the owner what they want to learn from it
-   before building a third version.
+   "on time" meant there — it's now "in-time days" (see Streaks). Ask the owner what they want
+   to learn from it before building a third version.
 9. Then the App Store blockers below.
 
 ## Share card — CHECK ON RELEASE
@@ -285,11 +284,14 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   every mark / time edit / widget reconcile and used to +1 each time once all five were in, and
   −1 on every call after an unmark (streaks went negative; clamped at 0 now). Posts
   `.prayerStreakContinued` once.
-- **On-time streak** (`onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`): consecutive days
-  with all five Early / On time (≥ 80). **Perfect day** (`lastPerfectDay`): all five **Early**.
+- **In-time days** (keys still `onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`):
+  consecutive days with all five prayed within their windows — no Qaza, none missed (≥ 60,
+  `PrayerScoring.inWindowFloor`). Owner, 2026-09-25: "days where there was no qaza". Named
+  "in-time", not "on-time", because On time is already a grade (80–99). It was all five
+  Early / On time (≥ 80) for a day. **Perfect day** (`lastPerfectDay`): all five **Early**.
   Both in `updateDayMilestones`, once a day, posting `.onTimeStreakContinued` / `.perfectDay`.
 - **Top bar** (`TopBar` + `StreakLabel` in Utils.swift): tap the city → the streak for 5 s; tap
-  the streak → on time → max. Once the day's done (the circle's summary condition) the streak
+  the streak → in-time days → max. Once the day's done (the circle's summary condition) the streak
   stays up instead of the city (owner: keep the city otherwise). Celebrations: heart goes green,
   number rolls up, hearts float; the on-time beat follows ~2.4 s later with sparkles.
 - **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
@@ -326,7 +328,8 @@ start on a row still scroll): tick + edge glow at once, then the pill border fil
 (drawn from the clock in a TimelineView), tick, repeat, until the finger lifts.
 
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
-(a page `TabView`), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
+(a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
+and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
 prayers ranked by their last-4-weeks score, missed = 0, with an 8-week sparkline you can scrub
 and the change vs the 4 weeks before), "how am I scoring?" (avg-score ring — tap for the grade
 makeup as coloured arcs — the Week / Month / All time switch, which only affects this page, and
@@ -341,6 +344,34 @@ single-page version is `InsightsView(layout: .old)` (DEBUG "Old Insights"). Reth
 `NoiseOverlay` on white) / forest. Both of the page's sheets hang off its root: a sheet attached
 inside the top bar never presented (the share button used to do nothing). See "Share card —
 CHECK ON RELEASE".
+
+## 99 Names (hamburger → 99 Names, 2026-09-25)
+
+A small side app for getting to know Allah through His names. v1 (built):
+`CursorSwift/NamesOfAllahData.swift` (Allah + the 99 Names in Tirmidhi order: transliteration,
+Arabic, meaning, "also means", explanation) and `CursorSwift/NamesOfAllahView.swift`: a searchable
+list (Uthmani font), a page per name (big Arabic, meanings, explanation, prev / next, mark as
+known), and flashcards (`NameFlashcardsView`: deck "still learning" / all, optional meaning-first,
+tap to flip, swipe right "knew it" / left "still learning" or the buttons, end-of-round ring).
+The start page is a fanned preview of the deck (top card = a real name from the chosen deck,
+follows "front shows") with deck / front tiles and "Begin · N cards"; ↺ top-right undoes the
+last answer (restores that name's known state, the card flies back in from where it left).
+Known names: `namesKnown` (standard defaults, comma-separated ids) → the ring at the top.
+
+Source: the owner's repo **github.com/izhansari/99Duas** — `duas_99_names.jsx`, `D` array
+(`[id, transliteration, meaning, category, explanation, personalDua, alsoMeans]`, 100 entries),
+plus `My Dua Collection 99 Names.pdf` (the owner's revised, longer personal duas) and `HT`
+("Heart Themes"). The Arabic isn't in the repo; it's the standard spelling, added here.
+**Not included on purpose:** the owner's personal duas and their life-area categories
+(Marriage & Family, Career & Building, …) — they're his; other users get their own:
+
+**Next (v2, not built): personalised AI duas.** Give the user a prompt to copy into their own AI
+(ChatGPT / Claude), which — knowing them — writes one dua per name, calling on Allah by it, in a
+fixed format; the user pastes the output back and shukr parses it into a dua per name (show it on
+the name's page and a "my duas" view, like 99Duas' Du'as tab: grouped, searchable, favourites).
+The owner has the original prompt in an old Claude chat and will provide it — don't invent one.
+Design the paste format to be parseable (e.g. numbered `n. Name — dua` lines or JSON), store the
+duas locally (SwiftData model keyed by name id), and let the user edit / re-paste.
 
 ## Prayer day rollover (PrayerDay.swift)
 
@@ -549,6 +580,10 @@ Backlog / known oddities:
 - [x] After a task session the app now stays on the Zikr tab (the jump to `.main` in `tapOnTaskCardAction` was only a remount hack for refreshing cards).
 - [x] Widget "complete prayer" works in place, no app launch (shared SwiftData store in the app group; widget writes it directly).
 - [x] Zikr page moved to the left swipe (replacing Duas/"Notes"), Settings to the right swipe. Pager is a native paging ScrollView (first offset-based version was laggy on device).
+- [x] Zikr History swipes (2026-09-25): left → Delete, confirmed with a centred `.alert` like
+  unmarking a prayer (a bottom confirmation dialog felt out of place); right → the session's
+  mantra page (`MantraEditorView` sheet), `text.quote` like the menu, tinted `Color.sage` (a
+  muted green in Utils.swift for accents where system green is too stark).
 - [x] Zikr History (hamburger → `HistoryPageView`, 2026-09-24): a List of every session newest
   first, grouped by day, under an all-time total; rows show mantra (live name, else the title
   snapshot), time, mode + target, count, duration and pace. The old paged-by-day version had a

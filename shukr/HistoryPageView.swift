@@ -15,6 +15,11 @@ import SwiftUI
 /// mantra, time, mode + target, count, duration and pace.
 struct HistoryPageView: View {
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
+    @Environment(\.modelContext) private var context
+    /// Swipe → delete asks first.
+    @State private var pendingDelete: SessionDataModel?
+    /// Swipe the other way → that session's mantra (its stats + editor).
+    @State private var mantraToOpen: MantraModel?
 
     private var calendar: Calendar { Calendar.current }
 
@@ -48,6 +53,22 @@ struct HistoryPageView: View {
                     Section {
                         ForEach(day.sessions) { session in
                             SessionRow(session: session)
+                                // Swipe left: delete (confirmed below).
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button { pendingDelete = session } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                    .tint(.red)
+                                }
+                                // Swipe right: the mantra's page (stats, tasks, sessions).
+                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                    if let mantra = session.mantra {
+                                        Button { mantraToOpen = mantra } label: {
+                                            Label("Mantra", systemImage: "text.quote")   // the menu's Mantras icon
+                                        }
+                                        .tint(.sage)
+                                    }
+                                }
                         }
                     } header: {
                         HStack {
@@ -62,6 +83,25 @@ struct HistoryPageView: View {
         .fontDesign(.rounded)
         .navigationTitle("Zikr History")
         .navigationBarTitleDisplayMode(.inline)
+        // The same centered alert as unmarking a prayer (a bottom action sheet felt out of place).
+        .alert("Delete this session?",
+               isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+               presenting: pendingDelete) { session in
+            Button("Delete", role: .destructive) {
+                withAnimation {
+                    context.delete(session)   // task progress and mantra stats recompute from what's left
+                    try? context.save()
+                }
+                triggerSomeVibration(type: .medium)
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { session in
+            Text("\(session.totalCount) counts of \(session.mantra?.name ?? session.title), \(session.startTime.formatted(date: .abbreviated, time: .shortened)). This can't be undone.")
+        }
+        .sheet(item: $mantraToOpen) { mantra in
+            MantraEditorView(mantra: mantra)
+        }
     }
 
     private func dayLabel(_ date: Date) -> String { zikrDayLabel(date) }

@@ -604,15 +604,27 @@ struct oldCircularProgressView: View {
 }
 
 
+/// Which fill the tasbeeh progress ring uses. `alive` is current; the other two are kept so the
+/// owner can go back (DEBUG Settings → My Dev Stuff → Tasbeeh Ring).
+enum TasbeehRingStyle: String, CaseIterable, Identifiable {
+    case alive      // thin band; drifting colour sweep, moving light, shimmering grain (2026-09-25)
+    case gradient   // 24 pt band; the welcome screen's wavy gradient + grain (2026-09-25, v1)
+    case classic    // 24 pt band; static yellow → green gradient (the original)
+    var id: String { rawValue }
+}
+
 struct NeuCircularProgressView: View {
     let progress: CGFloat
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
+    @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.alive.rawValue
 
     var body: some View {
+        let style = TasbeehRingStyle(rawValue: styleRaw) ?? .alive
+        let band: CGFloat = style == .alive ? 12 : 24
         ZStack {
             // Outer Circle with Dynamic Shadow
             Circle()
-                .stroke(lineWidth: 24)
+                .stroke(lineWidth: band)
                 .frame(width: 200, height: 200)
                 .foregroundColor(Color("NeuRing"))
                 .shadow(
@@ -627,25 +639,94 @@ struct NeuCircularProgressView: View {
                     x: -2,
                     y: -2
                 )
-            
-            // Progress Indicator with Dynamic Gradient
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(style: StrokeStyle(lineWidth: 24, lineCap: .round))
-                .frame(width: 200, height: 200)
-                .rotationEffect(.degrees(-90))
-                .foregroundStyle(
-                    LinearGradient(
-                        gradient: Gradient(
-                            colors: colorScheme == .dark
-                                ? [.yellow.opacity(0.6), .green.opacity(0.8)]
-                                : [.yellow, .green]
-                        ),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+
+            switch style {
+            case .classic:
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(style: StrokeStyle(lineWidth: band, lineCap: .round))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .foregroundStyle(
+                        LinearGradient(
+                            gradient: Gradient(
+                                colors: colorScheme == .dark
+                                    ? [.yellow.opacity(0.6), .green.opacity(0.8)]
+                                    : [.yellow, .green]
+                            ),
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
-                )
-                .animation(.spring(), value: progress)
+                    .animation(.spring(), value: progress)
+            case .gradient:
+                ZStack {
+                    Color.green.opacity(colorScheme == .dark ? 0.75 : 0.85)
+                    AnimatedWavyGradient()
+                    NoiseOverlay()
+                        .blendMode(.overlay)
+                        .opacity(0.35)
+                }
+                .frame(width: 250, height: 250)
+                .mask { progressArc(band) }
+                .allowsHitTesting(false)
+            case .alive:
+                AliveRingFill(dark: colorScheme == .dark)
+                    .frame(width: 230, height: 230)
+                    .mask { progressArc(band) }
+                    .shadow(color: .green.opacity(0.35), radius: 6)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func progressArc(_ band: CGFloat) -> some View {
+        Circle()
+            .trim(from: 0, to: progress)
+            .stroke(style: StrokeStyle(lineWidth: band, lineCap: .round))
+            .frame(width: 200, height: 200)
+            .rotationEffect(.degrees(-90))
+            .animation(.spring(), value: progress)
+    }
+}
+
+/// The tasbeeh ring's living fill: a slow colour sweep turning around the ring, two soft pools
+/// of light and shade drifting through it, and grain that re-scatters ~12× a second so it
+/// shimmers (the welcome screen's NoiseOverlay is drawn once and sits still).
+private struct AliveRingFill: View {
+    let dark: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            ZStack {
+                AngularGradient(colors: [Color(red: 0.12, green: 0.62, blue: 0.32),
+                                         Color(red: 0.45, green: 0.85, blue: 0.55),
+                                         Color(red: 0.05, green: 0.38, blue: 0.20),
+                                         Color(red: 0.30, green: 0.75, blue: 0.45),
+                                         Color(red: 0.12, green: 0.62, blue: 0.32)],
+                                center: .center,
+                                angle: .degrees((t * 18).truncatingRemainder(dividingBy: 360)))
+                RadialGradient(colors: [Color.white.opacity(dark ? 0.35 : 0.45), .clear],
+                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * 0.7), y: 0.5 + 0.38 * sin(t * 0.9)),
+                               startRadius: 0, endRadius: 80)
+                RadialGradient(colors: [Color.black.opacity(0.35), .clear],
+                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * 0.45 + 2), y: 0.5 + 0.38 * sin(t * 0.55 + 1)),
+                               startRadius: 0, endRadius: 90)
+                Canvas { canvas, size in
+                    var seed = UInt64(t * 12)          // new scatter ~12 × a second
+                    func next() -> Double {
+                        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+                        return Double(seed >> 33) / Double(1 << 31)
+                    }
+                    for _ in 0..<1400 {
+                        let x = next() * size.width, y = next() * size.height
+                        canvas.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 1.4, height: 1.4)),
+                                    with: .color(.white.opacity(0.15 + 0.3 * next())))
+                    }
+                }
+                .blendMode(.overlay)
+            }
         }
     }
 }
@@ -2613,6 +2694,12 @@ struct ExternalToggleText: View {
 
 
 // Color Hex Extension
+extension Color {
+    /// A softer, muted green for secondary accents (swipe actions and the like), where
+    /// system green reads too stark.
+    static let sage = Color(red: 0.40, green: 0.64, blue: 0.50)
+}
+
 //extension Color {
 //    init(hex: String) {
 //        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -2875,8 +2962,8 @@ struct sideMenu: View {
 
 
 // MARK: - Streak label
-/// "♥ 12 Day Streak" in the top bar. A tap steps it to "✦ 4 Days On Time" (all five Early /
-/// On time), then "Max 20 Days", then back; it returns to the streak on its own after 3 s.
+/// "♥ 12 Day Streak" in the top bar. A tap steps it to "✦ 4 In-Time Days" (all five prayed
+/// within their windows — no Qaza), then "Max 20 Days", then back; it returns to the streak on its own after 3 s.
 /// Celebrations, each when its `…Celebration` counter bumps:
 /// - streak continued: the heart bounces and goes green, little hearts float up, the number
 ///   rolls up from yesterday's to today's, success haptic;
@@ -2920,7 +3007,7 @@ struct StreakLabel: View {
                     count(shownStreak ?? streak, " Day Streak")
                 case .onTime:
                     let n = shownOnTime ?? onTimeStreak
-                    count(n, n == 1 ? " Day On Time" : " Days On Time")
+                    count(n, n == 1 ? " In-Time Day" : " In-Time Days")
                 case .max:
                     Text("Max \(maxStreak) Days").transition(.blurReplace)
                 }
