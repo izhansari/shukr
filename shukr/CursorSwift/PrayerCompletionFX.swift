@@ -168,6 +168,78 @@ struct CompletionDotPop: ViewModifier {
     }
 }
 
+// MARK: - Row status indicator styles
+
+/// How the Salah list marks a prayed prayer (owner, 2026-09-25: the score-coloured dots are "too
+/// much color" — compared these in Settings → My Dev Stuff → Prayer list dot and picked "faded").
+/// The score itself is
+/// still one tap away (tap the row's time: "On time · 88").
+enum PrayerDotStyle: String, CaseIterable, Identifiable {
+    case color, muted, ring, mono, check, sage
+    static let key = "prayerDotStyle"
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .color: "Score colour, full"
+        case .muted: "Score colour, faded (default)"
+        case .ring: "Score colour, ring only"
+        case .mono: "Gray dot"
+        case .check: "Checkmark"
+        case .sage: "Sage dot"
+        }
+    }
+}
+
+/// The row's status indicator in the chosen `PrayerDotStyle`; pops when `pulse` bumps.
+struct PrayerStatusDot: View {
+    let style: PrayerDotStyle
+    let done: Bool
+    let future: Bool
+    let scoreColor: Color
+    let pulse: Int
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var edge: Color { Color.secondary.opacity(future ? 0.2 : 0.5) }
+
+    var body: some View {
+        indicator
+            .frame(width: 14, height: 14)
+            .animation(.easeInOut(duration: 0.2), value: done)
+    }
+
+    @ViewBuilder private var indicator: some View {
+        switch style {
+        case .color, .muted:
+            // The original: gray ring, score-coloured fill (the faded one at a third strength).
+            let fill = scoreColor.opacity(style == .muted ? 0.35
+                : scoreColor == .red && colorScheme == .dark ? 0.5
+                : scoreColor == .yellow && colorScheme == .light ? 1 : 0.7)
+            ZStack {
+                Circle().strokeBorder(edge, lineWidth: 1)
+                Circle().fill(done ? fill : .clear).padding(1)
+                    .modifier(CompletionDotPop(pulse: pulse, color: scoreColor))
+            }
+        case .ring:
+            // Only the outline carries the score; no fill.
+            Circle().strokeBorder(done ? scoreColor.opacity(0.85) : edge, lineWidth: done ? 2 : 1)
+                .modifier(CompletionDotPop(pulse: pulse, color: scoreColor))
+        case .mono, .sage:
+            let fill = style == .sage ? Color.sage : Color.primary.opacity(0.45)
+            ZStack {
+                Circle().strokeBorder(edge, lineWidth: 1)
+                Circle().fill(done ? fill : .clear).padding(1)
+                    .modifier(CompletionDotPop(pulse: pulse, color: fill))
+            }
+        case .check:
+            Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 15, weight: .light))
+                .foregroundStyle(done ? Color.primary.opacity(0.5) : edge)
+                .contentTransition(.symbolEffect(.replace))
+                .modifier(CompletionDotPop(pulse: pulse, color: Color.primary.opacity(0.5)))
+        }
+    }
+}
+
 // MARK: - Post-salah offer
 
 /// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):

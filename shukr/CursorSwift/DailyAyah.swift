@@ -9,6 +9,7 @@
 
 import SQLite3
 import SwiftUI
+import WidgetKit
 import Combine
 import Foundation
 
@@ -381,9 +382,20 @@ struct DailyAyahView: View {
         (UserDefaults.standard.object(forKey: Self.revealedDayKey) as? Date).map { Calendar.current.isDateInToday($0) } ?? false
     }
 
+    /// Hands the revealed verse to the Daily Ayah widget (it never shows one before the reveal).
+    private func publishToWidget() {
+        guard revealedToday, let ayah = viewModel.currentAyah else { return }
+        let surahName = viewModel.surahs.first(where: { $0.number == ayah.surah })?.englishName ?? "Surah \(ayah.surah)"
+        let payload = DailyAyahWidgetPayload(day: Calendar.current.startOfDay(for: Date()),
+                                             arabic: ayah.arabic, english: ayah.english,
+                                             reference: "\(surahName) · \(ayah.surah):\(ayah.ayah)")
+        if payload.save() { WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.ayah) }
+    }
+
     func handleUnlock(){
         guard !isUnlocked else { return }
         UserDefaults.standard.set(Date(), forKey: Self.revealedDayKey)
+        publishToWidget()
         withAnimation(.easeInOut(duration: 2)) {
             blurRadius = 0
             scale = 0.7
@@ -527,7 +539,9 @@ struct DailyAyahView: View {
                 scale = 0.7
                 isUnlocked = true
             }
+            publishToWidget()
         }
+        .onChange(of: viewModel.currentAyah?.english) { _, _ in publishToWidget() }   // translation switched
         
     }
 }

@@ -14,6 +14,9 @@ struct shukrWidgetBundle: WidgetBundle {
 //        shukrWidget()
 //        CompassWidget()
         PrayersWidget()
+        ZikrTasksWidget()
+        NameOfTheDayWidget()
+        DailyAyahWidget()
     }
 }
 

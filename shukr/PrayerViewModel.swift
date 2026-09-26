@@ -541,7 +541,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// Flush and refresh the widget so an in-app completion shows there right away.
     func pushCompletionsToWidget() {
         try? context.save()
-        WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
+        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
     }
     
     /*

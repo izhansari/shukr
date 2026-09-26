@@ -98,6 +98,37 @@ final class LocationViewModel: ObservableObject {
     /// Zoom to fit the results once they arrive (a fresh search, not a pan-and-refresh).
     var fitMosquesWhenFound = false
 
+    /// The list of mosques found (the pill or the bar's list button).
+    @Published var showMosqueList = false
+
+    /// One sheet at a time: a mosque's sheet goes first.
+    func openMosqueList() {
+        if mosqueSelection != nil {
+            mosqueSelection = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.showMosqueList = true }
+        } else {
+            showMosqueList = true
+        }
+    }
+
+    /// From the list: close it, fly to the mosque (close enough that it isn't in a cluster),
+    /// then select its pin — which opens its sheet like a tap on the map.
+    func focusMosque(_ item: MKMapItem) {
+        showMosqueList = false
+        guard let mapView else { presentMosque(item); return }
+        let spot = MKCoordinateRegion(center: item.placemark.coordinate,
+                                      span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006))
+        mapView.setRegion(spot, animated: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self, weak mapView] in
+            guard let self else { return }
+            if let mapView, let pin = mapView.annotations.compactMap({ $0 as? MosqueAnnotation }).first(where: { $0.item === item }) {
+                mapView.selectAnnotation(pin, animated: true)
+            } else {
+                self.presentMosque(item)
+            }
+        }
+    }
+
     func presentMosque(_ item: MKMapItem) {
         if showExplore {
             showExplore = false
@@ -209,6 +240,25 @@ final class LocationViewModel: ObservableObject {
     @Published private(set) var filteredPrayers: [PrayerModel] = []
 
     weak var mapView: MKMapView?
+
+    /// Turn the map back to north-up (browsing pins / mosques).
+    func resetMapHeading() {
+        guard let mapView, let camera = mapView.camera.copy() as? MKMapCamera else { return }
+        camera.heading = 0
+        mapView.setCamera(camera, animated: true)
+    }
+
+    /// Qibla-up (owner, 2026-09-26): turn the map so the green line to the Kaaba points straight
+    /// up the screen. Hold the phone in front of you, turn until the streets match, and the top
+    /// of the phone is the qibla — no arrow pointing one way while the phone points another.
+    /// Optionally re-centres on `centre` in the same camera move.
+    func pointQiblaUp(centre: CLLocationCoordinate2D? = nil, animated: Bool = true) {
+        guard let mapView, let camera = mapView.camera.copy() as? MKMapCamera else { return }
+        let origin = centre ?? mapView.userLocation.location?.coordinate ?? mapView.centerCoordinate
+        camera.heading = Self.bearingToMecca(from: origin)
+        if let centre { camera.centerCoordinate = centre }
+        mapView.setCamera(camera, animated: animated)
+    }
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -253,6 +303,10 @@ final class LocationViewModel: ObservableObject {
     var userPoint: CGPoint? = nil
     /// Zoomed out past ~50 km across: the ring means nothing at that scale and hides.
     var zoomedOut = false
+    /// Which way the map is turned (degrees clockwise from north at the top). The user can
+    /// rotate it to line the map up with the street in front of them; everything the ring draws
+    /// in screen space subtracts this.
+    var mapHeading: Double = 0
 }
 
 /// Shortest signed way from `to` (where you point) round to `from` (the target), -180…180:
@@ -266,9 +320,12 @@ func signedAngleDifference(from: Double, to: Double) -> Double {
 
 // MARK: - MapView
 
-/// The MKMapView. North-up on purpose: the compass on a phone is often off, and a north-up map
-/// with the line to the Kaaba drawn on it lets the user line up with the buildings around
-/// them and know the direction for a fact. The compass only helps them turn.
+/// The MKMapView. The line to the Kaaba is computed from the user's position, not the compass
+/// (phone compasses are often off), so lining the map up with the buildings around you tells you
+/// the direction for a fact. The map was north-up until 2026-09-25; now the user can turn it with
+/// two fingers so a street or wall on the map runs parallel to the phone's edge (owner: "instead of
+/// rotating the whole phone"), and the ring on the dot turns with it (`MapAnchor.mapHeading`).
+/// The compass only helps them turn.
 struct MapView: UIViewRepresentable {
     @ObservedObject var viewModel: LocationViewModel
     var envLocation: EnvLocationManager
@@ -281,7 +338,8 @@ struct MapView: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
         mapView.userTrackingMode = .none
-        mapView.isRotateEnabled = false        // north-up, see above
+        mapView.isRotateEnabled = true         // turn the map to match what's in front of you
+        mapView.showsCompass = false           // our own glass north button (MapNorthButton)
         mapView.isPitchEnabled = false
         mapView.mapType = viewModel.mapType
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
@@ -296,9 +354,13 @@ struct MapView: UIViewRepresentable {
 
         // Start where the user is if we already have a fix; otherwise the first fix centres it.
         if let here = envLocation.userLocation?.coordinate {
-            mapView.setRegion(MKCoordinateRegion(center: here, span: Coordinator.closeSpan), animated: false)
+            mapView.setRegion(MKCoordinateRegion(center: here, span: Coordinator.qiblaSpan), animated: false)
             context.coordinator.didCentreOnUser = true
             context.coordinator.userMoved(to: here, on: mapView)
+            // Turn into qibla-up once it's on screen, so the user sees the map swing round.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak viewModel] in
+                viewModel?.pointQiblaUp()
+            }
         }
         context.coordinator.subscribe(to: viewModel, mapView: mapView)
         return mapView
@@ -310,6 +372,9 @@ struct MapView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         static let closeSpan = MKCoordinateSpan(latitudeDelta: 0.008, longitudeDelta: 0.008)   // ~900 m across: your block, not your borough
+        /// Lining up to pray: ~220 m across, the buildings right around you (owner: 4× closer than
+        /// closeSpan — "I double tap twice to get there").
+        static let qiblaSpan = MKCoordinateSpan(latitudeDelta: 0.002, longitudeDelta: 0.002)
         var parent: MapView
         var didCentreOnUser = false
         private var prayerAnnotations: [CustomPrayerAnnotation] = []
@@ -384,11 +449,14 @@ struct MapView: UIViewRepresentable {
         /// The user moved: redraw the great-circle line to the Kaaba and update the bearing.
         func userMoved(to coordinate: CLLocationCoordinate2D, on mapView: MKMapView) {
             let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            if let origin = lineOrigin, origin.distance(from: here) < 25 { return }   // GPS jitter
+            // Redraw once the dot has moved ~2 m: at the close qibla zoom a 25 m guard left the line
+            // visibly starting off the dot (owner, 2026-09-26). New line first, then drop the old,
+            // so it never blinks.
+            if let origin = lineOrigin, origin.distance(from: here) < 2 { return }
             lineOrigin = here
-            if let old = qiblaLine { mapView.removeOverlay(old) }
             let line = MKGeodesicPolyline(coordinates: [coordinate, LocationViewModel.meccaCoordinate], count: 2)
             mapView.addOverlay(line, level: .aboveRoads)
+            if let old = qiblaLine { mapView.removeOverlay(old) }
             qiblaLine = line
             let bearing = LocationViewModel.bearingToMecca(from: coordinate)
             if abs(parent.viewModel.qiblaBearing - bearing) > 0.5 { parent.viewModel.qiblaBearing = bearing }
@@ -397,6 +465,8 @@ struct MapView: UIViewRepresentable {
         /// The ring sits on the user's dot: report where the dot is on screen. Called on every
         /// frame of a pan/zoom (`mapViewDidChangeVisibleRegion`) and on every fix.
         private func updateAnchor(on mapView: MKMapView) {
+            let heading = mapView.camera.heading
+            if abs(parent.anchor.mapHeading - heading) > 0.05 { parent.anchor.mapHeading = heading }
             guard let coordinate = mapView.userLocation.location?.coordinate else {
                 parent.anchor.userPoint = nil
                 return
@@ -413,7 +483,10 @@ struct MapView: UIViewRepresentable {
             guard let coordinate = userLocation.location?.coordinate else { return }
             if !didCentreOnUser {
                 didCentreOnUser = true
-                mapView.setRegion(MKCoordinateRegion(center: coordinate, span: Self.closeSpan), animated: true)
+                mapView.setRegion(MKCoordinateRegion(center: coordinate, span: Self.qiblaSpan), animated: false)
+                if !parent.viewModel.showPrayers && !parent.viewModel.showMosques {
+                    parent.viewModel.pointQiblaUp(centre: coordinate)
+                }
             }
             userMoved(to: coordinate, on: mapView)
             updateAnchor(on: mapView)
@@ -572,6 +645,31 @@ struct LocationMapContentView: View {
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
     @State private var anchor = MapAnchor()
+    /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
+    /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
+    /// The ? explains whatever layer is showing; each layer's guide also opens once by itself.
+    @State private var guide: MapGuideTopic? = nil
+    private var currentGuideTopic: MapGuideTopic {
+        viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla
+    }
+    /// First visit to a layer: its guide, once (after the map / Explore sheet settle).
+    private func showGuideIfFirstTime(_ topic: MapGuideTopic, after delay: Double) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: topic.seenKey) else { return }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") })
+            && !ProcessInfo.processInfo.arguments.contains("-demoQiblaGuide") { return }
+        #endif
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            // Another sheet up (usually Explore, right after picking the layer): try again when
+            // it closes; only mark it seen once it has actually shown.
+            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, viewModel.selection == nil,
+                  viewModel.mosqueSelection == nil, !showFilterSheet,
+                  !defaults.bool(forKey: topic.seenKey) else { return }
+            defaults.set(true, forKey: topic.seenKey)
+            guide = topic
+        }
+    }
     @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
     private var mosqueIcon: MosqueIconStyle { MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder }
 
@@ -582,16 +680,47 @@ struct LocationMapContentView: View {
             viewModel.showMosques = mosques
             sharedState.allowQiblaHaptics = !prayers && !mosques
         }
+        // Turning the map is for lining up to pray; browsing pins / mosques is north-up and
+        // locked (owner, 2026-09-25).
+        let qibla = !prayers && !mosques
+        if qibla {
+            viewModel.mapView?.isRotateEnabled = true
+        } else {
+            // Turn north first, lock after: with rotation disabled MapKit ignores the heading
+            // change and the pins came up still qibla-rotated.
+            viewModel.resetMapHeading()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak viewModel] in
+                guard let viewModel, viewModel.showPrayers || viewModel.showMosques else { return }
+                viewModel.mapView?.isRotateEnabled = false
+                if abs(viewModel.mapView?.camera.heading ?? 0) > 0.5 { viewModel.resetMapHeading() }
+            }
+        }
         if mosques, viewModel.mosques.isEmpty, !viewModel.mosqueSearching {
             // First look: about 30 km around you.
             if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
                 viewModel.searchMosques(in: MKCoordinateRegion(center: here, span: MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3)), fit: true)
             }
         }
-        if !prayers && !mosques { centreOnUser() }
+        if !prayers && !mosques {
+            // Back from browsing: centred on you and qibla-up again, in one camera move.
+            if let mapView = viewModel.mapView,
+               let here = mapView.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
+                if mapView.region.span.latitudeDelta > 0.004 {
+                    mapView.setRegion(MKCoordinateRegion(center: mapView.centerCoordinate, span: MapView.Coordinator.qiblaSpan), animated: false)
+                }
+                viewModel.pointQiblaUp(centre: here)
+            }
+        }
     }
 
     private var inQiblaMode: Bool { !viewModel.showPrayers && !viewModel.showMosques }
+
+    /// The last mosque search was around you (vs "Search this area" somewhere else).
+    private var searchedNearYou: Bool {
+        guard let centre = viewModel.lastMosqueSearch?.center,
+              let here = viewModel.mapView?.userLocation.location ?? envLocation.userLocation else { return true }
+        return here.distance(from: CLLocation(latitude: centre.latitude, longitude: centre.longitude)) < 3000
+    }
 
     private var statusText: String {
         if viewModel.showPrayers {
@@ -601,7 +730,8 @@ struct LocationMapContentView: View {
         if viewModel.showMosques {
             if viewModel.mosqueSearching { return "Finding mosques…" }
             let n = viewModel.mosques.count
-            return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque nearby" : "\(n) mosques nearby"
+            let place = searchedNearYou ? "nearby" : "in this area"
+            return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque \(place)" : "\(n) mosques \(place)"
         }
         return compassHint
     }
@@ -610,8 +740,9 @@ struct LocationMapContentView: View {
         guard let mapView = viewModel.mapView,
               let here = mapView.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate else { return }
         let current = mapView.region.span
-        let zoomedOut = current.latitudeDelta > 0.012 || current.longitudeDelta > 0.012
-        let span = zoomedOut ? MapView.Coordinator.closeSpan : current
+        let target = inQiblaMode ? MapView.Coordinator.qiblaSpan : MapView.Coordinator.closeSpan
+        let zoomedOut = current.latitudeDelta > target.latitudeDelta * 1.5 || current.longitudeDelta > target.longitudeDelta * 1.5
+        let span = zoomedOut ? target : current
         mapView.setRegion(MKCoordinateRegion(center: here, span: span), animated: true)
     }
 
@@ -666,7 +797,7 @@ struct LocationMapContentView: View {
                             Text(statusText)
                                 .font(.subheadline.weight(.medium))
                             if viewModel.showPrayers && viewModel.filtersActive {
-                                Text(viewModel.filterSentence.replacingOccurrences(of: "Showing ", with: ""))
+                                Text(viewModel.filterSentence.replacingOccurrences(of: "Showing ", with: "").replacingOccurrences(of: "prayers from ", with: ""))
                                     .font(.caption2.weight(.medium))
                                     .foregroundStyle(Color.green)
                                     .lineLimit(1)
@@ -680,7 +811,7 @@ struct LocationMapContentView: View {
                         .frame(maxWidth: 230)
                         .mapGlass(Capsule())
                         .contentShape(Capsule())
-                        .onTapGesture { if viewModel.showPrayers { showFilterSheet = true } }
+                        .onTapGesture { if viewModel.showMosques && !viewModel.mosques.isEmpty { viewModel.openMosqueList() } }
                             .overlay(Capsule().stroke(inQiblaMode && compass.qibla.aligned ? Color.green : Color.clear, lineWidth: 1.5))
                             .animation(.easeInOut(duration: 0.2), value: compass.qibla.aligned)
                         Spacer()
@@ -704,6 +835,18 @@ struct LocationMapContentView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel("Centre on me")
+                                // Only while the map is turned; its own view so rotating
+                                // re-renders just it.
+                                MapNorthButton(anchor: anchor, qiblaBearing: inQiblaMode ? viewModel.qiblaBearing : nil) {
+                                    if inQiblaMode { viewModel.pointQiblaUp() } else { viewModel.resetMapHeading() }
+                                }
+                                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
+                                Button { guide = currentGuideTopic } label: {
+                                    Image(systemName: "questionmark")
+                                        .mapControlIcon()
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("How this works")
                             }
                             .mapGlass(Capsule())
                         }
@@ -712,23 +855,6 @@ struct LocationMapContentView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
                 Spacer()
-
-                // Explore, bottom-right (owner, 2026-09-25): the layers (prayer spots, mosques, halal
-                // food soon) and their settings in one sheet — one button instead of one per layer.
-                HStack {
-                    Spacer()
-                    Button {
-                        viewModel.showExplore = true
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .mapControlIcon(tint: inQiblaMode ? nil : .green)   // green: a layer is on
-                    }
-                    .buttonStyle(.plain)
-                    .mapGlass(Circle(), tint: inQiblaMode ? nil : .green)
-                    .accessibilityLabel("Explore: prayer spots, mosques")
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, viewModel.showMosques && viewModel.mosqueAreaStale ? 4 : 12)
 
                 // Mosque mode, panned somewhere new: search there.
                 if viewModel.showMosques && viewModel.mosqueAreaStale, let mapView = viewModel.mapView {
@@ -744,9 +870,42 @@ struct LocationMapContentView: View {
                             .shadow(radius: 3)
                     }
                     .buttonStyle(.plain)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 4)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+
+                // Bottom row (2026-09-26, owner: "Explore only picks"): with a layer on, its
+                // controls sit right here in a glass bar (prayer range + prayer chips, or drive /
+                // walk) with a ✕ back to the qibla; the round button beside it wears the layer's
+                // icon and reopens the chooser. In qibla mode it's just the 🔍.
+                HStack(spacing: 10) {
+                    if viewModel.showPrayers {
+                        PrayerLayerBar(viewModel: viewModel,
+                                       custom: { showFilterSheet = true },
+                                       close: { setMode(prayers: false, mosques: false) })
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else if viewModel.showMosques {
+                        MosqueLayerBar(count: viewModel.mosques.count,
+                                       list: { viewModel.openMosqueList() },
+                                       close: { setMode(prayers: false, mosques: false) })
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    } else {
+                        Spacer()
+                    }
+                    Button {
+                        viewModel.showExplore = true
+                    } label: {
+                        Image(systemName: viewModel.showPrayers ? "hands.and.sparkles.fill"
+                              : viewModel.showMosques ? mosqueIcon.pin : "magnifyingglass")
+                            .contentTransition(.symbolEffect(.replace))
+                            .mapControlIcon(tint: inQiblaMode ? nil : .green)   // green: a layer is on
+                    }
+                    .buttonStyle(.plain)
+                    .mapGlass(Circle(), tint: inQiblaMode ? nil : .green)
+                    .accessibilityLabel(inQiblaMode ? "Explore: prayer spots, mosques" : "Switch what the map shows")
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
             }
             .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
             .animation(.easeInOut(duration: 0.2), value: viewModel.showMosques)
@@ -776,22 +935,26 @@ struct LocationMapContentView: View {
         .sheet(isPresented: $viewModel.showExplore) {
             MapExploreSheet(
                 active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
-                prayerFilterSentence: viewModel.filterSentence,
                 select: { layer in
+                    viewModel.showExplore = false   // pick → gone; the layer's bar takes over
                     switch layer {
-                    case .prayers: setMode(prayers: !viewModel.showPrayers, mosques: false)
-                    case .mosques: setMode(prayers: false, mosques: !viewModel.showMosques)
-                    default: break
+                    case .prayers: setMode(prayers: true, mosques: false)
+                    case .mosques: setMode(prayers: false, mosques: true)
+                    default: setMode(prayers: false, mosques: false)
                     }
-                },
-                editPrayerFilters: {
-                    viewModel.showExplore = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showFilterSheet = true }
                 }
             )
-            .presentationDetents([.height(330)])
+            .presentationDetents([.height(176)])
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
+        }
+        .sheet(isPresented: $viewModel.showMosqueList) {
+            MosqueListSheet(items: viewModel.mosques,
+                            origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
+                            nearYou: searchedNearYou) { viewModel.focusMosque($0) }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
         .sheet(item: $viewModel.mosqueSelection) { selection in
             MosqueSheet(item: selection.item)
@@ -799,15 +962,24 @@ struct LocationMapContentView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         }
+        .sheet(item: $guide) { topic in
+            MapGuide(topic: topic) { guide = nil }
+                .presentationDetents([.height(470)])
+                .presentationDragIndicator(.visible)
+        }
+        .onAppear { showGuideIfFirstTime(.qibla, after: 0.7) }   // let the map settle on the dot first
+        .onChange(of: currentGuideTopic) { _, topic in
+            if topic != .qibla { showGuideIfFirstTime(topic, after: 0.9) }
+        }
+        .onChange(of: viewModel.showExplore) { _, open in
+            if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // Explore closed over a new layer
+        }
         .sheet(isPresented: $showFilterSheet) {
-            FilterView(selectedStartDate: $viewModel.selectedStartDate,
-                       selectedEndDate: $viewModel.selectedEndDate,
-                       selectedPrayerNames: $viewModel.selectedPrayerNames,
-                       defaultStartDate: viewModel.defaultStartDate,
-                       defaultEndDate: viewModel.defaultEndDate,
-                       defaultPrayerNames: viewModel.defaultPrayerNames,
-                       earliestPinDate: prayers.first?.startTime ?? Date())
-                .tint(.green)
+            // Custom… from the prayer bar: just the two dates (the old FilterView repeated the
+            // ranges and prayer chips the bar already has — owner).
+            CustomRangeSheet(viewModel: viewModel, earliest: prayers.first?.startTime ?? Date())
+                .presentationDetents([.height(220)])
+                .presentationDragIndicator(.visible)
         }
         .toolbar(.hidden, for: .navigationBar)
         #if DEBUG
@@ -846,10 +1018,7 @@ enum MapLayer { case qibla, prayers, mosques, halal }
 /// it again to go back to the qibla — and the active layer's own settings underneath.
 struct MapExploreSheet: View {
     let active: MapLayer
-    let prayerFilterSentence: String
     let select: (MapLayer) -> Void
-    let editPrayerFilters: () -> Void
-    @AppStorage(MosqueTravel.key) private var travel = MosqueTravel.driving.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
 
     var body: some View {
@@ -857,58 +1026,19 @@ struct MapExploreSheet: View {
             Text("Explore")
                 .font(.system(size: 24, weight: .light, design: .rounded))
                 .padding(.top, 26)
+            // Halal food stays hidden until it exists (a "soon" tile read as unfinished).
             HStack(spacing: 10) {
+                tile("Qibla", icon: "location.north.line", layer: .qibla)
                 tile("My prayer spots", icon: "hands.and.sparkles.fill", layer: .prayers)
                 tile("Mosques", icon: (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin, layer: .mosques)
-                tile("Halal food", icon: "fork.knife", layer: .halal, soon: true)
             }
-
-            Group {
-                switch active {
-                case .prayers:
-                    card {
-                        Button(action: editPrayerFilters) {
-                            HStack(spacing: 10) {
-                                Image(systemName: "line.3.horizontal.decrease.circle")
-                                    .foregroundStyle(Color.green)
-                                Text(prayerFilterSentence)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                case .mosques:
-                    card {
-                        HStack {
-                            Text("Travel time")
-                            Spacer()
-                            Picker("Travel time", selection: $travel) {
-                                ForEach(MosqueTravel.allCases) { Text($0.title).tag($0.rawValue) }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 180)
-                        }
-                    }
-                default:
-                    Text("Pick what to show on the map. Tap it again to go back to the qibla.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .transition(.opacity)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 20)
         .fontDesign(.rounded)
-        .animation(.snappy(duration: 0.2), value: active)
     }
 
-    private func tile(_ title: String, icon: String, layer: MapLayer, soon: Bool = false) -> some View {
+    private func tile(_ title: String, icon: String, layer: MapLayer) -> some View {
         let on = active == layer
         return Button {
             triggerSomeVibration(type: .light)
@@ -922,13 +1052,10 @@ struct MapExploreSheet: View {
                     .font(.caption)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
-                if soon {
-                    Text("soon").font(.caption2).foregroundStyle(.tertiary)
-                }
             }
             .foregroundStyle(on ? Color.green : Color.primary.opacity(0.75))
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
+            .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(on ? Color.green.opacity(0.14) : Color.primary.opacity(0.06))
@@ -936,15 +1063,192 @@ struct MapExploreSheet: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(soon)
-        .opacity(soon ? 0.5 : 1)
+    }
+}
+
+/// Prayer spots' controls, on the map (was two levels down: Explore → filter line → filter sheet).
+/// The range is a menu; the five prayers are chips — with all shown none is lit, tap one to see
+/// only it, tap more to add, tap the last lit one to go back to all. ✕ = back to the qibla.
+struct PrayerLayerBar: View {
+    @ObservedObject var viewModel: LocationViewModel
+    let custom: () -> Void
+    let close: () -> Void
+
+    private let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    private var showingAll: Bool { viewModel.selectedPrayerNames == viewModel.defaultPrayerNames }
+
+    private func toggle(_ name: String) {
+        triggerSomeVibration(type: .light)
+        var names = viewModel.selectedPrayerNames
+        if showingAll { names = [name] }
+        else if names.contains(name) { names.remove(name) }
+        else { names.insert(name) }
+        if names.isEmpty || names == viewModel.defaultPrayerNames { names = viewModel.defaultPrayerNames }
+        withAnimation(.snappy(duration: 0.2)) { viewModel.selectedPrayerNames = names }
     }
 
-    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .font(.subheadline)
-            .padding(14)
+    private var rangeTitle: String {
+        switch viewModel.quickRange {
+        case .allTime: "All time"
+        case .thisWeek: "This week"
+        case .last30: "30 days"
+        case .thisYear: "This year"
+        case .lastYear: "12 months"
+        case .custom: "Custom"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Menu {
+                ForEach(LocationViewModel.QuickRange.allCases) { range in
+                    Button {
+                        if range == .custom { custom() } else { viewModel.apply(range) }
+                    } label: {
+                        Label(range == .custom ? "Custom…" : range.rawValue, systemImage: range.symbol)
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(rangeTitle).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                }
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(viewModel.quickRange == .allTime ? Color.primary : Color.green)
+                .padding(.leading, 14).padding(.trailing, 4)
+                .frame(height: 46)
+                .contentShape(Rectangle())
+            }
+            Spacer(minLength: 0)
+            ForEach(order, id: \.self) { name in
+                let lit = !showingAll && viewModel.selectedPrayerNames.contains(name)
+                Button { toggle(name) } label: {
+                    Image(systemName: prayerSymbol(name))
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(lit ? Color.green : Color.primary.opacity(0.7))
+                        .frame(width: 30, height: 30)
+                        .background(Circle().fill(lit ? Color.green.opacity(0.16) : Color.clear))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(lit ? "\(name), shown" : name)
+            }
+            Spacer(minLength: 0)
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 46)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to the qibla")
+            .padding(.trailing, 4)
+        }
+        .frame(height: 46)
+        .mapGlass(Capsule())
+    }
+}
+
+/// Custom range for prayer spots: From and To, applied as you pick (the pins follow behind the
+/// sheet), Done to close. Opens on the current range, or the last 30 days when it was a preset.
+struct CustomRangeSheet: View {
+    @ObservedObject var viewModel: LocationViewModel
+    let earliest: Date
+    @Environment(\.dismiss) private var dismiss
+
+    private var firstDay: Date { Calendar.current.startOfDay(for: min(earliest, Date())) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Custom range")
+                    .font(.system(size: 22, weight: .light, design: .rounded))
+                Spacer()
+                Button("Done") { dismiss() }
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.green)
+            }
+            .padding(.top, 22)
+            VStack(spacing: 0) {
+                DatePicker("From", selection: $viewModel.selectedStartDate,
+                           in: firstDay...viewModel.selectedEndDate, displayedComponents: .date)
+                    .padding(.vertical, 8)
+                Divider()
+                DatePicker("To", selection: $viewModel.selectedEndDate,
+                           in: viewModel.selectedStartDate...Date(), displayedComponents: .date)
+                    .padding(.vertical, 8)
+            }
+            .font(.system(size: 16, weight: .light, design: .rounded))
+            .padding(.horizontal, 14)
             .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .tint(.green)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .onAppear {
+            // A preset (all time starts at year 1): start from something you'd pick.
+            if viewModel.quickRange != .custom {
+                viewModel.selectedStartDate = max(firstDay, Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? firstDay)
+                viewModel.selectedEndDate = Date()
+            }
+        }
+    }
+}
+
+/// Mosques' controls, on the map: the list, drive or walk times, and ✕ back to the qibla.
+struct MosqueLayerBar: View {
+    let count: Int
+    let list: () -> Void
+    let close: () -> Void
+    @AppStorage(MosqueTravel.key) private var travel = MosqueTravel.driving.rawValue
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Button(action: list) {
+                HStack(spacing: 5) {
+                    Image(systemName: "list.bullet")
+                    Text("List")
+                }
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(count > 0 ? Color.primary : Color.primary.opacity(0.35))
+                .padding(.horizontal, 12)
+                .frame(height: 34)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(count == 0)
+            Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5, height: 20)
+            ForEach(MosqueTravel.allCases) { mode in
+                let on = travel == mode.rawValue
+                Button {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.snappy(duration: 0.2)) { travel = mode.rawValue }
+                } label: {
+                    Image(systemName: mode.icon)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundStyle(on ? Color.green : Color.primary.opacity(0.7))
+                        .frame(width: 40, height: 34)
+                        .background(Capsule().fill(on ? Color.green.opacity(0.16) : Color.clear))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, height: 46)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to the qibla")
+            .padding(.trailing, 4)
+        }
+        .padding(.leading, 6)
+        .frame(height: 46)
+        .mapGlass(Capsule())
     }
 }
 
@@ -975,7 +1279,8 @@ struct AnchoredQiblaRing: View {
     let isAtMecca: Bool
     var body: some View {
         GeometryReader { geo in
-            CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca, ringHidden: anchor.zoomedOut)
+            CircleWithArrowOverlay(degrees: degrees, isAtMecca: isAtMecca, ringHidden: anchor.zoomedOut,
+                                   mapHeading: anchor.mapHeading)
                 .position(anchor.userPoint ?? CGPoint(x: geo.size.width / 2, y: geo.size.height / 2))
         }
         .ignoresSafeArea()
@@ -1032,6 +1337,8 @@ struct CircleWithArrowOverlay: View {
     var isAtMecca: Bool
     /// Zoomed out: the ring and its bearing triangle fade; the compass chevron stays on the dot.
     var ringHidden: Bool = false
+    /// How far the map is turned; the ring draws in screen space, so bearings subtract it.
+    var mapHeading: Double = 0
     
     var body: some View {
         ZStack {
@@ -1054,7 +1361,7 @@ struct CircleWithArrowOverlay: View {
                     .trim(from: 0, to: abs(diff) / 360)
                     .stroke(Color.green.opacity(0.85), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .frame(width: 200, height: 200)
-                    .rotationEffect(.degrees(start - 90))   // trim starts at 3 o'clock; put it at `start`
+                    .rotationEffect(.degrees(start - mapHeading - 90))   // trim starts at 3 o'clock; put it at `start`
                     .opacity(ringHidden ? 0 : 1)
                     .animation(.easeInOut(duration: 0.25), value: ringHidden)
             }
@@ -1066,7 +1373,7 @@ struct CircleWithArrowOverlay: View {
                     .foregroundColor(compass.qibla.aligned ? .green : .white)
                     .frame(width: 20, height: 20)
                     .offset(y: -110)
-                    .rotationEffect(.degrees(degrees))
+                    .rotationEffect(.degrees(degrees - mapHeading))
                     .animation(.default, value: compass.qibla.aligned)
                     .opacity(ringHidden ? 0 : 1)
                     .animation(.easeInOut(duration: 0.25), value: ringHidden)
@@ -1085,7 +1392,7 @@ struct CircleWithArrowOverlay: View {
                     .shadow(radius: 2)
 //                    .opacity(0.7)
                     .offset(y: -20)
-                    .rotationEffect(Angle(degrees: compass.qibla.aligned ? degrees : compass.heading))
+                    .rotationEffect(Angle(degrees: (compass.qibla.aligned ? degrees : compass.heading) - mapHeading))
                     .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: degrees)
             }
         }

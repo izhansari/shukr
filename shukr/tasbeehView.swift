@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFAudio
+import WidgetKit
 import SwiftData
 import UIKit
 import AudioToolbox
@@ -567,6 +568,9 @@ struct tasbeehView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self.sharedState.selectedTask = nil
                 self.completeStopTimer()
+                // The Zikr widget reads the shared store: save, then let it redraw.
+                try? self.context.save()
+                WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
             }
         } else {
             completeStopTimer()

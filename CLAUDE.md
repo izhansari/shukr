@@ -133,6 +133,153 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   unverified. Between midnight and Fajr, yesterday's prayers should still be up and zikr should
   count for yesterday. On the 15 Pro's first open, look for `✅ schema V2 data pass` and no ❌.
 
+**Late 2026-09-25:**
+- **Widget:** a redesigned "shukr" widget (`ShukrDayWidget`) was built and **dropped**. The owner
+  said it "kinda sucks … not performant", and the code is gone. The kept "Prayers" widget got small
+  fixes.
+  - **"Fajr at <now>" bug:** since 46176a5 (2026-09-23) the circle skipped completed prayers. Once
+    Isha was marked nothing was left, and it fell through to the original placeholder
+    `("Fajr", Date(), …)`.
+  - **Done state — reverted:** keeping a prayed prayer on the circle was tried and rejected. The
+    owner wants the circle to move on to the next prayer, as before. The top-left check fills
+    instead, when the prayer whose window is open (`prayerInWindow`, never Sunrise) has been prayed.
+  - **Corner buttons:** they replace the boxed bottom row (owner liked the dropped widget's corners).
+    Today's times top left, mark prayed top right (swapped by the owner), qibla bottom left, tasbeeh bottom right. Same
+    intents (`CornerButton`), same single-entry timeline.
+  - **After Isha:** the circle shows tomorrow's real Fajr (`entry.nextFajr`).
+  - **Sunrise** can't be marked any more.
+  - `NSWidgetWantsLocation` was removed from the widget's Info.plist. The widget reads the app
+    group's location, and the key made iOS ask "Allow widgets to use your location?".
+  - `markPrayerComplete` and the app reload all timelines.
+  - Sim ✓ (marked Isha shows done). Not seen on the phone yet.
+- **Prayer list dot:** the owner picked **"Score colour, faded"** (the default now).
+  `PrayerDotStyle` / `PrayerStatusDot` in PrayerCompletionFX.swift. The other styles are still in
+  Settings → My Dev Stuff → Prayer list dot; delete them when convenient.
+- **Welcome animation** (`CursorSwift/WelcomeAnimation.swift`, `.welcomeOnLaunch()` on the root
+  NavigationStack in shukrApp):
+  - "shukr" (44 pt thin rounded) fades up letter by letter out of a blur, and a hairline sage ring
+    draws round it.
+  - The ring is the main circle's 200 pt, in its place, so it lands on the real circle.
+  - A sage light sweeps over the word, with two soft taps like a heartbeat.
+  - It holds about 1.1 s (owner: "a little longer"), then fades (0.7 s, no scale). About 2.5 s in
+    all.
+  - Plays on a cold launch, and after more than 5 min in the background
+    (`WelcomeGate.awayThreshold`).
+  - Reduce Motion: just the fade. DEBUG `-demo…` args skip it (`-demoWelcome` forces it).
+
+- **Qibla map: rotation + first-time guide** (owner: people find the map compass confusing, since
+  its arrows don't follow the phone like the Salah page's circle; they want to turn the map
+  instead of the phone):
+  - **Rotation:** the map rotates with two fingers now (`isRotateEnabled = true`; it was
+    north-up). The ring on the dot draws in screen space, so its triangle, chevron and arc subtract
+    `MapAnchor.mapHeading`. The coordinator writes the camera heading on every frame, and only the
+    ring and the north button read it. The green line is an overlay and turns with the map for
+    free.
+  - **North button:** `MapNorthButton` (red needle, in the map-style / locate capsule) shows only
+    while the map is turned; tap → north-up (`LocationViewModel.resetMapHeading`). MapKit's own
+    compass is off.
+  - **Guide:** `QiblaMapGuide` (CursorSwift/QiblaMapGuide.swift). Three pages, each with a small
+    moving picture:
+    1. the green line is computed, so it's right even when the compass isn't;
+    2. turn the map until a street or wall runs like the real one, then face along the line;
+    3. the ring is only the compass — the blue arrow meets the triangle; trust the line when they
+       disagree.
+  - The guide opens once, 0.7 s after the map first appears (`qiblaMapGuideSeen`), and from a new
+    ? button under locate. DEBUG `-demo…` args skip it; `-demoQiblaGuide` shows it.
+  - Sim ✓: guide pages; a two-finger rotate turned the map, the triangle stayed on the line, and the
+    north button appeared.
+  - The "Turn left / right" pill is still compass-only.
+  - Rotation is for lining up only: switching to prayer spots or mosques (`setMode`) turns the
+    map north-up and locks it; back to the qibla unlocks it.
+  - **Qibla-up** (owner, 2026-09-26: so the phone and the arrow never point different ways):
+    - The map opens turned so the green line points straight up the screen
+      (`LocationViewModel.pointQiblaUp`: camera heading = bearing to Mecca), and swings round once
+      it's on screen. Hold the phone in front of you, turn until the streets match, and the top of
+      the phone is the qibla.
+    - Free rotation stays on. Coming back from prayer spots / mosques re-centres on the user and
+      returns to qibla-up in one camera move.
+    - The home button (`MapNorthButton`) shows only when the map is turned away from home. In qibla
+      mode that's a green arrow pointing where the qibla is on screen, tap → qibla-up; otherwise a
+      red north needle.
+    - Guide page 2 is now "The top of your phone is the qibla".
+  - Qibla zoom is `Coordinator.qiblaSpan` (~220 m across, 4× closer than `closeSpan`; owner) on
+    open, on coming back from a layer and for locate in qibla mode. The green line is redrawn once
+    the dot moves ~2 m (it was 25 m, which left it visibly starting off the dot at this zoom).
+  - **Explore only picks (2026-09-26, owner: "let's just try it — if we don't like it we revert").**
+    - **Chooser:** 🔍 opens `MapExploreSheet`, now just a short chooser: Qibla · My prayer spots ·
+      Mosques. Halal food is hidden until it exists. A pick closes the sheet.
+    - **Layer bar:** the layer's controls sit on the map in a glass bar at the bottom.
+      - `PrayerLayerBar`: a range `Menu` (All time / This week / 30 days / This year / 12 months /
+        Custom… → `CustomRangeSheet`: just From / To, applied live, Done; opens on the last 30
+        days when the range was a preset. It used to reopen the old `FilterView`, which repeated the
+        bar — owner). Then the five prayer icons as chips. With all shown
+        none is lit; tap one = only it; tap more to add; tap the last lit one = all again. Then ✕.
+      - `MosqueLayerBar`: List | 🚗 🚶 (drive / walk) | ✕. List (or a tap on the top pill) opens
+        `MosqueListSheet` (MosqueFinder.swift): every mosque found, nearest to you first, with
+        address and distance. Tap one → `focusMosque` flies the map there (close enough that it
+        isn't in a cluster), selects its pin and opens its sheet. `openMosqueList` closes an open
+        mosque sheet first. The pill says "N mosques in this area" when the last search wasn't
+        around you.
+      - Search fix: `MosqueSearch.find` sets `regionPriority = .required` and searches at least
+        ~5 km across. With the region only a hint, "Search this area" somewhere else returned the
+        same places near you again (owner: "28 in my area" with no pins in view). Not re-tried
+        after a real pan.
+      - ✕ = back to the qibla (qibla-up, centred).
+    - **Layer button:** the round button beside the bar wears the layer's icon (green) and reopens
+      the chooser.
+    - **Before:** layer settings lived inside Explore, and prayer filters were Explore → filter
+      line → filter sheet. The top pill no longer opens filters.
+    - **Rotation lock:** `setMode` turns north first and locks rotation 0.6 s later. With
+      `isRotateEnabled = false` set first, MapKit ignored the heading change and pins came up
+      qibla-rotated.
+    - Sim ✓: chooser → prayer spots (north-up, bar), Fajr chip → "2 prayers in view · every
+      Fajr", ✕ → qibla-up, Custom… → the date sheet. The mosque bar is not tried in the sim.
+  - Guide animations: every `PhaseAnimator` uses real holds, as the phase's `.delay`, instead of
+    repeated phases. A phase with no change finishes instantly, so the loops ran nonstop ("kinda
+    spazzing" — owner).
+  - **The ? is per layer** (`MapGuide(topic:)`, QiblaMapGuide.swift; `MapGuideTopic` qibla /
+    prayers / mosques). Same sheet and style, three pages each with small animations:
+    - **Prayer spots:** pins dropping in score colours; a cluster opening its sheet; filter chips
+      rewriting the pill.
+    - **Mosques:** pins popping round the dot; the mosque card flipping drive ⇄ walk; the map
+      panning to "Search this area".
+    - Each layer's guide also opens once by itself the first time it's shown (after the Explore
+      sheet closes). Seen keys: `qiblaMapGuideSeen`, `mapGuideSeen.prayers`,
+      `mapGuideSeen.mosques` (standard defaults), marked only when the guide actually showed.
+  - Sim ✓: qibla-up on open, the qibla guide, mosques → first-time mosque guide (north-up,
+    locked), back to qibla → qibla-up centred. The prayer-spots guide is not seen in the sim yet.
+
+**2026-09-26 — three more widgets** (`shukrWidget/MoreWidgets.swift`, added to the widget target
+in the pbxproj by hand — `shukrWidget/` is not a synchronized group; kinds in
+`Models/WidgetPayloads.swift` → `WidgetKinds`). Owner: "a few simple ones". Each has one timeline
+entry and a far-off refresh; the app reloads them when something changes (the owner found a
+many-entry widget "not performant"):
+- **Zikr** (small / medium), laid out like the iOS Reminders widget (owner):
+  - **Layout:** today's overall ring top left (each task's share of its goal, averaged; beads
+    inside, sage ✓ when all done), a big "N left today" count, "Zikr" in brand green, then the
+    tasks as rows. Each row has a circle that fills with its progress (filled sage ✓ when done),
+    the name, and "5/100" (medium only; small shows names only, max 3 rows, "+N more").
+  - **Data:** reads the shared
+  store (`TaskModel.progress(in:)` over sessions since `PrayerDay.sessionDayStart()`). Refreshes
+  at the next Fajr, plus the app reloads it after every saved session (tasbeehView `stopTimer`
+  saves the context first) and on going to the background. Tap → Zikr page (`OpenTasbeehIntent`).
+- **Name and Ayah look:** both wear the Daily Ayah share card's mint look (forest in dark mode,
+  `BrandBackground`), with tracked lowercase captions (`BrandCaption`), deep-green ink and a
+  leaf-green accent. The name sits in a thin double ring (the app's circle). The ayah is laid out
+  like the share card, and its waiting state shows blurred lines under "today's ayah is waiting ·
+  tap to reveal".
+- **Name of the Day** (small / medium): `NamesOfAllah.nameOfTheDay()` — Allah, then the 99 in
+  order, one a day from 2026-01-01. Arabic in the Uthmani font; medium adds the explanation. Tap →
+  99 Names (`OpenNamesIntent`, flag `widgetNames`). `NamesOfAllahData.swift` moved to `Models/`
+  so the widget has it.
+- **Daily Ayah** (medium / large): shows today's verse **only after it's been revealed** in the
+  app. Until then: "Today's ayah is waiting · tap to reveal it". The app writes
+  `DailyAyahWidgetPayload` (arabic, english, "Surah · s:a") to the app group on reveal / page open
+  / translation change, and only when it changed. Tap → Daily Ayah (`OpenDailyAyahIntent`, flag
+  `widgetDailyAyah`, handled next to widgetCompass in PrayerTimesAndTracker).
+- Sim ✓: all three render in the gallery with real data (Zikr tasks, today's name). Taps into the
+  app and the reveal → widget update are not tested yet.
+
 **Earlier builds (details in the sections below):**
 1. Mantra page (`MantraEditorView`), phone ✓:
    - pause-card look, read-only until ✎, nav bar never changes height;
@@ -653,7 +800,8 @@ day score is computed for `PrayerDay.date()` (it used `Date()` and read 0 % afte
 
 Rewritten 2026-09-25. Two jobs: show the qibla so the user can line up with the buildings
 around them, and show every prayer they've marked. UIKit `MKMapView` on purpose — SwiftUI's
-`Map` has no clustering and the owner has ~800 pinned prayers. **North-up on purpose**: phone
+`Map` has no clustering and the owner has ~800 pinned prayers. (Rotation is allowed since late
+2026-09-25 — see the Handoff; the north-up reasoning below still explains the line.) **North-up on purpose**: phone
 compasses are often off, so the map draws the computed direction — an `MKGeodesicPolyline`
 from the user's dot to the Kaaba (green) — which is right regardless of the compass; the
 ring **sits on the user's dot** (`MapAnchor`, the dot's screen point written by the coordinator

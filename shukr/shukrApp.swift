@@ -109,6 +109,7 @@ struct shukrApp: App {
                 
             }
             .environmentObject(prayerViewModel)
+            .welcomeOnLaunch()   // "shukr" + a ring + two soft taps; cold launch / back after 5+ min
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task { await notificationStatus.refresh() }
             }

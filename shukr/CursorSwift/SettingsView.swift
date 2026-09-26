@@ -60,6 +60,7 @@ struct SettingsView: View {
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(PostSalahPromptStyle.key) private var postSalahPromptStyle = PostSalahPromptStyle.nudge.rawValue
+    @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -325,6 +326,9 @@ struct SettingsView: View {
                             Button("Ring playground…") { showRingPlayground = true }
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
                                 ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            Picker("Prayer list dot", selection: $prayerDotStyle) {
+                                ForEach(PrayerDotStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }
                             Picker("Post-salah prompt", selection: $postSalahPromptStyle) {
                                 ForEach(PostSalahPromptStyle.allCases) { Text($0.title).tag($0.rawValue) }

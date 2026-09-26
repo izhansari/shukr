@@ -115,11 +115,18 @@ enum MosqueSearch {
     /// Mosques around `region`, nearest to its centre first.
     @MainActor
     static func find(in region: MKCoordinateRegion) async -> [MKMapItem] {
+        // At least ~5 km across: a zoomed-in map would otherwise find nothing.
+        var region = region
+        region.span.latitudeDelta = max(region.span.latitudeDelta, 0.05)
+        region.span.longitudeDelta = max(region.span.longitudeDelta, 0.05)
         var found: [MKMapItem] = []
         for query in queries {
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query
             request.region = region
+            // Only inside the area. As a hint, "Search this area" somewhere new came back with
+            // the same places near you (owner: "28 in my area" with no pins in view).
+            request.regionPriority = .required
             request.resultTypes = .pointOfInterest
             if let response = try? await MKLocalSearch(request: request).start() {
                 found += response.mapItems.filter(isMosque)
@@ -140,6 +147,89 @@ enum MosqueSearch {
         return unique.sorted {
             CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude).distance(from: centre)
                 < CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude).distance(from: centre)
+        }
+    }
+}
+
+// MARK: - The list
+
+/// Every mosque the last search found, nearest first (owner, 2026-09-26: after "Search this area"
+/// the pins can be off screen; a list gets you back to them). Tap → the map flies there and opens
+/// that mosque.
+struct MosqueListSheet: View {
+    let items: [MKMapItem]
+    let origin: CLLocation?
+    let nearYou: Bool
+    let pick: (MKMapItem) -> Void
+    @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
+
+    private func distance(_ item: MKMapItem) -> CLLocationDistance? {
+        guard let origin else { return nil }
+        let c = item.placemark.coordinate
+        return origin.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+    }
+
+    private var sorted: [MKMapItem] {
+        guard origin != nil else { return items }
+        return items.sorted { (distance($0) ?? 0) < (distance($1) ?? 0) }
+    }
+
+    private func address(_ item: MKMapItem) -> String {
+        let p = item.placemark
+        let street = [p.subThoroughfare, p.thoroughfare].compactMap { $0 }.joined(separator: " ")
+        return [street.isEmpty ? nil : street, p.locality].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(sorted, id: \.self) { item in
+                Button { pick(item) } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(Color.green))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name ?? "Mosque")
+                                .font(.system(size: 16, weight: .regular, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            let line = address(item)
+                            if !line.isEmpty {
+                                Text(line)
+                                    .font(.system(size: 13, weight: .light, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        Spacer(minLength: 8)
+                        if let d = distance(item) {
+                            Text(Measurement(value: d, unit: UnitLength.meters)
+                                    .formatted(.measurement(width: .abbreviated, usage: .road)))
+                                .font(.system(size: 13, weight: .light, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .listStyle(.plain)
+            .navigationTitle(items.count == 1 ? "1 mosque" : "\(items.count) mosques")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 0) {
+                        Text(items.count == 1 ? "1 mosque" : "\(items.count) mosques")
+                            .font(.system(size: 17, weight: .regular, design: .rounded))
+                        Text(nearYou ? "near you" : "in the area you searched")
+                            .font(.system(size: 11, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
     }
 }

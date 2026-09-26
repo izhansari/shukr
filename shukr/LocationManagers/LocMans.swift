@@ -313,7 +313,7 @@ class PrayersWidgetLocationManager: NSObject, ObservableObject, CLLocationManage
     
     func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
         heading = newHeading.magneticHeading
-        WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
+        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
     }
     
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
@@ -322,7 +322,7 @@ class PrayersWidgetLocationManager: NSObject, ObservableObject, CLLocationManage
         longitude = location.coordinate.longitude
         geocodeLocation(location) // Perform reverse geocoding
 //        updateCityName(for: location)
-//        WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
+//        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
     }
     
     private func geocodeLocation(_ location: CLLocation) {

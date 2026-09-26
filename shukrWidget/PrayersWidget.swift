@@ -14,6 +14,7 @@ import CoreLocation
 import Adhan
 import AppIntents
 import Combine
+import SwiftData
 
 
 struct PrayersWidget: Widget {
@@ -44,8 +45,11 @@ struct PrayersWidgetEntry: TimelineEntry {
     let todayPrayerTimes: PrayerTimes
     let locationName: String // New property
     let textToggle: Bool
-    /// Prayers already prayed today, read from the shared store. Skipped by `relevantPrayer`.
-    var completedToday: Set<String> = []
+    /// Prayers already prayed today → their score (0...1), read from the shared store.
+    var completedScores: [String: Double] = [:]
+    var completedToday: Set<String> { Set(completedScores.keys) }
+    /// Tomorrow's Fajr, for the circle once the day's prayers are over.
+    var nextFajr: Date? = nil
 }
 
 
@@ -119,11 +123,12 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         let prayerDate = PrayerDay.date()
         let dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: prayerDate)
         var windows = PrayerUtils.createDummyWindows()
+        var nextFajr: Date?
         do {
             let params = PrayerUtils.getCalculationParameters()
             prayerTimes = try PrayerUtils.getPrayerTimes(for: prayerDate, coordinates: coordinates, params: params)
             let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: prayerDate) ?? prayerDate
-            let nextFajr = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params).fajr
+            nextFajr = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params).fajr
             windows = PrayerUtils.createWindowsFromTimes(prayerTimes, on: prayerDate, nextFajr: nextFajr)
         } catch {
             // If there's an error, either throw or use a fallback
@@ -145,7 +150,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             longitude: longitude,
             toggleShowAllTImes: showLocation, prayerDict: windows,
             todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
-            completedToday: SharedStore.completedPrayerNamesToday()
+            completedScores: SharedStore.completedPrayerScoresToday(),
+            nextFajr: nextFajr
         )
         
         return entry
@@ -272,7 +278,8 @@ struct PrayersWidgetView: View {
             let now = Date()
             
             /// Check if indexed prayer is a current prayer -- else check if indexed prayer is the next one.
-            /// Prayers already completed today are skipped so the circle moves on after a widget tap.
+            /// Prayers already completed today are skipped so the circle moves on after a tap; the
+            /// top-left check shows the current one was prayed.
             for name in prayerOrder where !entry.completedToday.contains(name) {
                 if let prayer = entry.prayerDict[name] {
                     //if prayer.start <= now  && now < prayer.end && name != "Sunrise" { // current prayer
@@ -287,8 +294,10 @@ struct PrayersWidgetView: View {
             }
             
             /// If we've gone through all prayers and none are current or next up then it means we've passed the last prayer of the day.
-            /// So lets display tomorrow's first prayer.
-            return ("Fajr", false, Date(), Date(), 400)
+            /// So lets display tomorrow's first prayer — its real time. (This used to return `Date()`,
+            /// which read "Fajr at <now>" once Isha was marked, 2026-09-25.)
+            let fajr = entry.nextFajr ?? now
+            return ("Fajr", false, fajr, fajr, 0)
             
         }
                 
@@ -307,6 +316,15 @@ struct PrayersWidgetView: View {
             return elapsedDuration / totalDuration
         }
         
+        /// The prayer whose window is open right now (Sunrise isn't one), marked or not.
+        private var prayerInWindow: String? {
+            let now = Date()
+            return prayerOrder.first { name in
+                guard name != "Sunrise", let p = entry.prayerDict[name] else { return false }
+                return p.start <= now && now < p.end
+            }
+        }
+
         private var progressColor: Color {
             if progress < 0.5 { return .green }
             else if progress < 0.75 { return .yellow }
@@ -370,51 +388,67 @@ struct PrayersWidgetView: View {
                     .buttonStyle(.plain)
                     
                     Spacer()
-                    Spacer()
                 }
-                VStack(spacing: 0) {
-                    Spacer()
-                    // Bottom Button Row
-                    HStack(spacing: 0) {
-                        BottomRowButtonStyle(intent: OpenCompassIntent(), systemImage: "location")
-                        Divider().background(Color.gray)
-                        BottomRowButtonStyle(intent: OpenTasbeehIntent(), systemImage: "circle.hexagonpath")
-                        Divider().background(Color.gray)
-                        BottomRowButtonStyle(intent: showListToggleIntent(), systemImage: "list.bullet")
-                        
-                    }
-                    .frame(height: 23)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7)
-                            .stroke(Color.gray, lineWidth: 0.75) // Border
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                    .padding(.horizontal)
-                    .padding(.bottom, 10)
-                }
-                
-                VStack{
-                    HStack{
-                        // Completes the shown prayer in place (no app launch). Only once it has started.
-                        let shown = relevantPrayer
-                        let canComplete = shown.start <= Date() && !entry.completedToday.contains(shown.name)
-                        Button(intent: MarkCompleteIntent(prayerName: shown.name, prayerStart: shown.start, prayerEnd: shown.end)) {
-                            Image(systemName: entry.completedToday.contains(shown.name) ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 15)) // Adjust font size as needed
-                                .frame(width: 15, height: 15)
-                                .foregroundColor(.primary/*.white*/)
-                        }
-                        .padding(.all, 14)
-                        .buttonStyle(.plain)
-                        .opacity(canComplete ? 1 : 0.35)
-                        .disabled(!canComplete)
+
+                // A button in each corner (2026-09-25; was a boxed row of three under the circle):
+                // today's times · mark prayed / qibla · tasbeeh. Same intents as before.
+                VStack {
+                    HStack {
+                        CornerButton(intent: showListToggleIntent(), systemImage: "list.bullet")
                         Spacer()
+                        checkButton
                     }
                     Spacer()
+                    HStack {
+                        CornerButton(intent: OpenCompassIntent(), systemImage: "location")
+                        Spacer()
+                        CornerButton(intent: OpenTasbeehIntent(), systemImage: "circle.hexagonpath")
+                    }
                 }
+                .padding(6)
+            }
+        }
+
+        /// Filled once the prayer whose window is open has been prayed (the circle has moved on
+        /// to the next one); otherwise it marks the shown prayer, once it has started.
+        @ViewBuilder private var checkButton: some View {
+            let shown = relevantPrayer
+            if let current = prayerInWindow, entry.completedToday.contains(current) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 15))
+                    .foregroundColor(.primary)
+                    .frame(width: 30, height: 30)
+            } else {
+                let canComplete = shown.start <= Date() && !entry.completedToday.contains(shown.name) && shown.name != "Sunrise"   // sunrise isn't a prayer
+                Button(intent: MarkCompleteIntent(prayerName: shown.name, prayerStart: shown.start, prayerEnd: shown.end)) {
+                    Image(systemName: "circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.primary)
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .opacity(canComplete ? 1 : 0.35)
+                .disabled(!canComplete)
             }
         }
         
+    }
+
+    struct CornerButton: View {
+        let intent: any AppIntent
+        let systemImage: String
+
+        var body: some View {
+            Button(intent: intent) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .light))
+                    .foregroundColor(.primary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
     }
     
     struct BottomRowButtonStyle: View {
@@ -726,3 +760,18 @@ import Adhan
 //}
 
 
+
+
+extension SharedStore {
+    /// Today's marked prayers with their scores (the widget's done state needs the score).
+    static func completedPrayerScoresToday() -> [String: Double] {
+        guard let container = widgetContainer else { return [:] }
+        let context = ModelContext(container)
+        let (dayStart, dayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.isCompleted && $0.startTime >= dayStart && $0.startTime <= dayEnd }
+        )
+        let done = (try? context.fetch(descriptor)) ?? []
+        return Dictionary(done.map { ($0.name, $0.numberScore ?? 0) }, uniquingKeysWith: { a, _ in a })
+    }
+}

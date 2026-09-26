@@ -10,6 +10,7 @@ import Adhan
 import CoreLocation
 import SwiftData
 import UserNotifications
+import WidgetKit
 
 
 // MARK: - Prayer Times View
@@ -279,6 +280,12 @@ struct PrayerTimesView: View {
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
+            if newScenePhase == .background {
+                // Tasks added / edited / reordered: let the Zikr widget catch up (it reads the
+                // shared store, so save first).
+                try? context.save()
+                WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
+            }
             if newScenePhase == .active {
 
                 viewModel.loadTodaysPrayerObjects()
@@ -291,6 +298,17 @@ struct PrayerTimesView: View {
                     // @AppStorage bound to it and re-renders Settings.
                     if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
                     if openTasbeehFromWidget { store.setValue(false, forKey: "widgetTasbeeh") }
+                    let openAyahFromWidget  = store.bool(forKey: "widgetDailyAyah")
+                    let openNamesFromWidget = store.bool(forKey: "widgetNames")
+                    if openAyahFromWidget { store.setValue(false, forKey: "widgetDailyAyah") }
+                    if openNamesFromWidget { store.setValue(false, forKey: "widgetNames") }
+                    if openAyahFromWidget {
+                        sharedState.horizontalPage = .main
+                        showDailyAyahPage = true
+                    } else if openNamesFromWidget {
+                        sharedState.horizontalPage = .main
+                        showNamesPage = true
+                    }
 
                     if openCompassFromWidget{
                         sharedState.navPosition = .main
@@ -1152,6 +1170,7 @@ struct PrayerButton: View {
     @State private var toggledText: Bool = false
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
     @State private var completionPulse = 0
+    @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
@@ -1338,18 +1357,11 @@ struct PrayerButton: View {
                 Button(action: {
                     handlePrayerButtonPress()
                 }) {
-                        // Outer circle with a stroke of the appropriate status color.
-                    Image(systemName: "circle")
-                            .foregroundColor(outerCircleStyle)
-                            .frame(width: 14, height: 14)
-                            .fontWeight(.light)
-                            .overlay{
-                                Image(systemName: "circle.fill")
-                                    .resizable()
-                                    .foregroundStyle(overlayCircleColor.opacity(overlayCircleColor == .red  && colorScheme == .dark ? 0.5 : overlayCircleColor == .yellow  && colorScheme == .light ? 1 : 0.7))
-                                    .frame(width: 12, height: 12)
-                                    .modifier(CompletionDotPop(pulse: completionPulse, color: overlayCircleColor))
-                            }
+                    PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
+                                    done: prayerObject.isCompleted && !isFuturePrayer,
+                                    future: isFuturePrayer,
+                                    scoreColor: prayerObject.getColorForPrayerScore(),
+                                    pulse: completionPulse)
                         
                         // Inner circle that’s filled (or clear) depending on whether the prayer is completed.
 

@@ -420,7 +420,7 @@ extension SharedStore {
         }
 
         UserDefaults(suiteName: appGroup)?.set(true, forKey: widgetWroteStoreKey)
-        WidgetCenter.shared.reloadTimelines(ofKind: "PrayersWidget")
+        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
         return true
     }
 }
@@ -451,6 +451,28 @@ struct OpenCompassIntent: AppIntent {
             WidgetCenter.shared.reloadAllTimelines()
             print("widgetCompass: \(store.bool(forKey: "widgetCompass"))")
         }
+        return .result()
+    }
+}
+
+/// Widget → the Daily Ayah page (one-shot flag read on activation, like the compass one).
+struct OpenDailyAyahIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Daily Ayah"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetDailyAyah")
+        return .result()
+    }
+}
+
+/// Widget → the 99 Names page.
+struct OpenNamesIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open 99 Names"
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetNames")
         return .result()
     }
 }
