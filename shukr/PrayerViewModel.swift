@@ -514,6 +514,26 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             calculateDayScore(for: prayer.startTime)
 //            updatePrayerStreak()
             pushCompletionsToWidget()
+            // Prayed at a masjid? (Jumu'ah gets rescored Early.)
+            if prayer.isCompleted {
+                Task { @MainActor in
+                    let days = await MasjidDetector.check([prayer], in: context)
+                    for day in days { calculateDayScore(for: day) }
+                    if !days.isEmpty { pushCompletionsToWidget(); objectWillChange.send() }
+                }
+            }
+        }
+    }
+
+    /// Rows marked outside the app (widget, notification) and older history: which were at a
+    /// masjid. A few new spots per launch (MasjidDetector.catchUp).
+    @MainActor func catchUpMasjidChecks() {
+        MasjidDetector.catchUp(context: context) { [weak self] days in
+            guard let self else { return }
+            for day in days { self.calculateDayScore(for: day) }
+            self.calculatePrayerStreak()
+            self.pushCompletionsToWidget()
+            self.objectWillChange.send()
         }
     }
     

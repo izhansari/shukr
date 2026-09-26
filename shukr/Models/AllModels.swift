@@ -108,6 +108,18 @@ class PrayerModel {
     var latPrayedAt: Double? // lat where the prayer was performed (Cant store CLLocation in swiftdata)
     var longPrayedAt: Double? // long where the prayer was performed
 
+    /// The masjid it was prayed at (schema 2.2.0, `MasjidDetector`): nil = not checked yet,
+    /// "" = checked, not at a masjid.
+    var mosqueName: String? = nil
+
+    var atMasjid: Bool { !(mosqueName ?? "").isEmpty }
+    /// Friday's Dhuhr prayed at a masjid — and only that (owner: a Friday Dhuhr anywhere else is
+    /// a normal Dhuhr). Scores Early whatever the clock says: Jumu'ah follows the masjid's time.
+    var isJumuah: Bool {
+        name == "Dhuhr" && atMasjid && Calendar.current.component(.weekday, from: startTime) == 6
+    }
+    var displayName: String { isJumuah ? "Jumu'ah" : name }
+
     var prayerStartedAt: Date? // When the prayer was started
     var prayerCompletedAt: Date? // When the prayer was marked complete
     var duration: TimeInterval? // How long the prayer lasted
@@ -136,6 +148,7 @@ class PrayerModel {
         self.englishScore = nil
         self.latPrayedAt = nil
         self.longPrayedAt = nil
+        self.mosqueName = nil
     }
     
     enum prayerStatus {
@@ -161,7 +174,7 @@ class PrayerModel {
     /// Scores the prayer as marked at `atDate` (PrayerScoring has the rule).
     func setPrayerScore(atDate: Date = Date()) {
         timeAtComplete = atDate
-        let score = PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
+        let score = isJumuah ? 1 : PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
         numberScore = score
         englishScore = PrayerScoring.grade(for: score).rawValue
     }

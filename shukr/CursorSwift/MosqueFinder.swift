@@ -151,6 +151,67 @@ enum MosqueSearch {
     }
 }
 
+// MARK: - My masajid
+
+/// The user's own mosques (owner, 2026-09-26: "allow me to favorite mosques"). Saved with name and
+/// position, so they're on the map and at the top of the list even when a search doesn't return
+/// them, and so later features (prayed-at-a-masjid, the entering dua) know which places are yours.
+struct FavoriteMosque: Codable, Hashable {
+    let id: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+
+    var mapItem: MKMapItem {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude)))
+        item.name = name
+        return item
+    }
+}
+
+enum MosqueFavorites {
+    static let key = "favoriteMosques"
+
+    static var all: [FavoriteMosque] {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
+        return (try? JSONDecoder().decode([FavoriteMosque].self, from: data)) ?? []
+    }
+
+    private static func save(_ list: [FavoriteMosque]) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(list), forKey: key)
+        NotificationCenter.default.post(name: MosqueHiding.changed, object: nil)
+    }
+
+    static func isFavorite(_ item: MKMapItem) -> Bool { all.contains { $0.id == MosqueHiding.id(item) } }
+
+    static func setFavorite(_ item: MKMapItem, _ on: Bool) {
+        var list = all.filter { $0.id != MosqueHiding.id(item) }
+        if on {
+            let c = item.placemark.coordinate
+            list.append(FavoriteMosque(id: MosqueHiding.id(item), name: item.name ?? "Mosque",
+                                       latitude: c.latitude, longitude: c.longitude))
+            if MosqueHiding.hiddenOneByOne(item) { MosqueHiding.setHidden(item, false) }   // can't be both
+        }
+        save(list)
+    }
+
+    /// Search results plus any of your masajid inside the searched area that the search missed.
+    static func merged(_ found: [MKMapItem], in region: MKCoordinateRegion) -> [MKMapItem] {
+        let centre = CLLocation(latitude: region.center.latitude, longitude: region.center.longitude)
+        let radius = max(region.span.latitudeDelta, 0.05) * 111_000 / 2 + 2_000
+        let extra = all.filter { fav in
+            let here = CLLocation(latitude: fav.latitude, longitude: fav.longitude)
+            guard here.distance(from: centre) < radius else { return false }
+            return !found.contains { item in
+                let c = item.placemark.coordinate
+                return CLLocation(latitude: c.latitude, longitude: c.longitude).distance(from: here) < 60
+                    || MosqueHiding.id(item) == fav.id
+            }
+        }
+        return found + extra.map(\.mapItem)
+    }
+}
+
 // MARK: - Not recommended
 
 /// Mosques the user doesn't want recommended (owner, 2026-09-26: "don't recommend this one to me,
@@ -228,8 +289,10 @@ struct MosqueListSheet: View {
         guard origin != nil else { return items }
         return items.sorted { (distance($0) ?? 0) < (distance($1) ?? 0) }
     }
-    /// Recommended (nearest first), then the ones you've hidden.
+    /// Yours first, then recommended (nearest first), then the ones you've hidden.
+    private var favorites: [MKMapItem] { let _ = hiddenRevision; return sorted.filter { MosqueFavorites.isFavorite($0) } }
     private var visible: [MKMapItem] { let _ = hiddenRevision; return sorted.filter { !MosqueHiding.isHidden($0) } }
+    private var others: [MKMapItem] { visible.filter { !MosqueFavorites.isFavorite($0) } }
     private var hidden: [MKMapItem] { let _ = hiddenRevision; return sorted.filter { MosqueHiding.isHidden($0) } }
 
     private func address(_ item: MKMapItem) -> String {
@@ -247,11 +310,34 @@ struct MosqueListSheet: View {
     }
 
     var body: some View {
-        let list = visible
+        let list = others
+        let mine = favorites
         let muted = hidden
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if !mine.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "star.fill").font(.system(size: 9))
+                        Text("my masajid").tracking(1.4).textCase(.uppercase)
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.green)
+                    .padding(.leading, 4)
+                    .padding(.bottom, -8)
+                    VStack(spacing: 0) {
+                        ForEach(Array(mine.enumerated()), id: \.offset) { i, item in
+                            row(item, index: -1, favorite: true)
+                            if i < mine.count - 1 {
+                                Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 0.5).padding(.leading, 62)
+                            }
+                        }
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.green.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.green.opacity(0.18), lineWidth: 1))
+                    )
+                }
                 if let nearest = list.first {
                     nearestCard(nearest, index: 0)
                 }
@@ -304,8 +390,17 @@ struct MosqueListSheet: View {
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in hiddenRevision += 1 }
     }
 
-    /// Long-press menu on a mosque: stop / start recommending it.
+    /// Long-press menu on a mosque: add to / remove from My masajid; stop / start recommending it.
     @ViewBuilder private func hideMenu(_ item: MKMapItem) -> some View {
+        if MosqueFavorites.isFavorite(item) {
+            Button { MosqueFavorites.setFavorite(item, false) } label: {
+                Label("Remove from My masajid", systemImage: "star.slash")
+            }
+        } else {
+            Button { MosqueFavorites.setFavorite(item, true) } label: {
+                Label("Add to My masajid", systemImage: "star")
+            }
+        }
         if MosqueHiding.hiddenOneByOne(item) {
             Button { MosqueHiding.setHidden(item, false) } label: {
                 Label("Recommend again", systemImage: "hand.thumbsup")
@@ -335,7 +430,7 @@ struct MosqueListSheet: View {
                 Toggle(isOn: Binding(get: { hideAhmadiyya }, set: { MosqueHiding.setHideAhmadiyya($0) })) {
                     Label("Hide Ahmadiyya mosques", systemImage: "eye.slash")
                 }
-                Text("Long-press any mosque to stop recommending it.")
+                Text("Long-press a mosque to add it to My masajid or stop recommending it.")
             } label: {
                 Image(systemName: "line.3.horizontal.decrease")
                     .font(.system(size: 14, weight: .medium))
@@ -424,10 +519,10 @@ struct MosqueListSheet: View {
         .contextMenu { hideMenu(item) }
     }
 
-    private func row(_ item: MKMapItem, index: Int, muted: Bool = false) -> some View {
+    private func row(_ item: MKMapItem, index: Int, muted: Bool = false, favorite: Bool = false) -> some View {
         Button { pick(item) } label: {
             HStack(spacing: 12) {
-                Image(systemName: icon)
+                Image(systemName: favorite ? "star.fill" : icon)
                     .font(.system(size: 13))
                     .foregroundStyle(muted ? Color.secondary : Color.green)
                     .frame(width: 36, height: 36)
@@ -492,6 +587,7 @@ struct MosqueListSheet: View {
 struct MosqueSheet: View {
     let item: MKMapItem
     @State private var hiddenHere = false
+    @State private var favorite = false
     @State private var drive: (time: TimeInterval, meters: CLLocationDistance)?
     @State private var driveFailed = false
     @State private var scene: MKLookAroundScene?
@@ -514,14 +610,34 @@ struct MosqueSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.name ?? "Mosque")
-                        .font(.system(size: 26, weight: .light, design: .rounded))
-                    if let address {
-                        Text(address)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.name ?? "Mosque")
+                            .font(.system(size: 26, weight: .light, design: .rounded))
+                        if let address {
+                            Text(address)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    Spacer(minLength: 8)
+                    // ☆ → My masajid.
+                    Button {
+                        triggerSomeVibration(type: favorite ? .light : .success)
+                        favorite.toggle()
+                        MosqueFavorites.setFavorite(item, favorite)
+                        if favorite { hiddenHere = false }
+                    } label: {
+                        Image(systemName: favorite ? "star.fill" : "star")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(favorite ? Color.green : Color.secondary)
+                            .contentTransition(.symbolEffect(.replace))
+                            .symbolEffect(.bounce, value: favorite)
+                            .frame(width: 44, height: 44)
+                            .background(Circle().fill(favorite ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(favorite ? "Remove from My masajid" : "Add to My masajid")
                 }
 
                 // How far — by car or on foot; tap to switch.
@@ -606,6 +722,7 @@ struct MosqueSheet: View {
                 Button {
                     triggerSomeVibration(type: .light)
                     hiddenHere.toggle()
+                    if hiddenHere && favorite { favorite = false; MosqueFavorites.setFavorite(item, false) }
                     MosqueHiding.setHidden(item, hiddenHere)
                 } label: {
                     Label(hiddenHere ? "Recommend this mosque again" : "Don't recommend this mosque",
@@ -622,7 +739,10 @@ struct MosqueSheet: View {
         .fontDesign(.rounded)
         .task(id: mode) { await loadDrive() }
         .task { await loadScene() }
-        .onAppear { hiddenHere = MosqueHiding.hiddenOneByOne(item) }
+        .onAppear {
+            hiddenHere = MosqueHiding.hiddenOneByOne(item)
+            favorite = MosqueFavorites.isFavorite(item)
+        }
         .mapItemDetailSheet(item: $placeCard)
         .sheet(item: Binding(get: { website.map { IdentifiedURL(url: $0) } }, set: { website = $0?.url })) {
             SafariView(url: $0.url).ignoresSafeArea()

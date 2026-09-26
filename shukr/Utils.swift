@@ -619,11 +619,11 @@ struct NeuCircularProgressView: View {
     /// The ring playground shows the alive style whatever the setting.
     var forceAlive = false
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
-    @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.alive.rawValue
+    @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.fine.rawValue
     @AppStorage(AliveRingTuning.key) private var tuningRaw = ""
 
     var body: some View {
-        let style = forceAlive ? .alive : (TasbeehRingStyle(rawValue: styleRaw) ?? .alive)
+        let style = forceAlive ? .alive : (TasbeehRingStyle(rawValue: styleRaw) ?? .fine)
         // "fine" is the alive fill with a fixed preset; "alive" follows the playground.
         let tuning = style == .fine ? AliveRingTuning.fine : AliveRingTuning.decode(tuningRaw)
         let band: CGFloat = (style == .alive || style == .fine) ? tuning.band : 24

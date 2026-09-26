@@ -404,6 +404,21 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 — Explore dock, My masajid, fine ring.**
+- **Explore dock:** the map's explore button (`ExploreDock`, LocationMapView2.swift) opens in place:
+  the glass circle springs out leftwards into Qibla · Prayers · Mosques (icon + label, the active
+  one green) and a ✕. Items fan in; tapping the map folds it. It replaced the `MapExploreSheet`
+  chooser, which is unused now. Picking Mosques still opens the list. Sim ✓.
+- **My masajid** (`MosqueFavorites`, MosqueFinder.swift; standard defaults `favoriteMosques`, JSON
+  name + lat / lon):
+  - Add with the ☆ on a mosque's sheet, or long-press → "Add to My masajid" in the list.
+  - They get a green-edged "MY MASAJID" section at the top of the list and star pins that never
+    cluster. They're merged into search results even when a search misses them
+    (`MosqueFavorites.merged`).
+  - A favourite can't also be "don't recommend". Used by `MasjidDetector` first.
+  - Sim ✓.
+- **Tasbeeh ring default is "fine"** (was "alive").
+
 **2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
 - **Targets** (added to the pbxproj by hand):
   - `shukrWatch`: a watchOS 11 single-target app, bundle `com.betternorms.shukr.watchkitapp`,
@@ -634,7 +649,32 @@ agent builds with xcodebuild. Nothing here has CI.
    to learn from it before building a third version.
 9. Then the App Store blockers below.
 
-## Masjid-aware prayers (owner idea, 2026-09-25 — not built)
+## Masjid-aware prayers (owner idea 2026-09-25 — parts 1, 2 and most of 4 built 2026-09-26)
+
+**Built:**
+- **Schema 2.2.0:** `PrayerModel.mosqueName` (nil = not checked, "" = not at a masjid), with
+  `atMasjid`, `isJumuah` and `displayName` ("Jumu'ah"). `setPrayerScore` gives a Jumu'ah 1.0, so
+  the time editor agrees.
+- **`MasjidDetector`** (CursorSwift/MasjidDetector.swift):
+  - The spot is checked against your own masajid (`MosqueFavorites`, < 100 m, no network) first,
+    then `MosqueSearch.find` around it; the nearest mosque within 75 m wins. "Don't recommend"
+    mosques never count.
+  - Cached per ~100 m cell; 2 s between searches, since MKLocalSearch is rate-limited.
+  - Runs after every in-app mark (`togglePrayerCompletion`, which then rescores the day). On
+    activation, `catchUpMasjidChecks` checks rows marked by the widget / notification, and history
+    at up to 12 new spots per launch, Friday Dhuhrs first, then newest.
+- **Where it shows:** the list row reads "Jumu'ah" plus a small sage mosque mark; prayer-spot pins
+  prayed at a masjid use the mosque glyph; `PrayerSpotSheet` rows show "Jumu'ah" and the masjid's
+  name.
+- DEBUG `-demoMasjidCheck` creates a late Friday Dhuhr at your first favourite masjid plus a prayer
+  400 m away, then logs `MASJIDCHECK`. Sim ✓: Dhuhr 0.68 → Jumu'ah 1.0 at Assafa; the away prayer
+  → "".
+
+**Not built:** the dua on entering (3), which needs **Always** location — ask the owner. The "at a
+masjid" filter chip, and Insights. The open question (should any jama'ah prayer at a masjid score
+full, or only Jumu'ah?) is still unanswered; only Jumu'ah is implemented.
+
+Original plan:
 
 Trigger: the owner prayed Jumu'ah at his masjid, marked it, and it scored **Late**. Jumu'ah (and
 jama'ah generally) follows the masjid's iqamah, not the window's start, so the timing score

@@ -338,6 +338,7 @@ struct PrayerTimesView: View {
 
                 viewModel.loadTodaysPrayerObjects()
                 viewModel.reconcileAfterWidgetWrites() // prayers completed from the widget while we were closed
+                viewModel.catchUpMasjidChecks()        // …and which prayers were at a masjid
                 
                 if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
                     let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
@@ -387,6 +388,27 @@ struct PrayerTimesView: View {
         }
         #if DEBUG
         .task {
+            // Masjid detection check: a late Friday Dhuhr at your first favourite masjid (+ one
+            // 400 m away) → the first should come back as Jumu'ah, scored Early; the second not.
+            if ProcessInfo.processInfo.arguments.contains("-demoMasjidCheck"), let fav = MosqueFavorites.all.first {
+                let cal = Calendar.current
+                var friday = cal.startOfDay(for: Date())
+                while cal.component(.weekday, from: friday) != 6 { friday = cal.date(byAdding: .day, value: -1, to: friday)! }
+                let start = friday.addingTimeInterval(13 * 3600), end = start.addingTimeInterval(3 * 3600)
+                let atMasjid = PrayerModel(name: "Dhuhr", startTime: start, endTime: end,
+                                           latitude: fav.latitude + 0.0002, longitude: fav.longitude)
+                let away = PrayerModel(name: "Asr", startTime: end, endTime: end.addingTimeInterval(7200),
+                                       latitude: fav.latitude + 0.004, longitude: fav.longitude)
+                for p in [atMasjid, away] {
+                    p.isCompleted = true
+                    p.setPrayerScore(atDate: p.startTime.addingTimeInterval(2.5 * 3600))
+                    context.insert(p)
+                }
+                NSLog("MASJIDCHECK before: \(atMasjid.displayName) \(atMasjid.numberScore ?? -1)")
+                let days = await MasjidDetector.check([atMasjid, away], in: context)
+                NSLog("MASJIDCHECK after: \(atMasjid.displayName) score=\(atMasjid.numberScore ?? -1) masjid=\(atMasjid.mosqueName ?? "nil") | away masjid=\(away.mosqueName ?? "nil") rescoredDays=\(days.count)")
+                context.delete(atMasjid); context.delete(away); try? context.save()
+            }
             // What a Zikr-widget row tap does, without the widget: Zikr page, last task centred.
             if ProcessInfo.processInfo.arguments.contains("-demoZikrFocus") {
                 try? await Task.sleep(for: .seconds(1.5))
@@ -1443,11 +1465,17 @@ struct PrayerButton: View {
                 .frame(width: 24, height: 24, alignment: .leading)
 
                 // Prayer Name Label
-                Text(name /*nameToDisplay*/ )
+                Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     .font(.callout) //.callout
                     .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
+                // Prayed at a masjid: a small mosque mark by the name.
+                if prayerObject.atMasjid {
+                    Image(systemName: "building.columns")
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(Color.sage)
+                }
                 
                 Spacer()
                 

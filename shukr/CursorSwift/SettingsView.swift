@@ -55,7 +55,7 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     @State private var showDevStuff = false
     @State private var showCityPicker = false
-    @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.alive.rawValue
+    @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showRingPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue

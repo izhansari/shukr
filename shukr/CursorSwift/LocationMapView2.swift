@@ -148,7 +148,7 @@ final class LocationViewModel: ObservableObject {
         fitMosquesWhenFound = fit
         Task { @MainActor in
             let found = await MosqueSearch.find(in: region)
-            mosques = found
+            mosques = MosqueFavorites.merged(found, in: region)   // + your masajid the search missed
             mosqueSearching = false
         }
     }
@@ -553,10 +553,12 @@ struct MapView: UIViewRepresentable {
             if let mosque = annotation as? MosqueAnnotation {
                 // Not recommended by the user: grey, and they give way to the rest.
                 let muted = MosqueHiding.isHidden(mosque.item)
+                let mine = MosqueFavorites.isFavorite(mosque.item)
                 view.markerTintColor = muted ? UIColor.systemGray3 : Self.mosqueTint
                 view.glyphText = nil
-                view.glyphImage = UIImage(systemName: MosqueIconStyle.current.pin)
-                view.clusteringIdentifier = muted ? "mosqueMuted" : "mosque"
+                view.glyphImage = UIImage(systemName: mine ? "star.fill" : MosqueIconStyle.current.pin)
+                // Yours never hide inside a cluster.
+                view.clusteringIdentifier = mine ? nil : (muted ? "mosqueMuted" : "mosque")
                 view.canShowCallout = false
                 view.displayPriority = muted ? .defaultLow : .required
                 return view
@@ -565,7 +567,9 @@ struct MapView: UIViewRepresentable {
             if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
                 view.markerTintColor = LocationViewModel.markerColor(for: prayer)
             }
-            view.glyphImage = UIImage(systemName: "hands.and.sparkles.fill") ?? UIImage(systemName: "mappin")
+            // Prayed at a masjid: the mosque mark instead of the hands.
+            let atMasjid = (annotation as? CustomPrayerAnnotation)?.prayer?.atMasjid ?? false
+            view.glyphImage = UIImage(systemName: atMasjid ? "building.columns.fill" : "hands.and.sparkles.fill") ?? UIImage(systemName: "mappin")
             view.clusteringIdentifier = "prayer"
             view.canShowCallout = false
             return view
@@ -653,6 +657,8 @@ struct LocationMapContentView: View {
     /// Mosques was just picked: open the list as soon as there are results (after its first-time
     /// guide, if that's showing).
     @State private var wantsMosqueList = false
+    /// The explore dock is spread open (Qibla · Prayers · Mosques).
+    @State private var exploreOpen = false
     private func openPendingMosqueList() {
         guard wantsMosqueList, viewModel.showMosques, !viewModel.mosques.isEmpty, !viewModel.mosqueSearching,
               guide == nil, !viewModel.showExplore, viewModel.mosqueSelection == nil,
@@ -786,6 +792,13 @@ struct LocationMapContentView: View {
             // Facing Mecca: the whole screen edge glows green.
             AlignedEdgeGlow(on: compass.qibla.aligned && inQiblaMode)
 
+            // Dock open: a tap anywhere on the map folds it back.
+            if exploreOpen {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { exploreOpen = false } }
+            }
+
             VStack {
                 ZStack(alignment: .top) {
                     HStack {
@@ -895,7 +908,9 @@ struct LocationMapContentView: View {
                 // walk) with a ✕ back to the qibla; the round button beside it wears the layer's
                 // icon and reopens the chooser. In qibla mode it's just the 🔍.
                 HStack(spacing: 10) {
-                    if viewModel.showPrayers {
+                    if exploreOpen {
+                        Spacer()
+                    } else if viewModel.showPrayers {
                         PrayerLayerBar(viewModel: viewModel,
                                        custom: { showFilterSheet = true },
                                        close: { setMode(prayers: false, mosques: false) })
@@ -908,17 +923,19 @@ struct LocationMapContentView: View {
                     } else {
                         Spacer()
                     }
-                    Button {
-                        viewModel.showExplore = true
-                    } label: {
-                        Image(systemName: viewModel.showPrayers ? "hands.and.sparkles.fill"
-                              : viewModel.showMosques ? mosqueIcon.pin : "magnifyingglass")
-                            .contentTransition(.symbolEffect(.replace))
-                            .mapControlIcon(tint: inQiblaMode ? nil : .green)   // green: a layer is on
+                    // The explore button opens *in place* into the three layers (owner, 2026-09-26:
+                    // a sheet for three choices was friction).
+                    ExploreDock(open: $exploreOpen,
+                                active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
+                                mosqueIcon: mosqueIcon.pin) { layer in
+                        switch layer {
+                        case .prayers: setMode(prayers: true, mosques: false)
+                        case .mosques:
+                            setMode(prayers: false, mosques: true)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { openPendingMosqueList() }
+                        default: setMode(prayers: false, mosques: false)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .mapGlass(Circle(), tint: inQiblaMode ? nil : .green)
-                    .accessibilityLabel(inQiblaMode ? "Explore: prayer spots, mosques" : "Switch what the map shows")
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -1042,6 +1059,82 @@ enum MapLayer { case qibla, prayers, mosques, halal }
 /// The map's Explore sheet (2026-09-25 — owner: prayer pins, mosques and soon halal food need one
 /// home, not a button each): layer tiles like the pause screen's chips — tap one to show it, tap
 /// it again to go back to the qibla — and the active layer's own settings underneath.
+/// The map's explore button. Closed: one glass circle wearing the active layer's icon (🔍 on the
+/// qibla). Open: it springs out leftwards into a glass capsule with Qibla · Prayers · Mosques
+/// (icon over a small label, the active one green) and a ✕; picking one folds it back into that
+/// layer's icon. Items fan in one after another.
+struct ExploreDock: View {
+    @Binding var open: Bool
+    let active: MapLayer
+    let mosqueIcon: String
+    let pick: (MapLayer) -> Void
+    @Namespace private var glass
+
+    private var closedIcon: String {
+        switch active {
+        case .prayers: "hands.and.sparkles.fill"
+        case .mosques: mosqueIcon
+        default: "magnifyingglass"
+        }
+    }
+
+    private var items: [(MapLayer, String, String)] {
+        [(.qibla, "location.north.line", "Qibla"),
+         (.prayers, "hands.and.sparkles.fill", "Prayers"),
+         (.mosques, mosqueIcon, "Mosques")]
+    }
+
+    private let spring = Animation.spring(response: 0.42, dampingFraction: 0.8)
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if open {
+                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                    let on = active == item.0
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(spring) { open = false }
+                        pick(item.0)
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: item.1)
+                                .font(.system(size: 17, weight: .medium))
+                                .frame(height: 20)
+                            Text(item.2)
+                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                        }
+                        .foregroundStyle(on ? Color.green : Color.primary)
+                        .frame(width: 68, height: 56)
+                        .background(Capsule().fill(on ? Color.green.opacity(0.14) : .clear).padding(.vertical, 4))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.4, anchor: .trailing).combined(with: .opacity)
+                            .animation(spring.delay(0.04 * Double(items.count - i))),
+                        removal: .opacity.animation(.easeOut(duration: 0.12))))
+                }
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5, height: 28)
+                    .transition(.opacity)
+            }
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(spring) { open.toggle() }
+            } label: {
+                Image(systemName: open ? "xmark" : closedIcon)
+                    .contentTransition(.symbolEffect(.replace))
+                    .mapControlIcon(tint: open || active == .qibla ? nil : .green)
+                    .frame(height: open ? 56 : 46)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(open ? "Close" : "Explore: prayer spots, mosques")
+        }
+        .padding(.horizontal, open ? 6 : 0)
+        .mapGlass(Capsule(), tint: !open && active != .qibla ? .green : nil)
+        .animation(spring, value: open)
+    }
+}
+
 struct MapExploreSheet: View {
     let active: MapLayer
     let select: (MapLayer) -> Void
@@ -1770,7 +1863,7 @@ private struct PrayerSpotRow: View {
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(prayer.name).font(.body.weight(.medium))
+                    Text(prayer.displayName).font(.body.weight(.medium))
                     if let at = prayer.timeAtComplete {
                         Text("prayed \(at.formatted(date: .omitted, time: .shortened))")
                             .foregroundStyle(.secondary)
@@ -1782,6 +1875,12 @@ private struct PrayerSpotRow: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if prayer.atMasjid, let masjid = prayer.mosqueName {
+                    Label(masjid, systemImage: "building.columns")
+                        .font(.caption)
+                        .foregroundStyle(Color.sage)
+                        .lineLimit(1)
+                }
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {

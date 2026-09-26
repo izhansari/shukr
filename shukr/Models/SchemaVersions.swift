@@ -29,7 +29,8 @@ import SwiftData
 /// the widget's `storeIsCurrentVersion` looks for. Bump the version when the models change.
 enum ShukrSchemaV2: VersionedSchema {
     /// 2.1.0 (2026-09-25): `MantraModel.quickAddStep` (a defaulted Int — lightweight).
-    static let versionIdentifier = Schema.Version(2, 1, 0)
+    /// 2.2.0 (2026-09-26): `PrayerModel.mosqueName` (optional String — lightweight).
+    static let versionIdentifier = Schema.Version(2, 2, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }
