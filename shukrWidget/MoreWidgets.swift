@@ -87,7 +87,7 @@ struct ZikrTasksWidget: Widget {
         }
         .configurationDisplayName("Zikr")
         .description("Today's zikr tasks and how far along you are.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryCircular, .accessoryRectangular])
     }
 }
 
@@ -99,6 +99,8 @@ struct ZikrTaskSnapshot: Identifiable {
     let count: Int
     let minutes: Int
     let done: Bool
+    /// Roughly how long what's left takes at your pace (nil: no history yet).
+    var secondsLeft: TimeInterval? = nil
 
     var fraction: Double {
         guard goal > 0 else { return 0 }
@@ -141,10 +143,11 @@ struct ZikrTasksProvider: TimelineProvider {
             predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
         let snaps = tasks.map { task -> ZikrTaskSnapshot in
             let p = task.progress(in: sessions)
-            return ZikrTaskSnapshot(id: "\(task.persistentModelID.hashValue)", name: task.displayName,
+            return ZikrTaskSnapshot(id: task.id.uuidString, name: task.displayName,
                                     isCountMode: task.isCountMode, goal: task.goal,
                                     count: p.count, minutes: Int(p.seconds / 60),
-                                    done: task.isCompleted(with: p))
+                                    done: task.isCompleted(with: p),
+                                    secondsLeft: task.secondsLeft(p))
         }
         // Like the Zikr page: what's left first, done ones at the end.
         let ordered = snaps.filter { !$0.done } + snaps.filter(\.done)
@@ -168,6 +171,32 @@ private extension ZikrTasksEntry {
     }
     var left: Int { tasks.count - doneCount }
     var allDone: Bool { !tasks.isEmpty && left == 0 }
+    /// Time for everything left today; nil if nothing left has any history to go by.
+    var secondsLeft: TimeInterval? {
+        let known = tasks.filter { !$0.done }.compactMap(\.secondsLeft)
+        return known.isEmpty ? nil : known.reduce(0, +)
+    }
+    var estimateText: String? {
+        guard let s = secondsLeft, s > 0 else { return nil }
+        return zikrEstimateString(s)
+    }
+    /// "3 left · ~14 min" (Lock Screen card).
+    var lockHeadline: String {
+        if tasks.isEmpty { return "" }
+        if allDone { return "all done" }
+        let base = "\(left) left"
+        guard let estimate = estimateText else { return base }
+        return base + " · " + estimate
+    }
+}
+
+extension ZikrTaskSnapshot {
+    /// "5/100 · ~4 min" beside a row (medium).
+    var rowTrailing: String {
+        if done { return "" }
+        guard let s = secondsLeft, s > 0 else { return progressText }
+        return progressText + " · " + zikrEstimateString(s)
+    }
 }
 
 /// A row's circle, Reminders style: an empty circle that fills round with the task's progress,
@@ -230,7 +259,7 @@ private struct TaskRow: View {
                 .lineLimit(1)
             Spacer(minLength: 4)
             if showsProgress {
-            Text(task.done ? "" : task.progressText)
+            Text(task.rowTrailing)
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -247,10 +276,48 @@ struct ZikrTasksWidgetView: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Button(intent: OpenTasbeehIntent()) {
+        switch family {
+        case .accessoryCircular:
+            // Lock Screen: today's zikr as a ring, beads (or ✓) inside.
+            Gauge(value: entry.overall) {
+                Image(systemName: "circle.hexagonpath")
+            } currentValueLabel: {
+                Image(systemName: entry.allDone ? "checkmark" : "circle.hexagonpath")
+                    .font(.system(size: 16, weight: .medium))
+            }
+            .gaugeStyle(.accessoryCircularCapacity)
+            .widgetAccentable()
+        case .accessoryRectangular:
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Image(systemName: "circle.hexagonpath")
+                    Text("Zikr").font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Spacer(minLength: 0)
+                    Text(entry.lockHeadline)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                }
+                .widgetAccentable()
+                if let next = entry.tasks.first(where: { !$0.done }) {
+                    Text("\(next.name) · \(next.progressText)")
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(entry.tasks.isEmpty ? "no tasks yet" : "every task done today")
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Gauge(value: entry.overall) { EmptyView() }
+                    .gaugeStyle(.accessoryLinearCapacity)
+            }
+        default:
+            // Rows are their own buttons (to their task); the rest opens the Zikr page.
             content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background {
+                    Button(intent: OpenTasbeehIntent()) { Color.clear.contentShape(Rectangle()) }
+                        .buttonStyle(.plain)
+                }
         }
-        .buttonStyle(.plain)
     }
 
     private func bigCount(_ alignment: HorizontalAlignment) -> some View {
@@ -261,6 +328,11 @@ struct ZikrTasksWidgetView: View {
             Text(entry.allDone ? "all done" : "left today")
                 .font(.system(size: 9, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
+            if !entry.allDone, let estimate = entry.estimateText {
+                Text(estimate)
+                    .font(.system(size: 9, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -274,7 +346,13 @@ struct ZikrTasksWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             let shown = Array(entry.tasks.prefix(limit))
             ForEach(Array(shown.enumerated()), id: \.element.id) { i, task in
-                TaskRow(task: task, showsProgress: progress).padding(.vertical, 5)
+                // Each row opens the Zikr page on its own task (owner).
+                Button(intent: OpenZikrTaskIntent(taskID: task.id)) {
+                    TaskRow(task: task, showsProgress: progress)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 if i < shown.count - 1 {
                     Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 0.5).padding(.leading, 23)
                 }
@@ -337,7 +415,7 @@ struct NameOfTheDayWidget: Widget {
         }
         .configurationDisplayName("Name of the Day")
         .description("One of the 99 Names of Allah each day, with its meaning.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
     }
 }
 
@@ -363,13 +441,36 @@ struct NameOfTheDayView: View {
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        Button(intent: OpenNamesIntent()) {
-            Group {
-                if family == .systemMedium { medium } else { small }
+        switch family {
+        case .accessoryRectangular:
+            // Lock Screen: the Arabic beside its name and meaning.
+            HStack(spacing: 8) {
+                Text(entry.name.arabic)
+                    .font(.custom(uthmani, size: 26))
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                    .widgetAccentable()
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.name.transliteration)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Text(entry.name.meaning)
+                        .font(.system(size: 12, weight: .regular, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2).minimumScaleFactor(0.8)
+                }
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .accessoryInline:
+            Text("\(entry.name.transliteration) · \(entry.name.meaning)")
+        default:
+            Button(intent: OpenNamesIntent()) {
+                Group {
+                    if family == .systemMedium { medium } else { small }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 
     private var ink: Color { Brand.ink(scheme) }
@@ -566,3 +667,32 @@ struct DailyAyahWidgetView: View {
     DailyAyahEntry(date: .now, ayah: nil)
 }
 #endif
+
+
+// MARK: - Controls (Control Center, the Lock Screen's bottom buttons, the Action button)
+
+/// Qibla: straight to the qibla map (the same one-shot flag the Prayers widget's compass uses).
+struct QiblaControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.qibla") {
+            ControlWidgetButton(action: OpenCompassIntent()) {
+                Label("Qibla", systemImage: "location.north.line.fill")
+            }
+        }
+        .displayName("Qibla")
+        .description("Open shukr's qibla map.")
+    }
+}
+
+/// Tasbeeh: straight to the Zikr page.
+struct TasbeehControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "betternorms.shukr.control.tasbeeh") {
+            ControlWidgetButton(action: OpenTasbeehIntent()) {
+                Label("Tasbeeh", systemImage: "circle.hexagonpath")
+            }
+        }
+        .displayName("Tasbeeh")
+        .description("Open shukr's zikr page.")
+    }
+}

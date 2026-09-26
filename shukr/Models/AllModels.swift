@@ -512,6 +512,37 @@ extension SessionDataModel {
     }
 }
 
+extension TaskModel {
+    /// Your pace for this task: the mantra's time-weighted seconds per count, else the task's own
+    /// sessions'. Nil until something has been counted.
+    var secondsPerCount: TimeInterval? {
+        if let rate = mantra?.secondsPerCount { return rate }
+        let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 }
+        let counts = counted.reduce(0) { $0 + $1.totalCount }
+        guard counts > 0 else { return nil }
+        return counted.reduce(0.0) { $0 + $1.activeSeconds } / Double(counts)
+    }
+
+    /// Roughly how long what's left of today's goal takes: counts left × your pace, or the minutes
+    /// left for a timed task. 0 when done; nil for a count task with no history yet.
+    func secondsLeft(_ progress: TaskProgress) -> TimeInterval? {
+        if isCompleted(with: progress) { return 0 }
+        if isCountMode {
+            guard let rate = secondsPerCount else { return nil }
+            return Double(max(goal - progress.count, 0)) * rate
+        }
+        return max(Double(goal) * 60 - progress.seconds, 0)
+    }
+}
+
+/// "~4 min", "~1h 10m", "<1 min" — an estimate, so rounded up to whole minutes.
+func zikrEstimateString(_ seconds: TimeInterval) -> String {
+    if seconds < 60 { return "<1 min" }
+    let minutes = Int((seconds / 60).rounded(.up))
+    if minutes < 60 { return "~\(minutes) min" }
+    return "~\(minutes / 60)h \(minutes % 60)m"
+}
+
 /// "1h 05m", "12m 03s" or "45s".
 func zikrDurationString(_ seconds: TimeInterval) -> String {
     let total = Int(seconds.rounded())

@@ -17,6 +17,8 @@ struct shukrWidgetBundle: WidgetBundle {
         ZikrTasksWidget()
         NameOfTheDayWidget()
         DailyAyahWidget()
+        QiblaControl()
+        TasbeehControl()
     }
 }
 

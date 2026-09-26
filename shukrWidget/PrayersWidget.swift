@@ -29,7 +29,8 @@ struct PrayersWidget: Widget {
         .contentMarginsDisabled()
         .configurationDisplayName("Prayers")
         .description("See todays prayers & how much time is left")
-        .supportedFamilies([.systemSmall])
+        // + the Lock Screen (2026-09-26): a ring by the clock, a card under it, a line above it.
+        .supportedFamilies([.systemSmall, .accessoryCircular, .accessoryRectangular, .accessoryInline])
     }
 }
 
@@ -163,8 +164,18 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
 struct PrayersWidgetView: View {
     var entry: PrayersWidgetEntry
     let prayerOrder = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
-        
+    @Environment(\.widgetFamily) private var family
+
     var body: some View {
+        switch family {
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            PrayerLockScreenView(entry: entry, family: family)
+        default:
+            homeScreen
+        }
+    }
+
+    private var homeScreen: some View {
         ZStack {
             // Main content centered
             if entry.toggleShowAllTImes {
@@ -773,5 +784,113 @@ extension SharedStore {
         )
         let done = (try? context.fetch(descriptor)) ?? []
         return Dictionary(done.map { ($0.name, $0.numberScore ?? 0) }, uniquingKeysWith: { a, _ in a })
+    }
+}
+
+
+// MARK: - Lock Screen
+
+/// The Prayers widget on the Lock Screen (2026-09-26). Same prayer as the home-screen circle
+/// (`WidgetPrayerCircleView.relevantPrayer`: the prayer that's on, else the next, done ones
+/// skipped).
+/// - Circular: the time left drains round the ring live (`ProgressView(timerInterval:)`), the
+///   prayer's symbol and name inside; before it starts, the symbol and its start time.
+/// - Rectangular: name, "ends 6:48 PM" / "at 4:10 PM", and a live bar or countdown.
+/// - Inline (above the clock): "Asr · ends 6:48 PM".
+struct PrayerLockScreenView: View {
+    let entry: PrayersWidgetEntry
+    let family: WidgetFamily
+
+    private var prayer: (name: String, current: Bool, start: Date, end: Date, window: TimeInterval) {
+        PrayersWidgetView.WidgetPrayerCircleView(entry: entry).relevantPrayer
+    }
+    private var live: Bool { prayer.current && prayer.end > prayer.start }
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm"
+        return f
+    }()
+
+    var body: some View {
+        switch family {
+        case .accessoryCircular: circular
+        case .accessoryRectangular: rectangular
+        default: inline
+        }
+    }
+
+    private var circular: some View {
+        ZStack {
+            AccessoryWidgetBackground()
+            if live {
+                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: true) {
+                    EmptyView()
+                } currentValueLabel: {
+                    VStack(spacing: 0) {
+                        Image(systemName: prayerIcon(for: prayer.name))
+                            .font(.system(size: 12, weight: .medium))
+                        Text(prayer.name)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                }
+                .progressViewStyle(.circular)
+            } else {
+                VStack(spacing: 1) {
+                    Image(systemName: prayerIcon(for: prayer.name))
+                        .font(.system(size: 12, weight: .medium))
+                    Text(prayer.name)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    Text(Self.clock.string(from: prayer.start))   // "5:32", no zero, no AM
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                }
+            }
+        }
+        .widgetAccentable()
+    }
+
+    private var rectangular: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: prayerIcon(for: prayer.name))
+                Text(prayer.name)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                Spacer(minLength: 0)
+                if live {
+                    Text(prayer.end, style: .relative)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .multilineTextAlignment(.trailing)
+                        .lineLimit(1)
+                }
+            }
+            .widgetAccentable()
+            (Text(live ? "ends " : "at ") + Text(live ? prayer.end : prayer.start, style: .time))
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
+            if live {
+                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: true) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.linear)
+            } else {
+                (Text("in ") + Text(prayer.start, style: .relative))
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var inline: some View {
+        Label {
+            Text(prayer.name + (live ? " · ends " : " · ")) + Text(live ? prayer.end : prayer.start, style: .time)
+        } icon: {
+            Image(systemName: prayerIcon(for: prayer.name))
+        }
     }
 }

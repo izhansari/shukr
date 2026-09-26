@@ -317,6 +317,11 @@ struct PrayerTimesView: View {
                     
                     else if openTasbeehFromWidget{
                         sharedState.horizontalPage = .zikr
+                        // A task row in the Zikr widget: bring that task's circle to the middle.
+                        if let taskID = store.string(forKey: "widgetZikrTask") {
+                            store.removeObject(forKey: "widgetZikrTask")
+                            ZikrFocus.request(taskID)
+                        }
                     }
                 }
                 
@@ -324,6 +329,17 @@ struct PrayerTimesView: View {
             }
         }
         #if DEBUG
+        .task {
+            // What a Zikr-widget row tap does, without the widget: Zikr page, last task centred.
+            if ProcessInfo.processInfo.arguments.contains("-demoZikrFocus") {
+                try? await Task.sleep(for: .seconds(1.5))
+                let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+                if let last = tasks.last {
+                    sharedState.horizontalPage = .zikr
+                    ZikrFocus.request(last.id.uuidString)
+                }
+            }
+        }
         .task {
             // Simulator check of the completion moment: launch with -demoPrayerCompletion. Uses
             // the dev "test prayer times" (minutes around now), opens the salah sheet, then

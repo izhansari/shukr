@@ -340,6 +340,47 @@ like "end" and he was scared to press it. The Tasbih Fatimah reminder under the 
 (title primary 0.5, text 0.36, source sage 0.75); it read bright white in dark mode. The count-in-sets
 subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 
+**2026-09-26 — Zikr widget → task, and time estimates.**
+- **Tap a task in the widget:** each row of the Zikr widget is its own button
+  (`OpenZikrTaskIntent(taskID:)` → app-group `widgetZikrTask` + `widgetTasbeeh`). The app opens
+  the Zikr page and `ZikrFocus.request(id)` scrolls that task's circle to the middle, ready to tap.
+  The request is held in `ZikrFocus.pending` in case the wheel mounts later (cold launch). The rest
+  of the widget still opens the Zikr page. DEBUG `-demoZikrFocus` does the same for the last task.
+- **Estimates:** `TaskModel.secondsLeft(_:)` = counts left × your pace (the mantra's time-weighted
+  `secondsPerCount`, else the task's own sessions), or the minutes left for a timed task. Nil for a
+  count task with no history. `zikrEstimateString` → "~4 min" / "~1h 10m" / "<1 min".
+  - Shown on each task circle ("~2 min" under "0 of 100"), in the page summary ("0 of 3 tasks done
+    · about 12 min to go"), on the widget (rows "5/100 · ~4 min", the header "3 left today ·
+    ~14 min"), and on the Lock Screen card.
+  - Tasks with no history are left out of the total.
+- **Compile-time trap:** long `Text(a + (b.map { … } ?? ""))` string expressions stalled the
+  widget's type checker for 10+ minutes. Keep them in small helper functions (`rowTrailing`,
+  `lockHeadline`, `summaryText`).
+- Sim ✓ (app side via `-demoZikrFocus`, estimates on the page). The widget tap itself is untested
+  in the sim.
+
+**2026-09-26 — Lock Screen widgets + Controls.**
+- **Prayers** (`PrayerLockScreenView` in PrayersWidget.swift; same prayer as the home circle):
+  - circular: the time left drains round the ring live (`ProgressView(timerInterval:)`), with the
+    symbol and name inside; before a prayer starts, symbol, name and "5:32";
+  - rectangular: name, "ends 6:48 PM" / "at 5:32 AM", and a live bar or "in 2 hr 30 min";
+  - inline (above the clock): "Asr · ends 6:48 PM".
+- **Zikr** (MoreWidgets.swift): circular = the overall ring (`accessoryCircularCapacity`) with
+  beads or ✓ inside; rectangular = "Zikr · N left", the next task "Subhanallah · 0/10 min", and a
+  bar.
+- **Name of the Day:** rectangular = the Arabic beside the name and meaning; inline =
+  "As-Samad · The Self-Sufficient".
+- **Controls (iOS 18):** `QiblaControl` / `TasbeehControl`, buttons for Control Center, the Lock
+  Screen's bottom corners or the Action button. They run `OpenCompassIntent` / `OpenTasbeehIntent`
+  (open the app to the qibla map / the Zikr page).
+- Sim ✓: all three widgets show in the Lock Screen widget gallery with real data. The controls are
+  not tried in the sim.
+- **Apple Watch (not built):** Apple doesn't allow third-party watch faces, only complications on
+  any face. That needs a watchOS app target, and the watch can't read the phone's app group.
+  Prayer times are pure maths (adhan-swift) from a location and a method, so the watch would
+  compute them itself; marking prayers / zikr would need WatchConnectivity. Plan it with the
+  owner first.
+
 **Earlier builds (details in the sections below):**
 1. Mantra page (`MantraEditorView`), phone ✓:
    - pause-card look, read-only until ✎, nav bar never changes height;

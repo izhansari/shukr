@@ -455,6 +455,24 @@ struct OpenCompassIntent: AppIntent {
     }
 }
 
+/// Widget → one zikr task: the Zikr page with that task's circle in the middle, ready to tap.
+struct OpenZikrTaskIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Zikr Task"
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Task") var taskID: String
+
+    init() {}
+    init(taskID: String) { self.taskID = taskID }
+
+    func perform() async throws -> some IntentResult {
+        let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        store?.set(taskID, forKey: "widgetZikrTask")
+        store?.set(true, forKey: "widgetTasbeeh")
+        return .result()
+    }
+}
+
 /// Widget → the Daily Ayah page (one-shot flag read on activation, like the compass one).
 struct OpenDailyAyahIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Daily Ayah"

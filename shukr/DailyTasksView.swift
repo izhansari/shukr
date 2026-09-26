@@ -118,6 +118,18 @@ struct ZikrPageView: View {
     }
 }
 
+/// A task to bring to the middle of the Zikr wheel (from a Zikr widget row). Held until the wheel
+/// is there to take it (a cold launch mounts it after the request).
+enum ZikrFocus {
+    static let notification = Notification.Name("zikrFocusTask")
+    private(set) static var pending: String?
+    static func request(_ taskID: String) {
+        pending = taskID
+        NotificationCenter.default.post(name: notification, object: nil)
+    }
+    static func take() -> String? { defer { pending = nil }; return pending }
+}
+
 struct ZikrCircleWheel: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.modelContext) private var context
@@ -196,15 +208,37 @@ struct ZikrCircleWheel: View {
             if page != .zikr && arranging { stopArranging() }
         }
         .onDisappear { live?.holdForArranging = false }
+        .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
+        .onAppear { focusPending() }
+    }
+
+    /// "1 of 3 tasks done · about 14 min to go" / "all 3 tasks done today".
+    private func summaryText(done: Int, secondsLeft: TimeInterval) -> String {
+        if done == tasks.count { return "all \(tasks.count) tasks done today" }
+        let base = "\(done) of \(tasks.count) tasks done"
+        guard secondsLeft > 0 else { return base }
+        let estimate = zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "")
+        return base + " · about " + estimate + " to go"
+    }
+
+    /// Scroll a widget-requested task to the middle (after the page has come in).
+    private func focusPending() {
+        guard let id = ZikrFocus.pending, tasks.contains(where: { $0.id.uuidString == id }) else { return }
+        _ = ZikrFocus.take()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = id }
+        }
     }
 
     /// "1 of 3 tasks done" under the wheel (the old strip's "1 of 3 Completed"); all done → sage.
     @ViewBuilder private var tasksSummary: some View {
         if !tasks.isEmpty {
             let done = tasks.filter { isDone($0) }.count
+            // Everything left at your pace (tasks with no history yet are left out).
+            let left = tasks.filter { !isDone($0) }.compactMap { $0.secondsLeft(progress($0)) }.reduce(0, +)
             HStack(spacing: 5) {
                 if done == tasks.count { Image(systemName: "checkmark") }
-                Text(done == tasks.count ? "all \(tasks.count) tasks done today" : "\(done) of \(tasks.count) tasks done")
+                Text(summaryText(done: done, secondsLeft: left))
                     .contentTransition(.numericText())
             }
             .font(.footnote)
@@ -471,9 +505,15 @@ struct ZikrCircleWheel: View {
                                             : p.seconds / Double(max(task.goal * 60, 1))
             ZikrCircleFace(title: task.displayName, icon: nil,
                            subtitle: done ? "done today" : progressText(task, p),
-                           ring: .progress(min(fraction, 1)), done: done)
+                           ring: .progress(min(fraction, 1)), done: done,
+                           note: done ? nil : estimateNote(task, p))
                 .onLongPressGesture(minimumDuration: 0.45) { startArranging() }
         }
+    }
+
+    private func estimateNote(_ task: TaskModel, _ p: TaskProgress) -> String? {
+        guard let s = task.secondsLeft(p), s > 0 else { return nil }
+        return zikrEstimateString(s)
     }
 
     private func progressText(_ task: TaskModel, _ p: TaskProgress) -> String {
@@ -670,6 +710,8 @@ struct ZikrCircleFace: View {
     let subtitle: String
     let ring: Ring
     var done = false
+    /// A third, quieter line: roughly how long what's left takes ("~4 min").
+    var note: String? = nil
 
     var body: some View {
         ZStack {
@@ -708,6 +750,12 @@ struct ZikrCircleFace: View {
                 .font(.subheadline)
                 .fontWeight(.thin)
                 .foregroundStyle(done ? Color.sage : .secondary)
+                if let note {
+                    Text(note)
+                        .font(.caption)
+                        .fontWeight(.light)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .fontDesign(.rounded)
         }
