@@ -31,7 +31,16 @@ keywords, "What's New" and screenshot captions.
 - Notifications at each prayer with "I already prayed" / "nudge me in 5 / 10 min" actions,
   per-prayer on / off / nudge settings, and an optional daily Fajr alarm.
 - Home-screen widget: the current prayer's ring and time, mark it prayed right from the
-  widget, jump to the qibla or tasbeeh.
+  widget (the check fills once the current prayer is prayed and the circle moves on to the next),
+  and corner buttons for today's times, the qibla and tasbeeh.
+
+**More widgets**
+- Zikr: today's zikr tasks like the Reminders widget — an overall progress ring, how many are
+  left, and each task with a circle that fills as you go.
+- Name of the Day: one of the 99 Names each day, in Arabic inside the app's circle, with its
+  meaning — in the mint / forest look of the share card.
+- Daily Ayah: today's verse on your home screen, once you've revealed it in the app (it never
+  spoils the reveal).
 
 **Mosque finder**
 - One tap on the map finds the mosques around you (Apple Maps search for mosque / masjid /
@@ -39,11 +48,20 @@ keywords, "What's New" and screenshot captions.
 - Tap a mosque: how far it is by car, a street-level Look Around view of the entrance,
   Directions in Apple Maps or Google Maps, Call, its website in-app, and Apple Maps' place card (photos where Apple has them).
 - Pan anywhere and "Search this area".
+- A list of every mosque found, nearest first with the distance; tap one to fly straight to it.
 
 **Qibla & map**
 - Qibla direction on the main circle; a full map with the great-circle line to the Kaaba from
   where you stand, a compass ring on your dot that tells you which way to turn, and a glow
   when you're facing Mecca.
+- Qibla-up map: it turns so the line to the Kaaba points straight up your screen — hold the
+  phone out, turn until the streets match, and the top of your phone is the qibla. Worked out
+  from where you are, so it's right even when the phone's compass isn't. Rotate freely; one tap
+  puts the qibla back up.
+- A short illustrated guide the first time you open each map layer (qibla, prayer spots,
+  mosques), and a ? to bring it back.
+- Explore: pick prayer spots or mosques and their controls sit right on the map — date range and
+  one-tap prayer filters, drive / walk times, a list — with ✕ back to the qibla.
 - Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
   cluster for the prayers there; filter by prayer and date range.
 
@@ -61,7 +79,8 @@ keywords, "What's New" and screenshot captions.
   where you left off or start over; arrange them home-screen style.
 - Mantras: your own library of dhikr with the full Arabic / transliteration and notes (who
   taught you, why), shown right on the pause screen; lifetime count, time and pace per mantra.
-- Count in sets: a per-mantra "+N" button for when you count on your fingers and tap once.
+- Count in sets: switch on a per-mantra "+N" and every tap counts N — for when you recite a set
+  on your fingers and tap once.
 - Post-salah tasbih (Tasbih Fatimah): 33 · 33 · 34 in one flowing session, the phrase
   changing as you go, with the hadith on why it matters.
 - Zikr history: all-time total, a 14-day chart you can scrub, every session with its pace;
@@ -76,6 +95,8 @@ keywords, "What's New" and screenshot captions.
 **Privacy & feel**
 - Nothing leaves the device: no accounts, no tracking; location is used only on-device.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
+- A short welcome — "shukr" writes itself inside a ring that settles onto the prayer circle, with
+  a soft heartbeat haptic — when the app starts fresh.
 
 ## Handoff — 2026-09-25 evening (read this first)
 
