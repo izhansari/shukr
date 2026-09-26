@@ -429,7 +429,9 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 - **Complications (`PrayerComplication`):** circular (the ring drains live), corner (symbol + a
   curved gauge with the time), rectangular (name, ends / at, bar or countdown), inline. One
   timeline entry per prayer start / end.
-- **Signing — blocks device builds and uploads until done once:** the command-line tools can't
+- **Signing: done 2026-09-26.** After the owner signed in to Xcode again, a command-line
+  `-allowProvisioningUpdates` device build registered both watch App IDs; the "No Accounts" error
+  was the expired Xcode token. Full builds (with the watch) work now. Old note: the command-line tools can't
   register the new App IDs ("No Accounts"). Open `shukr.xcodeproj` in Xcode and build / run once
   (or visit Signing & Capabilities for shukrWatch and shukrWatchWidgets) so Xcode registers them
   with the app group. After that, command-line device builds use the downloaded profiles.
@@ -521,8 +523,12 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   complete).
 - Reminders: keep rotating all four, or pick one or two.
 
-**Release / TestFlight:** **2.0 (7) uploaded 2026-09-26** (after 2.0 (6) on 2026-09-25). Next
-upload: bump `CURRENT_PROJECT_VERSION` (8 occurrences) to 8. Upload with
+**Release / TestFlight:** **2.0 (8) uploaded 2026-09-26**, without the watch app, which wasn't
+signed yet at archive time. Tester notes: `TestFlightNotes-2.0.8.md`. Next upload: bump
+`CURRENT_PROJECT_VERSION` (now 12 occurrences, the watch targets included) to 9. Xcode's account
+token expires often ("missing Xcode-Token" → "Failed to Use Accounts"); the long-term fix is an App
+Store Connect API key (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`),
+which the owner is setting up. Upload with
 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive … -exportOptionsPlist
 build/ExportOptions.plist`. Homebrew's rsync breaks the export, so keep PATH as shown. A
 "missing Xcode-Token" line in the log can be harmless; check for "Upload succeeded". The dev
