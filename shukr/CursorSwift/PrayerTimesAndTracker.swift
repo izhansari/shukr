@@ -786,6 +786,13 @@ struct PrayerTimesView: View {
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
+                                // Which build this is (BuildInfo): when it was built + the commit.
+                                Text(BuildInfo.line)
+                                    .font(.caption2)
+                                    .fontDesign(.rounded)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.horizontal, 20)
+                                    .padding(.top, 10)
                             }
                             .padding(.bottom, 8)
                             .frame(width: 250)
@@ -1582,8 +1589,9 @@ struct PrayerButton: View {
             .sheet(isPresented: $showTimePicker) {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
-                                    onSave: { date in
+                                    onSave: { date, spot in
                                         prayerObject.setPrayerScore(atDate: date)
+                                        if let spot { viewModel.movePrayer(prayerObject, to: spot) }
                                         viewModel.calculatePrayerStreak()
                                         viewModel.calculateDayScore(for: prayerObject.startTime)
                                         showTimePicker = false

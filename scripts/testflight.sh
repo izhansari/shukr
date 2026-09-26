@@ -23,8 +23,11 @@ echo "→ $VERSION ($NEXT)"
 
 ARCHIVE=build/shukr-$VERSION-$NEXT.xcarchive
 rm -rf "$ARCHIVE" "build/export-$NEXT"
+# Which commit this is, shown under the hamburger menu / Settings (BuildInfo.swift). "+" = the
+# build bump (and anything else) wasn't committed yet.
+STAMP="$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . ':!*.xcuserstate' ':!*xcschememanagement.plist' || echo +)"
 xcodebuild -project shukr.xcodeproj -scheme shukr -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath "$ARCHIVE" "${AUTH[@]}" archive | tail -3
+  -archivePath "$ARCHIVE" "${AUTH[@]}" SHUKR_BUILD_STAMP="$STAMP" archive | tail -3
 
 cat > build/ExportOptions.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

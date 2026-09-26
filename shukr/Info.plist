@@ -4,6 +4,8 @@
 <dict>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>ShukrBuildStamp</key>
+	<string>$(SHUKR_BUILD_STAMP)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>KFGQPCUthmanTahaNaskh.ttf</string>

@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import MapKit
 
 struct PrayerTimeEditSheet: View {
     let prayer: PrayerModel
@@ -21,10 +22,22 @@ struct PrayerTimeEditSheet: View {
     /// whichever is first. After the window it's Qaza, e.g. Isha at 12:30 AM.
     let range: ClosedRange<Date>
     var onCancel: () -> Void
-    var onSave: (Date) -> Void
+    /// The time, and the new spot if the pin was moved (nil = where it was).
+    var onSave: (Date, CLLocationCoordinate2D?) -> Void
+
+    /// Where it was prayed (2026-09-26): a row under the score opens `PrayerLocationPicker`; the
+    /// picked spot waits here and is saved with Save, like the time.
+    @State private var draftSpot: CLLocationCoordinate2D?
+    @State private var pickingSpot = false
+    @State private var spotAddress: String?
+    private var savedSpot: CLLocationCoordinate2D? {
+        guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+    private var shownSpot: CLLocationCoordinate2D? { draftSpot ?? savedSpot }
 
     init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>,
-         onCancel: @escaping () -> Void, onSave: @escaping (Date) -> Void) {
+         onCancel: @escaping () -> Void, onSave: @escaping (Date, CLLocationCoordinate2D?) -> Void) {
         self.prayer = prayer
         self._time = time
         // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't
@@ -44,7 +57,7 @@ struct PrayerTimeEditSheet: View {
         guard let openedWith else { return false }
         return abs(draft.timeIntervalSince(openedWith)) >= 30
     }
-    private var canSave: Bool { isValid && changed }
+    private var canSave: Bool { isValid && (changed || draftSpot != nil) }
 
     /// Tap / drag on the window bar: that point of the window, to the minute, kept within what
     /// can be saved (not before the start, not after now).
@@ -78,6 +91,46 @@ struct PrayerTimeEditSheet: View {
     /// A Jumu'ah isn't graded by the clock (full marks, "Jumu'ah"), so the sheet agrees with Save.
     private var score: Double {
         prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
+    }
+
+    /// Where it was prayed: the masjid, else the address; tap to move the pin.
+    private var spotRow: some View {
+        // Before a move the stored masjid is right; after one, only your own masajid are known yet.
+        let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
+                                      : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
+        let title = shownSpot == nil ? "Add where you prayed"
+                                     : (masjid ?? spotAddress ?? "Pinned on the map")
+        return Button { pickingSpot = true } label: {
+            HStack(spacing: 10) {
+                Image(systemName: masjid != nil ? "building.columns" : "mappin.and.ellipse")
+                    .foregroundStyle(masjid != nil ? Color.sage : .secondary)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                    if draftSpot != nil {
+                        Text("moved · Save to keep it")
+                            .font(.caption)
+                            .foregroundStyle(Color.green)
+                    } else if masjid != nil, let spotAddress {
+                        Text(spotAddress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+                Text(shownSpot == nil ? "Add" : "Change")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill)))
+            .contentShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     var body: some View {
@@ -133,6 +186,8 @@ struct PrayerTimeEditSheet: View {
                     .transition(.opacity)
             }
 
+            spotRow
+
             Spacer(minLength: 0)
 
             HStack(spacing: 12) {
@@ -146,7 +201,7 @@ struct PrayerTimeEditSheet: View {
                         .contentShape(Capsule())
                 }
                 Button {
-                    onSave(draft)
+                    onSave(draft, draftSpot)
                 } label: {
                     // Gray until there's something to save; then a green edge and green text
                     // (owner — matches the other Saves; the solid green fill shouted).
@@ -168,7 +223,18 @@ struct PrayerTimeEditSheet: View {
         .padding(.bottom, 12)
         .fontDesign(.rounded)
         .onAppear { if openedWith == nil { openedWith = draft } }
-        .presentationDetents([.height(560)])
+        .sheet(isPresented: $pickingSpot) {
+            PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
+                                 onCancel: { pickingSpot = false },
+                                 onPick: { spot in draftSpot = spot; pickingSpot = false })
+                .presentationDetents([.large])
+                .interactiveDismissDisabled()
+        }
+        .task(id: shownSpot.map { "\($0.latitude),\($0.longitude)" }) {
+            spotAddress = nil
+            if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
+        }
+        .presentationDetents([.height(620)])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

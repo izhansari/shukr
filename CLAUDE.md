@@ -404,6 +404,31 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 late — move a prayer's pin; build stamp.**
+- **Where you prayed can be changed** (owner: "right now there is no way… ideally drag the map").
+  `PrayerLocationPicker` (CursorSwift/PrayerLocationPicker.swift): a SwiftUI `Map` with a green pin
+  fixed in the middle — drag the map under it; the pin lifts while moving and drops when it stops,
+  the card shows the address (or your masajid by name; your ⭐ masajid are on the map), Set location
+  lights up once it moved. The old spot is a small gray dot.
+  - **Time editor:** a row under the score ("43 Park Row, New York · Change", or the masjid, or
+    "Add where you prayed") opens it. The picked spot waits in the sheet ("moved · Save to keep
+    it") and saves with Save (`onSave(date, spot)`).
+  - **Map prayer-spot sheet:** one prayer → a green "Change location" under the address; a
+    cluster → swipe a prayer right ("Move") or long-press it. After Set, the sheet closes, the
+    pins redraw (`LocationViewModel.prayerMoved` re-publishes `prayers` — the @Query doesn't see a
+    coordinate change) and the map centres on the new spot.
+  - `PrayerViewModel.movePrayer` writes the spot, re-asks the masjid question (your masajid at
+    once, else `MasjidDetector.check` after), rescores (a Friday Dhuhr can become / stop being
+    Jumu'ah), recomputes the day, streak and widget.
+  - Sim ✓: Asr moved in the time editor (coords + `mosqueName` "" after the re-check), a Maghrib
+    in a cluster moved from the map (sheet closed, pin at the new spot).
+- **Build stamp** (owner: "know which code push this is"): `BuildInfo.line` — "2.0 (8) · Sep 26
+  at 5:33 PM · ba98814" — small at the bottom of the hamburger menu and under Settings' last
+  section. The time is the executable's file date (any build); the hash comes from the
+  `ShukrBuildStamp` Info.plist key = the `SHUKR_BUILD_STAMP` build setting. **Pass it on every
+  device build:** `SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)"` (add "+" if the tree is
+  dirty); scripts/testflight.sh does it. Commit before building so the hash is the real one.
+
 **2026-09-26 late — "Perfect", Jumu'ah wording, widget "next", time wheel.**
 - **Early → Perfect** (owner: "i dont love early"). `PrayerScoring.Grade.perfect` (rawValue
   "Perfect") and Insights' grade enum. Old rows still have "Early" stored in `englishScore`, so UI
@@ -590,7 +615,7 @@ Steps, when the owner says "push a new build":
 `scripts/asc.py` is a stdlib + openssl App Store Connect client. `groups` lists the beta groups, and
 `scripts/asc.py GET /v1/...` makes any raw call. App id `6743040873`, team `7R387XZ2Y7`.
 
-For device builds with the key, add these to the xcodebuild line:
+For device builds with the key (plus `SHUKR_BUILD_STAMP="$(git rev-parse --short HEAD)"` for the build stamp), add these to the xcodebuild line:
 `-allowProvisioningUpdates -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8
 -authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID 60a885ac-0315-4323-974d-57783a7392a2`.
 Phones:

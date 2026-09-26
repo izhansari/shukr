@@ -324,7 +324,7 @@ struct SettingsView: View {
 //                        }
 //                    }
                     
-                    Section(header: Text("Sneak Peek...")) {
+                    Section {
                         ForEach(upcomingFeatures) { feature in
                             HStack {
                                 Image(systemName: feature.image)
@@ -342,6 +342,14 @@ struct SettingsView: View {
                             }
                         }
                         
+                    } header: {
+                        Text("Sneak Peek...")
+                    } footer: {
+                        // Which build this is (BuildInfo), under the last section users see.
+                        Text(BuildInfo.line)
+                            .font(.caption2)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 16)
                     }
 
                     

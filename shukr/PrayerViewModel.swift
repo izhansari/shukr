@@ -493,6 +493,29 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 // MARK: - PrayerObject Utils
 
 
+    /// Moves a prayer's pin (PrayerLocationPicker, 2026-09-26) and asks again whether it was at a
+    /// masjid: one of your masajid is known at once, anywhere else the search runs after. The score
+    /// follows — a Friday Dhuhr moved onto a masjid becomes Jumu'ah, moved off one it's scored by
+    /// the clock again.
+    @MainActor func movePrayer(_ prayer: PrayerModel, to spot: CLLocationCoordinate2D) {
+        prayer.latPrayedAt = spot.latitude
+        prayer.longPrayedAt = spot.longitude
+        prayer.mosqueName = MasjidDetector.favoriteMasjid(near: spot)   // nil = search below
+        if prayer.isCompleted { prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime) }
+        calculateDayScore(for: prayer.startTime)
+        calculatePrayerStreak()
+        pushCompletionsToWidget()
+        objectWillChange.send()
+        guard prayer.mosqueName == nil else { return }
+        Task { @MainActor in
+            let days = await MasjidDetector.check([prayer], in: context)
+            guard !days.isEmpty else { return }
+            for day in days { calculateDayScore(for: day) }
+            pushCompletionsToWidget()
+            objectWillChange.send()
+        }
+    }
+
     func togglePrayerCompletion(for prayer: PrayerModel) {
         if prayer.startTime <= Date() {
             prayer.isCompleted.toggle()

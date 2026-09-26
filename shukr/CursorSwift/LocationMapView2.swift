@@ -247,6 +247,14 @@ final class LocationViewModel: ObservableObject {
 
     weak var mapView: MKMapView?
 
+    /// A prayer's pin was moved (PrayerLocationPicker): close its sheet, redraw the pins (the rows
+    /// are the same objects, so the @Query doesn't notice) and look at the new spot.
+    func prayerMoved(to spot: CLLocationCoordinate2D) {
+        selection = nil
+        prayers = prayers
+        mapView?.setCenter(spot, animated: true)
+    }
+
     /// Turn the map back to north-up (browsing pins / mosques).
     func resetMapHeading() {
         guard let mapView, let camera = mapView.camera.copy() as? MKMapCamera else { return }
@@ -1760,7 +1768,10 @@ struct PrayerSpotSelection: Identifiable {
 struct PrayerSpotSheet: View {
     let selection: PrayerSpotSelection
     let viewModel: LocationViewModel
+    @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @State private var address: String? = nil
+    /// The prayer whose pin is being moved (PrayerLocationPicker).
+    @State private var moving: PrayerModel?
     private var prayers: [PrayerModel] { selection.prayers }
 
     /// Street + city for the pin, reverse-geocoded once per spot (cached on the view model).
@@ -1812,6 +1823,15 @@ struct PrayerSpotSheet: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                        if prayers.count == 1, let only = prayers.first {
+                            Button { moving = only } label: {
+                                Label("Change location", systemImage: "hand.draw")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Color.green)
+                            }
+                            .buttonStyle(.borderless)
+                            .padding(.top, 2)
+                        }
                         if prayers.count > 1 {
                             Text(countsLine)
                                 .font(.subheadline)
@@ -1825,6 +1845,11 @@ struct PrayerSpotSheet: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        if prayers.count > 1 {
+                            Text("Swipe a prayer right to move its pin.")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .padding(.vertical, 4)
                     .listRowBackground(Color.clear)
@@ -1835,6 +1860,15 @@ struct PrayerSpotSheet: View {
                     Section(zikrDayLabel(day.date)) {
                         ForEach(day.prayers) { prayer in
                             PrayerSpotRow(prayer: prayer)
+                                .swipeActions(edge: .leading) {
+                                    Button { moving = prayer } label: {
+                                        Label("Move", systemImage: "mappin.and.ellipse")
+                                    }
+                                    .tint(Color.sage)
+                                }
+                                .contextMenu {
+                                    Button("Change location", systemImage: "mappin.and.ellipse") { moving = prayer }
+                                }
                         }
                     }
                 }
@@ -1845,6 +1879,24 @@ struct PrayerSpotSheet: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .task(id: selection.id) { await loadAddress() }
+        .sheet(item: $moving) { prayer in
+            PrayerLocationPicker(
+                prayerName: prayer.displayName,
+                original: prayer.latPrayedAt.flatMap { lat in
+                    prayer.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) }
+                },
+                onCancel: { moving = nil },
+                onPick: { spot in
+                    moving = nil
+                    // Once the picker is away: move it, close this sheet, redraw the pins.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        prayerViewModel.movePrayer(prayer, to: spot)
+                        viewModel.prayerMoved(to: spot)
+                    }
+                })
+            .presentationDetents([.large])
+            .interactiveDismissDisabled()
+        }
     }
 }
 
