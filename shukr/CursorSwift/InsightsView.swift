@@ -236,7 +236,7 @@ struct InsightsView: View {
     // MARK: Hero — the average day score, in a circle like the main page's
 
     /// Tap the circle: the ring becomes the makeup of the range's prayers — the filled part is
-    /// the share prayed, split into Early / On time / Late / Qaza; the empty track is Missed.
+    /// the share prayed, split into Perfect / On time / Late / Qaza; the empty track is Missed.
     private func hero(_ stats: InsightsStats) -> some View {
         let avg = stats.average ?? 0
         let total = max(stats.grades.map(\.count).reduce(0, +), 1)
@@ -313,7 +313,7 @@ struct InsightsView: View {
         }
     }
 
-    /// Consecutive arcs for Early, On time, Late, Qaza (Missed is the bare track), with a small
+    /// Consecutive arcs for Perfect, On time, Late, Qaza (Missed is the bare track), with a small
     /// gap between them.
     private func segments(_ stats: InsightsStats, total: Int) -> [(from: Double, to: Double, color: Color)] {
         var start = 0.0
@@ -381,10 +381,10 @@ enum InsightsRange: String, CaseIterable, Identifiable {
 }
 
 enum InsightsGrade: String, CaseIterable {
-    case early = "Early", onTime = "On time", late = "Late", qaza = "Qaza", missed = "Missed"
+    case perfect = "Perfect", onTime = "On time", late = "Late", qaza = "Qaza", missed = "Missed"
     var color: Color {
         switch self {
-        case .early: .green
+        case .perfect: .green
         case .onTime: .yellow
         case .late: .red
         case .qaza: .gray
@@ -445,7 +445,7 @@ struct InsightsStats {
         for p in inRange {
             if p.isCompleted, let s = p.numberScore {
                 switch PrayerScoring.grade(for: s) {
-                case .early: counts[.early, default: 0] += 1
+                case .perfect: counts[.perfect, default: 0] += 1
                 case .onTime: counts[.onTime, default: 0] += 1
                 case .late: counts[.late, default: 0] += 1
                 case .qaza: counts[.qaza, default: 0] += 1
@@ -603,7 +603,7 @@ private struct PrayerTrendsGrid: View {
             if let prayer {
                 if prayer.isCompleted, let score = prayer.numberScore {
                     let prayedAt = prayer.timeAtComplete.map { " · prayed \(shortTimePM($0))" } ?? ""
-                    Text("\(PrayerScoring.summary(for: score))\(prayedAt)")
+                    Text("\(prayer.scoreSummary ?? PrayerScoring.summary(for: score))\(prayedAt)")
                         .foregroundStyle(PrayerScoring.color(for: score))
                 } else if prayer.endTime < Date() {
                     Text("Missed").foregroundStyle(.secondary)

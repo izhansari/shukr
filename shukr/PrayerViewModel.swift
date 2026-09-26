@@ -499,7 +499,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             if prayer.isCompleted {
                 prayer.setPrayerLocation(with: ENV_LocationManager.manager.location)
                 // At one of your own masajid: known at once, so a Jumu'ah is scored (and shown)
-                // Early right away. Anywhere else the MasjidDetector search below decides.
+                // as Jumu'ah right away. Anywhere else the MasjidDetector search below decides.
                 if let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
                     prayer.mosqueName = MasjidDetector.favoriteMasjid(near: CLLocationCoordinate2D(latitude: lat, longitude: lon))
                 }
@@ -510,7 +510,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 let window = prayer.endTime.timeIntervalSince(prayer.startTime)
                 let progress = window > 0 ? Date().timeIntervalSince(prayer.startTime) / window : 1
                 NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
-                    name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1)))
+                    name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
+                    summary: prayer.scoreSummary))
             } else {
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
@@ -519,7 +520,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             calculateDayScore(for: prayer.startTime)
 //            updatePrayerStreak()
             pushCompletionsToWidget()
-            // Prayed at a masjid? (Jumu'ah gets rescored Early.)
+            // Prayed at a masjid? (Jumu'ah gets full marks.)
             if prayer.isCompleted {
                 Task { @MainActor in
                     let days = await MasjidDetector.check([prayer], in: context)
@@ -529,7 +530,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                         objectWillChange.send()
                         // It turned out to be Jumu'ah: replay the moment with the right name and score.
                         NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
-                            name: prayer.displayName, score: prayer.numberScore ?? 1, progress: 0))
+                            name: prayer.displayName, score: prayer.numberScore ?? 1, progress: 0,
+                            summary: prayer.scoreSummary))
                     }
                 }
             }

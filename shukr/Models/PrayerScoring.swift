@@ -8,7 +8,8 @@
 //  (Models/ is in both targets).
 //
 //  A prayer's `numberScore` is its points out of 100, stored as 0...1:
-//    Early    marked within 30 min of the adhan            100
+//    Perfect  marked within 30 min of the adhan            100
+//             (called Early until 2026-09-26; owner: "i dont love early")
 //    On time  rest of the window, first half                99 → 80
 //    Late     rest of the window, second half               79 → 60
 //    Qaza     marked after the window closed                40
@@ -33,7 +34,7 @@ enum PrayerScoring {
     static let qaza = 0.4
 
     enum Grade: String {
-        case early = "Early", onTime = "On time", late = "Late", qaza = "Qaza"
+        case perfect = "Perfect", onTime = "On time", late = "Late", qaza = "Qaza"
     }
 
     /// Points (0...1) for a prayer whose window is `start...end`, marked at `markedAt`.
@@ -48,7 +49,7 @@ enum PrayerScoring {
     }
 
     static func grade(for score: Double) -> Grade {
-        if score >= 0.9999 { return .early }
+        if score >= 0.9999 { return .perfect }
         if score >= 0.8 { return .onTime }
         if score >= inWindowFloor - 0.0001 { return .late }
         return .qaza
@@ -62,7 +63,7 @@ enum PrayerScoring {
     static func color(for score: Double?) -> Color {
         guard let score else { return .gray }
         switch grade(for: score) {
-        case .early: return .green
+        case .perfect: return .green
         case .onTime: return .yellow
         case .late: return .red
         case .qaza: return .gray

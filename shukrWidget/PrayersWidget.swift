@@ -358,7 +358,15 @@ struct PrayersWidgetView: View {
                         ZStack {
                             Circle()
                                 .stroke(Color.gray.opacity(0.2), lineWidth: 6)
-                            
+
+                            // Not started yet: the app's "next prayer" look (mainCircle.swift) —
+                            // a thin dashed ring inside the track, "NEXT" over a dimmed name.
+                            if !relevantPrayer.current {
+                                Circle()
+                                    .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 0.75, dash: [2, 3.5]))
+                                    .frame(width: 80, height: 80)
+                            }
+
                             Circle()
                                 .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
                                 .stroke(
@@ -370,13 +378,21 @@ struct PrayersWidgetView: View {
                             // Same type as the app's main circle and Insights ring (light, rounded,
                             // thin secondary caption), scaled from the 200 pt ring to this 90 pt one.
                             VStack(spacing: 2) {
+                                if !relevantPrayer.current {
+                                    Text("next")
+                                        .font(.system(size: 7, weight: .regular, design: .rounded))
+                                        .tracking(1.2)
+                                        .textCase(.uppercase)
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.bottom, -1)
+                                }
                                 HStack(alignment: .center, spacing: 4){
                                     Image(systemName: prayerIcon(for: relevantPrayer.name))
                                         .font(.system(size: 11, weight: .light))
                                     Text(relevantPrayer.name)
                                         .font(.system(size: 15, weight: .light, design: .rounded))
                                 }
-                                .foregroundColor(.primary)
+                                .foregroundStyle(relevantPrayer.current ? Color.primary : Color.primary.opacity(0.55))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                                 Group {

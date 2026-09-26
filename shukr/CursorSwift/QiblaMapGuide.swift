@@ -40,7 +40,7 @@ struct MapGuide: View {
 
     private let prayerPages = [
         Page(title: "Every prayer, where you prayed it",
-             body: "Each pin is a prayer you marked, dropped where you were. The colour is its score — green early, yellow on time, red late, gray qaza."),
+             body: "Each pin is a prayer you marked, dropped where you were. The colour is its score — green perfect, yellow on time, red late, gray qaza."),
         Page(title: "Tap a pin to look back",
              body: "See the prayers at that spot: when you prayed, how far into the time you were, and the score. A number means a few pins close together — tap it too."),
         Page(title: "Filter what you see",

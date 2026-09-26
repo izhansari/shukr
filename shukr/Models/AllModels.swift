@@ -114,11 +114,24 @@ class PrayerModel {
 
     var atMasjid: Bool { !(mosqueName ?? "").isEmpty }
     /// Friday's Dhuhr prayed at a masjid — and only that (owner: a Friday Dhuhr anywhere else is
-    /// a normal Dhuhr). Scores Early whatever the clock says: Jumu'ah follows the masjid's time.
+    /// a normal Dhuhr). Scores full marks whatever the clock says: Jumu'ah follows the masjid's
+    /// time, so it's never graded by the clock — it just reads "Jumu'ah" (owner, 2026-09-26).
     var isJumuah: Bool {
         name == "Dhuhr" && atMasjid && Calendar.current.component(.weekday, from: startTime) == 6
     }
     var displayName: String { isJumuah ? "Jumu'ah" : name }
+    /// The grade in words: "Perfect", "On time"… — for a Jumu'ah just "Jumu'ah". Read this rather
+    /// than the stored `englishScore`, which older rows wrote as "Early".
+    var gradeWord: String? {
+        guard let s = numberScore else { return nil }
+        return isJumuah ? "Jumu'ah" : PrayerScoring.grade(for: s).rawValue
+    }
+    /// "On time · 88"; a Jumu'ah says "Jumu'ah" (at its masjid) instead of a grade.
+    var scoreSummary: String? {
+        guard let s = numberScore else { return nil }
+        guard isJumuah else { return PrayerScoring.summary(for: s) }
+        return mosqueName.map { "Jumu'ah at \($0)" } ?? "Jumu'ah"
+    }
 
     var prayerStartedAt: Date? // When the prayer was started
     var prayerCompletedAt: Date? // When the prayer was marked complete
@@ -176,7 +189,7 @@ class PrayerModel {
         timeAtComplete = atDate
         let score = isJumuah ? 1 : PrayerScoring.score(start: startTime, end: endTime, markedAt: atDate)
         numberScore = score
-        englishScore = PrayerScoring.grade(for: score).rawValue
+        englishScore = gradeWord
     }
     
     func setPrayerLocation(with location: CLLocation?) {

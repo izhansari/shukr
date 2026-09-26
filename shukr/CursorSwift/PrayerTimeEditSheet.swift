@@ -3,7 +3,7 @@
 //  shukr
 //
 //  Long-press a completed prayer → "when did you pray?". The window bar shows where the picked
-//  time lands (green Early for the first 30 min, yellow On time, red Late; past the end is
+//  time lands (green Perfect for the first 30 min, yellow On time, red Late; past the end is
 //  Qaza), the score updates live, and Cancel / Save sit at the bottom as capsules (2026-09-25:
 //  the old sheet was a bare Form-style stack with a blue Save next to the score). Save is gray
 //  until a different valid time is picked, then a green edge and green text.
@@ -27,7 +27,11 @@ struct PrayerTimeEditSheet: View {
          onCancel: @escaping () -> Void, onSave: @escaping (Date) -> Void) {
         self.prayer = prayer
         self._time = time
-        self._draft = State(initialValue: time.wrappedValue)
+        // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't
+        // enough: it's written in the same long-press that presents the sheet, and the sheet came
+        // up with the value from before — the device's time. Kept within what can be saved.
+        let saved = prayer.timeAtComplete ?? time.wrappedValue
+        self._draft = State(initialValue: min(max(saved, range.lowerBound), range.upperBound))
         self.range = range
         self.onCancel = onCancel
         self.onSave = onSave
@@ -71,8 +75,9 @@ struct PrayerTimeEditSheet: View {
         return "That hasn't happened yet — it's \(shortTimePM(range.upperBound)) now."
     }
 
+    /// A Jumu'ah isn't graded by the clock (full marks, "Jumu'ah"), so the sheet agrees with Save.
     private var score: Double {
-        PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
+        prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
     }
 
     var body: some View {
@@ -82,7 +87,7 @@ struct PrayerTimeEditSheet: View {
             VStack(spacing: 4) {
                 HStack(alignment: .center) {
                     Image(systemName: prayerIcon(for: prayer.name))
-                    Text(prayer.name).fontWeight(.bold)
+                    Text(prayer.displayName).fontWeight(.bold)
                 }
                 .font(.title2)
                 Text("when did you pray?")
@@ -103,7 +108,7 @@ struct PrayerTimeEditSheet: View {
                 Text(isValid ? "\(Int((score * 100).rounded()))" : "–")
                     .font(.system(size: 40, weight: .light, design: .rounded))
                     .contentTransition(.numericText(value: score))
-                Text(isValid ? grade.rawValue : "not a valid time")
+                Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
                     .font(.headline)
                     .fontWeight(.medium)
                     .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)
@@ -169,7 +174,7 @@ struct PrayerTimeEditSheet: View {
     }
 }
 
-/// The prayer's window as a bar: Early (first 30 min) green, On time yellow, Late red, with a
+/// The prayer's window as a bar: Perfect (first 30 min) green, On time yellow, Late red, with a
 /// marker where the picked time falls. A time after the window (Qaza) parks the marker at the
 /// end, gray, with "qaza" under it — the bar itself only shows the window.
 private struct PrayerWindowBar: View {

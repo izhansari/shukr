@@ -1425,9 +1425,9 @@ struct PrayerButton: View {
         return prayerObject.startTime...max(prayerObject.startTime, latest)
     }
 
-    /// "On time · 88" (PrayerScoring).
+    /// "On time · 88" (PrayerScoring); a Jumu'ah names its masjid instead.
     private var completedTimeAndScore: String {
-        prayerObject.numberScore.map(PrayerScoring.summary(for:)) ?? "Missed"
+        prayerObject.scoreSummary ?? "Missed"
     }
     
     

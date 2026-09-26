@@ -1901,7 +1901,7 @@ private struct PrayerSpotRow: View {
                         .font(.body.weight(.semibold))
                         .monospacedDigit()
                 }
-                if let words = prayer.englishScore {
+                if let words = prayer.gradeWord {
                     Text(words).font(.caption).foregroundStyle(.secondary)
                 }
             }

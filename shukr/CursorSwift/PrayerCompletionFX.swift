@@ -23,6 +23,8 @@ struct PrayerCompletionEvent {
     let score: Double
     /// How far through its window the prayer was when marked, 0…1 (1 = at or past the end).
     let progress: Double
+    /// The line under the name; nil = "On time · 88" from the score. A Jumu'ah says "Jumu'ah at …".
+    var summary: String? = nil
 }
 
 extension Notification.Name {
@@ -105,7 +107,7 @@ struct CompletionFlourish: View {
                         Text(event.name)
                             .font(.system(size: 32, weight: .light, design: .rounded))
                     }
-                    Text(PrayerScoring.summary(for: event.score))
+                    Text(event.summary ?? PrayerScoring.summary(for: event.score))
                         .font(.subheadline)
                         .fontDesign(.rounded)
                         .fontWeight(.thin)

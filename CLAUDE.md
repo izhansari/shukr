@@ -21,7 +21,7 @@ keywords, "What's New" and screenshot captions.
   calculation method and madhab (Hanafi / Shafi'i) of your choice.
 - The main circle: the current or next prayer with a live ring of how much of its window is
   left, coloured by the score you'd get right now; tap to flip between "ends at" and time left.
-- Prayer tracker: mark each prayer as prayed; it's scored by *when* — Early (first 30 min) ·
+- Prayer tracker: mark each prayer as prayed; it's scored by *when* — Perfect (first 30 min) ·
   On time · Late · Qaza (after the window) · Missed — and each day gets a score.
 - A satisfying completion moment (the ring sweeps closed, a haptic, "✓ Asr · On time · 88"),
   done prayers fold away, all five come back with a "perfect day" flourish.
@@ -404,6 +404,25 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 late — "Perfect", Jumu'ah wording, widget "next", time wheel.**
+- **Early → Perfect** (owner: "i dont love early"). `PrayerScoring.Grade.perfect` (rawValue
+  "Perfect") and Insights' grade enum. Old rows still have "Early" stored in `englishScore`, so UI
+  reads `PrayerModel.gradeWord` (computed from `numberScore`) instead — the map sheet does now.
+  "Perfect day" (all five Perfect) keeps its name.
+- **Jumu'ah never shows a grade** (owner: "it shouldn't say early for jummah, just say Jummah").
+  `PrayerModel.scoreSummary` = "Jumu'ah at <masjid>" (or "Jumu'ah") instead of "Perfect · 100":
+  the completion moment (`PrayerCompletionEvent.summary`), the list row's tap text, Insights'
+  day detail. `gradeWord` = "Jumu'ah" (map sheet, stored `englishScore`). The time editor shows
+  100 · "Jumu'ah" and the title "Jumu'ah" for one, so it agrees with Save. Not seen on screen (no
+  real Friday masjid row in the sim); the logic is small.
+- **Prayers widget "next"**: when the circle shows a prayer that hasn't started (the current one
+  is prayed), it has the app's look — tracked "NEXT", name / icon at 55 %, a thin dashed ring
+  (80 pt inside the 90 pt track). Sim ✓ (Asr marked → "NEXT Maghrib", check filled).
+- **Time editor opens on the saved time.** The sheet opened on the device's time (the parent's
+  `selectedEditTimeDate`, set in the same long-press that presents the sheet, arrived too late).
+  `PrayerTimeEditSheet.init` now seeds `draft` from `prayer.timeAtComplete` itself, clamped to the
+  range. Sim ✓: Dhuhr saved 2:24 PM opened at 2:24 (was 5:24 = now); saved 12:56 → reopened 12:56.
+
 **2026-09-26 — Explore dock, My masajid, fine ring.**
 - **Explore dock:** the map's explore button (`ExploreDock`, LocationMapView2.swift) opens in place:
   the glass circle springs out leftwards into Qibla · Prayers · Mosques (icon + label, the active
@@ -676,7 +695,7 @@ agent builds with xcodebuild. Nothing here has CI.
   of being marked "not at a masjid" for good.
 - **Instant at your own masajid:** `togglePrayerCompletion` records the location first and checks
   `MasjidDetector.favoriteMasjid(near:)` (no network) before scoring, so the completion moment
-  already says "Jumu'ah · Early · 100". Anywhere else the search runs after the mark. If that turns
+  already says "✓ Jumu'ah / Jumu'ah at <masjid>" (no grade word; see 2026-09-26 late). Anywhere else the search runs after the mark. If that turns
   a prayer into Jumu'ah, `.prayerCompleted` is posted again, so the moment replays with the right
   name and score.
 - **Widget / notification marks** (extension, no favourites, no search) are checked on the next
@@ -959,11 +978,11 @@ check it are dormant. `settingsViewNavBool` / its `.navigationDestination` push 
 
 Agreed with the owner 2026-09-24; the one rule, used by the app, the widget checkmark, the
 "I already prayed" notification action and the time editor (`PrayerModel.setPrayerScore`).
-`numberScore` = points / 100: **Early** (≤ 30 min after the adhan) 100 · **On time** (first
+`numberScore` = points / 100: **Perfect** (≤ 30 min after the adhan; called Early until 2026-09-26) 100 · **On time** (first
 half of the rest of the window) 99–80 · **Late** (second half) 79–60 · **Qaza** (after the
 window) 40 · **Missed** nil/0. Linear from 100 at 30 min to 60 at the window's end, so the
 only drop is 60 → 40. Qaza counts on purpose (the app gamifies praying; late beats never).
-Day score = average of the five, unmarked = 0 (`PrayerScoring.dayScore`). Colours: Early green,
+Day score = average of the five, unmarked = 0 (`PrayerScoring.dayScore`). Colours: Perfect green,
 On time yellow, Late red, Qaza gray (`PrayerScoring.color`, also the map pins). Day-chart
 reference lines at 80 / 60 / 40. Streak modes 2 / 3 now mean "in window" / "on time or better".
 Before this, `numberScore` was the fraction of the window left (0 = Kaza) and the day score
@@ -993,7 +1012,7 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   consecutive days with all five prayed within their windows — no Qaza, none missed (≥ 60,
   `PrayerScoring.inWindowFloor`). Owner, 2026-09-25: "days where there was no qaza". Named
   "in-time", not "on-time", because On time is already a grade (80–99). It was all five
-  Early / On time (≥ 80) for a day. **Perfect day** (`lastPerfectDay`): all five **Early**.
+  Early / On time (≥ 80) for a day. **Perfect day** (`lastPerfectDay`): all five **Perfect** (was "Early").
   Both in `updateDayMilestones`, once a day, posting `.onTimeStreakContinued` / `.perfectDay`.
 - **Top bar** (`TopBar` + `StreakLabel` in Utils.swift): tap the city → the streak for 5 s; tap
   the streak → in-time days → max. Once the day's done (the circle's summary condition) the streak
@@ -1019,7 +1038,7 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   then a green edge + green text — owner) is disabled and a line says why (before the
   start / not yet / after the rollover). A picked clock time lands on the prayer's day or the
   next, whichever is in range; after midnight a line spells out the day and time. The window bar
-  (Early / On time / Late) is a scrubber; a Qaza time parks the marker at the end, gray. Scrubbing
+  (Perfect / On time / Late) is a scrubber; a Qaza time parks the marker at the end, gray. Scrubbing
   used to hang on device (owner): every minute wrote the parent's @State (re-rendering the row
   behind) and called `reloadAllComponents` on the 4800 / 12000-row looping wheel, whose hour rows
   each ran 120 calendar lookups. Now the sheet keeps a local `draft` until Save, the wheel only
