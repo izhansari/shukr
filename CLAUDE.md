@@ -1468,6 +1468,17 @@ draw (the dashed ring turns solid sage and swells into the track), glow (one sag
 track). **Owner is choosing** — keep the winner, delete the rest. Reduce Motion: the crossfade
 only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow]` starts Maghrib 6 s after launch.
 
+**Custom task names — schema 2.4.0 (2026-09-27, notes #7).** `TaskModel.customName` (optional),
+plus the reminder fields for notes #11 in the same lightweight bump: `reminderKind` ("time" /
+"prayer", nil = off), `reminderTimeMinutes`, `reminderPrayer`, `reminderOffsetMinutes`,
+`reminderWeekdays` (bitmask, Sunday = bit 0; nil = every day). Backup `…before-2.4.0` made; sim ✓.
+`TaskModel.title` = own name else mantra; `mantraLine` = the mantra when there's an own name.
+Shown via `ZikrCircleFace(mantraLine:)` (wheel, arranging grid), the mantra page's task circles
+(own name as title, "goal 100" under it), the Zikr widget rows (medium: the mantra quieter after
+the name), the Lock Screen card (`name`), the results card ("After Fajr · 5 of 100 today"),
+alerts, the reorder list. Session titles stay the mantra (history snapshot). Set in the create /
+edit task sheet's "Name (optional), e.g. After Fajr" field. Widget not looked at in the sim.
+
 **Prayer notification scheduling — `NotificationScheduler`** (CursorSwift/NotificationScheduler.swift,
 2026-09-27, notes #10). Everything scheduled goes through it; it owns iOS's 64-pending budget.
 - ~7 days ahead: the next two prayer days that are still ahead get Start / Mid / End (nudges per

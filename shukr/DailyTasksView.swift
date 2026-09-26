@@ -82,7 +82,7 @@ struct DailyTasksView: View {
         .alert(isPresented: $showDeleteTaskAlert) {
             Alert(
                 title: Text("Delete Task"),
-                message: Text("Are you sure you want to delete your \(taskToDelete?.displayName ?? "") task?"),
+                message: Text("Are you sure you want to delete your \(taskToDelete?.title ?? "") task?"),
                 primaryButton: .destructive(Text("Delete")) {
                     if let task = taskToDelete {
                         withAnimation{
@@ -299,7 +299,7 @@ struct ZikrCircleWheel: View {
         .sheet(item: $editingTask) { task in
             AddDailyTaskView(editing: task, isPresented: Binding(get: { editingTask != nil }, set: { if !$0 { editingTask = nil } }))
         }
-        .alert(resumeAsk?.displayName ?? "",
+        .alert(resumeAsk?.title ?? "",
                isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
                presenting: resumeAsk) { task in
             Button(resumeLabel(task)) { start(task, resume: true); resumeAsk = nil }
@@ -324,7 +324,7 @@ struct ZikrCircleWheel: View {
             }
             Button("Cancel", role: .cancel) { taskToDelete = nil }
         } message: { task in
-            Text("\(task.displayName) · its sessions stay in your history.")
+            Text("\(task.title) · its sessions stay in your history.")
         }
     }
 
@@ -464,7 +464,7 @@ struct ZikrCircleWheel: View {
             }
             .buttonStyle(.plain)
             .offset(x: 4, y: 4)
-            .accessibilityLabel("Delete \(task.displayName)")
+            .accessibilityLabel("Delete \(task.title)")
         }
         .frame(width: cellSize, height: cellSize)
         // The home screen's wobble; slightly different speeds so they don't move in step.
@@ -482,9 +482,9 @@ struct ZikrCircleWheel: View {
         let done = task.isCompleted(with: p)
         let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
                                         : p.seconds / Double(max(task.goal * 60, 1))
-        return ZikrCircleFace(title: task.displayName, icon: nil,
+        return ZikrCircleFace(title: task.title, icon: nil,
                               subtitle: done ? "done" : progressText(task, p),
-                              ring: .progress(min(fraction, 1)), done: done)
+                              ring: .progress(min(fraction, 1)), done: done, mantraLine: task.mantraLine)
             .scaleEffect(0.5)
             .frame(width: 100, height: 100)
     }
@@ -503,9 +503,10 @@ struct ZikrCircleWheel: View {
             let done = task.isCompleted(with: p)
             let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
                                             : p.seconds / Double(max(task.goal * 60, 1))
-            ZikrCircleFace(title: task.displayName, icon: nil,
+            ZikrCircleFace(title: task.title, icon: nil,
                            subtitle: done ? "done today" : progressText(task, p),
                            ring: .progress(min(fraction, 1)), done: done,
+                           mantraLine: task.mantraLine,
                            note: done ? nil : estimateNote(task, p))
                 .onLongPressGesture(minimumDuration: 0.45) { startArranging() }
         }
@@ -574,7 +575,7 @@ struct ZikrCircleWheel: View {
     private func label(_ item: Item) -> String {
         switch item {
         case .freestyle: "Freestyle"
-        case .task(let task): task.displayName
+        case .task(let task): task.title
         case .add: "New task"
         }
     }
@@ -709,6 +710,9 @@ struct ZikrCircleFace: View {
     let subtitle: String
     let ring: Ring
     var done = false
+    /// Under the title, small: the mantra when the task has its own name ("After Fajr" over
+    /// "Bismillah").
+    var mantraLine: String? = nil
     /// A third, quieter line: roughly how long what's left takes ("~4 min").
     var note: String? = nil
 
@@ -741,6 +745,15 @@ struct ZikrCircleFace: View {
                         .minimumScaleFactor(0.55)
                 }
                 .frame(maxWidth: 150)
+                if let mantraLine {
+                    Text(mantraLine)
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: 150)
+                        .padding(.top, -3)
+                }
                 HStack(spacing: 4) {
                     if done { Image(systemName: "checkmark") }
                     Text(subtitle)
@@ -1011,7 +1024,7 @@ struct ReorderTasksView: View {
             List {
                 ForEach(tasks) { task in
                     HStack {
-                        Text(task.displayName)
+                        Text(task.title)
                         Spacer()
                         Text(task.isCountMode ? "#\(task.goal)" : "\(task.goal) min")
                             .foregroundStyle(.secondary)
@@ -1047,7 +1060,7 @@ struct TaskCardView: View {
     var body: some View {
         VStack(alignment: .center) {
             
-            Text(task.displayName)
+            Text(task.title)
                 .font(.footnote) //.callout
                 .foregroundColor(.secondary.opacity(1)) //1
                 .fontDesign(.rounded)
@@ -1235,6 +1248,9 @@ struct AddDailyTaskView: View {
     
     @State private var showBorder: Bool = false
     @State private var confirmSave: Bool = false
+    /// Optional own name, e.g. "After Fajr" (notes #7) — the circle's title, the mantra under it.
+    @State private var customName: String = ""
+    @FocusState private var isNameFocused: Bool
 
     /// Edit mode: the task being changed. Its mantra is locked (the sheet is opened from that
     /// mantra's page); only goal and units can change, saved after a confirmation.
@@ -1254,6 +1270,12 @@ struct AddDailyTaskView: View {
         _goal = State(initialValue: task.goal)
         _taskIsCountMode = State(initialValue: task.isCountMode)
         _selectedMantra = State(initialValue: task.mantra)
+        _customName = State(initialValue: task.customName ?? "")
+    }
+
+    private var trimmedName: String? {
+        let n = customName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.isEmpty ? nil : n
     }
 
     private var isEditing: Bool { editingTask != nil }
@@ -1261,12 +1283,14 @@ struct AddDailyTaskView: View {
     private var unchanged: Bool {
         guard let editingTask else { return false }
         return goal == editingTask.goal && taskIsCountMode == editingTask.isCountMode
+            && trimmedName == editingTask.customName.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     private func saveEdits() {
         guard let editingTask, let goal, let taskIsCountMode else { return }
         editingTask.goal = goal
         editingTask.isCountMode = taskIsCountMode
+        editingTask.customName = trimmedName
         isGoalFocused = false
         isPresented = false
     }
@@ -1280,6 +1304,7 @@ struct AddDailyTaskView: View {
             goal: goal ?? 0,
             sortOrder: TaskModel.nextSortOrder(in: context) // new cards go to the end
         )
+        task.customName = trimmedName
 
         // Save the task to the persistent context
         context.insert(task)
@@ -1506,7 +1531,20 @@ struct AddDailyTaskView: View {
                 }
                 .padding()
                 .border(borderColor)
-                
+
+                // Optional name: three "Bismillah · 50" tasks a day become "After Fajr",
+                // "After Maghrib"… Left empty, the task is called by its mantra as before.
+                TextField("Name (optional), e.g. After Fajr", text: $customName)
+                    .focused($isNameFocused)
+                    .submitLabel(.done)
+                    .multilineTextAlignment(.center)
+                    .font(.system(.body, design: .rounded))
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 14)
+                    .background(Capsule().fill(Color(.tertiarySystemFill)))
+                    .frame(maxWidth: 300)
+                    .padding(.top, 4)
+
                 Spacer()
                 
                 Button(action: {
@@ -1536,7 +1574,9 @@ struct AddDailyTaskView: View {
                     Button("Save") { saveEdits() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text("Today's progress is recomputed from its sessions.")
+                    Text(editingTask.map { goal == $0.goal && taskIsCountMode == $0.isCountMode } ?? false
+                         ? "Its name changes everywhere it shows."
+                         : "Today's progress is recomputed from its sessions.")
                 }
                 
             }

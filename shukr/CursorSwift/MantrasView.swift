@@ -748,9 +748,12 @@ struct MantraTaskCircles: View {
                                         : p.seconds / Double(max(task.goal * 60, 1))
         let subtitle = done ? "done today"
             : task.isCountMode ? "\(p.count) of \(task.goal) today" : "\(Int(p.seconds / 60)) of \(task.goal) min"
-        return ZikrCircleFace(title: task.isCountMode ? "\(task.goal)" : "\(task.goal) min",
-                              icon: task.isCountMode ? "number" : "timer",
-                              subtitle: subtitle, ring: .progress(min(fraction, 1)), done: done)
+        // Its own name when it has one (this page is already about the mantra), the goal otherwise.
+        let goal = task.isCountMode ? "\(task.goal)" : "\(task.goal) min"
+        return ZikrCircleFace(title: task.mantraLine == nil ? goal : task.title,
+                              icon: task.mantraLine == nil ? (task.isCountMode ? "number" : "timer") : nil,
+                              subtitle: subtitle, ring: .progress(min(fraction, 1)), done: done,
+                              mantraLine: task.mantraLine == nil ? nil : (task.isCountMode ? "goal \(goal)" : goal))
             .scaleEffect(0.7)
             .frame(width: 140, height: 140)
             .contentShape(Circle())

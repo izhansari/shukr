@@ -438,6 +438,31 @@ class TaskModel: Identifiable {
     /// What to show on the card: the live mantra name, or the snapshot if it was deleted.
     var displayName: String { mantra?.name ?? mantraName }
 
+    /// The user's own name for the task, e.g. "After Fajr" (schema 2.4.0, notes #7). nil / empty =
+    /// none: the task is called by its mantra, as before.
+    var customName: String? = nil
+    /// The task's title: its own name, else the mantra.
+    var title: String {
+        let own = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return own.isEmpty ? displayName : own
+    }
+    /// The mantra, when the title is the task's own name (shown smaller, under it).
+    var mantraLine: String? {
+        let own = customName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return own.isEmpty ? nil : displayName
+    }
+
+    // One reminder per task (schema 2.4.0, notes #11; off while `reminderKind` is nil).
+    /// "time" (a clock time) or "prayer" (minutes before / after a prayer); nil = no reminder.
+    var reminderKind: String? = nil
+    /// For "time": minutes after midnight (e.g. 20:00 → 1200).
+    var reminderTimeMinutes: Int? = nil
+    /// For "prayer": the prayer, and minutes from its start (negative = before).
+    var reminderPrayer: String? = nil
+    var reminderOffsetMinutes: Int? = nil
+    /// Which weekdays, as bits (Sunday = 1 << 0 … Saturday = 1 << 6); nil = every day.
+    var reminderWeekdays: Int? = nil
+
     init(mantra: MantraModel?, isCountMode: Bool, goal: Int, mantraName: String? = nil, sortOrder: Int = 0) {
         self.mantraRef = mantra
         self.mantraName = mantraName ?? mantra?.name ?? ""

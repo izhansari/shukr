@@ -758,8 +758,9 @@ struct tasbeehView: View {
             let mine = task.sessions.filter { $0.startTime >= PrayerDay.sessionDayStart() }
             let p = TaskProgress(count: mine.reduce(0) { $0 + $1.totalCount },
                                  seconds: mine.reduce(0) { $0 + $1.secondsPassed })
-            return task.isCountMode ? "\(p.count) of \(task.goal) today"
-                                    : "\(Int(p.seconds / 60)) of \(task.goal) min today"
+            let today = task.isCountMode ? "\(p.count) of \(task.goal) today"
+                                         : "\(Int(p.seconds / 60)) of \(task.goal) min today"
+            return task.mantraLine == nil ? today : "\(task.title) · \(today)"
         }
 
         private var sessionLabel: String {

@@ -93,7 +93,10 @@ struct ZikrTasksWidget: Widget {
 
 struct ZikrTaskSnapshot: Identifiable {
     let id: String
+    /// The task's title: its own name ("After Fajr"), else the mantra.
     let name: String
+    /// The mantra, when `name` is the task's own name.
+    var mantra: String? = nil
     let isCountMode: Bool
     let goal: Int
     let count: Int
@@ -145,7 +148,7 @@ struct ZikrTasksProvider: TimelineProvider {
             predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
         let snaps = tasks.map { task -> ZikrTaskSnapshot in
             let p = task.progress(in: sessions)
-            return ZikrTaskSnapshot(id: task.id.uuidString, name: task.displayName,
+            return ZikrTaskSnapshot(id: task.id.uuidString, name: task.title, mantra: task.mantraLine,
                                     isCountMode: task.isCountMode, goal: task.goal,
                                     count: p.count, minutes: Int(p.seconds / 60),
                                     done: task.isCompleted(with: p),
@@ -260,6 +263,14 @@ private struct TaskRow: View {
                 .font(.system(size: 13, weight: .light, design: .rounded))
                 .foregroundStyle(task.done ? .secondary : .primary)
                 .lineLimit(1)
+                .layoutPriority(1)
+            if showsProgress, let mantra = task.mantra {
+                // The mantra under a task's own name, quieter (medium only; small is tight).
+                Text(mantra)
+                    .font(.system(size: 11, weight: .light, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
             Spacer(minLength: 4)
             if showsProgress {
             Text(task.rowTrailing)
