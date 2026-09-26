@@ -70,6 +70,33 @@ struct PrayerTimesView: View {
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State private var showNamesPage = false
+
+    /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
+    private var somethingCovers: Bool {
+        showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
+            || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
+            || showNamesPage || showMantraSheetFromHomePage || settingsViewNavBool
+    }
+
+    private func dismissCovers() {
+        showQiblaMap = false; showMapPage = false; showDailyAyahPage = false; showMantrasPage = false
+        showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
+        showInsightsPage = false; showOldInsights = false; showNamesPage = false
+        showMantraSheetFromHomePage = false; settingsViewNavBool = false
+    }
+
+    /// A widget / control is taking the user somewhere: close what's covering the page first, then
+    /// go (after the dismissal, so the new page isn't pushed under the leaving one). A running
+    /// tasbeeh session is never closed from a widget tap.
+    private func clearCovers(then go: @escaping () -> Void) {
+        guard !showTasbeehPage else { return }
+        if somethingCovers {
+            dismissCovers()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { go() }
+        } else {
+            go()
+        }
+    }
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
@@ -279,6 +306,19 @@ struct PrayerTimesView: View {
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
         }
+        // The welcome is about to play: put the Salah page (list closed) under it so its ring has
+        // the main circle to become. Not over a tasbeeh session — that stays as it was.
+        .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.willShow)) { _ in
+            WelcomeTarget.canLand = !showTasbeehPage
+            guard !showTasbeehPage else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                dismissCovers()
+                sharedState.horizontalPage = .main
+                sharedState.navPosition = .main
+            }
+        }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
                 WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s
@@ -305,25 +345,34 @@ struct PrayerTimesView: View {
                     let openNamesFromWidget = store.bool(forKey: "widgetNames")
                     if openAyahFromWidget { store.setValue(false, forKey: "widgetDailyAyah") }
                     if openNamesFromWidget { store.setValue(false, forKey: "widgetNames") }
+                    // Whatever is covering the page (the map, a pushed page) goes first, or the
+                    // widget's page opened behind it (owner, 2026-09-26).
+                    let zikrTaskID = store.string(forKey: "widgetZikrTask")
+                    if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
                     if openAyahFromWidget {
-                        sharedState.horizontalPage = .main
-                        showDailyAyahPage = true
+                        clearCovers {
+                            sharedState.horizontalPage = .main
+                            showDailyAyahPage = true
+                        }
                     } else if openNamesFromWidget {
-                        sharedState.horizontalPage = .main
-                        showNamesPage = true
+                        clearCovers {
+                            sharedState.horizontalPage = .main
+                            showNamesPage = true
+                        }
                     }
 
-                    if openCompassFromWidget{
-                        sharedState.navPosition = .main
-                        showQiblaMap = true
+                    if openCompassFromWidget, !showQiblaMap {
+                        clearCovers {
+                            sharedState.navPosition = .main
+                            showQiblaMap = true
+                        }
                     }
                     
                     else if openTasbeehFromWidget{
-                        sharedState.horizontalPage = .zikr
-                        // A task row in the Zikr widget: bring that task's circle to the middle.
-                        if let taskID = store.string(forKey: "widgetZikrTask") {
-                            store.removeObject(forKey: "widgetZikrTask")
-                            ZikrFocus.request(taskID)
+                        clearCovers {
+                            sharedState.horizontalPage = .zikr
+                            // A task row in the Zikr widget: bring that task's circle to the middle.
+                            if let zikrTaskID { ZikrFocus.request(zikrTaskID) }
                         }
                     }
                 }

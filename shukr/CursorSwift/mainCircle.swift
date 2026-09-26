@@ -44,6 +44,8 @@ struct MainCircleView: View {
                 .fill(Color(.clear))
                 .stroke(Color(.secondarySystemFill), lineWidth: 12)
                 .frame(width: 200, height: 200)
+                // Where the welcome's ring lands (WelcomeAnimation.swift).
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
             Group {

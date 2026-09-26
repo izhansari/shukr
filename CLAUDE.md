@@ -340,6 +340,29 @@ like "end" and he was scared to press it. The Tasbih Fatimah reminder under the 
 (title primary 0.5, text 0.36, source sage 0.75); it read bright white in dark mode. The count-in-sets
 subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 
+**2026-09-26 — widgets over the map, and the welcome becoming the circle.**
+- **Widgets / controls opening pages behind the map:** they opened behind the map / a pushed page.
+  `clearCovers(then:)` in PrayerTimesView closes the map, every pushed page and the mantra sheet
+  (`dismissCovers`), waits 0.55 s if anything was up, then navigates. A tasbeeh session is never
+  closed (`showTasbeehPage` → do nothing). The compass flag does nothing if the map is already up.
+- **Welcome → circle:**
+  - The main circle's track reports its global frame (`onGeometryChange` →
+    `WelcomeTarget.circleFrame`, mainCircle.swift).
+  - The welcome waits up to 0.4 s for it, then draws its ring exactly there (an `.offset` from the
+    screen centre) and glides onto it if it moved.
+  - After the hold, the ring (`WelcomeRing`, an annulus `Shape` so its thickness animates) grows
+    from 1.2 to 12 pt and fades from sage to `secondarySystemFill` while the word blurs away and
+    the background fades (0.8 s). What's left is the real circle in the same place.
+  - Returning after 5 min posts `WelcomeGate.willShow`: PrayerTimesView closes covers and sets
+    `.main` page + `navPosition .main` (no animation). It skips all that and sets
+    `WelcomeTarget.canLand = false` over a tasbeeh session, so the welcome falls back to the
+    screen centre.
+  - **Trap:** a `GeometryReader` inside the welcome overlay left the entire app laid out off screen
+    (blank white page, the circle's frame at (-100, -117)) once the welcome ended. Don't put one
+    back.
+- Sim ✓: cold launch morph frames (ring on the circle, word → "Dhuhr"). The widget-over-map fix is
+  not tried in the sim.
+
 **2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
 - **Targets** (added to the pbxproj by hand):
   - `shukrWatch`: a watchOS 11 single-target app, bundle `com.betternorms.shukr.watchkitapp`,
