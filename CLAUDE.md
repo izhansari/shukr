@@ -96,7 +96,7 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
    feels slow. The owner calls it "a flow/paging redesign". Idea: one persistent sheet whose content
    swaps in place, with a fixed detent that the user controls (like Apple Maps' place card).
    Covers both prayer-spot pins and mosque pins (`MosqueSheet`).
-3. **Lag before the completion page** after Finish on the pause screen, and when a task hits its
+3. ~~**Lag before the completion page**~~ (owner: clean now). Notes kept: after Finish on the pause screen, and when a task hits its
    goal (auto stop). Tried 2026-09-25 (untested on the phone): the shared-state writes after the save
    (`selectedTask = nil`, which re-renders the whole home screen under the cover) now wait until
    `completeStopTimer` (0.5 s), and the results fade is 0.25 s ease-out instead of 0.5 s ease-in-out.
@@ -119,7 +119,16 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   now stacked and crossfade with a soft blur, the green fill and edge ease in over 0.35 s, and a
   stale 3 s disarm can't cancel a newer arm (`finishArmToken`). Sim ✓.
 - **Light / dark / auto toast:** was too close to the bottom and easy to miss. Now it drops in
-  under the Settings header, below the toggle. Untested on the phone.
+  under the Settings header, below the toggle. It then drifted off-centre for a moment on each
+  switch (one capsule changing width while its text swapped). Now it's one capsule per mode,
+  crossfaded. Untested on the phone.
+- **Completion lag:** the owner says it's "clean now" after the deferral and the faster fade.
+- **Count in sets is a toggle** (owner, 2026-09-25): the "+N" button at the top of a session
+  switches it on. Then every tap / drag is worth N and − takes N off (`tasbeehView.countingInSets`
+  / `tapWorth`). The button shows it's on with green text on a green tint with a green edge. One
+  buzz per tap. The every-hundred buzz checks for a crossing, because a set can jump over the
+  exact multiple. It's off at the start of each session, and turns off if the mantra's step drops
+  to ≤ 1. Sim ✓ (12 → 18 in two taps).
 - **Fajr rollover and the 15 Pro migration:** "haven't checked but I guess it's fine...?" Still
   unverified. Between midnight and Fajr, yesterday's prayers should still be up and zikr should
   count for yesterday. On the 15 Pro's first open, look for `✅ schema V2 data pass` and no ❌.
@@ -161,7 +170,7 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   complete).
 - Reminders: keep rotating all four, or pick one or two.
 
-**Release / TestFlight:** 2.0 (5) was archived from eac68fc and **never uploaded**, because Xcode's
+**Release / TestFlight:** 2.0 (5) was archived from eac68fc but never uploaded (the
 account token is missing. The owner must sign in again under Xcode → Settings → Accounts. Then bump
 to build 6, archive this branch, and upload. The dev toggles (wheel / mosque icon / post-salah style
 / ring playground) live in the `#if DEBUG` "My Dev Stuff" section, so they won't ship.
@@ -875,7 +884,7 @@ Count in sets skips 1 (off → 2 → 3…; one per tap is the screen itself); su
 "recite a set, tap once" / "a +5 button while you count".
 
 **Count in sets** (was "quick add"; owner: the name didn't say what it's for — recite a set on
-your own, on your fingers or in your head, then tap once): the "+N" button in a running session.
+your own, on your fingers or in your head, then tap once): the "+N" button in a running session — a toggle since 2026-09-25: on, every tap / drag counts N (see Handoff).
 Per mantra on the row, `MantraModel.quickAddStep` (**schema 2.1.0**, 2026-09-25 — a defaulted
 Int, lightweight; the data pass's `QuickAddSteps.moveLegacySteps` carried the one-day
 UserDefaults version `mantraQuickAddSteps` onto the rows and deleted the key). Sessions without a

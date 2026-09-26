@@ -438,43 +438,37 @@ struct floatingMessageView: View {
     @Binding var showFloatingMessage: Bool
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     
-    private var modeSymbol: String {
-        switch colorModeToggleNew {
-        case 0: "sun.max.fill"
-        case 1: "moon.fill"
-        default: "circle.lefthalf.filled"
+    private func capsule(for mode: Int) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: mode == 0 ? "sun.max.fill" : mode == 1 ? "moon.fill" : "circle.lefthalf.filled")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.green)
+            Text(mode == 0 ? "Light mode" : mode == 1 ? "Dark mode" : "Auto · follows the sun")
+                .font(.system(size: 15, weight: .regular, design: .rounded))
         }
-    }
-
-    var messageToShow: String{
-        if colorModeToggleNew == 0{
-         "Light mode"
-        } else if colorModeToggleNew == 1{
-            "Dark mode"
-        } else {
-            "Auto · follows the sun"
-        }
-//        "Now in \(colorModeToggleNew == 0 ? "Light" : colorModeToggleNew == 1 ? "Dark" : "Auto") Mode"
+        .padding(.horizontal, 18)
+        .frame(height: 44)
+        .mapGlass(Capsule())
+        .fixedSize()
     }
 
     var body: some View {
         // Drops in just under the header, right below the toggle that was tapped — at the bottom
         // of the screen it sat on the home indicator and was easy to miss (owner, 2026-09-25).
         VStack{
-            // Glass capsule with the mode's symbol (2026-09-25; was an outlined box).
-            HStack(spacing: 8) {
-                Image(systemName: modeSymbol)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.green)
-                    .contentTransition(.symbolEffect(.replace))
-                Text(messageToShow)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .contentTransition(.opacity)
+            // Glass capsule with the mode's symbol (2026-09-25; was an outlined box). One capsule
+            // per mode, crossfaded: morphing one capsule's width while its text swapped drew it
+            // off-centre for a moment on each switch (owner).
+            ZStack {
+                ForEach([0, 1, 2], id: \.self) { mode in
+                    if mode == colorModeToggleNew {
+                        capsule(for: mode)
+                            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    }
+                }
             }
-            .padding(.horizontal, 18)
-            .frame(height: 44)
-            .mapGlass(Capsule())
-            .animation(.snappy(duration: 0.2), value: colorModeToggleNew)
+            .frame(maxWidth: .infinity)
+            .animation(.easeInOut(duration: 0.2), value: colorModeToggleNew)
             .opacity(showFloatingMessage ? 1 : 0.0)
             .scaleEffect(showFloatingMessage ? 1 : 0.9, anchor: .top)
             .offset(y: showFloatingMessage ? 0 : -12)

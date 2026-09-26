@@ -27,6 +27,10 @@ struct tasbeehView: View {
     /// (post-salah sequences and older launchers only set the title).
     @State private var sessionMantra: MantraModel?
     private var secondaryStep: Int { sessionMantra?.quickAddStep ?? noMantraQuickAdd }
+    /// Count in sets: with the "+N" button switched on, every tap / drag (and −) is worth N
+    /// (owner, 2026-09-25: it was a one-shot +N button). Per session, off at the start.
+    @State private var countingInSets = false
+    private var tapWorth: Int { countingInSets && secondaryStep > 1 ? secondaryStep : 1 }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
     
@@ -136,7 +140,7 @@ struct tasbeehView: View {
     
     private func simulateTasbeehClicks(times: Int) {
         for _ in 1...times {
-            incrementTasbeeh()
+            incrementTasbeeh(by: 1)
         }
     }
     
@@ -292,10 +296,14 @@ struct tasbeehView: View {
                                 symbol: "minus", actionToDo: decrementTasbeeh,
                                 paused: paused, togglePause: togglePause)
                             
-                            if secondaryStep > 0 {
-                                TopOfSessionButton( // Quick add: +N in one tap (the mantra's own step)
-                                    text: "+\(secondaryStep)", actionToDo: { simulateTasbeehClicks(times: secondaryStep) },
-                                    paused: paused, togglePause: togglePause)
+                            if secondaryStep > 1 {
+                                TopOfSessionButton( // Count in sets: switches every tap to +N
+                                    text: "+\(secondaryStep)", actionToDo: {
+                                        triggerSomeVibration(type: .light)
+                                        withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
+                                    },
+                                    paused: paused, togglePause: togglePause, active: countingInSets)
+                                .accessibilityLabel(countingInSets ? "Counting in sets of \(secondaryStep), on" : "Count in sets of \(secondaryStep)")
                             }
                             
                             
@@ -434,6 +442,9 @@ struct tasbeehView: View {
         #endif
         .onChange(of: tasbeehColorMode){oldVal, newVal in
             print("tasbeehView: old tasbeehColorMode: \(oldVal), newVal: \(newVal)")
+        }
+        .onChange(of: secondaryStep) { _, step in
+            if step <= 1 { countingInSets = false }   // the mantra changed on the pause screen
         }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
@@ -670,17 +681,24 @@ struct tasbeehView: View {
     }
     
     private func incrementTasbeeh() {
+        incrementTasbeeh(by: tapWorth)
+    }
+
+    /// One tap's worth of counts: 1, or the set size while counting in sets (one buzz either way).
+    private func incrementTasbeeh(by step: Int) {
         if timerIsActive {
-            tasbeeh = min(tasbeeh + 1, 10000) // Adjust maximum value as needed
+            let before = tasbeeh
+            tasbeeh = min(tasbeeh + step, 10000) // Adjust maximum value as needed
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
-            vibrateOnFinishOfTasbeeh()
+            // Every hundred crossed (a set can jump over the exact multiple).
+            if tasbeeh / 100 > before / 100 { triggerSomeVibration(type: .error) }
         }
     }
     
     private func decrementTasbeeh() {
         if timerIsActive {
-            tasbeeh = max(tasbeeh - 1, countOffset) // never below where a continued task started
+            tasbeeh = max(tasbeeh - tapWorth, countOffset) // undoes one tap; never below where a continued task started
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: .rigid)
         }
@@ -693,11 +711,6 @@ struct tasbeehView: View {
         }
     }
         
-    private func vibrateOnFinishOfTasbeeh(){
-        if(tasbeeh % 100 == 0 && tasbeeh != 0){
-            triggerSomeVibration(type: .error)
-        }
-    }
     
     // MARK: - Helper Structs (basically moved from Utils)
     
@@ -1343,12 +1356,15 @@ struct tasbeehView: View {
         let actionToDo: () -> Void
         let paused: Bool
         let togglePause: () -> Void
+        /// A switched-on toggle (count in sets): green label on a green tint with a green edge.
+        var active = false
 
         init(symbol: String, actionToDo: @escaping () -> Void, paused: Bool, togglePause: @escaping () -> Void) {
             self.symbol = symbol; self.actionToDo = actionToDo; self.paused = paused; self.togglePause = togglePause
         }
-        init(text: String, actionToDo: @escaping () -> Void, paused: Bool, togglePause: @escaping () -> Void) {
+        init(text: String, actionToDo: @escaping () -> Void, paused: Bool, togglePause: @escaping () -> Void, active: Bool = false) {
             self.text = text; self.actionToDo = actionToDo; self.paused = paused; self.togglePause = togglePause
+            self.active = active
         }
         
         var body: some View{
@@ -1367,10 +1383,11 @@ struct tasbeehView: View {
                             .frame(minWidth: 20, minHeight: 20)
                     }
                 }
-                    .foregroundColor(.gray.opacity(0.3))
+                    .foregroundColor(active ? .green : .gray.opacity(0.3))
                     .padding()
-                    .background(paused ? .clear : .gray.opacity(0.08))
+                    .background(paused ? .clear : (active ? Color.green.opacity(0.14) : .gray.opacity(0.08)))
                     .cornerRadius(100)
+                    .overlay(Capsule().strokeBorder(Color.green.opacity(active && !paused ? 0.6 : 0), lineWidth: 1))
                     .opacity(paused ? 0 : 1.0)
             }
         }
