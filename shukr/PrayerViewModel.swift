@@ -384,90 +384,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     // MARK: - Notification Scheduling
 
+    /// All prayer notifications, several days ahead (NotificationScheduler, 2026-09-27). Used to
+    /// wipe everything pending and schedule only the current prayer day, which dropped Fajr once
+    /// the day turned at Fajr, and deleted snoozes.
     func scheduleAllPrayerNotifications(prayerByDateDict: [String : (start: Date, end: Date, window: TimeInterval)]) {
-        var logMessages: [String] = [] // Collect logs here to ensure they print in order
-        UNUserNotificationCenter.current().removeAllPendingNotificationRequests() // Remove old notifications
-        schedulePriner("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ scheduling at \(shortTimeSecPM(Date()))")
-        
-        for name in orderedPrayerNames {
-            let prayerTimeData = prayerByDateDict[name]!
-            let settings = notifSettings[name]!
-                        
-            logMessages.append("--- (\(settings.allowNotif  ? (settings.allowNudges ? "3" : "1") : "0")) \(name) Notifs ---")
-            guard isNotCompletedToday(prayerName: name) /*== false, !isCompleted*/ else{
-                logMessages.append("➤ \(name) is completed"); continue
-            }
-            guard settings.allowNotif else{
-                logMessages.append("🛑 \(name) notifs disabled"); continue
-            }
-            scheduleThisPrayerNotifAt("Start", prayerName: name, prayerTimeData: prayerTimeData)
-            if settings.allowNudges {
-                scheduleThisPrayerNotifAt("Mid", prayerName: name, prayerTimeData: prayerTimeData)
-                scheduleThisPrayerNotifAt("End", prayerName: name, prayerTimeData: prayerTimeData)
-            }
-        }
-        schedulePriner(logMessages.joined(separator: "\n")) // Print all logs at once
-        schedulePriner("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^end \(shortTimeSecPM(Date()))")
-        
-        func scheduleThisPrayerNotifAt(_ notifType: String, prayerName: String, prayerTimeData: (start: Date, end: Date, window: TimeInterval)) {
-            let endTime = prayerTimeData.end
-            var schedDate = prayerTimeData.start
-            let content = UNMutableNotificationContent()
-            var passedSwitchCase = true
-
-            switch notifType {
-            case "Start":
-                schedDate = prayerTimeData.start
-                content.title = /*nudges ?*/ "\(prayerName) Time 🟢" /*: "\(prayerName) Time"*/
-                content.subtitle = "Pray by \(shortTimePM(endTime))"
-            case "Mid":
-                let timeUntilEnd = prayerTimeData.window * 0.5
-                schedDate = endTime.addingTimeInterval(-timeUntilEnd)
-                content.title = "\(prayerName) At Midpoint 🟡"
-                content.subtitle = /*"Did you pray?" */"There's \(timeLeftString(from: timeUntilEnd))"
-//            case "End":
-//                let timeUntilEnd = prayerTimeData.window * 0.25
-//                schedDate = endTime.addingTimeInterval(-timeUntilEnd)
-//                content.title = "\(prayerName) Almost Over! 🔴"
-//                content.subtitle = /*"Did you pray?" */"There's still \(timeLeftString(from: timeUntilEnd))"
-            case "End":
-                let timeUntilEnd = (30.0 * 60)
-                schedDate = endTime.addingTimeInterval(-timeUntilEnd)
-                content.title = "\(prayerName) Almost Over! 🔴"
-                content.subtitle = /*"Did you pray?" */"There's only \(timeLeftString(from: timeUntilEnd))"
-            default:
-                logMessages.append("failed to conform to switch case")
-                passedSwitchCase = false
-            }
-            
-            if passedSwitchCase{
-                // Skip scheduling if the date is in the past
-                if schedDate < Date() {
-                    logMessages.append("❌ In Past \(prayerName)\(notifType): \(shortTimeSecPM(schedDate))")
-                }else{
-                    let center = UNUserNotificationCenter.current()
-                    let identifier = "\(prayerName)\(notifType)"
-                    content.sound = .default
-                    content.interruptionLevel = .timeSensitive
-                    content.categoryIdentifier = "Round1_Snooze"
-                    // "I already prayed" (NotificationDelegate) needs to know which prayer this is.
-                    content.userInfo = [
-                        "prayerName": prayerName,
-                        "prayerStart": prayerTimeData.start.timeIntervalSince1970,
-                        "prayerEnd": prayerTimeData.end.timeIntervalSince1970,
-                    ]
-                    let dateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: schedDate)
-                    let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
-                    let request = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
-
-                    center.add(request) { error in
-                        if let error = error {
-                            print("Error \(identifier): \(error.localizedDescription)")
-                        }
-                    }
-                    logMessages.append("✅ Scheduled \(identifier): \(shortTimeSecPM(schedDate))")
-                }
-            }
+        Task { @MainActor in
+            NotificationScheduler.reschedule(context: context,
+                                             todayOverride: useTestPrayers ? prayerByDateDict : nil,
+                                             reason: "prayer times")
         }
     }
 

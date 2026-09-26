@@ -131,6 +131,10 @@ struct shukrApp: App {
             
         }
         .modelContainer(sharedModelContainer)
+        // Tops the prayer notifications up while the app isn't opened (NotificationScheduler).
+        .backgroundTask(.appRefresh(NotificationScheduler.refreshTaskID)) {
+            await NotificationScheduler.rescheduleNow(context: sharedModelContainer.mainContext, reason: "background refresh")
+        }
         .environmentObject(environmentLocationManager)
         .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
         .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
@@ -205,6 +209,21 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = notificationDelegate
         QiblaSettings.migrateFromStandardDefaultsIfNeeded()
+        #if DEBUG
+        // Scheduler test: queue a snooze like "Nudge in 10 minutes" does, then relaunch without
+        // the flag — it must still be pending (NotificationScheduler never removes it).
+        if ProcessInfo.processInfo.arguments.contains("-debugQueueSnooze") {
+            let content = UNMutableNotificationContent()
+            content.title = "It's been 10 minutes"
+            content.body = "Pray by 11:59 PM"
+            content.categoryIdentifier = "Round2_Snooze"
+            UNUserNotificationCenter.current().add(UNNotificationRequest(
+                identifier: "snooze-debug-\(Int(Date().timeIntervalSince1970))", content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 600, repeats: false)))
+        }
+        #endif
+        // The "hide Ahmadiyya mosques" toggle is gone (871ae72): drop its leftover value.
+        UserDefaults.standard.removeObject(forKey: "hideAhmadiyyaMosques")
         
         // Register notification categories
         // "I already prayed": marks that prayer complete in place, the way the widget's

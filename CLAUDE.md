@@ -1453,6 +1453,29 @@ open the app and check the prayer shows complete with the right score. If the nu
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app
 schedules nudges as fewer, later-verified notifications).
 
+**Prayer notification scheduling — `NotificationScheduler`** (CursorSwift/NotificationScheduler.swift,
+2026-09-27, notes #10). Everything scheduled goes through it; it owns iOS's 64-pending budget.
+- ~7 days ahead: the next two prayer days that are still ahead get Start / Mid / End (nudges per
+  Settings), days 3–7 Start only; priorities 0 (near starts) / 1 (near nudges) / 2 (far starts),
+  trimmed to `64 − other pending − spare 4`. Completed prayers skipped (one fetch over the range).
+- Ids are dated: `PrayerNotificationID` (Models/PrayerDay.swift, both targets) →
+  "2026-09-27.FajrStart"; `parse` also recognises the old undated "AsrMid". Only ids the scheduler
+  owns are removed — never `removeAllPending…` — so snoozes ("snooze-<uuid>") survive.
+- Earlier days' delivered prayer notifications (and legacy undated ones) are removed on each run,
+  so Notification Center still shows only today's, as when "AsrStart" replaced yesterday's.
+- `cancelUpcomingNudges` (AllModels, runs in the widget too) removes that day's dated Mid / End.
+- Content is `NotificationScheduler.prayerNotification` — the old `scheduleThisPrayerNotifAt` moved
+  verbatim; the owner wants them to look exactly the same.
+- Background top-up: `BGAppRefreshTaskRequest` ("com.betternorms.shukr.refresh", earliest +6 h)
+  submitted after each run, handled by `.backgroundTask(.appRefresh(…))` in shukrApp;
+  Info.plist `BGTaskSchedulerPermittedIdentifiers` + `UIBackgroundModes: fetch`. Not testable in the
+  simulator (BGTaskScheduler doesn't run there) — untested.
+- The bug it fixed: since the day turns at Fajr only the current prayer day was scheduled, so
+  "Fajr Time" never went out (sim, 7:27 PM: only tonight's Maghrib / Isha pending).
+- DEBUG: `-logPendingNotifs` prints the pending list after each run; `-debugQueueSnooze` queues a
+  10-min snooze (relaunch without it → still pending). Sim ✓: 39 pending across Sep 26 – Oct 3,
+  tomorrow's FajrStart among them; the snooze survived a relaunch.
+
 **Notification actions** (`NotificationDelegate` in shukrApp.swift). Every prayer notification
 carries `Round1_Snooze`: "I already prayed" / "Nudge in 5 minutes" / "Nudge in 10 minutes";
 the follow-ups carry the same three (plus the round-2 jokes). Two things that broke them

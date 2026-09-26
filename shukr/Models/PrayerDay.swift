@@ -96,3 +96,34 @@ enum PrayerDay {
         return end
     }
 }
+
+/// Prayer notification ids carry their prayer day (2026-09-27, `NotificationScheduler`):
+/// "2026-09-27.FajrStart", "2026-09-27.AsrMid". Days never overwrite each other, and one prayer's
+/// nudges can be cancelled exactly. Before, ids were just "AsrMid" (still recognised as legacy).
+/// The day is the calendar day the prayer's day starts on (its Fajr) — all five start on it.
+enum PrayerNotificationID {
+    static let kinds = ["Start", "Mid", "End"]
+    static let prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+    static func dayKey(_ day: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+    static func make(day: Date, prayer: String, kind: String) -> String {
+        "\(dayKey(day)).\(prayer)\(kind)"
+    }
+    /// (day key or nil for a legacy id, prayer, kind) — nil when it isn't a prayer notification.
+    static func parse(_ id: String) -> (dayKey: String?, prayer: String, kind: String)? {
+        var rest = Substring(id)
+        var day: String?
+        if let dot = rest.firstIndex(of: "."), rest.distance(from: rest.startIndex, to: dot) == 10 {
+            day = String(rest[..<dot])
+            rest = rest[rest.index(after: dot)...]
+        }
+        for prayer in prayers where rest.hasPrefix(prayer) {
+            let kind = String(rest.dropFirst(prayer.count))
+            if kinds.contains(kind) { return (day, prayer, kind) }
+        }
+        return nil
+    }
+}

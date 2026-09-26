@@ -240,19 +240,16 @@ class PrayerModel {
 
     }
     
+    /// Marked prayed: its Mid / End nudges go (dated ids, so exactly this day's — any day can be
+    /// cancelled now; the undated ids of older builds only for today).
     func cancelUpcomingNudges(){
-        // need to do a check for if the prayer is in the same day as today... else toggling complete on a past prayer will also cancel todays active prayer's notif...
-        let prayerInToday = Calendar.current.isDate(startTime, inSameDayAs: Date())
         let center = UNUserNotificationCenter.current()
-        let identifiers = ["\(name)Mid", "\(name)End"]
-
-        if prayerInToday {
-            center.removePendingNotificationRequests(withIdentifiers: identifiers)
-            print("✅ Canceled notifications for \(name): [\(identifiers)]")
-        }else{
-            print("⚪️ prayerInToday \(prayerInToday) - so skipped cancel notifications for \(name): [\(identifiers)]")
+        var identifiers = ["Mid", "End"].map { PrayerNotificationID.make(day: startTime, prayer: name, kind: $0) }
+        if Calendar.current.isDate(startTime, inSameDayAs: PrayerDay.date()) {
+            identifiers += ["\(name)Mid", "\(name)End"]   // legacy, pre-2026-09-27
         }
-        
+        center.removePendingNotificationRequests(withIdentifiers: identifiers)
+        print("✅ Canceled notifications for \(name): \(identifiers)")
     }
     
     func getColorForPrayerScore() -> Color {
