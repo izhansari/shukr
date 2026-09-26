@@ -112,6 +112,8 @@ struct PrayerTimeEditSheet: View {
                 Text(title).lineLimit(1)
                 if moved {
                     Text("· moved").foregroundStyle(Color.green)
+                } else if prayer.spotEdited {
+                    Text("· edited").foregroundStyle(.tertiary)
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption2.weight(.semibold))
@@ -170,6 +172,19 @@ struct PrayerTimeEditSheet: View {
             .animation(.snappy, value: score)
             .sensoryFeedback(.selection, trigger: grade)
 
+            // Edited before: what the app recorded, one tap to go back to it.
+            if let recorded = prayer.recordedTimeAtComplete, abs(draft.timeIntervalSince(recorded)) >= 30 {
+                Button {
+                    draft = min(max(recorded, range.lowerBound), range.upperBound)
+                } label: {
+                    Label("You marked it at \(shortTimePM(recorded)) · use that", systemImage: "arrow.uturn.backward")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            }
+
             if !isValid {
                 // Out of range: say what is allowed (Save stays off until then).
                 Text(invalidReason)
@@ -223,6 +238,7 @@ struct PrayerTimeEditSheet: View {
         .onAppear { if openedWith == nil { openedWith = draft } }
         .sheet(isPresented: $pickingSpot) {
             PrayerLocationPicker(prayerName: prayer.displayName, original: shownSpot,
+                                 recorded: prayer.recordedSpot ?? savedSpot,
                                  onCancel: { pickingSpot = false },
                                  onPick: { spot in draftSpot = spot; pickingSpot = false })
                 .presentationDetents([.large])

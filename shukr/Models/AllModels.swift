@@ -112,6 +112,40 @@ class PrayerModel {
     /// "" = checked, not at a masjid.
     var mosqueName: String? = nil
 
+    /// What the app recorded when the prayer was marked, kept the first time the user edits the
+    /// time / the spot (schema 2.3.0, owner 2026-09-26: "so I can always revert it"). nil = never
+    /// edited (the live value is the recorded one).
+    var recordedTimeAtComplete: Date? = nil
+    var recordedLat: Double? = nil
+    var recordedLon: Double? = nil
+
+    var recordedSpot: CLLocationCoordinate2D? {
+        guard let recordedLat, let recordedLon else { return nil }
+        return CLLocationCoordinate2D(latitude: recordedLat, longitude: recordedLon)
+    }
+    /// The time was changed from what was recorded (by more than half a minute).
+    var timeEdited: Bool {
+        guard let recorded = recordedTimeAtComplete, let now = timeAtComplete else { return false }
+        return abs(now.timeIntervalSince(recorded)) >= 30
+    }
+    /// The spot was moved from where it was recorded (by more than a few metres).
+    var spotEdited: Bool {
+        guard let r = recordedSpot, let lat = latPrayedAt, let lon = longPrayedAt else { return false }
+        return CLLocation(latitude: r.latitude, longitude: r.longitude)
+            .distance(from: CLLocation(latitude: lat, longitude: lon)) > 3
+    }
+    /// A user's time edit: keeps the recorded time (once), then rescores at the new one.
+    func editTime(to date: Date) {
+        if recordedTimeAtComplete == nil { recordedTimeAtComplete = timeAtComplete }
+        setPrayerScore(atDate: date)
+    }
+    /// Back to the time the app recorded.
+    func revertTime() {
+        guard let recorded = recordedTimeAtComplete else { return }
+        setPrayerScore(atDate: recorded)
+        recordedTimeAtComplete = nil
+    }
+
     var atMasjid: Bool { !(mosqueName ?? "").isEmpty }
     /// Friday's Dhuhr prayed at a masjid — and only that (owner: a Friday Dhuhr anywhere else is
     /// a normal Dhuhr). Scores full marks whatever the clock says: Jumu'ah follows the masjid's
@@ -162,6 +196,9 @@ class PrayerModel {
         self.latPrayedAt = nil
         self.longPrayedAt = nil
         self.mosqueName = nil
+        self.recordedTimeAtComplete = nil
+        self.recordedLat = nil
+        self.recordedLon = nil
     }
     
     enum prayerStatus {

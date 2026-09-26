@@ -1590,10 +1590,10 @@ struct PrayerButton: View {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
                                     onSave: { date, spot in
-                                        prayerObject.setPrayerScore(atDate: date)
+                                        // A user edit: the recorded time / spot are kept (revertible).
+                                        let old = prayerObject.timeAtComplete ?? .distantPast
+                                        if abs(date.timeIntervalSince(old)) >= 30 { viewModel.editPrayerTime(prayerObject, to: date) }
                                         if let spot { viewModel.movePrayer(prayerObject, to: spot) }
-                                        viewModel.calculatePrayerStreak()
-                                        viewModel.calculateDayScore(for: prayerObject.startTime)
                                         showTimePicker = false
                                     })
             }

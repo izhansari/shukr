@@ -498,6 +498,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// follows — a Friday Dhuhr moved onto a masjid becomes Jumu'ah, moved off one it's scored by
     /// the clock again.
     @MainActor func movePrayer(_ prayer: PrayerModel, to spot: CLLocationCoordinate2D) {
+        // Keep where the app recorded it, the first time it's moved (so it can be put back).
+        if prayer.recordedLat == nil, let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
+            prayer.recordedLat = lat
+            prayer.recordedLon = lon
+        }
         prayer.latPrayedAt = spot.latitude
         prayer.longPrayedAt = spot.longitude
         prayer.mosqueName = MasjidDetector.favoriteMasjid(near: spot)   // nil = search below
@@ -514,6 +519,30 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             pushCompletionsToWidget()
             objectWillChange.send()
         }
+    }
+
+    /// Back to the spot the app recorded (then it's unedited again).
+    @MainActor func revertPrayerLocation(_ prayer: PrayerModel) {
+        guard let recorded = prayer.recordedSpot else { return }
+        movePrayer(prayer, to: recorded)
+        prayer.recordedLat = nil
+        prayer.recordedLon = nil
+    }
+
+    /// A user's time edit (the time editor): keeps the recorded time, rescores, updates the day.
+    func editPrayerTime(_ prayer: PrayerModel, to date: Date) {
+        prayer.editTime(to: date)
+        afterTimeChange(prayer)
+    }
+    func revertPrayerTime(_ prayer: PrayerModel) {
+        prayer.revertTime()
+        afterTimeChange(prayer)
+    }
+    private func afterTimeChange(_ prayer: PrayerModel) {
+        calculateDayScore(for: prayer.startTime)
+        calculatePrayerStreak()
+        pushCompletionsToWidget()
+        objectWillChange.send()
     }
 
     func togglePrayerCompletion(for prayer: PrayerModel) {

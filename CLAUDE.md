@@ -404,6 +404,32 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 night — recorded vs edited; mosques in one sheet.**
+- **Schema 2.3.0:** `PrayerModel.recordedTimeAtComplete / recordedLat / recordedLon` (optional,
+  lightweight; `makeContainer` backs up to `…before-2.3.0` first — sim ✓). Owner: once edited,
+  there was no way to know what the app actually recorded, or to put it back.
+  - The first user edit keeps the recorded value: `PrayerModel.editTime(to:)` (via
+    `PrayerViewModel.editPrayerTime`, both time editors) and `movePrayer`. `timeEdited` /
+    `spotEdited` compare live vs recorded (30 s / 3 m). `revertPrayerTime` /
+    `revertPrayerLocation` put it back and clear the recorded field. `resetPrayer` (unmark)
+    clears them. `setPrayerScore(atDate:)` itself doesn't touch them (marking, rescoring, the
+    masjid check use it).
+  - Where it shows: the time editor — "↩ You marked it at 5:26 PM · use that" under the score
+    (sets the wheel back; Save keeps it) and "· edited" on the location chip; the map's prayer page
+    — "✎ edited · you marked it at 9:05 PM" / "✎ edited · you marked it 590 ft away" under the
+    rows, and ··· → "Back to 9:05 PM" / "Back to where you marked it"; the picker card measures the
+    distance from the recorded spot and has "↩ Back" to fly there; the time editor's own picker
+    draws the recorded spot as a green ring ("Marked here").
+  - Sim ✓: Asr edited 5:26 → 4:17 PM (row: time 16:17, recorded 17:26), the editor then showed
+    the note. The revert menu items are not tapped in the sim yet.
+- **Mosques are one sheet** (owner: a mosque closed the list and opened another sheet; getting
+  back meant closing it and pressing List): the list sheet is a `NavigationStack` on
+  `LocationViewModel.mosquePath`. A row pushes `MosqueSheet` (nav bar back button) and flies the map
+  to the pin (selected, above the sheet); a pin tap opens the same sheet on that mosque (or swaps
+  the page if it's up). Back → the list where you left it, the pin deselects. The old
+  `mosqueSelection` sheet is gone. `.presentationContentInteraction(.scrolls)`: the list scrolls
+  at half height; the grabber resizes. Sim ✓ (row → page, back, pin → page, scroll at medium).
+
 **2026-09-26 night — prayer pages on the map, typed addresses, the time editor's location chip.**
 Owner: the time editor's location row sat oddly; wants to type an address and see the distance;
 on the map, no swipe-to-reveal — tap a prayer → its page in the sheet, ··· → edit; worried about

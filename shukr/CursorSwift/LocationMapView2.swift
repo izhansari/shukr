@@ -103,7 +103,10 @@ final class LocationViewModel: ObservableObject {
     @Published var showMosques = false
     @Published var mosques: [MKMapItem] = []
     @Published var mosqueSearching = false
-    @Published var mosqueSelection: MosqueSelection?
+    /// The mosque sheet is one sheet (2026-09-26, owner: tapping a mosque closed the list and
+    /// opened another sheet; getting back meant closing it and pressing List again): the list,
+    /// with a mosque's page pushed inside it. A pin tap opens the same sheet on that mosque.
+    @Published var mosquePath: [MKMapItem] = []
     /// Panned well away from the last search: offer "Search this area".
     @Published var mosqueAreaStale = false
     var lastMosqueSearch: MKCoordinateRegion?
@@ -113,46 +116,37 @@ final class LocationViewModel: ObservableObject {
     /// The list of mosques found (the pill or the bar's list button).
     @Published var showMosqueList = false
 
-    /// One sheet at a time: a mosque's sheet goes first.
+    /// The list (List button / the pill): a fresh list, no mosque open.
     func openMosqueList() {
-        if mosqueSelection != nil {
-            mosqueSelection = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.showMosqueList = true }
-        } else {
-            showMosqueList = true
-        }
+        mosquePath = []
+        showMosqueList = true
     }
 
-    /// From the list: close it, fly to the mosque (close enough that it isn't in a cluster),
-    /// then select its pin — which opens its sheet like a tap on the map.
+    /// A row in the list: its page slides in inside the same sheet, and the map flies to it
+    /// (close enough that it isn't in a cluster) and selects its pin, above the sheet.
     func focusMosque(_ item: MKMapItem) {
-        showMosqueList = false
-        guard let mapView else { presentMosque(item); return }
+        mosquePath = [item]
+        guard let mapView else { return }
         let spot = MKCoordinateRegion(center: item.placemark.coordinate,
                                       span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006))
         mapView.setRegion(spot, animated: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self, weak mapView] in
-            guard let self else { return }
-            if let mapView, let pin = mapView.annotations.compactMap({ $0 as? MosqueAnnotation }).first(where: { $0.item === item }) {
-                mapView.selectAnnotation(pin, animated: true)
-            } else {
-                self.presentMosque(item)
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak mapView] in
+            guard let mapView, let pin = mapView.annotations.compactMap({ $0 as? MosqueAnnotation }).first(where: { $0.item === item }) else { return }
+            mapView.selectAnnotation(pin, animated: true)   // → presentMosque, already on this page
         }
     }
 
+    /// A mosque pin: the mosque sheet on that mosque (the list behind its back button).
     func presentMosque(_ item: MKMapItem) {
         if showExplore {
             showExplore = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.mosqueSelection = MosqueSelection(item: item)
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.presentMosque(item) }
             return
         }
-        mosqueSelection = MosqueSelection(item: item)
+        if mosquePath != [item] { mosquePath = [item] }
+        if !showMosqueList { showMosqueList = true }
     }
 
-    @MainActor
     func searchMosques(in region: MKCoordinateRegion, fit: Bool) {
         mosqueSearching = true
         mosqueAreaStale = false
@@ -305,6 +299,7 @@ final class LocationViewModel: ObservableObject {
         clearFocus()
         selection = nil
         pick.original = spot
+        pick.recorded = prayer.recordedSpot ?? spot
         pick.centre = spot
         pick.moving = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -312,6 +307,12 @@ final class LocationViewModel: ObservableObject {
             self.movingPrayer = prayer
             self.mapView?.setRegion(MKCoordinateRegion(center: spot, latitudinalMeters: 300, longitudinalMeters: 300), animated: true)
         }
+    }
+
+    /// A prayer's spot was put back where it was marked: its page reopens there.
+    func prayerReverted(_ prayer: PrayerModel, to spot: CLLocationCoordinate2D) {
+        refreshPins()
+        present(PrayerSpotSelection(prayers: [prayer], coordinate: spot))
     }
 
     /// Fly the picking map to a typed address.
@@ -788,7 +789,7 @@ struct LocationMapContentView: View {
     @State private var exploreOpen = false
     private func openPendingMosqueList() {
         guard wantsMosqueList, viewModel.showMosques, !viewModel.mosques.isEmpty, !viewModel.mosqueSearching,
-              guide == nil, !viewModel.showExplore, viewModel.mosqueSelection == nil,
+              guide == nil, !viewModel.showExplore, viewModel.mosquePath.isEmpty,
               UserDefaults.standard.bool(forKey: MapGuideTopic.mosques.seenKey) else { return }
         wantsMosqueList = false
         viewModel.openMosqueList()
@@ -811,7 +812,7 @@ struct LocationMapContentView: View {
             // Another sheet up (usually Explore, right after picking the layer): try again when
             // it closes; only mark it seen once it has actually shown.
             guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, !viewModel.showMosqueList, viewModel.selection == nil,
-                  viewModel.mosqueSelection == nil, !showFilterSheet,
+                  !showFilterSheet,
                   !defaults.bool(forKey: topic.seenKey) else { return }
             defaults.set(true, forKey: topic.seenKey)
             guide = topic
@@ -1102,10 +1103,14 @@ struct LocationMapContentView: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationContentInteraction(.scrolls)   // scrolling scrolls the list; the grabber resizes
         }
-        .onChange(of: viewModel.mosqueSelection?.id) { _, id in
-            if id == nil, let mapView = viewModel.mapView {
-                for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
+        .onChange(of: viewModel.mosquePath.isEmpty) { _, empty in
+            // Back to the list (or the sheet closed): the mosque's pin lets go.
+            if empty, let mapView = viewModel.mapView {
+                for a in mapView.selectedAnnotations where a is MosqueAnnotation { mapView.deselectAnnotation(a, animated: true) }
             }
+        }
+        .onChange(of: viewModel.showMosqueList) { _, open in
+            if !open { viewModel.mosquePath = [] }
         }
         .sheet(isPresented: $viewModel.showExplore) {
             MapExploreSheet(
@@ -1124,18 +1129,21 @@ struct LocationMapContentView: View {
             .presentationBackgroundInteraction(.enabled)
         }
         .sheet(isPresented: $viewModel.showMosqueList) {
-            MosqueListSheet(items: viewModel.mosques,
-                            origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
-                            nearYou: searchedNearYou) { viewModel.focusMosque($0) }
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-        }
-        .sheet(item: $viewModel.mosqueSelection) { selection in
-            MosqueSheet(item: selection.item)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            NavigationStack(path: $viewModel.mosquePath) {
+                MosqueListSheet(items: viewModel.mosques,
+                                origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
+                                nearYou: searchedNearYou) { viewModel.focusMosque($0) }
+                    .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: MKMapItem.self) { item in
+                        MosqueSheet(item: item)
+                            .navigationBarTitleDisplayMode(.inline)
+                    }
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            // Scrolling scrolls the list at half height; drag the grabber to make it bigger.
+            .presentationContentInteraction(.scrolls)
         }
         .sheet(item: $guide) { topic in
             MapGuide(topic: topic) { guide = nil }
@@ -1901,7 +1909,7 @@ struct MapPickOverlay: View {
                 SpotPickerTitle(prayerName: prayer.displayName)
                     .padding(.top, 8)
                 Spacer()
-                SpotPickerCard(original: pick.original, centre: pick.centre, moving: pick.moving,
+                SpotPickerCard(original: pick.original, recorded: pick.recorded, centre: pick.centre, moving: pick.moving,
                                onJump: onJump, onCancel: onCancel, onSet: onSet)
                     .padding(.bottom, 8)
             }
@@ -2075,12 +2083,14 @@ struct PrayerSpotDetail: View {
                     row(icon: "clock",
                         title: prayer.timeAtComplete.map { "Prayed \(shortTimePM($0))" } ?? "Prayed",
                         detail: [intoWindow, "\(shortTimePM(prayer.startTime)) – \(shortTimePM(prayer.endTime))"]
-                            .compactMap { $0 }.joined(separator: " · "))
+                            .compactMap { $0 }.joined(separator: " · "),
+                        edited: prayer.timeEdited ? prayer.recordedTimeAtComplete.map { "edited · you marked it at \(shortTimePM($0))" } : nil)
                     Divider().padding(.leading, 44)
                     row(icon: prayer.atMasjid ? "building.columns" : "mappin.and.ellipse",
                         iconColor: prayer.atMasjid ? Color.sage : .secondary,
                         title: prayer.atMasjid ? (prayer.mosqueName ?? "") : (address ?? "Locating…"),
-                        detail: prayer.atMasjid ? address : nil)
+                        detail: prayer.atMasjid ? address : nil,
+                        edited: prayer.spotEdited ? recordedSpotNote : nil)
                 }
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
             }
@@ -2112,10 +2122,7 @@ struct PrayerSpotDetail: View {
                                 range: editRange, showsLocation: false,
                                 onCancel: { editingTime = false },
                                 onSave: { date, _ in
-                                    prayer.setPrayerScore(atDate: date)
-                                    prayerViewModel.calculateDayScore(for: prayer.startTime)
-                                    prayerViewModel.calculatePrayerStreak()
-                                    prayerViewModel.pushCompletionsToWidget()
+                                    prayerViewModel.editPrayerTime(prayer, to: date)   // keeps the recorded time
                                     viewModel.refreshPins()   // the pin's colour follows the score
                                     editingTime = false
                                 })
@@ -2159,6 +2166,23 @@ struct PrayerSpotDetail: View {
                 Button("Change location", systemImage: "mappin.and.ellipse") {
                     viewModel.beginMove(prayer, from: selection)
                 }
+                // Edited: back to what the app recorded when it was marked.
+                if prayer.timeEdited, let recorded = prayer.recordedTimeAtComplete {
+                    Section {
+                        Button("Back to \(shortTimePM(recorded))", systemImage: "arrow.uturn.backward") {
+                            prayerViewModel.revertPrayerTime(prayer)
+                            viewModel.refreshPins()
+                        }
+                    }
+                }
+                if prayer.spotEdited, let recorded = prayer.recordedSpot {
+                    Section {
+                        Button("Back to where you marked it", systemImage: "arrow.uturn.backward") {
+                            prayerViewModel.revertPrayerLocation(prayer)
+                            viewModel.prayerReverted(prayer, to: recorded)
+                        }
+                    }
+                }
             } label: {
                 Image(systemName: "ellipsis")
                     .font(.body.weight(.semibold))
@@ -2170,7 +2194,17 @@ struct PrayerSpotDetail: View {
         }
     }
 
-    private func row(icon: String, iconColor: Color = .secondary, title: String, detail: String?) -> some View {
+    /// "edited · marked 590 ft away" — how far the pin is from where the app recorded it.
+    private var recordedSpotNote: String? {
+        guard let r = prayer.recordedSpot, let spot else { return nil }
+        let m = CLLocation(latitude: r.latitude, longitude: r.longitude)
+            .distance(from: CLLocation(latitude: spot.latitude, longitude: spot.longitude))
+        let d = Measurement(value: m, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
+        return "edited · you marked it \(d) away"
+    }
+
+    private func row(icon: String, iconColor: Color = .secondary, title: String, detail: String?, edited: String? = nil) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .foregroundStyle(iconColor)
@@ -2179,6 +2213,12 @@ struct PrayerSpotDetail: View {
                 Text(title).lineLimit(1)
                 if let detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                if let edited {
+                    Label(edited, systemImage: "pencil")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)

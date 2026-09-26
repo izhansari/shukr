@@ -20,8 +20,10 @@ import MapKit
 @Observable final class SpotPickState {
     var centre: CLLocationCoordinate2D?
     var moving = false
-    /// Where the prayer was pinned before.
+    /// Where the prayer is pinned now.
     var original: CLLocationCoordinate2D?
+    /// Where the app recorded it when it was marked (differs from `original` once edited).
+    var recorded: CLLocationCoordinate2D?
 }
 
 /// The pin in the middle of the map; its tip is the spot. Lifts while the map moves.
@@ -59,7 +61,11 @@ struct SpotPickerTitle: View {
 /// The card under the picking map: where the pin is (tap to type an address), how far it is from
 /// where the prayer was marked, Cancel / Set location.
 struct SpotPickerCard: View {
+    /// Where the prayer is pinned now: Set location lights up once the pin is somewhere else.
     let original: CLLocationCoordinate2D?
+    /// Where the app recorded it when it was marked: the distance is measured from here, and
+    /// there's a way back to it (owner, 2026-09-26: "so I can always revert it").
+    let recorded: CLLocationCoordinate2D?
     let centre: CLLocationCoordinate2D?
     let moving: Bool
     /// Fly the map to a searched place.
@@ -95,10 +101,16 @@ struct SpotPickerCard: View {
     private var title: String {
         masjid ?? jumpedLabel ?? address ?? (centre == nil ? "Finding you…" : "Looking up the address…")
     }
+    private var markedSpot: CLLocationCoordinate2D? { recorded ?? original }
+    /// The pin is away from where it was marked (offer the way back).
+    private var awayFromMarked: Bool {
+        guard let markedSpot, let centre else { return false }
+        return metres(centre, markedSpot) > 3
+    }
     /// "0.3 mi from where you marked it" (miles / feet or km / m, per the phone's region).
     private var distanceLine: String? {
-        guard let original, let centre else { return nil }
-        let m = metres(centre, original)
+        guard let markedSpot, let centre else { return nil }
+        let m = metres(centre, markedSpot)
         guard m > 3 else { return "Where you marked it" }
         let text = Measurement(value: m, unit: UnitLength.meters)
             .formatted(.measurement(width: .abbreviated, usage: .road,
@@ -113,11 +125,26 @@ struct SpotPickerCard: View {
             } else {
                 addressButton
                 if let distanceLine {
-                    Label(distanceLine, systemImage: changed ? "arrow.left.and.right" : "checkmark.circle")
-                        .font(.footnote)
-                        .foregroundStyle(changed ? Color.primary.opacity(0.75) : .secondary)
-                        .contentTransition(.numericText())
-                        .animation(.snappy, value: distanceLine)
+                    HStack(spacing: 8) {
+                        Label(distanceLine, systemImage: awayFromMarked ? "arrow.left.and.right" : "checkmark.circle")
+                            .font(.footnote)
+                            .foregroundStyle(awayFromMarked ? Color.primary.opacity(0.75) : .secondary)
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: distanceLine)
+                        Spacer(minLength: 4)
+                        if awayFromMarked, let markedSpot {
+                            Button {
+                                jumpedName = nil
+                                onJump(markedSpot)
+                            } label: {
+                                Label("Back", systemImage: "arrow.uturn.backward")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(Color.green)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Back to where you marked it")
+                        }
+                    }
                 } else {
                     Text("Drag the map, or tap the address to type one.")
                         .font(.footnote)
@@ -250,7 +277,7 @@ struct SpotPickerCard: View {
             .frame(maxWidth: .infinity)
             .padding(.top, 6)
         }
-        .onChange(of: query) { _, q in search.update(q, near: original ?? centre) }
+        .onChange(of: query) { _, q in search.update(q, near: markedSpot ?? centre) }
     }
 
     private func choose(_ result: MKLocalSearchCompletion) {
@@ -317,6 +344,8 @@ struct PrayerLocationPicker: View {
     let prayerName: String
     /// Where the prayer is pinned now (nil = nowhere yet: the map opens on you).
     let original: CLLocationCoordinate2D?
+    /// Where the app recorded it when marked (same as `original` until it's edited).
+    var recorded: CLLocationCoordinate2D?
     var onCancel: () -> Void
     var onPick: (CLLocationCoordinate2D) -> Void
 
@@ -324,10 +353,11 @@ struct PrayerLocationPicker: View {
     @State private var centre: CLLocationCoordinate2D?
     @State private var moving = false
 
-    init(prayerName: String, original: CLLocationCoordinate2D?,
+    init(prayerName: String, original: CLLocationCoordinate2D?, recorded: CLLocationCoordinate2D? = nil,
          onCancel: @escaping () -> Void, onPick: @escaping (CLLocationCoordinate2D) -> Void) {
         self.prayerName = prayerName
         self.original = original
+        self.recorded = recorded
         self.onCancel = onCancel
         self.onPick = onPick
         _camera = State(initialValue: original.map {
@@ -341,10 +371,19 @@ struct PrayerLocationPicker: View {
             Map(position: $camera) {
                 UserAnnotation()
                 if let original {
-                    // Where it was pinned before.
+                    // Where it's pinned now.
                     Annotation("", coordinate: original, anchor: .center) {
                         Circle().fill(Color.gray.opacity(0.7)).frame(width: 10, height: 10)
                             .overlay(Circle().stroke(.white, lineWidth: 2))
+                    }
+                }
+                if let recorded, let original,
+                   CLLocation(latitude: recorded.latitude, longitude: recorded.longitude)
+                    .distance(from: CLLocation(latitude: original.latitude, longitude: original.longitude)) > 3 {
+                    // Edited before: where the app recorded it.
+                    Annotation("Marked here", coordinate: recorded, anchor: .center) {
+                        Circle().strokeBorder(Color.green, lineWidth: 2).frame(width: 14, height: 14)
+                            .background(Circle().fill(.white))
                     }
                 }
                 ForEach(MosqueFavorites.all, id: \.id) { m in
@@ -373,7 +412,7 @@ struct PrayerLocationPicker: View {
             SpotPickerTitle(prayerName: prayerName).padding(.top, 12)
         }
         .safeAreaInset(edge: .bottom) {
-            SpotPickerCard(original: original, centre: centre, moving: moving,
+            SpotPickerCard(original: original, recorded: recorded ?? original, centre: centre, moving: moving,
                            onJump: { c in
                                withAnimation(.easeInOut(duration: 0.8)) {
                                    camera = .region(MKCoordinateRegion(center: c, latitudinalMeters: 350, longitudinalMeters: 350))
