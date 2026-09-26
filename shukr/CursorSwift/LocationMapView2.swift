@@ -542,20 +542,23 @@ struct MapView: UIViewRepresentable {
             if let cluster = annotation as? MKClusterAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier, for: annotation) as! MKMarkerAnnotationView
                 let mosques = cluster.memberAnnotations.allSatisfy { $0 is MosqueAnnotation }
-                view.markerTintColor = mosques ? Self.mosqueTint : .systemGreen
+                let muted = cluster.memberAnnotations.allSatisfy { ($0 as? MosqueAnnotation).map { MosqueHiding.isHidden($0.item) } ?? false }
+                view.markerTintColor = muted ? UIColor.systemGray3 : (mosques ? Self.mosqueTint : .systemGreen)
                 view.glyphText = "\(cluster.memberAnnotations.count)"
                 view.canShowCallout = false
                 view.displayPriority = .required
                 return view
             }
             let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier, for: annotation) as! MKMarkerAnnotationView
-            if annotation is MosqueAnnotation {
-                view.markerTintColor = Self.mosqueTint
+            if let mosque = annotation as? MosqueAnnotation {
+                // Not recommended by the user: grey, and they give way to the rest.
+                let muted = MosqueHiding.isHidden(mosque.item)
+                view.markerTintColor = muted ? UIColor.systemGray3 : Self.mosqueTint
                 view.glyphText = nil
                 view.glyphImage = UIImage(systemName: MosqueIconStyle.current.pin)
-                view.clusteringIdentifier = "mosque"
+                view.clusteringIdentifier = muted ? "mosqueMuted" : "mosque"
                 view.canShowCallout = false
-                view.displayPriority = .required
+                view.displayPriority = muted ? .defaultLow : .required
                 return view
             }
             view.glyphText = nil
@@ -742,7 +745,7 @@ struct LocationMapContentView: View {
         }
         if viewModel.showMosques {
             if viewModel.mosqueSearching { return "Finding mosques…" }
-            let n = viewModel.mosques.count
+            let n = viewModel.mosques.filter { !MosqueHiding.isHidden($0) }.count
             let place = searchedNearYou ? "nearby" : "in this area"
             return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque \(place)" : "\(n) mosques \(place)"
         }
@@ -987,6 +990,9 @@ struct LocationMapContentView: View {
         .onChange(of: viewModel.showExplore) { _, open in
             if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // Explore closed over a new layer
             if !open { DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { openPendingMosqueList() } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in
+            viewModel.mosques = viewModel.mosques   // re-add the pins so hidden ones turn grey
         }
         .onChange(of: viewModel.mosqueSearching) { _, searching in
             if !searching { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { openPendingMosqueList() } }

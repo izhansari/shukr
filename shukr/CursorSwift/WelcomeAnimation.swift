@@ -99,6 +99,9 @@ struct WelcomeOverlay: View {
     @State private var shine = false
     @State private var grow = false      // the small ring grows into the circle
     @State private var morph = false     // then the page fades in around it
+    /// Opening onto a page with no Salah circle (Daily Ayah, 99 Names, the map from a widget): the
+    /// ring opens out past the edges like a doorway instead of landing on a circle.
+    @State private var portal = false
     @State private var target: CGPoint?
 
     private let word = Array("shukr")
@@ -106,6 +109,8 @@ struct WelcomeOverlay: View {
     private let ringSize: CGFloat = 200
     /// The ring's size round the word, before it grows.
     private let startSize: CGFloat = 150
+    /// Past every corner of the screen.
+    private var portalSize: CGFloat { max(UIScreen.main.bounds.height, UIScreen.main.bounds.width) * 1.4 }
 
     var body: some View {
         // No GeometryReader here: one in this overlay left the whole app laid out off screen
@@ -128,12 +133,13 @@ struct WelcomeOverlay: View {
                     .shadow(color: Color.sage.opacity(ringDrawn && !grow ? 0.45 : 0), radius: 8)
                     // Starts snug round the word, grows to the circle (frame, not scale, so the
                     // line keeps its own width).
-                    .frame(width: grow ? ringSize : startSize, height: grow ? ringSize : startSize)
-                    .opacity(reduceMotion ? 0 : 1)
+                    .frame(width: portal ? portalSize : (grow ? ringSize : startSize),
+                           height: portal ? portalSize : (grow ? ringSize : startSize))
+                    .opacity(reduceMotion || portal ? 0 : 1)
                 wordmark
-                    .scaleEffect(grow ? 0.9 : 1)
-                    .blur(radius: grow ? 4 : 0)
-                    .opacity(grow ? 0 : 1)
+                    .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
+                    .blur(radius: grow || portal ? 4 : 0)
+                    .opacity(grow || portal ? 0 : 1)
             }
             .offset(shift)
         }
@@ -204,6 +210,15 @@ struct WelcomeOverlay: View {
             withAnimation(.easeInOut(duration: 0.5)) { target = c }
         }
         try? await Task.sleep(for: .milliseconds(450))
+        if !WelcomeTarget.canLand {
+            // Nothing to land on: the ring opens out like a doorway (thin, fading) and the word
+            // and page go with it, onto whatever page was opened.
+            withAnimation(.easeIn(duration: 0.7)) { portal = true; grow = false }
+            withAnimation(.easeInOut(duration: 0.6).delay(0.15)) { morph = true }
+            try? await Task.sleep(for: .milliseconds(760))
+            onFinish()
+            return
+        }
         // Become the circle: the word lets go and the ring grows out to the Salah circle,
         // thickening into its gray track…
         withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { grow = true }

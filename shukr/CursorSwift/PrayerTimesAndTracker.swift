@@ -319,6 +319,11 @@ struct PrayerTimesView: View {
                 sharedState.navPosition = .main
             }
         }
+        // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
+        // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
+        .onChange(of: somethingCovers || showTasbeehPage, initial: true) { _, covered in
+            WelcomeTarget.canLand = !covered
+        }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
                 WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s

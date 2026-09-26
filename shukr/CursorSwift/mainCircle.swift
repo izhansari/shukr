@@ -28,7 +28,6 @@ struct MainCircleView: View {
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
     
     
-    @AppStorage(NextPrayerStyle.key) private var nextPrayerStyleRaw = NextPrayerStyle.label.rawValue
     @Binding var showQiblaMap: Bool
     @Binding var showChainZikrButton: Bool
     @Binding var showTasbeehPage: Bool
@@ -104,10 +103,9 @@ struct MainCircleView: View {
                         }
                     }
                     let upcoming = prayer.status() == .upcoming
-                    let nextStyle = NextPrayerStyle(rawValue: nextPrayerStyleRaw) ?? .label
                     ZStack{
                         if upcoming {
-                            NextPrayerRing(style: nextStyle, start: prayer.startTime, now: currentTime)
+                            NextPrayerRing()
                         }
                         // progress arc
                         Circle()

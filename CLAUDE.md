@@ -381,13 +381,28 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   round the ring. The owner asked for "the circle grows into the other one". Sim ✓ frame by frame.
 - **Next prayer** (the circle showing a prayer that hasn't started, e.g. Asr after Dhuhr is
   marked): the owner found it read like a prayer that's on with no progress. It now has a tracked
-  "NEXT" above the name, and the name / icon at 55 % opacity. `NextPrayerStyle`
-  (PrayerCompletionFX.swift; dev picker Settings → My Dev Stuff → Next prayer look):
-  - label (default);
-  - dashed: + a thin dashed ring inside the track;
-  - countdown: + a faint sage arc filling over the last hour before it starts.
-
-  Sim ✓: label, dashed. Countdown needs Asr less than 1 h away, not seen yet.
+  "NEXT" above the name, the name / icon at 55 % opacity, and `NextPrayerRing`, a thin dashed ring
+  inside the track (PrayerCompletionFX.swift). The owner picked the dashed ring over "label only"
+  and "fills in the last hour", which are deleted.
+- **Welcome onto a page with no circle:** a widget opening Daily Ayah / 99 Names / the map.
+  PrayerTimesView keeps `WelcomeTarget.canLand = !(somethingCovers || showTasbeehPage)`. When it
+  can't land, the ring opens out past the screen edges like a doorway (`portal`: grows to 1.4× the
+  screen's long side, fading) while the word and background fade onto that page. On the Zikr page
+  (circle off screen) it still grows into a centred ring, which the owner likes. Sim ✓ onto
+  Insights.
+- **Not recommended mosques** (`MosqueHiding`, MosqueFinder.swift; owner: the nearest suggestion
+  was an Ahmadiyya mosque):
+  - How to hide: long-press a mosque in the list, or "Don't recommend this mosque" at the bottom of
+    its sheet. The list's filter menu (⏷ in the header) has "Hide Ahmadiyya mosques", which
+    matches "ahmadi" in the name or an alislam.org website; "Baitul" is deliberately not matched,
+    since plenty of Sunni mosques use it.
+  - What hiding does: the mosque is never the nearest card, sits greyed under "NOT RECOMMENDED" at
+    the bottom (long-press → recommend again), isn't counted in "N mosques", and its pin is grey
+    with a lower display priority and its own cluster.
+  - Storage: ids = lowercased name + lat/lon to 4 decimals, in standard defaults `hiddenMosques` /
+    `hideAhmadiyyaMosques`. Changes post `MosqueHiding.changed`, and the map republishes its pins.
+  - No "best rated" sort: MapKit exposes no ratings.
+  - Sim ✓ (hid one: grey pin, 29 → 28).
 
 **2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
 - **Targets** (added to the pbxproj by hand):
