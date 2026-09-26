@@ -404,6 +404,36 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 night — prayer pages on the map, typed addresses, the time editor's location chip.**
+Owner: the time editor's location row sat oddly; wants to type an address and see the distance;
+on the map, no swipe-to-reveal — tap a prayer → its page in the sheet, ··· → edit; worried about
+too many sheets.
+- **Map, no sheet-on-sheet:** the prayer-spot sheet has its own `NavigationStack`. A single pin
+  opens straight on `PrayerSpotDetail`; a cluster's list rows are `NavigationLink`s that push it
+  (the sheet shrinks to compact on the page and grows back for the list). The page: icon, name,
+  date, score + grade word, "Prayed 9:17 PM · 1h 14m into the window · 8:03–11:59 PM", where
+  (masjid or address). While it's open that prayer's own pin is drawn over any cluster
+  (`FocusPrayerAnnotation`, score colour, glow, not tappable). ··· menu:
+  - **Change time** → `PrayerTimeEditSheet(showsLocation: false)`, a short sheet over the spot
+    sheet; saving rescores, recomputes the day / streak, widget, and redraws the pins.
+  - **Change location** → `LocationViewModel.beginMove`: the sheet goes away and the map itself
+    becomes the picker (`MapPickOverlay`: the question on top, `CenterPin` in the middle of the
+    screen, `SpotPickerCard` at the bottom; the map's own controls fade out). The pin follows the
+    map through `SpotPickState` (@Observable, written by the coordinator's region callbacks; only
+    the overlay reads it). Set → `movePrayer` + back on the prayer's page at the new spot;
+    Cancel → back on its page, the cluster's list behind it (`PrayerSpotSelection.focus`).
+- **`SpotPickerCard`** (PrayerLocationPicker.swift, shared by both pickers): the address (or your
+  masajid by name) — tap it to type an address (`AddressSearch`, MKLocalSearchCompleter biased to
+  60 km around the prayer, up to 5 suggestions; picking one flies the map there and names it) —
+  and "590 ft from where you marked it" (`Measurement` with `.road` usage, so miles / feet here).
+- **Time editor:** the location is a quiet chip under "when did you pray?" ("📍 49 Chambers St ›",
+  green edge + "· moved" after a pick) instead of a full row above the buttons. Sheet 572 pt (540
+  without the chip).
+- Sim ✓: cluster → Isha's page (its pin lifted out), ··· → Change location → typed "Woolworth
+  Building" → flew there, "590 ft…" → Set → back on Isha's page at 233 Broadway; ··· → Change time
+  opened on the saved time; Change location → Cancel → back on Dhuhr's page with the list behind;
+  the time editor's chip. Not tried: the typed address in the time editor's own picker (same card).
+
 **2026-09-26 late — move a prayer's pin; build stamp.**
 - **Where you prayed can be changed** (owner: "right now there is no way… ideally drag the map").
   `PrayerLocationPicker` (CursorSwift/PrayerLocationPicker.swift): a SwiftUI `Map` with a green pin

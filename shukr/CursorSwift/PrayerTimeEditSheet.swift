@@ -25,8 +25,10 @@ struct PrayerTimeEditSheet: View {
     /// The time, and the new spot if the pin was moved (nil = where it was).
     var onSave: (Date, CLLocationCoordinate2D?) -> Void
 
-    /// Where it was prayed (2026-09-26): a row under the score opens `PrayerLocationPicker`; the
-    /// picked spot waits here and is saved with Save, like the time.
+    /// Where it was prayed (2026-09-26): a chip under the header opens `PrayerLocationPicker`; the
+    /// picked spot waits here and is saved with Save, like the time. Off when the sheet is opened
+    /// from the prayer map, which moves pins on the map itself.
+    var showsLocation = true
     @State private var draftSpot: CLLocationCoordinate2D?
     @State private var pickingSpot = false
     @State private var spotAddress: String?
@@ -36,9 +38,10 @@ struct PrayerTimeEditSheet: View {
     }
     private var shownSpot: CLLocationCoordinate2D? { draftSpot ?? savedSpot }
 
-    init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>,
+    init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>, showsLocation: Bool = true,
          onCancel: @escaping () -> Void, onSave: @escaping (Date, CLLocationCoordinate2D?) -> Void) {
         self.prayer = prayer
+        self.showsLocation = showsLocation
         self._time = time
         // Open on the time saved for this prayer (owner, 2026-09-26). The parent's binding isn't
         // enough: it's written in the same long-press that presents the sheet, and the sheet came
@@ -93,44 +96,38 @@ struct PrayerTimeEditSheet: View {
         prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
     }
 
-    /// Where it was prayed: the masjid, else the address; tap to move the pin.
-    private var spotRow: some View {
+    /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
+    /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.
+    private var spotChip: some View {
         // Before a move the stored masjid is right; after one, only your own masajid are known yet.
         let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
                                       : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
         let title = shownSpot == nil ? "Add where you prayed"
                                      : (masjid ?? spotAddress ?? "Pinned on the map")
+        let moved = draftSpot != nil
         return Button { pickingSpot = true } label: {
-            HStack(spacing: 10) {
-                Image(systemName: masjid != nil ? "building.columns" : "mappin.and.ellipse")
-                    .foregroundStyle(masjid != nil ? Color.sage : .secondary)
-                    .frame(width: 22)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
-                    if draftSpot != nil {
-                        Text("moved · Save to keep it")
-                            .font(.caption)
-                            .foregroundStyle(Color.green)
-                    } else if masjid != nil, let spotAddress {
-                        Text(spotAddress).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    }
+            HStack(spacing: 5) {
+                Image(systemName: masjid != nil ? "building.columns.fill" : "mappin")
+                    .font(.caption)
+                Text(title).lineLimit(1)
+                if moved {
+                    Text("· moved").foregroundStyle(Color.green)
                 }
-                Spacer(minLength: 0)
-                Text(shownSpot == nil ? "Add" : "Change")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
                 Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.tertiarySystemFill)))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
+            .font(.footnote)
+            .foregroundStyle(masjid != nil ? Color.sage : Color.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule().fill(Color(.tertiarySystemFill)))
+            .overlay(Capsule().strokeBorder(moved ? Color.green.opacity(0.6) : Color.clear, lineWidth: 1))
+            .contentShape(Capsule())
+            .animation(.easeInOut(duration: 0.2), value: moved)
         }
         .buttonStyle(.plain)
+        .padding(.horizontal, 20)
     }
 
     var body: some View {
@@ -147,6 +144,9 @@ struct PrayerTimeEditSheet: View {
                     .font(.subheadline)
                     .fontWeight(.thin)
                     .foregroundStyle(.secondary)
+                if showsLocation {
+                    spotChip.padding(.top, 8)
+                }
             }
             .padding(.top, 30)   // room under the drag handle
 
@@ -185,8 +185,6 @@ struct PrayerTimeEditSheet: View {
                     .foregroundStyle(.secondary)
                     .transition(.opacity)
             }
-
-            spotRow
 
             Spacer(minLength: 0)
 
@@ -234,7 +232,7 @@ struct PrayerTimeEditSheet: View {
             spotAddress = nil
             if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
         }
-        .presentationDetents([.height(620)])
+        .presentationDetents([.height(showsLocation ? 572 : 540)])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }
