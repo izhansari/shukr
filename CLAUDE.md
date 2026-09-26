@@ -1257,6 +1257,10 @@ plus `My Dua Collection 99 Names.pdf` (the owner's revised, longer personal duas
 **Not included on purpose:** the owner's personal duas and their life-area categories
 (Marriage & Family, Career & Building, …) — they're his; other users get their own:
 
+**List filter + reset (2026-09-27, notes #3):** an All · Learning · Known segmented control under
+the header ("Known 12" — counts follow the search), combined with search; an empty state per
+filter. ··· in the toolbar → "Reset progress" (confirmation alert) clears `namesKnown`. Sim ✓.
+
 **Next (v2, not built): personalised AI duas.** Give the user a prompt to copy into their own AI
 (ChatGPT / Claude), which — knowing them — writes one dua per name, calling on Allah by it, in a
 fixed format; the user pastes the output back and shukr parses it into a dua per name (show it on

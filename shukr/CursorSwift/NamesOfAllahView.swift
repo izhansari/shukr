@@ -23,10 +23,21 @@ struct NamesOfAllahView: View {
     @State private var search = ""
     @State private var selected: AllahName?
     @State private var showFlashcards = false
+    /// All · Learning · Known (2026-09-27, notes #3), together with search.
+    enum Filter: String, CaseIterable { case all = "All", learning = "Learning", known = "Known" }
+    @State private var filter: Filter = .all
+    @State private var confirmReset = false
 
     private var known: Set<Int> { KnownNames.decode(knownRaw) }
 
-    private var shown: [AllahName] {
+    private func matches(_ f: Filter, _ name: AllahName) -> Bool {
+        switch f {
+        case .all: true
+        case .learning: !known.contains(name.id)
+        case .known: known.contains(name.id)
+        }
+    }
+    private var searched: [AllahName] {
         let q = search.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return NamesOfAllah.all }
         return NamesOfAllah.all.filter {
@@ -34,6 +45,9 @@ struct NamesOfAllahView: View {
                 || $0.alsoMeans.localizedCaseInsensitiveContains(q) || $0.arabic.contains(q) || "\($0.id)" == q
         }
     }
+    private var shown: [AllahName] { searched.filter { matches(filter, $0) } }
+    /// "Known 12": how many of the searched names each filter would show.
+    private func count(_ f: Filter) -> Int { searched.filter { matches(f, $0) }.count }
 
     var body: some View {
         // Our own list, not a stock inset List: a compact header, then every name on one soft
@@ -41,6 +55,21 @@ struct NamesOfAllahView: View {
         ScrollView {
             VStack(spacing: 18) {
                 header
+                Picker("Show", selection: $filter) {
+                    ForEach(Filter.allCases, id: \.self) { f in
+                        Text("\(f.rawValue) \(count(f))").tag(f)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .sensoryFeedback(.selection, trigger: filter)
+                if shown.isEmpty {
+                    Text(emptyText)
+                        .font(.subheadline)
+                        .fontWeight(.light)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.vertical, 40)
+                } else {
                 LazyVStack(spacing: 0) {
                     let names = shown
                     ForEach(Array(names.enumerated()), id: \.element.id) { index, name in
@@ -59,6 +88,7 @@ struct NamesOfAllahView: View {
                 .padding(.vertical, 4)
                 .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemBackground)))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.primary.opacity(0.05), lineWidth: 0.5))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
@@ -68,6 +98,19 @@ struct NamesOfAllahView: View {
         .navigationTitle("99 Names")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button("Reset progress", systemImage: "arrow.counterclockwise", role: .destructive) {
+                        confirmReset = true
+                    }
+                    .disabled(known.isEmpty)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("More")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 // Flashcards: a soft green tint, up here out of the way (was a stark green pill).
                 Button {
@@ -85,6 +128,17 @@ struct NamesOfAllahView: View {
                 .buttonStyle(.plain)
             }
         }
+        .alert("Reset your progress?", isPresented: $confirmReset) {
+            Button("Reset", role: .destructive) {
+                knownRaw = ""
+                filter = .all
+                triggerSomeVibration(type: .medium)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(known.count == 1 ? "The name you've marked known goes back to still learning."
+                                  : "All \(known.count) names you've marked known go back to still learning.")
+        }
         .sheet(item: $selected) { name in
             NameDetailSheet(start: name)
         }
@@ -97,6 +151,11 @@ struct NamesOfAllahView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoFlashcards") { showFlashcards = true }
         }
         #endif
+    }
+
+    private var emptyText: String {
+        if !search.trimmingCharacters(in: .whitespaces).isEmpty { return "No \(filter == .all ? "" : filter.rawValue.lowercased() + " ")names match “\(search)”." }
+        return filter == .known ? "No names marked known yet.\nFlashcards are a good way to start." : "You know them all. Masha'Allah!"
     }
 
     private var header: some View {
