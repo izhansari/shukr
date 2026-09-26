@@ -512,8 +512,7 @@ struct ZikrCircleWheel: View {
     }
 
     private func estimateNote(_ task: TaskModel, _ p: TaskProgress) -> String? {
-        guard let s = task.secondsLeft(p), s > 0 else { return nil }
-        return zikrEstimateString(s)
+        task.estimateNote(p)
     }
 
     private func progressText(_ task: TaskModel, _ p: TaskProgress) -> String {

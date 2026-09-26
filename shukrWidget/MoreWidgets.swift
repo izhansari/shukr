@@ -101,6 +101,8 @@ struct ZikrTaskSnapshot: Identifiable {
     let done: Bool
     /// Roughly how long what's left takes at your pace (nil: no history yet).
     var secondsLeft: TimeInterval? = nil
+    /// The row's estimate: time for a count goal, counts for a timed one (`TaskModel.estimateNote`).
+    var note: String? = nil
 
     var fraction: Double {
         guard goal > 0 else { return 0 }
@@ -147,7 +149,8 @@ struct ZikrTasksProvider: TimelineProvider {
                                     isCountMode: task.isCountMode, goal: task.goal,
                                     count: p.count, minutes: Int(p.seconds / 60),
                                     done: task.isCompleted(with: p),
-                                    secondsLeft: task.secondsLeft(p))
+                                    secondsLeft: task.secondsLeft(p),
+                                    note: task.estimateNote(p))
         }
         // Like the Zikr page: what's left first, done ones at the end.
         let ordered = snaps.filter { !$0.done } + snaps.filter(\.done)
@@ -194,8 +197,8 @@ extension ZikrTaskSnapshot {
     /// "5/100 · ~4 min" beside a row (medium).
     var rowTrailing: String {
         if done { return "" }
-        guard let s = secondsLeft, s > 0 else { return progressText }
-        return progressText + " · " + zikrEstimateString(s)
+        guard let note else { return progressText }
+        return progressText + " · " + note
     }
 }
 

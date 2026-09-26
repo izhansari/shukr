@@ -535,6 +535,28 @@ extension TaskModel {
     }
 }
 
+extension TaskModel {
+    /// A timed task: roughly how many counts you'll have reached when the minutes are up (today's
+    /// counts + minutes left ÷ your pace). Nil for count tasks, or with no pace yet.
+    func countsAtGoal(_ progress: TaskProgress) -> Int? {
+        guard !isCountMode, let rate = secondsPerCount, rate > 0 else { return nil }
+        let left = max(Double(goal) * 60 - progress.seconds, 0)
+        return progress.count + Int((left / rate).rounded())
+    }
+
+    /// The quiet third line on a task: how long a count goal will take ("~4 min"), or how many
+    /// counts a timed goal will come to ("~780 counts") — "~1 min" under "0 of 1 min" said nothing
+    /// (owner). Nil when done or with no history.
+    func estimateNote(_ progress: TaskProgress) -> String? {
+        if isCompleted(with: progress) { return nil }
+        if isCountMode {
+            guard let s = secondsLeft(progress), s > 0 else { return nil }
+            return zikrEstimateString(s)
+        }
+        return countsAtGoal(progress).map { "~\($0) counts" }
+    }
+}
+
 /// "~4 min", "~1h 10m", "<1 min" — an estimate, so rounded up to whole minutes.
 func zikrEstimateString(_ seconds: TimeInterval) -> String {
     if seconds < 60 { return "<1 min" }

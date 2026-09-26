@@ -408,6 +408,10 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
     · about 12 min to go"), on the widget (rows "5/100 · ~4 min", the header "3 left today ·
     ~14 min"), and on the Lock Screen card.
   - Tasks with no history are left out of the total.
+  - Timed tasks show counts instead (owner: "~1 min" under "0 of 1 min" was redundant):
+    `TaskModel.countsAtGoal` = today's counts + minutes left ÷ pace → "~780 counts".
+    `estimateNote(_:)` picks time for count goals and counts for timed ones (circle note and widget
+    rows). The page and widget totals stay in time.
 - **Compile-time trap:** long `Text(a + (b.map { … } ?? ""))` string expressions stalled the
   widget's type checker for 10+ minutes. Keep them in small helper functions (`rowTrailing`,
   `lockHeadline`, `summaryText`).
