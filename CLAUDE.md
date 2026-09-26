@@ -393,14 +393,12 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 - **Not recommended mosques** (`MosqueHiding`, MosqueFinder.swift; owner: the nearest suggestion
   was an Ahmadiyya mosque):
   - How to hide: long-press a mosque in the list, or "Don't recommend this mosque" at the bottom of
-    its sheet. The list's filter menu (⏷ in the header) has "Hide Ahmadiyya mosques", which
-    matches "ahmadi" in the name or an alislam.org website; "Baitul" is deliberately not matched,
-    since plenty of Sunni mosques use it.
+    its sheet. (A filter menu with "Hide Ahmadiyya mosques" was removed 2026-09-26 — owner: some
+    people may be offended; one at a time is enough. Don't bring back group filters by sect.)
   - What hiding does: the mosque is never the nearest card, sits greyed under "NOT RECOMMENDED" at
     the bottom (long-press → recommend again), isn't counted in "N mosques", and its pin is grey
     with a lower display priority and its own cluster.
-  - Storage: ids = lowercased name + lat/lon to 4 decimals, in standard defaults `hiddenMosques` /
-    `hideAhmadiyyaMosques`. Changes post `MosqueHiding.changed`, and the map republishes its pins.
+  - Storage: ids = lowercased name + lat/lon to 4 decimals, in standard defaults `hiddenMosques`. Changes post `MosqueHiding.changed`, and the map republishes its pins.
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 

@@ -199,7 +199,7 @@ enum MosqueFavorites {
             let c = item.placemark.coordinate
             list.append(FavoriteMosque(id: MosqueHiding.id(item), name: item.name ?? "Mosque",
                                        latitude: c.latitude, longitude: c.longitude))
-            if MosqueHiding.hiddenOneByOne(item) { MosqueHiding.setHidden(item, false) }   // can't be both
+            if MosqueHiding.isHidden(item) { MosqueHiding.setHidden(item, false) }   // can't be both
         }
         save(list)
     }
@@ -224,13 +224,12 @@ enum MosqueFavorites {
 // MARK: - Not recommended
 
 /// Mosques the user doesn't want recommended (owner, 2026-09-26: "don't recommend this one to me,
-/// in any place"). One by one (long-press in the list, or the button on a mosque's sheet), or every
-/// Ahmadiyya mosque at once (the list's filter menu; matched on "Ahmadi" in the name or their
-/// alislam.org website — not on "Baitul", which plenty of Sunni mosques are called too). They're never the nearest card, sit greyed at the bottom of the list,
+/// in any place"). One at a time: long-press in the list, or the button on a mosque's sheet. (A
+/// "hide Ahmadiyya mosques" filter was removed 2026-09-26 — owner: some people may be offended;
+/// one-by-one is enough.) They're never the nearest card, sit greyed at the bottom of the list,
 /// don't count in "N mosques", and their pins are grey. Stored in standard defaults.
 enum MosqueHiding {
     static let key = "hiddenMosques"
-    static let ahmadiyyaKey = "hideAhmadiyyaMosques"
     static let changed = Notification.Name("hiddenMosquesChanged")
 
     /// Name + position (~10 m), stable across searches.
@@ -241,26 +240,12 @@ enum MosqueHiding {
 
     private static var ids: Set<String> { Set(UserDefaults.standard.stringArray(forKey: key) ?? []) }
 
-    static func isAhmadiyya(_ item: MKMapItem) -> Bool {
-        let text = ((item.name ?? "") + " " + (item.url?.absoluteString ?? "")).lowercased()
-        return text.contains("ahmadi") || text.contains("alislam.org")
-    }
-
-    static func hiddenOneByOne(_ item: MKMapItem) -> Bool { ids.contains(id(item)) }
-
-    static func isHidden(_ item: MKMapItem) -> Bool {
-        hiddenOneByOne(item) || (UserDefaults.standard.bool(forKey: ahmadiyyaKey) && isAhmadiyya(item))
-    }
+    static func isHidden(_ item: MKMapItem) -> Bool { ids.contains(id(item)) }
 
     static func setHidden(_ item: MKMapItem, _ hidden: Bool) {
         var set = ids
         if hidden { set.insert(id(item)) } else { set.remove(id(item)) }
         UserDefaults.standard.set(Array(set), forKey: key)
-        NotificationCenter.default.post(name: changed, object: nil)
-    }
-
-    static func setHideAhmadiyya(_ on: Bool) {
-        UserDefaults.standard.set(on, forKey: ahmadiyyaKey)
         NotificationCenter.default.post(name: changed, object: nil)
     }
 }
@@ -288,7 +273,6 @@ struct MosqueListSheet: View {
     @State private var etas: [Int: TimeInterval] = [:]
     /// Bumps when a mosque is hidden / shown, so the list regroups.
     @State private var hiddenRevision = 0
-    @AppStorage(MosqueHiding.ahmadiyyaKey) private var hideAhmadiyya = false
 
     private var icon: String { (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin }
     private var travel: MosqueTravel { MosqueTravel(rawValue: travelRaw) ?? .driving }
@@ -425,13 +409,9 @@ struct MosqueListSheet: View {
                 Label("Add to My masajid", systemImage: "star")
             }
         }
-        if MosqueHiding.hiddenOneByOne(item) {
+        if MosqueHiding.isHidden(item) {
             Button { MosqueHiding.setHidden(item, false) } label: {
                 Label("Recommend again", systemImage: "hand.thumbsup")
-            }
-        } else if MosqueHiding.isHidden(item) {
-            Button { MosqueHiding.setHideAhmadiyya(false) } label: {
-                Label("Show Ahmadiyya mosques again", systemImage: "eye")
             }
         } else {
             Button(role: .destructive) { MosqueHiding.setHidden(item, true) } label: {
@@ -450,18 +430,6 @@ struct MosqueListSheet: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Menu {
-                Toggle(isOn: Binding(get: { hideAhmadiyya }, set: { MosqueHiding.setHideAhmadiyya($0) })) {
-                    Label("Hide Ahmadiyya mosques", systemImage: "eye.slash")
-                }
-                Text("Long-press a mosque to add it to My masajid or stop recommending it.")
-            } label: {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(hideAhmadiyya ? Color.green : Color.secondary)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(hideAhmadiyya ? Color.green.opacity(0.14) : Color.primary.opacity(0.05)))
-            }
             // Drive / walk, for the times in the list (same setting as the map's bar).
             HStack(spacing: 2) {
                 ForEach(MosqueTravel.allCases) { mode in
@@ -789,7 +757,7 @@ struct MosqueSheet: View {
         .task(id: mode) { await loadDrive() }
         .task { await loadScene() }
         .onAppear {
-            hiddenHere = MosqueHiding.hiddenOneByOne(item)
+            hiddenHere = MosqueHiding.isHidden(item)
             favorite = MosqueFavorites.isFavorite(item)
         }
         .mapItemDetailSheet(item: $placeCard)
