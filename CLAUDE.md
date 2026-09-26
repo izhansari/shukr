@@ -528,7 +528,14 @@ signed yet at archive time. Tester notes: `TestFlightNotes-2.0.8.md`. Next uploa
 `CURRENT_PROJECT_VERSION` (now 12 occurrences, the watch targets included) to 9. Xcode's account
 token expires often ("missing Xcode-Token" → "Failed to Use Accounts"); the long-term fix is an App
 Store Connect API key (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`),
-which the owner is setting up. Upload with
+which is now set up.
+**Upload = `scripts/testflight.sh`** (bumps the build number, archives with the watch, uploads). It
+signs and uploads with the App Store Connect API key: Key ID `6K2RUXRJ92`, Issuer
+`60a885ac-0315-4323-974d-57783a7392a2`, file `~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8`
+(Admin role; the file stays on the owner's Mac and is never committed). For device builds, add the
+same `-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` flags. Verified
+2026-09-26: a device build signed with no Xcode sign-in. The "missing Xcode-Token" log line is now
+harmless. Upload with
 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive … -exportOptionsPlist
 build/ExportOptions.plist`. Homebrew's rsync breaks the export, so keep PATH as shown. A
 "missing Xcode-Token" line in the log can be harmless; check for "Upload succeeded". The dev
