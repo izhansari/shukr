@@ -378,14 +378,6 @@ struct PrayersWidgetView: View {
                             // Same type as the app's main circle and Insights ring (light, rounded,
                             // thin secondary caption), scaled from the 200 pt ring to this 90 pt one.
                             VStack(spacing: 2) {
-                                if !relevantPrayer.current {
-                                    Text("next")
-                                        .font(.system(size: 7, weight: .regular, design: .rounded))
-                                        .tracking(1.2)
-                                        .textCase(.uppercase)
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.bottom, -1)
-                                }
                                 HStack(alignment: .center, spacing: 4){
                                     Image(systemName: prayerIcon(for: relevantPrayer.name))
                                         .font(.system(size: 11, weight: .light))
@@ -393,6 +385,18 @@ struct PrayersWidgetView: View {
                                         .font(.system(size: 15, weight: .light, design: .rounded))
                                 }
                                 .foregroundStyle(relevantPrayer.current ? Color.primary : Color.primary.opacity(0.55))
+                                // "NEXT" over the name without taking space, so the name stays put.
+                                .overlay(alignment: .top) {
+                                    if !relevantPrayer.current {
+                                        Text("next")
+                                            .font(.system(size: 7, weight: .regular, design: .rounded))
+                                            .tracking(1.2)
+                                            .textCase(.uppercase)
+                                            .foregroundStyle(.tertiary)
+                                            .fixedSize()
+                                            .offset(y: -8)
+                                    }
+                                }
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                                 Group {

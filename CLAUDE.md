@@ -1453,6 +1453,17 @@ open the app and check the prayer shows complete with the right score. If the nu
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app
 schedules nudges as fewer, later-verified notifications).
 
+**Main circle "next" → "now" (2026-09-27, quick fixes).** "NEXT" is an overlay above the name row
+(offset −13; widget −8), so the name sits at the same y whether the prayer is next or current (it
+jumped). An upcoming prayer's progress is 0 (was 1 in a clear colour, so at the start the arc
+sprang from full to empty in green). When the circle's prayer comes into its window *on screen*
+(`circleStateKey` "Asr|next" → "Asr|now", app active, circle up > 2 s, no flourish / post-salah
+offer), the dashed ring / NEXT / dimmed name crossfade (0.8 s) and `PrayerStartMoment` plays with a
+soft haptic. Looks (`PrayerStartStyle`, Settings → My Dev Stuff → Prayer begins): fade (default),
+draw (the dashed ring turns solid sage and swells into the track), glow (one sage breath round the
+track). **Owner is choosing** — keep the winner, delete the rest. Reduce Motion: the crossfade
+only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow]` starts Maghrib 6 s after launch.
+
 **Prayer notification scheduling — `NotificationScheduler`** (CursorSwift/NotificationScheduler.swift,
 2026-09-27, notes #10). Everything scheduled goes through it; it owns iOS's 64-pending budget.
 - ~7 days ahead: the next two prayer days that are still ahead get Start / Mid / End (nudges per

@@ -528,6 +528,25 @@ struct PrayerTimesView: View {
                 NotificationCenter.default.post(name: .perfectDay, object: true)
                 return
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoPrayerStart") {
+                // A prayer comes into its window 6 s after launch (simulator only): test prayer
+                // times, then Asr's window closed and Maghrib moved to start in 6 s.
+                // `-prayerStartStyle draw|glow|fade` picks the look.
+                try? await Task.sleep(for: .seconds(1))
+                viewModel.useTestPrayers = true
+                viewModel.fetchPrayerTimes(cameFrom: "demoPrayerStart")
+                viewModel.loadTodaysPrayerObjects()
+                let now = Date()
+                for p in viewModel.todaysPrayers {
+                    switch p.name {
+                    case "Fajr", "Dhuhr", "Asr": p.startTime = now.addingTimeInterval(-3600); p.endTime = now.addingTimeInterval(-60)
+                    case "Maghrib": p.startTime = now.addingTimeInterval(6); p.endTime = now.addingTimeInterval(1800)
+                    default: p.startTime = now.addingTimeInterval(3600); p.endTime = now.addingTimeInterval(7200)
+                    }
+                }
+                viewModel.objectWillChange.send()
+                return
+            }
             guard ProcessInfo.processInfo.arguments.contains("-demoPrayerCompletion") else { return }
             try? await Task.sleep(for: .seconds(1.5))
             viewModel.useTestPrayers = true

@@ -260,6 +260,59 @@ struct PrayerStatusDot: View {
 
 /// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):
 /// in the main circle (hold to mark, lift, tap again — no reaching for a pill) or the old pill.
+/// The moment a prayer on the circle comes into its window (notes quick fix, 2026-09-27). Every
+/// style crossfades "next" → "now" (dashed ring, NEXT and the dimmed name) with one soft haptic;
+/// the owner is choosing the extra between these in Settings → My Dev Stuff → Prayer begins.
+enum PrayerStartStyle: String, CaseIterable, Identifiable {
+    case fade, draw, glow
+    static let key = "prayerStartStyle"
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .fade: "Just the fade"
+        case .draw: "Ring draws into the track"
+        case .glow: "Soft sage glow"
+        }
+    }
+}
+
+/// Plays once over the circle when its prayer begins (`PrayerStartStyle`), then the caller clears it.
+struct PrayerStartMoment: View {
+    let style: PrayerStartStyle
+    static let duration: Double = 1.6
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var go = false
+
+    var body: some View {
+        ZStack {
+            if !reduceMotion {
+                switch style {
+                case .fade:
+                    EmptyView()
+                case .draw:
+                    // The dashed ring turns solid sage and swells out into the track, fading.
+                    Circle()
+                        .stroke(Color.sage, lineWidth: go ? 12 : 1.5)
+                        .frame(width: go ? 200 : 180, height: go ? 200 : 180)
+                        .opacity(go ? 0 : 0.9)
+                case .glow:
+                    // One soft breath of sage round the track (quieter than a completion).
+                    Circle()
+                        .stroke(Color.sage.opacity(0.7), lineWidth: 4)
+                        .frame(width: 200, height: 200)
+                        .shadow(color: Color.sage.opacity(0.55), radius: go ? 14 : 2)
+                        .opacity(go ? 0 : 1)
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
+            withAnimation(.easeOut(duration: style == .glow ? 1.4 : 0.9)) { go = true }
+        }
+    }
+}
+
 enum PostSalahPromptStyle: String, CaseIterable, Identifiable {
     case nudge, circle, pill
     static let key = "postSalahPromptStyle"

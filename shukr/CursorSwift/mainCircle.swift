@@ -22,6 +22,13 @@ struct MainCircleView: View {
     /// dismissed ("not now"), or the next prayer begins. The prayer it's for.
     @State private var postSalahFor: String?
     @AppStorage(PostSalahPromptStyle.key) private var promptStyleRaw = PostSalahPromptStyle.nudge.rawValue
+    /// The prayer on the circle just came into its window, on screen: the moment plays once.
+    @State private var startMoment: PrayerStartStyle?
+    @State private var startMomentID = 0
+    @AppStorage(PrayerStartStyle.key) private var startStyleRaw = PrayerStartStyle.fade.rawValue
+    /// When the circle last appeared: a flip in the first moments (launch, coming back) doesn't play.
+    @State private var appearedAt = Date()
+    @Environment(\.scenePhase) private var scenePhase
     private var promptInCircle: Bool { promptStyleRaw == PostSalahPromptStyle.circle.rawValue }
     private var promptAsNudge: Bool { promptStyleRaw == PostSalahPromptStyle.nudge.rawValue }
     /// The pager's live state — the bottom nudge lives in the chrome and reads it.
@@ -79,6 +86,9 @@ struct MainCircleView: View {
                 }
                 else if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
                     var progress: Double {
+                        // Not started: 0, so when it starts the arc grows from nothing (it was 1 in
+                        // a clear colour, and sprang back from full to empty, green, at the start).
+                        if prayer.status() == .upcoming { return 0 }
                         guard prayer.status() == .current else { return 1 }
                         let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
                         let elapsed = currentTime.timeIntervalSince(prayer.startTime)
@@ -104,9 +114,11 @@ struct MainCircleView: View {
                     }
                     let upcoming = prayer.status() == .upcoming
                     ZStack{
-                        if upcoming {
-                            NextPrayerRing()
-                        }
+                        // "Next" → "now" crossfades (ring, NEXT, the name's dimming) instead of
+                        // flipping when the window opens (2026-09-27).
+                        NextPrayerRing()
+                            .opacity(upcoming ? 1 : 0)
+                            .animation(.easeInOut(duration: 0.8), value: upcoming)
                         // progress arc
                         Circle()
                             .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
@@ -120,16 +132,6 @@ struct MainCircleView: View {
                         // Inner content
                         ZStack{
                             VStack{
-                                // Not started yet: say so above the name (owner: an empty ring read
-                                // like a prayer that's on).
-                                if upcoming {
-                                    Text("next")
-                                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                                        .tracking(2)
-                                        .textCase(.uppercase)
-                                        .foregroundStyle(.tertiary)
-                                        .padding(.bottom, -2)
-                                }
                                 // Same type as the Insights ring: large, light, rounded.
                                 HStack(alignment: .center, spacing: 8){
                                     Image(systemName: prayerIcon(for: prayer.name))
@@ -138,6 +140,21 @@ struct MainCircleView: View {
                                         .font(.system(size: 32, weight: .light, design: .rounded))
                                 }
                                 .foregroundStyle(upcoming ? Color.primary.opacity(0.55) : Color.primary)
+                                .animation(.easeInOut(duration: 0.8), value: upcoming)
+                                // Not started yet: "NEXT" above the name (owner: an empty ring read
+                                // like a prayer that's on). An overlay, so the name sits at the same
+                                // spot whether the prayer is next or current — it used to jump.
+                                .overlay(alignment: .top) {
+                                    Text("next")
+                                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                                        .tracking(2)
+                                        .textCase(.uppercase)
+                                        .foregroundStyle(.tertiary)
+                                        .fixedSize()
+                                        .offset(y: -13)
+                                        .opacity(upcoming ? 1 : 0)
+                                        .animation(.easeInOut(duration: 0.5), value: upcoming)
+                                }
                                 .animation(animationStyle, value: prayer.name)
                                // Going back to the old way (want h and m with no comma. Better cleaner transition):
                                 if prayer.status() == .current{
@@ -195,6 +212,11 @@ struct MainCircleView: View {
                 CompletionFlourish(event: flourish)
                     .id(flourishID)
                     .transition(.opacity)
+            }
+
+            if let startMoment {
+                PrayerStartMoment(style: startMoment)
+                    .id(startMomentID)
             }
             
             // tappable circle on top (cant mix with outer circle cuz then the progress goes under the circle stroke)
@@ -287,6 +309,7 @@ struct MainCircleView: View {
                 if promptAsNudge { live?.postSalahNudge = "Asr" } else { postSalahFor = "Asr" }
             }
             #endif
+            appearedAt = Date()
             locationManager.startUpdating() // Start location updates
             sharedState.allowQiblaHaptics = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -323,9 +346,34 @@ struct MainCircleView: View {
                 withAnimation(.easeInOut(duration: 0.3)) { live?.postSalahNudge = nil }
             }
         }
+        // The prayer on the circle came into its window while we watched.
+        .onChange(of: circleStateKey) { old, new in
+            guard old.hasSuffix("|next"), new.hasSuffix("|now"),
+                  old.dropLast(5) == new.dropLast(4),                // same prayer, next → now
+                  scenePhase == .active, Date().timeIntervalSince(appearedAt) > 2,
+                  flourish == nil, postSalahFor == nil else { return }
+            startMomentID += 1
+            let id = startMomentID
+            startMoment = PrayerStartStyle(rawValue: startStyleRaw) ?? .fade
+            DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration) {
+                if startMomentID == id { startMoment = nil }
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { appearedAt = Date() } }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
             currentTime = newTime
 //            prayer = viewModel.relevantPrayer
+        }
+    }
+
+    /// "Asr|next" / "Asr|now" for the prayer on the circle (re-read every tick via currentTime).
+    private var circleStateKey: String {
+        _ = currentTime
+        guard let prayer = viewModel.relevantPrayer else { return "" }
+        switch prayer.status() {
+        case .upcoming: return "\(prayer.name)|next"
+        case .current: return "\(prayer.name)|now"
+        default: return "\(prayer.name)|missed"
         }
     }
 
