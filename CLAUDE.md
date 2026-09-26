@@ -392,6 +392,9 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   register the new App IDs ("No Accounts"). Open `shukr.xcodeproj` in Xcode and build / run once
   (or visit Signing & Capabilities for shukrWatch and shukrWatchWidgets) so Xcode registers them
   with the app group. After that, command-line device builds use the downloaded profiles.
+- Until then, to put a build on the phones: copy the pbxproj aside, remove the iOS target's
+  "Embed Watch Content" phase and its shukrWatch `PBXTargetDependency` line, build and install, then
+  restore the copy. Done 2026-09-26 for both phones. Never commit the stripped file.
 - There is no watchOS simulator runtime on this Mac. Sim ✓ = the iPhone simulator build compiles
   and embeds `Watch/shukrWatch.app` with `PlugIns/shukrWatchWidgets.appex`. Never run on a watch.
 
