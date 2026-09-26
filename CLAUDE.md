@@ -170,10 +170,14 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   complete).
 - Reminders: keep rotating all four, or pick one or two.
 
-**Release / TestFlight:** 2.0 (5) was archived from eac68fc but never uploaded (the
-account token is missing. The owner must sign in again under Xcode → Settings → Accounts. Then bump
-to build 6, archive this branch, and upload. The dev toggles (wheel / mosque icon / post-salah style
-/ ring playground) live in the `#if DEBUG` "My Dev Stuff" section, so they won't ship.
+**Release / TestFlight:** **2.0 (6) was uploaded 2026-09-25** from 28e418f (archive:
+`build/shukr-2.0-6.xcarchive`). 2.0 (5) was never uploaded. Next upload: bump
+`CURRENT_PROJECT_VERSION` (8 occurrences) to 7. Upload with
+`env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive … -exportOptionsPlist
+build/ExportOptions.plist`. Homebrew's rsync breaks the export, so keep PATH as shown. A
+"missing Xcode-Token" line in the log was harmless this time: the upload still succeeded. The dev
+toggles (wheel / mosque icon / post-salah style / ring playground) live in the `#if DEBUG`
+"My Dev Stuff" section, so they won't ship.
 
 ## Start here: outstanding work, in priority order
 
