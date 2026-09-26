@@ -280,6 +280,9 @@ struct PrayerTimesView: View {
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
+            if newScenePhase == .background || newScenePhase == .active {
+                WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s
+            }
             if newScenePhase == .background {
                 // Tasks added / edited / reordered: let the Zikr widget catch up (it reads the
                 // shared store, so save first).

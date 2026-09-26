@@ -542,6 +542,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func pushCompletionsToWidget() {
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
+        WatchSync.shared.send()                    // the watch's ✓s
     }
     
     /*

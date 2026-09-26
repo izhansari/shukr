@@ -40,13 +40,17 @@
 		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
 		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
-		A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */; };
 		36E0E0AF2D41F930005C62BB /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36E0E0AE2D41F930005C62BB /* Adhan */; };
 		36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */; };
 		36EF8C0A2D3AEE40008D91E7 /* PrayerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */; };
 		36FAF8242CF2EFA600718D73 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 36FAF8232CF2EFA600718D73 /* Adhan */; };
 		A1B2C3D40000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */; };
 		A1B2C3D40000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000003 /* PrivacyInfo.xcprivacy */; };
+		A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */; };
+		5A7C0E000000000000000006 /* shukrWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000001 /* shukrWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5A7C0E000000000000000007 /* shukrWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000002 /* shukrWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5A7C0E000000000000000008 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 5A7C0E00000000000000001E /* Adhan */; };
+		5A7C0E000000000000000009 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 5A7C0E00000000000000001F /* Adhan */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -71,6 +75,20 @@
 			remoteGlobalIDString = 369A05F62C5E8635002CD697;
 			remoteInfo = shukrWidgetExtension;
 		};
+		5A7C0E000000000000000014 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 369A05BC2C5E8616002CD697 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A7C0E000000000000000013;
+			remoteInfo = shukrWatchWidgets;
+		};
+		5A7C0E000000000000000015 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 369A05BC2C5E8616002CD697 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A7C0E000000000000000012;
+			remoteInfo = shukrWatch;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -81,6 +99,28 @@
 			dstSubfolderSpec = 13;
 			files = (
 				369A060B2C5E8636002CD697 /* shukrWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E00000000000000000A /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				5A7C0E000000000000000006 /* shukrWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E00000000000000000B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5A7C0E000000000000000007 /* shukrWatchWidgets.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -121,7 +161,6 @@
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
 		36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTargetForIntents.swift; sourceTree = "<group>"; };
 		36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayersWidget.swift; sourceTree = "<group>"; };
-		A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreWidgets.swift; sourceTree = "<group>"; };
 		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
 		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
 		36F4710A2C8FF7CB0077DB22 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
@@ -130,6 +169,9 @@
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A1B2C3D40000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreWidgets.swift; sourceTree = "<group>"; };
+		5A7C0E000000000000000001 /* shukrWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukrWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A7C0E000000000000000002 /* shukrWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = shukrWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -146,6 +188,9 @@
 		3647F2BE2CC7CD46009A8DD9 /* CursorSwift */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = CursorSwift; sourceTree = "<group>"; };
 		365AC42A2D4C467D002DDCE7 /* LocationManagers */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (365AC4362D4C83D0002DDCE7 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = LocationManagers; sourceTree = "<group>"; };
 		369BE9272CA49384003A58B7 /* Models */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Models; sourceTree = "<group>"; };
+		5A7C0E000000000000000003 /* shukrWatch */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatch; sourceTree = "<group>"; };
+		5A7C0E000000000000000004 /* shukrWatchShared */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatchShared; sourceTree = "<group>"; };
+		5A7C0E000000000000000005 /* shukrWatchWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatchWidgets; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -181,6 +226,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A7C0E00000000000000000D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A7C0E000000000000000008 /* Adhan in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E000000000000000010 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A7C0E000000000000000009 /* Adhan in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -192,6 +253,9 @@
 				369A05D92C5E8617002CD697 /* shukrTests */,
 				369A05E32C5E8617002CD697 /* shukrUITests */,
 				369A05FD2C5E8635002CD697 /* shukrWidget */,
+				5A7C0E000000000000000003 /* shukrWatch */,
+				5A7C0E000000000000000004 /* shukrWatchShared */,
+				5A7C0E000000000000000005 /* shukrWatchWidgets */,
 				369A05F82C5E8635002CD697 /* Frameworks */,
 				369A05C52C5E8616002CD697 /* Products */,
 				B8BEABC67E75C3463BADF18F /* Pods */,
@@ -201,6 +265,8 @@
 		369A05C52C5E8616002CD697 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				5A7C0E000000000000000001 /* shukrWatch.app */,
+				5A7C0E000000000000000002 /* shukrWatchWidgets.appex */,
 				369A05C42C5E8616002CD697 /* shukr.app */,
 				369A05D62C5E8617002CD697 /* shukrTests.xctest */,
 				369A05E02C5E8617002CD697 /* shukrUITests.xctest */,
@@ -310,11 +376,13 @@
 				369A05C12C5E8616002CD697 /* Frameworks */,
 				369A05C22C5E8616002CD697 /* Resources */,
 				369A060F2C5E8636002CD697 /* Embed Foundation Extensions */,
+				5A7C0E00000000000000000A /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				369A060A2C5E8636002CD697 /* PBXTargetDependency */,
+				5A7C0E000000000000000017 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
@@ -385,6 +453,56 @@
 			productReference = 369A05F72C5E8635002CD697 /* shukrWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		5A7C0E000000000000000012 /* shukrWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A7C0E00000000000000001C /* Build configuration list for PBXNativeTarget "shukrWatch" */;
+			buildPhases = (
+				5A7C0E00000000000000000C /* Sources */,
+				5A7C0E00000000000000000D /* Frameworks */,
+				5A7C0E00000000000000000E /* Resources */,
+				5A7C0E00000000000000000B /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5A7C0E000000000000000016 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5A7C0E000000000000000003 /* shukrWatch */,
+				5A7C0E000000000000000004 /* shukrWatchShared */,
+			);
+			name = shukrWatch;
+			packageProductDependencies = (
+				5A7C0E00000000000000001E /* Adhan */,
+			);
+			productName = shukrWatch;
+			productReference = 5A7C0E000000000000000001 /* shukrWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
+		5A7C0E000000000000000013 /* shukrWatchWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5A7C0E00000000000000001D /* Build configuration list for PBXNativeTarget "shukrWatchWidgets" */;
+			buildPhases = (
+				5A7C0E00000000000000000F /* Sources */,
+				5A7C0E000000000000000010 /* Frameworks */,
+				5A7C0E000000000000000011 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5A7C0E000000000000000005 /* shukrWatchWidgets */,
+				5A7C0E000000000000000004 /* shukrWatchShared */,
+			);
+			name = shukrWatchWidgets;
+			packageProductDependencies = (
+				5A7C0E00000000000000001F /* Adhan */,
+			);
+			productName = shukrWatchWidgets;
+			productReference = 5A7C0E000000000000000002 /* shukrWatchWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -431,6 +549,8 @@
 				369A05D52C5E8617002CD697 /* shukrTests */,
 				369A05DF2C5E8617002CD697 /* shukrUITests */,
 				369A05F62C5E8635002CD697 /* shukrWidgetExtension */,
+				5A7C0E000000000000000012 /* shukrWatch */,
+				5A7C0E000000000000000013 /* shukrWatchWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -477,6 +597,20 @@
 				365AC4962D532658002DDCE7 /* english_hilali.sqlite in Resources */,
 				365AC4972D532658002DDCE7 /* quran.sqlite in Resources */,
 				A1B2C3D40000000000000004 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E00000000000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E000000000000000011 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -530,6 +664,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5A7C0E00000000000000000C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5A7C0E00000000000000000F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -547,6 +695,16 @@
 			isa = PBXTargetDependency;
 			target = 369A05F62C5E8635002CD697 /* shukrWidgetExtension */;
 			targetProxy = 369A06092C5E8636002CD697 /* PBXContainerItemProxy */;
+		};
+		5A7C0E000000000000000016 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A7C0E000000000000000013 /* shukrWatchWidgets */;
+			targetProxy = 5A7C0E000000000000000014 /* PBXContainerItemProxy */;
+		};
+		5A7C0E000000000000000017 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A7C0E000000000000000012 /* shukrWatch */;
+			targetProxy = 5A7C0E000000000000000015 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -866,6 +1024,118 @@
 			};
 			name = Release;
 		};
+		5A7C0E000000000000000018 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = shukrWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 7R387XZ2Y7;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = shukr;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.betternorms.shukr;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betternorms.shukr.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		5A7C0E000000000000000019 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = shukrWatch.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 7R387XZ2Y7;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = shukr;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.betternorms.shukr;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betternorms.shukr.watchkitapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		5A7C0E00000000000000001A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = shukrWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 7R387XZ2Y7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukrWatchWidgetsInfo.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = shukr;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betternorms.shukr.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		5A7C0E00000000000000001B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = shukrWatchWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 7;
+				DEVELOPMENT_TEAM = 7R387XZ2Y7;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukrWatchWidgetsInfo.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = shukr;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.betternorms.shukr.watchkitapp.widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -914,6 +1184,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5A7C0E00000000000000001C /* Build configuration list for PBXNativeTarget "shukrWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A7C0E000000000000000018 /* Debug */,
+				5A7C0E000000000000000019 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5A7C0E00000000000000001D /* Build configuration list for PBXNativeTarget "shukrWatchWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5A7C0E00000000000000001A /* Debug */,
+				5A7C0E00000000000000001B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -934,6 +1222,16 @@
 			productName = Adhan;
 		};
 		36FAF8232CF2EFA600718D73 /* Adhan */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;
+			productName = Adhan;
+		};
+		5A7C0E00000000000000001E /* Adhan */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;
+			productName = Adhan;
+		};
+		5A7C0E00000000000000001F /* Adhan */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 36FAF8222CF2EFA600718D73 /* XCRemoteSwiftPackageReference "adhan-swift" */;
 			productName = Adhan;

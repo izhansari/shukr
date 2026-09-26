@@ -340,6 +340,38 @@ like "end" and he was scared to press it. The Tasbih Fatimah reminder under the 
 (title primary 0.5, text 0.36, source sage 0.75); it read bright white in dark mode. The count-in-sets
 subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 
+**2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
+- **Targets** (added to the pbxproj by hand):
+  - `shukrWatch`: a watchOS 11 single-target app, bundle `com.betternorms.shukr.watchkitapp`,
+    embedded in the iPhone app via "Embed Watch Content".
+  - `shukrWatchWidgets`: the complications, bundle `…watchkitapp.widgets`, embedded in the watch
+    app; Info.plist is `shukrWatchWidgetsInfo.plist` at the repo root.
+  - Synced folders: `shukrWatch/` (app + icon), `shukrWatchWidgets/`, and `shukrWatchShared/`,
+    compiled into both watch targets.
+  - Entitlements `shukrWatch.entitlements` / `shukrWatchWidgets.entitlements` both carry the app
+    group `group.betternorms.shukr.shukrWidget`, so the watch app and its complications share
+    defaults. It is a separate container from the phone's.
+  - Both link Adhan.
+- **Data:** `WatchPrayerCore.swift` computes the prayer day on the watch (same method mapping as
+  `PrayerUtils`, Fajr-to-Fajr day, Isha to 11:59 PM, capped at the next Fajr). The iPhone's
+  `WatchSync` (CursorSwift/WatchSync.swift, started in `shukrApp.init`) sends the WatchConnectivity
+  application context: lat, lon, method, school, city, today's completed names, completedDay. It
+  sends on scene active / background and in `pushCompletionsToWidget`, and never resends unchanged
+  context. The watch's `WatchSession` saves it (`WatchStore.save`) and reloads the complications;
+  `.backgroundTask(.watchConnectivity)` lets it land while the watch app isn't open.
+- **Watch app:** the prayer ring (like the main circle), today's five times with ✓ for marked ones,
+  the city. "Open shukr on your iPhone…" until a location arrives. Read-only: marking prayers and a
+  wrist tasbeeh are next (they need WatchConnectivity messages back to the phone).
+- **Complications (`PrayerComplication`):** circular (the ring drains live), corner (symbol + a
+  curved gauge with the time), rectangular (name, ends / at, bar or countdown), inline. One
+  timeline entry per prayer start / end.
+- **Signing — blocks device builds and uploads until done once:** the command-line tools can't
+  register the new App IDs ("No Accounts"). Open `shukr.xcodeproj` in Xcode and build / run once
+  (or visit Signing & Capabilities for shukrWatch and shukrWatchWidgets) so Xcode registers them
+  with the app group. After that, command-line device builds use the downloaded profiles.
+- There is no watchOS simulator runtime on this Mac. Sim ✓ = the iPhone simulator build compiles
+  and embeds `Watch/shukrWatch.app` with `PlugIns/shukrWatchWidgets.appex`. Never run on a watch.
+
 **2026-09-26 — Zikr widget → task, and time estimates.**
 - **Tap a task in the widget:** each row of the Zikr widget is its own button
   (`OpenZikrTaskIntent(taskID:)` → app-group `widgetZikrTask` + `widgetTasbeeh`). The app opens
