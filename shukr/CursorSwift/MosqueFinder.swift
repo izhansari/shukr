@@ -595,6 +595,10 @@ struct MosqueListSheet: View {
 
 struct MosqueSheet: View {
     let item: MKMapItem
+    /// Pushed from the mosque list: a back button in the header row (no navigation bar — it added
+    /// a whole empty row above the name; owner, 2026-09-26).
+    var showsBack = false
+    @Environment(\.dismiss) private var dismiss
     @State private var hiddenHere = false
     @State private var favorite = false
     @State private var drive: (time: TimeInterval, meters: CLLocationDistance)?
@@ -619,7 +623,18 @@ struct MosqueSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
+                HStack(alignment: .top, spacing: 12) {
+                    if showsBack {
+                        Button { dismiss() } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 44, height: 44)
+                                .background(Circle().fill(Color.primary.opacity(0.06)))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back to the list")
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(item.name ?? "Mosque")
                             .font(.system(size: 26, weight: .light, design: .rounded))

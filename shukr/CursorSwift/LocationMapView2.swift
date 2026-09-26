@@ -1135,8 +1135,8 @@ struct LocationMapContentView: View {
                                 nearYou: searchedNearYou) { viewModel.focusMosque($0) }
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: MKMapItem.self) { item in
-                        MosqueSheet(item: item)
-                            .navigationBarTitleDisplayMode(.inline)
+                        MosqueSheet(item: item, showsBack: true)
+                            .toolbar(.hidden, for: .navigationBar)
                     }
             }
             .presentationDetents([.medium, .large])

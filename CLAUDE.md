@@ -424,7 +424,7 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
     the note. The revert menu items are not tapped in the sim yet.
 - **Mosques are one sheet** (owner: a mosque closed the list and opened another sheet; getting
   back meant closing it and pressing List): the list sheet is a `NavigationStack` on
-  `LocationViewModel.mosquePath`. A row pushes `MosqueSheet` (nav bar back button) and flies the map
+  `LocationViewModel.mosquePath`. A row pushes `MosqueSheet(showsBack: true)` (nav bar hidden — it left an empty row above the name, owner; the back chevron sits in the header row beside the name) and flies the map
   to the pin (selected, above the sheet); a pin tap opens the same sheet on that mosque (or swaps
   the page if it's up). Back → the list where you left it, the pin deselects. The old
   `mosqueSelection` sheet is gone. `.presentationContentInteraction(.scrolls)`: the list scrolls
