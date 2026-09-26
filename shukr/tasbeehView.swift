@@ -387,7 +387,7 @@ struct tasbeehView: View {
             .zIndex(1)
             .opacity(savedSession == nil ? 0 : 1)
             .disabled(savedSession == nil)
-            .animation(.easeInOut(duration: 0.5), value: savedSession != nil)
+            .animation(.easeOut(duration: 0.25), value: savedSession != nil)
             
             
         }
@@ -549,8 +549,12 @@ struct tasbeehView: View {
             savedSession = saveSession()
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
-            sharedState.selectedTask = nil
+            // Shared-state writes re-render the whole home screen under this cover, so they wait
+            // until the results screen is up (completeStopTimer, after its fade) instead of
+            // landing in the same frame as it — part of the "lag before the completion page"
+            // (owner, 2026-09-25).
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.sharedState.selectedTask = nil
                 self.completeStopTimer()
             }
         } else {
@@ -915,6 +919,7 @@ struct tasbeehView: View {
 
         // UI state
         @State private var finishArmed = false
+        @State private var finishArmToken = 0
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
         @State private var chosenMantraObject: MantraModel? = nil
@@ -1177,7 +1182,9 @@ struct tasbeehView: View {
                 HStack(spacing: 12) {
                     // Two taps (owner: cleaner than an "are you sure?"): the first arms it — a
                     // green edge and green text, "Tap to finish" — the second finishes; it
-                    // disarms after 3 s. (Red read as a warning; owner.)
+                    // disarms after 3 s. (Red read as a warning; owner.) The two states crossfade
+                    // (both labels stacked, a soft blur between them) and the green fill eases in,
+                    // so arming isn't a jump (owner, 2026-09-25).
                     Button {
                         if finishArmed {
                             triggerSomeVibration(type: .medium)
@@ -1185,21 +1192,38 @@ struct tasbeehView: View {
                             stopTimer()
                         } else {
                             triggerSomeVibration(type: .light)
-                            withAnimation(.snappy(duration: 0.2)) { finishArmed = true }
+                            finishArmToken += 1
+                            let token = finishArmToken
+                            finishArmed = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                withAnimation(.snappy(duration: 0.2)) { finishArmed = false }
+                                if token == finishArmToken { finishArmed = false }
                             }
                         }
                     } label: {
-                        Text(finishArmed ? "Tap to finish" : "Finish")
-                            .fontWeight(.medium)
-                            .contentTransition(.opacity)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .foregroundStyle(finishArmed ? Color.green : Color.primary)
-                            .background(Capsule().strokeBorder(finishArmed ? Color.green : Color.primary.opacity(0.18),
-                                                               lineWidth: finishArmed ? 1.5 : 1))
-                            .contentShape(Capsule())
+                        ZStack {
+                            Text("Finish")
+                                .opacity(finishArmed ? 0 : 1)
+                                .blur(radius: finishArmed ? 3 : 0)
+                                .scaleEffect(finishArmed ? 0.92 : 1)
+                            Text("Tap to finish")
+                                .foregroundStyle(Color.green)
+                                .opacity(finishArmed ? 1 : 0)
+                                .blur(radius: finishArmed ? 0 : 3)
+                                .scaleEffect(finishArmed ? 1 : 1.08)
+                        }
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 15)
+                        .foregroundStyle(Color.primary)
+                        .background {
+                            ZStack {
+                                Capsule().fill(Color.green.opacity(finishArmed ? 0.10 : 0))
+                                Capsule().strokeBorder(Color.primary.opacity(finishArmed ? 0 : 0.18), lineWidth: 1)
+                                Capsule().strokeBorder(Color.green.opacity(finishArmed ? 1 : 0), lineWidth: 1.5)
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .animation(.easeInOut(duration: 0.35), value: finishArmed)
                     }
                     Button { togglePause() } label: {
                         Label("Resume", systemImage: "play.fill")

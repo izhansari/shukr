@@ -3810,51 +3810,38 @@ struct TopBar: View {
 struct FloatingChainZikrButton: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @State private var pressed = false
-    @State private var drag: CGSize = .zero
     @Binding var showTasbeehPage: Bool
     @Binding var showChainZikrButton: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
-                .font(.system(size: 18, weight: .light))
-                .foregroundStyle(Color.green)
-            Text("Post-salah tasbih?")
-                .font(.system(size: 17, weight: .regular, design: .rounded))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 24)
-        .frame(height: 56)
-        .mapGlass(Capsule())
-        .scaleEffect(pressed ? 0.95 : 1)
-        .padding(.horizontal, 24)                 // a bigger target than the pill
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
-        .offset(x: drag.width, y: min(drag.height, 0) + (showChainZikrButton ? 50 : 0))
-        .opacity(showChainZikrButton ? 1 - min(Double(max(abs(drag.width), -drag.height)) / 160, 0.8) : 0)
-        .onTapGesture { start() }
-        .gesture(
-            DragGesture(minimumDistance: 8)
-                .onChanged { drag = $0.translation }
-                .onEnded { value in
-                    let t = value.predictedEndTranslation
-                    if t.height < -60 || abs(t.width) > 110 {
-                        triggerSomeVibration(type: .light)
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            drag = CGSize(width: abs(t.width) > 110 ? (t.width > 0 ? 500 : -500) : 0,
-                                          height: t.height < -60 ? -200 : 0)
-                            showChainZikrButton = false
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { drag = .zero }
-                    } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
-                    }
+        ZStack {
+            // Built only while shown, so the flick's state starts fresh each time.
+            if showChainZikrButton {
+                HStack(spacing: 10) {
+                    Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(Color.green)
+                    Text("Post-salah tasbih?")
+                        .font(.system(size: 17, weight: .regular, design: .rounded))
+                        .foregroundStyle(.primary)
                 }
-        )
-        .allowsHitTesting(showChainZikrButton)
+                .padding(.horizontal, 24)
+                .frame(height: 56)
+                .mapGlass(Capsule())
+                .scaleEffect(pressed ? 0.95 : 1)
+                .padding(.horizontal, 24)                 // a bigger target than the pill
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+                .onTapGesture { start() }
+                // Same drag as the bottom pill: any direction, resisted, fades — no edge wall (owner).
+                .flickAway { showChainZikrButton = false }
+                .offset(y: 50)
+                .transition(.opacity.combined(with: .offset(y: -30)))
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Start post-salah tasbih")
+            }
+        }
         .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showChainZikrButton)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityLabel("Start post-salah tasbih")
     }
 
     private func start() {

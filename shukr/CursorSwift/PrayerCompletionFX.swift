@@ -188,6 +188,58 @@ enum PostSalahPromptStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Drag-to-dismiss for the post-salah pills (both styles): it pulls a resisting ~70 pt toward the
+/// finger in any direction and fades as it goes; let go past 60 pt (or flick) and it finishes
+/// fading where it is, then `onDismiss` runs with no animation (resetting its offset while it was
+/// being removed made it pop back — owner). A short pull springs back. While the finger is on it
+/// the pager is held (inside a page, a sideways drag would otherwise turn it).
+struct FlickAway: ViewModifier {
+    let onDismiss: () -> Void
+    @State private var drag: CGSize = .zero
+    @State private var gone = false
+    @Environment(PagerLiveState.self) private var live: PagerLiveState?
+
+    private func pulled(_ d: CGSize) -> CGSize {
+        let length = hypot(d.width, d.height)
+        guard length > 0 else { return .zero }
+        let eased = 70 * (1 - exp(-length / 70))
+        return CGSize(width: d.width / length * eased, height: d.height / length * eased)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .offset(pulled(drag))
+            .opacity(gone ? 0 : 1 - 0.85 * min(Double(hypot(drag.width, drag.height)) / 140, 1))
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 6)
+                    .onChanged { value in
+                        guard !gone else { return }
+                        if live?.pagerLocked == false { live?.pagerLocked = true }
+                        drag = value.translation
+                    }
+                    .onEnded { value in
+                        live?.pagerLocked = false
+                        let t = value.predictedEndTranslation
+                        if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.easeOut(duration: 0.18)) { gone = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                var quiet = Transaction()
+                                quiet.disablesAnimations = true
+                                withTransaction(quiet) { onDismiss() }
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { drag = .zero }
+                        }
+                    }
+            )
+    }
+}
+
+extension View {
+    func flickAway(onDismiss: @escaping () -> Void) -> some View { modifier(FlickAway(onDismiss: onDismiss)) }
+}
+
 /// The post-salah prompt at the bottom of the Salah page (owner, 2026-09-25, after trying an arc
 /// and the circle: "let's just stay with the initial — move it to the bottom"): the glass pill,
 /// bead icon + "Post-salah tasbih?", with a small ✕ on its corner so it's plainly dismissable.
@@ -197,16 +249,7 @@ struct PostSalahNudge: View {
     let onOpen: () -> Void
     let onDismiss: () -> Void
 
-    /// The finger's pull, eased to at most ~70 pt in the same direction.
-    private func pulled(_ d: CGSize) -> CGSize {
-        let length = hypot(d.width, d.height)
-        guard length > 0 else { return .zero }
-        let eased = 70 * (1 - exp(-length / 70))
-        return CGSize(width: d.width / length * eased, height: d.height / length * eased)
-    }
-    @State private var drag: CGSize = .zero
     @State private var pressed = false
-    @State private var gone = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -243,11 +286,6 @@ struct PostSalahNudge: View {
         .padding(.horizontal, 20)                      // a bigger target than the pill
         .padding(.vertical, 12)
         .contentShape(Rectangle())
-        // Pulls a short way toward the finger — resisting, at most ~70 pt — and fades as it
-        // goes (it used to follow the finger across the screen: owner). Let go far enough (or
-        // flick) and it finishes fading where it is; otherwise it springs back.
-        .offset(pulled(drag))
-        .opacity(gone ? 0 : 1 - 0.85 * min(Double(hypot(drag.width, drag.height)) / 140, 1))
         .onTapGesture {
             withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { pressed = true }
             triggerSomeVibration(type: .success)
@@ -256,26 +294,7 @@ struct PostSalahNudge: View {
                 onOpen()
             }
         }
-        .gesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { if !gone { drag = $0.translation } }
-                .onEnded { value in
-                    let t = value.predictedEndTranslation
-                    if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
-                        triggerSomeVibration(type: .light)
-                        withAnimation(.easeOut(duration: 0.18)) { gone = true }
-                        // Removed once invisible, with no animation of its own (resetting it here
-                        // made it pop back to the start and fade a second time).
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                            var quiet = Transaction()
-                            quiet.disablesAnimations = true
-                            withTransaction(quiet) { onDismiss() }
-                        }
-                    } else {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { drag = .zero }
-                    }
-                }
-        )
+        .flickAway(onDismiss: onDismiss)
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Post-salah tasbih")
     }

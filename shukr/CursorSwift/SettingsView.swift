@@ -57,7 +57,7 @@ struct SettingsView: View {
     @State private var showCityPicker = false
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.alive.rawValue
     @State private var showRingPlayground = false
-    @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.lazySusan.rawValue
+    @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(PostSalahPromptStyle.key) private var postSalahPromptStyle = PostSalahPromptStyle.nudge.rawValue
 
@@ -458,9 +458,9 @@ struct floatingMessageView: View {
     }
 
     var body: some View {
+        // Drops in just under the header, right below the toggle that was tapped — at the bottom
+        // of the screen it sat on the home indicator and was easy to miss (owner, 2026-09-25).
         VStack{
-            Spacer()
-            
             // Glass capsule with the mode's symbol (2026-09-25; was an outlined box).
             HStack(spacing: 8) {
                 Image(systemName: modeSymbol)
@@ -476,11 +476,14 @@ struct floatingMessageView: View {
             .mapGlass(Capsule())
             .animation(.snappy(duration: 0.2), value: colorModeToggleNew)
             .opacity(showFloatingMessage ? 1 : 0.0)
-            .padding(.bottom)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .scaleEffect(showFloatingMessage ? 1 : 0.9, anchor: .top)
+            .offset(y: showFloatingMessage ? 0 : -12)
+            .padding(.top, 52)
             .zIndex(1)
-            .animation(.easeInOut, value: showFloatingMessage)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showFloatingMessage)
+            Spacer()
         }
+        .allowsHitTesting(false)
     }
 }
 

@@ -135,7 +135,7 @@ struct ZikrCircleWheel: View {
     @State private var arrangeOrder: [TaskModel] = []
     @State private var draggingID: UUID?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
-    @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.lazySusan.rawValue
+    @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.gentle.rawValue
     /// The lifted circle follows the finger here (in the grid's own coordinates).
     @State private var dragPoint: CGPoint = .zero
     @State private var gridWidth: CGFloat = 360
@@ -232,7 +232,7 @@ struct ZikrCircleWheel: View {
                             // leaves the middle): one row away ≈ 0.62×, two ≈ 0.45×, never below
                             // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
                             .modifier(WheelFalloff(itemHeight: itemHeight,
-                                                   style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .lazySusan))
+                                                   style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle))
                     }
                 }
                 .scrollTargetLayout()

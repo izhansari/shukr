@@ -77,66 +77,94 @@ keywords, "What's New" and screenshot captions.
 - Nothing leaves the device: no accounts, no tracking; location is used only on-device.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
 
-## Since the last commit (eac68fc) — uncommitted, 2026-09-25 evening
+## Handoff — 2026-09-25 evening (read this first)
 
-Branch `claude/tasbeeh-zikr-updates`, 12 files changed + `CursorSwift/MosqueFinder.swift` (new), not
-committed. The owner iterated mostly from screenshots and **didn't read several of the agent's
-replies** — the open questions below were asked but never answered. "Sim" = checked in the iOS 26
-simulator by the agent; "phone" = installed on the owner's 13 Pro Max (iOS 27) and reacted to.
+Branch `claude/tasbeeh-zikr-updates`. Everything since eac68fc is committed (798823a + the
+follow-up tweak commit). The owner iterated from screenshots and skipped several of the agent's
+replies, so the questions below are still open. "Sim" = checked by the agent in the iOS 26
+simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reacted to it.
 
-**Built (details in the sections below):**
-1. Mantra page (`MantraEditorView`): the pause-card look, read-only until ✎, nav bar never changes
-   height, Save = green text only when there's a change, count in sets live (skips 1), lifetime
-   bento (no spin / buzz), tasks as centred scrolling circles + "N tasks", sessions by day with
-   swipe-to-delete. Phone ✓.
-2. History ⇄ Mantras: own pager — swipe pages only from the background (rows / chart keep their
-   swipes), Mantras→History from anywhere; one search + a + that only shows on Mantras. Tap a
-   session → Mantra · Pace · Delete strip. Sim ✓; **real-finger feel untested** (owner called the
-   paging "weird" once; changes since are untested).
-3. Zikr wheel: 5 `ZikrWheelStyle`s in dev settings (Lazy Susan default). **Owner hasn't picked.**
-4. Map: Liquid Glass controls, ⌄ close, 🔍 Explore bottom-right → sheet with layers (My prayer spots ·
-   Mosques · Halal food "soon") and per-layer settings; bottom filter pill removed, top pill shows
-   count + active filter; filter chips tinted. Phone ✓ (owner moved 🔍).
-5. Mosque finder (`MosqueFinder.swift`): search + name filter, pins, sheet with drive/walk time
-   (tap to flip), Look Around, Directions menu (Apple / Google / Waze + Share location), gray Call,
-   website in-app, Apple's place card. Sim ✓ (Manhattan). **Untested on device:** results around
-   Cary (filter false positives / misses), whether place cards show photos, Share → Tesla app.
-6. Post-salah prompt: pill at the bottom (in chrome, above the pager) with ✕, docks under the top
-   bar while the list is open, drag pulls ~70 pt and fades, stays until dismissed / tapped / next
-   prayer. Phone ✓. The circle and top-pill variants remain in dev settings (`PostSalahPromptStyle`) —
-   **delete them once the owner confirms the bottom pill.**
-7. Tasbih Fatimah: own pause card (three phrase rows), only Finish / Resume, locked results
-   ("33 · 33 · 34 after salah"), phrase strip + reminder fade with pause, 4 rotating reminders
-   (headline + narration). Sim ✓, phone partly. **Reminder wording is paraphrased hadith — needs a
-   knowledgeable review before release; no hadith numbers.**
-8. Every tasbeeh: Finish takes two taps (armed = green edge + green text, disarms after 3 s);
-   top −/+N stay mounted and fade on pause. Sim ✓; **phone feel untested.**
-9. Time editor: Save gray until a different valid time, then green edge + text (phone ✓); bar scrub
-   hang fixed (local draft, no wheel reloads). **Scrub performance untested on device after the fix.**
-10. Ring: `AliveRingTuning` + Ring playground (share / copy values), calm grain; new **"fine"** style
-    = owner's playground values. Sim ✓. **Agent suggested fine's turn speed 23°/s → 12–15; owner
-    hasn't answered.**
-11. Prayer list: back to the "N done" footer with a proper divider; label stays "N done", chevron
-    turns. Phone ✓ (spacing), animation fix untested.
-12. Light / dark / auto toast → glass capsule. Sim ✓.
+**Next agent — the two bigger items the owner handed over:**
+1. **History ⇄ Mantras paging: rethink it.** The owner isn't a fan: "users are swiping delete by
+   accident or paging when deleting". `ZikrLibraryView` (MantrasView.swift) is a custom horizontal
+   pager with `NoPageZones` so rows keep their swipe actions. Row swipes and page swipes share an
+   axis and still collide. Likely direction: drop horizontal paging for a segmented control / two
+   tabs, or push Mantras from History. Ask the owner before building.
+2. **Map pin → pin sheet flow: redesign it.** The mosque finder itself works well (owner). But
+   tapping pin after pin closes and reopens the sheet each time (`LocationViewModel.present`:
+   dismiss, then present again 0.4 s later), the detents vary (compact / medium / large), and it
+   feels slow. The owner calls it "a flow/paging redesign". Idea: one persistent sheet whose content
+   swaps in place, with a fixed detent that the user controls (like Apple Maps' place card).
+   Covers both prayer-spot pins and mosque pins (`MosqueSheet`).
+3. **Lag before the completion page** after Finish on the pause screen, and when a task hits its
+   goal (auto stop). Tried 2026-09-25 (untested on the phone): the shared-state writes after the save
+   (`selectedTask = nil`, which re-renders the whole home screen under the cover) now wait until
+   `completeStopTimer` (0.5 s), and the results fade is 0.25 s ease-out instead of 0.5 s ease-in-out.
+   If it still lags, measure first: time from tap to results-visible with signposts. The next
+   suspect is `context.insert(session)` in `saveSession`, which refreshes every `@Query` on
+   sessions behind the cover (DailyTasksView ×2, the TopBar stats in Utils.swift ~3337). Also
+   check `ResultsView.taskToday`, which walks `task.sessions`.
+
+**Owner's answers (2026-09-25):**
+- **Zikr wheel:** "gentle arc / half tilt" is the default (`ZikrWheelStyle.gentle`). The others
+  stay in dev settings.
+- **Post-salah prompt:** the bottom pill is final and the default. Keep the circle and top-pill
+  variants in dev settings. Both pills now share `FlickAway` (PrayerCompletionFX.swift): a
+  resisted pull of ~70 pt in any direction that fades as it goes; past 60 pt (or on a flick) it
+  finishes fading in place and is removed without animation. No edge wall. The top pill
+  (`FloatingChainZikrButton`) was rebuilt on it and is built only while shown.
+- **Confirmed good:** the mosque finder, the "fine" ring, the "N done" footer, the time editor's
+  colour-bar scrub (lag fixed), the two-tap Finish, and the pause fade.
+- **Two-tap Finish:** the owner asked for a smoother change between states. The two labels are
+  now stacked and crossfade with a soft blur, the green fill and edge ease in over 0.35 s, and a
+  stale 3 s disarm can't cancel a newer arm (`finishArmToken`). Sim ✓.
+- **Light / dark / auto toast:** was too close to the bottom and easy to miss. Now it drops in
+  under the Settings header, below the toggle. Untested on the phone.
+- **Fajr rollover and the 15 Pro migration:** "haven't checked but I guess it's fine...?" Still
+  unverified. Between midnight and Fajr, yesterday's prayers should still be up and zikr should
+  count for yesterday. On the 15 Pro's first open, look for `✅ schema V2 data pass` and no ❌.
+
+**Earlier builds (details in the sections below):**
+1. Mantra page (`MantraEditorView`), phone ✓:
+   - pause-card look, read-only until ✎, nav bar never changes height;
+   - Save is green text only when there's a change;
+   - count in sets is live (skips 1);
+   - lifetime bento;
+   - tasks as centred circles;
+   - sessions by day with swipe-to-delete.
+2. History ⇄ Mantras custom pager (see item 1 above; to be rethought).
+3. Zikr wheel: five `ZikrWheelStyle`s; gentle is the default.
+4. Map, phone ✓:
+   - Liquid Glass controls, ⌄ to close;
+   - 🔍 Explore bottom-right, opening a layers sheet (My prayer spots · Mosques · Halal food "soon");
+   - the top pill shows the count and the active filter.
+5. Mosque finder (`MosqueFinder.swift`):
+   - drive/walk time, Look Around;
+   - Directions menu (Apple / Google / Waze / Share location);
+   - Call, website, Apple's place card.
+   Owner: works well. Untested around Cary: false positives in the filter, and whether place-card
+   photos show.
+6. Post-salah pill (above).
+7. Tasbih Fatimah: its own pause card, locked results, four rotating reminders. **The reminder
+   wording paraphrases hadith and needs a knowledgeable review before release.**
+8. Time editor: Save stays gray until the time changes; scrub lag fixed.
+9. Ring playground plus the "fine" ring style (owner ✓). The agent suggested lowering fine's turn
+   speed from 23°/s to 12–15; the owner hasn't answered.
+10. Prayer list "N done" footer (owner ✓).
 
 **Questions asked and never answered (don't assume — ask):**
-- Map: how to turn a layer off — agent recommended a ✕ on the top pill (vs 🔍 → ✕, or 🔍 clears).
-- Zikr wheel style; mosque icon style (dev pickers).
-- Masjid-aware prayers: should jama'ah at any masjid score like Jumu'ah, or only Jumu'ah?
-- Post-salah "points": see its section (+N vs 3/5, own streak, must the 33/33/34 be complete).
+- Map: how to turn a layer off. The agent recommended a ✕ on the top pill (alternatives: 🔍 → ✕,
+  or 🔍 clears).
+- Mosque icon style (dev picker).
+- Masjid-aware prayers: should jama'ah at any masjid score like Jumu'ah, or only Jumu'ah itself?
+- Post-salah "points": see that section (+N vs 3/5, its own streak, whether the 33/33/34 must be
+  complete).
 - Reminders: keep rotating all four, or pick one or two.
-- Whether to commit now (agent offered; not yet answered).
 
-**Release / TestFlight:** 2.0 (5) is archived (`build/shukr-2.0-5.xcarchive`) from eac68fc but **not
-uploaded** — Xcode's account token for izhan_ansari@caryacademy.org is missing (sign in again in
-Xcode → Settings → Accounts). Everything above is newer than that archive: commit, bump to build 6,
-archive, then upload. Debug-only toggles (wheel / mosque icon / post-salah style / ring playground)
-live in the `#if DEBUG` "My Dev Stuff" section, so they won't ship.
-
-**Still unverified from earlier:** Fajr rollover between midnight and Fajr (yesterday's prayers
-still up, zikr counts for yesterday); schema 2.1.0 migration on the 15 Pro (it migrates on its first
-open — check for `✅ schema V2 data pass` and no ❌).
+**Release / TestFlight:** 2.0 (5) was archived from eac68fc and **never uploaded**, because Xcode's
+account token is missing. The owner must sign in again under Xcode → Settings → Accounts. Then bump
+to build 6, archive this branch, and upload. The dev toggles (wheel / mosque icon / post-salah style
+/ ring playground) live in the `#if DEBUG` "My Dev Stuff" section, so they won't ship.
 
 ## Start here: outstanding work, in priority order
 
