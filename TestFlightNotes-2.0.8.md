@@ -20,7 +20,7 @@ PRAYER
 QIBLA & MAP
 • The map turns so the line to the Kaaba points straight up your screen. Hold your phone out and turn until the streets match. It's worked out from your location, so it's right even when your compass isn't.
 • A short guide explains each map mode (tap ? any time).
-• Explore (🔍): your prayer spots (every prayer pinned where you prayed it, coloured by score) and a Mosque finder: nearest mosques with travel time, directions, Look Around and a list. Long-press a mosque to stop it being recommended.
+• Explore (the magnifying glass): your prayer spots (every prayer pinned where you prayed it, coloured by score) and a Mosque finder: nearest mosques with travel time, directions, Look Around and a list. Long-press a mosque to stop it being recommended.
 
 ZIKR
 • The Zikr page is a wheel of circles: freestyle plus your daily tasks, each with today's progress and a time estimate.

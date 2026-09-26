@@ -523,23 +523,51 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   complete).
 - Reminders: keep rotating all four, or pick one or two.
 
-**Release / TestFlight:** **2.0 (8) uploaded 2026-09-26**, without the watch app, which wasn't
-signed yet at archive time. Tester notes: `TestFlightNotes-2.0.8.md`. Next upload: bump
-`CURRENT_PROJECT_VERSION` (now 12 occurrences, the watch targets included) to 9. Xcode's account
-token expires often ("missing Xcode-Token" → "Failed to Use Accounts"); the long-term fix is an App
-Store Connect API key (`-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID`),
-which is now set up.
-**Upload = `scripts/testflight.sh`** (bumps the build number, archives with the watch, uploads). It
-signs and uploads with the App Store Connect API key: Key ID `6K2RUXRJ92`, Issuer
-`60a885ac-0315-4323-974d-57783a7392a2`, file `~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8`
-(Admin role; the file stays on the owner's Mac and is never committed). For device builds, add the
-same `-authenticationKeyPath/-authenticationKeyID/-authenticationKeyIssuerID` flags. Verified
-2026-09-26: a device build signed with no Xcode sign-in. The "missing Xcode-Token" log line is now
-harmless. Upload with
-`env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive … -exportOptionsPlist
-build/ExportOptions.plist`. Homebrew's rsync breaks the export, so keep PATH as shown. A
-"missing Xcode-Token" line in the log can be harmless; check for "Upload succeeded". The dev
-toggles live in the `#if DEBUG` "My Dev Stuff" section and won't ship.
+**Release / TestFlight:** see "Shipping a TestFlight build" below. 2.0 (8) is live on the public
+link (2026-09-26, without the watch app).
+
+## Shipping a TestFlight build (no Xcode sign-in needed)
+
+Everything goes through the team's **App Store Connect API key**, so nobody has to sign in to Xcode.
+Before this, Xcode's account token kept expiring ("missing Xcode-Token" → "Failed to Use
+Accounts"). That line still prints in logs and is harmless now.
+- Key: ID `6K2RUXRJ92`, issuer `60a885ac-0315-4323-974d-57783a7392a2`, Admin role.
+- The file is at `~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8` on the owner's Mac. Never
+  read it out, print it or commit it; the scripts only pass its path.
+
+Steps, when the owner says "push a new build":
+1. **`scripts/testflight.sh`** bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
+   watch targets included), archives Release (iPhone app + embedded watch app), and uploads. The
+   export runs with the system PATH, since Homebrew's rsync breaks it. Commit the bump afterwards.
+2. **Write tester notes**: `TestFlightNotes-<version>.<build>.md` with a "What to Test (paste
+   this)" block (≤ 4000 chars, **no emoji** — Apple rejects characters outside the BMP) and a
+   by-build record. See `TestFlightNotes-2.0.8.md`.
+3. Wait for processing: `scripts/asc.py builds` shows VALID, usually 5–30 min after upload.
+4. **`scripts/asc.py release <build> <notes.txt>`**:
+   - sets What to Test (en-US);
+   - adds the build to every external group — "test" is the one behind the public link
+     https://testflight.apple.com/join/GW5j85jk; the internal group gets builds automatically;
+   - submits for beta review and prints the external state. `IN_BETA_TESTING` = testers have it;
+     `WAITING_FOR_BETA_REVIEW` = Apple is reviewing.
+
+   To pull the notes block out of the .md, see the python one-liner in this session's history, or
+   just copy it into a .txt.
+
+`scripts/asc.py` is a stdlib + openssl App Store Connect client. `groups` lists the beta groups, and
+`scripts/asc.py GET /v1/...` makes any raw call. App id `6743040873`, team `7R387XZ2Y7`.
+
+For device builds with the key, add these to the xcodebuild line:
+`-allowProvisioningUpdates -authenticationKeyPath ~/.appstoreconnect/private_keys/AuthKey_6K2RUXRJ92.p8
+-authenticationKeyID 6K2RUXRJ92 -authenticationKeyIssuerID 60a885ac-0315-4323-974d-57783a7392a2`.
+Phones:
+- 13 Pro Max `00008110-001C041C2203801E`
+- 15 Pro `00008130-00027DDE0AE8001C` (often "unavailable" when it's away)
+
+Install with `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`.
+
+Uploaded: 2.0 (3) 09-24, (6) 09-25, (7) and (8) 09-26. 2.0 (8) went to the public link 09-26.
+When a build goes to external testers, remind the owner about the share card's "download on the
+App Store" wording (see Share card).
 
 ## Start here: outstanding work, in priority order
 
