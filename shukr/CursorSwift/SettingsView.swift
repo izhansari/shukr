@@ -56,6 +56,10 @@ struct SettingsView: View {
     @State private var showDevStuff = false
     @State private var showCityPicker = false
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.alive.rawValue
+    @State private var showRingPlayground = false
+    @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.lazySusan.rawValue
+    @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
+    @AppStorage(PostSalahPromptStyle.key) private var postSalahPromptStyle = PostSalahPromptStyle.nudge.rawValue
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -318,6 +322,18 @@ struct SettingsView: View {
                             Picker("Tasbeeh Ring", selection: $tasbeehRingStyle) {
                                 ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
                             }
+                            Button("Ring playground…") { showRingPlayground = true }
+                            Picker("Zikr wheel", selection: $zikrWheelStyle) {
+                                ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            Picker("Post-salah prompt", selection: $postSalahPromptStyle) {
+                                ForEach(PostSalahPromptStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            Picker("Mosque icon", selection: $mosqueIconStyle) {
+                                ForEach(MosqueIconStyle.allCases) { style in
+                                    Label(style.title, systemImage: style.button(on: false)).tag(style.rawValue)
+                                }
+                            }
                             Picker("Ring Style", selection: $selectedRingStyle) {
                                 ForEach(0..<10) { index in
                                     Text("\(index)").tag(index)
@@ -351,6 +367,15 @@ struct SettingsView: View {
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
+        .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        #if DEBUG
+        .task {
+            if ProcessInfo.processInfo.arguments.contains("-demoRingPlayground") {
+                try? await Task.sleep(for: .seconds(1.5))
+                showRingPlayground = true
+            }
+        }
+        #endif
         .sheet(item: $selectedUpcomingFeature) { feature in
             ScrollView{
                 VStack(spacing: 10) {
@@ -413,13 +438,21 @@ struct floatingMessageView: View {
     @Binding var showFloatingMessage: Bool
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     
+    private var modeSymbol: String {
+        switch colorModeToggleNew {
+        case 0: "sun.max.fill"
+        case 1: "moon.fill"
+        default: "circle.lefthalf.filled"
+        }
+    }
+
     var messageToShow: String{
         if colorModeToggleNew == 0{
-         "Now in Light Mode"
+         "Light mode"
         } else if colorModeToggleNew == 1{
-            "Now in Dark Mode"
+            "Dark mode"
         } else {
-            "Now in Auto Mode"
+            "Auto · follows the sun"
         }
 //        "Now in \(colorModeToggleNew == 0 ? "Light" : colorModeToggleNew == 1 ? "Dark" : "Auto") Mode"
     }
@@ -428,20 +461,20 @@ struct floatingMessageView: View {
         VStack{
             Spacer()
             
-            VStack(spacing: 10) {
+            // Glass capsule with the mode's symbol (2026-09-25; was an outlined box).
+            HStack(spacing: 8) {
+                Image(systemName: modeSymbol)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.green)
+                    .contentTransition(.symbolEffect(.replace))
                 Text(messageToShow)
-                    .multilineTextAlignment(.center)
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .contentTransition(.opacity)
             }
-            .fontDesign(.rounded)
-            .fontWeight(.thin)
-            .padding()
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(10)
-            .shadow(radius: 2)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.primary, lineWidth: 2) // Add stroke with primary color
-            )
+            .padding(.horizontal, 18)
+            .frame(height: 44)
+            .mapGlass(Capsule())
+            .animation(.snappy(duration: 0.2), value: colorModeToggleNew)
             .opacity(showFloatingMessage ? 1 : 0.0)
             .padding(.bottom)
             .transition(.move(edge: .top).combined(with: .opacity))

@@ -20,6 +20,10 @@ struct HistoryPageView: View {
     @State private var pendingDelete: SessionDataModel?
     /// Swipe the other way → that session's mantra (its stats + editor).
     @State private var mantraToOpen: MantraModel?
+    /// The session tapped open to show its actions (one at a time).
+    @State private var expandedID: PersistentIdentifier?
+    /// From the library's search field: keeps sessions whose mantra (or title) matches.
+    var search = ""
 
     private var calendar: Calendar { Calendar.current }
 
@@ -27,7 +31,10 @@ struct HistoryPageView: View {
     private var days: [(date: Date, sessions: [SessionDataModel])] {
         var order: [Date] = []
         var byDay: [Date: [SessionDataModel]] = [:]
+        let q = search.trimmingCharacters(in: .whitespaces)
         for session in sessions {
+            if !q.isEmpty,
+               !(session.mantra?.name ?? session.title).localizedCaseInsensitiveContains(q) { continue }
             let day = calendar.startOfDay(for: session.startTime)
             if byDay[day] == nil { order.append(day) }
             byDay[day, default: []].append(session)
@@ -52,23 +59,7 @@ struct HistoryPageView: View {
                 ForEach(days, id: \.date) { day in
                     Section {
                         ForEach(day.sessions) { session in
-                            SessionRow(session: session)
-                                // Swipe left: delete (confirmed below).
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button { pendingDelete = session } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                    .tint(.red)
-                                }
-                                // Swipe right: the mantra's page (stats, tasks, sessions).
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    if let mantra = session.mantra {
-                                        Button { mantraToOpen = mantra } label: {
-                                            Label("Mantra", systemImage: "text.quote")   // the menu's Mantras icon
-                                        }
-                                        .tint(.sage)
-                                    }
-                                }
+                            sessionRow(session)
                         }
                     } header: {
                         HStack {
@@ -105,6 +96,42 @@ struct HistoryPageView: View {
     }
 
     private func dayLabel(_ date: Date) -> String { zikrDayLabel(date) }
+
+    /// One session with its swipes (left: delete, confirmed; right: its mantra). Sideways drags
+    /// that start on a row are the row's; the library pages only from the background.
+    private func sessionRow(_ session: SessionDataModel) -> some View {
+        let id = session.persistentModelID
+        return SessionRow(session: session,
+                   expanded: expandedID == id,
+                   onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } },
+                   onDelete: { pendingDelete = session })
+            .onTapGesture {
+                triggerSomeVibration(type: .light)
+                withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
+            }
+            // Swipe left: delete (confirmed below).
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button { pendingDelete = session } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
+            }
+            // Sideways drags that start on a row are the row's (swipe
+            // actions); the library pages only from the background.
+            .noPageZone(zoneID(session))
+            // Swipe right: the mantra's page (stats, tasks, sessions).
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                if let mantra = session.mantra {
+                    Button { mantraToOpen = mantra } label: {
+                        Label("Mantra", systemImage: "text.quote")   // the menu's Mantras icon
+                    }
+                    .tint(.sage)
+                }
+            }
+    }
+
+    private func zoneID(_ session: SessionDataModel) -> String { "session-\(session.persistentModelID.hashValue)" }
+
 }
 
 /// The top of Zikr History (2026-09-25 — owner: the "All time" rows looked plain): the
@@ -201,6 +228,7 @@ struct ZikrHistoryHeader: View {
                     )
                 }
                 .frame(height: 84)
+                .noPageZone("history-chart")   // dragging here scrubs the chart, never pages
             }
             .padding(.horizontal, 4)
 
@@ -247,6 +275,11 @@ struct SessionRow: View {
     /// Off inside a mantra's own page, where every row would repeat the same name: the time
     /// becomes the headline instead.
     var showsMantraName = true
+    /// Tapped open: a strip of actions under the row (owner: show that a session can be acted
+    /// on). `onMantra` nil hides that button (no mantra, or already on its page).
+    var expanded = false
+    var onMantra: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -267,6 +300,61 @@ struct SessionRow: View {
     private var pace: TimeInterval? { session.secondsPerCount }   // active time only (see activeSeconds)
 
     var body: some View {
+        VStack(spacing: 12) {
+            summary
+            if expanded { actionStrip.transition(.opacity.combined(with: .move(edge: .top))) }
+        }
+        .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
+        // lifts. UIKit's long press, not a SwiftUI gesture: scrolling comes first — any movement
+        // in the first 0.2 s fails the hold and the list scrolls (SwiftUI drag / long-press
+        // versions swallowed scrolls that began on a row). Once it has begun the list doesn't
+        // scroll, and it lasts until the finger lifts.
+        .gesture(PaceHoldGesture { holding in
+            guard let pace else { return }
+            holding ? startFeelingPace(pace) : stopFeelingPace()
+        })
+        .onDisappear { stopFeelingPace() }
+        // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
+        .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
+        // The whole row tints while held — the finger covers the pace text.
+        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
+    }
+
+    /// Mantra · Pace (plays the session's rhythm until tapped again — the hold, hands-free) ·
+    /// Delete, as soft capsules. Borderless so each button gets its own tap inside the row.
+    private var actionStrip: some View {
+        HStack(spacing: 8) {
+            if let onMantra {
+                action("Mantra", icon: "text.quote", color: .sage, action: onMantra)
+            }
+            if let pace {
+                action(feelingPace ? "Stop" : "Pace", icon: feelingPace ? "stop.fill" : "metronome",
+                       color: .green) {
+                    feelingPace ? stopFeelingPace() : startFeelingPace(pace)
+                }
+            }
+            if let onDelete {
+                action("Delete", icon: "trash", color: .red, action: onDelete)
+            }
+        }
+        .buttonStyle(.borderless)
+    }
+
+    private func action(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(color)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Capsule().fill(color.opacity(0.12)))
+                .contentShape(Capsule())
+        }
+    }
+
+    private var summary: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
                 if showsMantraName {
@@ -326,24 +414,6 @@ struct SessionRow: View {
                 .animation(.spring(response: 0.3, dampingFraction: 0.8), value: feelingPace)
             }
         }
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
-        // lifts. A @GestureState resets itself on release *and* when the list takes the touch
-        // for a scroll (onLongPressGesture's pressing callback ended after the first beat).
-        // Hold the row to feel the session's pace. UIKit's long press, not a SwiftUI gesture:
-        // scrolling comes first — any movement in the first 0.2 s fails the hold and the list
-        // scrolls (SwiftUI drag / long-press versions swallowed scrolls that began on a row).
-        // Once it has begun the list doesn't scroll, and it lasts until the finger lifts.
-        .gesture(PaceHoldGesture { holding in
-            guard let pace else { return }
-            holding ? startFeelingPace(pace) : stopFeelingPace()
-        })
-        .onDisappear { stopFeelingPace() }
-        // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
-        .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
-        // The whole row tints while held — the finger covers the pace text.
-        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
     }
 
     @State private var feelingPace = false

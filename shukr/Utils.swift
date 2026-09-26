@@ -610,17 +610,23 @@ enum TasbeehRingStyle: String, CaseIterable, Identifiable {
     case alive      // thin band; drifting colour sweep, moving light, shimmering grain (2026-09-25)
     case gradient   // 24 pt band; the welcome screen's wavy gradient + grain (2026-09-25, v1)
     case classic    // 24 pt band; static yellow → green gradient (the original)
+    case fine       // 6 pt band; the alive fill at the owner's playground settings (2026-09-25)
     var id: String { rawValue }
 }
 
 struct NeuCircularProgressView: View {
     let progress: CGFloat
+    /// The ring playground shows the alive style whatever the setting.
+    var forceAlive = false
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.alive.rawValue
+    @AppStorage(AliveRingTuning.key) private var tuningRaw = ""
 
     var body: some View {
-        let style = TasbeehRingStyle(rawValue: styleRaw) ?? .alive
-        let band: CGFloat = style == .alive ? 12 : 24
+        let style = forceAlive ? .alive : (TasbeehRingStyle(rawValue: styleRaw) ?? .alive)
+        // "fine" is the alive fill with a fixed preset; "alive" follows the playground.
+        let tuning = style == .fine ? AliveRingTuning.fine : AliveRingTuning.decode(tuningRaw)
+        let band: CGFloat = (style == .alive || style == .fine) ? tuning.band : 24
         ZStack {
             // Outer Circle with Dynamic Shadow
             Circle()
@@ -670,11 +676,11 @@ struct NeuCircularProgressView: View {
                 .frame(width: 250, height: 250)
                 .mask { progressArc(band) }
                 .allowsHitTesting(false)
-            case .alive:
-                AliveRingFill(dark: colorScheme == .dark)
+            case .alive, .fine:
+                AliveRingFill(dark: colorScheme == .dark, tuning: tuning)
                     .frame(width: 230, height: 230)
                     .mask { progressArc(band) }
-                    .shadow(color: .green.opacity(0.35), radius: 6)
+                    .shadow(color: .green.opacity(tuning.glow), radius: 6)
                     .allowsHitTesting(false)
             }
         }
@@ -693,12 +699,62 @@ struct NeuCircularProgressView: View {
 /// The tasbeeh ring's living fill: a slow colour sweep turning around the ring, two soft pools
 /// of light and shade drifting through it, and grain that re-scatters ~12× a second so it
 /// shimmers (the welcome screen's NoiseOverlay is drawn once and sits still).
+/// The alive ring's knobs (Settings → My Dev Stuff → Ring playground), saved as JSON in
+/// `aliveRingTuning`. Defaults are the calm look the owner asked for (2026-09-25): the grain no
+/// longer re-scatters (it sparkled "like Cinderella"); each speck stays put and fades in and out.
+struct AliveRingTuning: Codable, Equatable {
+    var band: Double = 12              // ring width, pt
+    var sweepSpeed: Double = 8         // gradient turn, ° per second (was 18)
+    var lightStrength: Double = 0.35   // the drifting highlight
+    var lightSpeed: Double = 0.3       // its drift (was ~0.8)
+    var shadeStrength: Double = 0.25   // the drifting shadow
+    var grainCount: Double = 700
+    var grainSize: Double = 1.3
+    var grainOpacity: Double = 0.28
+    var grainFade: Double = 0.7        // how much each speck fades (0 = steady, 1 = fully in / out)
+    var grainFadeSpeed: Double = 0.25  // fades per second (slow)
+    var glow: Double = 0.35            // the green glow around the ring
+
+    static let key = "aliveRingTuning"
+
+    /// The owner's playground pick (2026-09-25), the "fine" ring option: a thin band, no
+    /// highlight, a darker drifting shade, dense steady grain.
+    static let fine = AliveRingTuning(band: 6, sweepSpeed: 23, lightStrength: 0.03, lightSpeed: 0.63,
+                                      shadeStrength: 0.32, grainCount: 1350, grainSize: 1.34,
+                                      grainOpacity: 0.32, grainFade: 0.29, grainFadeSpeed: 0.24, glow: 0.45)
+
+    /// Readable, for sharing from the playground.
+    var summary: String {
+        """
+        shukr · alive ring settings
+        ring width: \(String(format: "%.0f", band)) pt
+        glow: \(String(format: "%.2f", glow))
+        turn speed: \(String(format: "%.0f", sweepSpeed))°/s
+        highlight: \(String(format: "%.2f", lightStrength))
+        shadow: \(String(format: "%.2f", shadeStrength))
+        light drift: \(String(format: "%.2f", lightSpeed))
+        grain amount: \(String(format: "%.0f", grainCount))
+        grain size: \(String(format: "%.2f", grainSize))
+        grain brightness: \(String(format: "%.2f", grainOpacity))
+        grain fade depth: \(String(format: "%.2f", grainFade))
+        grain fade speed: \(String(format: "%.2f", grainFadeSpeed))/s
+        json: \(encoded)
+        """
+    }
+    static func decode(_ raw: String) -> AliveRingTuning {
+        (try? JSONDecoder().decode(AliveRingTuning.self, from: Data(raw.utf8))) ?? AliveRingTuning()
+    }
+    var encoded: String { (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? "" }
+}
+
 private struct AliveRingFill: View {
     let dark: Bool
+    var tuning = AliveRingTuning()
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
+            let k = tuning
             ZStack {
                 AngularGradient(colors: [Color(red: 0.12, green: 0.62, blue: 0.32),
                                          Color(red: 0.45, green: 0.85, blue: 0.55),
@@ -706,28 +762,121 @@ private struct AliveRingFill: View {
                                          Color(red: 0.30, green: 0.75, blue: 0.45),
                                          Color(red: 0.12, green: 0.62, blue: 0.32)],
                                 center: .center,
-                                angle: .degrees((t * 18).truncatingRemainder(dividingBy: 360)))
-                RadialGradient(colors: [Color.white.opacity(dark ? 0.35 : 0.45), .clear],
-                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * 0.7), y: 0.5 + 0.38 * sin(t * 0.9)),
+                                angle: .degrees((t * k.sweepSpeed).truncatingRemainder(dividingBy: 360)))
+                RadialGradient(colors: [Color.white.opacity(k.lightStrength * (dark ? 0.8 : 1)), .clear],
+                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * k.lightSpeed), y: 0.5 + 0.38 * sin(t * k.lightSpeed * 1.3)),
                                startRadius: 0, endRadius: 80)
-                RadialGradient(colors: [Color.black.opacity(0.35), .clear],
-                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * 0.45 + 2), y: 0.5 + 0.38 * sin(t * 0.55 + 1)),
+                RadialGradient(colors: [Color.black.opacity(k.shadeStrength), .clear],
+                               center: UnitPoint(x: 0.5 + 0.38 * cos(t * k.lightSpeed * 0.65 + 2), y: 0.5 + 0.38 * sin(t * k.lightSpeed * 0.8 + 1)),
                                startRadius: 0, endRadius: 90)
+                // Grain: fixed specks (same seed every frame), each fading in and out on its own
+                // phase and pace — texture that breathes instead of glittering.
                 Canvas { canvas, size in
-                    var seed = UInt64(t * 12)          // new scatter ~12 × a second
+                    var seed: UInt64 = 0x5EED_A11E
                     func next() -> Double {
                         seed = seed &* 6364136223846793005 &+ 1442695040888963407
                         return Double(seed >> 33) / Double(1 << 31)
                     }
-                    for _ in 0..<1400 {
+                    let count = Int(k.grainCount)
+                    for _ in 0..<count {
                         let x = next() * size.width, y = next() * size.height
-                        canvas.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 1.4, height: 1.4)),
-                                    with: .color(.white.opacity(0.15 + 0.3 * next())))
+                        let phase = next(), pace = 0.6 + 0.8 * next(), bright = 0.5 + 0.5 * next()
+                        let wave = 0.5 + 0.5 * sin(2 * .pi * (t * k.grainFadeSpeed * pace + phase))
+                        let opacity = k.grainOpacity * bright * (1 - k.grainFade + k.grainFade * wave)
+                        guard opacity > 0.01 else { continue }
+                        canvas.fill(Path(ellipseIn: CGRect(x: x, y: y, width: k.grainSize, height: k.grainSize)),
+                                    with: .color(.white.opacity(opacity)))
                     }
                 }
                 .blendMode(.overlay)
             }
         }
+    }
+}
+
+/// Settings → My Dev Stuff → Ring playground: the alive ring live, with a slider per knob.
+/// Changes save as you go (the real tasbeeh ring uses them); Reset brings back the defaults.
+struct RingPlaygroundView: View {
+    @AppStorage(AliveRingTuning.key) private var raw = ""
+    @State private var progress: Double = 0.62
+    @Environment(\.dismiss) private var dismiss
+
+    private var tuning: Binding<AliveRingTuning> {
+        Binding(get: { AliveRingTuning.decode(raw) }, set: { raw = $0.encoded })
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                ZStack {
+                    Color("bgColor")
+                    NeuCircularProgressView(progress: progress, forceAlive: true)
+                }
+                .frame(height: 300)
+
+                Form {
+                    Section("Preview") {
+                        slider("Progress", value: $progress, in: 0...1)
+                    }
+                    Section("Shape") {
+                        slider("Ring width", value: tuning.band, in: 6...24, step: 1, format: "%.0f pt")
+                        slider("Glow", value: tuning.glow, in: 0...1)
+                    }
+                    Section("Gradient") {
+                        slider("Turn speed", value: tuning.sweepSpeed, in: 0...40, format: "%.0f°/s")
+                        slider("Highlight", value: tuning.lightStrength, in: 0...1)
+                        slider("Shadow", value: tuning.shadeStrength, in: 0...1)
+                        slider("Light drift", value: tuning.lightSpeed, in: 0...1.5)
+                    }
+                    Section("Grain") {
+                        slider("Amount", value: tuning.grainCount, in: 0...2000, step: 50, format: "%.0f")
+                        slider("Size", value: tuning.grainSize, in: 0.5...3)
+                        slider("Brightness", value: tuning.grainOpacity, in: 0...1)
+                        slider("Fade depth", value: tuning.grainFade, in: 0...1)
+                        slider("Fade speed", value: tuning.grainFadeSpeed, in: 0...2, format: "%.2f/s")
+                    }
+                    Section {
+                        // Send the values (owner: "so I can easily send you which parameters I like").
+                        ShareLink(item: tuning.wrappedValue.summary) {
+                            Label("Share these settings", systemImage: "square.and.arrow.up")
+                        }
+                        Button {
+                            UIPasteboard.general.string = tuning.wrappedValue.summary
+                            triggerSomeVibration(type: .success)
+                        } label: {
+                            Label("Copy these settings", systemImage: "doc.on.doc")
+                        }
+                        Button("Reset to defaults", role: .destructive) { raw = "" }
+                    }
+                }
+            }
+            .tint(.green)
+            .navigationTitle("Ring playground")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+
+    private func slider(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>,
+                        step: Double? = nil, format: String = "%.2f") -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                Spacer()
+                Text(String(format: format, value.wrappedValue))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+            if let step {
+                Slider(value: value, in: range, step: step)
+            } else {
+                Slider(value: value, in: range)
+            }
+        }
+        .tint(.green)
     }
 }
 
@@ -3654,49 +3803,69 @@ struct TopBar: View {
 
 
 
+/// The post-salah prompt that drops in after a prayer is marked (2026-09-25): a glass pill,
+/// just the icon and "Post-salah tasbih" (owner: less text — once tapped they know what it is).
+/// It stays until tapped (→ the 33 · 33 · 34 session) or swiped away — up or to either side —
+/// and its tappable area reaches past the pill.
 struct FloatingChainZikrButton: View {
     @EnvironmentObject var sharedState: SharedStateClass
-    @State private var chainButtonPressed = false
+    @State private var pressed = false
+    @State private var drag: CGSize = .zero
     @Binding var showTasbeehPage: Bool
     @Binding var showChainZikrButton: Bool
 
     var body: some View {
-        Button(action: {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
-                triggerSomeVibration(type: .success)
-                chainButtonPressed = true
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                chainButtonPressed = false
-                sharedState.isDoingPostNamazZikr = true
-                showTasbeehPage = true
-//                sharedState.showingOtherPages = true
-            }
-        }) {
-            ZStack {
-                // Background
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.gray.opacity(0.08))
-                
-                // Outline
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(Color.gray.opacity(0.5), lineWidth: 1.5)
-                
-                // Content
-                Text("post salah zikr?")
-                    .fontDesign(.rounded)
-                    .fontWeight(.thin)
-                    .foregroundColor(.primary)
-            }
-            .frame(width: 150, height: 50)
-            .shadow(radius: 10)
-            .scaleEffect(chainButtonPressed ? 0.95 : 1.0)
+        HStack(spacing: 10) {
+            Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
+                .font(.system(size: 18, weight: .light))
+                .foregroundStyle(Color.green)
+            Text("Post-salah tasbih?")
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .foregroundStyle(.primary)
         }
-        .padding()
-        .offset(y: showChainZikrButton ? 50 : 0)
-        .opacity(showChainZikrButton ? 1 : 0)
-        .disabled(!showChainZikrButton)
-        .animation(.easeInOut, value: showChainZikrButton)
+        .padding(.horizontal, 24)
+        .frame(height: 56)
+        .mapGlass(Capsule())
+        .scaleEffect(pressed ? 0.95 : 1)
+        .padding(.horizontal, 24)                 // a bigger target than the pill
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .offset(x: drag.width, y: min(drag.height, 0) + (showChainZikrButton ? 50 : 0))
+        .opacity(showChainZikrButton ? 1 - min(Double(max(abs(drag.width), -drag.height)) / 160, 0.8) : 0)
+        .onTapGesture { start() }
+        .gesture(
+            DragGesture(minimumDistance: 8)
+                .onChanged { drag = $0.translation }
+                .onEnded { value in
+                    let t = value.predictedEndTranslation
+                    if t.height < -60 || abs(t.width) > 110 {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            drag = CGSize(width: abs(t.width) > 110 ? (t.width > 0 ? 500 : -500) : 0,
+                                          height: t.height < -60 ? -200 : 0)
+                            showChainZikrButton = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { drag = .zero }
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { drag = .zero }
+                    }
+                }
+        )
+        .allowsHitTesting(showChainZikrButton)
+        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showChainZikrButton)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Start post-salah tasbih")
+    }
+
+    private func start() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { pressed = true }
+        triggerSomeVibration(type: .success)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            pressed = false
+            showChainZikrButton = false
+            sharedState.isDoingPostNamazZikr = true
+            showTasbeehPage = true
+        }
     }
 }
 

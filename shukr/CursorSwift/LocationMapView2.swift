@@ -61,7 +61,15 @@ final class LocationViewModel: ObservableObject {
     /// True while a sheet is being swapped for another pin's, so the "sheet went away → drop the
     /// pin highlight" step doesn't deselect the pin that was just tapped.
     private(set) var swappingSelection = false
+    /// The Explore sheet (layers + their settings). One sheet at a time on this screen, so a pin
+    /// tapped while it's up closes it first.
+    @Published var showExplore = false
     func present(_ new: PrayerSpotSelection) {
+        if showExplore {
+            showExplore = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.present(new) }
+            return
+        }
         let detent: PresentationDetent = new.prayers.count == 1 ? Self.compactDetent : .medium
         if selection == nil {
             spotDetent = detent
@@ -78,6 +86,41 @@ final class LocationViewModel: ObservableObject {
     }
     @Published var mapType: MKMapType = .standard
     @Published var showPrayers: Bool = false
+
+    // Mosque finder (MosqueFinder.swift)
+    @Published var showMosques = false
+    @Published var mosques: [MKMapItem] = []
+    @Published var mosqueSearching = false
+    @Published var mosqueSelection: MosqueSelection?
+    /// Panned well away from the last search: offer "Search this area".
+    @Published var mosqueAreaStale = false
+    var lastMosqueSearch: MKCoordinateRegion?
+    /// Zoom to fit the results once they arrive (a fresh search, not a pan-and-refresh).
+    var fitMosquesWhenFound = false
+
+    func presentMosque(_ item: MKMapItem) {
+        if showExplore {
+            showExplore = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                self?.mosqueSelection = MosqueSelection(item: item)
+            }
+            return
+        }
+        mosqueSelection = MosqueSelection(item: item)
+    }
+
+    @MainActor
+    func searchMosques(in region: MKCoordinateRegion, fit: Bool) {
+        mosqueSearching = true
+        mosqueAreaStale = false
+        lastMosqueSearch = region
+        fitMosquesWhenFound = fit
+        Task { @MainActor in
+            let found = await MosqueSearch.find(in: region)
+            mosques = found
+            mosqueSearching = false
+        }
+    }
     @Published var visiblePrayerCount: Int = 0
     @Published var isAtMecca: Bool = false
     /// Bearing from the user (or, without a fix, the map centre) to the Kaaba: degrees
@@ -270,6 +313,7 @@ struct MapView: UIViewRepresentable {
         var parent: MapView
         var didCentreOnUser = false
         private var prayerAnnotations: [CustomPrayerAnnotation] = []
+        private var mosqueAnnotations: [MosqueAnnotation] = []
         private var qiblaLine: MKGeodesicPolyline?
         private var lineOrigin: CLLocation?
         private var cancellables = Set<AnyCancellable>()
@@ -285,6 +329,27 @@ struct MapView: UIViewRepresentable {
                     self.setPrayers(show ? prayers : [], on: mapView)
                 }
                 .store(in: &cancellables)
+            // Mosques: replaced whenever a search lands, hidden outside mosque mode.
+            Publishers.CombineLatest(viewModel.$mosques, viewModel.$showMosques)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self, weak mapView] items, show in
+                    guard let self, let mapView else { return }
+                    self.setMosques(show ? items : [], on: mapView)
+                }
+                .store(in: &cancellables)
+        }
+
+        private func setMosques(_ items: [MKMapItem], on mapView: MKMapView) {
+            mapView.removeAnnotations(mosqueAnnotations)
+            mosqueAnnotations = items.map(MosqueAnnotation.init(item:))
+            mapView.addAnnotations(mosqueAnnotations)
+            if parent.viewModel.fitMosquesWhenFound, !mosqueAnnotations.isEmpty {
+                parent.viewModel.fitMosquesWhenFound = false
+                // You and the nearest few, not every result 30 km out.
+                var shown: [MKAnnotation] = Array(mosqueAnnotations.prefix(6))
+                if let me = mapView.userLocation.location { _ = me; shown.append(mapView.userLocation) }
+                mapView.showAnnotations(shown, animated: true)
+            }
         }
 
         private func setPrayers(_ prayers: [PrayerModel], on mapView: MKMapView) {
@@ -360,6 +425,15 @@ struct MapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             updateVisibleCount(on: mapView)
+            // Mosque mode: panned or zoomed out well past the last search → "Search this area".
+            if parent.viewModel.showMosques, !parent.viewModel.mosqueSearching,
+               let last = parent.viewModel.lastMosqueSearch {
+                let a = CLLocation(latitude: last.center.latitude, longitude: last.center.longitude)
+                let b = CLLocation(latitude: mapView.centerCoordinate.latitude, longitude: mapView.centerCoordinate.longitude)
+                let lastRadius = last.span.latitudeDelta * 111_000 / 2
+                let stale = a.distance(from: b) > lastRadius * 0.6 || mapView.region.span.latitudeDelta > last.span.latitudeDelta * 1.8
+                if parent.viewModel.mosqueAreaStale != stale { parent.viewModel.mosqueAreaStale = stale }
+            }
             updateAnchor(on: mapView)
             // Without a fix the ring sits at the screen centre and its arrow follows the map centre.
             if lineOrigin == nil {
@@ -394,13 +468,24 @@ struct MapView: UIViewRepresentable {
             }
             if let cluster = annotation as? MKClusterAnnotation {
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier, for: annotation) as! MKMarkerAnnotationView
-                view.markerTintColor = .systemGreen
+                let mosques = cluster.memberAnnotations.allSatisfy { $0 is MosqueAnnotation }
+                view.markerTintColor = mosques ? Self.mosqueTint : .systemGreen
                 view.glyphText = "\(cluster.memberAnnotations.count)"
                 view.canShowCallout = false
                 view.displayPriority = .required
                 return view
             }
             let view = mapView.dequeueReusableAnnotationView(withIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier, for: annotation) as! MKMarkerAnnotationView
+            if annotation is MosqueAnnotation {
+                view.markerTintColor = Self.mosqueTint
+                view.glyphText = nil
+                view.glyphImage = UIImage(systemName: MosqueIconStyle.current.pin)
+                view.clusteringIdentifier = "mosque"
+                view.canShowCallout = false
+                view.displayPriority = .required
+                return view
+            }
+            view.glyphText = nil
             if let prayer = (annotation as? CustomPrayerAnnotation)?.prayer {
                 view.markerTintColor = LocationViewModel.markerColor(for: prayer)
             }
@@ -410,8 +495,24 @@ struct MapView: UIViewRepresentable {
             return view
         }
 
+        /// Mosque pins: the app's green.
+        static let mosqueTint = UIColor.systemGreen
+
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
             guard let annotation = view.annotation else { return }
+            // Mosques: a cluster zooms in to its mosques; one mosque opens its sheet.
+            if let cluster = annotation as? MKClusterAnnotation, cluster.memberAnnotations.allSatisfy({ $0 is MosqueAnnotation }) {
+                mapView.deselectAnnotation(cluster, animated: false)
+                mapView.showAnnotations(cluster.memberAnnotations, animated: true)
+                return
+            }
+            if let mosque = annotation as? MosqueAnnotation {
+                UIView.animate(withDuration: 0.2) { view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3) }
+                view.zPriority = .max
+                parent.viewModel.presentMosque(mosque.item)
+                keepInView(annotation.coordinate, on: mapView, sheetFraction: 0.5)
+                return
+            }
             let prayers: [PrayerModel]
             if let cluster = annotation as? MKClusterAnnotation {
                 prayers = cluster.memberAnnotations.compactMap { ($0 as? CustomPrayerAnnotation)?.prayer }
@@ -460,6 +561,7 @@ struct MapView: UIViewRepresentable {
 
 struct LocationMapContentView: View {
     @StateObject private var viewModel = LocationViewModel()
+    @Environment(\.modelContext) private var context
     @EnvironmentObject var compass: CompassState
     @EnvironmentObject var envLocation: EnvLocationManager
     @EnvironmentObject var sharedState: SharedStateClass
@@ -470,6 +572,39 @@ struct LocationMapContentView: View {
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
     @State private var anchor = MapAnchor()
+    @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
+    private var mosqueIcon: MosqueIconStyle { MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder }
+
+    /// Qibla (both off), prayers or mosques — one at a time.
+    private func setMode(prayers: Bool, mosques: Bool) {
+        withAnimation {
+            viewModel.showPrayers = prayers
+            viewModel.showMosques = mosques
+            sharedState.allowQiblaHaptics = !prayers && !mosques
+        }
+        if mosques, viewModel.mosques.isEmpty, !viewModel.mosqueSearching {
+            // First look: about 30 km around you.
+            if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
+                viewModel.searchMosques(in: MKCoordinateRegion(center: here, span: MKCoordinateSpan(latitudeDelta: 0.3, longitudeDelta: 0.3)), fit: true)
+            }
+        }
+        if !prayers && !mosques { centreOnUser() }
+    }
+
+    private var inQiblaMode: Bool { !viewModel.showPrayers && !viewModel.showMosques }
+
+    private var statusText: String {
+        if viewModel.showPrayers {
+            let n = viewModel.visiblePrayerCount
+            return n == 1 ? "1 prayer in view" : "\(n) prayers in view"
+        }
+        if viewModel.showMosques {
+            if viewModel.mosqueSearching { return "Finding mosques…" }
+            let n = viewModel.mosques.count
+            return n == 0 ? "No mosques found here" : n == 1 ? "1 mosque nearby" : "\(n) mosques nearby"
+        }
+        return compassHint
+    }
 
     private func centreOnUser() {
         guard let mapView = viewModel.mapView,
@@ -498,11 +633,11 @@ struct LocationMapContentView: View {
             // Qibla ring, sitting on the user's dot: the green line is the direction, the
             // ring's arrow repeats it and the chevron follows the compass.
             AnchoredQiblaRing(anchor: anchor, degrees: viewModel.qiblaBearing, isAtMecca: viewModel.isAtMecca)
-                .opacity(viewModel.showPrayers ? 0 : 1)
-                .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
+                .opacity(inQiblaMode ? 1 : 0)
+                .animation(.easeInOut(duration: 0.2), value: inQiblaMode)
 
             // Facing Mecca: the whole screen edge glows green.
-            AlignedEdgeGlow(on: compass.qibla.aligned && !viewModel.showPrayers)
+            AlignedEdgeGlow(on: compass.qibla.aligned && inQiblaMode)
 
             VStack {
                 ZStack(alignment: .top) {
@@ -511,49 +646,66 @@ struct LocationMapContentView: View {
                             sharedState.allowQiblaHaptics = true
                             dismiss()
                         } label: {
-                            Text("Close").font(.body)
+                            // A down chevron: the map slid up over the app, this sends it back.
+                            Image(systemName: "chevron.down")
+                                .mapControlIcon()
                         }
-                        .buttonStyle(MapPill())
+                        .buttonStyle(.plain)
+                        .mapGlass(Circle())
+                        .accessibilityLabel("Close map")
                         Spacer()
                     }
 
                     // Status pill: compass hint in qibla mode, count in prayers mode.
                     HStack {
                         Spacer()
-                        Text(viewModel.showPrayers ? "Prayers in area: \(viewModel.visiblePrayerCount)" : compassHint)
-                            .monospacedDigit()
-                            .font(.subheadline)
-                            .foregroundStyle(.black)
-                            .padding()
-                            .background(Color.white.opacity(0.85))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .overlay(RoundedRectangle(cornerRadius: 10)
-                                .stroke(!viewModel.showPrayers && compass.qibla.aligned ? Color.green : Color.clear, lineWidth: 2))
-                            .shadow(radius: 2)
+                        // Prayer spots: the count, and the filter under it when one is on;
+                        // tap → the filters (this replaced the bottom filter pill — Explore and
+                        // this pill cover it).
+                        VStack(spacing: 1) {
+                            Text(statusText)
+                                .font(.subheadline.weight(.medium))
+                            if viewModel.showPrayers && viewModel.filtersActive {
+                                Text(viewModel.filterSentence.replacingOccurrences(of: "Showing ", with: ""))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(Color.green)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .monospacedDigit()
+                        .fontDesign(.rounded)
+                        .foregroundStyle(inQiblaMode && compass.qibla.aligned ? Color.green : Color.primary)
+                        .padding(.horizontal, 18)
+                        .frame(minHeight: 46)
+                        .frame(maxWidth: 230)
+                        .mapGlass(Capsule())
+                        .contentShape(Capsule())
+                        .onTapGesture { if viewModel.showPrayers { showFilterSheet = true } }
+                            .overlay(Capsule().stroke(inQiblaMode && compass.qibla.aligned ? Color.green : Color.clear, lineWidth: 1.5))
+                            .animation(.easeInOut(duration: 0.2), value: compass.qibla.aligned)
                         Spacer()
                     }
 
                     HStack {
                         Spacer()
-                        VStack(spacing: 6) {
-                            Button { viewModel.mapType = viewModel.mapType == .standard ? .hybrid : .standard } label: {
-                                Image(systemName: "map")
-                            }
-                            .buttonStyle(MapPill())
-                            Button { centreOnUser() } label: {
-                                Image(systemName: "location")
-                            }
-                            .buttonStyle(MapPill())
-                            Button {
-                                withAnimation {
-                                    viewModel.showPrayers.toggle()
-                                    sharedState.allowQiblaHaptics.toggle()
+                        VStack(spacing: 10) {
+                            // Map style + locate: one glass capsule, like Apple Maps groups them.
+                            VStack(spacing: 0) {
+                                Button { viewModel.mapType = viewModel.mapType == .standard ? .hybrid : .standard } label: {
+                                    Image(systemName: viewModel.mapType == .standard ? "map" : "map.fill")
+                                        .mapControlIcon()
                                 }
-                                if !viewModel.showPrayers { centreOnUser() }
-                            } label: {
-                                Image(systemName: viewModel.showPrayers ? "mappin.circle.fill" : "mappin.circle")
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Map style")
+                                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
+                                Button { centreOnUser() } label: {
+                                    Image(systemName: "location")
+                                        .mapControlIcon()
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Centre on me")
                             }
-                            .buttonStyle(MapPill())
+                            .mapGlass(Capsule())
                         }
                     }
                 }
@@ -561,31 +713,44 @@ struct LocationMapContentView: View {
                 .padding(.top, 6)
                 Spacer()
 
-                // Filter bar: says what the pins are; tap to change. Prayers mode only.
-                if viewModel.showPrayers {
-                    Button { showFilterSheet = true } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "line.3.horizontal.decrease.circle\(viewModel.filtersActive ? ".fill" : "")")
-                            Text(viewModel.filterSentence)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                            Spacer(minLength: 4)
-                            Image(systemName: "chevron.up").font(.caption.weight(.semibold))
-                        }
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(viewModel.filtersActive ? Color.white : Color.green)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(viewModel.filtersActive ? Color.green : Color.white)
-                        .clipShape(Capsule())
-                        .shadow(radius: 3)
+                // Explore, bottom-right (owner, 2026-09-25): the layers (prayer spots, mosques, halal
+                // food soon) and their settings in one sheet — one button instead of one per layer.
+                HStack {
+                    Spacer()
+                    Button {
+                        viewModel.showExplore = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .mapControlIcon(tint: inQiblaMode ? nil : .green)   // green: a layer is on
                     }
-                    .padding(.horizontal, 16)
+                    .buttonStyle(.plain)
+                    .mapGlass(Circle(), tint: inQiblaMode ? nil : .green)
+                    .accessibilityLabel("Explore: prayer spots, mosques")
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, viewModel.showMosques && viewModel.mosqueAreaStale ? 4 : 12)
+
+                // Mosque mode, panned somewhere new: search there.
+                if viewModel.showMosques && viewModel.mosqueAreaStale, let mapView = viewModel.mapView {
+                    Button {
+                        viewModel.searchMosques(in: mapView.region, fit: false)
+                    } label: {
+                        Label("Search this area", systemImage: "magnifyingglass")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(Color.green)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 12)
+                            .background(Capsule().fill(Color.white))
+                            .shadow(radius: 3)
+                    }
+                    .buttonStyle(.plain)
                     .padding(.bottom, 8)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.showMosques)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.mosqueAreaStale)
         }
         .onChange(of: viewModel.selection?.id) { _, id in
             // Sheet gone (swiped down): drop the pin highlight. Not during a swap — the new pin
@@ -603,6 +768,37 @@ struct LocationMapContentView: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationContentInteraction(.scrolls)   // scrolling scrolls the list; the grabber resizes
         }
+        .onChange(of: viewModel.mosqueSelection?.id) { _, id in
+            if id == nil, let mapView = viewModel.mapView {
+                for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
+            }
+        }
+        .sheet(isPresented: $viewModel.showExplore) {
+            MapExploreSheet(
+                active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
+                prayerFilterSentence: viewModel.filterSentence,
+                select: { layer in
+                    switch layer {
+                    case .prayers: setMode(prayers: !viewModel.showPrayers, mosques: false)
+                    case .mosques: setMode(prayers: false, mosques: !viewModel.showMosques)
+                    default: break
+                    }
+                },
+                editPrayerFilters: {
+                    viewModel.showExplore = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { showFilterSheet = true }
+                }
+            )
+            .presentationDetents([.height(330)])
+            .presentationDragIndicator(.visible)
+            .presentationBackgroundInteraction(.enabled)
+        }
+        .sheet(item: $viewModel.mosqueSelection) { selection in
+            MosqueSheet(item: selection.item)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+        }
         .sheet(isPresented: $showFilterSheet) {
             FilterView(selectedStartDate: $viewModel.selectedStartDate,
                        selectedEndDate: $viewModel.selectedEndDate,
@@ -614,6 +810,141 @@ struct LocationMapContentView: View {
                 .tint(.green)
         }
         .toolbar(.hidden, for: .navigationBar)
+        #if DEBUG
+        .task {
+            // Simulator only: some past prayers with spots around City Hall, to see the pins.
+            if ProcessInfo.processInfo.arguments.contains("-demoPrayerPins"), prayers.isEmpty {
+                let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+                let spots: [(Double, Double)] = [(40.7128, -74.0060), (40.7135, -74.0046), (40.7118, -74.0072),
+                                                 (40.7152, -74.0091), (40.7103, -74.0098), (40.7163, -74.0033)]
+                for i in 0..<26 {
+                    let start = Date().addingTimeInterval(-Double(i) * 86_400 / 2.2)
+                    let spot = spots[i % spots.count]
+                    let p = PrayerModel(name: names[i % 5], startTime: start, endTime: start.addingTimeInterval(5400),
+                                        latitude: spot.0 + Double(i % 3) * 0.0002, longitude: spot.1 - Double(i % 4) * 0.0002)
+                    p.isCompleted = true
+                    p.timeAtComplete = start.addingTimeInterval(Double(i % 5) * 900)
+                    p.numberScore = [1.0, 0.9, 0.72, 0.4, 0.95][i % 5]
+                    context.insert(p)
+                }
+                try? context.save()
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoMosques") {
+                try? await Task.sleep(for: .seconds(2))
+                setMode(prayers: false, mosques: true)
+            }
+        }
+        #endif
+    }
+}
+
+/// What the map shows besides the qibla.
+enum MapLayer { case qibla, prayers, mosques, halal }
+
+/// The map's Explore sheet (2026-09-25 — owner: prayer pins, mosques and soon halal food need one
+/// home, not a button each): layer tiles like the pause screen's chips — tap one to show it, tap
+/// it again to go back to the qibla — and the active layer's own settings underneath.
+struct MapExploreSheet: View {
+    let active: MapLayer
+    let prayerFilterSentence: String
+    let select: (MapLayer) -> Void
+    let editPrayerFilters: () -> Void
+    @AppStorage(MosqueTravel.key) private var travel = MosqueTravel.driving.rawValue
+    @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Explore")
+                .font(.system(size: 24, weight: .light, design: .rounded))
+                .padding(.top, 26)
+            HStack(spacing: 10) {
+                tile("My prayer spots", icon: "hands.and.sparkles.fill", layer: .prayers)
+                tile("Mosques", icon: (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin, layer: .mosques)
+                tile("Halal food", icon: "fork.knife", layer: .halal, soon: true)
+            }
+
+            Group {
+                switch active {
+                case .prayers:
+                    card {
+                        Button(action: editPrayerFilters) {
+                            HStack(spacing: 10) {
+                                Image(systemName: "line.3.horizontal.decrease.circle")
+                                    .foregroundStyle(Color.green)
+                                Text(prayerFilterSentence)
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                                Spacer()
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                case .mosques:
+                    card {
+                        HStack {
+                            Text("Travel time")
+                            Spacer()
+                            Picker("Travel time", selection: $travel) {
+                                ForEach(MosqueTravel.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
+                        }
+                    }
+                default:
+                    Text("Pick what to show on the map. Tap it again to go back to the qibla.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .transition(.opacity)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .fontDesign(.rounded)
+        .animation(.snappy(duration: 0.2), value: active)
+    }
+
+    private func tile(_ title: String, icon: String, layer: MapLayer, soon: Bool = false) -> some View {
+        let on = active == layer
+        return Button {
+            triggerSomeVibration(type: .light)
+            select(layer)
+        } label: {
+            VStack(spacing: 7) {
+                Image(systemName: icon)
+                    .font(.system(size: 20, weight: .light))
+                    .frame(height: 24)
+                Text(title)
+                    .font(.caption)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                if soon {
+                    Text("soon").font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .foregroundStyle(on ? Color.green : Color.primary.opacity(0.75))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(on ? Color.green.opacity(0.14) : Color.primary.opacity(0.06))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(soon)
+        .opacity(soon ? 0.5 : 1)
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .font(.subheadline)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.05)))
     }
 }
 
@@ -653,6 +984,31 @@ struct AnchoredQiblaRing: View {
 }
 
 /// The map's floating buttons: white pill, green glyph (filled: green pill, white glyph).
+/// The map's controls, current-iOS style (owner, 2026-09-25: the white squares looked dated):
+/// Liquid Glass on iOS 26+, frosted material before that. Icons in the primary colour, green only
+/// for "on".
+extension View {
+    func mapControlIcon(tint: Color? = nil) -> some View {
+        self
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(tint ?? Color.primary)
+            .frame(width: 46, height: 46)
+            .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    func mapGlass<S: Shape>(_ shape: S, tint: Color? = nil) -> some View {
+        if #available(iOS 26.0, *) {
+            self.glassEffect(tint.map { .regular.tint($0.opacity(0.18)).interactive() } ?? .regular.interactive(), in: shape)
+        } else {
+            self
+                .background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
+        }
+    }
+}
+
 struct MapPill: ButtonStyle {
     var filled = false
     func makeBody(configuration: Configuration) -> some View {
@@ -841,8 +1197,9 @@ struct FilterView: View {
                                     .font(.subheadline.weight(.medium))
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
-                                    .foregroundStyle(on ? Color.white : Color.primary)
-                                    .background(on ? Color.green : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .foregroundStyle(on ? Color.green : Color.primary)
+                                    .background(on ? Color.green.opacity(0.16) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.green.opacity(on ? 0.35 : 0), lineWidth: 1))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -886,8 +1243,9 @@ struct FilterView: View {
                                     }
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 12)
-                                    .foregroundStyle(on ? Color.white : Color.secondary)
-                                    .background(on ? Color.green : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .foregroundStyle(on ? Color.green : Color.secondary)
+                                    .background(on ? Color.green.opacity(0.16) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color.green.opacity(on ? 0.35 : 0), lineWidth: 1))
                                 }
                                 .buttonStyle(.plain)
                             }

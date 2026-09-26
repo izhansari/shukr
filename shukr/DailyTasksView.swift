@@ -134,6 +134,8 @@ struct ZikrCircleWheel: View {
     @State private var arranging = false
     @State private var arrangeOrder: [TaskModel] = []
     @State private var draggingID: UUID?
+    /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
+    @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.lazySusan.rawValue
     /// The lifted circle follows the finger here (in the grid's own coordinates).
     @State private var dragPoint: CGPoint = .zero
     @State private var gridWidth: CGFloat = 360
@@ -229,18 +231,8 @@ struct ZikrCircleWheel: View {
                             // easing out (owner: more dramatic, and not at its smallest the moment it
                             // leaves the middle): one row away ≈ 0.62×, two ≈ 0.45×, never below
                             // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
-                            .visualEffect { [itemHeight] content, proxy in
-                                let frame = proxy.frame(in: .scrollView(axis: .vertical))
-                                let viewport = proxy.bounds(of: .scrollView(axis: .vertical))?.height ?? frame.height
-                                let rows = (frame.midY - viewport / 2) / itemHeight
-                                let d = min(abs(rows), 3)
-                                let ease = 1 - exp(-1.1 * d)
-                                let scale = 1 - 0.62 * ease
-                                return content
-                                    .scaleEffect(scale)
-                                    .opacity(1 - 0.7 * ease)
-                                    .offset(y: -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.45 * min(d, 1.5))
-                            }
+                            .modifier(WheelFalloff(itemHeight: itemHeight,
+                                                   style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .lazySusan))
                     }
                 }
                 .scrollTargetLayout()
@@ -587,6 +579,83 @@ struct ZikrCircleWheel: View {
             }
         case .add:
             showAddTask = true
+        }
+    }
+}
+
+/// The Zikr wheel's shapes, to try side by side (owner, 2026-09-25: the arc "needs tweaking";
+/// pick one, then drop the rest). `radius` = how far left the arc pulls the off-centre circles
+/// (0 = straight column), `anglePerRow` = how far round the wheel one row is, `tilt` = how much
+/// of that turn the circle itself takes (1 = fully turned with the wheel).
+enum ZikrWheelStyle: String, CaseIterable, Identifiable {
+    case straight, arcNoTilt, gentle, lazySusan, tight
+    static let key = "zikrWheelStyle"
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .straight: "Straight (original)"
+        case .arcNoTilt: "Arc, no tilt"
+        case .gentle: "Gentle arc, half tilt"
+        case .lazySusan: "Lazy Susan"
+        case .tight: "Tight wheel"
+        }
+    }
+    var radius: CGFloat {
+        switch self {
+        case .straight: 0
+        case .arcNoTilt, .lazySusan: 300
+        case .gentle: 240
+        case .tight: 210
+        }
+    }
+    var anglePerRow: CGFloat {
+        switch self {
+        case .straight: 0
+        case .arcNoTilt, .lazySusan: 0.7
+        case .gentle: 0.55
+        case .tight: 0.95
+        }
+    }
+    var tilt: CGFloat {
+        switch self {
+        case .straight, .arcNoTilt: 0
+        case .gentle: 0.5
+        case .lazySusan, .tight: 1
+        }
+    }
+}
+
+/// The wheel's look per circle, from its distance to the middle in rows (eased): size and fade
+/// fall away (1 row ≈ 0.62×, 2 ≈ 0.45×, floor 0.38×) and neighbours are pulled in so shrinking
+/// doesn't open gaps (owner: more dramatic, not at its smallest right away). With an arc
+/// `style` the circles ride a big arc bulging right — the middle one at its rightmost point, the others
+/// falling away to the left (1 row ≈ 70 pt, 2 ≈ 250 pt), the owner's sketch — and turned with
+/// the wheel (±40° a row), like items on a lazy Susan seen from above.
+struct WheelFalloff: ViewModifier {
+    let itemHeight: CGFloat
+    let style: ZikrWheelStyle
+
+    func body(content: Content) -> some View {
+        let radius = style.radius, perRow = style.anglePerRow, tilt = style.tilt
+        return content.visualEffect { [itemHeight, radius, perRow, tilt] content, proxy in
+            let frame = proxy.frame(in: .scrollView(axis: .vertical))
+            let viewport = proxy.bounds(of: .scrollView(axis: .vertical))?.height ?? frame.height
+            let rows: CGFloat = (frame.midY - viewport / 2) / itemHeight
+            let d: CGFloat = min(abs(rows), 3)
+            let ease: CGFloat = 1 - exp(-1.1 * d)
+            let scale: CGFloat = 1 - 0.62 * ease
+            // Where it sits on the wheel: 0 at the middle (rightmost point), ± going up / down.
+            let theta: CGFloat = min(max(rows, -2.2), 2.2) * perRow
+            let arcX: CGFloat = -(1 - cos(theta)) * radius
+            let pullY: CGFloat = -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.45 * min(d, 1.5)
+            return content
+                .scaleEffect(scale)
+                .opacity(1 - 0.7 * ease)
+                // Turned with the wheel, like a lazy Susan seen from above (owner): each circle
+                // faces out from the hub, so the ones above tilt back and the ones below forward.
+                .rotationEffect(.radians(Double(theta * tilt)))
+                .offset(x: arcX, y: pullY)
         }
     }
 }

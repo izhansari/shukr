@@ -68,6 +68,14 @@ struct tasbeehView: View {
     
     /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
     @State private var postSalahPhase = 0
+    /// Which reminder the post-salah session shows (one per session, picked at random).
+    @State private var reminderVariant: Int = {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments   // -reminderVariant N (screenshots)
+        if let i = args.firstIndex(of: "-reminderVariant"), i + 1 < args.count, let n = Int(args[i + 1]) { return n }
+        #endif
+        return Int.random(in: 0..<PostSalahReminder.count)
+    }()
     @State private var tasbeehColorMode = false
 
     
@@ -276,11 +284,9 @@ struct tasbeehView: View {
                 
                 // The Top Buttons During Session
                 HStack {
-                    // Paused: nothing up here — Finish / Resume are at the bottom of the pause screen.
-                    if paused {
-                        EmptyView()
-                    }
-                    else {
+                    // Always there, faded out and inert while paused (Finish / Resume live on the
+                    // pause screen). Removing them popped the layout on every pause / resume.
+                    Group {
                         HStack{
                             TopOfSessionButton( // Minus Button
                                 symbol: "minus", actionToDo: decrementTasbeeh,
@@ -300,6 +306,8 @@ struct tasbeehView: View {
 //                                NoteModalView(savedText: $noteModalText, showSheet: $showNotesModal, takingNotes: $takingNotes)
 //                            }
                         }
+                        .opacity(paused ? 0 : 1)
+                        .allowsHitTesting(!paused)
                     }
                     
                     
@@ -342,6 +350,10 @@ struct tasbeehView: View {
                         PostSalahPhaseStrip(count: tasbeeh)
                             .padding(.top, 120)
                             .allowsHitTesting(false)
+                            // Fades under the pause screen with it (removing it popped; left on,
+                            // it drew through the pause screen).
+                            .opacity(paused ? 0 : 1)
+                            .animation(.easeInOut, value: paused)
                     }
                     Spacer()
                     inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
@@ -349,15 +361,16 @@ struct tasbeehView: View {
                 .zIndex(1)
 
                 // Post-salah: why it's worth it, low on the screen, clear of the beads.
-                if sharedState.isDoingPostNamazZikr && !paused {
+                if sharedState.isDoingPostNamazZikr {
                     VStack {
                         Spacer()
-                        PostSalahReminder()
+                        PostSalahReminder(variant: reminderVariant)
                             .padding(.horizontal, 36)
                             .padding(.bottom, 12)
                     }
                     .allowsHitTesting(false)
-                    .transition(.opacity)
+                    .opacity(paused ? 0 : 1)
+                    .animation(.easeInOut, value: paused)
                 }
             }
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
@@ -700,7 +713,13 @@ struct tasbeehView: View {
         @State private var showHistory = false
 
         private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
-        private var locked: Bool { savedSession.task != nil }
+        private var isTasbihFatimah: Bool {
+            (savedSession.mantra?.name ?? savedSession.title) == PostSalahTasbeeh.mantraName
+        }
+        /// A task's session keeps its task's mantra; Tasbih Fatimah is always Tasbih Fatimah.
+        private var locked: Bool {
+            savedSession.task != nil || (savedSession.mantra?.name ?? savedSession.title) == PostSalahTasbeeh.mantraName
+        }
         private var title: String { savedSession.mantra?.name ?? savedSession.title }
 
         /// A task's session: where the task stands today ("5 of 100 today"), since a continued
@@ -836,7 +855,8 @@ struct tasbeehView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                        Text(locked ? "\(sessionLabel) · \(taskToday ?? "from your task")" : sessionLabel)
+                        Text(isTasbihFatimah ? "33 · 33 · 34 after salah"
+                             : locked ? "\(sessionLabel) · \(taskToday ?? "from your task")" : sessionLabel)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -848,7 +868,7 @@ struct tasbeehView: View {
                 .contentShape(cardShape)
             }
             .buttonStyle(.plain)
-            .disabled(locked)
+            .allowsHitTesting(!locked)   // not .disabled: that grayed the card out
         }
     }
 
@@ -894,6 +914,7 @@ struct tasbeehView: View {
         @Binding var currentVibrationMode: HapticFeedbackType
 
         // UI state
+        @State private var finishArmed = false
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
         @State private var chosenMantraObject: MantraModel? = nil
@@ -945,7 +966,7 @@ struct tasbeehView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 6) {
                     Image(systemName: "pause.fill").font(.caption2)
-                    Text("paused · \(sessionLabel)")
+                    Text(sharedState.isDoingPostNamazZikr ? "paused · Tasbih Fatimah" : "paused · \(sessionLabel)")
                 }
                 .font(.subheadline.weight(.light))
                 .foregroundStyle(.secondary)
@@ -953,7 +974,13 @@ struct tasbeehView: View {
 
                 ScrollView {
                     VStack(spacing: 12) {
-                        mantraCard
+                        // Tasbih Fatimah is its own thing (owner): the three phrases and where the
+                        // count is, instead of the mantra card (no edit, no count-in-sets).
+                        if sharedState.isDoingPostNamazZikr {
+                            PostSalahPauseCard(count: tasbeeh)
+                        } else {
+                            mantraCard
+                        }
                         ZikrBento(count: tasbeeh, seconds: secsToReport, secondsPerCount: newAvrgTPC,
                                   perTasbeeh: tasbeehRate,
                                   finish: showsFinishEstimate ? (timeLeft, finishTime) : nil)
@@ -1029,7 +1056,7 @@ struct tasbeehView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(mantraLocked)
+                    .allowsHitTesting(!mantraLocked)   // not .disabled: that grayed the name out
                     Spacer(minLength: 8)
                     if let mantra {
                         Button {
@@ -1130,6 +1157,8 @@ struct tasbeehView: View {
                     .padding(.horizontal, 8)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
+                // Tasbih Fatimah: just Finish / Resume (owner: none of the settings chips).
+                if !sharedState.isDoingPostNamazZikr {
                 HStack(spacing: 8) {
                     if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
                         chip(autoStop ? "stops at goal" : "keeps going",
@@ -1144,17 +1173,32 @@ struct tasbeehView: View {
                     chip(tasbeehColorMode ? "dark" : "light", icon: tasbeehColorMode ? "moon.fill" : "sun.max.fill",
                          on: false) { tasbeehColorMode.toggle() }
                 }
+                }
                 HStack(spacing: 12) {
+                    // Two taps (owner: cleaner than an "are you sure?"): the first arms it — a
+                    // green edge and green text, "Tap to finish" — the second finishes; it
+                    // disarms after 3 s. (Red read as a warning; owner.)
                     Button {
-                        triggerSomeVibration(type: .medium)
-                        stopTimer()
+                        if finishArmed {
+                            triggerSomeVibration(type: .medium)
+                            finishArmed = false
+                            stopTimer()
+                        } else {
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.snappy(duration: 0.2)) { finishArmed = true }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                                withAnimation(.snappy(duration: 0.2)) { finishArmed = false }
+                            }
+                        }
                     } label: {
-                        Text("Finish")
+                        Text(finishArmed ? "Tap to finish" : "Finish")
                             .fontWeight(.medium)
+                            .contentTransition(.opacity)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 15)
-                            .foregroundStyle(.primary)
-                            .background(Capsule().strokeBorder(Color.primary.opacity(0.18), lineWidth: 1))
+                            .foregroundStyle(finishArmed ? Color.green : Color.primary)
+                            .background(Capsule().strokeBorder(finishArmed ? Color.green : Color.primary.opacity(0.18),
+                                                               lineWidth: finishArmed ? 1.5 : 1))
                             .contentShape(Capsule())
                     }
                     Button { togglePause() } label: {
@@ -1454,20 +1498,97 @@ enum PostSalahTasbeeh {
 /// each obligatory prayer (Sahih Muslim, from Ka'b ibn 'Ujrah) and the Prophet ﷺ teaching the
 /// same words to Fatimah as better than a servant (Bukhari and Muslim, from 'Ali).
 struct PostSalahReminder: View {
+    var variant = 0
+
+    /// Why this zikr matters, to move people to do it (owner): a short headline — the reason — and
+    /// the narration behind it. One per session. Well-known narrations, paraphrased; no hadith
+    /// numbers until checked.
+    static let reminders: [(title: String, text: String, source: String)] = [
+        ("Never let down",
+         "Whoever says these after every obligatory prayer is never disappointed.",
+         "Sahih Muslim"),
+        ("Keep pace with the best",
+         "The poor feared the wealthy were ahead of them in charity. The Prophet ﷺ gave them these words after every prayer: no one would surpass them, except one who did the same.",
+         "Sahih al-Bukhari · Sahih Muslim"),
+        ("They fill the scales",
+         "Alhamdulillah fills the Scale, and Subhanallah with Alhamdulillah fill what is between the heavens and the earth.",
+         "Sahih Muslim"),
+        ("Better than a servant",
+         "Worn out by her work, Fatimah asked for a servant. The Prophet ﷺ gave her these hundred words instead, and said they were better for her.",
+         "Sahih al-Bukhari · Sahih Muslim"),   // its text doesn't say when — it was taught for bedtime
+    ]
+    static var count: Int { reminders.count }
+
     var body: some View {
-        VStack(spacing: 10) {
-            Text("“Words said after every obligatory prayer — the one who says them is never disappointed: Subhanallah 33, Alhamdulillah 33, Allahu Akbar 34.”")
+        let r = Self.reminders[variant % Self.count]
+        VStack(spacing: 8) {
+            Text(r.title)
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.8))
+            Text(r.text)
                 .font(.footnote.weight(.light))
                 .foregroundStyle(.secondary)
-            Text("Sahih Muslim")
+            Text(r.source)
                 .font(.caption2)
                 .foregroundStyle(Color.sage)
-            Text("The Prophet ﷺ taught these to his daughter Fatimah as better for her than a servant. A minute, a hundred words, after every salah.")
-                .font(.caption.weight(.light))
-                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
         }
         .multilineTextAlignment(.center)
         .fontDesign(.rounded)
+    }
+}
+
+/// The pause screen's card for Tasbih Fatimah: the three phrases as rows — done ✓, the current
+/// one with its count, the rest to come — plus the hadith's line. Replaces the mantra card
+/// (nothing to edit here; owner: "it's a special one").
+struct PostSalahPauseCard: View {
+    let count: Int
+
+    var body: some View {
+        let now = PostSalahTasbeeh.phase(at: count)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(PostSalahTasbeeh.mantraName)
+                .font(.system(size: 24, weight: .light, design: .rounded))
+            VStack(spacing: 8) {
+                ForEach(Array(PostSalahTasbeeh.phases.enumerated()), id: \.offset) { i, phrase in
+                    let done = i < now.index || (i == now.index && now.done >= now.of)
+                    let current = i == now.index && !done
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(phrase.name)
+                                .font(.system(size: 16, weight: current ? .regular : .light, design: .rounded))
+                                .foregroundStyle(current ? .primary : .secondary)
+                            Text(done ? "done" : current ? "\(now.done) of \(phrase.count)" : "\(phrase.count)")
+                                .font(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(done ? Color.green : .secondary)
+                        }
+                        Spacer(minLength: 8)
+                        Text(phrase.arabic)
+                            .font(.custom("KFGQPCUthmanTahaNaskh", size: 24))
+                            .foregroundStyle(current ? .primary : .secondary)
+                            .environment(\.layoutDirection, .rightToLeft)
+                        Image(systemName: done ? "checkmark.circle.fill" : current ? "circle.dotted" : "circle")
+                            .font(.system(size: 17, weight: .light))
+                            .foregroundStyle(done ? Color.green : current ? Color.primary : Color.secondary.opacity(0.5))
+                            .frame(width: 22)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(current ? Color.green.opacity(0.08) : Color.primary.opacity(0.03))
+                    )
+                }
+            }
+            Text("Never disappointed — Sahih Muslim")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
     }
 }
 
@@ -1513,8 +1634,7 @@ struct PostSalahPhaseStrip: View {
 
 /// Count, time and rate as glass tiles (same material and light rounded type as the pause
 /// screen's mantra card), shared by the pause and results screens. Count and time stacked on
-/// the left, rate on the right — tap it to flip per count ↔ per tasbeeh; the icons turn when
-/// tapped. With `finish` (a count goal in progress) a full-width tile underneath says when
+/// the left, rate on the right — tap it to flip per count ↔ per tasbeeh. With `finish` (a count goal in progress) a full-width tile underneath says when
 /// you'll be done — "in 1m 20s", tap → "6:42 PM" — a tile so it reads as something to tap
 /// (owner, 2026-09-25; it used to be loose caption text under the boxes).
 struct ZikrBento: View {
@@ -1530,8 +1650,6 @@ struct ZikrBento: View {
     var timeCaption = "time"
     var grouped = false
 
-    @State private var countRotation: Double = 0
-    @State private var timerRotation: Double = 0
     @State private var showingPerCount = true
     @State private var showingFinishTime = false
 
@@ -1542,19 +1660,12 @@ struct ZikrBento: View {
         VStack(spacing: gap) {
             HStack(alignment: .top, spacing: gap) {
                 VStack(spacing: gap) {
+                    // Count and time just show (the old spin-and-buzz on tap did nothing — owner).
                     tile {
-                        row(icon: "circle.hexagonpath", rotation: -countRotation, value: count.formatted(), caption: countCaption)
-                    }
-                    .onTapGesture {
-                        triggerSomeVibration(type: .medium)
-                        withAnimation(.spring(duration: 0.5)) { countRotation += 60 }
+                        row(icon: "circle.hexagonpath", value: count.formatted(), caption: countCaption)
                     }
                     tile {
-                        row(icon: "gauge.with.needle", rotation: timerRotation, value: timeText ?? timerStyle(seconds), caption: timeCaption)
-                    }
-                    .onTapGesture {
-                        triggerSomeVibration(type: .medium)
-                        withAnimation(.spring(duration: 0.3)) { timerRotation += 45 }
+                        row(icon: "gauge.with.needle", value: timeText ?? timerStyle(seconds), caption: timeCaption)
                     }
                 }
 
@@ -1634,12 +1745,11 @@ struct ZikrBento: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func row(icon: String, rotation: Double, value: String, caption: String) -> some View {
+    private func row(icon: String, value: String, caption: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 19, weight: .light))
                 .foregroundStyle(.secondary)
-                .rotationEffect(.degrees(rotation))
                 .frame(width: 26)
             valueStack(value, caption, size: 22, leading: true)
             Spacer(minLength: 0)

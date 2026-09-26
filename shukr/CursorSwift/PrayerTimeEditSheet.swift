@@ -5,7 +5,8 @@
 //  Long-press a completed prayer → "when did you pray?". The window bar shows where the picked
 //  time lands (green Early for the first 30 min, yellow On time, red Late; past the end is
 //  Qaza), the score updates live, and Cancel / Save sit at the bottom as capsules (2026-09-25:
-//  the old sheet was a bare Form-style stack with a blue Save next to the score).
+//  the old sheet was a bare Form-style stack with a blue Save next to the score). Save is gray
+//  until a different valid time is picked, then a green edge and green text.
 //
 
 import SwiftUI
@@ -13,13 +14,33 @@ import SwiftUI
 struct PrayerTimeEditSheet: View {
     let prayer: PrayerModel
     @Binding var time: Date
+    /// The time being picked lives here until Save (owner saw the bar hang on device: every
+    /// minute scrubbed wrote the parent's state and re-rendered the prayer row behind the sheet).
+    @State private var draft: Date
     /// From the prayer's start (never earlier) to now or the next Fajr (the day's rollover),
     /// whichever is first. After the window it's Qaza, e.g. Isha at 12:30 AM.
     let range: ClosedRange<Date>
     var onCancel: () -> Void
     var onSave: (Date) -> Void
 
-    private var isValid: Bool { range.contains(time) }
+    init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>,
+         onCancel: @escaping () -> Void, onSave: @escaping (Date) -> Void) {
+        self.prayer = prayer
+        self._time = time
+        self._draft = State(initialValue: time.wrappedValue)
+        self.range = range
+        self.onCancel = onCancel
+        self.onSave = onSave
+    }
+
+    private var isValid: Bool { range.contains(draft) }
+    /// The time the sheet opened with; Save is off until a different (valid) one is picked.
+    @State private var openedWith: Date?
+    private var changed: Bool {
+        guard let openedWith else { return false }
+        return abs(draft.timeIntervalSince(openedWith)) >= 30
+    }
+    private var canSave: Bool { isValid && changed }
 
     /// Tap / drag on the window bar: that point of the window, to the minute, kept within what
     /// can be saved (not before the start, not after now).
@@ -28,7 +49,7 @@ struct PrayerTimeEditSheet: View {
         let raw = prayer.startTime.addingTimeInterval(window * fraction)
         let minute = Date(timeIntervalSinceReferenceDate: (raw.timeIntervalSinceReferenceDate / 60).rounded() * 60)
         let picked = min(max(minute, range.lowerBound), range.upperBound)
-        if picked != time { time = picked }
+        if picked != draft { draft = picked }
     }
 
     /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before
@@ -40,7 +61,7 @@ struct PrayerTimeEditSheet: View {
             return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
         }
         func dist(_ a: Date, _ b: Date) -> Double { let x = abs(clock(a) - clock(b)); return min(x, 1440 - x) }
-        if dist(time, range.lowerBound) <= dist(time, range.upperBound) {
+        if dist(draft, range.lowerBound) <= dist(draft, range.upperBound) {
             return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound))."
         }
         // The upper bound is now unless the day already rolled over before now.
@@ -51,7 +72,7 @@ struct PrayerTimeEditSheet: View {
     }
 
     private var score: Double {
-        PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: time)
+        PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
     }
 
     var body: some View {
@@ -72,10 +93,10 @@ struct PrayerTimeEditSheet: View {
             .padding(.top, 30)   // room under the drag handle
 
             PrayerWindowBar(start: prayer.startTime, end: prayer.endTime,
-                            marked: time, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
+                            marked: draft, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
                             onPick: pickFromBar)
 
-            PrayerTimeWheel(time: $time, day: prayer.startTime, range: range)
+            PrayerTimeWheel(time: $draft, day: prayer.startTime, range: range)
                 .frame(height: 150)
 
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -98,9 +119,9 @@ struct PrayerTimeEditSheet: View {
                     .fontWeight(.light)
                     .foregroundStyle(.secondary)
                     .transition(.opacity)
-            } else if !Calendar.current.isDate(time, inSameDayAs: prayer.startTime) {
+            } else if !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) {
                 // After midnight, say which day and time this actually is.
-                Text(time.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
+                Text(draft.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
                     .font(.footnote)
                     .fontWeight(.light)
                     .foregroundStyle(.secondary)
@@ -120,24 +141,28 @@ struct PrayerTimeEditSheet: View {
                         .contentShape(Capsule())
                 }
                 Button {
-                    onSave(time)
+                    onSave(draft)
                 } label: {
+                    // Gray until there's something to save; then a green edge and green text
+                    // (owner — matches the other Saves; the solid green fill shouted).
                     Text("Save")
                         .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
-                        .foregroundStyle(.white)
-                        .background(Capsule().fill(Color.green.opacity(isValid ? 1 : 0.3)))
+                        .foregroundStyle(canSave ? Color.green : Color.secondary)
+                        .background(Capsule().strokeBorder(canSave ? Color.green : Color(.separator),
+                                                           lineWidth: canSave ? 1.5 : 1))
                         .contentShape(Capsule())
                 }
-                .disabled(!isValid)
-                .animation(.easeInOut(duration: 0.2), value: isValid)
+                .disabled(!canSave)
+                .animation(.easeInOut(duration: 0.2), value: canSave)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
         .fontDesign(.rounded)
+        .onAppear { if openedWith == nil { openedWith = draft } }
         .presentationDetents([.height(560)])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
@@ -179,7 +204,7 @@ private struct PrayerWindowBar: View {
                         .frame(width: 16, height: 16)
                         .shadow(color: color.opacity(0.4), radius: 4)
                         .offset(x: w * position - 8)
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: position)
+                        .animation(.snappy(duration: 0.12), value: position)
                 }
                 .frame(height: 16)
                 // A taller touch target than the 6 pt bar; tap to jump, drag to scrub.
@@ -257,15 +282,32 @@ struct PrayerTimeWheel: UIViewRepresentable {
         private func dayDate(_ h: Int, _ m: Int) -> Date {
             cal.date(bySettingHour: h, minute: m, second: 0, of: cal.startOfDay(for: parent.day)) ?? parent.day
         }
-        private func hourValid(_ h: Int) -> Bool { (0..<60).contains { validDate(h, $0) != nil } }
+        /// Cached per hour (the range doesn't change while the sheet is up): each hour row used to
+        /// run 60 × 2 calendar lookups every time it was drawn.
+        private var hourValidity: [Int: Bool] = [:]
+        private func hourValid(_ h: Int) -> Bool {
+            if let known = hourValidity[h] { return known }
+            let v = (0..<60).contains { validDate(h, $0) != nil }
+            hourValidity[h] = v
+            return v
+        }
 
-        /// Put the wheel on `t` (middle of the loops).
+        /// Put the wheel on `t` (middle of the loops). The first time reloads everything; after
+        /// that (the bar scrubbing) it only selects rows, and refreshes the minutes' graying only
+        /// when the hour changed — a full reload per minute hung the bar on device.
+        private var loaded = false
         func show(_ t: Date, in picker: UIPickerView) {
             let c = cal.dateComponents([.hour, .minute], from: t)
+            let hourChanged = (c.hour ?? 0) != hour24
             hour24 = c.hour ?? 0
             minute = c.minute ?? 0
             shown = t
-            picker.reloadAllComponents()
+            if !loaded {
+                picker.reloadAllComponents()
+                loaded = true
+            } else if hourChanged {
+                picker.reloadComponent(1)
+            }
             picker.selectRow(24 * (PrayerTimeWheel.loops / 2) + hour24, inComponent: 0, animated: false)
             picker.selectRow(60 * (PrayerTimeWheel.loops / 2) + minute, inComponent: 1, animated: false)
             picker.selectRow(hour24 >= 12 ? 1 : 0, inComponent: 2, animated: false)

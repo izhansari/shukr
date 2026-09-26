@@ -33,6 +33,13 @@ keywords, "What's New" and screenshot captions.
 - Home-screen widget: the current prayer's ring and time, mark it prayed right from the
   widget, jump to the qibla or tasbeeh.
 
+**Mosque finder**
+- One tap on the map finds the mosques around you (Apple Maps search for mosque / masjid /
+  Islamic center, filtered to real places of prayer — no halal shops or restaurants).
+- Tap a mosque: how far it is by car, a street-level Look Around view of the entrance,
+  Directions in Apple Maps or Google Maps, Call, its website in-app, and Apple Maps' place card (photos where Apple has them).
+- Pan anywhere and "Search this area".
+
 **Qibla & map**
 - Qibla direction on the main circle; a full map with the great-circle line to the Kaaba from
   where you stand, a compass ring on your dot that tells you which way to turn, and a glow
@@ -69,6 +76,67 @@ keywords, "What's New" and screenshot captions.
 **Privacy & feel**
 - Nothing leaves the device: no accounts, no tracking; location is used only on-device.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
+
+## Since the last commit (eac68fc) — uncommitted, 2026-09-25 evening
+
+Branch `claude/tasbeeh-zikr-updates`, 12 files changed + `CursorSwift/MosqueFinder.swift` (new), not
+committed. The owner iterated mostly from screenshots and **didn't read several of the agent's
+replies** — the open questions below were asked but never answered. "Sim" = checked in the iOS 26
+simulator by the agent; "phone" = installed on the owner's 13 Pro Max (iOS 27) and reacted to.
+
+**Built (details in the sections below):**
+1. Mantra page (`MantraEditorView`): the pause-card look, read-only until ✎, nav bar never changes
+   height, Save = green text only when there's a change, count in sets live (skips 1), lifetime
+   bento (no spin / buzz), tasks as centred scrolling circles + "N tasks", sessions by day with
+   swipe-to-delete. Phone ✓.
+2. History ⇄ Mantras: own pager — swipe pages only from the background (rows / chart keep their
+   swipes), Mantras→History from anywhere; one search + a + that only shows on Mantras. Tap a
+   session → Mantra · Pace · Delete strip. Sim ✓; **real-finger feel untested** (owner called the
+   paging "weird" once; changes since are untested).
+3. Zikr wheel: 5 `ZikrWheelStyle`s in dev settings (Lazy Susan default). **Owner hasn't picked.**
+4. Map: Liquid Glass controls, ⌄ close, 🔍 Explore bottom-right → sheet with layers (My prayer spots ·
+   Mosques · Halal food "soon") and per-layer settings; bottom filter pill removed, top pill shows
+   count + active filter; filter chips tinted. Phone ✓ (owner moved 🔍).
+5. Mosque finder (`MosqueFinder.swift`): search + name filter, pins, sheet with drive/walk time
+   (tap to flip), Look Around, Directions menu (Apple / Google / Waze + Share location), gray Call,
+   website in-app, Apple's place card. Sim ✓ (Manhattan). **Untested on device:** results around
+   Cary (filter false positives / misses), whether place cards show photos, Share → Tesla app.
+6. Post-salah prompt: pill at the bottom (in chrome, above the pager) with ✕, docks under the top
+   bar while the list is open, drag pulls ~70 pt and fades, stays until dismissed / tapped / next
+   prayer. Phone ✓. The circle and top-pill variants remain in dev settings (`PostSalahPromptStyle`) —
+   **delete them once the owner confirms the bottom pill.**
+7. Tasbih Fatimah: own pause card (three phrase rows), only Finish / Resume, locked results
+   ("33 · 33 · 34 after salah"), phrase strip + reminder fade with pause, 4 rotating reminders
+   (headline + narration). Sim ✓, phone partly. **Reminder wording is paraphrased hadith — needs a
+   knowledgeable review before release; no hadith numbers.**
+8. Every tasbeeh: Finish takes two taps (armed = green edge + green text, disarms after 3 s);
+   top −/+N stay mounted and fade on pause. Sim ✓; **phone feel untested.**
+9. Time editor: Save gray until a different valid time, then green edge + text (phone ✓); bar scrub
+   hang fixed (local draft, no wheel reloads). **Scrub performance untested on device after the fix.**
+10. Ring: `AliveRingTuning` + Ring playground (share / copy values), calm grain; new **"fine"** style
+    = owner's playground values. Sim ✓. **Agent suggested fine's turn speed 23°/s → 12–15; owner
+    hasn't answered.**
+11. Prayer list: back to the "N done" footer with a proper divider; label stays "N done", chevron
+    turns. Phone ✓ (spacing), animation fix untested.
+12. Light / dark / auto toast → glass capsule. Sim ✓.
+
+**Questions asked and never answered (don't assume — ask):**
+- Map: how to turn a layer off — agent recommended a ✕ on the top pill (vs 🔍 → ✕, or 🔍 clears).
+- Zikr wheel style; mosque icon style (dev pickers).
+- Masjid-aware prayers: should jama'ah at any masjid score like Jumu'ah, or only Jumu'ah?
+- Post-salah "points": see its section (+N vs 3/5, own streak, must the 33/33/34 be complete).
+- Reminders: keep rotating all four, or pick one or two.
+- Whether to commit now (agent offered; not yet answered).
+
+**Release / TestFlight:** 2.0 (5) is archived (`build/shukr-2.0-5.xcarchive`) from eac68fc but **not
+uploaded** — Xcode's account token for izhan_ansari@caryacademy.org is missing (sign in again in
+Xcode → Settings → Accounts). Everything above is newer than that archive: commit, bump to build 6,
+archive, then upload. Debug-only toggles (wheel / mosque icon / post-salah style / ring playground)
+live in the `#if DEBUG` "My Dev Stuff" section, so they won't ship.
+
+**Still unverified from earlier:** Fajr rollover between midnight and Fajr (yesterday's prayers
+still up, zikr counts for yesterday); schema 2.1.0 migration on the 15 Pro (it migrates on its first
+open — check for `✅ schema V2 data pass` and no ❌).
 
 ## Start here: outstanding work, in priority order
 
@@ -134,6 +202,51 @@ agent builds with xcodebuild. Nothing here has CI.
    "on time" meant there — it's now "in-time days" (see Streaks). Ask the owner what they want
    to learn from it before building a third version.
 9. Then the App Store blockers below.
+
+## Masjid-aware prayers (owner idea, 2026-09-25 — not built)
+
+Trigger: the owner prayed Jumu'ah at his masjid, marked it, and it scored **Late**. Jumu'ah (and
+jama'ah generally) follows the masjid's iqamah, not the window's start, so the timing score
+punishes exactly the behaviour the app should reward. Wanted:
+
+1. **Know a prayer was at a masjid.** When a prayer is marked (app, widget, notification action),
+   check the spot it's recorded at (`latPrayedAt` / `longPrayedAt`, already stored) against
+   mosques nearby — `MosqueSearch.find` around that point, a match within ~75 m (GPS indoors is
+   loose; tune on device). Store it on the row: e.g. `PrayerModel.mosqueName: String?` (lightweight
+   schema change → bump to 2.2.0; `makeContainer` backs the store up first). Past rows could be
+   back-filled from their coordinates once.
+2. **Score it fairly.** Jumu'ah = Friday's Dhuhr **marked at a masjid** — only then (owner:
+   a Friday Dhuhr prayed anywhere else is a normal Dhuhr, scored by the clock as always). A
+   Jumu'ah scores 100 (Early) regardless of the clock, and only that row is labelled "Jumu'ah"
+   (list, circle, map sheet, widget) — never every Friday Dhuhr. Open question for the owner:
+   should *any* prayer prayed at a masjid (jama'ah) also get full marks, or only Jumu'ah? Goes
+   through `PrayerScoring` so the app, widget and notification action agree.
+3. **Dua on entering the masjid.** A notification on arrival: "Allahumma-ftah li abwaba
+   rahmatik" (the dua for entering; leaving: "Allahumma inni as'aluka min fadlik"). Needs region
+   monitoring — `CLMonitor` (iOS 17+) / `CLCircularRegion` geofences (≤ 20 per app) around the
+   user's own masajid (the ones they've prayed at most, from (1)), which needs **Always** location
+   permission: its own opt-in with a clear reason string, and App Review scrutiny (5.1.1) — never
+   make it a requirement. Consider limiting to the user's top few masajid.
+4. **Map.** Prayer-spot pins prayed at a masjid get their own look (and the masjid's name in
+   `PrayerSpotSheet`); a filter chip "at a masjid"; Insights could count jama'ah prayers.
+
+Design all four together before building — the detection in (1) feeds the rest.
+
+## Post-salah zikr "points" (owner is curious — discuss before building, 2026-09-25)
+
+Idea: doing Tasbih Fatimah after a prayer earns something; all five in a day earns more.
+Recommendation given (not yet agreed): **don't add it to the prayer score** — that score means "how
+well you prayed on time"; grades, streaks, in-time days, perfect day and every Insights trend read
+it, a bonus would let a Late prayer read On time, and past days can't earn it (no record of which
+session followed which prayer), so trends would jump. Instead a **separate layer**: a bead mark on
+each prayer followed by the tasbih (list + map sheet), "post-salah zikr 3/5" beside the day score
+(maybe shown as a "+3", never mixed in), a moment for 5/5, maybe its own streak, one Insights stat.
+Linking a session to its prayer: store it — the post-salah pill knows the prayer
+(`PagerLiveState.postSalahNudge`), so the session would save e.g. `SessionDataModel.forPrayer`
+(small lightweight schema change, backup first) — rather than inferring from times. Keep it
+encouraging, never punitive (skipping lowers nothing), possibly switchable off. Open questions for
+the owner: "+N" vs just "3/5"; its own streak or not; must the full 33/33/34 be completed (suggested
+yes).
 
 ## Share card — CHECK ON RELEASE
 
@@ -366,8 +479,10 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   number rolls up, hearts float; the on-time beat follows ~2.4 s later with sparkles.
 - **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
   the circle's `CompletionFlourish` (arc sweeps closed in the score colour, glow, "✓ Asr ·
-  On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a "✓ N done"
-  line (tap to show them); all five come back when the day's complete; perfect day pops the
+  On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a footer row, "✓ N done ⌄" (tap to show
+  them; the words stay "N done" and only the chevron turns — swapping to "hide done" morphed oddly), under a divider like the rows' with even air above and below (2026-09-25;
+  it used to hang under the list with a bare gap; a top row of score dots was tried and dropped —
+  owner); all five come back when the day's complete; perfect day pops the
   dots in turn and shows "✦ perfect day".
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when
   there's text to flip. Type matches the Insights ring (2026-09-25): name 32 pt light rounded,
@@ -378,14 +493,31 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   rollover), so a Qaza after midnight can be set. `PrayerTimeWheel` is our own UIPickerView
   (hour / minute / AM-PM; hours loop and AM/PM follows like the system wheel): system wheels
   either knew one day (Isha's 12 AM snapped to the start) or showed a day column (owner: no).
-  Invalid times are grayed and *not* corrected; Save is disabled and a line says why (before the
+  Invalid times are grayed and *not* corrected; Save (gray until a different valid time is picked,
+  then a green edge + green text — owner) is disabled and a line says why (before the
   start / not yet / after the rollover). A picked clock time lands on the prayer's day or the
   next, whichever is in range; after midnight a line spells out the day and time. The window bar
-  (Early / On time / Late) is a scrubber; a Qaza time parks the marker at the end, gray.
+  (Early / On time / Late) is a scrubber; a Qaza time parks the marker at the end, gray. Scrubbing
+  used to hang on device (owner): every minute wrote the parent's @State (re-rendering the row
+  behind) and called `reloadAllComponents` on the 4800 / 12000-row looping wheel, whose hour rows
+  each ran 120 calendar lookups. Now the sheet keeps a local `draft` until Save, the wheel only
+  `selectRow`s (reloading minutes just when the hour changes) and hour validity is cached.
 - DEBUG-only: hamburger "Test Streak Celebration" / "Test Perfect Day" / "Old Insights"; launch
   args `-demoStreakCelebration`, `-demoDayMilestones`, `-demoPrayerCompletion` (switches to the
   dev test prayer times and marks prayers), `-demoInsights`, `-demoShareCard` (writes every share
   look to `<app data>/tmp/share-card-*.png`); any `-demo…` arg skips the notification prompt.
+
+**Tasbeeh ring "alive" style** (`AliveRingFill`, Utils.swift): its knobs live in `AliveRingTuning`
+(JSON in `aliveRingTuning`): ring width, glow, gradient turn speed, highlight / shadow strength and
+drift, grain amount / size / brightness / fade depth / fade speed. **Settings → My Dev Stuff → Ring
+playground…** (`RingPlaygroundView`) shows the ring live with a slider per knob; changes are what the
+real ring uses; Share / Copy send the values as readable text + JSON (the owner sends back what they
+like — paste the JSON into `AliveRingTuning`'s defaults); Reset = defaults. The grain no longer re-scatters 12× a second (it glittered —
+owner: "like Cinderella"): the specks are fixed and each fades in and out on its own phase; the
+gradient turns 8°/s (was 18) and the lights drift slower. DEBUG `-demoRingPlayground`. Ring styles now: alive (follows the playground), **fine** (the
+owner's playground pick, fixed in `AliveRingTuning.fine`: 6 pt band, 23°/s turn, highlight 0.03,
+shade 0.32, drift 0.63, grain 1350 / 1.34 pt / 0.32 / fade 0.29 at 0.24/s, glow 0.45), gradient,
+classic — Settings → My Dev Stuff → Tasbeeh Ring.
 
 **Mantras / sessions:** Mantras page is searchable (name, full text, notes). The editor is a
 viewer first: title = the mantra's name, Cancel / Save appear only after an edit, revert / save
@@ -523,7 +655,39 @@ deselecting the pin just tapped during a swap; `keepInView` always centres the t
 doesn't drag the sheet up. The old full-screen sheets that re-drew a map of the pin are gone. Location comes from the app's
 `EnvLocationManager` (no second CLLocationManager); nothing publishes per pan (bearing follows
 the user's fix, count and Mecca-proximity publish only on change), no `asyncAfter` timers.
-Reached from the circle's qibla arrow (`fullScreenCover`). `CursorSwift/LocationMapView.swift`
+Reached from the circle's qibla arrow (`fullScreenCover`).
+
+**Map controls (2026-09-25)**: Liquid Glass (`mapGlass`, material fallback < iOS 26; owner: the
+white squares looked dated): a round ⌄ close (was "Close"), the status pill as a glass capsule
+(green text + edge when facing Mecca), map style + locate grouped in one capsule (top right), and 🔍 **Explore**
+in the bottom-right corner (moved there — owner; green-tinted while a layer is on). Explore = `MapExploreSheet`, a short sheet with layer tiles
+(My prayer spots · Mosques · Halal food "soon") — tap to show, tap again for the qibla — and the
+active layer's settings (prayer filter sentence → the filter sheet; mosques: Driving / Walking,
+`mosqueTravelMode`). The old bottom filter pill is gone: in prayer-spots mode the top pill reads
+"23 prayers in view" and, with a filter on, a green second line ("every Fajr, Maghrib, Isha");
+tapping it opens the filters. Filter sheet chips are green tints now (were solid green).
+DEBUG `-demoPrayerPins` seeds 26 pinned prayers around the sim's location when there are none. One sheet at a time: tapping a pin while Explore is up closes it first.
+
+**Mosque finder** (`CursorSwift/MosqueFinder.swift`, 2026-09-25): a layer in Explore — no mosque SF Symbol exists, an emoji clashed with the pills and the moons are taken
+(Isha `moon.stars.fill`, 99 Names `moon.stars`), so the owner is picking a `MosqueIconStyle`
+(button + pin symbols: Finder = `sparkle.magnifyingglass` / `building.columns.fill` (default),
+Columns, Lodge, Jamaat, House & flag) in Settings → My Dev Stuff —
+is a third mode beside qibla / prayers (one at a time, `setMode`). MapKit has no mosque POI
+category, so `MosqueSearch.find` runs "mosque", "masjid", "islamic center" `MKLocalSearch`es over
+~30 km around you, keeps names that read like a place of prayer (mosque, masjid, musalla, jamia,
+Islamic center / society / association…), drops shops / restaurants / schools / academies unless
+the name says mosque or masjid outright, drops food / store / hotel / bank… POI categories, and
+de-dupes (60 m, or same name within 500 m). First results zoom to you + the nearest six; panning
+well away shows "Search this area". Green markers (the app's green — the sage read dull, owner),
+clustered (a cluster zooms in). Tap →
+`MosqueSheet`: drive time + distance (`MKDirections.calculateETA`), `LookAroundPreview` when
+Apple has imagery, the travel time (tap to flip driving ↔ walking for this mosque; default
+from Explore), Directions (primary, green tint; a `Menu` at the button: "Directions in" Apple
+Maps / Google Maps / Waze by name only — no symbols, like most apps — via universal links, then
+Share location = an Apple Maps link, for a friend or the Tesla app), Call (secondary, gray), website in `SFSafariViewController`,
+and "Details & photos" = `mapItemDetailSheet` (Apple's place card; it calls the place "Mosque" —
+so Apple does categorise them, just not publicly). Sim-verified in Manhattan: 27 mosques, Masjid
+Manhattan 6 min / 0.5 mi with Look Around of its door. The place card showed no photos in the sim. `CursorSwift/LocationMapView.swift`
 (an older copy, unreferenced) was deleted.
 
 ## Widget ↔ app
@@ -665,6 +829,23 @@ value 0.2 / 0.5 / 1 lights 1 / 2 / 3 waves for light / medium / strong, the wave
 picker) in task sessions (mode ≠ 0 with `selectedTask`, "from your task") and post-salah ones. At the bottom, Finish (outlined) / Resume (sage). The red ✕ and
 the top-right play button are hidden while paused; tapping the dimmed background still resumes.
 `tasbeehView.sessionMantra` = `mantraForSession`, else `MantraModel.find(named:)` on the title.
+**Mantra page** (`MantraEditorView`, from the Mantras list / history swipe): `MantraCardFields`
+(shared with the pause ✎ editor) on a grouped card as the page's top — its name IS the title.
+**Nothing may change the nav bar's height** (owner: the page shifted as Cancel / Save and the
+title came and went): the trailing slot always holds a button — a pencil while viewing, `SaveButton`
+while editing (green text only with something to save, gray otherwise; also on the ✎ sheet) —
+Cancel appears only while editing, and the name in the bar is a principal item that fades in once
+the card has scrolled past ~64 pt. The page opens read-only (`MantraCardFields(editable:)`: fields locked); the pencil unlocks
+them in place — name, full mantra and notes each get a box with a sage edge, drawn behind padding
+every field always has, so nothing moves. Count in sets works without the pencil (saves straight
+to the row; not part of Save). Save / Cancel go back to viewing. A new mantra opens editing.
+Task circles centre the focused one on the width. Then `ZikrBento(grouped: true)`
+("Lifetime"), the mantra's tasks as scrollable circles (`MantraTaskCircles`; tap → edit goal,
+long-press → edit / delete; header "N tasks"), then sessions by day like Zikr History. The bento's
+count / time tiles no longer spin and buzz on tap (owner: did nothing; only rate flips).
+Count in sets skips 1 (off → 2 → 3…; one per tap is the screen itself); subtitle one line:
+"recite a set, tap once" / "a +5 button while you count".
+
 **Count in sets** (was "quick add"; owner: the name didn't say what it's for — recite a set on
 your own, on your fingers or in your head, then tap once): the "+N" button in a running session.
 Per mantra on the row, `MantraModel.quickAddStep` (**schema 2.1.0**, 2026-09-25 — a defaulted
@@ -714,7 +895,11 @@ finger on them drags through the circles (14 pt per dot) with a pill naming the 
 "like grabbing a page's scroll bar". "1 of 3 tasks done" / "all 3 tasks done today" under the
 wheel, above the bottom bar. Circle size / fade follow distance from the middle in rows via
 `visualEffect` (eased: 1 row ≈ 0.62×, 2 ≈ 0.45×, floor 0.38×; neighbours pulled in) — owner
-wanted it more dramatic and not at its smallest the moment a circle leaves the middle.
+wanted it more dramatic and not at its smallest the moment a circle leaves the middle. The
+circles also ride a big arc bulging right and turn with it like a lazy Susan seen from above
+(owner's sketch; `WheelFalloff`). The owner is choosing between `ZikrWheelStyle`s in Settings →
+My Dev Stuff → Zikr wheel (DEBUG): Straight (original), Arc no tilt, Gentle arc half tilt, Lazy
+Susan (default: 300 pt, 0.7 rad a row, full tilt), Tight wheel — keep the winner, delete the rest.
 **Continue or start over**: tapping a task that's partly done today asks (centred alert):
 "Continue from 4" starts the session with today's count on the ring (`SharedStateClass.resumeCount`
 / `resumeSeconds` → `tasbeehView.countOffset` / `timeOffset`; − can't go below it; only
@@ -727,10 +912,60 @@ fresh goal. The results card of a task session says "5 of 100 today". Sim-verifi
 drag to read a day's count and time — a two-line label above the bars: "last 14 days" or the
 day, rounded medium, over "N counted · time" in plain SF), and sessions · time tiles (per-count tile removed, owner).
 DEBUG `-demoZikrHistory`.
-**History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): a History | Mantras
-segmented switch in the nav bar over `HistoryPageView` / `MantrasView`. On the Zikr tab the
-chrome's top-left is a books button to it (the hamburger shows on Salah only); the hamburger's
-Mantras / Zikr History rows are gone; `showZikrHistory` / `showMantrasPage` push it on either tab.
+**History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side
+in our own pager with a History | Mantras segmented switch in the nav bar that follows. A sideways
+drag turns the page **only when it starts on the background** (owner): rows (sessions, mantras)
+and the history chart register their global frames with `.noPageZone(_:)` (`NoPageZones`, read
+only inside the pager's simultaneous DragGesture), so their own swipe actions / scrubbing keep
+working — a system paged TabView took every sideways swipe, rows included. Rubber-bands past the
+ends; settles on the projected translation (> ⅓ width). Both pages stay mounted, so the library
+owns the chrome: one search field (sessions by mantra / title on History, mantras on Mantras —
+`HistoryPageView(search:)`, `MantrasView(embedded: true, externalSearch:)`) and the + (Mantras
+only — a hidden toolbar button still draws its glass circle, so it's added / removed). Sim-verified:
+a row swipe shows Delete and doesn't page; a background swipe pages both ways. Mantras → History
+(finger moving right) pages from anywhere, rows included — mantra rows only swipe left — and the
+lists' vertical scrolling is off during a page swipe. **Tap a session** (History and the mantra
+sheet) and it opens a strip under it: Mantra (History only) · Pace (plays the session's rhythm
+until tapped again — the hold, hands-free) · Delete (confirmed); one open at a time. The mantra
+sheet's sessions swipe to delete too.
+
+**Post-salah prompt (2026-09-25, default "Pill at the bottom")**: once a prayer is marked (circle
+hold or list) and the completion flourish ends, `PostSalahNudge` (PrayerCompletionFX.swift) shows at
+the bottom of the Salah page where the sheet's chevron sits: the glass pill (bead icon — the hands
+are the prayer-spot pins — and "Post-salah tasbih?") with a small ✕ badge on its corner. Tap → the
+33 · 33 · 34; ✕, or a flick any way (it follows the finger in every direction — it used to move
+only downward, so at the bottom it ran into the home bar and couldn't go up: owner) : it pulls
+a resisting ~70 pt toward the finger and fades as it goes; let go past 60 pt (or flick) and it
+finishes fading where it is, then is removed with no animation of its own (resetting its offset
+during the removal made it pop back and fade twice — owner); otherwise it springs back; it also clears when the next prayer begins. With the
+prayer list open it docks under the top bar (at the bottom it covered the last prayer; marking from
+the list is the common path — owner saw no prompt at all while the list was up).
+State: `PagerLiveState.postSalahNudge` (prayer name), set by MainCircleView; drawn by
+`PagerChromeView` above the pager — as part of the page, dragging it to dismiss dragged the page
+(owner); sim-verified a sideways flick dismisses it and the page stays. Owner tried a bottom arc
+("drag up to open") and an in-circle prompt first and came back to the pill. The two earlier tries stay selectable (Settings → My Dev Stuff → Post-salah prompt):
+
+**Post-salah offer in the main circle (alternative)**: once a prayer is marked (hold the
+circle, or the list) and the completion flourish ends, the circle becomes `PostSalahCircleOffer`
+(PrayerCompletionFX.swift), laid out like a prayer on the circle: the bead icon (`circle.hexagonpath`,
+green — the hands are the prayer-spot pins) left of **"Tasbih Fatimah"** in the circle's big light
+type, "after salah?" thin under it; the ring stays the circle's plain gray (a score-coloured ring —
+red after a Late — read as demotivating, and all-green shouted: owner). "not now" is a small
+capsule inside the circle, and the qibla arrow hides while the offer is up. A tap on the circle starts the 33 · 33 · 34 session
+(owner: hold to mark, lift, tap — no reaching for a pill); "not now" under the circle dismisses it
+(a swipe on the circle belongs to the pager / sheet); it also clears when the next prayer begins.
+While it's up the circle's hold does nothing (it would mark / unmark the prayer behind it — found
+in the sim). `MainCircleView.postSalahFor`. The pill below is the alternative, Settings → My Dev
+Stuff → Post-salah prompt (`PostSalahPromptStyle`, `postSalahPromptStyle`).
+
+The prompt that drops in after marking a prayer (`FloatingChainZikrButton`, Utils.swift) is a
+glass capsule since 2026-09-25 — just the green hands icon and "Post-salah tasbih" (owner: less
+text), 56 pt tall with a target ~24 pt past the pill. It **stays until tapped** (→ the session)
+**or swiped away** (up or to either side; no more 5 s auto-hide) — was an outlined gray box, "post
+salah zikr?"; same for Settings' light / dark / auto toast
+(`floatingMessageView`: mode symbol + "Light mode" / "Dark mode" / "Auto · follows the sun").
+Both use `mapGlass` (LocationMapView2.swift — the app's glass capsule helper; Liquid Glass on
+iOS 26+). DEBUG `-demoChainButton` shows the prompt.
 
 **Post-salah zikr** (`PostSalahTasbeeh` / `PostSalahPhaseStrip`, tasbeehView.swift, 2026-09-25):
 one 100-count session (Subhanallah 33 · Alhamdulillah 33 · Allahu Akbar 34) saved once under a
@@ -738,11 +973,23 @@ one 100-count session (Subhanallah 33 · Alhamdulillah 33 · Allahu Akbar 34) sa
 the circle: the phrase in Uthmani, "Alhamdulillah · 12 of 33", three segments; a success buzz
 as each phrase ends; normal results screen at 100. Replaces three chained sessions
 (`postNamazSequence`) that each reset the count, saved separately and closed with no results.
-`isDoingPostNamazZikr` is cleared when the tasbeeh cover goes away. Under the circle while
-counting, `PostSalahReminder`: the Sahih Muslim narration (Ka'b ibn 'Ujrah — "never
-disappointed", 33/33/34 after every obligatory prayer) and the Prophet ﷺ teaching it to Fatimah
-as better than a servant (Bukhari and Muslim). No hadith numbers on purpose — add them only
-once checked. DEBUG `-demoPostSalah`.
+`isDoingPostNamazZikr` is cleared when the tasbeeh cover goes away. Its pause screen is its own
+(owner: "a special one"): "paused · Tasbih Fatimah", `PostSalahPauseCard` — the three phrases as rows
+(done ✓ / "12 of 33" highlighted / to come) instead of the mantra card — the bento, and only Finish /
+Resume (no chips). The phrase strip hides while paused (it drew through the pause screen). Its results
+card is locked ("33 · 33 · 34 after salah", no mantra switch); locked cards use
+`.allowsHitTesting(false)`, not `.disabled` (which grayed them). Under the circle while
+counting, `PostSalahReminder` — one of four, picked per session; each a motivating headline (the *why*)
+over the narration (owner: "insight into why we should do it … the goal is to motivate"):
+"Never let down" (never disappointed after every obligatory prayer — Muslim), "Keep pace with the
+best" (the poor and the wealthy's charity — Bukhari & Muslim), "They fill the scales"
+(Alhamdulillah fills the Scale… — Muslim), "Better than a servant" (Fatimah — Bukhari & Muslim;
+it was taught for bedtime, so its text never claims "after salah" — owner dropped the on-screen
+"taught for bedtime" tag). Paraphrased; no hadith numbers on purpose — add them only once checked. The reminder
+and phrase strip fade with the pause screen instead of being removed (that popped); the top −/+N
+buttons stay mounted, faded, for the same reason. **Finish takes two taps** in every tasbeeh
+(owner: cleaner than an "are you sure?"): the first gives it a green edge and green text, "Tap to finish" (red read as a
+warning — owner); it disarms after 3 s. DEBUG `-demoPostSalah`.
 
 Backlog / known oddities:
 - [ ] Infinity button (`tasbeehView.swift:302`, `simulateTasbeehClicks(100)`): owner wants this to become a user-set step size (e.g. +10) rather than a hidden +100.

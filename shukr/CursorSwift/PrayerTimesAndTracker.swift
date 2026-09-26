@@ -275,7 +275,7 @@ struct PrayerTimesView: View {
                 showMantrasPage: $showMantrasPage, showSalahHistoryV1: $showSalahHistoryV1,
                 showSalahHistoryV2: $showSalahHistoryV2, showZikrHistory: $showZikrHistory,
                 showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
-                showNamesPage: $showNamesPage
+                showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
         }
         .onChange(of: scenePhase) {_, newScenePhase in
@@ -338,6 +338,16 @@ struct PrayerTimesView: View {
                     }
 
                 }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoChainButton") {
+                try? await Task.sleep(for: .seconds(1.5))
+                showChainZikrButton = true   // the post-salah prompt, held for screenshots
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoMosques") {
+                try? await Task.sleep(for: .seconds(1))
+                showMapPage = true   // the map opens straight into mosque mode (LocationMapContentView)
+                return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
                 try? await Task.sleep(for: .seconds(1))
@@ -576,6 +586,7 @@ struct PrayerTimesView: View {
         @Binding var showInsightsPage: Bool
         @Binding var showOldInsights: Bool
         @Binding var showNamesPage: Bool
+        @Binding var showTasbeehPage: Bool
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
@@ -697,8 +708,8 @@ struct PrayerTimesView: View {
                             .padding()
                             .offset(y: live.pull)
                     }
-                    .opacity(Double((1 - sheetP) * (1 - zikrness)))
-                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
+                    .opacity(Double((1 - sheetP) * (1 - zikrness)) * (live.postSalahNudge == nil ? 1 : 0))
+                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5 && live.postSalahNudge == nil)
 
                     // Bottom bar: Salah with the sheet up, and always on Zikr.
                     CustomBottomBar()
@@ -706,6 +717,27 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(max(sheetP, zikrness) > 0.5)
                 }
             }
+            // Just prayed: the post-salah pill. Bottom of the page (in the chevron's place) with the
+            // sheet closed; with the prayer list open it would cover the last prayer, so it docks
+            // under the top bar instead. Chrome, above the pager: dragging it never moves a page.
+            .overlay(alignment: showBottom ? .top : .bottom) {
+                if live.postSalahNudge != nil {
+                    PostSalahNudge(
+                        onOpen: {
+                            live.postSalahNudge = nil
+                            sharedState.isDoingPostNamazZikr = true
+                            showTasbeehPage = true
+                        },
+                        onDismiss: { live.postSalahNudge = nil }   // the pill animates (or not) itself
+                    )
+                    .padding(.top, showBottom ? 64 : 0)
+                    .padding(.bottom, showBottom ? 0 : 34)
+                    .opacity(Double(1 - zikrness))
+                    .allowsHitTesting(zikrness < 0.5)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: showBottom)
             .allowsHitTesting(settingsness < 0.5)
             .ignoresSafeArea(edges: .bottom)
             // Toward Settings the chrome leaves WITH the Salah page, so Settings slides over
@@ -974,25 +1006,43 @@ struct TodaysPrayerListView: View {
                         removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading))))
                 }
 
-                // The folded ones, as one quiet line.
+                // The folded ones, as a footer row: a divider like the rows', then "✓ 3 done ⌄"
+                // centred with the same air above and below as a row (2026-09-25 — the old line
+                // hung under the list with a bare 10 pt gap and no divider, which read off).
                 if (foldedCount > 0 || showDone) && !allDone {
-                    Button {
-                        triggerSomeVibration(type: .light)
-                        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: showDone ? "chevron.up" : "checkmark.circle")
-                            Text(showDone ? "hide done" : "\(done.count) done")
+                    VStack(spacing: 0) {
+                        if !visible.isEmpty {
+                            Divider()
+                                .frame(height: 1)
+                                .background(Color(.secondarySystemFill))
+                                .padding(.horizontal, 25)
                         }
-                        .font(.caption)
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, visible.isEmpty ? 0 : 10)
-                        .contentShape(Rectangle())
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                // Same words open or closed (swapping to "hide done" morphed oddly
+                                // mid-spring — owner); only the chevron turns.
+                                Text("\(done.count) done")
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(showDone ? 180 : 0))
+                            }
+                            .font(.footnote)
+                            .fontDesign(.rounded)
+                            .fontWeight(.light)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, visible.isEmpty ? 0 : 12)
+                            .padding(.bottom, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    .padding(.top, visible.isEmpty ? 0 : spacing)
                     .transition(.opacity)
                 }
 
@@ -1115,7 +1165,7 @@ struct PrayerButton: View {
         if !isFuturePrayer {
             if !prayerObject.isCompleted {
                 viewModel.togglePrayerCompletion(for: prayerObject)
-                showTemporaryMessage(workItem: &dismissChainZikrItem, boolToShow: $showChainZikrButton, delay: 5)
+                if PostSalahPromptStyle.current == .pill { dismissChainZikrItem?.cancel(); withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { showChainZikrButton = true } }   // pill style only; the circle offers it otherwise
             }
             else {
                 showMarkIncompleteAlert = true
@@ -1525,6 +1575,9 @@ struct ChevronTap2: View {
 /// Per-frame values from the pager's gesture and scroll. @Observable so only the views that
 /// read a given property re-render when it changes; PrayerTimesView's body reads none of them.
 @Observable final class PagerLiveState {
+    /// Just prayed (post-salah prompt style "nudge"): the prayer's name while the bottom nudge is
+    /// up; nil hides it. Set by MainCircleView, cleared by the nudge or when the next prayer begins.
+    var postSalahNudge: String?
     /// The Zikr page is arranging its task circles (home-screen jiggle): the pager stays put so
     /// sideways drags move circles. Separate from `pagerLocked`, which releases on every lift.
     var holdForArranging = false

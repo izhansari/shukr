@@ -167,3 +167,148 @@ struct CompletionDotPop: ViewModifier {
             }
     }
 }
+
+// MARK: - Post-salah offer
+
+/// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):
+/// in the main circle (hold to mark, lift, tap again — no reaching for a pill) or the old pill.
+enum PostSalahPromptStyle: String, CaseIterable, Identifiable {
+    case nudge, circle, pill
+    static let key = "postSalahPromptStyle"
+    static var current: PostSalahPromptStyle {
+        PostSalahPromptStyle(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .nudge
+    }
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .nudge: "Pill at the bottom"
+        case .circle: "In the circle"
+        case .pill: "Pill at the top"
+        }
+    }
+}
+
+/// The post-salah prompt at the bottom of the Salah page (owner, 2026-09-25, after trying an arc
+/// and the circle: "let's just stay with the initial — move it to the bottom"): the glass pill,
+/// bead icon + "Post-salah tasbih?", with a small ✕ on its corner so it's plainly dismissable.
+/// Tap → the 33 · 33 · 34. Flick it any way to put it away. It's drawn by the pager's
+/// chrome, above the pages, so dragging it never moves a page (it did when it lived in the page).
+struct PostSalahNudge: View {
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
+
+    /// The finger's pull, eased to at most ~70 pt in the same direction.
+    private func pulled(_ d: CGSize) -> CGSize {
+        let length = hypot(d.width, d.height)
+        guard length > 0 else { return .zero }
+        let eased = 70 * (1 - exp(-length / 70))
+        return CGSize(width: d.width / length * eased, height: d.height / length * eased)
+    }
+    @State private var drag: CGSize = .zero
+    @State private var pressed = false
+    @State private var gone = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
+                .font(.system(size: 18, weight: .light))
+                .foregroundStyle(Color.green)
+            Text("Post-salah tasbih?")
+                .font(.system(size: 17, weight: .regular, design: .rounded))
+                .foregroundStyle(.primary)
+        }
+        .padding(.horizontal, 24)
+        .frame(height: 56)
+        .mapGlass(Capsule())
+        .overlay(alignment: .topTrailing) {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(.easeInOut(duration: 0.25)) { onDismiss() }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(.systemBackground)))
+                    .overlay(Circle().stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                    .padding(10)                       // a thumb-sized target around the badge
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .offset(x: 16, y: -16)
+            .accessibilityLabel("Dismiss")
+        }
+        .scaleEffect(pressed ? 0.96 : 1)
+        .padding(.horizontal, 20)                      // a bigger target than the pill
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        // Pulls a short way toward the finger — resisting, at most ~70 pt — and fades as it
+        // goes (it used to follow the finger across the screen: owner). Let go far enough (or
+        // flick) and it finishes fading where it is; otherwise it springs back.
+        .offset(pulled(drag))
+        .opacity(gone ? 0 : 1 - 0.85 * min(Double(hypot(drag.width, drag.height)) / 140, 1))
+        .onTapGesture {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { pressed = true }
+            triggerSomeVibration(type: .success)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                pressed = false
+                onOpen()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { if !gone { drag = $0.translation } }
+                .onEnded { value in
+                    let t = value.predictedEndTranslation
+                    if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.easeOut(duration: 0.18)) { gone = true }
+                        // Removed once invisible, with no animation of its own (resetting it here
+                        // made it pop back to the start and fade a second time).
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            var quiet = Transaction()
+                            quiet.disablesAnimations = true
+                            withTransaction(quiet) { onDismiss() }
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { drag = .zero }
+                    }
+                }
+        )
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Post-salah tasbih")
+    }
+}
+
+/// The main circle while it offers the post-salah tasbih: the Zikr circle's glowing green ring,
+/// "post-salah / Tasbih? / tap to begin" in the circle's light type. A tap on the circle starts it
+/// (`MainCircleView.handleTap`); "not now" sits under the circle.
+struct PostSalahCircleOffer: View {
+    // Laid out like a prayer on the circle: the icon left of the name ("Tasbih Fatimah", the
+    // circle's big light type), a thin caption under it. The ring stays the circle's plain gray —
+    // a calm rest after the score moment (score-coloured red read as demotivating; all-green
+    // shouted — owner). The beads (`circle.hexagonpath`, the app's zikr symbol) are the one green
+    // touch; the hands are the prayer-spot pins. "not now" sits inside the circle (MainCircleView).
+    var body: some View {
+        VStack(spacing: 2) {
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "circle.hexagonpath")
+                    .font(.system(size: 20, weight: .light))
+                    .foregroundStyle(Color.green)
+                    .symbolEffect(.breathe, options: .repeating)
+                Text("Tasbih Fatimah")
+                    .font(.system(size: 26, weight: .light, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+            Text("after salah?")
+                .font(.subheadline)
+                .fontWeight(.thin)
+                .fontDesign(.rounded)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: 176)
+        .offset(y: -6)
+    }
+}
