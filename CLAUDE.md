@@ -679,14 +679,15 @@ encouraging, never punitive (skipping lowers nothing), possibly switchable off. 
 the owner: "+N" vs just "3/5"; its own streak or not; must the full 33/33/34 be completed (suggested
 yes).
 
-## Share card — CHECK ON RELEASE
+## Share card — CHANGE ON RELEASE
 
-The Daily Ayah share button (`DailyAyahView`, a `ShareLink`) sends only the image
-(`AyahShareCard`, three looks) — no caption or link (owner, 2026-09-25). The card itself says
-"download on the App Store", which is only true once shukr is live: until then testers get it
-through TestFlight (public link `https://testflight.apple.com/join/GW5j85jk`). When a
-TestFlight build goes out or the app is released, remind the owner to check the card's wording
-(and whether to add a link back).
+The Daily Ayah share button (`DailyAyahView`, a `ShareLink`) sends only the image (`AyahShareCard`,
+three looks), with no caption or link (owner, 2026-09-25). The line under the shukr mark is
+`AyahShareCard.footer`.
+- **Now (beta):** "join the beta on TestFlight" (owner, 2026-09-26). Testers get the app through
+  the public link `https://testflight.apple.com/join/GW5j85jk`.
+- **When shukr is live on the App Store:** change `AyahShareCard.footer` back to "download on the
+  App Store", and ask the owner whether to add the App Store link.
 
 ## Immediate goal: App Store submission
 
