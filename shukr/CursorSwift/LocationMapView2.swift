@@ -62,10 +62,18 @@ final class LocationViewModel: ObservableObject {
     /// The sheet's height: compact for one prayer, half for a cluster. Set before the sheet is
     /// presented, never while it's up.
     @Published var spotDetent: PresentationDetent = .medium
-    /// A prayer's page (one pin, or one prayer of a cluster): tall enough for its bar, where, and Edit.
-    static let compactHeight: CGFloat = 350
-    static let compactDetent: PresentationDetent = .height(compactHeight)
-    static var compactFraction: CGFloat { compactHeight / max(UIScreen.main.bounds.height, 1) }
+    /// A prayer's page (one pin, or one prayer of a cluster) is exactly as tall as what's on it:
+    /// the page measures itself (`setPageHeight`) — a fixed height left a gap (owner, 2026-09-26).
+    @Published private(set) var pageHeight: CGFloat = 300
+    var pageDetent: PresentationDetent { .height(pageHeight) }
+    var pageFraction: CGFloat { pageHeight / max(UIScreen.main.bounds.height, 1) }
+    func setPageHeight(_ h: CGFloat) {
+        let h = h.rounded()
+        guard abs(h - pageHeight) > 1 else { return }
+        let onPage = spotDetent == pageDetent
+        pageHeight = h
+        if onPage { spotDetent = pageDetent }
+    }
     /// Reverse-geocoded addresses, keyed by rounded coordinate, so a pin is looked up once.
     var addressCache: [String: String] = [:]
 
@@ -85,7 +93,7 @@ final class LocationViewModel: ObservableObject {
             return
         }
         // One prayer, or a cluster opening on one prayer's page: compact. A cluster's list: half.
-        let detent: PresentationDetent = new.prayers.count == 1 || new.focus != nil ? Self.compactDetent : .medium
+        let detent: PresentationDetent = new.prayers.count == 1 || new.focus != nil ? pageDetent : .medium
         if selection == nil {
             spotDetent = detent
             selection = new
@@ -299,41 +307,70 @@ final class LocationViewModel: ObservableObject {
     /// the map above it into the picker (a pin fixed in the visible part of the map, `MapPickOverlay`)
     /// with the address / distance card inside the sheet.
     enum SpotSheetMode { case browse, editTime, pickSpot }
+    /// What the sheet shows.
     @Published private(set) var spotMode: SpotSheetMode = .browse
-    /// The detents for the mode: browsing can be any size; editing the time is one taller size;
-    /// picking stays low so the map shows (large only while typing an address).
-    static let editDetent: PresentationDetent = .fraction(0.64)
+    /// Which sizes the sheet may take. It changes a beat before / after `spotMode`, so the sheet
+    /// grows first and the editor fades into the room, or the editor fades and then the sheet
+    /// shrinks (owner, 2026-09-26: it snapped to size with the wheel already in).
+    @Published private(set) var detentMode: SpotSheetMode = .browse
+    /// The size being left, kept allowed during a change so the sheet animates from it.
+    private var leavingDetent: PresentationDetent?
+    /// Editing the time: header, bar, wheel, location, buttons.
+    static let editHeight: CGFloat = 540
+    static let editDetent: PresentationDetent = .height(editHeight)
     /// Picking: just the card, so most of the map shows.
     static let pickHeight: CGFloat = 200
     static let pickDetent: PresentationDetent = .height(pickHeight)
     var spotDetents: Set<PresentationDetent> {
-        switch spotMode {
-        case .browse: [Self.compactDetent, .medium, .large]
+        var set: Set<PresentationDetent> = switch detentMode {
+        case .browse: [pageDetent, .medium, .large]
         case .editTime: [Self.editDetent]
         case .pickSpot: [Self.pickDetent, .large]
         }
+        if let leavingDetent { set.insert(leavingDetent) }
+        return set
     }
     /// The map stays usable under the sheet while browsing (up to half) and while picking (the
     /// map is the picker); editing the time dims it. "Up through .medium" needs .medium among the
     /// detents, so it follows the mode.
     var spotBackground: PresentationBackgroundInteraction {
-        switch spotMode {
+        switch detentMode {
         case .browse: .enabled(upThrough: .medium)
         case .editTime: .disabled
         case .pickSpot: .enabled(upThrough: Self.pickDetent)
         }
     }
+    private func height(of mode: SpotSheetMode) -> CGFloat {
+        switch mode {
+        case .browse: pageHeight
+        case .editTime: Self.editHeight
+        case .pickSpot: Self.pickHeight
+        }
+    }
+    private var modeChange = 0
     func setSpotMode(_ mode: SpotSheetMode) {
-        let detent: PresentationDetent = switch mode {
-        case .browse: Self.compactDetent
+        let target: PresentationDetent = switch mode {
+        case .browse: pageDetent
         case .editTime: Self.editDetent
         case .pickSpot: Self.pickDetent
         }
         if mode != .pickSpot { movingPrayer = nil }
-        withAnimation(.snappy) {
-            spotDetent = detent
-            spotMode = mode
+        modeChange += 1
+        let change = modeChange
+        leavingDetent = spotDetent
+        detentMode = mode
+        let resize = { withAnimation(.smooth(duration: 0.38)) { self.spotDetent = target } }
+        let swap = { withAnimation(.smooth(duration: 0.3)) { self.spotMode = mode } }
+        if height(of: mode) >= height(of: spotMode) {
+            // Growing: make the room, then bring the editor into it.
+            resize()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { if change == self.modeChange { swap() } }
+        } else {
+            // Shrinking: the content goes first, then the sheet follows.
+            swap()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { if change == self.modeChange { resize() } }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { if change == self.modeChange { self.leavingDetent = nil } }
     }
 
     /// The prayer whose spot is being picked (the map's chrome steps aside for the picker).
@@ -1891,6 +1928,16 @@ struct MapPickOverlay: View {
     }
 }
 
+extension AnyTransition {
+    /// Swapping what a sheet shows: the old content leaves quickly, the new one arrives just after
+    /// (a plain crossfade showed both on top of each other).
+    static func pageSwap(offset: CGFloat) -> AnyTransition {
+        .asymmetric(
+            insertion: .opacity.combined(with: .offset(y: offset)).animation(.easeOut(duration: 0.26).delay(0.1)),
+            removal: .opacity.animation(.easeIn(duration: 0.1)))
+    }
+}
+
 struct PrayerSpotSelection: Identifiable {
     let id = UUID()
     let prayers: [PrayerModel]
@@ -2067,13 +2114,6 @@ struct PrayerSpotDetail: View {
     }
     private var canSave: Bool { editRange.contains(draftTime) && (timeChanged || draftSpot != nil) }
 
-    private func intoWindow(_ at: Date) -> String {
-        let secs = at.timeIntervalSince(prayer.startTime)
-        if secs < 0 { return "before it started" }
-        if at > prayer.endTime { return "after the window ended" }
-        let m = Int(secs / 60)
-        return m < 60 ? "\(m) min into the window" : "\(m / 60)h \(m % 60)m into the window"
-    }
     private func distance(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> String {
         let m = CLLocation(latitude: a.latitude, longitude: a.longitude)
             .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
@@ -2081,47 +2121,70 @@ struct PrayerSpotDetail: View {
             .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
     }
 
+    /// The reading page's parts, measured so the sheet is exactly their height.
+    @State private var headerHeight: CGFloat = 0
+    @State private var readingHeight: CGFloat = 0
+    private func reportHeight() {
+        guard !editing, headerHeight > 0, readingHeight > 0 else { return }
+        viewModel.setPageHeight(headerHeight + readingHeight)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if picking {
-                // Picking a spot: the card, in the sheet; the map above is the picker.
-                SpotPickerCard(original: draftSpot ?? spot, recorded: viewModel.pick.recorded,
-                               centre: viewModel.pick.centre, moving: viewModel.pick.moving,
-                               onJump: { viewModel.jumpPick(to: $0) },
-                               onCancel: { viewModel.stopPicking() },
-                               onSet: { picked in
-                                   draftSpot = picked
-                                   viewModel.stopPicking()
-                               },
-                               embedded: true, setTitle: "Done",
-                               onSearching: { on in
-                                   withAnimation(.snappy) {
-                                       viewModel.spotDetent = on ? .large : LocationViewModel.pickDetent
-                                   }
-                               })
+            if !picking {
+                header
                     .padding(.horizontal, 20)
                     .padding(.top, 22)
-                Spacer(minLength: 0)
-            } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        if editing {
-                            PrayerTimeEditor(prayer: prayer, draft: $draftTime, range: editRange, showsScore: false)
-                            locationButton
-                        } else {
-                            timeSection
-                            Divider()
-                            locationSection
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 20)
-                    .padding(.bottom, 12)
-                }
-                .scrollBounceBehavior(.basedOnSize)
-                bottomBar
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0; reportHeight() }
+                    .transition(.opacity)
             }
+            ZStack(alignment: .top) {
+                if picking {
+                    // Picking a spot: the card, in the sheet; the map above is the picker.
+                    SpotPickerCard(original: draftSpot ?? spot, recorded: viewModel.pick.recorded,
+                                   centre: viewModel.pick.centre, moving: viewModel.pick.moving,
+                                   onJump: { viewModel.jumpPick(to: $0) },
+                                   onCancel: { viewModel.stopPicking() },
+                                   onSet: { picked in
+                                       draftSpot = picked
+                                       viewModel.stopPicking()
+                                   },
+                                   embedded: true, setTitle: "Done",
+                                   onSearching: { on in
+                                       withAnimation(.smooth(duration: 0.35)) {
+                                           viewModel.spotDetent = on ? .large : LocationViewModel.pickDetent
+                                       }
+                                   })
+                        .padding(.horizontal, 20)
+                        .padding(.top, 22)
+                        .transition(.pageSwap(offset: 12))
+                } else if editing {
+                    VStack(spacing: 0) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 18) {
+                                PrayerTimeEditor(prayer: prayer, draft: $draftTime, range: editRange, showsScore: false)
+                                locationButton
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 18)
+                            .padding(.bottom, 12)
+                        }
+                        .scrollBounceBehavior(.basedOnSize)
+                        SaveCancelButtons(canSave: canSave, onCancel: {
+                            draftSpot = nil
+                            viewModel.setSpotMode(.browse)
+                        }, onSave: save)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 14)
+                    }
+                    .transition(.pageSwap(offset: 16))
+                } else {
+                    reading
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { readingHeight = $0; reportHeight() }
+                        .transition(.pageSwap(offset: 0))
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
         }
         .background(Color(.systemBackground))
         .fontDesign(.rounded)
@@ -2129,14 +2192,14 @@ struct PrayerSpotDetail: View {
         // The sheet shrinks onto the prayer's page and grows back for the list, so the map shows
         // more of where it was prayed.
         .onAppear {
-            if pushed { withAnimation(.snappy) { viewModel.spotDetent = LocationViewModel.compactDetent } }
-            viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
+            if pushed { withAnimation(.smooth(duration: 0.35)) { viewModel.spotDetent = viewModel.pageDetent } }
+            viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
         }
         .onDisappear {
             viewModel.clearFocus(prayer)
             if editing { viewModel.setSpotMode(.browse) }
             if pushed, viewModel.selection?.id == selection.id {
-                withAnimation(.snappy) { viewModel.spotDetent = .medium }
+                withAnimation(.smooth(duration: 0.35)) { viewModel.spotDetent = .medium }
             }
         }
         .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
@@ -2146,6 +2209,33 @@ struct PrayerSpotDetail: View {
             draftAddress = nil
             if let draftSpot { draftAddress = await PrayerSpotAddress.lookUp(draftSpot) }
         }
+    }
+
+    /// The reading page under the header: when, where, and a quiet Edit (owner: the big button was
+    /// far too loud).
+    private var reading: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            timeSection
+            Divider()
+            locationSection
+            Button {
+                draftTime = prayer.timeAtComplete.map { min(max($0, editRange.lowerBound), editRange.upperBound) } ?? editRange.upperBound
+                draftSpot = nil
+                viewModel.setSpotMode(.editTime)
+            } label: {
+                Label("Edit", systemImage: "pencil")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
+        .padding(.bottom, 10)
     }
 
     // MARK: header
@@ -2191,17 +2281,31 @@ struct PrayerSpotDetail: View {
 
     // MARK: reading
 
+    /// "29 min after the window ended at 4:10 PM" / "1h 14m into the window · 12:49 – 4:10 PM".
+    private func whenLine(_ at: Date) -> String {
+        let window = "\(shortTimePM(prayer.startTime)) – \(shortTimePM(prayer.endTime))"
+        func span(_ secs: TimeInterval) -> String {
+            let m = max(Int(secs / 60), 0)
+            return m < 60 ? "\(m) min" : "\(m / 60)h \(m % 60)m"
+        }
+        if at > prayer.endTime {
+            return "\(span(at.timeIntervalSince(prayer.endTime))) after the window ended at \(shortTimePM(prayer.endTime))"
+        }
+        if at < prayer.startTime { return "before the window opened · \(window)" }
+        return "\(span(at.timeIntervalSince(prayer.startTime))) into the window · \(window)"
+    }
+
     /// The prayer's window as the time editor's bar, the marker where it was prayed.
     @ViewBuilder private var timeSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             if let at = prayer.timeAtComplete {
                 PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, marked: at, color: scoreColor)
                     .allowsHitTesting(false)
-                HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Prayed \(shortTimePM(at))").font(.body.weight(.medium))
-                    Text("· \(intoWindow(at))").foregroundStyle(.secondary)
+                    Text(whenLine(at)).font(.footnote).foregroundStyle(.secondary)
                 }
-                .font(.subheadline)
+                .padding(.top, 2)
             }
             if prayer.timeEdited, let recorded = prayer.recordedTimeAtComplete {
                 editedNote("edited · you marked it at \(shortTimePM(recorded))") {
@@ -2230,7 +2334,7 @@ struct PrayerSpotDetail: View {
                 editedNote("edited · you marked it \(distance(recorded, spot)) away") {
                     prayerViewModel.revertPrayerLocation(prayer)
                     viewModel.refreshPins()
-                    viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
+                    viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
                 }
             }
         }
@@ -2288,42 +2392,13 @@ struct PrayerSpotDetail: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder private var bottomBar: some View {
-        Group {
-            if editing {
-                SaveCancelButtons(canSave: canSave, onCancel: {
-                    draftSpot = nil
-                    viewModel.setSpotMode(.browse)
-                }, onSave: save)
-            } else {
-                Button {
-                    draftTime = prayer.timeAtComplete.map { min(max($0, editRange.lowerBound), editRange.upperBound) } ?? editRange.upperBound
-                    draftSpot = nil
-                    viewModel.setSpotMode(.editTime)
-                } label: {
-                    Label("Edit", systemImage: "pencil")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(.primary)
-                        .background(Capsule().fill(Color(.tertiarySystemFill)))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 6)
-        .padding(.bottom, 14)
-    }
-
     private func save() {
         if timeChanged { prayerViewModel.editPrayerTime(prayer, to: draftTime) }   // keeps the recorded time
         if let draftSpot { prayerViewModel.movePrayer(prayer, to: draftSpot) }    // keeps the recorded spot
         draftSpot = nil
         viewModel.refreshPins()   // colour follows the score, the pin follows the spot
         viewModel.setSpotMode(.browse)
-        viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
+        viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
     }
 }
 

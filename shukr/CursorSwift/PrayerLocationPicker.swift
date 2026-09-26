@@ -167,7 +167,11 @@ struct SpotPickerCard: View {
         .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: searching)
         .onChange(of: searching) { _, on in onSearching(on) }
-        .onAppear { if let spot = centre ?? original { lookUp(spot) } }
+        .onAppear {
+            guard let spot = centre ?? original else { return }
+            // Known already (the page looked it up): no "Looking up…" flash.
+            if let known = PrayerSpotAddress.cached(spot) { address = known } else { lookUp(spot) }
+        }
         .onChange(of: moving) { _, isMoving in
             if !isMoving, let centre { lookUp(centre) }
         }
@@ -411,6 +415,9 @@ struct PrayerLocationPicker: View {
 /// "123 Main St, Cary" for a spot (cached per ~10 m).
 enum PrayerSpotAddress {
     private static var cache: [String: String] = [:]
+    static func cached(_ c: CLLocationCoordinate2D) -> String? {
+        cache[String(format: "%.4f,%.4f", c.latitude, c.longitude)]
+    }
     static func lookUp(_ c: CLLocationCoordinate2D) async -> String? {
         let key = String(format: "%.4f,%.4f", c.latitude, c.longitude)
         if let hit = cache[key] { return hit }

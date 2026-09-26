@@ -404,6 +404,23 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26, later — prayer page polish.** Owner: Edit far too loud, no window end shown, empty
+space, and the edit states snapped instead of animating.
+- Edit is a small gray "✎ Edit" text button under the location. The second line under "Prayed
+  4:39 PM" says when the window ended: "29 min after the window ended at 4:10 PM" / "1h 14m into
+  the window · 12:49 – 4:10 PM" (`whenLine`).
+- The page measures its header + reading part (`onGeometryChange`) and the sheet is exactly that
+  tall: `LocationViewModel.setPageHeight` / `pageDetent` (replaces the fixed 350 pt
+  `compactDetent`; `pageFraction` for `focus`).
+- Mode changes are two steps (`setSpotMode`): `detentMode` (which sizes are allowed) changes
+  first; growing → the sheet resizes (`.smooth` 0.38 s), then 0.2 s later `spotMode` swaps the
+  content; shrinking → the content swaps first, then the sheet follows 0.16 s later. The size being
+  left stays in the allowed set for 0.9 s (`leavingDetent`) so the sheet animates from it instead
+  of snapping. Content swaps use `AnyTransition.pageSwap` (old leaves in 0.1 s, new arrives after a
+  0.1 s delay — a plain crossfade overlapped the two). Header stays put. Edit detent is now a fixed
+  540 pt. Verified frame by frame from simulator screen recordings (`simctl io recordVideo` +
+  ffmpeg tile).
+
 **2026-09-26 late night — the mosque sheet is the bubble; the prayer page reads, then edits in place.**
 - **Mosques** (owner: the bottom bar "feels out of place", and picking Mosques showed the bar,
   then the list 1.5 s later): `MosqueLayerBar` is deleted. Picking Mosques opens the mosque sheet
