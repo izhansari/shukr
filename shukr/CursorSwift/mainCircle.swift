@@ -28,6 +28,7 @@ struct MainCircleView: View {
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
     
     
+    @AppStorage(NextPrayerStyle.key) private var nextPrayerStyleRaw = NextPrayerStyle.label.rawValue
     @Binding var showQiblaMap: Bool
     @Binding var showChainZikrButton: Bool
     @Binding var showTasbeehPage: Bool
@@ -102,7 +103,12 @@ struct MainCircleView: View {
                             return Text("Missed")
                         }
                     }
+                    let upcoming = prayer.status() == .upcoming
+                    let nextStyle = NextPrayerStyle(rawValue: nextPrayerStyleRaw) ?? .label
                     ZStack{
+                        if upcoming {
+                            NextPrayerRing(style: nextStyle, start: prayer.startTime, now: currentTime)
+                        }
                         // progress arc
                         Circle()
                             .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
@@ -116,6 +122,16 @@ struct MainCircleView: View {
                         // Inner content
                         ZStack{
                             VStack{
+                                // Not started yet: say so above the name (owner: an empty ring read
+                                // like a prayer that's on).
+                                if upcoming {
+                                    Text("next")
+                                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                                        .tracking(2)
+                                        .textCase(.uppercase)
+                                        .foregroundStyle(.tertiary)
+                                        .padding(.bottom, -2)
+                                }
                                 // Same type as the Insights ring: large, light, rounded.
                                 HStack(alignment: .center, spacing: 8){
                                     Image(systemName: prayerIcon(for: prayer.name))
@@ -123,6 +139,7 @@ struct MainCircleView: View {
                                     Text(prayer.name)
                                         .font(.system(size: 32, weight: .light, design: .rounded))
                                 }
+                                .foregroundStyle(upcoming ? Color.primary.opacity(0.55) : Color.primary)
                                 .animation(animationStyle, value: prayer.name)
                                // Going back to the old way (want h and m with no comma. Better cleaner transition):
                                 if prayer.status() == .current{

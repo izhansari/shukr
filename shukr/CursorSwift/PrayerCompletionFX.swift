@@ -168,6 +168,51 @@ struct CompletionDotPop: ViewModifier {
     }
 }
 
+// MARK: - Next prayer look
+
+/// How the main circle shows a prayer that hasn't started yet (Asr, after Dhuhr is marked) so it
+/// doesn't read like a prayer that's on with no progress (owner, 2026-09-26; comparing in
+/// Settings → My Dev Stuff → Next prayer look).
+enum NextPrayerStyle: String, CaseIterable, Identifiable {
+    case label, dashed, countdown
+    static let key = "nextPrayerStyle"
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .label: "\"next\" + dimmed"
+        case .dashed: "+ dashed ring"
+        case .countdown: "+ fills in the last hour"
+        }
+    }
+}
+
+/// The ring part of the upcoming look (the label is in MainCircleView).
+struct NextPrayerRing: View {
+    let style: NextPrayerStyle
+    let start: Date
+    let now: Date
+
+    var body: some View {
+        switch style {
+        case .label:
+            EmptyView()
+        case .dashed:
+            Circle()
+                .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                .frame(width: 180, height: 180)
+        case .countdown:
+            // A faint arc filling over the last hour before it starts.
+            let fill = max(0, min(1, 1 - start.timeIntervalSince(now) / 3600))
+            Circle()
+                .trim(from: 0, to: fill)
+                .stroke(Color.sage.opacity(0.45), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: 200, height: 200)
+                .animation(.easeInOut, value: fill)
+        }
+    }
+}
+
 // MARK: - Row status indicator styles
 
 /// How the Salah list marks a prayed prayer (owner, 2026-09-25: the score-coloured dots are "too

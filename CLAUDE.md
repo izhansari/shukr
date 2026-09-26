@@ -363,6 +363,21 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
 - Sim ✓: cold launch morph frames (ring on the circle, word → "Dhuhr"). The widget-over-map fix is
   not tried in the sim.
 
+**2026-09-26 — welcome grows into the circle; the "next prayer" look.**
+- **Welcome:** the ring now starts snug round the word (150 pt). After the hold it grows to 200 pt
+  (a frame change, so the line keeps its own width) while thickening into the gray track (spring,
+  0.75 s) as the word fades. Once it's there, the overlay fades (0.45 s) and the page appears
+  round the ring. The owner asked for "the circle grows into the other one". Sim ✓ frame by frame.
+- **Next prayer** (the circle showing a prayer that hasn't started, e.g. Asr after Dhuhr is
+  marked): the owner found it read like a prayer that's on with no progress. It now has a tracked
+  "NEXT" above the name, and the name / icon at 55 % opacity. `NextPrayerStyle`
+  (PrayerCompletionFX.swift; dev picker Settings → My Dev Stuff → Next prayer look):
+  - label (default);
+  - dashed: + a thin dashed ring inside the track;
+  - countdown: + a faint sage arc filling over the last hour before it starts.
+
+  Sim ✓: label, dashed. Countdown needs Asr less than 1 h away, not seen yet.
+
 **2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
 - **Targets** (added to the pbxproj by hand):
   - `shukrWatch`: a watchOS 11 single-target app, bundle `com.betternorms.shukr.watchkitapp`,

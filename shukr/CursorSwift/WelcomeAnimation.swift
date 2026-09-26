@@ -4,8 +4,10 @@
 //
 //  A short welcome when the app starts fresh (owner, 2026-09-25/26): "shukr" writes itself inside
 //  a thin sage ring that sits exactly on the Salah page's circle (`WelcomeTarget`), two soft taps
-//  like a heartbeat, a hold — then the ring *becomes* the circle: it thickens into the circle's
-//  gray track and dissolves onto it while the word lifts away and the page shows through. It
+//  like a heartbeat, a hold — then the ring *becomes* the circle: it starts snug round the word
+//  (150 pt), and grows out to the circle's 200 pt while thickening from a hairline into the gray
+//  track as the word fades; once it's there, the page fades in around it (owner, 2026-09-26:
+//  "the circle grows into the other one"). It
 //  always lands on the Salah page (list closed) so there's a circle to land on. About 2.6 s.
 //  Plays on a cold launch, and again only after the app has been in the background for more than
 //  five minutes (not on a quick hop to another app and back).
@@ -95,12 +97,15 @@ struct WelcomeOverlay: View {
     @State private var lettersIn = false
     @State private var ringDrawn = false
     @State private var shine = false
-    @State private var morph = false
+    @State private var grow = false      // the small ring grows into the circle
+    @State private var morph = false     // then the page fades in around it
     @State private var target: CGPoint?
 
     private let word = Array("shukr")
     /// The Salah page's circle: 200 pt with a 12 pt track centred on it (mainCircle.swift).
     private let ringSize: CGFloat = 200
+    /// The ring's size round the word, before it grows.
+    private let startSize: CGFloat = 150
 
     var body: some View {
         // No GeometryReader here: one in this overlay left the whole app laid out off screen
@@ -110,28 +115,30 @@ struct WelcomeOverlay: View {
         let shift = target.map { CGSize(width: $0.x - screen.midX, height: $0.y - screen.midY) } ?? .zero
         ZStack {
             Color(.systemBackground)
-                .opacity(morph ? 0 : 1)
             ZStack {
                 // The ring: drawn as a hairline, then grown into the circle's track.
-                WelcomeRing(width: morph ? 12 : 1.2)
-                    .fill(morph ? Color(.secondarySystemFill) : Color.sage.opacity(0.6))
+                WelcomeRing(width: grow ? 12 : 1.2)
+                    .fill(grow ? Color(.secondarySystemFill) : Color.sage.opacity(0.6))
                     .mask {
                         Circle()
                             .trim(from: 0, to: ringDrawn || reduceMotion ? 1 : 0)
                             .stroke(style: StrokeStyle(lineWidth: 16, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                     }
-                    .shadow(color: Color.sage.opacity(ringDrawn && !morph ? 0.45 : 0), radius: 8)
-                    .frame(width: ringSize, height: ringSize)
-                    .opacity(reduceMotion ? 0 : (morph ? 0 : 1))
+                    .shadow(color: Color.sage.opacity(ringDrawn && !grow ? 0.45 : 0), radius: 8)
+                    // Starts snug round the word, grows to the circle (frame, not scale, so the
+                    // line keeps its own width).
+                    .frame(width: grow ? ringSize : startSize, height: grow ? ringSize : startSize)
+                    .opacity(reduceMotion ? 0 : 1)
                 wordmark
-                    .scaleEffect(morph ? 0.94 : 1)
-                    .blur(radius: morph ? 6 : 0)
-                    .opacity(morph ? 0 : 1)
+                    .scaleEffect(grow ? 0.9 : 1)
+                    .blur(radius: grow ? 4 : 0)
+                    .opacity(grow ? 0 : 1)
             }
             .offset(shift)
         }
         .ignoresSafeArea()
+        .opacity(morph ? 0 : 1)
         .allowsHitTesting(!morph)
         .task { await play() }
     }
@@ -196,11 +203,15 @@ struct WelcomeOverlay: View {
         if let c = circleCentre(), c != target {
             withAnimation(.easeInOut(duration: 0.5)) { target = c }
         }
-        try? await Task.sleep(for: .milliseconds(600))
-        // Become the circle: the hairline thickens into the gray track while it, the word and the
-        // page fade — what's left is the real circle, in the same place.
-        withAnimation(.easeInOut(duration: 0.8)) { morph = true }
-        try? await Task.sleep(for: .milliseconds(820))
+        try? await Task.sleep(for: .milliseconds(450))
+        // Become the circle: the word lets go and the ring grows out to the Salah circle,
+        // thickening into its gray track…
+        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { grow = true }
+        try? await Task.sleep(for: .milliseconds(650))
+        // …and once it's there, the page fades in around it. The welcome's ring and the real track
+        // are the same shape in the same place, so only the page appears.
+        withAnimation(.easeInOut(duration: 0.45)) { morph = true }
+        try? await Task.sleep(for: .milliseconds(470))
         onFinish()
     }
 }
