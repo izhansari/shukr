@@ -402,6 +402,24 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26, later still — accurate picking pin, one-spring transitions, "Back to …".**
+- **Picking pin was off** (owner: "shows the pin on a location different than my address"): the
+  SwiftUI overlay pin was drawn in screen space while the spot was read from the map view's own
+  coordinates (~35 pt apart). The pin is now `PickPinView`, a UIView added to the MKMapView at
+  exactly `pick.pinPoint` (head + needle, lifts while the map moves). Sim ✓: a prayer marked at the
+  user's dot → the needle's tip lands on the dot.
+- **Transitions** (owner, again: "still not smooth"): the two-step timers are gone. The prayer page
+  is one self-sizing column (`fixedSize` + `onGeometryChange` → `setPageHeight`); the sheet's
+  detent is always `pageDetent` = that height, animated with `LocationViewModel.sheetSpring`
+  (`.smooth` 0.42 s), and the height being left stays allowed for 0.7 s (`leavingDetent`) so it
+  animates instead of snapping. So Edit / Change location / Cancel / Save just change `spotMode`;
+  the content swaps (`AnyTransition.sheetContent`: out in 0.1 s, in after 0.12 s) and the sheet
+  follows the new height in the same motion. No fixed edit / pick detents any more (`.large`
+  only while typing an address). Verified from simulator recordings.
+- **"Back to Dhuhr"**: panning the open prayer's pin > 90 pt away from its place
+  (`checkFocusDrift`, on region change, browsing only) shows a glass capsule just above the sheet;
+  tap → `centreFocus()`. After picking, the prayer's own pin returns and re-centres.
+
 **2026-09-26, later — prayer page polish.** Owner: Edit far too loud, no window end shown, empty
 space, and the edit states snapped instead of animating.
 - Edit is a small gray "✎ Edit" text button under the location. The second line under "Prayed

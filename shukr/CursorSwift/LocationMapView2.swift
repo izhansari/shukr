@@ -67,13 +67,22 @@ final class LocationViewModel: ObservableObject {
     @Published private(set) var pageHeight: CGFloat = 300
     var pageDetent: PresentationDetent { .height(pageHeight) }
     var pageFraction: CGFloat { pageHeight / max(UIScreen.main.bounds.height, 1) }
+    /// The page's content changed height: the sheet follows it in one spring, so the page grows
+    /// to make room for the wheel as it unfolds (and shrinks with it) instead of snapping to a size
+    /// and then swapping content (owner, twice: "still not smooth").
     func setPageHeight(_ h: CGFloat) {
         let h = h.rounded()
         guard abs(h - pageHeight) > 1 else { return }
         let onPage = spotDetent == pageDetent
+        if onPage { leavingDetent = spotDetent }   // allowed until the move is done, so it animates
         pageHeight = h
-        if onPage { spotDetent = pageDetent }
+        if onPage { withAnimation(Self.sheetSpring) { spotDetent = pageDetent } }
+        let stamp = h
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            if self?.pageHeight == stamp { self?.leavingDetent = nil }
+        }
     }
+    static let sheetSpring = Animation.smooth(duration: 0.42)
     /// Reverse-geocoded addresses, keyed by rounded coordinate, so a pin is looked up once.
     var addressCache: [String: String] = [:]
 
@@ -288,18 +297,42 @@ final class LocationViewModel: ObservableObject {
         let a = FocusPrayerAnnotation(prayer: prayer, coordinate: spot)
         focusAnnotation = a
         mapView.addAnnotation(a)
-        // Centre it in the part of the map the sheet leaves visible.
+        centreFocus()
+    }
+
+    /// Where the page's pin sits best: the middle of the map above the sheet.
+    private func focusTarget(in mapView: MKMapView) -> CGPoint {
+        CGPoint(x: mapView.bounds.midX, y: (130 + mapView.bounds.height - pageHeight - 40) / 2)
+    }
+    /// Put the page's pin back in view (also the "Back to …" button after panning away).
+    func centreFocus() {
+        guard let mapView, let a = focusAnnotation else { return }
         let bounds = mapView.bounds
-        let point = mapView.convert(spot, toPointTo: mapView)
-        let target = CGPoint(x: bounds.midX, y: (130 + bounds.height * (1 - sheetFraction) - 40) / 2)
+        let point = mapView.convert(a.coordinate, toPointTo: mapView)
+        let target = focusTarget(in: mapView)
+        if focusDrifted { focusDrifted = false }
         guard hypot(point.x - target.x, point.y - target.y) > 2 else { return }
         let centre = CGPoint(x: bounds.midX + (point.x - target.x), y: bounds.midY + (point.y - target.y))
         mapView.setCenter(mapView.convert(centre, toCoordinateFrom: mapView), animated: true)
+    }
+    /// The page's pin was panned well away (or off screen): offer to go back to it.
+    @Published private(set) var focusDrifted = false
+    var focusName: String? { focusAnnotation?.prayer.displayName }
+    func checkFocusDrift() {
+        guard let mapView, let a = focusAnnotation, spotMode == .browse else {
+            if focusDrifted { focusDrifted = false }
+            return
+        }
+        let p = mapView.convert(a.coordinate, toPointTo: mapView)
+        let t = focusTarget(in: mapView)
+        let drifted = hypot(p.x - t.x, p.y - t.y) > 90
+        if drifted != focusDrifted { focusDrifted = drifted }
     }
     func clearFocus(_ prayer: PrayerModel? = nil) {
         guard let a = focusAnnotation, prayer == nil || a.prayer === prayer else { return }
         mapView?.removeAnnotation(a)
         focusAnnotation = nil
+        if focusDrifted { focusDrifted = false }
     }
 
     /// Editing a prayer on its page (2026-09-26, owner: "use the existing sheet space"). The sheet
@@ -307,70 +340,33 @@ final class LocationViewModel: ObservableObject {
     /// the map above it into the picker (a pin fixed in the visible part of the map, `MapPickOverlay`)
     /// with the address / distance card inside the sheet.
     enum SpotSheetMode { case browse, editTime, pickSpot }
-    /// What the sheet shows.
+    /// What the page shows. The sheet's height always follows the page's content (`setPageHeight`).
     @Published private(set) var spotMode: SpotSheetMode = .browse
-    /// Which sizes the sheet may take. It changes a beat before / after `spotMode`, so the sheet
-    /// grows first and the editor fades into the room, or the editor fades and then the sheet
-    /// shrinks (owner, 2026-09-26: it snapped to size with the wheel already in).
-    @Published private(set) var detentMode: SpotSheetMode = .browse
-    /// The size being left, kept allowed during a change so the sheet animates from it.
+    /// The size being left, kept allowed while the sheet moves so it animates instead of snapping.
     private var leavingDetent: PresentationDetent?
-    /// Editing the time: header, bar, wheel, location, buttons.
-    static let editHeight: CGFloat = 540
-    static let editDetent: PresentationDetent = .height(editHeight)
-    /// Picking: just the card, so most of the map shows.
-    static let pickHeight: CGFloat = 200
-    static let pickDetent: PresentationDetent = .height(pickHeight)
+    /// Picking: roughly the card's height, for where the pin stands (the middle of the map above).
+    static let pickHeight: CGFloat = 190
     var spotDetents: Set<PresentationDetent> {
-        var set: Set<PresentationDetent> = switch detentMode {
-        case .browse: [pageDetent, .medium, .large]
-        case .editTime: [Self.editDetent]
-        case .pickSpot: [Self.pickDetent, .large]
+        var set: Set<PresentationDetent> = switch spotMode {
+        case .browse: [pageDetent, .medium, .large]   // .medium: a cluster's list
+        case .editTime: [pageDetent]
+        case .pickSpot: [pageDetent, .large]          // .large while typing an address
         }
         if let leavingDetent { set.insert(leavingDetent) }
         return set
     }
     /// The map stays usable under the sheet while browsing (up to half) and while picking (the
-    /// map is the picker); editing the time dims it. "Up through .medium" needs .medium among the
-    /// detents, so it follows the mode.
+    /// map is the picker); editing the time dims it. "Up through" needs its detent in the set.
     var spotBackground: PresentationBackgroundInteraction {
-        switch detentMode {
+        switch spotMode {
         case .browse: .enabled(upThrough: .medium)
         case .editTime: .disabled
-        case .pickSpot: .enabled(upThrough: Self.pickDetent)
+        case .pickSpot: .enabled(upThrough: pageDetent)
         }
     }
-    private func height(of mode: SpotSheetMode) -> CGFloat {
-        switch mode {
-        case .browse: pageHeight
-        case .editTime: Self.editHeight
-        case .pickSpot: Self.pickHeight
-        }
-    }
-    private var modeChange = 0
     func setSpotMode(_ mode: SpotSheetMode) {
-        let target: PresentationDetent = switch mode {
-        case .browse: pageDetent
-        case .editTime: Self.editDetent
-        case .pickSpot: Self.pickDetent
-        }
-        if mode != .pickSpot { movingPrayer = nil }
-        modeChange += 1
-        let change = modeChange
-        leavingDetent = spotDetent
-        detentMode = mode
-        let resize = { withAnimation(.smooth(duration: 0.38)) { self.spotDetent = target } }
-        let swap = { withAnimation(.smooth(duration: 0.3)) { self.spotMode = mode } }
-        if height(of: mode) >= height(of: spotMode) {
-            // Growing: make the room, then bring the editor into it.
-            resize()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { if change == self.modeChange { swap() } }
-        } else {
-            // Shrinking: the content goes first, then the sheet follows.
-            swap()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { if change == self.modeChange { resize() } }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { if change == self.modeChange { self.leavingDetent = nil } }
+        if mode != .pickSpot { hidePickPin(); movingPrayer = nil }
+        withAnimation(Self.sheetSpring) { spotMode = mode }
     }
 
     /// The prayer whose spot is being picked (the map's chrome steps aside for the picker).
@@ -383,15 +379,36 @@ final class LocationViewModel: ObservableObject {
         guard let mapView else { return }
         clearFocus()
         let h = mapView.bounds.height
-        pick.pinPoint = CGPoint(x: mapView.bounds.midX, y: (130 + h - Self.pickHeight - 30) / 2)
+        pick.pinPoint = CGPoint(x: mapView.bounds.midX, y: (110 + h - Self.pickHeight) / 2)
         pick.original = spot
         pick.recorded = recorded ?? spot
         pick.centre = spot
         pick.moving = false
         setSpotMode(.pickSpot)
         movingPrayer = prayer
+        showPickPin()
         jumpPick(to: spot)
     }
+
+    /// The pin is drawn inside the map view itself, at exactly the point the spot is read from —
+    /// the SwiftUI overlay sat ~35 pt below it on screen, so the pin and the address disagreed
+    /// (owner, 2026-09-26).
+    private var pickPin: PickPinView?
+    private func showPickPin() {
+        guard let mapView else { return }
+        pickPin?.removeFromSuperview()
+        let pin = PickPinView(tip: pick.pinPoint)
+        mapView.addSubview(pin)
+        pickPin = pin
+        pin.alpha = 0
+        UIView.animate(withDuration: 0.25) { pin.alpha = 1 }
+    }
+    private func hidePickPin() {
+        guard let pin = pickPin else { return }
+        pickPin = nil
+        UIView.animate(withDuration: 0.2, animations: { pin.alpha = 0 }) { _ in pin.removeFromSuperview() }
+    }
+    func liftPickPin(_ lifted: Bool) { pickPin?.setLifted(lifted) }
 
     /// Fly the picking map so `spot` lands under the pin: padding the bottom puts the middle of
     /// what's left at the pin's height.
@@ -413,7 +430,6 @@ final class LocationViewModel: ObservableObject {
     }
 
     func stopPicking() {
-        movingPrayer = nil
         setSpotMode(.editTime)
     }
 
@@ -675,7 +691,7 @@ struct MapView: UIViewRepresentable {
             if parent.viewModel.movingPrayer != nil {
                 let pick = parent.viewModel.pick
                 pick.centre = parent.viewModel.pickedCoordinate(on: mapView)
-                if !pick.moving { pick.moving = true }
+                if !pick.moving { pick.moving = true; parent.viewModel.liftPickPin(true) }
             }
         }
 
@@ -683,7 +699,9 @@ struct MapView: UIViewRepresentable {
             if parent.viewModel.movingPrayer != nil {
                 parent.viewModel.pick.centre = parent.viewModel.pickedCoordinate(on: mapView)
                 parent.viewModel.pick.moving = false
+                parent.viewModel.liftPickPin(false)
             }
+            parent.viewModel.checkFocusDrift()
             updateVisibleCount(on: mapView)
             // Mosque mode: panned or zoomed out well past the last search → "Search this area".
             if parent.viewModel.showMosques, !parent.viewModel.mosqueSearching,
@@ -1153,8 +1171,29 @@ struct LocationMapContentView: View {
                 MapPickOverlay(prayer: moving, pick: viewModel.pick)
                     .transition(.opacity)
             }
+
+            // Panned away from the open prayer's pin: a way back to it, just above the sheet.
+            if viewModel.focusDrifted, viewModel.selection != nil, let name = viewModel.focusName {
+                VStack {
+                    Spacer()
+                    Button { viewModel.centreFocus() } label: {
+                        Label("Back to \(name)", systemImage: "scope")
+                            .font(.subheadline.weight(.medium))
+                            .fontDesign(.rounded)
+                            .foregroundStyle(Color.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .mapGlass(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    // The sheet stands on the bottom safe area, so measure from it.
+                    .padding(.bottom, viewModel.pageHeight + 12)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
         }
         .animation(.easeInOut(duration: 0.25), value: viewModel.movingPrayer != nil)
+        .animation(.easeInOut(duration: 0.2), value: viewModel.focusDrifted)
         .onChange(of: viewModel.selection?.id) { _, id in
             // Sheet gone (swiped down): drop the pin highlight. Not during a swap — the new pin
             // is already selected and must stay so.
@@ -1912,28 +1951,71 @@ struct MapPickOverlay: View {
     let pick: SpotPickState
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Screen coordinates, like the map under it (it ignores the safe area too).
-            Color.clear
-                .ignoresSafeArea()
-                .overlay(alignment: .topLeading) {
-                    CenterPin(moving: pick.moving)
-                        .position(pick.pinPoint)
-                }
-                .allowsHitTesting(false)
+        // The pin itself is drawn inside the map view (`PickPinView`), where the spot is read.
+        VStack {
             SpotPickerTitle(prayerName: prayer.displayName)
                 .padding(.top, 8)
-                .allowsHitTesting(false)
+            Spacer()
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// The picking pin, a subview of the map: a green head on a needle whose tip is the spot, and a
+/// shadow at the tip. The head and needle lift while the map moves and drop when it stops.
+final class PickPinView: UIView {
+    private let body_ = UIView()
+    private let shadow = UIView()
+    init(tip: CGPoint) {
+        super.init(frame: CGRect(x: tip.x - 20, y: tip.y - 60, width: 40, height: 64))
+        isUserInteractionEnabled = false
+        let tipInView = CGPoint(x: 20, y: 60)
+        shadow.frame = CGRect(x: tipInView.x - 7, y: tipInView.y - 3, width: 14, height: 6)
+        shadow.backgroundColor = UIColor.black.withAlphaComponent(0.28)
+        shadow.layer.cornerRadius = 3
+        addSubview(shadow)
+        body_.frame = CGRect(x: 0, y: 0, width: 40, height: 60)
+        let needle = UIView(frame: CGRect(x: 19, y: 30, width: 2, height: 30))
+        needle.backgroundColor = UIColor.systemGreen.darker()
+        needle.layer.cornerRadius = 1
+        let head = UIView(frame: CGRect(x: 8, y: 8, width: 24, height: 24))
+        head.backgroundColor = .systemGreen
+        head.layer.cornerRadius = 12
+        head.layer.borderColor = UIColor.white.cgColor
+        head.layer.borderWidth = 3
+        head.layer.shadowColor = UIColor.black.cgColor
+        head.layer.shadowOpacity = 0.25
+        head.layer.shadowRadius = 3
+        head.layer.shadowOffset = CGSize(width: 0, height: 1)
+        body_.addSubview(needle)
+        body_.addSubview(head)
+        addSubview(body_)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    func setLifted(_ lifted: Bool) {
+        UIView.animate(withDuration: lifted ? 0.15 : 0.35, delay: 0,
+                       usingSpringWithDamping: lifted ? 1 : 0.55, initialSpringVelocity: 0) {
+            self.body_.transform = lifted ? CGAffineTransform(translationX: 0, y: -12) : .identity
+            self.shadow.transform = lifted ? CGAffineTransform(scaleX: 0.6, y: 0.6) : .identity
+            self.shadow.alpha = lifted ? 0.5 : 1
         }
     }
 }
 
+private extension UIColor {
+    func darker() -> UIColor {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        return UIColor(hue: h, saturation: s, brightness: b * 0.7, alpha: a)
+    }
+}
+
 extension AnyTransition {
-    /// Swapping what a sheet shows: the old content leaves quickly, the new one arrives just after
-    /// (a plain crossfade showed both on top of each other).
-    static func pageSwap(offset: CGFloat) -> AnyTransition {
+    /// Content swapping inside a sheet that is resizing to fit it: what leaves goes quickly, what
+    /// arrives fades in a beat later, so the two never sit on top of each other.
+    static func sheetContent(offset: CGFloat) -> AnyTransition {
         .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: offset)).animation(.easeOut(duration: 0.26).delay(0.1)),
+            insertion: .opacity.combined(with: .offset(y: offset)).animation(.easeOut(duration: 0.28).delay(0.12)),
             removal: .opacity.animation(.easeIn(duration: 0.1)))
     }
 }
@@ -2121,85 +2203,76 @@ struct PrayerSpotDetail: View {
             .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
     }
 
-    /// The reading page's parts, measured so the sheet is exactly their height.
-    @State private var headerHeight: CGFloat = 0
-    @State private var readingHeight: CGFloat = 0
-    private func reportHeight() {
-        guard !editing, headerHeight > 0, readingHeight > 0 else { return }
-        viewModel.setPageHeight(headerHeight + readingHeight)
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            if !picking {
+        // One column at its natural height; the sheet is always exactly that tall
+        // (`setPageHeight`), so whatever unfolds in it — the wheel, the address card — grows the
+        // sheet with it in the same spring.
+        VStack(alignment: .leading, spacing: 0) {
+            if picking {
+                // Picking a spot: the card; the map above is the picker.
+                SpotPickerCard(original: draftSpot ?? spot, recorded: viewModel.pick.recorded,
+                               centre: viewModel.pick.centre, moving: viewModel.pick.moving,
+                               onJump: { viewModel.jumpPick(to: $0) },
+                               onCancel: { viewModel.stopPicking() },
+                               onSet: { picked in
+                                   draftSpot = picked
+                                   viewModel.stopPicking()
+                               },
+                               embedded: true, setTitle: "Done",
+                               onSearching: { on in
+                                   withAnimation(LocationViewModel.sheetSpring) {
+                                       viewModel.spotDetent = on ? .large : viewModel.pageDetent
+                                   }
+                               })
+                    .padding(.horizontal, 20)
+                    .padding(.top, 22)
+                    .padding(.bottom, 14)
+                    .transition(.sheetContent(offset: 10))
+            } else {
                 header
                     .padding(.horizontal, 20)
                     .padding(.top, 22)
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0; reportHeight() }
                     .transition(.opacity)
-            }
-            ZStack(alignment: .top) {
-                if picking {
-                    // Picking a spot: the card, in the sheet; the map above is the picker.
-                    SpotPickerCard(original: draftSpot ?? spot, recorded: viewModel.pick.recorded,
-                                   centre: viewModel.pick.centre, moving: viewModel.pick.moving,
-                                   onJump: { viewModel.jumpPick(to: $0) },
-                                   onCancel: { viewModel.stopPicking() },
-                                   onSet: { picked in
-                                       draftSpot = picked
-                                       viewModel.stopPicking()
-                                   },
-                                   embedded: true, setTitle: "Done",
-                                   onSearching: { on in
-                                       withAnimation(.smooth(duration: 0.35)) {
-                                           viewModel.spotDetent = on ? .large : LocationViewModel.pickDetent
-                                       }
-                                   })
-                        .padding(.horizontal, 20)
-                        .padding(.top, 22)
-                        .transition(.pageSwap(offset: 12))
-                } else if editing {
-                    VStack(spacing: 0) {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 18) {
-                                PrayerTimeEditor(prayer: prayer, draft: $draftTime, range: editRange, showsScore: false)
-                                locationButton
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.top, 18)
-                            .padding(.bottom, 12)
-                        }
-                        .scrollBounceBehavior(.basedOnSize)
+                if editing {
+                    VStack(alignment: .leading, spacing: 18) {
+                        PrayerTimeEditor(prayer: prayer, draft: $draftTime, range: editRange, showsScore: false)
+                        locationButton
                         SaveCancelButtons(canSave: canSave, onCancel: {
                             draftSpot = nil
                             viewModel.setSpotMode(.browse)
                         }, onSave: save)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 14)
                     }
-                    .transition(.pageSwap(offset: 16))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .padding(.bottom, 14)
+                    .transition(.sheetContent(offset: -10))
                 } else {
                     reading
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { readingHeight = $0; reportHeight() }
-                        .transition(.pageSwap(offset: 0))
+                        .transition(.sheetContent(offset: 0))
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .top)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.setPageHeight($0) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(.systemBackground))
         .fontDesign(.rounded)
         .toolbar(.hidden, for: .navigationBar)
         // The sheet shrinks onto the prayer's page and grows back for the list, so the map shows
         // more of where it was prayed.
         .onAppear {
-            if pushed { withAnimation(.smooth(duration: 0.35)) { viewModel.spotDetent = viewModel.pageDetent } }
+            if pushed { withAnimation(LocationViewModel.sheetSpring) { viewModel.spotDetent = viewModel.pageDetent } }
             viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
+        }
+        // Back from picking: the prayer's own pin returns, centred again.
+        .onChange(of: viewModel.spotMode) { old, mode in
+            if old == .pickSpot, mode != .pickSpot { viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction) }
         }
         .onDisappear {
             viewModel.clearFocus(prayer)
             if editing { viewModel.setSpotMode(.browse) }
             if pushed, viewModel.selection?.id == selection.id {
-                withAnimation(.smooth(duration: 0.35)) { viewModel.spotDetent = .medium }
+                withAnimation(LocationViewModel.sheetSpring) { viewModel.spotDetent = .medium }
             }
         }
         .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
