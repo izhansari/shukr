@@ -324,6 +324,19 @@ struct PrayerTimesView: View {
         .onChange(of: somethingCovers || showTasbeehPage, initial: true) { _, covered in
             WelcomeTarget.canLand = !covered
         }
+        // A zikr reminder's "Start now" while the app is open (on a cold / background launch the
+        // app-group flags below do it on activation).
+        .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
+            guard let taskID = note.object as? String, scenePhase == .active else { return }
+            let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+            store?.removeObject(forKey: "widgetZikrTask")
+            store?.setValue(false, forKey: "widgetTasbeeh")
+            guard !showTasbeehPage else { return }
+            clearCovers {
+                sharedState.horizontalPage = .zikr
+                ZikrFocus.request(taskID)
+            }
+        }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
                 WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s

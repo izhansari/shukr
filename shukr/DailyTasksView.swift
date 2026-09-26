@@ -87,6 +87,8 @@ struct DailyTasksView: View {
                     if let task = taskToDelete {
                         withAnimation{
                             context.delete(task)
+                    NotificationScheduler.reschedule(context: context, reason: "task deleted")   // its reminders go
+                            NotificationScheduler.reschedule(context: context, reason: "task deleted")   // its reminders go
                             taskToDelete = nil
                             sharedState.resetTasbeehInputs()
                         }
@@ -1251,6 +1253,9 @@ struct AddDailyTaskView: View {
     /// Optional own name, e.g. "After Fajr" (notes #7) — the circle's title, the mantra under it.
     @State private var customName: String = ""
     @FocusState private var isNameFocused: Bool
+    /// The task's reminder (ZikrReminders), saved with the task.
+    @State private var reminder = ReminderDraft()
+    @State private var showReminder = false
 
     /// Edit mode: the task being changed. Its mantra is locked (the sheet is opened from that
     /// mantra's page); only goal and units can change, saved after a confirmation.
@@ -1271,6 +1276,7 @@ struct AddDailyTaskView: View {
         _taskIsCountMode = State(initialValue: task.isCountMode)
         _selectedMantra = State(initialValue: task.mantra)
         _customName = State(initialValue: task.customName ?? "")
+        _reminder = State(initialValue: ReminderDraft(task))
     }
 
     private var trimmedName: String? {
@@ -1284,6 +1290,7 @@ struct AddDailyTaskView: View {
         guard let editingTask else { return false }
         return goal == editingTask.goal && taskIsCountMode == editingTask.isCountMode
             && trimmedName == editingTask.customName.flatMap { $0.isEmpty ? nil : $0 }
+            && reminder == ReminderDraft(editingTask)
     }
 
     private func saveEdits() {
@@ -1291,6 +1298,8 @@ struct AddDailyTaskView: View {
         editingTask.goal = goal
         editingTask.isCountMode = taskIsCountMode
         editingTask.customName = trimmedName
+        reminder.apply(to: editingTask)
+        NotificationScheduler.reschedule(context: context, reason: "task reminder")
         isGoalFocused = false
         isPresented = false
     }
@@ -1305,9 +1314,11 @@ struct AddDailyTaskView: View {
             sortOrder: TaskModel.nextSortOrder(in: context) // new cards go to the end
         )
         task.customName = trimmedName
+        reminder.apply(to: task)
 
         // Save the task to the persistent context
         context.insert(task)
+        if reminder.kind != nil { NotificationScheduler.reschedule(context: context, reason: "task reminder") }
 
         isGoalEntryFocused = false //Dismiss keyboard when background tapped
 
@@ -1545,6 +1556,29 @@ struct AddDailyTaskView: View {
                     .frame(maxWidth: 300)
                     .padding(.top, 4)
 
+                // Reminder (notes #11): off by default.
+                Button { showReminder = true } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: reminder.kind == nil ? "bell.slash" : "bell")
+                        Text(reminder.kind == nil ? "Reminder · Off" : reminder.summary)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(reminder.kind == nil ? Color.secondary : Color.green)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                    .background(Capsule().fill(reminder.kind == nil ? Color(.tertiarySystemFill) : Color.green.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+                .sheet(isPresented: $showReminder) {
+                    TaskReminderSheet(draft: reminder, onCancel: { showReminder = false }) { picked in
+                        reminder = picked
+                        showReminder = false
+                    }
+                }
+
                 Spacer()
                 
                 Button(action: {
@@ -1575,7 +1609,7 @@ struct AddDailyTaskView: View {
                     Button("Cancel", role: .cancel) {}
                 } message: {
                     Text(editingTask.map { goal == $0.goal && taskIsCountMode == $0.isCountMode } ?? false
-                         ? "Its name changes everywhere it shows."
+                         ? "Its name and reminder change everywhere."
                          : "Today's progress is recomputed from its sessions.")
                 }
                 

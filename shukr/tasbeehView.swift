@@ -638,6 +638,8 @@ struct tasbeehView: View {
         )
         print("adding a session card")
         context.insert(item)
+        // Finished the task for today: its reminder for today goes (ZikrReminders).
+        if let linkedTask { ZikrReminders.taskMaybeDone(linkedTask, context: context) }
         return item
     }
 

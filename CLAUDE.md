@@ -1479,6 +1479,22 @@ the name), the Lock Screen card (`name`), the results card ("After Fajr · 5 of 
 alerts, the reorder list. Session titles stay the mantra (history snapshot). Set in the create /
 edit task sheet's "Name (optional), e.g. After Fajr" field. Widget not looked at in the sim.
 
+**Zikr task reminders (2026-09-27, notes #11)** — `ZikrReminders` (CursorSwift/ZikrReminders.swift).
+- Set per task in the create / edit task sheet: a "Reminder · Off ›" capsule → `TaskReminderSheet`
+  (Off · At a time · Around a prayer; the Fajr alarm's wheels: 0–60 min · After / Before · prayer;
+  weekday chips; Save gray until changed). `ReminderDraft` holds it until the task is saved.
+- Planned by `NotificationScheduler.plan` (shared budget): one-shot per day a week ahead, ids
+  "zikr.<task uuid>.<prayer day>" (owned → rebuilt each run), priority 1 within 48 h, 3 beyond.
+  Skipped for today when the task is already done; finishing a task in a session removes today's
+  pending one (`taskMaybeDone`, from `saveSession`). Deleting a task reschedules.
+- Content: title = the task's title, body "Bismillah · 50 counts · ~3 min"; category
+  "ZikrReminder": Start now (foreground) / tap → `ZikrReminders.open` (the widget rows' app-group
+  flags + a post that PrayerTimesView handles when already open → Zikr page, `ZikrFocus`),
+  Later (30 min) → a one-off "zikrlater.<task>.<ts>" (not owned, survives reschedules),
+  Skip today → removes today's + any "later" one.
+- Sim ✓: 10 min after Fajr, Saturday off → six pending (Sun–Fri at Fajr + 10); a clock-time
+  reminder fired as "Subhanallah · 10 min". Actions not tappable in the sim — untested.
+
 **Prayer notification scheduling — `NotificationScheduler`** (CursorSwift/NotificationScheduler.swift,
 2026-09-27, notes #10). Everything scheduled goes through it; it owns iOS's 64-pending budget.
 - ~7 days ahead: the next two prayer days that are still ahead get Start / Mid / End (nudges per

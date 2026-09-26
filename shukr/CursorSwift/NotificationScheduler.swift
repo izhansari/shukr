@@ -47,7 +47,7 @@ enum NotificationScheduler {
     }
 
     /// Does the scheduler own this id (so a reschedule may replace / remove it)?
-    static func owns(_ id: String) -> Bool { PrayerNotificationID.parse(id) != nil }
+    static func owns(_ id: String) -> Bool { PrayerNotificationID.parse(id) != nil || ZikrReminders.owns(id) }
 
     // MARK: Rescheduling
 
@@ -125,7 +125,12 @@ enum NotificationScheduler {
     /// Everything the scheduler would like pending, before the budget.
     static func plan(context: ModelContext,
                      todayOverride: [String: (start: Date, end: Date, window: TimeInterval)]? = nil) -> [Item] {
-        prayerItems(context: context, todayOverride: todayOverride)
+        let now = Date()
+        let horizon = now.addingTimeInterval(TimeInterval(daysAhead) * 86_400)
+        return prayerItems(context: context, todayOverride: todayOverride)
+            + ZikrReminders.items(context: context, now: now, horizon: horizon) { prayer, day in
+                windows(for: day)?[prayer]?.start
+            }
     }
 
     private static let defaults = UserDefaults.standard
