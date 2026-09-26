@@ -276,6 +276,11 @@ struct MosqueListSheet: View {
     let items: [MKMapItem]
     let origin: CLLocation?
     let nearYou: Bool
+    /// The search is still running (the sheet opens at once, 2026-09-26 — it used to wait for
+    /// results behind a bar that meant nothing yet).
+    var searching = false
+    /// ✕: leave mosques (the sheet only shrinks to its header when swiped down).
+    var close: () -> Void = {}
     let pick: (MKMapItem) -> Void
     @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
     @AppStorage(MosqueTravel.key) private var travelRaw = MosqueTravel.driving.rawValue
@@ -325,6 +330,16 @@ struct MosqueListSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                if searching && items.isEmpty {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Looking for mosques around you…")
+                            .font(.system(size: 15, weight: .light, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 30)
+                }
                 if !mine.isEmpty {
                     HStack(spacing: 5) {
                         Image(systemName: "star.fill").font(.system(size: 9))
@@ -392,10 +407,10 @@ struct MosqueListSheet: View {
                 }
             }
             .padding(.horizontal, 18)
-            .padding(.top, 24)
+            .padding(.top, 20)
             .padding(.bottom, 30)
         }
-        .task(id: "\(travelRaw)|\(hiddenRevision)") { await loadETAs(list) }
+        .task(id: "\(travelRaw)|\(hiddenRevision)|\(items.count)") { await loadETAs(list) }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in hiddenRevision += 1 }
     }
 
@@ -430,7 +445,7 @@ struct MosqueListSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mosques")
                     .font(.system(size: 28, weight: .light, design: .rounded))
-                Text("\(visible.count) \(nearYou ? "near you" : "in the area you searched")")
+                Text(searching ? "finding mosques…" : "\(visible.count) \(nearYou ? "near you" : "in the area you searched")")
                     .font(.system(size: 14, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -466,6 +481,16 @@ struct MosqueListSheet: View {
             }
             .padding(3)
             .background(Capsule().fill(Color.primary.opacity(0.05)))
+            // Leave mosques, back to the qibla.
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.primary.opacity(0.05)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close mosques")
         }
     }
 

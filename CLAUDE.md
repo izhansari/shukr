@@ -404,6 +404,41 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   - No "best rated" sort: MapKit exposes no ratings.
   - Sim ✓ (hid one: grey pin, 29 → 28).
 
+**2026-09-26 late night — the mosque sheet is the bubble; the prayer page reads, then edits in place.**
+- **Mosques** (owner: the bottom bar "feels out of place", and picking Mosques showed the bar,
+  then the list 1.5 s later): `MosqueLayerBar` is deleted. Picking Mosques opens the mosque sheet
+  at once ("finding mosques…" with a spinner until results land). It stays up for as long as
+  Mosques is the layer: `interactiveDismissDisabled`, detents `mosqueCollapsed` (96 pt — just the
+  "Mosques · 29 near you" header) / medium / large on `LocationViewModel.mosqueDetent`, so swiping
+  down shrinks it to a bar at the bottom (Apple Maps style) instead of closing. ✕ in the header →
+  back to the qibla (`setMode`). A pin tap raises it to medium on that mosque. The explore dock
+  hides in mosque mode (the sheet covers it); "Search this area" moved up under the top pill. The
+  map guide (? / first time) presents over the mosque sheet while it's up (two bindings on `guide`,
+  one per presenter). `wantsMosqueList` / `openPendingMosqueList` are gone.
+- **Prayer page** (`PrayerSpotDetail`; owner: rows looked tappable and weren't, the blue ···
+  squeezed the header, "feels sad"):
+  - Reading: header (back, icon, name, "Fri, Sep 25, 2026" on one line, score + grade), the
+    time editor's coloured window bar (read-only, marker at the prayed time), "Prayed 4:39 PM ·
+    after the window ended", a divider, where (masjid / address), "✎ edited · you marked it…"
+    notes with a green **Undo**, and one gray **Edit** capsule at the bottom. Sheet height is a
+    fixed 350 pt (`compactHeight`) so it all fits.
+  - Edit (same sheet, `spotMode = .editTime`, detent 0.64, map dimmed): the bar scrubs, the wheel
+    appears (`PrayerTimeEditor`, extracted from the time editor sheet, `showsScore: false` — the
+    header score updates live), a location row (a real button now), Cancel / Save.
+  - Change location (`.pickSpot`, detent 200 pt): the sheet holds `SpotPickerCard(embedded:
+    true, setTitle: "Done")`; the map above becomes the picker (`MapPickOverlay`: the question +
+    `CenterPin` at `pick.pinPoint`, the middle of the map above the sheet — the coordinator reads
+    `pickedCoordinate` there, `jumpPick` flies a spot under it with bottom edge padding, minus the
+    view's safe area, which MapKit adds). Typing an address grows the sheet to large. Done → back
+    to the editor with "moved · Save to keep it"; Save writes time + spot (both keep the recorded
+    values).
+  - Detents and background interaction follow the mode (`spotDetents`, `spotBackground`): "up
+    through .medium" silently disables when .medium isn't among the detents — the map froze.
+  - Sim ✓: cluster → Dhuhr's page → Edit (wheel) → Change → drag → "340 ft…" → Done → Save →
+    page shows the new address + edited note → Undo → back at 43 Park Row (recorded cleared).
+- Shared pieces now: `PrayerTimeEditor`, `SaveCancelButtons`, `PrayerWindowBar` (no longer
+  private) in PrayerTimeEditSheet.swift.
+
 **2026-09-26 night — recorded vs edited; mosques in one sheet.**
 - **Schema 2.3.0:** `PrayerModel.recordedTimeAtComplete / recordedLat / recordedLon` (optional,
   lightweight; `makeContainer` backs up to `…before-2.3.0` first — sim ✓). Owner: once edited,

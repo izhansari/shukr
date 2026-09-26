@@ -24,6 +24,8 @@ import MapKit
     var original: CLLocationCoordinate2D?
     /// Where the app recorded it when it was marked (differs from `original` once edited).
     var recorded: CLLocationCoordinate2D?
+    /// Where the pin stands on the map view (screen points) — the middle of the map above the sheet.
+    var pinPoint: CGPoint = .zero
 }
 
 /// The pin in the middle of the map; its tip is the spot. Lifts while the map moves.
@@ -72,6 +74,11 @@ struct SpotPickerCard: View {
     var onJump: (CLLocationCoordinate2D) -> Void
     var onCancel: () -> Void
     var onSet: (CLLocationCoordinate2D) -> Void
+    /// Inside a sheet (the map's prayer page): no card of its own.
+    var embedded = false
+    var setTitle = "Set location"
+    /// The address search opened / closed (the sheet grows for the suggestions and keyboard).
+    var onSearching: (Bool) -> Void = { _ in }
 
     @State private var address: String?
     @State private var lookup: Task<Void, Never>?
@@ -153,12 +160,13 @@ struct SpotPickerCard: View {
                 buttons
             }
         }
-        .padding(18)
-        .background(Color(.systemBackground), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 16, y: 4)
-        .padding(.horizontal, 12)
+        .padding(embedded ? 0 : 18)
+        .background(embedded ? Color.clear : Color(.systemBackground), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(embedded ? 0 : 0.12), radius: 16, y: 4)
+        .padding(.horizontal, embedded ? 0 : 12)
         .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: searching)
+        .onChange(of: searching) { _, on in onSearching(on) }
         .onAppear { if let spot = centre ?? original { lookUp(spot) } }
         .onChange(of: moving) { _, isMoving in
             if !isMoving, let centre { lookUp(centre) }
@@ -200,33 +208,9 @@ struct SpotPickerCard: View {
     }
 
     private var buttons: some View {
-        HStack(spacing: 12) {
-            Button(action: onCancel) {
-                Text("Cancel")
-                    .fontWeight(.medium)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .foregroundStyle(.primary)
-                    .background(Capsule().strokeBorder(Color(.separator), lineWidth: 1))
-                    .contentShape(Capsule())
-            }
-            Button {
-                if let centre { onSet(centre) }
-            } label: {
-                // Same Save look as the time editor: gray until there's a change.
-                Text("Set location")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .foregroundStyle(changed ? Color.green : Color.secondary)
-                    .background(Capsule().strokeBorder(changed ? Color.green : Color(.separator),
-                                                       lineWidth: changed ? 1.5 : 1))
-                    .contentShape(Capsule())
-            }
-            .disabled(!changed)
-            .animation(.easeInOut(duration: 0.2), value: changed)
+        SaveCancelButtons(canSave: changed, saveTitle: setTitle, onCancel: onCancel) {
+            if let centre { onSet(centre) }
         }
-        .buttonStyle(.plain)
     }
 
     // MARK: typing an address

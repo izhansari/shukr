@@ -62,7 +62,10 @@ final class LocationViewModel: ObservableObject {
     /// The sheet's height: compact for one prayer, half for a cluster. Set before the sheet is
     /// presented, never while it's up.
     @Published var spotDetent: PresentationDetent = .medium
-    static let compactDetent: PresentationDetent = .fraction(0.32)
+    /// A prayer's page (one pin, or one prayer of a cluster): tall enough for its bar, where, and Edit.
+    static let compactHeight: CGFloat = 350
+    static let compactDetent: PresentationDetent = .height(compactHeight)
+    static var compactFraction: CGFloat { compactHeight / max(UIScreen.main.bounds.height, 1) }
     /// Reverse-geocoded addresses, keyed by rounded coordinate, so a pin is looked up once.
     var addressCache: [String: String] = [:]
 
@@ -113,12 +116,17 @@ final class LocationViewModel: ObservableObject {
     /// Zoom to fit the results once they arrive (a fresh search, not a pan-and-refresh).
     var fitMosquesWhenFound = false
 
-    /// The list of mosques found (the pill or the bar's list button).
+    /// The mosque sheet: up for as long as Mosques is the layer (2026-09-26, owner: the bottom
+    /// bar "feels out of place" and the list popped up 1.5 s after it). Swiped down it shrinks to
+    /// its header — the sheet is the bubble — and ✕ in the header leaves mosques.
     @Published var showMosqueList = false
+    static let mosqueCollapsed: PresentationDetent = .height(96)
+    @Published var mosqueDetent: PresentationDetent = .medium
 
     /// The list (List button / the pill): a fresh list, no mosque open.
     func openMosqueList() {
         mosquePath = []
+        if mosqueDetent == Self.mosqueCollapsed { mosqueDetent = .medium }
         showMosqueList = true
     }
 
@@ -144,6 +152,7 @@ final class LocationViewModel: ObservableObject {
             return
         }
         if mosquePath != [item] { mosquePath = [item] }
+        if mosqueDetent == Self.mosqueCollapsed { mosqueDetent = .medium }
         if !showMosqueList { showMosqueList = true }
     }
 
@@ -285,54 +294,90 @@ final class LocationViewModel: ObservableObject {
         focusAnnotation = nil
     }
 
-    /// "Change location" on a prayer's page: the sheet steps aside and the map itself becomes the
-    /// picker (a pin fixed in the middle, `MapPickOverlay`) — no sheet on top of a sheet. Set or
-    /// Cancel brings the sheet back on that prayer.
+    /// Editing a prayer on its page (2026-09-26, owner: "use the existing sheet space"). The sheet
+    /// stays up the whole time and only changes size: `.editTime` shows the wheel; `.pickSpot` turns
+    /// the map above it into the picker (a pin fixed in the visible part of the map, `MapPickOverlay`)
+    /// with the address / distance card inside the sheet.
+    enum SpotSheetMode { case browse, editTime, pickSpot }
+    @Published private(set) var spotMode: SpotSheetMode = .browse
+    /// The detents for the mode: browsing can be any size; editing the time is one taller size;
+    /// picking stays low so the map shows (large only while typing an address).
+    static let editDetent: PresentationDetent = .fraction(0.64)
+    /// Picking: just the card, so most of the map shows.
+    static let pickHeight: CGFloat = 200
+    static let pickDetent: PresentationDetent = .height(pickHeight)
+    var spotDetents: Set<PresentationDetent> {
+        switch spotMode {
+        case .browse: [Self.compactDetent, .medium, .large]
+        case .editTime: [Self.editDetent]
+        case .pickSpot: [Self.pickDetent, .large]
+        }
+    }
+    /// The map stays usable under the sheet while browsing (up to half) and while picking (the
+    /// map is the picker); editing the time dims it. "Up through .medium" needs .medium among the
+    /// detents, so it follows the mode.
+    var spotBackground: PresentationBackgroundInteraction {
+        switch spotMode {
+        case .browse: .enabled(upThrough: .medium)
+        case .editTime: .disabled
+        case .pickSpot: .enabled(upThrough: Self.pickDetent)
+        }
+    }
+    func setSpotMode(_ mode: SpotSheetMode) {
+        let detent: PresentationDetent = switch mode {
+        case .browse: Self.compactDetent
+        case .editTime: Self.editDetent
+        case .pickSpot: Self.pickDetent
+        }
+        if mode != .pickSpot { movingPrayer = nil }
+        withAnimation(.snappy) {
+            spotDetent = detent
+            spotMode = mode
+        }
+    }
+
+    /// The prayer whose spot is being picked (the map's chrome steps aside for the picker).
     @Published private(set) var movingPrayer: PrayerModel?
     let pick = SpotPickState()
-    private var returnSelection: PrayerSpotSelection?
 
-    func beginMove(_ prayer: PrayerModel, from current: PrayerSpotSelection) {
-        guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return }
-        let spot = CLLocationCoordinate2D(latitude: lat, longitude: lon)
-        returnSelection = current
+    /// Start picking: the map flies so `spot` sits under the pin, in the middle of the map above
+    /// the sheet (not the screen's middle, which is behind the sheet's edge).
+    func startPicking(_ prayer: PrayerModel, at spot: CLLocationCoordinate2D, recorded: CLLocationCoordinate2D?) {
+        guard let mapView else { return }
         clearFocus()
-        selection = nil
+        let h = mapView.bounds.height
+        pick.pinPoint = CGPoint(x: mapView.bounds.midX, y: (130 + h - Self.pickHeight - 30) / 2)
         pick.original = spot
-        pick.recorded = prayer.recordedSpot ?? spot
+        pick.recorded = recorded ?? spot
         pick.centre = spot
         pick.moving = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-            guard let self else { return }
-            self.movingPrayer = prayer
-            self.mapView?.setRegion(MKCoordinateRegion(center: spot, latitudinalMeters: 300, longitudinalMeters: 300), animated: true)
-        }
+        setSpotMode(.pickSpot)
+        movingPrayer = prayer
+        jumpPick(to: spot)
     }
 
-    /// A prayer's spot was put back where it was marked: its page reopens there.
-    func prayerReverted(_ prayer: PrayerModel, to spot: CLLocationCoordinate2D) {
-        refreshPins()
-        present(PrayerSpotSelection(prayers: [prayer], coordinate: spot))
-    }
-
-    /// Fly the picking map to a typed address.
+    /// Fly the picking map so `spot` lands under the pin: padding the bottom puts the middle of
+    /// what's left at the pin's height.
     func jumpPick(to spot: CLLocationCoordinate2D) {
-        mapView?.setRegion(MKCoordinateRegion(center: spot, latitudinalMeters: 300, longitudinalMeters: 300), animated: true)
+        guard let mapView else { return }
+        let h = mapView.bounds.height
+        let size = MKMapPointsPerMeterAtLatitude(spot.latitude) * 300
+        let p = MKMapPoint(spot)
+        let rect = MKMapRect(x: p.x - size / 2, y: p.y - size / 2, width: size, height: size)
+        // MapKit adds the view's safe area to the padding, so take it back out.
+        let safe = mapView.safeAreaInsets
+        let bottom = h - 2 * pick.pinPoint.y + safe.top - safe.bottom
+        mapView.setVisibleMapRect(rect, edgePadding: UIEdgeInsets(top: 0, left: 0, bottom: max(bottom, 0), right: 0), animated: true)
     }
 
-    /// Done picking. Saved: back on the prayer's page at its new spot. Cancelled: back where the
-    /// sheet was (a cluster opens on the prayer's page, with the list behind it).
-    func endMove(savedAt spot: CLLocationCoordinate2D?) {
-        guard let prayer = movingPrayer else { return }
+    /// Where the pin points on the map right now.
+    func pickedCoordinate(on mapView: MKMapView) -> CLLocationCoordinate2D {
+        mapView.convert(pick.pinPoint, toCoordinateFrom: mapView)
+    }
+
+    func stopPicking() {
         movingPrayer = nil
-        if let spot {
-            refreshPins()
-            present(PrayerSpotSelection(prayers: [prayer], coordinate: spot))
-        } else if let back = returnSelection {
-            present(PrayerSpotSelection(prayers: back.prayers, coordinate: back.coordinate,
-                                        focus: back.prayers.count > 1 ? prayer : nil))
-        }
-        returnSelection = nil
+        setSpotMode(.editTime)
     }
 
     /// Turn the map back to north-up (browsing pins / mosques).
@@ -592,14 +637,14 @@ struct MapView: UIViewRepresentable {
             // Picking a prayer's spot: the pin in the middle follows the map (overlay only).
             if parent.viewModel.movingPrayer != nil {
                 let pick = parent.viewModel.pick
-                pick.centre = mapView.centerCoordinate
+                pick.centre = parent.viewModel.pickedCoordinate(on: mapView)
                 if !pick.moving { pick.moving = true }
             }
         }
 
         func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
             if parent.viewModel.movingPrayer != nil {
-                parent.viewModel.pick.centre = mapView.centerCoordinate
+                parent.viewModel.pick.centre = parent.viewModel.pickedCoordinate(on: mapView)
                 parent.viewModel.pick.moving = false
             }
             updateVisibleCount(on: mapView)
@@ -782,18 +827,8 @@ struct LocationMapContentView: View {
     @State private var anchor = MapAnchor()
     /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
     /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
-    /// Mosques was just picked: open the list as soon as there are results (after its first-time
-    /// guide, if that's showing).
-    @State private var wantsMosqueList = false
     /// The explore dock is spread open (Qibla · Prayers · Mosques).
     @State private var exploreOpen = false
-    private func openPendingMosqueList() {
-        guard wantsMosqueList, viewModel.showMosques, !viewModel.mosques.isEmpty, !viewModel.mosqueSearching,
-              guide == nil, !viewModel.showExplore, viewModel.mosquePath.isEmpty,
-              UserDefaults.standard.bool(forKey: MapGuideTopic.mosques.seenKey) else { return }
-        wantsMosqueList = false
-        viewModel.openMosqueList()
-    }
 
     /// The ? explains whatever layer is showing; each layer's guide also opens once by itself.
     @State private var guide: MapGuideTopic? = nil
@@ -811,7 +846,7 @@ struct LocationMapContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             // Another sheet up (usually Explore, right after picking the layer): try again when
             // it closes; only mark it seen once it has actually shown.
-            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, !viewModel.showMosqueList, viewModel.selection == nil,
+            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, viewModel.selection == nil,
                   !showFilterSheet,
                   !defaults.bool(forKey: topic.seenKey) else { return }
             defaults.set(true, forKey: topic.seenKey)
@@ -843,8 +878,13 @@ struct LocationMapContentView: View {
                 if abs(viewModel.mapView?.camera.heading ?? 0) > 0.5 { viewModel.resetMapHeading() }
             }
         }
-        wantsMosqueList = mosques
-        if !mosques { viewModel.showMosqueList = false }
+        if mosques {
+            viewModel.mosquePath = []
+            viewModel.mosqueDetent = .medium
+            viewModel.showMosqueList = true      // right away, "finding mosques…" until results land
+        } else {
+            viewModel.showMosqueList = false
+        }
         if mosques, viewModel.mosques.isEmpty, !viewModel.mosqueSearching {
             // First look: about 30 km around you.
             if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
@@ -1011,9 +1051,8 @@ struct LocationMapContentView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-                Spacer()
-
-                // Mosque mode, panned somewhere new: search there.
+                // Mosque mode, panned somewhere new: search there (under the pill — the mosque sheet
+                // covers the bottom).
                 if viewModel.showMosques && viewModel.mosqueAreaStale, let mapView = viewModel.mapView {
                     Button {
                         viewModel.searchMosques(in: mapView.region, fit: false)
@@ -1027,9 +1066,11 @@ struct LocationMapContentView: View {
                             .shadow(radius: 3)
                     }
                     .buttonStyle(.plain)
-                    .padding(.bottom, 4)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
+
+                Spacer()
 
                 // Bottom row (2026-09-26, owner: "Explore only picks"): with a layer on, its
                 // controls sit right here in a glass bar (prayer range + prayer chips, or drive /
@@ -1043,16 +1084,12 @@ struct LocationMapContentView: View {
                                        custom: { showFilterSheet = true },
                                        close: { setMode(prayers: false, mosques: false) })
                             .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else if viewModel.showMosques {
-                        MosqueLayerBar(count: viewModel.mosques.count,
-                                       list: { viewModel.openMosqueList() },
-                                       close: { setMode(prayers: false, mosques: false) })
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     } else {
                         Spacer()
                     }
                     // The explore button opens *in place* into the three layers (owner, 2026-09-26:
                     // a sheet for three choices was friction).
+                    if !viewModel.showMosques {   // the mosque sheet's header has the ✕
                     ExploreDock(open: $exploreOpen,
                                 active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
                                 mosqueIcon: mosqueIcon.pin) { layer in
@@ -1060,9 +1097,9 @@ struct LocationMapContentView: View {
                         case .prayers: setMode(prayers: true, mosques: false)
                         case .mosques:
                             setMode(prayers: false, mosques: true)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { openPendingMosqueList() }
                         default: setMode(prayers: false, mosques: false)
                         }
+                    }
                     }
                 }
                 .padding(.horizontal, 16)
@@ -1076,13 +1113,7 @@ struct LocationMapContentView: View {
             .allowsHitTesting(viewModel.movingPrayer == nil)
 
             if let moving = viewModel.movingPrayer {
-                MapPickOverlay(prayer: moving, pick: viewModel.pick,
-                               onJump: { viewModel.jumpPick(to: $0) },
-                               onCancel: { viewModel.endMove(savedAt: nil) },
-                               onSet: { spot in
-                                   prayerViewModel.movePrayer(moving, to: spot)
-                                   viewModel.endMove(savedAt: spot)
-                               })
+                MapPickOverlay(prayer: moving, pick: viewModel.pick)
                     .transition(.opacity)
             }
         }
@@ -1098,9 +1129,10 @@ struct LocationMapContentView: View {
             // Half sheet: the pin is already on the map behind it, so just the data. The map
             // stays usable underneath up to the medium detent.
             PrayerSpotSheet(selection: selection, viewModel: viewModel)
-                .presentationDetents([LocationViewModel.compactDetent, .medium, .large], selection: $viewModel.spotDetent)
+                .presentationDetents(viewModel.spotDetents, selection: $viewModel.spotDetent)
+                .interactiveDismissDisabled(viewModel.spotMode != .browse)   // Save / Cancel while editing
                 .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationBackgroundInteraction(viewModel.spotBackground)
                 .presentationContentInteraction(.scrolls)   // scrolling scrolls the list; the grabber resizes
         }
         .onChange(of: viewModel.mosquePath.isEmpty) { _, empty in
@@ -1132,20 +1164,30 @@ struct LocationMapContentView: View {
             NavigationStack(path: $viewModel.mosquePath) {
                 MosqueListSheet(items: viewModel.mosques,
                                 origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
-                                nearYou: searchedNearYou) { viewModel.focusMosque($0) }
+                                nearYou: searchedNearYou,
+                                searching: viewModel.mosqueSearching,
+                                close: { setMode(prayers: false, mosques: false) }) { viewModel.focusMosque($0) }
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: MKMapItem.self) { item in
                         MosqueSheet(item: item, showsBack: true)
                             .toolbar(.hidden, for: .navigationBar)
                     }
             }
-            .presentationDetents([.medium, .large])
+            .presentationDetents([LocationViewModel.mosqueCollapsed, .medium, .large], selection: $viewModel.mosqueDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             // Scrolling scrolls the list at half height; drag the grabber to make it bigger.
             .presentationContentInteraction(.scrolls)
+            // Swiped down it stays as its header; ✕ in the header leaves mosques.
+            .interactiveDismissDisabled()
+            // The ? (and the first-time guide) open over the mosque sheet while it's up.
+            .sheet(item: Binding(get: { viewModel.showMosqueList ? guide : nil }, set: { guide = $0 })) { topic in
+                MapGuide(topic: topic) { guide = nil }
+                    .presentationDetents([.height(470)])
+                    .presentationDragIndicator(.visible)
+            }
         }
-        .sheet(item: $guide) { topic in
+        .sheet(item: Binding(get: { viewModel.showMosqueList ? nil : guide }, set: { guide = $0 })) { topic in
             MapGuide(topic: topic) { guide = nil }
                 .presentationDetents([.height(470)])
                 .presentationDragIndicator(.visible)
@@ -1156,16 +1198,9 @@ struct LocationMapContentView: View {
         }
         .onChange(of: viewModel.showExplore) { _, open in
             if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // Explore closed over a new layer
-            if !open { DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { openPendingMosqueList() } }
         }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in
             viewModel.mosques = viewModel.mosques   // re-add the pins so hidden ones turn grey
-        }
-        .onChange(of: viewModel.mosqueSearching) { _, searching in
-            if !searching { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { openPendingMosqueList() } }
-        }
-        .onChange(of: guide) { _, now in
-            if now == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openPendingMosqueList() } }
         }
         .sheet(isPresented: $showFilterSheet) {
             // Custom… from the prayer bar: just the two dates (the old FilterView repeated the
@@ -1466,62 +1501,6 @@ struct CustomRangeSheet: View {
                 viewModel.selectedEndDate = Date()
             }
         }
-    }
-}
-
-/// Mosques' controls, on the map: the list, drive or walk times, and ✕ back to the qibla.
-struct MosqueLayerBar: View {
-    let count: Int
-    let list: () -> Void
-    let close: () -> Void
-    @AppStorage(MosqueTravel.key) private var travel = MosqueTravel.driving.rawValue
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Button(action: list) {
-                HStack(spacing: 5) {
-                    Image(systemName: "list.bullet")
-                    Text("List")
-                }
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(count > 0 ? Color.primary : Color.primary.opacity(0.35))
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(count == 0)
-            Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5, height: 20)
-            ForEach(MosqueTravel.allCases) { mode in
-                let on = travel == mode.rawValue
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.snappy(duration: 0.2)) { travel = mode.rawValue }
-                } label: {
-                    Image(systemName: mode.icon)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundStyle(on ? Color.green : Color.primary.opacity(0.7))
-                        .frame(width: 40, height: 34)
-                        .background(Capsule().fill(on ? Color.green.opacity(0.16) : Color.clear))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-            Spacer(minLength: 0)
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 34, height: 46)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back to the qibla")
-            .padding(.trailing, 4)
-        }
-        .padding(.leading, 6)
-        .frame(height: 46)
-        .mapGlass(Capsule())
     }
 }
 
@@ -1889,30 +1868,25 @@ func prayerSymbol(_ name: String) -> String {
 
 // MARK: - PrayerDetailView
 /// What was tapped on the map: the prayers at one pin or in one cluster.
-/// The prayer map as a spot picker: a pin fixed in the map's middle, the question on top, the
-/// picker card at the bottom (PrayerLocationPicker.swift).
+/// The prayer map as a spot picker, above the prayer's sheet: the question on top and a pin fixed
+/// in the middle of the visible map (the card is in the sheet).
 struct MapPickOverlay: View {
     let prayer: PrayerModel
     let pick: SpotPickState
-    var onJump: (CLLocationCoordinate2D) -> Void
-    var onCancel: () -> Void
-    var onSet: (CLLocationCoordinate2D) -> Void
 
     var body: some View {
-        ZStack {
-            // Centred on the whole screen, like the map under it (not the safe area).
+        ZStack(alignment: .top) {
+            // Screen coordinates, like the map under it (it ignores the safe area too).
             Color.clear
                 .ignoresSafeArea()
-                .overlay(CenterPin(moving: pick.moving))
+                .overlay(alignment: .topLeading) {
+                    CenterPin(moving: pick.moving)
+                        .position(pick.pinPoint)
+                }
                 .allowsHitTesting(false)
-            VStack {
-                SpotPickerTitle(prayerName: prayer.displayName)
-                    .padding(.top, 8)
-                Spacer()
-                SpotPickerCard(original: pick.original, recorded: pick.recorded, centre: pick.centre, moving: pick.moving,
-                               onJump: onJump, onCancel: onCancel, onSet: onSet)
-                    .padding(.bottom, 8)
-            }
+            SpotPickerTitle(prayerName: prayer.displayName)
+                .padding(.top, 8)
+                .allowsHitTesting(false)
         }
     }
 }
@@ -2042,74 +2016,125 @@ struct PrayerSpotSheet: View {
     }
 }
 
-/// One prayer's page in the spot sheet: what, when, the score, where — and its own pin lifted out
-/// on the map while the page is open. ··· → change its time (a short sheet) or its location (the
-/// map becomes the picker; `LocationViewModel.beginMove`).
+/// One prayer's page in the spot sheet (redesigned 2026-09-26 — owner: the card rows looked
+/// tappable and weren't, the blue ··· squeezed the header). Reading: the score, the prayer's window
+/// as the time editor's coloured bar with a marker where it was prayed, where, and "edited ·
+/// you marked it…" notes with a one-tap Undo. One Edit button at the bottom turns the same sheet
+/// into the editor: the bar scrubs and the wheel appears, and the location row opens the picker —
+/// the map above becomes it and the sheet holds the address / distance card
+/// (`LocationViewModel.spotMode`). Save keeps both; Cancel drops both. Its own pin is lifted out of
+/// any cluster while the page is open.
 struct PrayerSpotDetail: View {
     let prayer: PrayerModel
     let selection: PrayerSpotSelection
-    let viewModel: LocationViewModel
+    @ObservedObject var viewModel: LocationViewModel
     /// Pushed from a cluster's list (shows a back button) or the sheet's first page (one pin).
     let pushed: Bool
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var address: String?
-    @State private var editingTime = false
+    /// Editing: the picked time and spot wait here until Save.
+    @State private var draftTime = Date()
+    @State private var draftSpot: CLLocationCoordinate2D?
+    @State private var draftAddress: String?
+
+    private var editing: Bool { viewModel.spotMode != .browse }
+    private var picking: Bool { viewModel.spotMode == .pickSpot }
 
     private var spot: CLLocationCoordinate2D? {
         guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
         return CLLocationCoordinate2D(latitude: lat, longitude: lon)
-    }
-    private var scoreColor: Color { PrayerScoring.color(for: prayer.numberScore) }
-    private var intoWindow: String? {
-        guard let at = prayer.timeAtComplete else { return nil }
-        let secs = at.timeIntervalSince(prayer.startTime)
-        if secs < 0 { return "before it started" }
-        if at > prayer.endTime { return "after the window ended" }
-        let m = Int(secs / 60)
-        return m < 60 ? "\(m) min into the window" : "\(m / 60)h \(m % 60)m into the window"
     }
     /// From the prayer's start to now or the next Fajr, like the Salah list's editor.
     private var editRange: ClosedRange<Date> {
         let latest = min(Date(), PrayerDay.rolloverInstant(after: prayer.startTime))
         return prayer.startTime...max(prayer.startTime, latest)
     }
+    /// The score shown: live while editing the time.
+    private var shownScore: Double? {
+        guard editing else { return prayer.numberScore }
+        guard editRange.contains(draftTime) else { return nil }
+        return prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draftTime)
+    }
+    private var shownGrade: String {
+        guard let s = shownScore else { return editing ? "not a valid time" : "Missed" }
+        return prayer.isJumuah ? "Jumu'ah" : PrayerScoring.grade(for: s).rawValue
+    }
+    private var scoreColor: Color { PrayerScoring.color(for: shownScore) }
+    private var timeChanged: Bool {
+        guard let at = prayer.timeAtComplete else { return true }
+        return abs(draftTime.timeIntervalSince(at)) >= 30
+    }
+    private var canSave: Bool { editRange.contains(draftTime) && (timeChanged || draftSpot != nil) }
+
+    private func intoWindow(_ at: Date) -> String {
+        let secs = at.timeIntervalSince(prayer.startTime)
+        if secs < 0 { return "before it started" }
+        if at > prayer.endTime { return "after the window ended" }
+        let m = Int(secs / 60)
+        return m < 60 ? "\(m) min into the window" : "\(m / 60)h \(m % 60)m into the window"
+    }
+    private func distance(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> String {
+        let m = CLLocation(latitude: a.latitude, longitude: a.longitude)
+            .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
+        return Measurement(value: m, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                VStack(spacing: 0) {
-                    row(icon: "clock",
-                        title: prayer.timeAtComplete.map { "Prayed \(shortTimePM($0))" } ?? "Prayed",
-                        detail: [intoWindow, "\(shortTimePM(prayer.startTime)) – \(shortTimePM(prayer.endTime))"]
-                            .compactMap { $0 }.joined(separator: " · "),
-                        edited: prayer.timeEdited ? prayer.recordedTimeAtComplete.map { "edited · you marked it at \(shortTimePM($0))" } : nil)
-                    Divider().padding(.leading, 44)
-                    row(icon: prayer.atMasjid ? "building.columns" : "mappin.and.ellipse",
-                        iconColor: prayer.atMasjid ? Color.sage : .secondary,
-                        title: prayer.atMasjid ? (prayer.mosqueName ?? "") : (address ?? "Locating…"),
-                        detail: prayer.atMasjid ? address : nil,
-                        edited: prayer.spotEdited ? recordedSpotNote : nil)
+        VStack(spacing: 0) {
+            if picking {
+                // Picking a spot: the card, in the sheet; the map above is the picker.
+                SpotPickerCard(original: draftSpot ?? spot, recorded: viewModel.pick.recorded,
+                               centre: viewModel.pick.centre, moving: viewModel.pick.moving,
+                               onJump: { viewModel.jumpPick(to: $0) },
+                               onCancel: { viewModel.stopPicking() },
+                               onSet: { picked in
+                                   draftSpot = picked
+                                   viewModel.stopPicking()
+                               },
+                               embedded: true, setTitle: "Done",
+                               onSearching: { on in
+                                   withAnimation(.snappy) {
+                                       viewModel.spotDetent = on ? .large : LocationViewModel.pickDetent
+                                   }
+                               })
+                    .padding(.horizontal, 20)
+                    .padding(.top, 22)
+                Spacer(minLength: 0)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        if editing {
+                            PrayerTimeEditor(prayer: prayer, draft: $draftTime, range: editRange, showsScore: false)
+                            locationButton
+                        } else {
+                            timeSection
+                            Divider()
+                            locationSection
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20)
+                    .padding(.bottom, 12)
                 }
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                .scrollBounceBehavior(.basedOnSize)
+                bottomBar
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 24)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .background(Color(.systemGroupedBackground))
+        .background(Color(.systemBackground))
         .fontDesign(.rounded)
         .toolbar(.hidden, for: .navigationBar)
         // The sheet shrinks onto the prayer's page and grows back for the list, so the map shows
         // more of where it was prayed.
         .onAppear {
             if pushed { withAnimation(.snappy) { viewModel.spotDetent = LocationViewModel.compactDetent } }
-            viewModel.focus(on: prayer, sheetFraction: 0.34)
+            viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
         }
         .onDisappear {
             viewModel.clearFocus(prayer)
+            if editing { viewModel.setSpotMode(.browse) }
             if pushed, viewModel.selection?.id == selection.id {
                 withAnimation(.snappy) { viewModel.spotDetent = .medium }
             }
@@ -2117,24 +2142,21 @@ struct PrayerSpotDetail: View {
         .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
             if let spot { address = await PrayerSpotAddress.lookUp(spot) }
         }
-        .sheet(isPresented: $editingTime) {
-            PrayerTimeEditSheet(prayer: prayer, time: .constant(prayer.timeAtComplete ?? prayer.startTime),
-                                range: editRange, showsLocation: false,
-                                onCancel: { editingTime = false },
-                                onSave: { date, _ in
-                                    prayerViewModel.editPrayerTime(prayer, to: date)   // keeps the recorded time
-                                    viewModel.refreshPins()   // the pin's colour follows the score
-                                    editingTime = false
-                                })
+        .task(id: draftSpot.map { "\($0.latitude),\($0.longitude)" }) {
+            draftAddress = nil
+            if let draftSpot { draftAddress = await PrayerSpotAddress.lookUp(draftSpot) }
         }
     }
 
+    // MARK: header
+
     private var header: some View {
         HStack(alignment: .center, spacing: 12) {
-            if pushed {
+            if pushed && !editing {
                 Button { dismiss() } label: {
                     Image(systemName: "chevron.left")
                         .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(Color(.tertiarySystemFill)))
                 }
@@ -2148,83 +2170,160 @@ struct PrayerSpotDetail: View {
                 .background(Circle().fill(scoreColor.opacity(0.15)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(prayer.displayName).font(.title3.weight(.semibold))
-                Text(prayer.startTime.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()))
+                Text(prayer.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             VStack(alignment: .trailing, spacing: 0) {
-                Text(prayer.numberScore.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
-                    .font(.system(size: 26, weight: .light, design: .rounded))
+                Text(shownScore.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
+                    .font(.system(size: 30, weight: .light, design: .rounded))
                     .monospacedDigit()
-                Text(prayer.gradeWord ?? "Missed")
+                    .contentTransition(.numericText())
+                Text(shownGrade)
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(scoreColor)
+                    .foregroundStyle(shownScore == nil ? .secondary : scoreColor)
             }
-            Menu {
-                Button("Change time", systemImage: "clock") { editingTime = true }
-                Button("Change location", systemImage: "mappin.and.ellipse") {
-                    viewModel.beginMove(prayer, from: selection)
-                }
-                // Edited: back to what the app recorded when it was marked.
-                if prayer.timeEdited, let recorded = prayer.recordedTimeAtComplete {
-                    Section {
-                        Button("Back to \(shortTimePM(recorded))", systemImage: "arrow.uturn.backward") {
-                            prayerViewModel.revertPrayerTime(prayer)
-                            viewModel.refreshPins()
-                        }
-                    }
-                }
-                if prayer.spotEdited, let recorded = prayer.recordedSpot {
-                    Section {
-                        Button("Back to where you marked it", systemImage: "arrow.uturn.backward") {
-                            prayerViewModel.revertPrayerLocation(prayer)
-                            viewModel.prayerReverted(prayer, to: recorded)
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color(.tertiarySystemFill)))
-            }
-            .accessibilityLabel("Edit")
+            .animation(.snappy, value: shownScore)
         }
     }
 
-    /// "edited · marked 590 ft away" — how far the pin is from where the app recorded it.
-    private var recordedSpotNote: String? {
-        guard let r = prayer.recordedSpot, let spot else { return nil }
-        let m = CLLocation(latitude: r.latitude, longitude: r.longitude)
-            .distance(from: CLLocation(latitude: spot.latitude, longitude: spot.longitude))
-        let d = Measurement(value: m, unit: UnitLength.meters)
-            .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
-        return "edited · you marked it \(d) away"
+    // MARK: reading
+
+    /// The prayer's window as the time editor's bar, the marker where it was prayed.
+    @ViewBuilder private var timeSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let at = prayer.timeAtComplete {
+                PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, marked: at, color: scoreColor)
+                    .allowsHitTesting(false)
+                HStack(spacing: 6) {
+                    Text("Prayed \(shortTimePM(at))").font(.body.weight(.medium))
+                    Text("· \(intoWindow(at))").foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+            }
+            if prayer.timeEdited, let recorded = prayer.recordedTimeAtComplete {
+                editedNote("edited · you marked it at \(shortTimePM(recorded))") {
+                    prayerViewModel.revertPrayerTime(prayer)
+                    viewModel.refreshPins()
+                }
+            }
+        }
     }
 
-    private func row(icon: String, iconColor: Color = .secondary, title: String, detail: String?, edited: String? = nil) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(iconColor)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).lineLimit(1)
-                if let detail, !detail.isEmpty {
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                if let edited {
-                    Label(edited, systemImage: "pencil")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+    @ViewBuilder private var locationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: prayer.atMasjid ? "building.columns" : "mappin.and.ellipse")
+                    .foregroundStyle(prayer.atMasjid ? Color.sage : .secondary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(prayer.atMasjid ? (prayer.mosqueName ?? "") : (address ?? "Locating…"))
                         .lineLimit(1)
+                    if prayer.atMasjid, let address {
+                        Text(address).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
             }
-            Spacer(minLength: 0)
+            if prayer.spotEdited, let recorded = prayer.recordedSpot, let spot {
+                editedNote("edited · you marked it \(distance(recorded, spot)) away") {
+                    prayerViewModel.revertPrayerLocation(prayer)
+                    viewModel.refreshPins()
+                    viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
+                }
+            }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
+    }
+
+    /// "✎ edited · you marked it at 9:05 PM      Undo"
+    private func editedNote(_ text: String, undo: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Label(text, systemImage: "pencil")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Button("Undo", action: undo)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.green)
+                .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: editing
+
+    /// Where it was prayed, while editing: now a real button (→ the picker).
+    private var locationButton: some View {
+        let masjid = draftSpot == nil ? (prayer.atMasjid ? prayer.mosqueName : nil)
+                                      : draftSpot.flatMap { MasjidDetector.favoriteMasjid(near: $0) }
+        let title = masjid ?? (draftSpot == nil ? address : draftAddress) ?? "Pinned on the map"
+        return Button {
+            guard let from = draftSpot ?? spot else { return }
+            viewModel.startPicking(prayer, at: from, recorded: prayer.recordedSpot ?? spot)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: masjid != nil ? "building.columns" : "mappin.and.ellipse")
+                    .foregroundStyle(masjid != nil ? Color.sage : .secondary)
+                    .frame(width: 20)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).lineLimit(1).foregroundStyle(.primary)
+                    if draftSpot != nil {
+                        Text("moved · Save to keep it").font(.caption).foregroundStyle(Color.green)
+                    }
+                }
+                Spacer(minLength: 0)
+                Text("Change").font(.subheadline).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.tertiarySystemFill)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(draftSpot != nil ? Color.green.opacity(0.6) : .clear, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var bottomBar: some View {
+        Group {
+            if editing {
+                SaveCancelButtons(canSave: canSave, onCancel: {
+                    draftSpot = nil
+                    viewModel.setSpotMode(.browse)
+                }, onSave: save)
+            } else {
+                Button {
+                    draftTime = prayer.timeAtComplete.map { min(max($0, editRange.lowerBound), editRange.upperBound) } ?? editRange.upperBound
+                    draftSpot = nil
+                    viewModel.setSpotMode(.editTime)
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                        .fontWeight(.medium)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundStyle(.primary)
+                        .background(Capsule().fill(Color(.tertiarySystemFill)))
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, 14)
+    }
+
+    private func save() {
+        if timeChanged { prayerViewModel.editPrayerTime(prayer, to: draftTime) }   // keeps the recorded time
+        if let draftSpot { prayerViewModel.movePrayer(prayer, to: draftSpot) }    // keeps the recorded spot
+        draftSpot = nil
+        viewModel.refreshPins()   // colour follows the score, the pin follows the spot
+        viewModel.setSpotMode(.browse)
+        viewModel.focus(on: prayer, sheetFraction: LocationViewModel.compactFraction)
     }
 }
 

@@ -62,40 +62,6 @@ struct PrayerTimeEditSheet: View {
     }
     private var canSave: Bool { isValid && (changed || draftSpot != nil) }
 
-    /// Tap / drag on the window bar: that point of the window, to the minute, kept within what
-    /// can be saved (not before the start, not after now).
-    private func pickFromBar(_ fraction: Double) {
-        let window = prayer.endTime.timeIntervalSince(prayer.startTime)
-        let raw = prayer.startTime.addingTimeInterval(window * fraction)
-        let minute = Date(timeIntervalSinceReferenceDate: (raw.timeIntervalSinceReferenceDate / 60).rounded() * 60)
-        let picked = min(max(minute, range.lowerBound), range.upperBound)
-        if picked != draft { draft = picked }
-    }
-
-    /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before
-    /// the prayer; nearer the other end → it hasn't happened yet, or it's past the day's rollover.
-    private var invalidReason: String {
-        let cal = Calendar.current
-        func clock(_ d: Date) -> Double {
-            let c = cal.dateComponents([.hour, .minute], from: d)
-            return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
-        }
-        func dist(_ a: Date, _ b: Date) -> Double { let x = abs(clock(a) - clock(b)); return min(x, 1440 - x) }
-        if dist(draft, range.lowerBound) <= dist(draft, range.upperBound) {
-            return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound))."
-        }
-        // The upper bound is now unless the day already rolled over before now.
-        if range.upperBound < Date().addingTimeInterval(-60) {
-            return "That's after Fajr at \(shortTimePM(range.upperBound)) — the next day had started."
-        }
-        return "That hasn't happened yet — it's \(shortTimePM(range.upperBound)) now."
-    }
-
-    /// A Jumu'ah isn't graded by the clock (full marks, "Jumu'ah"), so the sheet agrees with Save.
-    private var score: Double {
-        prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
-    }
-
     /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
     /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.
     private var spotChip: some View {
@@ -133,7 +99,6 @@ struct PrayerTimeEditSheet: View {
     }
 
     var body: some View {
-        let grade = PrayerScoring.grade(for: score)
         VStack(spacing: 20) {
             // Header, like the main circle's
             VStack(spacing: 4) {
@@ -152,85 +117,11 @@ struct PrayerTimeEditSheet: View {
             }
             .padding(.top, 30)   // room under the drag handle
 
-            PrayerWindowBar(start: prayer.startTime, end: prayer.endTime,
-                            marked: draft, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
-                            onPick: pickFromBar)
-
-            PrayerTimeWheel(time: $draft, day: prayer.startTime, range: range)
-                .frame(height: 150)
-
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(isValid ? "\(Int((score * 100).rounded()))" : "–")
-                    .font(.system(size: 40, weight: .light, design: .rounded))
-                    .contentTransition(.numericText(value: score))
-                Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
-                    .font(.headline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)
-                    .contentTransition(.opacity)
-            }
-            .animation(.snappy, value: score)
-            .sensoryFeedback(.selection, trigger: grade)
-
-            // Edited before: what the app recorded, one tap to go back to it.
-            if let recorded = prayer.recordedTimeAtComplete, abs(draft.timeIntervalSince(recorded)) >= 30 {
-                Button {
-                    draft = min(max(recorded, range.lowerBound), range.upperBound)
-                } label: {
-                    Label("You marked it at \(shortTimePM(recorded)) · use that", systemImage: "arrow.uturn.backward")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .transition(.opacity)
-            }
-
-            if !isValid {
-                // Out of range: say what is allowed (Save stays off until then).
-                Text(invalidReason)
-                    .font(.footnote)
-                    .fontWeight(.light)
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
-            } else if !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) {
-                // After midnight, say which day and time this actually is.
-                Text(draft.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
-                    .font(.footnote)
-                    .fontWeight(.light)
-                    .foregroundStyle(.secondary)
-                    .transition(.opacity)
-            }
+            PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
 
             Spacer(minLength: 0)
 
-            HStack(spacing: 12) {
-                Button(action: onCancel) {
-                    Text("Cancel")
-                        .fontWeight(.medium)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(.primary)
-                        .background(Capsule().strokeBorder(Color(.separator), lineWidth: 1))
-                        .contentShape(Capsule())
-                }
-                Button {
-                    onSave(draft, draftSpot)
-                } label: {
-                    // Gray until there's something to save; then a green edge and green text
-                    // (owner — matches the other Saves; the solid green fill shouted).
-                    Text("Save")
-                        .fontWeight(.semibold)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .foregroundStyle(canSave ? Color.green : Color.secondary)
-                        .background(Capsule().strokeBorder(canSave ? Color.green : Color(.separator),
-                                                           lineWidth: canSave ? 1.5 : 1))
-                        .contentShape(Capsule())
-                }
-                .disabled(!canSave)
-                .animation(.easeInOut(duration: 0.2), value: canSave)
-            }
-            .buttonStyle(.plain)
+            SaveCancelButtons(canSave: canSave, onCancel: onCancel) { onSave(draft, draftSpot) }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
@@ -254,10 +145,150 @@ struct PrayerTimeEditSheet: View {
     }
 }
 
+/// The heart of editing a prayer's time: the window bar (tap / drag to scrub), the wheel, the
+/// score it would get, the recorded time to go back to, and why an impossible time can't be saved.
+/// Used by the time editor sheet and inline on the map's prayer page.
+struct PrayerTimeEditor: View {
+    let prayer: PrayerModel
+    @Binding var draft: Date
+    /// From the prayer's start to now or the next Fajr (the day's rollover).
+    let range: ClosedRange<Date>
+    /// The big score line (the map's prayer page shows the score in its header instead).
+    var showsScore = true
+
+    var isValid: Bool { range.contains(draft) }
+    /// A Jumu'ah isn't graded by the clock (full marks, "Jumu'ah"), so the editor agrees with Save.
+    private var score: Double {
+        prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
+    }
+
+    /// Tap / drag on the window bar: that point of the window, to the minute, kept within what
+    /// can be saved (not before the start, not after now).
+    private func pickFromBar(_ fraction: Double) {
+        let window = prayer.endTime.timeIntervalSince(prayer.startTime)
+        let raw = prayer.startTime.addingTimeInterval(window * fraction)
+        let minute = Date(timeIntervalSinceReferenceDate: (raw.timeIntervalSinceReferenceDate / 60).rounded() * 60)
+        let picked = min(max(minute, range.lowerBound), range.upperBound)
+        if picked != draft { draft = picked }
+    }
+
+    /// Why an out-of-range time can't be saved: nearer (on the clock) to the start → it's before
+    /// the prayer; nearer the other end → it hasn't happened yet, or it's past the day's rollover.
+    private var invalidReason: String {
+        let cal = Calendar.current
+        func clock(_ d: Date) -> Double {
+            let c = cal.dateComponents([.hour, .minute], from: d)
+            return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
+        }
+        func dist(_ a: Date, _ b: Date) -> Double { let x = abs(clock(a) - clock(b)); return min(x, 1440 - x) }
+        if dist(draft, range.lowerBound) <= dist(draft, range.upperBound) {
+            return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound))."
+        }
+        // The upper bound is now unless the day already rolled over before now.
+        if range.upperBound < Date().addingTimeInterval(-60) {
+            return "That's after Fajr at \(shortTimePM(range.upperBound)) — the next day had started."
+        }
+        return "That hasn't happened yet — it's \(shortTimePM(range.upperBound)) now."
+    }
+
+    var body: some View {
+        let grade = PrayerScoring.grade(for: score)
+        VStack(spacing: 20) {
+            PrayerWindowBar(start: prayer.startTime, end: prayer.endTime,
+                            marked: draft, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
+                            onPick: pickFromBar)
+
+            PrayerTimeWheel(time: $draft, day: prayer.startTime, range: range)
+                .frame(height: 150)
+
+            if showsScore {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(isValid ? "\(Int((score * 100).rounded()))" : "–")
+                        .font(.system(size: 40, weight: .light, design: .rounded))
+                        .contentTransition(.numericText(value: score))
+                    Text(isValid ? (prayer.isJumuah ? "Jumu'ah" : grade.rawValue) : "not a valid time")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundStyle(isValid ? PrayerScoring.color(for: score) : .secondary)
+                        .contentTransition(.opacity)
+                }
+                .animation(.snappy, value: score)
+            }
+
+            // Edited before: what the app recorded, one tap to go back to it.
+            if let recorded = prayer.recordedTimeAtComplete, abs(draft.timeIntervalSince(recorded)) >= 30 {
+                Button {
+                    draft = min(max(recorded, range.lowerBound), range.upperBound)
+                } label: {
+                    Label("You marked it at \(shortTimePM(recorded)) · use that", systemImage: "arrow.uturn.backward")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            }
+
+            if !isValid {
+                // Out of range: say what is allowed (Save stays off until then).
+                Text(invalidReason)
+                    .font(.footnote)
+                    .fontWeight(.light)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .transition(.opacity)
+            } else if !Calendar.current.isDate(draft, inSameDayAs: prayer.startTime) {
+                // After midnight, say which day and time this actually is.
+                Text(draft.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().hour().minute()))
+                    .font(.footnote)
+                    .fontWeight(.light)
+                    .foregroundStyle(.secondary)
+                    .transition(.opacity)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: grade)
+    }
+}
+
+/// Cancel / Save as capsules: Save gray until there's something to save, then a green edge and
+/// green text (owner — the solid green fill shouted).
+struct SaveCancelButtons: View {
+    let canSave: Bool
+    var saveTitle = "Save"
+    var onCancel: () -> Void
+    var onSave: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Button(action: onCancel) {
+                Text("Cancel")
+                    .fontWeight(.medium)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundStyle(.primary)
+                    .background(Capsule().strokeBorder(Color(.separator), lineWidth: 1))
+                    .contentShape(Capsule())
+            }
+            Button(action: onSave) {
+                Text(saveTitle)
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .foregroundStyle(canSave ? Color.green : Color.secondary)
+                    .background(Capsule().strokeBorder(canSave ? Color.green : Color(.separator),
+                                                       lineWidth: canSave ? 1.5 : 1))
+                    .contentShape(Capsule())
+            }
+            .disabled(!canSave)
+            .animation(.easeInOut(duration: 0.2), value: canSave)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// The prayer's window as a bar: Perfect (first 30 min) green, On time yellow, Late red, with a
 /// marker where the picked time falls. A time after the window (Qaza) parks the marker at the
 /// end, gray, with "qaza" under it — the bar itself only shows the window.
-private struct PrayerWindowBar: View {
+struct PrayerWindowBar: View {
     let start: Date
     let end: Date
     let marked: Date
