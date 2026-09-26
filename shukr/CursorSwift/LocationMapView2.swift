@@ -167,8 +167,10 @@ final class LocationViewModel: ObservableObject {
     @Published var selectedStartDate: Date
     @Published var selectedEndDate: Date
     @Published var selectedPrayerNames: Set<String>
+    /// Only prayers prayed at a masjid (MasjidDetector).
+    @Published var onlyAtMasjid = false
     var filtersActive: Bool {
-        selectedStartDate != defaultStartDate || selectedEndDate != defaultEndDate || selectedPrayerNames != defaultPrayerNames
+        selectedStartDate != defaultStartDate || selectedEndDate != defaultEndDate || selectedPrayerNames != defaultPrayerNames || onlyAtMasjid
     }
     /// Ready-made date ranges for the filter sheet. `custom` = the two pickers.
     enum QuickRange: String, CaseIterable, Identifiable {
@@ -217,13 +219,17 @@ final class LocationViewModel: ObservableObject {
     /// "Showing Fajr, Isha from the last 30 days", "Showing prayers from Jan 1 – Mar 3".
     var filterSentence: String {
         let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-        let names = selectedPrayerNames == defaultPrayerNames
+        var names = selectedPrayerNames == defaultPrayerNames
             ? "prayers"
             : order.filter { selectedPrayerNames.contains($0) }.joined(separator: ", ")
+        if onlyAtMasjid { names += " at a masjid" }
         let f = Date.FormatStyle().month(.abbreviated).day().year(.twoDigits)
         let when: String
         switch quickRange {
-        case .allTime: return names == "prayers" ? "Showing all your prayers" : "Showing every \(names)"
+        case .allTime:
+            if names == "prayers" { return "Showing all your prayers" }
+            if names == "prayers at a masjid" { return "Showing your prayers at a masjid" }
+            return "Showing every \(names)"
         case .thisWeek: when = "this week"
         case .last30: when = "the last 30 days"
         case .thisYear: when = "this year"
@@ -270,9 +276,10 @@ final class LocationViewModel: ObservableObject {
         selectedEndDate = defaultEndDate
         selectedPrayerNames = defaultPrayerNames
 
-        Publishers.CombineLatest4($prayers, $selectedStartDate, $selectedEndDate, $selectedPrayerNames)
-            .map { prayers, start, end, names in
-                prayers.filter { $0.startTime >= start && $0.startTime <= end && names.contains($0.name) }
+        Publishers.CombineLatest(Publishers.CombineLatest4($prayers, $selectedStartDate, $selectedEndDate, $selectedPrayerNames), $onlyAtMasjid)
+            .map { inputs, masjid in
+                let (prayers, start, end, names) = inputs
+                return prayers.filter { $0.startTime >= start && $0.startTime <= end && names.contains($0.name) && (!masjid || $0.atMasjid) }
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.filteredPrayers = $0 }
@@ -1220,6 +1227,10 @@ struct PrayerLayerBar: View {
     var body: some View {
         HStack(spacing: 6) {
             Menu {
+                Toggle(isOn: $viewModel.onlyAtMasjid) {
+                    Label("Only at a masjid", systemImage: "building.columns")
+                }
+                Divider()
                 ForEach(LocationViewModel.QuickRange.allCases) { range in
                     Button {
                         if range == .custom { custom() } else { viewModel.apply(range) }
@@ -1233,7 +1244,7 @@ struct PrayerLayerBar: View {
                     Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
                 }
                 .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(viewModel.quickRange == .allTime ? Color.primary : Color.green)
+                .foregroundStyle(viewModel.quickRange == .allTime && !viewModel.onlyAtMasjid ? Color.primary : Color.green)
                 .padding(.leading, 14).padding(.trailing, 4)
                 .frame(height: 46)
                 .contentShape(Rectangle())

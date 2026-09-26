@@ -27,18 +27,24 @@ enum MasjidDetector {
         String(format: "%.3f,%.3f", c.latitude, c.longitude)
     }
 
-    /// The masjid at `coordinate`, or "" if none.
-    static func masjid(at coordinate: CLLocationCoordinate2D) async -> String {
+    /// One of your own masajid within 100 m of `coordinate` (instant, no network).
+    nonisolated static func favoriteMasjid(near coordinate: CLLocationCoordinate2D) -> String? {
         let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        if let fav = MosqueFavorites.all
-            .map({ ($0, CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: here)) })
-            .filter({ $0.1 < 100 }).min(by: { $0.1 < $1.1 }) {
-            return fav.0.name
-        }
+        return MosqueFavorites.all
+            .map { ($0, CLLocation(latitude: $0.latitude, longitude: $0.longitude).distance(from: here)) }
+            .filter { $0.1 < 100 }.min { $0.1 < $1.1 }?.0.name
+    }
+
+    /// The masjid at `coordinate`, "" if none, nil if it couldn't be told (offline) — the row
+    /// stays unchecked and is tried again later.
+    static func masjid(at coordinate: CLLocationCoordinate2D) async -> String? {
+        if let fav = favoriteMasjid(near: coordinate) { return fav }
+        let here = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
         let key = cell(coordinate)
         if let hit = cache[key] { return hit }
         let found = await MosqueSearch.find(in: MKCoordinateRegion(center: coordinate,
                                                                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
+        if found.isEmpty && MosqueSearch.lastSearchFailed { return nil }
         let best = found
             .filter { !MosqueHiding.isHidden($0) }
             .map { ($0, CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude).distance(from: here)) }
@@ -64,7 +70,8 @@ enum MasjidDetector {
                 if searches >= maxSearches { break }
                 searches += 1
             }
-            prayer.mosqueName = await masjid(at: coordinate)
+            guard let name = await masjid(at: coordinate) else { continue }   // offline: later
+            prayer.mosqueName = name
             if prayer.isJumuah {
                 prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime)
                 rescored.append(prayer.startTime)

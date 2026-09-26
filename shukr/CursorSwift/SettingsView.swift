@@ -60,6 +60,7 @@ struct SettingsView: View {
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(PostSalahPromptStyle.key) private var postSalahPromptStyle = PostSalahPromptStyle.nudge.rawValue
+    @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
@@ -233,6 +234,34 @@ struct SettingsView: View {
 
                     
                     
+                    //MARK: - Masjid
+                    Section {
+                        Toggle(isOn: Binding(get: { masjidDuas }, set: { on in
+                            masjidDuas = on
+                            MasjidArrival.shared.setEnabled(on)
+                        })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Duas at my masajid")
+                                Text("The dua for entering when you arrive, and for leaving when you go.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tint(.green)
+                        if masjidDuas {
+                            Button("Preview the notification") {
+                                MasjidArrival.notify(masjid: MosqueFavorites.all.first?.name ?? "Your masjid", entering: true)
+                            }
+                            .foregroundStyle(Color.green)
+                        }
+                    } header: {
+                        Text("Masjid")
+                    } footer: {
+                        Text(MosqueFavorites.all.isEmpty
+                             ? "Works for My masajid — star a mosque on the map first. Needs location set to \"Always\"."
+                             : "Works for your \(MosqueFavorites.all.count) saved masajid (star them on the map). Needs location set to \"Always\"; nothing leaves your phone.")
+                    }
+
                     //MARK: - Calculation Method
                     Section(header: Text("Calculation Method")
                         #if DEBUG

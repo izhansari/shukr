@@ -81,6 +81,11 @@ struct shukrApp: App {
         WatchSync.shared.start()   // Apple Watch: prayer times + today's ✓s
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()
+        let updates = manager.locationUpdates
+        Task { @MainActor in
+            MasjidArrival.shared.start()                        // entering / leaving duas (opt-in)
+            HolyCityWelcome.shared.start(updates)   // "Welcome to Makkah / Madinah"
+        }
         // 1b) Grab the ModelContext in a local var too
         let context = sharedModelContainer.mainContext
         // 2) Assign the local var to the @StateOobject...

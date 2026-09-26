@@ -112,6 +112,9 @@ enum MosqueSearch {
         return true
     }
 
+    /// True when every query of the last `find` failed (offline) — "no mosques" can't be trusted.
+    @MainActor static var lastSearchFailed = false
+
     /// Mosques around `region`, nearest to its centre first.
     @MainActor
     static func find(in region: MKCoordinateRegion) async -> [MKMapItem] {
@@ -120,6 +123,8 @@ enum MosqueSearch {
         region.span.latitudeDelta = max(region.span.latitudeDelta, 0.05)
         region.span.longitudeDelta = max(region.span.longitudeDelta, 0.05)
         var found: [MKMapItem] = []
+        var failures = 0
+        defer { lastSearchFailed = failures == queries.count }
         for query in queries {
             let request = MKLocalSearch.Request()
             request.naturalLanguageQuery = query
@@ -128,8 +133,12 @@ enum MosqueSearch {
             // the same places near you (owner: "28 in my area" with no pins in view).
             request.regionPriority = .required
             request.resultTypes = .pointOfInterest
-            if let response = try? await MKLocalSearch(request: request).start() {
+            do {
+                let response = try await MKLocalSearch(request: request).start()
                 found += response.mapItems.filter(isMosque)
+            } catch {
+                // "No results" is an error too; only a network failure means "couldn't tell".
+                if (error as? MKError)?.code != .placemarkNotFound { failures += 1 }
             }
         }
         // The three searches overlap: one pin per place (same name, or within 60 m).

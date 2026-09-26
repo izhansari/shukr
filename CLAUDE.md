@@ -670,9 +670,39 @@ agent builds with xcodebuild. Nothing here has CI.
   400 m away, then logs `MASJIDCHECK`. Sim ✓: Dhuhr 0.68 → Jumu'ah 1.0 at Assafa; the away prayer
   → "".
 
-**Not built:** the dua on entering (3), which needs **Always** location — ask the owner. The "at a
-masjid" filter chip, and Insights. The open question (should any jama'ah prayer at a masjid score
-full, or only Jumu'ah?) is still unanswered; only Jumu'ah is implemented.
+**Loose ends closed the same day (owner: "finish it … no loose ends"):**
+- **Offline:** `MosqueSearch.lastSearchFailed` is set when every query failed for a reason other
+  than "no results". The detector then leaves `mosqueName` nil, so the row is retried later instead
+  of being marked "not at a masjid" for good.
+- **Instant at your own masajid:** `togglePrayerCompletion` records the location first and checks
+  `MasjidDetector.favoriteMasjid(near:)` (no network) before scoring, so the completion moment
+  already says "Jumu'ah · Early · 100". Anywhere else the search runs after the mark. If that turns
+  a prayer into Jumu'ah, `.prayerCompleted` is posted again, so the moment replays with the right
+  name and score.
+- **Widget / notification marks** (extension, no favourites, no search) are checked on the next
+  activation by `catchUpMasjidChecks`, and the day is rescored then.
+- **Map filter:** the prayer bar's range menu has "Only at a masjid"
+  (`LocationViewModel.onlyAtMasjid`, in the filter sentence and `filtersActive`).
+- **Duas at my masajid (part 3)** — `MasjidArrival` in CursorSwift/PlaceMoments.swift:
+  - Opt-in: Settings → Masjid → "Duas at my masajid", plus a "Preview the notification" row.
+    Turning it on asks for Always location.
+  - `CLMonitor("shukrMasajid")` watches 100 m circles round up to 20 of My masajid. It re-syncs when
+    favourites change and is picked up again in `shukrApp.init`, including a background relaunch
+    for a region event.
+  - Notifications: entering = "Allahumma-ftah li abwaba rahmatik", leaving = "Allahumma inni
+    as'aluka min fadlik"; Arabic + transliteration + meaning, time-sensitive, at most once per
+    masjid and direction every 3 h.
+  - Info.plist: `NSLocationAlwaysAndWhenInUseUsageDescription` + the Always string now explain
+    this feature only.
+  - **Traps:** CLMonitor names must be letters only ("shukr.masajid" crashed with "Monitor name is
+    not valid"), and only one monitor per name per process ("already in use"). `start()` never
+    creates a second.
+  - Sim ✓ (simctl location + `privacy grant location-always`): entering and leaving banners at
+    Assafa.
+- **Still to verify on the phone:** a real Jumu'ah at the masjid (GPS indoors); the arrival
+  notification with the app killed (background relaunch); "Only at a masjid" in the map bar (not
+  looked at in the sim). The open question stands: should any jama'ah prayer at a masjid score
+  full, or only Jumu'ah? Only Jumu'ah is implemented.
 
 Original plan:
 
@@ -702,6 +732,26 @@ punishes exactly the behaviour the app should reward. Wanted:
    `PrayerSpotSheet`); a filter chip "at a masjid"; Insights could count jama'ah prayers.
 
 Design all four together before building — the detection in (1) feeds the rest.
+
+## Makkah & Madinah (owner idea, 2026-09-26)
+
+**Built — the welcome easter egg:** `HolyCityWelcome` (CursorSwift/PlaceMoments.swift) follows
+`EnvLocationManager.locationUpdates` (throttled to 30 s). Within ~6 km of the Kaaba it posts
+"Welcome to Makkah" ("May Allah accept your visit to His House…"); within ~5 km of Masjid an-Nabawi,
+"Welcome to Madinah" ("The city of the Prophet ﷺ…"). Once per visit: it re-arms after you've been
+more than 50 km away, and a first launch counts as away. It only fires while the app gets location
+(foreground). Sim ✓: "Welcome to Madinah" banner.
+
+**Wish list — the Umrah companion (not built; plan with the owner first; "a hefty thing"):**
+- Know you're there: the welcome above, then offer "Are you doing Umrah?".
+- **Umrah tracker:** ihram (intention + talbiyah), tawaf — 7 circuits counted like the tasbeeh,
+  maybe by tapping at the Black Stone line; the 2 rak'ah; Zamzam; sa'i — 7 laps Safa ↔ Marwah;
+  halq / taqsir. Save each Umrah with its date as a record.
+- Duas for each step (talbiyah, entering the Haram, between the Yemeni corner and the Black Stone,
+  on Safa and Marwah), sourced carefully. Needs the same knowledgeable review as the Tasbih Fatimah
+  reminders.
+- Must-dos and common mistakes as a checklist; Madinah etiquette (Rawdah, salam at the grave).
+- Open questions: how much is guidance vs tracking; offline content; Hajj later?
 
 ## Post-salah zikr "points" (owner is curious — discuss before building, 2026-09-25)
 
