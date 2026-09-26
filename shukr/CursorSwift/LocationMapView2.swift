@@ -647,6 +647,17 @@ struct LocationMapContentView: View {
     @State private var anchor = MapAnchor()
     /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
     /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
+    /// Mosques was just picked: open the list as soon as there are results (after its first-time
+    /// guide, if that's showing).
+    @State private var wantsMosqueList = false
+    private func openPendingMosqueList() {
+        guard wantsMosqueList, viewModel.showMosques, !viewModel.mosques.isEmpty, !viewModel.mosqueSearching,
+              guide == nil, !viewModel.showExplore, viewModel.mosqueSelection == nil,
+              UserDefaults.standard.bool(forKey: MapGuideTopic.mosques.seenKey) else { return }
+        wantsMosqueList = false
+        viewModel.openMosqueList()
+    }
+
     /// The ? explains whatever layer is showing; each layer's guide also opens once by itself.
     @State private var guide: MapGuideTopic? = nil
     private var currentGuideTopic: MapGuideTopic {
@@ -663,7 +674,7 @@ struct LocationMapContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             // Another sheet up (usually Explore, right after picking the layer): try again when
             // it closes; only mark it seen once it has actually shown.
-            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, viewModel.selection == nil,
+            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, !viewModel.showMosqueList, viewModel.selection == nil,
                   viewModel.mosqueSelection == nil, !showFilterSheet,
                   !defaults.bool(forKey: topic.seenKey) else { return }
             defaults.set(true, forKey: topic.seenKey)
@@ -695,6 +706,8 @@ struct LocationMapContentView: View {
                 if abs(viewModel.mapView?.camera.heading ?? 0) > 0.5 { viewModel.resetMapHeading() }
             }
         }
+        wantsMosqueList = mosques
+        if !mosques { viewModel.showMosqueList = false }
         if mosques, viewModel.mosques.isEmpty, !viewModel.mosqueSearching {
             // First look: about 30 km around you.
             if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
@@ -973,6 +986,13 @@ struct LocationMapContentView: View {
         }
         .onChange(of: viewModel.showExplore) { _, open in
             if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // Explore closed over a new layer
+            if !open { DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { openPendingMosqueList() } }
+        }
+        .onChange(of: viewModel.mosqueSearching) { _, searching in
+            if !searching { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { openPendingMosqueList() } }
+        }
+        .onChange(of: guide) { _, now in
+            if now == nil { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { openPendingMosqueList() } }
         }
         .sheet(isPresented: $showFilterSheet) {
             // Custom… from the prayer bar: just the two dates (the old FilterView repeated the

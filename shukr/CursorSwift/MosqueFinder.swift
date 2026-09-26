@@ -154,14 +154,22 @@ enum MosqueSearch {
 // MARK: - The list
 
 /// Every mosque the last search found, nearest first (owner, 2026-09-26: after "Search this area"
-/// the pins can be off screen; a list gets you back to them). Tap → the map flies there and opens
-/// that mosque.
+/// the pins can be off screen; a list gets you back to them). Opens by itself when Mosques is
+/// picked in Explore. The nearest one is a card on top; the rest are rows in one rounded group,
+/// each with the distance and — for the closest few — the drive / walk time. Tap → the map flies
+/// there and opens that mosque.
 struct MosqueListSheet: View {
     let items: [MKMapItem]
     let origin: CLLocation?
     let nearYou: Bool
     let pick: (MKMapItem) -> Void
     @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
+    @AppStorage(MosqueTravel.key) private var travelRaw = MosqueTravel.driving.rawValue
+    /// Travel times for the closest few (MKDirections is rate-limited, so not all of them).
+    @State private var etas: [Int: TimeInterval] = [:]
+
+    private var icon: String { (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin }
+    private var travel: MosqueTravel { MosqueTravel(rawValue: travelRaw) ?? .driving }
 
     private func distance(_ item: MKMapItem) -> CLLocationDistance? {
         guard let origin else { return nil }
@@ -180,56 +188,195 @@ struct MosqueListSheet: View {
         return [street.isEmpty ? nil : street, p.locality].compactMap { $0 }.joined(separator: ", ")
     }
 
+    private func miles(_ d: CLLocationDistance) -> String {
+        Measurement(value: d, unit: UnitLength.meters).formatted(.measurement(width: .abbreviated, usage: .road))
+    }
+
+    private func eta(_ i: Int) -> String? {
+        etas[i].map { "\(max(1, Int(($0 / 60).rounded()))) min" }
+    }
+
     var body: some View {
-        NavigationStack {
-            List(sorted, id: \.self) { item in
-                Button { pick(item) } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin)
-                            .font(.system(size: 13))
-                            .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
-                            .background(Circle().fill(Color.green))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.name ?? "Mosque")
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            let line = address(item)
-                            if !line.isEmpty {
-                                Text(line)
-                                    .font(.system(size: 13, weight: .light, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+        let list = sorted
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                if let nearest = list.first {
+                    nearestCard(nearest, index: 0)
+                }
+                if list.count > 1 {
+                    Text("more nearby")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .tracking(1.4)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                        .padding(.leading, 4)
+                        .padding(.bottom, -8)
+                    VStack(spacing: 0) {
+                        ForEach(Array(list.enumerated().dropFirst()), id: \.offset) { i, item in
+                            row(item, index: i)
+                            if i < list.count - 1 {
+                                Rectangle().fill(Color.primary.opacity(0.07)).frame(height: 0.5).padding(.leading, 62)
                             }
                         }
-                        Spacer(minLength: 8)
-                        if let d = distance(item) {
-                            Text(Measurement(value: d, unit: UnitLength.meters)
-                                    .formatted(.measurement(width: .abbreviated, usage: .road)))
+                    }
+                    .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.primary.opacity(0.045)))
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 24)
+            .padding(.bottom, 30)
+        }
+        .task(id: travelRaw) { await loadETAs(list) }
+    }
+
+    private var header: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Mosques")
+                    .font(.system(size: 28, weight: .light, design: .rounded))
+                Text("\(items.count) \(nearYou ? "near you" : "in the area you searched")")
+                    .font(.system(size: 14, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            // Drive / walk, for the times in the list (same setting as the map's bar).
+            HStack(spacing: 2) {
+                ForEach(MosqueTravel.allCases) { mode in
+                    let on = travel == mode
+                    Button {
+                        triggerSomeVibration(type: .light)
+                        travelRaw = mode.rawValue
+                    } label: {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(on ? Color.green : Color.secondary)
+                            .frame(width: 36, height: 30)
+                            .background(Capsule().fill(on ? Color.green.opacity(0.14) : .clear))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(3)
+            .background(Capsule().fill(Color.primary.opacity(0.05)))
+        }
+    }
+
+    private func nearestCard(_ item: MKMapItem, index: Int) -> some View {
+        Button { pick(item) } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 6) {
+                    Image(systemName: "location.fill").font(.system(size: 10))
+                    Text("nearest").tracking(1.4).textCase(.uppercase)
+                }
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(Color.green)
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: icon)
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.green))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.name ?? "Mosque")
+                            .font(.system(size: 19, weight: .regular, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        let line = address(item)
+                        if !line.isEmpty {
+                            Text(line)
                                 .font(.system(size: 13, weight: .light, design: .rounded))
                                 .foregroundStyle(.secondary)
-                                .monospacedDigit()
+                                .lineLimit(1)
                         }
                     }
-                    .contentShape(Rectangle())
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
+                HStack(spacing: 14) {
+                    if let e = eta(index) {
+                        Label(e, systemImage: travel.icon)
+                    }
+                    if let d = distance(item) {
+                        Label(miles(d), systemImage: "arrow.triangle.turn.up.right.diamond")
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Text("Show")
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.green)
+                }
+                .font(.system(size: 14, weight: .regular, design: .rounded))
+                .foregroundStyle(.secondary)
             }
-            .listStyle(.plain)
-            .navigationTitle(items.count == 1 ? "1 mosque" : "\(items.count) mosques")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 0) {
-                        Text(items.count == 1 ? "1 mosque" : "\(items.count) mosques")
-                            .font(.system(size: 17, weight: .regular, design: .rounded))
-                        Text(nearYou ? "near you" : "in the area you searched")
-                            .font(.system(size: 11, weight: .light, design: .rounded))
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.green.opacity(0.08))
+                    .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color.green.opacity(0.25), lineWidth: 1))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func row(_ item: MKMapItem, index: Int) -> some View {
+        Button { pick(item) } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.green)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.green.opacity(0.13)))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.name ?? "Mosque")
+                        .font(.system(size: 16, weight: .regular, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    let line = address(item)
+                    if !line.isEmpty {
+                        Text(line)
+                            .font(.system(size: 12.5, weight: .light, design: .rounded))
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if let d = distance(item) {
+                        Text(miles(d))
+                            .font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .monospacedDigit()
+                    }
+                    if let e = eta(index) {
+                        HStack(spacing: 3) {
+                            Image(systemName: travel.icon).font(.system(size: 9))
+                            Text(e)
+                        }
+                        .font(.system(size: 11.5, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Drive / walk times for the closest six, one after another.
+    private func loadETAs(_ list: [MKMapItem]) async {
+        etas = [:]
+        for (i, item) in list.prefix(6).enumerated() {
+            let request = MKDirections.Request()
+            request.source = MKMapItem.forCurrentLocation()
+            request.destination = item
+            request.transportType = travel == .walking ? .walking : .automobile
+            guard let result = try? await MKDirections(request: request).calculateETA() else { continue }
+            if Task.isCancelled { return }
+            etas[i] = result.expectedTravelTime
         }
     }
 }

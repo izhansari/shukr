@@ -244,6 +244,17 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
         isn't in a cluster), selects its pin and opens its sheet. `openMosqueList` closes an open
         mosque sheet first. The pill says "N mosques in this area" when the last search wasn't
         around you.
+      - The list opens by itself when Mosques is picked (`wantsMosqueList` → `openPendingMosqueList`
+        once results land, Explore has closed and the first-time mosque guide has been seen /
+        dismissed; the guide never stacks on the list). Redesigned 2026-09-26 (owner: "kind of
+        boring"):
+        - a "Mosques · 29 near you" header with a drive / walk switch;
+        - a green-tinted NEAREST card with a big icon, name, address, travel time, distance and
+          "Show ›";
+        - "MORE NEARBY" rows in one rounded group: tinted icon, name, address, distance and the
+          travel time.
+        MKDirections ETAs are fetched for the closest six only, because it is rate-limited.
+        Sim ✓.
       - Search fix: `MosqueSearch.find` sets `regionPriority = .required` and searches at least
         ~5 km across. With the region only a hint, "Search this area" somewhere else returned the
         same places near you again (owner: "28 in my area" with no pins in view). Not re-tried
