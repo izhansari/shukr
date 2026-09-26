@@ -364,10 +364,15 @@ struct DailyAyahView: View {
     @StateObject private var viewModel = DailyAyahViewModel()
     @Environment(\.presentationMode) var presentationMode
 
-    // Animation and unlock states
+    // Animation and unlock states: the verse waits small and blurred, "from afar"; the reveal
+    // brings it forward as the blur lifts, with a light blooming behind it.
     @State private var isUnlocked = false
-    @State private var blurRadius: CGFloat = 10
-    @State private var scale: CGFloat = 0.5
+    @State private var blurRadius: CGFloat = 12
+    @State private var scale: CGFloat = 0.6
+    @State private var bloom = false
+    /// The surah caption flips between its name and its meaning ("an-nisaa" ⇄ "the women").
+    @State private var showSurahMeaning = false
+    @Environment(\.colorScheme) private var colorScheme
     @State private var showShareOptions = false
     
     // Timer publisher to update countdown every second
@@ -379,7 +384,10 @@ struct DailyAyahView: View {
     /// Revealed once, it stays revealed for the rest of the day.
     private static let revealedDayKey = "dailyAyah.revealedDay"
     private var revealedToday: Bool {
-        (UserDefaults.standard.object(forKey: Self.revealedDayKey) as? Date).map { Calendar.current.isDateInToday($0) } ?? false
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoAyahUnrevealed") { return false }
+        #endif
+        return (UserDefaults.standard.object(forKey: Self.revealedDayKey) as? Date).map { Calendar.current.isDateInToday($0) } ?? false
     }
 
     /// Hands the revealed verse to the Daily Ayah widget (it never shows one before the reveal).
@@ -393,131 +401,183 @@ struct DailyAyahView: View {
     }
 
     func handleUnlock(){
-        guard !isUnlocked else { return }
+        guard !isUnlocked, blurRadius > 0 else { return }
         UserDefaults.standard.set(Date(), forKey: Self.revealedDayKey)
         publishToWidget()
-        withAnimation(.easeInOut(duration: 2)) {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.7)
+        withAnimation(.easeOut(duration: 1.8)) { bloom = true }
+        withAnimation(.easeInOut(duration: 2.2)) {
             blurRadius = 0
-            scale = 0.7
+            scale = 1
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation(.easeInOut(duration: 0.5)) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.4)
+            withAnimation(.easeInOut(duration: 0.6)) {
                 isUnlocked = true
             }
         }
     }
+
+    private var surah: Surah? {
+        guard let ayah = viewModel.currentAyah else { return nil }
+        return viewModel.surahs.first(where: { $0.number == ayah.surah })
+    }
+
+    /// The verse: the surah's name as a small header, the Arabic, the ayah's star marker, the
+    /// meaning and the translator (tap → change translation, once revealed).
+    @ViewBuilder private func verse(_ ayah: Ayah) -> some View {
+        VStack(spacing: 0) {
+            if let surah {
+                VStack(spacing: 4) {
+                    Text(surah.name)
+                        .font(.custom("KFGQPCUthmanTahaNaskh", size: 20))
+                        .foregroundStyle(Color.sage)
+                    Text("\(showSurahMeaning ? surah.englishNameTranslation : surah.englishName) · \(surah.number):\(ayah.ayah)".lowercased())
+                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                        .tracking(1.6)
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.opacity)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard isUnlocked else { return }
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.easeInOut(duration: 0.25)) { showSurahMeaning.toggle() }
+                        }
+                }
+                .padding(.bottom, 26)
+            }
+            ArabicVerseText(text: ayah.arabic, size: 30,
+                            color: UIColor.label.withAlphaComponent(0.92))
+                .padding(.horizontal, 26)
+            AyahMarker(number: ayah.ayah)
+                .padding(.vertical, 22)
+            Text(ayah.english)
+                .font(.system(size: 17, weight: .light, design: .rounded))
+                .foregroundStyle(.primary.opacity(0.78))
+                .lineSpacing(5)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Text(ayah.translator)
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
+                .padding(.horizontal, 48)
+                .contentShape(Rectangle())
+                .onTapGesture { if isUnlocked { showingSettings = true } }
+            // Keep reading, at the end of the verse (floating at the bottom, it sat on long ones).
+            if let surah {
+                Link(destination: URL(string: "https://quran.com/\(surah.number)?startingVerse=\(ayah.ayah)")!) {
+                    HStack(spacing: 5) {
+                        Text("Continue reading on Quran.com")
+                        Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .semibold))
+                    }
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(Color.green)
+                    .padding(.horizontal, 18)
+                    .frame(height: 40)
+                    .background(Capsule().fill(Color.green.opacity(0.1)))
+                }
+                .padding(.top, 30)
+                .opacity(isUnlocked ? 1 : 0)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { if isUnlocked { showingSettings = true } }
+    }
     
     var body: some View {
-        ZStack{
-            // Top Bar
-            VStack(){
+        ZStack {
+            // A soft light behind the verse: it blooms out as the ayah is revealed, then stays
+            // as a faint glow that breathes (sage on white, a deeper green in dark mode).
+            // A blurred circle, not a RadialGradient: the gradient reached past the view's own
+            // rectangle and was cut off there, so the glow had a visible box around it (owner).
+            // A blurred shape fades to nothing by itself.
+            Ellipse()
+                .fill(Color.sage.opacity(colorScheme == .dark ? 0.30 : 0.20))
+                .frame(width: 300, height: 420)
+                .blur(radius: 90)
+                .scaleEffect(bloom ? 1.15 : 0.35)
+                .opacity(bloom ? 1 : 0)
+                .phaseAnimator([false, true]) { glow, breathing in
+                    glow.opacity(isUnlocked ? (breathing ? 1 : 0.65) : 1)
+                } animation: { _ in .easeInOut(duration: 4) }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
+            // Center: the verse, scrolling when it's long.
+            GeometryReader { geo in
+                ScrollView(showsIndicators: false) {
+                    VStack {
+                        Spacer(minLength: 120)
+                        if let ayah = viewModel.currentAyah {
+                            // Anchored at the top: a long verse, shrunk around its middle,
+                            // waited far down the page behind the hint.
+                            verse(ayah)
+                                .blur(radius: blurRadius)
+                                .scaleEffect(scale, anchor: .top)
+                        } else {
+                            Text("Loading verse…").foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 90)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                }
+                .scrollDisabled(!isUnlocked)
+                .scrollBounceBehavior(.basedOnSize)   // a verse that fits doesn't scroll at all
+            }
+
+            // Before the reveal: the whole page is the button, with a quiet hint.
+            if !isUnlocked {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { handleUnlock() }
+                    .ignoresSafeArea()
+                VStack {
+                    Spacer()
+                    Text("tap to reveal today's ayah")
+                        .font(.system(size: 13, weight: .light, design: .rounded))
+                        .tracking(0.5)
+                        .foregroundStyle(.secondary)
+                        .phaseAnimator([0.45, 1.0]) { t, o in t.opacity(o) } animation: { _ in .easeInOut(duration: 1.8) }
+                        .opacity(blurRadius > 0 && !bloom ? 1 : 0)
+                        .padding(.bottom, 70)
+                }
+                .allowsHitTesting(false)
+            }
+
+            // Top: back, the countdown to the next verse, share.
+            VStack {
                 HStack(alignment: .center) {
-                    Button(action: {
-                        presentationMode.wrappedValue.dismiss()
-                    }) {
+                    Button { presentationMode.wrappedValue.dismiss() } label: {
                         Image(systemName: "chevron.left")
                             .font(.title2)
                             .padding()
                     }
                     Spacer()
-                    // Countdown timer at the top
                     DailyAyahCountdownView(viewModel: viewModel)
                         .font(.footnote)
                     Spacer()
-                    // Opens the look picker (AyahShareOptionsSheet). Its sheet hangs off the page's
-                    // root: attached here, inside a view that also presents the translation sheet,
-                    // SwiftUI never presented it.
-                    if viewModel.currentAyah != nil {
-                        Button { showShareOptions = true } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.title2)
-                                .padding()
-                        }
-                        .buttonStyle(.plain)
+                    // Its sheet hangs off the page's root (see showShareOptions).
+                    Button { showShareOptions = true } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title2)
+                            .padding()
                     }
+                    .buttonStyle(.plain)
+                    .opacity(viewModel.currentAyah != nil ? 1 : 0)
                 }
                 .foregroundColor(.primary)
                 .padding(.top, 10)
-                .opacity(isUnlocked ? 1 : 0) // Only show once unlocked, if desired.
+                .background(
+                    LinearGradient(colors: [Color(UIColor.systemBackground), Color(UIColor.systemBackground).opacity(0)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .padding(.bottom, -30)
+                        .ignoresSafeArea()
+                )
+                .opacity(isUnlocked ? 1 : 0)
                 Spacer()
-            }
-            
-            // Center Items
-            VStack(){
-                Spacer()
-                
-                // Verse display area
-                if let ayah = viewModel.currentAyah {
-                    VStack(spacing: 10) {
-                        Text(ayah.arabic)
-                            .font(.custom("KFGQPCUthmanTahaNaskh", size: 36))
-                            .lineLimit(nil)
-                            .lineSpacing(5) // Adjust this value to increase or decrease line spacing
-                            .padding()
-                        
-                        Group{
-                            Text(ayah.english)
-                                .font(.title3)
-                                .padding(.horizontal)
-                            
-                            Text("— \(ayah.translator)")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                        }
-                        .onTapGesture {
-                            if isUnlocked{
-                                showingSettings = true
-                            }
-                            else {
-                                handleUnlock()
-                            }
-                        }
-                    }
-                    .multilineTextAlignment(.center)
-                    .padding()
-                    .blur(radius: blurRadius)
-                    .scaleEffect(scale)
-                    // Tapping triggers the unlock animation if not already unlocked.
-                    .onTapGesture {
-                        handleUnlock()
-                    }
-                } else {
-                    Text("Loading verse...")
-                }
-                
-                Spacer()
-            }
-            
-            // Bottom Items
-            VStack(spacing: 20) {
-                
-                Spacer()
-                
-                ZStack(){
-                    HStack{
-                        Spacer()
-                        if let ayah = viewModel.currentAyah, let surah = viewModel.surahs.first(where: { $0.number == ayah.surah }) {
-                            // Place the header at the top.
-                            VStack{
-                                SurahHeaderView(surah: surah, ayahNumber: ayah.ayah)
-                                    .font(.callout)
-                                    .foregroundColor(.secondary)
-//                                    .scaleEffect(scale)
-                                let url = URL(string: "https://quran.com/\(surah.number)?startingVerse=\(ayah.ayah)")!
-                                
-//                                let url = URL(string: "https://quran.com/\(surah.number)/\(ayah.ayah)")!
-                                
-                                Link("Continue reading on Quran.com", destination: url)
-                                    .font(.footnote)
-                                    .tint(.green)
-                            }
-                        } else {
-                            Text("Surah data not found.")
-                        }
-                        Spacer()
-                    }
-                    .opacity(isUnlocked ? 1 : 0)
-                }
             }
         }
         .background(Color(UIColor.systemBackground))
@@ -536,13 +596,84 @@ struct DailyAyahView: View {
         .onAppear {
             if revealedToday {   // already revealed today: open straight to it
                 blurRadius = 0
-                scale = 0.7
+                scale = 1
+                bloom = true
                 isUnlocked = true
             }
             publishToWidget()
         }
         .onChange(of: viewModel.currentAyah?.english) { _, _ in publishToWidget() }   // translation switched
         
+    }
+}
+
+/// The Arabic of the verse through UILabel: the Qur'an font's own line height is tall (room for
+/// its marks), and SwiftUI's Text can only add spacing, never take it away — the lines sat far
+/// apart (owner). A paragraph line-height multiple brings them together; glyphs still draw in full.
+struct ArabicVerseText: UIViewRepresentable {
+    let text: String
+    let size: CGFloat
+    let color: UIColor
+    var lineHeightMultiple: CGFloat = 0.82
+
+    func makeUIView(context: Context) -> UILabel {
+        let label = UILabel()
+        label.numberOfLines = 0
+        label.lineBreakMode = .byWordWrapping
+        label.clipsToBounds = false
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }
+
+    func updateUIView(_ label: UILabel, context: Context) {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        style.baseWritingDirection = .rightToLeft
+        style.lineHeightMultiple = lineHeightMultiple
+        label.attributedText = NSAttributedString(string: text, attributes: [
+            .font: UIFont(name: "KFGQPCUthmanTahaNaskh", size: size) ?? .systemFont(ofSize: size),
+            .foregroundColor: color,
+            .paragraphStyle: style,
+        ])
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UILabel, context: Context) -> CGSize? {
+        let width = proposal.width ?? 320
+        let fit = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: ceil(fit.height) + size * 0.35)   // room for the top marks
+    }
+}
+
+/// The ayah's number in an eight-pointed star, like the markers between verses in a mushaf.
+struct AyahMarker: View {
+    let number: Int
+
+    private var arabicDigits: String {
+        let f = NumberFormatter()
+        f.locale = Locale(identifier: "ar_SA@numbers=arab")   // ٤٦, not 46
+        return f.string(from: NSNumber(value: number)) ?? "\(number)"
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Rectangle().fill(LinearGradient(colors: [.clear, Color.sage.opacity(0.5)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 44, height: 0.75)
+            ZStack {
+                ForEach([0.0, 45.0], id: \.self) { angle in
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .stroke(Color.sage.opacity(0.75), lineWidth: 1)
+                        .frame(width: 21, height: 21)
+                        .rotationEffect(.degrees(angle))
+                }
+                Text(arabicDigits)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.sage)
+                    .minimumScaleFactor(0.6)
+            }
+            .frame(width: 30, height: 30)
+            Rectangle().fill(LinearGradient(colors: [Color.sage.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 44, height: 0.75)
+        }
     }
 }
 

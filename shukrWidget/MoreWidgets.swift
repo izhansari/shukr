@@ -48,8 +48,14 @@ private struct BrandBackground: View {
             LinearGradient(colors: [Color(red: 0.07, green: 0.17, blue: 0.12), Color(red: 0.02, green: 0.05, blue: 0.035)],
                            startPoint: .top, endPoint: .bottom)
         } else {
-            LinearGradient(colors: [Color(red: 0.94, green: 0.975, blue: 0.94), Color(red: 0.82, green: 0.91, blue: 0.84)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing)
+            // Stronger than the share card's mint: on a small widget that one read as plain white
+            // (owner). A soft light in the top corner keeps it from going flat.
+            ZStack {
+                LinearGradient(colors: [Color(red: 0.86, green: 0.945, blue: 0.875), Color(red: 0.66, green: 0.84, blue: 0.71)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                RadialGradient(colors: [Color.white.opacity(0.55), .clear],
+                               center: .topLeading, startRadius: 0, endRadius: 190)
+            }
         }
     }
 }

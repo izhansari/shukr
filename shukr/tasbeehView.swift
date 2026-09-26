@@ -695,6 +695,14 @@ struct tasbeehView: View {
             tasbeeh = min(tasbeeh + step, 10000) // Adjust maximum value as needed
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
+            if step > 1 {
+                // Counting in sets: a quick ta-ta-ta instead of one tap, so it's felt, not just
+                // seen (owner kept counting in sets after a pause without noticing).
+                let tick = UIImpactFeedbackGenerator(style: .light)
+                tick.prepare()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { tick.impactOccurred(intensity: 0.8) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { tick.impactOccurred(intensity: 0.6) }
+            }
             // Every hundred crossed (a set can jump over the exact multiple).
             if tasbeeh / 100 > before / 100 { triggerSomeVibration(type: .error) }
         }
@@ -1196,12 +1204,22 @@ struct tasbeehView: View {
                          on: false) { tasbeehColorMode.toggle() }
                 }
                 }
-                HStack(spacing: 12) {
-                    // Two taps (owner: cleaner than an "are you sure?"): the first arms it — a
-                    // green edge and green text, "Tap to finish" — the second finishes; it
-                    // disarms after 3 s. (Red read as a warning; owner.) The two states crossfade
-                    // (both labels stacked, a soft blur between them) and the green fill eases in,
-                    // so arming isn't a jump (owner, 2026-09-25).
+                // One button: Resume (owner, 2026-09-26: two big buttons side by side made the
+                // coloured one feel like "end" — he was scared to press it). Finishing is a small
+                // secondary "Finish early" underneath, still two taps: the first turns it green,
+                // "Tap again to finish", the second finishes; it disarms after 3 s.
+                VStack(spacing: 6) {
+                    // A green edge and green text, not a filled bar (owner: the full green bar felt
+                    // heavy), centred, not edge to edge.
+                    Button { togglePause() } label: {
+                        Label("Resume", systemImage: "play.fill")
+                            .font(.system(size: 17, weight: .medium, design: .rounded))
+                            .foregroundStyle(Color.sage)
+                            .frame(width: 210, height: 52)
+                            .background(Capsule().fill(Color.sage.opacity(0.08)))
+                            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+                            .contentShape(Capsule())
+                    }
                     Button {
                         if finishArmed {
                             triggerSomeVibration(type: .medium)
@@ -1218,38 +1236,20 @@ struct tasbeehView: View {
                         }
                     } label: {
                         ZStack {
-                            Text("Finish")
+                            Text("Finish early")
+                                .foregroundStyle(.secondary)
                                 .opacity(finishArmed ? 0 : 1)
                                 .blur(radius: finishArmed ? 3 : 0)
-                                .scaleEffect(finishArmed ? 0.92 : 1)
-                            Text("Tap to finish")
+                            Text("Tap again to finish")
                                 .foregroundStyle(Color.green)
                                 .opacity(finishArmed ? 1 : 0)
                                 .blur(radius: finishArmed ? 0 : 3)
-                                .scaleEffect(finishArmed ? 1 : 1.08)
                         }
-                        .fontWeight(.medium)
+                        .font(.system(size: 14, weight: .regular, design: .rounded))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .foregroundStyle(Color.primary)
-                        .background {
-                            ZStack {
-                                Capsule().fill(Color.green.opacity(finishArmed ? 0.10 : 0))
-                                Capsule().strokeBorder(Color.primary.opacity(finishArmed ? 0 : 0.18), lineWidth: 1)
-                                Capsule().strokeBorder(Color.green.opacity(finishArmed ? 1 : 0), lineWidth: 1.5)
-                            }
-                        }
-                        .contentShape(Capsule())
-                        .animation(.easeInOut(duration: 0.35), value: finishArmed)
-                    }
-                    Button { togglePause() } label: {
-                        Label("Resume", systemImage: "play.fill")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 15)
-                            .foregroundStyle(Color.sage)
-                            .background(Capsule().fill(Color.sage.opacity(0.18)))
-                            .contentShape(Capsule())
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                        .animation(.easeInOut(duration: 0.3), value: finishArmed)
                     }
                 }
                 .buttonStyle(.plain)
@@ -1567,15 +1567,16 @@ struct PostSalahReminder: View {
     var body: some View {
         let r = Self.reminders[variant % Self.count]
         VStack(spacing: 8) {
+            // Quieter than the count (owner: in dark mode it read bright white).
             Text(r.title)
                 .font(.system(size: 17, weight: .regular, design: .rounded))
-                .foregroundStyle(.primary.opacity(0.8))
+                .foregroundStyle(.primary.opacity(0.5))
             Text(r.text)
                 .font(.footnote.weight(.light))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.primary.opacity(0.36))
             Text(r.source)
                 .font(.caption2)
-                .foregroundStyle(Color.sage)
+                .foregroundStyle(Color.sage.opacity(0.75))
                 .padding(.top, 2)
         }
         .multilineTextAlignment(.center)

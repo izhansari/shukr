@@ -131,7 +131,7 @@ struct QuickAddStepper: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Count in sets")
-                Text(step > 0 ? "switch on +\(step) and each tap counts \(step)" : "recite a set, tap once")
+                Text(step > 0 ? "on, each tap counts \(step)" : "recite a set, tap once")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

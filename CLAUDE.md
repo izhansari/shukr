@@ -150,6 +150,9 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   buzz per tap. The every-hundred buzz checks for a crossing, because a set can jump over the
   exact multiple. It's off at the start of each session, and turns off if the mantra's step drops
   to ≤ 1. Sim ✓ (12 → 18 in two taps).
+  Felt, too (2026-09-26): with sets on, each tap is a quick triple tick (the usual haptic, then
+  two light ones 70 ms apart). The owner resumed a paused session still counting in sets and
+  didn't notice.
 - **Fajr rollover and the 15 Pro migration:** "haven't checked but I guess it's fine...?" Still
   unverified. Between midnight and Fajr, yesterday's prayers should still be up and zikr should
   count for yesterday. On the 15 Pro's first open, look for `✅ schema V2 data pass` and no ❌.
@@ -301,6 +304,42 @@ many-entry widget "not performant"):
 - Sim ✓: all three render in the gallery with real data (Zikr tasks, today's name). Taps into the
   app and the reveal → widget update are not tested yet.
 
+**2026-09-26 — Daily Ayah page + widget mint** (owner: the page was plain once revealed, the
+Arabic lines too far apart, and the widgets' mint too subtle in light mode):
+- **Reveal:** tap anywhere on the unrevealed page, with a pulsing "tap to reveal today's ayah"
+  hint. The verse waits small (0.6×, anchored at the top so a long one isn't pushed down behind
+  the hint) and blurred. The reveal brings it to full size as the blur lifts, a sage light
+  blooms out behind it, with two soft haptics. Chrome fades in after.
+- **Revealed:**
+  - the surah's Arabic name in sage over a tracked "an-nisaa · 4:46";
+  - the Arabic through `ArabicVerseText` (a UILabel with `lineHeightMultiple` 0.82 — SwiftUI Text
+    can only add line spacing, and the Uthmani font's own line height is tall);
+  - an eight-pointed star `AyahMarker` with the number in Arabic digits (٤٦) between hairlines;
+  - the English in light rounded type; the translator (tap → translation picker);
+  - "Continue reading on Quran.com" as a green capsule at the end of the text (floating at the
+    bottom it sat on long verses).
+  - A faint sage glow breathes behind it all. It is a blurred `Ellipse`: the first version was a
+    `RadialGradient` whose radius ran past the view's own frame, so it was cut off in a visible
+    rectangle (owner).
+  - Tap the surah caption to flip between its name and its meaning ("an-nisaa" ⇄ "the women").
+    The old `SurahHeaderView` did this and the redesign had dropped it.
+  - `.scrollBounceBehavior(.basedOnSize)`: a verse that fits doesn't scroll or bounce.
+  - The page scrolls for long verses. The timer and share stay at the top.
+- DEBUG `-demoAyahUnrevealed` shows the page unrevealed even if today's was revealed.
+- **Widgets:** `BrandBackground` light mode is a stronger mint (0.86/0.945/0.875 → 0.66/0.84/0.71)
+  with a soft white light in the top-left corner.
+- Sim ✓: unrevealed → tap in empty space → revealed; long verse (4:46) scrolls; the Name widget
+  is visibly mint.
+
+**2026-09-26 — pause screen bottom:** Resume is the only big button now: a centred 210 pt capsule
+with a sage edge and sage text on a faint tint. The first try was a full-width filled bar, and the
+owner didn't like it. Under
+it, "Finish early" in small secondary text, still two taps: the first turns it green, "Tap again to
+finish", and it disarms after 3 s. Owner: with two big buttons side by side, the coloured one felt
+like "end" and he was scared to press it. The Tasbih Fatimah reminder under the count is quieter
+(title primary 0.5, text 0.36, source sage 0.75); it read bright white in dark mode. The count-in-sets
+subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
+
 **Earlier builds (details in the sections below):**
 1. Mantra page (`MantraEditorView`), phone ✓:
    - pause-card look, read-only until ✎, nav bar never changes height;
@@ -338,14 +377,12 @@ many-entry widget "not performant"):
   complete).
 - Reminders: keep rotating all four, or pick one or two.
 
-**Release / TestFlight:** **2.0 (6) was uploaded 2026-09-25** from 28e418f (archive:
-`build/shukr-2.0-6.xcarchive`). 2.0 (5) was never uploaded. Next upload: bump
-`CURRENT_PROJECT_VERSION` (8 occurrences) to 7. Upload with
+**Release / TestFlight:** **2.0 (7) uploaded 2026-09-26** (after 2.0 (6) on 2026-09-25). Next
+upload: bump `CURRENT_PROJECT_VERSION` (8 occurrences) to 8. Upload with
 `env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive … -exportOptionsPlist
 build/ExportOptions.plist`. Homebrew's rsync breaks the export, so keep PATH as shown. A
-"missing Xcode-Token" line in the log was harmless this time: the upload still succeeded. The dev
-toggles (wheel / mosque icon / post-salah style / ring playground) live in the `#if DEBUG`
-"My Dev Stuff" section, so they won't ship.
+"missing Xcode-Token" line in the log can be harmless; check for "Upload succeeded". The dev
+toggles live in the `#if DEBUG` "My Dev Stuff" section and won't ship.
 
 ## Start here: outstanding work, in priority order
 
