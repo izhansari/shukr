@@ -301,6 +301,10 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
       mode that's a green arrow pointing where the qibla is on screen, tap → qibla-up; otherwise a
       red north needle.
     - Guide page 2 is now "The top of your phone is the qibla".
+    - The green arrow also brings you home (2026-09-27, quick fix): `LocationViewModel.homeQiblaUp(on:)`
+      = one camera move to your dot, qibla-up, and back to `qiblaSpan` zoom when the screen is more
+      than 1.5× wider (in metres, measured across the view, so a turned map doesn't skew it). The
+      red north needle (prayer spots / mosques) still only turns the map. Sim ✓.
   - Qibla zoom is `Coordinator.qiblaSpan` (~220 m across, 4× closer than `closeSpan`; owner) on
     open, on coming back from a layer and for locate in qibla mode. The green line is redrawn once
     the dot moves ~2 m (it was 25 m, which left it visibly starting off the dot at this zoom).

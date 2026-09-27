@@ -451,6 +451,27 @@ final class LocationViewModel: ObservableObject {
         if let centre { camera.centerCoordinate = centre }
         mapView.setCamera(camera, animated: animated)
     }
+    /// Qibla mode's home button (2026-09-27, quick fix): back to your dot, qibla-up, and back to
+    /// the qibla zoom if you'd zoomed well out — one camera move. Zoom is compared by how many
+    /// metres the screen is across, which (unlike the region's span) doesn't grow when the map is
+    /// turned.
+    func homeQiblaUp(on user: CLLocationCoordinate2D) {
+        guard let mapView, let camera = mapView.camera.copy() as? MKMapCamera else { return }
+        camera.heading = Self.bearingToMecca(from: user)
+        camera.centerCoordinate = user
+        let midY = mapView.bounds.midY
+        let left = mapView.convert(CGPoint(x: mapView.bounds.minX, y: midY), toCoordinateFrom: mapView)
+        let right = mapView.convert(CGPoint(x: mapView.bounds.maxX, y: midY), toCoordinateFrom: mapView)
+        let across = CLLocation(latitude: left.latitude, longitude: left.longitude)
+            .distance(from: CLLocation(latitude: right.latitude, longitude: right.longitude))
+        // How wide `qiblaSpan` shows the map in portrait (its longitude span is the tighter one).
+        let target = MapView.Coordinator.qiblaSpan.longitudeDelta * 111_320 * cos(user.latitude * .pi / 180)
+        if across > target * 1.5 {
+            camera.centerCoordinateDistance *= target / across
+        }
+        mapView.setCamera(camera, animated: true)
+    }
+
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -1111,7 +1132,14 @@ struct LocationMapContentView: View {
                                 // Only while the map is turned; its own view so rotating
                                 // re-renders just it.
                                 MapNorthButton(anchor: anchor, qiblaBearing: inQiblaMode ? viewModel.qiblaBearing : nil) {
-                                    if inQiblaMode { viewModel.pointQiblaUp() } else { viewModel.resetMapHeading() }
+                                    // Qibla: back to your dot as well; browsing pins / mosques: north only.
+                                    if inQiblaMode {
+                                        if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
+                                            viewModel.homeQiblaUp(on: here)
+                                        } else {
+                                            viewModel.pointQiblaUp()
+                                        }
+                                    } else { viewModel.resetMapHeading() }
                                 }
                             }
                             .mapGlass(Capsule())

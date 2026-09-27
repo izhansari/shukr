@@ -292,5 +292,11 @@
     "title": "Choosing a zikr looks like the Azkar page",
     "tryIt": ["New task → tap Zikr → \"Choose a zikr\" with ✕ and ＋, the same rows as Azkar (text, pace), search at the bottom", "The zikr already picked has a green check", "Search also finds words in a zikr's text or notes"],
     "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "title": "The green qibla-up button also brings you back to your dot",
+    "tryIt": ["Open the map → turn it with two fingers, zoom out and drag away", "Tap the green arrow under locate → one move back to your dot, qibla-up, at the qibla zoom", "In prayer spots / mosques the red needle still only turns the map north"],
+    "checked": "sim"
   }
 ]
