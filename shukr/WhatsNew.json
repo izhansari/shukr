@@ -599,10 +599,22 @@
       "checked": "sim", "shots": ["wn-whatsnew-addressed-not-draft.jpg"]
     },
     {
-      "id": "apple-watch-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "id": "apple-watch-1", "date": "2026-09-27", "commit": "7fc2573", "time": "2026-09-27T17:53:01-04:00", "topic": "apple-watch", "notes": null,
       "title": "The watch ring matches the phone: it fills as the prayer's window passes, green → yellow → red by the score you'd get now; NEXT with a dashed ring before a prayer starts; tap for time left",
       "tryIt": ["Open shukr on the watch during a prayer: the ring fills and is coloured like the phone's circle", "Tap the ring: \"ends 6:45 PM\" ⇄ \"54m left\"", "Complications (circular, corner, Smart Stack): fill forward in the same colour; dashed ring + NEXT before a prayer starts"],
       "checked": "sim", "shots": ["wn-watch-ring-fills.jpg"]
+    },
+    {
+      "id": "whats-new-10", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "Feedback: \"Still off\" on a card that already has an unsent note no longer copies or overwrites it; each gets its own box",
+      "tryIt": ["Write a note on a card (don't send) → on its addressed note tap Still off: the box is empty; save it", "The card's own box still has your first note"],
+      "checked": "sim"
+    },
+    {
+      "id": "built-in-azkar-7", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar sorting keeps a steady order for ties (built-ins in their usual order, yours A–Z); a search of just spaces doesn't count",
+      "tryIt": ["Azkar → Sort → Least recited: the never-used ones stay in the usual order"],
+      "checked": "sim"
     }
   ]
 }

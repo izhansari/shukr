@@ -61,7 +61,13 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   Follow-ups (2026-09-27): a note an entry `addresses` is never a draft (not in unsent / Send feedback, never loaded
   into the box); "Still off" always saves a new note (its own id — a later fix lists **that** id in `addresses`);
   `addressing()` skips dropped / replaced entries; feedback.md lists every note with its state (received, to check,
-  closed, reopened); the card thumbnail skips superseded entries; Archive search covers note text. DEBUG `-demoWhatsNewArchive YES` opens the
+  closed, reopened); the card thumbnail skips superseded entries; Archive search covers note text.
+  Later the same day: one draft lookup, `FeedbackStore.draft(for:followUpOf:)`, used by save() AND the composer (the
+  composer used `unsent(for:)` — any draft — so a "Still off" loaded the plain draft and duplicated it, and the card's box
+  could overwrite a follow-up). `unsent(for:)` stays for badges / the Unsent section. feedback.md is also rewritten at
+  launch and after received.json loads. `WhatsNew.addressing` is cached per id. A hidden card's draft still lists under
+  Unsent notes (on purpose: an unsent note shouldn't vanish). Azkar: sort ties fall back to the section order (built-ins'
+  curated order, yours A–Z); the filter resets on appear when you have no own zikr; the library trims its search. DEBUG `-demoWhatsNewArchive YES` opens the
   Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
   on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's

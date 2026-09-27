@@ -143,12 +143,17 @@ enum WhatsNew {
     static func card(id: String) -> WhatsNewCard? { cards.first { $0.id == id } }
 
     /// The newest change that lists this feedback id in `addresses`.
-    static func addressing(_ id: UUID) -> WhatsNewEntry? {
+    /// Cached per id: the entries are fixed for the build, and every note's state asks this.
+    @MainActor static func addressing(_ id: UUID) -> WhatsNewEntry? {
+        if let hit = addressingCache[id] { return hit }
         let full = id.uuidString.lowercased()
-        return entries.last { e in
+        let found = entries.last { e in
             !e.superseded && (e.addresses ?? []).contains { a in a.count >= 8 && full.hasPrefix(a.lowercased()) }
         }
+        addressingCache[id] = .some(found)
+        return found
     }
+    @MainActor private static var addressingCache: [UUID: WhatsNewEntry?] = [:]
 
     // MARK: Hidden cards (by hand): topic → the latest change's id when it was hidden
 
@@ -526,7 +531,7 @@ struct WhatsNewView: View {
 
     /// The card's newest note, as a word: received / sent / addressed / closed.
     private func statusText(_ card: WhatsNewCard) -> String? {
-        guard let item = feedback.all(for: card.id).last(where: { feedback.unsent(for: card.id)?.id != $0.id }) else { return nil }
+        guard let item = feedback.all(for: card.id).last(where: { if case .draft = feedback.state($0) { false } else { true } }) else { return nil }
         switch feedback.state(item) {
         case .received(let d):
             return "received " + (Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : WhatsNew.whenLabel(d))
@@ -888,7 +893,9 @@ struct WhatsNewDetailView: View {
                     VStack(alignment: .leading, spacing: 14) {
                         // Earlier notes, greyed with where they stand; the box under them is for
                         // new feedback (a received note isn't edited again).
-                        let past = feedback.all(for: card.id).filter { feedback.unsent(for: card.id)?.id != $0.id }
+                        // Everything but the box's own draft (a "Still off" follow-up draft lists here
+                        // as "Not sent yet"; its own composer edits it).
+                        let past = feedback.all(for: card.id).filter { feedback.draft(for: card.id)?.id != $0.id }
                         ForEach(past) { item in pastNote(item) }
                         if !past.isEmpty { Divider() }
                         FeedbackComposer(card: card)

@@ -136,6 +136,8 @@ struct MantrasView: View {
         .onChange(of: query) { _, _ in selection.removeAll() }
         // The last zikr of your own deleted: the "only mine" filter would come back on by itself later.
         .onChange(of: hasOwn) { _, has in if !has { hideBuiltIns = false } }
+        // …and if that happened while this page wasn't open (a zikr deleted from its own page).
+        .onAppear { if !hasOwn { hideBuiltIns = false } }
         .sheet(item: $editingMantra) { mantra in
             MantraEditorView(mantra: mantra)
         }
@@ -158,6 +160,13 @@ struct MantrasView: View {
     /// Within a section. Stats come from each zikr's sessions, worked out once per call.
     private func sorted(_ list: [MantraModel], builtIn: Bool) -> [MantraModel] {
         let sort = AzkarSort(rawValue: sortRaw) ?? .standard
+        // Ties (same count, never used, no pace…) keep the section's own order: the built-ins'
+        // curated order, yours A–Z. Swift's sort isn't stable, so it's an explicit tiebreak.
+        let rank: [PersistentIdentifier: Int] = Dictionary(uniqueKeysWithValues: list
+            .sorted { builtIn ? BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name)
+                              : $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            .enumerated().map { ($1.persistentModelID, $0) })
+        let tie = { (a: MantraModel, b: MantraModel) in (rank[a.persistentModelID] ?? 0) < (rank[b.persistentModelID] ?? 0) }
         switch sort {
         case .standard:
             return builtIn ? list.sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
@@ -168,19 +177,24 @@ struct MantrasView: View {
             let counts = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.totalCount) })
             return list.sorted {
                 let a = counts[$0.persistentModelID] ?? 0, b = counts[$1.persistentModelID] ?? 0
+                if a == b { return tie($0, $1) }
                 return sort == .mostRecited ? a > b : a < b
             }
         case .recent:
             let last = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.sessions.map(\.startTime).max() ?? .distantPast) })
-            return list.sorted { (last[$0.persistentModelID] ?? .distantPast) > (last[$1.persistentModelID] ?? .distantPast) }
+            return list.sorted {
+                let a = last[$0.persistentModelID] ?? .distantPast, b = last[$1.persistentModelID] ?? .distantPast
+                return a == b ? tie($0, $1) : a > b
+            }
         case .slowest, .fastest:
             // Never-counted ones go last either way.
             let pace = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.secondsPerCount) })
             return list.sorted {
                 switch (pace[$0.persistentModelID] ?? nil, pace[$1.persistentModelID] ?? nil) {
-                case let (a?, b?): return sort == .slowest ? a > b : a < b
+                case let (a?, b?): return a == b ? tie($0, $1) : (sort == .slowest ? a > b : a < b)
                 case (_?, nil): return true
-                default: return false
+                case (nil, _?): return false
+                default: return tie($0, $1)
                 }
             }
         }
@@ -784,6 +798,9 @@ struct ZikrLibraryView: View {
     }
 
     private var editing: Bool { editingHistory || editingAzkar }
+    /// What the pages filter by: a stray space doesn't count as a search (it hid the built-ins'
+    /// filter state and redrew both pages for nothing).
+    private var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
     private var showsEdit: Bool {
         tab == .history ? !anySession.isEmpty : (hasOwnZikr || editingAzkar)
     }
@@ -810,14 +827,14 @@ struct ZikrLibraryView: View {
                 // page turn (the scroll position, the switch, the toolbar), and without these walls
                 // both lists — History regrouping every session — redrew three times mid-swipe (owner:
                 // paging lagged).
-                LibraryPage(search: search, editing: $editingHistory) { search, editing in
+                LibraryPage(search: trimmedSearch, editing: $editingHistory) { search, editing in
                     HistoryPageView(search: search, editing: editing)
                 }
                 .equatable()
                 .scrollDisabled(false)          // the lists keep scrolling while paging is off
                 .containerRelativeFrame(.horizontal)
                 .id(Tab.history)
-                LibraryPage(search: search, editing: $editingAzkar) { search, editing in
+                LibraryPage(search: trimmedSearch, editing: $editingAzkar) { search, editing in
                     MantrasView(embedded: true, externalSearch: search, editing: editing)
                 }
                 .equatable()
@@ -872,7 +889,7 @@ struct ZikrLibraryView: View {
             if tab == .mantras {
                 // iOS 18: the ＋ and the filter stay top right (iOS 26 puts them by the search field).
                 if !editingAzkar && !Self.bottomBarPlus {
-                    ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !search.isEmpty) }
+                    ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !trimmedSearch.isEmpty) }
                     ToolbarItem(placement: .topBarTrailing) { newZikrButton }
                 }
             }
@@ -881,7 +898,7 @@ struct ZikrLibraryView: View {
             if #available(iOS 26.0, *) {
                 // Azkar: the built-ins filter, left of the search field (only with azkar of your own).
                 if tab == .mantras && !editingAzkar {
-                    ToolbarItem(placement: .bottomBar) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !search.isEmpty) }
+                    ToolbarItem(placement: .bottomBar) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !trimmedSearch.isEmpty) }
                     ToolbarSpacer(.fixed, placement: .bottomBar)
                 }
                 if !editing {
