@@ -9,7 +9,10 @@
 //    64-slot budget; ids "zikr.<task uuid>.<prayer day>", owned by the scheduler).
 //  - Not on days the task is already done: finishing it removes that day's pending one
 //    (`taskMaybeDone`), and the plan skips it.
-//  - Actions: Start now (opens that task, like the Zikr widget's rows), Later (30 min), Skip today.
+//  - Actions: Start now (opens that task, like the Zikr widget's rows), Later (30 min). ("Skip
+//    today" was dropped, 2026-09-27 review.)
+//  - Every task delete goes through `TaskModel.delete(_:in:)`, which reschedules so its reminders
+//    go (a deleted task's "Start now" pointed at nothing).
 //
 
 import Foundation
@@ -20,7 +23,6 @@ enum ZikrReminders {
     static let category = "ZikrReminder"
     static let startAction = "ZIKR_START_ACTION"
     static let laterAction = "ZIKR_LATER_ACTION"
-    static let skipAction = "ZIKR_SKIP_ACTION"
     /// Posted when a reminder asks to open its task while the app is running (object: task id).
     static let openTask = Notification.Name("zikrReminderOpenTask")
 
@@ -29,13 +31,21 @@ enum ZikrReminders {
     static func id(task: UUID, day: Date) -> String { "\(prefix)\(task.uuidString).\(PrayerNotificationID.dayKey(day))" }
     static func owns(_ id: String) -> Bool { id.hasPrefix(prefix) }
 
+    /// A delivered reminder from an earlier prayer day (cleared like the prayer ones).
+    static func isStaleDelivered(_ id: String, todayKey: String, dayStart: Date) -> Bool {
+        if id.hasPrefix(prefix) { return String(id.suffix(10)) < todayKey }
+        if id.hasPrefix(laterPrefix), let ts = Double(id.split(separator: ".").last ?? "") {
+            return Date(timeIntervalSince1970: ts) < dayStart
+        }
+        return false
+    }
+
     static func registerCategory() -> UNNotificationCategory {
         UNNotificationCategory(
             identifier: category,
             actions: [
                 UNNotificationAction(identifier: startAction, title: "Start now", options: [.foreground]),
                 UNNotificationAction(identifier: laterAction, title: "Later (30 min)", options: []),
-                UNNotificationAction(identifier: skipAction, title: "Skip today", options: []),
             ],
             intentIdentifiers: [], options: [])
     }
@@ -88,6 +98,9 @@ enum ZikrReminders {
         let sessions = todaysSessions(context)
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))
         var items: [NotificationScheduler.Item] = []
+        if (try? PrayerUtils.getUserCoordinates()) == nil, tasks.contains(where: { $0.reminderKind == "prayer" }) {
+            print("⚠️ zikr reminders: no saved location yet — prayer-based reminders skipped until there is one")
+        }
         for task in tasks {
             let doneToday = task.isCompleted(with: task.progress(in: sessions))
             for offset in 0...7 {
@@ -161,6 +174,17 @@ enum ZikrReminders {
     }
 }
 
+// MARK: - Deleting a task
+
+extension TaskModel {
+    /// The one way to delete a task: its sessions stay in history (nullify), its reminders go.
+    @MainActor static func delete(_ task: TaskModel, in context: ModelContext) {
+        context.delete(task)
+        try? context.save()
+        NotificationScheduler.reschedule(context: context, reason: "task deleted")
+    }
+}
+
 // MARK: - The picker
 
 import SwiftUI
@@ -205,6 +229,9 @@ struct ReminderDraft: Equatable {
 struct TaskReminderSheet: View {
     @State private var draft: ReminderDraft
     let original: ReminderDraft
+    /// Notifications allowed? nil = never asked. A reminder with them off would do nothing silently.
+    @State private var permission: UNAuthorizationStatus?
+    private var hasLocation: Bool { (try? PrayerUtils.getUserCoordinates()) != nil }
     var onCancel: () -> Void
     var onSave: (ReminderDraft) -> Void
 
@@ -275,6 +302,7 @@ struct TaskReminderSheet: View {
                 weekdayChips
                 Text(draft.summary)
                     .font(.footnote).foregroundStyle(.secondary)
+                notice
             }
 
             Spacer(minLength: 0)
@@ -284,9 +312,45 @@ struct TaskReminderSheet: View {
         .padding(.bottom, 12)
         .fontDesign(.rounded)
         .animation(.snappy, value: draft.kind)
-        .presentationDetents([.height(520)])
+        .task { await refreshPermission() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            Task { await refreshPermission() }   // back from the Settings app
+        }
+        .presentationDetents([.height(560)])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
+    }
+
+    /// Why a reminder couldn't go out: notifications off / never asked, or no location for a
+    /// prayer-based one (2026-09-27 review — both used to fail silently).
+    @ViewBuilder private var notice: some View {
+        if permission == .denied {
+            noticeRow("Notifications are off", action: "Open Settings") {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+            }
+        } else if permission == .notDetermined {
+            noticeRow("shukr can't notify you yet", action: "Allow") {
+                UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
+                    Task { await refreshPermission() }
+                }
+            }
+        } else if draft.kind == "prayer" && !hasLocation {
+            noticeRow("Needs your location for prayer times", action: nil) {}
+        }
+    }
+    private func noticeRow(_ text: String, action: String?, run: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
+            Text(text).foregroundStyle(.secondary)
+            if let action {
+                Text("·").foregroundStyle(.tertiary)
+                Button(action, action: run).fontWeight(.medium).foregroundStyle(Color.green)
+            }
+        }
+        .font(.footnote)
+    }
+    @MainActor private func refreshPermission() async {
+        permission = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
     private var weekdayChips: some View {

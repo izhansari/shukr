@@ -1522,8 +1522,16 @@ edit task sheet's "Name (optional), e.g. After Fajr" field. Widget not looked at
 - Content: title = the task's title, body "Bismillah · 50 counts · ~3 min"; category
   "ZikrReminder": Start now (foreground) / tap → `ZikrReminders.open` (the widget rows' app-group
   flags + a post that PrayerTimesView handles when already open → Zikr page, `ZikrFocus`),
-  Later (30 min) → a one-off "zikrlater.<task>.<ts>" (not owned, survives reschedules),
-  Skip today → removes today's + any "later" one.
+  Later (30 min) → a one-off "zikrlater.<task>.<ts>" (not owned, survives reschedules). "Skip
+  today" was removed (2026-09-27 review).
+- 2026-09-27 review fixes: every task delete goes through `TaskModel.delete(_:in:)` (saves, then
+  reschedules — the wheel's and the grid's deletes used to leave reminders pointing at nothing;
+  sim ✓ "removed 7"); the task sheet saves explicitly (a reminder only in memory was lost when the
+  app was killed before autosave); earlier days' delivered reminders (+ "later" ones) are cleared
+  like prayer ones (`isStaleDelivered`); the reminder sheet says "Notifications are off · Open
+  Settings" / "shukr can't notify you yet · Allow" / "Needs your location for prayer times"
+  (untested — the simulator can't change notification permission); a prayer-based reminder with no
+  saved location is logged.
 - Sim ✓: 10 min after Fajr, Saturday off → six pending (Sun–Fri at Fajr + 10); a clock-time
   reminder fired as "Subhanallah · 10 min". Actions not tappable in the sim — untested.
 

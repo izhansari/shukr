@@ -733,7 +733,7 @@ struct MantraTaskCircles: View {
             .alert("Delete this task?",
                    isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                    presenting: deleting) { task in
-                Button("Delete", role: .destructive) { withAnimation { context.delete(task) }; deleting = nil; NotificationScheduler.reschedule(context: context, reason: "task deleted") }
+                Button("Delete", role: .destructive) { withAnimation { TaskModel.delete(task, in: context) }; deleting = nil }
                 Button("Cancel", role: .cancel) { deleting = nil }
             } message: { _ in
                 Text("Its sessions stay in your history.")

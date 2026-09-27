@@ -204,9 +204,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Widget",
+    "date": "2026-09-27", "commit": "a0a0901", "area": "Widget",
     "title": "The medium Zikr widget fits more tasks and always shows progress",
     "tryIt": ["Add the medium Zikr widget with 5–6 tasks → it shows as many as fit", "A very long task name truncates; its 0/100 stays visible"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "title": "Zikr reminders: fixes and no more \"Skip today\"",
+    "tryIt": ["Give a task a reminder, then delete the task → its reminders stop", "With notifications off, open a task's Reminder → \"Notifications are off · Open Settings\"", "A reminder's actions are now just Start now and Later (30 min)"],
     "checked": "sim"
   }
 ]

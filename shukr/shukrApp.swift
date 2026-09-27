@@ -307,14 +307,11 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         let original = response.notification.request.content
         let subject = original.subtitle.isEmpty ? original.title : original.subtitle
         let userInfo = original.userInfo
-        // Zikr task reminders (ZikrReminders): Start now / tap, Later, Skip today.
+        // Zikr task reminders (ZikrReminders): Start now / tap, Later.
         if original.categoryIdentifier == ZikrReminders.category, let taskID = userInfo["zikrTaskID"] as? String {
             switch response.actionIdentifier {
             case ZikrReminders.laterAction:
                 ZikrReminders.later(original, taskID: taskID, then: completionHandler)
-            case ZikrReminders.skipAction:
-                ZikrReminders.removeToday(taskID: taskID)
-                completionHandler()
             case UNNotificationDismissActionIdentifier:
                 completionHandler()
             default:   // Start now, or a tap on the notification

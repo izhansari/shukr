@@ -86,9 +86,7 @@ struct DailyTasksView: View {
                 primaryButton: .destructive(Text("Delete")) {
                     if let task = taskToDelete {
                         withAnimation{
-                            context.delete(task)
-                    NotificationScheduler.reschedule(context: context, reason: "task deleted")   // its reminders go
-                            NotificationScheduler.reschedule(context: context, reason: "task deleted")   // its reminders go
+                            TaskModel.delete(task, in: context)   // its reminders go too
                             taskToDelete = nil
                             sharedState.resetTasbeehInputs()
                         }
@@ -319,7 +317,7 @@ struct ZikrCircleWheel: View {
             Button("Delete", role: .destructive) {
                 withAnimation {
                     arrangeOrder.removeAll { $0.id == task.id }
-                    context.delete(task)
+                    TaskModel.delete(task, in: context)   // its reminders go too
                     sharedState.resetTasbeehInputs()
                 }
                 taskToDelete = nil
@@ -1299,6 +1297,7 @@ struct AddDailyTaskView: View {
         editingTask.isCountMode = taskIsCountMode
         editingTask.customName = trimmedName
         reminder.apply(to: editingTask)
+        try? context.save()   // a reminder only in memory was lost if the app was killed before autosave
         NotificationScheduler.reschedule(context: context, reason: "task reminder")
         isGoalFocused = false
         isPresented = false
@@ -1318,6 +1317,7 @@ struct AddDailyTaskView: View {
 
         // Save the task to the persistent context
         context.insert(task)
+        try? context.save()
         if reminder.kind != nil { NotificationScheduler.reschedule(context: context, reason: "task reminder") }
 
         isGoalEntryFocused = false //Dismiss keyboard when background tapped

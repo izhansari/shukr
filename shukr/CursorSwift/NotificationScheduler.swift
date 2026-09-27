@@ -107,7 +107,10 @@ enum NotificationScheduler {
         // Earlier days' delivered prayer notifications (and the undated ones of older builds).
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date())
         let delivered = await center.deliveredNotifications()
+        let dayStart = PrayerDay.start()
         let stale = delivered.map(\.request.identifier).filter { id in
+            // Zikr reminders (and their "later" ones) from earlier days too (2026-09-27 review).
+            if ZikrReminders.isStaleDelivered(id, todayKey: todayKey, dayStart: dayStart) { return true }
             guard let parsed = PrayerNotificationID.parse(id) else { return false }
             return (parsed.dayKey ?? "") < todayKey
         }
