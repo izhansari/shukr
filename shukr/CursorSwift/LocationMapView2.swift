@@ -525,6 +525,8 @@ struct MapView: UIViewRepresentable {
     var anchor: MapAnchor
     // Standard / Satellite (the globe button, MapModes.swift), remembered.
     @AppStorage(MapModes.satelliteKey) private var satellite = false
+    /// The app's light / dark / auto setting (Settings), which the map follows (2026-09-27).
+    var dark = false
     private var modesKey: String { "\(satellite)" }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -539,6 +541,7 @@ struct MapView: UIViewRepresentable {
         mapView.isPitchEnabled = false
         mapView.preferredConfiguration = MapModes.configuration(satellite: satellite)
         context.coordinator.appliedModes = modesKey
+        mapView.overrideUserInterfaceStyle = dark ? .dark : .light
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
         mapView.register(MeccaMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "MeccaAnnotationView")
@@ -564,6 +567,8 @@ struct MapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        let style: UIUserInterfaceStyle = dark ? .dark : .light
+        if mapView.overrideUserInterfaceStyle != style { mapView.overrideUserInterfaceStyle = style }
         // Only when the mode changed: a new configuration reloads the map's tiles.
         if context.coordinator.appliedModes != modesKey {
             context.coordinator.appliedModes = modesKey
@@ -878,6 +883,11 @@ struct MapView: UIViewRepresentable {
 struct LocationMapContentView: View {
     @StateObject private var viewModel = LocationViewModel()
     @AppStorage(MapModes.satelliteKey) private var satellite = false
+    /// Light / dark / auto from Settings (0 light, 1 dark, 2 by the sun), like the rest of the app.
+    @AppStorage("modeToggleNew") private var colorMode = 0
+    private var appDark: Bool {
+        colorMode == 1 || (colorMode == 2 && !prayerViewModel.isDaytime)
+    }
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @Environment(\.modelContext) private var context
     @EnvironmentObject var compass: CompassState
@@ -1011,7 +1021,7 @@ struct LocationMapContentView: View {
 
     var body: some View {
         ZStack {
-            MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor)
+            MapView(viewModel: viewModel, envLocation: envLocation, anchor: anchor, dark: appDark)
                 .ignoresSafeArea()
                 .onAppear { viewModel.prayers = prayers }
                 .onChange(of: prayers.count) { _, _ in viewModel.prayers = prayers }
@@ -1103,15 +1113,17 @@ struct LocationMapContentView: View {
                                 MapNorthButton(anchor: anchor, qiblaBearing: inQiblaMode ? viewModel.qiblaBearing : nil) {
                                     if inQiblaMode { viewModel.pointQiblaUp() } else { viewModel.resetMapHeading() }
                                 }
-                                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
-                                Button { guide = currentGuideTopic } label: {
-                                    Image(systemName: "questionmark")
-                                        .mapControlIcon()
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("How this works")
                             }
                             .mapGlass(Capsule())
+                            // "How this works" on its own, under the capsule — like Apple Maps' 3D
+                            // button (owner, 2026-09-27).
+                            Button { guide = currentGuideTopic } label: {
+                                Image(systemName: "questionmark")
+                                    .mapControlIcon()
+                            }
+                            .buttonStyle(.plain)
+                            .mapGlass(Circle())
+                            .accessibilityLabel("How this works")
                         }
                     }
                 }

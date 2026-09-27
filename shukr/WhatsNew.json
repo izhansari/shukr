@@ -252,9 +252,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "date": "2026-09-27", "commit": "95b56cb", "area": "Map",
     "title": "The map's style button is a globe: tap for Satellite, tap again for Standard",
     "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Close and reopen the app → the map keeps your choice"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "title": "The map follows the app's light / dark / auto setting; ? has its own button",
+    "tryIt": ["Settings → switch to dark (or auto after Maghrib) → open the map → the standard map is dark", "The ? sits on its own under the globe / locate buttons"],
     "checked": "sim"
   }
 ]

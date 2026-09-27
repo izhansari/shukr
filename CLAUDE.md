@@ -1390,6 +1390,10 @@ toggles Standard (`MKStandardMapConfiguration`) ⇄ Satellite with labels (`MKHy
 via `preferredConfiguration`, remembered in `@AppStorage("mapMode.satellite")`, applied in `MapView`
 only when it changes. An Apple Maps-style "Map Modes" sheet (live snapshot cards, Traffic, Labels)
 was built the same day (75e7d7d) and removed — owner: just the globe, no traffic. Sim ✓.
+The map follows the app's light / dark / auto setting (`modeToggleNew`; auto = dark outside
+Fajr–Maghrib, `PrayerViewModel.isDaytime`) via `MKMapView.overrideUserInterfaceStyle` — it stayed
+light in dark mode before. The ? is its own glass circle under the globe / locate capsule, like Apple
+Maps' 3D button. Sim ✓ (dark).
 
 **Mosque finder** (`CursorSwift/MosqueFinder.swift`, 2026-09-25): a layer in Explore — no mosque SF Symbol exists, an emoji clashed with the pills and the moons are taken
 (Isha `moon.stars.fill`, 99 Names `moon.stars`), so the owner is picking a `MosqueIconStyle`
