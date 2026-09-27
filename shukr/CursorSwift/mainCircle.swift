@@ -199,11 +199,16 @@ struct MainCircleView: View {
                             }
                         }
                     }
+                    .transition(.opacity)
                 }
                 else {
                     summaryCircle(ogText: $ogText)
+                        .transition(.opacity)
                 }
             }
+            // The day summary ↔ a prayer crossfades (e.g. at Fajr the summary circle — the day's
+            // score / next Fajr — becomes Fajr's ring as the prayer begins, 2026-09-27).
+            .animation(.easeInOut(duration: 0.7), value: showsPrayer)
             .opacity(flourish == nil ? 1 : 0)
             .blur(radius: flourish == nil ? 0 : 8)
             .animation(.easeInOut(duration: 0.45), value: flourish == nil)
@@ -347,14 +352,21 @@ struct MainCircleView: View {
             }
         }
         // The prayer on the circle came into its window while we watched.
+        // Only where the circle can be seen: the Salah page, nothing over it (the map, a pushed page,
+        // a tasbeeh session — PrayerTimesView keeps `WelcomeTarget.canLand` for that). It used to
+        // buzz from the Zikr page, Settings or under the map. At Fajr the circle was showing the day
+        // summary ("next" Fajr lives there, not in a NEXT ring); the summary → Fajr crossfade above
+        // carries the moment then.
         .onChange(of: circleStateKey) { old, new in
             guard old.hasSuffix("|next"), new.hasSuffix("|now"),
                   old.dropLast(5) == new.dropLast(4),                // same prayer, next → now
                   scenePhase == .active, Date().timeIntervalSince(appearedAt) > 2,
+                  sharedState.horizontalPage == .main, WelcomeTarget.canLand,
                   flourish == nil, postSalahFor == nil else { return }
             startMomentID += 1
             let id = startMomentID
             startMoment = PrayerStartStyle(rawValue: startStyleRaw) ?? .fade
+            print("🌅 prayer begins moment played (\(new))")
             DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration) {
                 if startMomentID == id { startMoment = nil }
             }
@@ -364,6 +376,13 @@ struct MainCircleView: View {
             currentTime = newTime
 //            prayer = viewModel.relevantPrayer
         }
+    }
+
+    /// The circle shows a prayer (vs the day summary — e.g. before Fajr, or all done).
+    private var showsPrayer: Bool {
+        _ = currentTime
+        guard postSalahFor == nil, let p = viewModel.relevantPrayer else { return false }
+        return !(p.status() == .upcoming && p.name == "Fajr")
     }
 
     /// "Asr|next" / "Asr|now" for the prayer on the circle (re-read every tick via currentTime).

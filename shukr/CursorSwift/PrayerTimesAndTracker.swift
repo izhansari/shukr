@@ -546,18 +546,25 @@ struct PrayerTimesView: View {
                 // times, then Asr's window closed and Maghrib moved to start in 6 s.
                 // `-prayerStartStyle draw|glow|fade` picks the look.
                 try? await Task.sleep(for: .seconds(1))
-                viewModel.useTestPrayers = true
-                viewModel.fetchPrayerTimes(cameFrom: "demoPrayerStart")
-                viewModel.loadTodaysPrayerObjects()
+                // The loaded prayer day's rows, moved in memory (works at any hour; test prayer
+                // times fell outside the day after midnight).
                 let now = Date()
+                // `-demoPrayerStartPrayer Fajr` picks which prayer starts (default Maghrib); Fajr
+                // starts from the day-summary circle.
+                let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+                let target = order.firstIndex(of: UserDefaults.standard.string(forKey: "demoPrayerStartPrayer") ?? "Maghrib") ?? 3
                 for p in viewModel.todaysPrayers {
-                    switch p.name {
-                    case "Fajr", "Dhuhr", "Asr": p.startTime = now.addingTimeInterval(-3600); p.endTime = now.addingTimeInterval(-60)
-                    case "Maghrib": p.startTime = now.addingTimeInterval(6); p.endTime = now.addingTimeInterval(1800)
-                    default: p.startTime = now.addingTimeInterval(3600); p.endTime = now.addingTimeInterval(7200)
-                    }
+                    p.isCompleted = false
+                    let i = order.firstIndex(of: p.name) ?? 0
+                    if i < target { p.startTime = now.addingTimeInterval(-3600); p.endTime = now.addingTimeInterval(-60); p.isCompleted = true }
+                    else if i == target { p.startTime = now.addingTimeInterval(6); p.endTime = now.addingTimeInterval(1800) }
+                    else { p.startTime = now.addingTimeInterval(3600 * Double(i - target)); p.endTime = p.startTime.addingTimeInterval(1800) }
                 }
                 viewModel.objectWillChange.send()
+                // `-demoPrayerStartOnZikr`: be on the Zikr page when it starts (must not play).
+                if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartOnZikr") {
+                    sharedState.horizontalPage = .zikr
+                }
                 return
             }
             guard ProcessInfo.processInfo.arguments.contains("-demoPrayerCompletion") else { return }

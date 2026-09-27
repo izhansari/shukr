@@ -190,5 +190,11 @@
     "title": "What's new: tap the build line",
     "tryIt": ["☰ menu → tap the build line at the bottom → this page", "Tick an item as tested → turn on Untested only"],
     "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "title": "The prayer-begins moment only plays where you can see the circle",
+    "tryIt": ["Sit on the Zikr page or the map as a prayer starts → no buzz", "Stay on the Salah page at Fajr → the summary circle fades into Fajr's ring"],
+    "checked": "sim"
   }
 ]

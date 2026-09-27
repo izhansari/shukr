@@ -1483,10 +1483,15 @@ jumped). An upcoming prayer's progress is 0 (was 1 in a clear colour, so at the 
 sprang from full to empty in green). When the circle's prayer comes into its window *on screen*
 (`circleStateKey` "Asr|next" → "Asr|now", app active, circle up > 2 s, no flourish / post-salah
 offer), the dashed ring / NEXT / dimmed name crossfade (0.8 s) and `PrayerStartMoment` plays with a
-soft haptic. Looks (`PrayerStartStyle`, Settings → My Dev Stuff → Prayer begins): fade (default),
+soft haptic — only on the Salah page with nothing over the circle (`horizontalPage == .main` +
+`WelcomeTarget.canLand`; it used to buzz from the Zikr page / Settings / under the map). The day
+summary ↔ prayer switch crossfades too, which carries the moment at Fajr (the circle shows the
+summary before Fajr, not a NEXT ring). Looks (`PrayerStartStyle`, Settings → My Dev Stuff → Prayer begins): fade (default),
 draw (the dashed ring turns solid sage and swells into the track), glow (one sage breath round the
 track). **Owner is choosing** — keep the winner, delete the rest. Reduce Motion: the crossfade
-only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow]` starts Maghrib 6 s after launch.
+only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow] [-demoPrayerStartPrayer Fajr]
+[-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows in memory; logs
+"🌅 prayer begins moment played").
 
 **Custom task names — schema 2.4.0 (2026-09-27, notes #7).** `TaskModel.customName` (optional),
 plus the reminder fields for notes #11 in the same lightweight bump: `reminderKind` ("time" /

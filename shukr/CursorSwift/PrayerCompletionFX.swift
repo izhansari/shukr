@@ -256,10 +256,8 @@ struct PrayerStatusDot: View {
     }
 }
 
-// MARK: - Post-salah offer
+// MARK: - Prayer begins
 
-/// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):
-/// in the main circle (hold to mark, lift, tap again — no reaching for a pill) or the old pill.
 /// The moment a prayer on the circle comes into its window (notes quick fix, 2026-09-27). Every
 /// style crossfades "next" → "now" (dashed ring, NEXT and the dimmed name) with one soft haptic;
 /// the owner is choosing the extra between these in Settings → My Dev Stuff → Prayer begins.
@@ -313,6 +311,10 @@ struct PrayerStartMoment: View {
     }
 }
 
+// MARK: - Post-salah offer
+
+/// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):
+/// in the main circle (hold to mark, lift, tap again — no reaching for a pill) or the old pill.
 enum PostSalahPromptStyle: String, CaseIterable, Identifiable {
     case nudge, circle, pill
     static let key = "postSalahPromptStyle"
