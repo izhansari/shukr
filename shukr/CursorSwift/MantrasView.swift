@@ -368,11 +368,17 @@ struct MantraCardFields: View {
                           placeholder: "notes — why or when you read it, who taught you",
                           minHeight: Self.paneHeight - 8, centered: false, inset: false)
             } else {
-                Text(notes.isEmpty ? "no notes yet" : notes)
-                    .font(.subheadline)
-                    .foregroundStyle(notes.isEmpty ? .tertiary : .primary)
-                    .padding(.horizontal, 13)
-                    .padding(.vertical, 12)
+                // Long notes scroll inside the box; short ones don't bounce.
+                ScrollView {
+                    Text(notes.isEmpty ? "no notes yet" : notes)
+                        .font(.subheadline)
+                        .foregroundStyle(notes.isEmpty ? .tertiary : .primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 12)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollIndicators(.hidden)
             }
         }
         // Same filled box as the memo / photo tabs (editing draws its own).

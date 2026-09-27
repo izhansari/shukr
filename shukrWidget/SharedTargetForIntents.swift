@@ -123,8 +123,11 @@ enum SharedStore {
     static func runV2DataPass(in container: ModelContainer) {
         guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
         do {
-            let summary = try ShukrV2DataPass.run(in: ModelContext(container))
+            let context = ModelContext(container)
+            let summary = try ShukrV2DataPass.run(in: context)
             print("✅ schema V2 data pass: \(summary)")
+            // The built-ins' Arabic + notes and four new ones, once (BuiltInAzkar.swift).
+            if let azkar = BuiltInAzkar.applyIfNeeded(in: context) { print("✅ built-in azkar: \(azkar)") }
         } catch {
             print("❌ schema V2 data pass failed (will retry next launch): \(error)")
         }

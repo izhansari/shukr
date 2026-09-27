@@ -149,6 +149,17 @@ code; in UI strings write "zikr". New UI text must follow this.
   `-demoZikrEmpty` (Astaghfirullah, empty tabs).
 - Sim ✓: all three tabs filled and empty, the pause strip. Recording on a real mic and the camera
   are untested (no mic / camera in the sim).
+- In view mode long notes scroll inside the box (`.scrollBounceBehavior(.basedOnSize)`).
+- **Built-in azkar** (`Models/BuiltInAzkar.swift`, once per install, flag `builtInAzkar.v1` in
+  standard defaults, run after the V2 data pass): the four old built-ins get their Arabic
+  (`fullText`) and a meaning + source note, **only into empty fields**; four new ones are added
+  (La ilaha illallahu wahdahu · SubhanAllahi wa bihamdihi · Allahumma salli 'ala Muhammad ·
+  Hasbunallahu wa ni'mal-wakil), matched by name ignoring case / spaces / punctuation so nothing
+  is doubled. It never runs again, so a deleted one stays deleted (the old four are still
+  re-seeded bare by the data pass, as before). Log `✅ built-in azkar: added=… filled=…`.
+  **⚠️ The hadith sources were written from memory — they need a knowledgeable check before
+  release** (with the Tasbih Fatimah reminders).
+- DEBUG `-demoZikrName <name>` with `-demoZikrEmpty` opens that zikr's page.
 
 ## Handoff — 2026-09-25 evening (read this first)
 

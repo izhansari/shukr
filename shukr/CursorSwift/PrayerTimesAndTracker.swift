@@ -466,9 +466,10 @@ struct PrayerTimesView: View {
                 if !ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") { demoMantra = m; return }
             }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrEmpty") {
-                // A zikr with no photo / memo, for the empty tabs.
+                // A zikr's page by name (`-demoZikrName <name>`, default Astaghfirullah — no photo / memo).
                 try? await Task.sleep(for: .seconds(1))
-                if let m = MantraModel.find(named: "Astaghfirullah", in: context) { demoMantra = m; return }
+                let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
+                if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
             if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
                 try? await Task.sleep(for: .seconds(1))

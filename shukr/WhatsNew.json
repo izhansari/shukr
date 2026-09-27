@@ -270,9 +270,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "9b55d78", "area": "Zikr",
     "title": "A zikr can hold a voice memo and a photo beside its notes",
     "tryIt": ["Open a zikr → the three icons left of the notes box: notes / voice memo / photo — tapping swaps the box in place", "Voice memo → Tap to record (asks for the mic once, max 2 min) → play, 0.75×, loop; ··· to record again or delete", "Photo → Add a photo or Take one → tap it to zoom; hold for replace / remove", "Start that zikr, pause → the memo's ▶︎ and the photo's thumbnail are on the pause card", "Music playing? It carries on after the memo"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "title": "The built-in azkar have their Arabic and a note, and there are four more",
+    "tryIt": ["Zikr page → books → Azkar: Alhamdulillah, Subhanallah, Allahu Akbar, Astaghfirullah now show their Arabic", "New: La ilaha illallahu wahdahu, SubhanAllahi wa bihamdihi, Allahumma salli 'ala Muhammad, Hasbunallahu wa ni'mal-wakil", "Open one → the note says what it means and where it's from (long notes scroll in the box)", "Anything you'd already written in a built-in's text or notes is kept"],
     "checked": "sim"
   }
 ]
