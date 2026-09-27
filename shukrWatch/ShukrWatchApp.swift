@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import WatchKit
 import WatchConnectivity
 import WidgetKit
 
@@ -34,6 +35,13 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
 
     override init() {
         super.init()
+        #if DEBUG
+        // `-demoWatch`: a standalone watch simulator has no phone to send the context — seed New
+        // York, ISNA, Shafi'i so the ring and complications can be looked at.
+        if ProcessInfo.processInfo.arguments.contains("-demoWatch") {
+            _ = WatchStore.save(["lat": 40.7128, "lon": -74.006, "method": 2, "school": 0, "city": "New York"])
+        }
+        #endif
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -110,40 +118,77 @@ struct WatchHomeView: View {
     }
 }
 
-/// The phone's main circle, small: a thick pale track, the arc draining as the prayer's time runs
-/// out, the name and "ends 6:48" / "at 5:32" inside.
+/// The phone's main circle, small (owner, 2026-09-27: the watch showed a green sliver draining while
+/// the phone showed a nearly full red ring). Same as the phone: a pale band as the track, a thin arc
+/// that *fills* as the window passes (butt cap), coloured by the score you'd get marking it now
+/// (green Perfect · yellow On time · red Late). A prayer that hasn't started: an empty arc, a dashed
+/// track, "NEXT" over a dimmed name. Tap: "ends 5:21 PM" ⇄ "31m left", with a click.
 struct WatchPrayerRing: View {
     let prayer: WatchPrayer
     let current: Bool
     let now: Date
+    @State private var showLeft = false
 
-    private var left: Double {
+    private var elapsed: Double {
         guard current, prayer.end > prayer.start else { return 0 }
-        return max(0, min(1, prayer.end.timeIntervalSince(now) / prayer.end.timeIntervalSince(prayer.start)))
+        return max(0, min(1, now.timeIntervalSince(prayer.start) / prayer.end.timeIntervalSince(prayer.start)))
+    }
+
+    /// "31m left" / "1h 5m left".
+    private var leftText: String {
+        let minutes = max(0, Int(prayer.end.timeIntervalSince(now) / 60))
+        return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m left" : "\(minutes)m left"
     }
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.white.opacity(0.12), lineWidth: 8)
+            // The phone's 200 pt circle has a 12 pt band and a 4 pt arc; scaled to ~118 pt.
+            if current {
+                Circle().stroke(Color.white.opacity(0.12), lineWidth: 7)
+            } else {
+                Circle().stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
+            }
             Circle()
-                .trim(from: 0, to: left)
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .trim(from: 0, to: elapsed)
+                .stroke(WatchScoring.color(start: prayer.start, end: prayer.end, at: now),
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 2) {
-                Image(systemName: WatchPrayers.symbol(prayer.name))
-                    .font(.system(size: 14, weight: .light))
-                Text(prayer.name)
-                    .font(.system(size: 20, weight: .light, design: .rounded))
+                HStack(spacing: 4) {
+                    Image(systemName: WatchPrayers.symbol(prayer.name))
+                        .font(.system(size: 13, weight: .light))
+                    Text(prayer.name)
+                        .font(.system(size: 19, weight: .light, design: .rounded))
+                }
+                .foregroundStyle(current ? Color.primary : Color.primary.opacity(0.55))
+                .overlay(alignment: .top) {
+                    if !current {
+                        Text("next")
+                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .tracking(1.5)
+                            .textCase(.uppercase)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize()
+                            .offset(y: -14)
+                    }
+                }
                 Group {
                     if current {
-                        Text("ends ") + Text(prayer.end, style: .time)
+                        if showLeft { Text(leftText) } else { Text("ends ") + Text(prayer.end, style: .time) }
                     } else {
                         Text("at ") + Text(prayer.start, style: .time)
                     }
                 }
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
+                .contentTransition(.opacity)
             }
+        }
+        .contentShape(Circle())
+        .onTapGesture {
+            guard current else { return }
+            WKInterfaceDevice.current().play(.click)
+            withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
         }
     }
 }

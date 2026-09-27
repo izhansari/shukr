@@ -805,6 +805,16 @@ too many sheets.
   sends on scene active / background and in `pushCompletionsToWidget`, and never resends unchanged
   context. The watch's `WatchSession` saves it (`WatchStore.save`) and reloads the complications;
   `.backgroundTask(.watchConnectivity)` lets it land while the watch app isn't open.
+- **Watch ring = the phone's circle (2026-09-27, quick fix):** `WatchPrayerRing` fills with time elapsed, 2.5 pt butt-cap
+  arc on a 7 pt pale band, coloured by `WatchScoring.color` (a copy of `PrayerScoring`'s rule in
+  shukrWatchShared/WatchPrayerCore.swift — PrayerScoring.swift also holds SwiftData code, so the watch can't compile it;
+  keep the two in step). Upcoming: empty arc, dashed 1 pt track, NEXT, dimmed name. Tap → "ends 6:45 PM" ⇄ "54m left" +
+  `WKInterfaceDevice.play(.click)`. Complications: `countsDown: false`, `.tint(entry.tint)` (score colour at the entry's
+  date), timeline entries at every start / end **and** each grade change (`WatchScoring.gradeChanges`: +30 min, and the
+  On time → Late point); circular upcoming = dashed ring + tiny NEXT. The watchOS 27 simulator runtime is installed now
+  (Apple Watch Series 12 46mm, AEDA90A5…); DEBUG `-demoWatch` seeds New York / ISNA / Shafi'i so a standalone watch sim
+  shows prayers. Sim ✓ the app's ring (red, filling, at 5:50 during Asr) and the tap; complications not seen (a fresh
+  install didn't show in the watch's widget list).
 - **Watch app:** the prayer ring (like the main circle), today's five times with ✓ for marked ones,
   the city. "Open shukr on your iPhone…" until a location arrives. Read-only: marking prayers and a
   wrist tasbeeh are next (they need WatchConnectivity messages back to the phone).

@@ -11,6 +11,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Adhan
 
 enum WatchStore {
@@ -136,10 +137,12 @@ enum WatchPrayers {
         return (WatchPrayer(name: "Fajr", start: fajr, end: fajr), false)
     }
 
-    /// Moments the complications should redraw: every prayer start and end from now on.
+    /// Moments the complications should redraw: every prayer start and end from now on, plus the
+    /// grade boundaries inside each window (Perfect → On time at +30 min, On time → Late halfway
+    /// through the rest), so the stock timer ring changes colour on time (it can't within an entry).
     static func boundaries(after now: Date = Date()) -> [Date] {
         guard let day = day(at: now) else { return [] }
-        var dates = day.prayers.flatMap { [$0.start, $0.end] }
+        var dates = day.prayers.flatMap { [$0.start, $0.end] + WatchScoring.gradeChanges(start: $0.start, end: $0.end) }
         if let f = day.nextFajr { dates.append(f) }
         return Array(Set(dates.filter { $0 > now })).sorted()
     }
@@ -152,5 +155,43 @@ enum WatchPrayers {
         case "Maghrib": return "sunset.fill"
         default: return "moon.stars.fill"
         }
+    }
+}
+
+/// The phone's scoring rule (shukr/Models/PrayerScoring.swift — the source of truth; that file also
+/// holds SwiftData code, so the watch targets can't compile it). Keep the numbers in step:
+/// Perfect ≤ 30 min after the adhan (100), then sliding to 60 at the window's end (On time ≥ 80,
+/// Late below), Qaza after the window.
+enum WatchScoring {
+    static let earlyWindow: TimeInterval = 30 * 60
+    static let inWindowFloor = 0.6
+
+    /// The score you'd get marking it at `at` (0...1).
+    static func score(start: Date, end: Date, at: Date) -> Double {
+        if at > end { return 0.4 }
+        let elapsed = at.timeIntervalSince(start)
+        if elapsed <= earlyWindow { return 1 }
+        let rest = end.timeIntervalSince(start) - earlyWindow
+        guard rest > 0 else { return 1 }
+        let left = min(max(end.timeIntervalSince(at) / rest, 0), 1)
+        return inWindowFloor + (1 - inWindowFloor) * left
+    }
+
+    /// Green Perfect, yellow On time, red Late — the phone's circle colours.
+    static func color(start: Date, end: Date, at: Date) -> Color {
+        let s = score(start: start, end: end, at: at)
+        if s >= 0.9999 { return .green }
+        if s >= 0.8 { return .yellow }
+        if s >= inWindowFloor - 0.0001 { return .red }
+        return .gray
+    }
+
+    /// When the colour changes inside a window: +30 min, and the On time → Late point (score 0.8,
+    /// halfway through the rest of the window).
+    static func gradeChanges(start: Date, end: Date) -> [Date] {
+        let rest = end.timeIntervalSince(start) - earlyWindow
+        guard rest > 0 else { return [] }
+        let perfectEnds = start.addingTimeInterval(earlyWindow)
+        return [perfectEnds, perfectEnds.addingTimeInterval(rest / 2)]
     }
 }

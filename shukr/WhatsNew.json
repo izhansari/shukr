@@ -42,7 +42,8 @@
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"},
-    {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"}
+    {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
+    {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"}
   ],
   "entries": [
     {
@@ -586,16 +587,22 @@
       "checked": "sim", "shots": ["wn-settings-picker-fixed.jpg"]
     },
     {
-      "id": "built-in-azkar-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "id": "built-in-azkar-6", "date": "2026-09-27", "commit": "b87d36f", "time": "2026-09-27T17:44:36-04:00", "topic": "built-in-azkar", "notes": null,
       "title": "Azkar: the filter button is a Sort + Filter menu: Most / Least recited, Recently used, Slowest / Fastest pace, A–Z, and Show built-ins",
       "tryIt": ["Azkar → tap the filter button left of the search → Most recited: each section re-orders", "Turn off Show built-ins: only yours show; the icon stays filled while a sort or filter is on"],
       "checked": "sim", "shots": ["wn-azkar-sort-most-recited.jpg"], "addresses": ["E164092C"]
     },
     {
-      "id": "whats-new-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "id": "whats-new-9", "date": "2026-09-27", "commit": "b87d36f", "time": "2026-09-27T17:44:36-04:00", "topic": "whats-new", "notes": "#23",
       "title": "What's new: a note a change addressed is no longer an unsent draft (no Save, not counted in Send feedback); \"Still off\" always starts a new note",
       "tryIt": ["Open a card with an addressed note: it's shown with Looks good / Still off, and the box under it is empty"],
       "checked": "sim", "shots": ["wn-whatsnew-addressed-not-draft.jpg"]
+    },
+    {
+      "id": "apple-watch-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "title": "The watch ring matches the phone: it fills as the prayer's window passes, green → yellow → red by the score you'd get now; NEXT with a dashed ring before a prayer starts; tap for time left",
+      "tryIt": ["Open shukr on the watch during a prayer: the ring fills and is coloured like the phone's circle", "Tap the ring: \"ends 6:45 PM\" ⇄ \"54m left\"", "Complications (circular, corner, Smart Stack): fill forward in the same colour; dashed ring + NEXT before a prayer starts"],
+      "checked": "sim", "shots": ["wn-watch-ring-fills.jpg"]
     }
   ]
 }
