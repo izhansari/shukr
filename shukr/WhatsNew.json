@@ -26,7 +26,7 @@
     {"id": "task-names", "area": "Zikr", "title": "Give a zikr task its own name (\"After Fajr\")", "link": "zikr"},
     {"id": "zikr-reminders", "area": "Zikr", "title": "Reminders for zikr tasks: at a time or around a prayer", "link": "zikr",
      "tryIt": ["Zikr → New task (or edit one) → Reminder → At a time / Around a prayer", "Pick the days → Save", "When it fires: Start now opens that task; Later nudges again in 30 min"]},
-    {"id": "whats-new", "area": "Settings", "title": "What's new: one card per feature with its latest change; tap for steps, screenshots, the history and feedback to Claude", "link": "settings",
+    {"id": "whats-new", "area": "Settings", "title": "What's new: what needs you (notes to check, changes to test, unsent notes), an Archive for the rest, feedback back to Claude with received / addressed states", "link": "settings",
      "tryIt": ["Tap the build line (bottom of ☰ or Settings) → one card per feature, newest change first", "Tap a card → try-it steps, screenshots, and every change with its time (dropped ones greyed)", "👍 / 👎 / 💬 on a card, add a note or a photo → Send feedback at the top → share / copy it to Claude; it's marked sent"]},
     {"id": "zikr-widget", "area": "Widget", "title": "The medium Zikr widget fits more tasks and always shows progress"},
     {"id": "welcome", "area": "Welcome", "title": "The welcome animation plays only when the app starts fresh"},
@@ -543,16 +543,40 @@
       "checked": "sim"
     },
     {
-      "id": "built-in-azkar-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "id": "built-in-azkar-5", "date": "2026-09-27", "commit": "1284edd", "time": "2026-09-27T16:46:28-04:00", "topic": "built-in-azkar", "notes": null,
       "title": "Azkar: your own azkar on top, built-ins below, and a filter button that hides the built-ins (no more folding)",
       "tryIt": ["Azkar → your azkar are first, built-ins under them", "Tap the filter button left of the search field: only yours show; tap again to bring the built-ins back", "Search always shows built-ins too"],
       "checked": "sim", "shots": ["wn-azkar-yours-first.jpg", "wn-azkar-mine-only.jpg"], "addresses": ["6B1CFEB8-4CD8-433D-AED6-C2A5BC8B6D9F"]
     },
     {
-      "id": "qibla-haptic-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-5", "date": "2026-09-27", "commit": "1284edd", "time": "2026-09-27T16:46:28-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "The qibla map keeps buzzing (once a second) the whole time you're lined up, and stops when you turn off the line",
       "tryIt": ["Map (qibla) → turn onto the green line and hold: it keeps buzzing; turn away: it stops"],
       "checked": "no", "addresses": ["6FB814B9-9F96-4045-965D-F8240F812DCC"]
+    },
+    {
+      "id": "whats-new-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "What's new v3: \"To check\" for notes a change addressed (Looks good / Still off), only what needs you up top, the rest in a searchable Archive; hide any card",
+      "tryIt": ["☰ → build line → To check: a note of yours with \"Addressed in …\" → Looks good closes it; Still off asks for a new note", "Scroll down: To test, then Archive (tap to open, search it)", "Long-press a card → Hide"],
+      "checked": "sim", "shots": ["wn-whatsnew-to-check.jpg", "wn-whatsnew-archive.jpg"]
+    },
+    {
+      "id": "whats-new-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "Notes Claude has pulled show \"Received by Claude · time\", greyed, with a fresh box for new feedback",
+      "tryIt": ["Open a card you sent feedback on → the note is greyed \"Received by Claude\"; the box under it starts empty"],
+      "checked": "sim", "shots": ["wn-whatsnew-received.jpg"]
+    },
+    {
+      "id": "whats-new-7", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "Open in shukr comes back: History, Azkar, 99 Names, Daily Ayah and Insights open inside What's new (‹ Back = the card); the Salah / Zikr / Settings pages and the map leave a \"‹ What's new\" pill",
+      "tryIt": ["A Zikr card → Open in shukr → Azkar opens in the sheet → ‹ Back: the same card", "A Salah card → Open in shukr → the Salah page with a \"‹ What's new\" pill → tap it: back on the card"],
+      "checked": "sim", "shots": ["wn-whatsnew-return-pill.jpg"]
+    },
+    {
+      "id": "whats-new-8", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "Each change shows its own screenshots in the card's timeline",
+      "tryIt": ["Open a card with several changes → Changes: each has its own picture"],
+      "checked": "sim", "shots": ["wn-whatsnew-timeline-shots.jpg"]
     }
   ]
 }

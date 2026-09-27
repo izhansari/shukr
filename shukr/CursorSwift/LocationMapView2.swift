@@ -1347,6 +1347,7 @@ struct LocationMapContentView: View {
                 .presentationDragIndicator(.visible)
         }
         .toolbar(.hidden, for: .navigationBar)
+        .whatsNewReturnPill()   // What's new → "Open in shukr" to the map
         #if DEBUG
         .task {
             // Simulator only: some past prayers with spots around City Hall, to see the pins.

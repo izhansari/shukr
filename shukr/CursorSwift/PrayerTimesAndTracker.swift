@@ -673,6 +673,7 @@ struct PrayerTimesView: View {
                 sharedState.mantraForSession = chosenMantraObject
             }
         }
+        .whatsNewReturnPill()   // after What's new → "Open in shukr" to a pager page
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }

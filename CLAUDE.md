@@ -15,7 +15,16 @@ Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidg
 
 **Every commit that changes anything a user could see or feel adds a What's new entry in the same
 commit** — with a **topic**, the **notes item #** (from shukr-ideas.md, when there is one), **try-it
-steps** and **a screenshot when it can be seen**. Internal-only changes (refactors, logging,
+steps**, **its own screenshot** and **the feedback ids it fixes**.
+- **Hard rule — a screenshot per change, not per topic:** every new entry whose change can be seen
+  gets its own fresh simulator screenshot (`whatsnew.py shot`, small JPEG) — never rely on an older
+  entry's picture on the same topic. The card shows the newest; the detail's timeline shows each
+  change with its own pictures. Skip only for changes that can't be seen (haptics, background).
+- **Hard rule — close the feedback loop:** whenever a change fixes something from pulled feedback
+  (`shukrGit/feedback/…/feedback.json`, or a note the owner pasted), put the feedback id(s) in that
+  entry: `whatsnew.py add … --addresses <id>` (or `whatsnew.py address --entry <id> --feedback <id>`
+  for one already committed). The app then shows the note under "To check" as "Addressed in
+  <build>: <entry title>" with Looks good ✓ / Still off. Internal-only changes (refactors, logging,
 scripts, notes) don't need one. The owner reads these in the app (tap the build line at the bottom
 of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them and sends feedback back.
 - **Never hand-edit the entries** — use `scripts/whatsnew.py` (it keeps `shukr/WhatsNew.json`'s layout):
@@ -34,7 +43,21 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   …; `checked`: sim | phone | no. Plain, short language; 1–3 concrete steps ("☰ → 99 Names → Known").
 - **Feedback comes back**: the owner marks 👍 / 👎 / 💬 with a note / photo per topic and either
   shares a Markdown summary into the chat, or `scripts/pull-feedback.sh` pulls it from the phones
-  to `shukrGit/feedback/<date>.md` (+ photos). Read it when asked "check my feedback".
+  to `shukrGit/feedback/<date>.md` (+ photos). Read it when asked "check my feedback". The pull also
+  writes `received.json` (id → first pulled time) back into the phone's `Library/Feedback` with
+  `devicectl device copy to` (dev installs only; a TestFlight install refuses — logged, fine), so
+  the app greys each note as "Received by Claude · <time>" with a fresh box under it.
+- **v3 page (2026-09-27, notes #23):** "To check" (notes an entry `addresses`: Looks good closes,
+  Still off reopens and opens a follow-up note linked by `followUpOf`; a cancelled Still off is
+  undone), "To test" (untested, not hidden), "Unsent notes", then a collapsed searchable "Archive"
+  (tested, closed, hidden). Long-press a card → Hide (`whatsNew.hidden`: topic → latest entry id, so
+  a newer change brings it back; an addressed note shows under To check anyway). 👍 Works closes
+  itself once sent / received. Note states: `FeedbackStore.state` (draft / toCheck / received /
+  sent / closed / reopened). "Open in shukr": History / Azkar / 99 Names / Daily Ayah / Insights
+  push inside the sheet (`WhatsNew.pushable`, ‹ Back = the card); Salah / Zikr / Settings / the map
+  close it and leave the "‹ What's new" pill (`WhatsNewReturnPill` on PrayerTimesView and the map;
+  `WhatsNewReturn.card`) that reopens it on that card. DEBUG `-demoWhatsNewArchive YES` opens the
+  Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
   on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's
   `Library/Feedback/`: feedback.json, feedback.md, photos/). Gated by `WhatsNewAccess` (DEBUG, or
