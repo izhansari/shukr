@@ -94,7 +94,8 @@ struct WhatsNewCard: Identifiable {
     var tryIt: [String] { topic.tryIt ?? entries.last(where: { !$0.superseded })?.tryIt ?? latest.tryIt }
     /// Newest first; the thumbnail is the newest change's first screenshot.
     var shots: [String] { entries.reversed().flatMap { $0.shots ?? [] } }
-    var thumbnail: String? { shots.first }
+    /// The newest live change's picture (a dropped / replaced change's screenshot shows the old look).
+    var thumbnail: String? { entries.reversed().first { !$0.superseded && !($0.shots ?? []).isEmpty }?.shots?.first }
     var inThisBuild: Bool { entries.contains(where: \.inThisBuild) }
     var isNew: Bool { entries.contains { WhatsNew.newIDs.contains($0.id) } }
     /// A new change on a tested topic makes it untested again. Keyed by the latest change's
@@ -145,7 +146,7 @@ enum WhatsNew {
     static func addressing(_ id: UUID) -> WhatsNewEntry? {
         let full = id.uuidString.lowercased()
         return entries.last { e in
-            (e.addresses ?? []).contains { a in a.count >= 8 && full.hasPrefix(a.lowercased()) }
+            !e.superseded && (e.addresses ?? []).contains { a in a.count >= 8 && full.hasPrefix(a.lowercased()) }
         }
     }
 
@@ -401,6 +402,7 @@ struct WhatsNewView: View {
             guard !q.isEmpty else { return true }
             return card.title.localizedCaseInsensitiveContains(q) || card.area.localizedCaseInsensitiveContains(q)
                 || card.entries.contains { $0.title.localizedCaseInsensitiveContains(q) }
+                || feedback.all(for: card.id).contains { $0.text.localizedCaseInsensitiveContains(q) }
         }
     }
 
@@ -462,7 +464,10 @@ struct WhatsNewView: View {
                 }
             }
         }
-        .onAppear { feedback.reloadReceived() }
+        .onAppear {
+            feedback.reloadReceived()
+            WhatsNewReturn.shared.card = nil      // opened (any way): the "‹ What's new" pill has done its job
+        }
         .sheet(isPresented: Binding(get: { composing != nil }, set: { if !$0 { closeComposer() } })) {
             if let c = composing {
                 NavigationStack {

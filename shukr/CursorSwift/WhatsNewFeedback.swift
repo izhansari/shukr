@@ -105,12 +105,15 @@ final class FeedbackStore {
     // MARK: Reading
 
     func isSent(_ item: FeedbackItem) -> Bool { item.sentAt != nil || received[item.id] != nil }
-    /// The topic's draft (a received / sent note isn't edited again: a new one starts fresh).
-    func unsent(for topic: String) -> FeedbackItem? {
-        items.last { $0.topic == topic && !isSent($0) && $0.closedAt == nil && $0.reopenedAt == nil }
+    /// Still a draft: not sent / received, not closed / reopened, and not addressed by a change
+    /// (an addressed note reached Claude one way or another — it's "to check", never re-edited).
+    private func isDraft(_ item: FeedbackItem) -> Bool {
+        !isSent(item) && item.closedAt == nil && item.reopenedAt == nil && WhatsNew.addressing(item.id) == nil
     }
+    /// The topic's draft (a received / sent note isn't edited again: a new one starts fresh).
+    func unsent(for topic: String) -> FeedbackItem? { items.last { $0.topic == topic && isDraft($0) } }
     func all(for topic: String) -> [FeedbackItem] { items.filter { $0.topic == topic } }
-    var unsentItems: [FeedbackItem] { items.filter { !isSent($0) && $0.closedAt == nil && $0.reopenedAt == nil } }
+    var unsentItems: [FeedbackItem] { items.filter(isDraft) }
 
     func state(_ item: FeedbackItem) -> FeedbackState {
         if item.reopenedAt != nil { return .reopened }
@@ -136,10 +139,17 @@ final class FeedbackStore {
 
     /// Create or update the topic's unsent item. `photo`: nil = leave, .some(nil) = remove.
     func save(card: WhatsNewCard, kind: FeedbackItem.Kind, text: String, photo: Data??, followUpOf: UUID? = nil) {
-        var item = unsent(for: card.id) ?? FeedbackItem(topic: card.id, topicTitle: card.title, notes: card.notes,
-                                                        commits: card.commits, kind: kind, text: "",
-                                                        build: BuildInfo.line)
-        if let followUpOf { item.followUpOf = followUpOf }
+        let fresh = FeedbackItem(topic: card.id, topicTitle: card.title, notes: card.notes,
+                                 commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
+        // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
+        // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
+        var item: FeedbackItem
+        if let followUpOf {
+            item = items.last { $0.followUpOf == followUpOf && isDraft($0) } ?? fresh
+            item.followUpOf = followUpOf
+        } else {
+            item = items.last { $0.topic == card.id && isDraft($0) && $0.followUpOf == nil } ?? fresh
+        }
         item.topicTitle = card.title
         item.notes = card.notes
         item.commits = card.commits
@@ -295,9 +305,12 @@ final class FeedbackStore {
         if let data = try? encoder.encode(items) {
             try? data.write(to: dir.appendingPathComponent("feedback.json"), options: .atomic)
         }
-        // Unsent first, then sent, newest first within each — what the pull script copies.
-        let ordered = unsentItems.sorted { $0.updated > $1.updated }
-            + items.filter { $0.sentAt != nil }.sorted { $0.updated > $1.updated }
+        // Unsent first, then everything else (sent, received, to check, closed, reopened — each
+        // with its state), newest first within each — what the pull script copies.
+        let drafts = unsentItems
+        let draftIDs = Set(drafts.map(\.id))
+        let ordered = drafts.sorted { $0.updated > $1.updated }
+            + items.filter { !draftIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
         try? markdown(for: ordered).write(to: dir.appendingPathComponent("feedback.md"), atomically: true, encoding: .utf8)
     }
 }

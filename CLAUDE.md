@@ -56,7 +56,12 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   sent / closed / reopened). "Open in shukr": History / Azkar / 99 Names / Daily Ayah / Insights
   push inside the sheet (`WhatsNew.pushable`, ‹ Back = the card); Salah / Zikr / Settings / the map
   close it and leave the "‹ What's new" pill (`WhatsNewReturnPill` on PrayerTimesView and the map;
-  `WhatsNewReturn.card`) that reopens it on that card. DEBUG `-demoWhatsNewArchive YES` opens the
+  `WhatsNewReturn.card`) that reopens it on that card; opening the page any other way clears the pill, and a
+  "map" link does nothing when the map is already up.
+  Follow-ups (2026-09-27): a note an entry `addresses` is never a draft (not in unsent / Send feedback, never loaded
+  into the box); "Still off" always saves a new note (its own id — a later fix lists **that** id in `addresses`);
+  `addressing()` skips dropped / replaced entries; feedback.md lists every note with its state (received, to check,
+  closed, reopened); the card thumbnail skips superseded entries; Archive search covers note text. DEBUG `-demoWhatsNewArchive YES` opens the
   Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
   on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's
@@ -249,7 +254,12 @@ code; in UI strings write "zikr". New UI text must follow this.
   header was dropped): "Your azkar" first, "Built-in" below; `AzkarFilterButton` (the library's
   bottom bar left of the search on iOS 26, top right on iOS 18 / the standalone page;
   `@AppStorage(AzkarFilter.key)` "azkar.hideBuiltIns", filled green while on) hides the built-ins,
-  with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own. Rows are
+  with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own.
+  Since 2026-09-27 (feedback E164092C) the button is a native Menu (`AzkarFilterButton`): Sort (`AzkarSort`, AppStorage
+  "azkar.sort": Default · Most / Least recited · Recently used · Slowest / Fastest pace (never-counted last) · A–Z,
+  applied within each section, stats computed once per list render) and "Show built-ins" (only with azkar of your
+  own; disabled while searching). The icon fills (primary, not green) while a non-default sort or the filter is in
+  effect; deleting your last own zikr turns the filter off. The zikr picker lists yours first too. Rows are
   Buttons, and a List row fires its Button on a tap even with `allowsHitTesting(false)`: the action
   itself returns in Edit mode (a greyed built-in opened its sheet — owner, 2026-09-27).
 - **The original four are seeded once** (`BuiltInAzkar.originalsSeededKey`; the V2 data pass
@@ -973,6 +983,10 @@ Phones:
 Install with `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`.
 
 Uploaded: 2.0 (3) 09-24, (6) 09-25, (7) and (8) 09-26, (9) 09-27 (first with the Apple Watch app).
+(10) 09-27: the iOS 26 Settings-rows fix (pager drag `minimumDistance: 0` → 5), on the public link the same day (IN_BETA_TESTING).
+Note: on a real iOS 26.6 phone the dead rows showed in Release / TestFlight builds and not in Debug installs; in
+the iOS 26.5 simulator Debug was dead too. Verify gesture fixes with a **Release** device install
+(`-configuration Release` + devicectl), not only Debug.
 2.0 (8) went to the public link 09-26. 2.0 (9) went to the public link 09-27 (IN_BETA_TESTING right away).
 When a build goes to external testers, remind the owner about the share card's "download on the
 App Store" wording (see Share card).

@@ -53,8 +53,8 @@ struct MantrasView: View {
                 .navigationTitle("Azkar")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    if mantras.contains(where: { !$0.isBuiltIn }) && !ownEditing {
-                        ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton() }
+                    if !ownEditing {
+                        ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton(hasOwn: hasOwn, searching: !query.isEmpty) }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
@@ -87,8 +87,8 @@ struct MantrasView: View {
                     .foregroundStyle(.secondary)
             } else {
                 // Built-ins apart from the user's own (owner, 2026-09-27); they can't be deleted.
-                let builtIns = shown.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
-                let own = shown.filter { !$0.isBuiltIn }
+                let builtIns = sorted(shown.filter(\.isBuiltIn), builtIn: true)
+                let own = sorted(shown.filter { !$0.isBuiltIn }, builtIn: false)
                 // Yours first, built-ins below (owner, 2026-09-27, feedback 6B1CFEB8 — it replaced
                 // a folding Built-in header). The filter button can hide the built-ins.
                 Section {
@@ -134,6 +134,8 @@ struct MantrasView: View {
         }
         .onChange(of: isEditing) { _, on in if !on { selection.removeAll() } }
         .onChange(of: query) { _, _ in selection.removeAll() }
+        // The last zikr of your own deleted: the "only mine" filter would come back on by itself later.
+        .onChange(of: hasOwn) { _, has in if !has { hideBuiltIns = false } }
         .sheet(item: $editingMantra) { mantra in
             MantraEditorView(mantra: mantra)
         }
@@ -145,11 +147,44 @@ struct MantrasView: View {
         }
     }
 
-    /// The filter button (the library's toolbar, or this page's own) hides the built-ins so only
-    /// yours show — remembered. Never while searching or with none of your own (the page would
-    /// be empty).
+    /// The sort + filter menu (the library's toolbar, or this page's own). "Show built-ins" off
+    /// hides them so only yours show — never while searching or with none of your own (the page
+    /// would be empty). Both remembered.
     @AppStorage(AzkarFilter.key) private var hideBuiltIns = false
-    private var builtInsHidden: Bool { hideBuiltIns && mantras.contains { !$0.isBuiltIn } && query.isEmpty }
+    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.standard.rawValue
+    private var hasOwn: Bool { mantras.contains { !$0.isBuiltIn } }
+    private var builtInsHidden: Bool { hideBuiltIns && hasOwn && query.isEmpty }
+
+    /// Within a section. Stats come from each zikr's sessions, worked out once per call.
+    private func sorted(_ list: [MantraModel], builtIn: Bool) -> [MantraModel] {
+        let sort = AzkarSort(rawValue: sortRaw) ?? .standard
+        switch sort {
+        case .standard:
+            return builtIn ? list.sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
+                           : list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .alphabetical:
+            return list.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .mostRecited, .leastRecited:
+            let counts = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.totalCount) })
+            return list.sorted {
+                let a = counts[$0.persistentModelID] ?? 0, b = counts[$1.persistentModelID] ?? 0
+                return sort == .mostRecited ? a > b : a < b
+            }
+        case .recent:
+            let last = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.sessions.map(\.startTime).max() ?? .distantPast) })
+            return list.sorted { (last[$0.persistentModelID] ?? .distantPast) > (last[$1.persistentModelID] ?? .distantPast) }
+        case .slowest, .fastest:
+            // Never-counted ones go last either way.
+            let pace = Dictionary(uniqueKeysWithValues: list.map { ($0.persistentModelID, $0.secondsPerCount) })
+            return list.sorted {
+                switch (pace[$0.persistentModelID] ?? nil, pace[$1.persistentModelID] ?? nil) {
+                case let (a?, b?): return sort == .slowest ? a > b : a < b
+                case (_?, nil): return true
+                default: return false
+                }
+            }
+        }
+    }
 
     private func row(_ mantra: MantraModel) -> some View {
         Button {
@@ -837,7 +872,7 @@ struct ZikrLibraryView: View {
             if tab == .mantras {
                 // iOS 18: the ＋ and the filter stay top right (iOS 26 puts them by the search field).
                 if !editingAzkar && !Self.bottomBarPlus {
-                    if hasOwnZikr { ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton() } }
+                    ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !search.isEmpty) }
                     ToolbarItem(placement: .topBarTrailing) { newZikrButton }
                 }
             }
@@ -845,8 +880,8 @@ struct ZikrLibraryView: View {
             // animates in as the page turns (owner, 2026-09-27).
             if #available(iOS 26.0, *) {
                 // Azkar: the built-ins filter, left of the search field (only with azkar of your own).
-                if tab == .mantras && !editingAzkar && hasOwnZikr {
-                    ToolbarItem(placement: .bottomBar) { AzkarFilterButton() }
+                if tab == .mantras && !editingAzkar {
+                    ToolbarItem(placement: .bottomBar) { AzkarFilterButton(hasOwn: hasOwnZikr, searching: !search.isEmpty) }
                     ToolbarSpacer(.fixed, placement: .bottomBar)
                 }
                 if !editing {
@@ -885,19 +920,73 @@ private struct LibraryPage<Content: View>: View, Equatable {
 /// Hide the built-in azkar so only yours show (owner, 2026-09-27, feedback 6B1CFEB8).
 enum AzkarFilter { static let key = "azkar.hideBuiltIns" }
 
-/// The filter-style toggle: filled while the built-ins are hidden.
+/// How the Azkar list is ordered, within each section (owner, 2026-09-27, feedback E164092C).
+enum AzkarSort: String, CaseIterable, Identifiable {
+    case standard, mostRecited, leastRecited, recent, slowest, fastest, alphabetical
+    static let key = "azkar.sort"
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .standard: "Default"
+        case .mostRecited: "Most recited"
+        case .leastRecited: "Least recited"
+        case .recent: "Recently used"
+        case .slowest: "Slowest pace"
+        case .fastest: "Fastest pace"
+        case .alphabetical: "A–Z"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .standard: "list.bullet"
+        case .mostRecited: "arrow.down.circle"
+        case .leastRecited: "arrow.up.circle"
+        case .recent: "clock"
+        case .slowest: "tortoise"
+        case .fastest: "hare"
+        case .alphabetical: "textformat"
+        }
+    }
+}
+
+/// Sort + filter, as a native menu: Sort (a picker, applied within yours and within the
+/// built-ins) and Show built-ins (only with azkar of your own, and not while searching — the
+/// built-ins show then anyway). The icon fills while a non-default sort or the filter is in effect.
 struct AzkarFilterButton: View {
+    var hasOwn = true
+    var searching = false
     @AppStorage(AzkarFilter.key) private var hideBuiltIns = false
+    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.standard.rawValue
+
+    private var filterOn: Bool { hideBuiltIns && hasOwn && !searching }
+    private var active: Bool { sortRaw != AzkarSort.standard.rawValue || filterOn }
+
     var body: some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            withAnimation(.snappy(duration: 0.25)) { hideBuiltIns.toggle() }
+        Menu {
+            Picker("Sort", selection: Binding(get: { sortRaw }, set: { new in
+                withAnimation(.snappy(duration: 0.25)) { sortRaw = new }
+            })) {
+                ForEach(AzkarSort.allCases) { Label($0.title, systemImage: $0.symbol).tag($0.rawValue) }
+            }
+            .pickerStyle(.inline)
+            if hasOwn {
+                Section {
+                    Toggle(isOn: Binding(get: { !hideBuiltIns }, set: { show in
+                        withAnimation(.snappy(duration: 0.25)) { hideBuiltIns = !show }
+                    })) {
+                        Label("Show built-ins", systemImage: "books.vertical")
+                    }
+                    .disabled(searching)
+                }
+            }
         } label: {
-            Image(systemName: hideBuiltIns ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                .foregroundStyle(hideBuiltIns ? Color.green : Color.primary)
+            Image(systemName: active ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(Color.primary)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .accessibilityLabel(hideBuiltIns ? "Show built-in azkar" : "Only my azkar")
+        .accessibilityLabel("Sort and filter azkar")
+        .sensoryFeedback(.selection, trigger: sortRaw)
+        .sensoryFeedback(.selection, trigger: hideBuiltIns)
     }
 }
 

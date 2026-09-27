@@ -902,6 +902,8 @@ struct MapView: UIViewRepresentable {
 // MARK: - ContentView
 
 struct LocationMapContentView: View {
+    /// The qibla buzz's last beat (see the aligned task): kept across restarts of that task.
+    @State private var lastAlignBuzz = Date.distantPast
     @StateObject private var viewModel = LocationViewModel()
     @AppStorage(MapModes.satelliteKey) private var satellite = false
     /// Light / dark / auto from Settings (0 light, 1 dark, 2 by the sun), like the rest of the app.
@@ -1059,9 +1061,15 @@ struct LocationMapContentView: View {
                 // Buzzes the whole time you're lined up — once a second — and stops when you turn
                 // off the line (owner, 2026-09-27, feedback 6FB814B9: not once per line-up).
                 // Qibla mode only; the task ends when either changes.
-                .task(id: compass.qibla.aligned && inQiblaMode) {
-                    guard compass.qibla.aligned && inQiblaMode else { return }
+                .task(id: compass.qibla.aligned && inQiblaMode && guide == nil) {
+                    // Not under the map guide sheet. `lastAlignBuzz` outlives the task, so a
+                    // heading wobbling across the threshold (restarting it) still buzzes at most
+                    // about once a second.
+                    guard compass.qibla.aligned && inQiblaMode && guide == nil else { return }
                     while !Task.isCancelled {
+                        let wait = 1 - Date().timeIntervalSince(lastAlignBuzz)
+                        if wait > 0 { try? await Task.sleep(for: .seconds(wait)); continue }
+                        lastAlignBuzz = Date()
                         triggerSomeVibration(type: .heavy)
                         try? await Task.sleep(for: .seconds(1))
                     }

@@ -1023,14 +1023,14 @@ struct MantraPickerView: View {
                             .tint(.green)
                     }
                 } else {
-                    // The same sections as the Azkar list.
+                    // The same sections, in the same order, as the Azkar list: yours first.
                     let builtIns = filteredMantras.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
                     let own = filteredMantras.filter { !$0.isBuiltIn }
-                    if !builtIns.isEmpty {
-                        Section("Built-in") { ForEach(builtIns) { pickRow($0) } }
-                    }
                     if !own.isEmpty {
                         Section("Your azkar") { ForEach(own) { pickRow($0) } }
+                    }
+                    if !builtIns.isEmpty {
+                        Section("Built-in") { ForEach(builtIns) { pickRow($0) } }
                     }
                 }
             }

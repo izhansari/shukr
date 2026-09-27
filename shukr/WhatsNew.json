@@ -35,7 +35,7 @@
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
     {"id": "zikr-wording", "area": "Zikr", "title": "The app says \"zikr\" and \"Azkar\" (never \"mantra\")", "link": "azkar"},
     {"id": "zikr-media", "area": "Zikr", "title": "A zikr can hold a voice memo and a photo beside its notes", "link": "azkar"},
-    {"id": "built-in-azkar", "area": "Zikr", "title": "Built-in azkar (Arabic + a note, locked) listed under your own; a filter button hides them so only yours show", "link": "azkar"},
+    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; a Sort + Filter menu (recited, recent, pace, A–Z; hide the built-ins)", "link": "azkar"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page", "link": "zikr",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
@@ -580,10 +580,22 @@
       "checked": "sim", "shots": ["wn-whatsnew-timeline-shots.jpg"]
     },
     {
-      "id": "settings-rows-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "settings-rows", "notes": null,
+      "id": "settings-rows-1", "date": "2026-09-27", "commit": "c830b80", "time": "2026-09-27T17:25:23-04:00", "topic": "settings-rows", "notes": null,
       "title": "Settings rows respond again on iOS 26: Calculation Method / School pickers, Refresh Location, Choose City, Sneak Peek rows",
       "tryIt": ["Settings → Calculation Method → tap Method or School: the menu opens", "Settings → Sneak Peek → Masjid Map: its sheet opens"],
       "checked": "sim", "shots": ["wn-settings-picker-fixed.jpg"]
+    },
+    {
+      "id": "built-in-azkar-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar: the filter button is a Sort + Filter menu: Most / Least recited, Recently used, Slowest / Fastest pace, A–Z, and Show built-ins",
+      "tryIt": ["Azkar → tap the filter button left of the search → Most recited: each section re-orders", "Turn off Show built-ins: only yours show; the icon stays filled while a sort or filter is on"],
+      "checked": "sim", "shots": ["wn-azkar-sort-most-recited.jpg"], "addresses": ["E164092C"]
+    },
+    {
+      "id": "whats-new-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "title": "What's new: a note a change addressed is no longer an unsent draft (no Save, not counted in Send feedback); \"Still off\" always starts a new note",
+      "tryIt": ["Open a card with an addressed note: it's shown with Looks good / Still off, and the box under it is empty"],
+      "checked": "sim", "shots": ["wn-whatsnew-addressed-not-draft.jpg"]
     }
   ]
 }

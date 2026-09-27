@@ -323,6 +323,7 @@ struct PrayerTimesView: View {
         // What's new → "Open in shukr": after its sheet has gone, go to that feature.
         .onReceive(NotificationCenter.default.publisher(for: WhatsNew.go)) { note in
             guard let link = note.object as? String else { return }
+            if link == "map" && showQiblaMap { return }     // already there: don't close and reopen it
             // Well after the sheet has gone: pushing the library while it was still closing
             // left a second search field in its bottom bar.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
