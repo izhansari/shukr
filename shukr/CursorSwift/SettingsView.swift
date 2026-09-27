@@ -59,6 +59,7 @@ struct SettingsView: View {
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
+    @State private var showNextPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
@@ -363,6 +364,7 @@ struct SettingsView: View {
                                 ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
                             }
                             Button("Ring playground…") { showRingPlayground = true }
+                            Button("NEXT label playground…") { showNextPlayground = true }
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
                                 ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }
@@ -418,6 +420,11 @@ struct SettingsView: View {
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
+        .sheet(isPresented: $showNextPlayground) {
+            #if DEBUG
+            NextLabelPlayground()
+            #endif
+        }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
         .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
         #if DEBUG
@@ -425,6 +432,10 @@ struct SettingsView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoRingPlayground") {
                 try? await Task.sleep(for: .seconds(1.5))
                 showRingPlayground = true
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoNextPlayground") {
+                try? await Task.sleep(for: .seconds(1.5))
+                showNextPlayground = true
             }
         }
         #endif

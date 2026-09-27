@@ -483,10 +483,16 @@
       "checked": "no"
     },
     {
-      "id": "zikr-history-8", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "id": "zikr-history-8", "date": "2026-09-27", "commit": "3b2a6b2", "time": "2026-09-27T14:48:00-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "Edit mode looks like iOS: selection circles, a plain red Delete in the bottom bar, no grey rows; holding a session to feel its pace no longer slides the page",
       "tryIt": ["History → Edit → tick sessions → Delete (N) at the bottom → confirm", "Same on Azkar and on a zikr's page (Sessions → Edit)", "Hold a session to feel its pace and drift sideways → the page stays"],
       "checked": "sim", "shots": ["wn-edit-stock.jpg"]
+    },
+    {
+      "id": "prayer-begins-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "Dev builds: a NEXT label playground to tune its offset, size, opacity and spacing live",
+      "tryIt": ["Settings → My Dev Stuff → NEXT label playground… → move the sliders; the Salah circle follows", "Copy values → paste them back to Claude to make them the default"],
+      "checked": "sim"
     }
   ]
 }

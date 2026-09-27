@@ -1353,7 +1353,7 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   sheets, and re-rendering everything on each write) is gone. NEXT is a small tag (9 pt medium, tracking
   2.5) at `offset(y: -31)` in the app (~12 pt under the qibla arrow at its highest, r 80; its gap
   to the name ~3× the name–caption gap so it reads as separate), 6 pt at `-15` in the home widget;
-  never on the Lock Screen widget (dashed ring only). **Dev toggle** Settings → My Dev Stuff →
+  never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
   "Next prayer": NEXT + dashed ring / dashed ring only (`NextLabel.key` in the app group, so the
   widget follows; reloads timelines). DEBUG `-demoNextLabel on|off`.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when

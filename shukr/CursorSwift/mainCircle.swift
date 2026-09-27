@@ -146,17 +146,9 @@ struct MainCircleView: View {
                                 // like a prayer that's on). An overlay, so the name sits at the same
                                 // spot whether the prayer is next or current — it used to jump.
                                 .overlay(alignment: .top) {
-                                    Text("next")
-                                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                                        .tracking(2.5)
-                                        .textCase(.uppercase)
-                                        .foregroundStyle(.tertiary)
-                                        .fixedSize()
-                                        // A small tag set apart, not a line of the stack: its gap to
-                                        // the name is ~3× the name–caption gap; ~12 pt under the
-                                        // qibla arrow at its highest (r 80), well inside the ring.
-                                        .offset(y: -31)
-                                        .opacity(upcoming && showNextLabel ? 1 : 0)
+                                    // A small tag set apart, not a line of the stack (NextTag;
+                                        // tuned in the DEBUG NEXT label playground).
+                                    NextTag(shown: upcoming && showNextLabel)
                                         .animation(.easeInOut(duration: 0.5), value: upcoming)
                                 }
                                 .animation(animationStyle, value: prayer.name)
@@ -574,14 +566,7 @@ struct summaryCircle: View{
                 }
                 .foregroundStyle(Color.primary.opacity(0.55))
                 .overlay(alignment: .top) {
-                    Text("next")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .tracking(2.5)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize()
-                        .offset(y: -31)   // same tag as the main circle's (set apart from the name)
-                        .opacity(showNextLabel ? 1 : 0)
+                    NextTag(shown: showNextLabel)   // same tag as the main circle's
                 }
 
                 // Displayed Fajr Time:
