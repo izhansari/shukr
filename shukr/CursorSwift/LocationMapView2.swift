@@ -957,7 +957,6 @@ struct LocationMapContentView: View {
         withAnimation {
             viewModel.showPrayers = prayers
             viewModel.showMosques = mosques
-            sharedState.allowQiblaHaptics = !prayers && !mosques
         }
         // Turning the map is for lining up to pray; browsing pins / mosques is north-up and
         // locked (owner, 2026-09-25).
@@ -1067,7 +1066,6 @@ struct LocationMapContentView: View {
                 ZStack(alignment: .top) {
                     HStack {
                         Button {
-                            sharedState.allowQiblaHaptics = true
                             dismiss()
                         } label: {
                             // A down chevron: the map slid up over the app, this sends it back.

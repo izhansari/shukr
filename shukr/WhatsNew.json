@@ -39,7 +39,9 @@
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot"},
-    {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete"}
+    {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete"},
+    {"id": "qibla-haptic", "area": "Salah", "title": "The qibla buzz only happens when the Salah circle is on screen"},
+    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"}
   ],
   "entries": [
     {
@@ -373,10 +375,28 @@
       "checked": "sim", "shots": ["wn-azkar-sections.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "date": "2026-09-27", "commit": "232f54c", "time": "2026-09-27T06:32:02-04:00", "topic": "zikr-history", "notes": "#2b",
       "title": "History: day time in the headers, Edit to select and delete sessions; no more row swipes",
       "tryIt": ["Books → History → each day's header shows its time; tap one → every header shows counts (remembered)", "Edit (top right) → tick sessions → Delete N sessions → confirm; totals and today's tasks update", "Rows no longer swipe; tap one for Zikr · Pace"],
       "checked": "sim", "shots": ["wn-zikr-history-edit.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "More air between NEXT and the prayer name (circle, next Fajr, widget)",
+      "tryIt": ["Mark the current prayer → NEXT sits clearly above the next prayer's name", "Home-screen Prayers widget: same gap, scaled"],
+      "checked": "sim", "shots": ["wn-next-gap.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "title": "The qibla buzz only happens when the Salah circle is on screen",
+      "tryIt": ["Salah page: point the phone at the qibla → it buzzes", "Zikr page, Settings, History, the task sheets, the map or a tasbeeh session → no buzz"],
+      "checked": "no"
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "lockscreen-prayers", "notes": null,
+      "title": "Lock Screen Prayers widget: ring and bar fill up; dashed ring + NEXT for the next prayer",
+      "tryIt": ["Add the Prayers widget to the Lock Screen (small and wide)", "During a prayer the ring and the bar grow as time passes", "Before a prayer starts (or after you've marked one) the small one shows a dashed ring with NEXT"],
+      "checked": "sim", "shots": ["wn-lockscreen-next.jpg"]
     }
   ]
 }

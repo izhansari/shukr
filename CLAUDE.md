@@ -777,6 +777,9 @@ too many sheets.
     symbol and name inside; before a prayer starts, symbol, name and "5:32";
   - rectangular: name, "ends 6:48 PM" / "at 5:32 AM", and a live bar or "in 2 hr 30 min";
   - inline (above the clock): "Asr · ends 6:48 PM".
+- **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
+  the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
+  thin dashed ring and a tiny NEXT (circular).
 - **Zikr** (MoreWidgets.swift): circular = the overall ring (`accessoryCircularCapacity`) with
   beads or ✓ inside; rectangular = "Zikr · N left", the next task "Subhanallah · 0/10 min", and a
   bar.
@@ -1299,6 +1302,11 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   it used to hang under the list with a bare gap; a top row of score dots was tried and dropped —
   owner); all five come back when the day's complete; perfect day pops the
   dots in turn and shows "✦ perfect day".
+- **Qibla haptic** (2026-09-27): `checkToTriggerQiblaHaptic` fires only when `circleOnScreen`
+  (active, Salah page, `WelcomeTarget.canLand`, settled) and the circle's own map isn't up. The old
+  `@Published allowQiblaHaptics` flag (toggled on appear / disappear, left on by the pager and
+  sheets, and re-rendering everything on each write) is gone. NEXT sits at `offset(y: -19)` in the
+  app, `-12` in the widget.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when
   there's text to flip. Type matches the Insights ring (2026-09-25): name 32 pt light rounded,
   icon 22 pt light, captions subheadline thin secondary, score 44 pt light over "today's score".

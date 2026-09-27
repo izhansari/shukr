@@ -140,7 +140,7 @@ struct MainCircleView: View {
                                         .textCase(.uppercase)
                                         .foregroundStyle(.tertiary)
                                         .fixedSize()
-                                        .offset(y: -13)
+                                        .offset(y: -19)   // ~6 pt of air above the name (owner, 2026-09-27)
                                         .opacity(upcoming ? 1 : 0)
                                         .animation(.easeInOut(duration: 0.5), value: upcoming)
                                 }
@@ -263,8 +263,6 @@ struct MainCircleView: View {
         .transition(.opacity)
         .fullScreenCover(isPresented: $showQiblaMap) {
             LocationMapContentView()
-//                .onAppear { sharedState.allowQiblaHaptics = false }
-                .onDisappear{ sharedState.allowQiblaHaptics = true }
         }
         .onAppear {
             #if DEBUG
@@ -275,15 +273,11 @@ struct MainCircleView: View {
             appearedAt = Date()
             settleTrack(trackWantsSolid)
             locationManager.startUpdating() // Start location updates
-            sharedState.allowQiblaHaptics = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 // The prayer day, not the calendar date: after midnight (before the rollover)
                 // Date() is tomorrow's rows, so today's score was never set and read 0 %.
                 viewModel.calculateDayScore(for: PrayerDay.date())
             }
-        }
-        .onDisappear {
-            sharedState.allowQiblaHaptics = false
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }
@@ -417,10 +411,13 @@ struct MainCircleView: View {
         }
     }
 
+    /// Buzz on lining up with the qibla — only when this circle and its arrow can be seen (the
+    /// Salah page, nothing over it, no tasbeeh session, not under its own map). The pager keeps
+    /// every page mounted and sheets don't fire onDisappear, so the old on/off flag stayed on
+    /// (it buzzed on the Zikr page, in sheets, History…). 2026-09-27 quick fix.
     private func checkToTriggerQiblaHaptic(aligned: Bool){
-        guard aligned else {return}
-        if sharedState.allowQiblaHaptics{ triggerSomeVibration(type: .heavy) }
-        print("checkToTriggerQiblaHaptic: allowing haptics = \(sharedState.allowQiblaHaptics)")
+        guard aligned, circleOnScreen, !showQiblaMap else { return }
+        triggerSomeVibration(type: .heavy)
     }
     
     private func handleTap() {
@@ -567,7 +564,7 @@ struct summaryCircle: View{
                         .textCase(.uppercase)
                         .foregroundStyle(.tertiary)
                         .fixedSize()
-                        .offset(y: -13)
+                        .offset(y: -19)   // ~6 pt of air above the name (owner, 2026-09-27)
                 }
 
                 // Displayed Fajr Time:

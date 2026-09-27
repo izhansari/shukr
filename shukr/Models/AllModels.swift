@@ -32,7 +32,6 @@ class SharedStateClass: ObservableObject {
 
     @Published var isDoingPostNamazZikr: Bool = false
 //    @Published var showingOtherPages: Bool = false
-    @Published var allowQiblaHaptics: Bool = false
     @Published var showSalahTabOld: Bool = true
     /// Vertical state of the center page only (.main = circle, .bottom = salah sheet open).
     /// Paging to Zikr / Settings does NOT change this, so the center page comes back exactly

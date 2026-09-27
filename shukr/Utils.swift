@@ -3049,7 +3049,7 @@ struct sideMenu: View {
                 // Sample menu items
                 VStack(alignment: .leading, spacing: 16){
                     
-                    NavigationLink(destination: LocationMapContentView().onDisappear{ sharedState.allowQiblaHaptics = true }) {
+                    NavigationLink(destination: LocationMapContentView()) {
                         Label("Map", systemImage: "map")
                     }
                     

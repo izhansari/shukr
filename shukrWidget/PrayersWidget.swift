@@ -394,7 +394,7 @@ struct PrayersWidgetView: View {
                                             .textCase(.uppercase)
                                             .foregroundStyle(.tertiary)
                                             .fixedSize()
-                                            .offset(y: -8)
+                                            .offset(y: -12)   // the app's gap, scaled
                                     }
                                 }
                                 .lineLimit(1)
@@ -843,7 +843,9 @@ struct PrayerLockScreenView: View {
         ZStack {
             AccessoryWidgetBackground()
             if live {
-                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: true) {
+                // Fills as the window passes, like the app's ring (it used to drain). The stock
+                // timer-driven view is what keeps updating on a widget; custom drawing goes stale.
+                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
                     EmptyView()
                 } currentValueLabel: {
                     VStack(spacing: 0) {
@@ -856,16 +858,28 @@ struct PrayerLockScreenView: View {
                 }
                 .progressViewStyle(.circular)
             } else {
-                VStack(spacing: 1) {
+                // Not started (most of the time once the current one is marked): the app's
+                // "next" look — a thin dashed ring and a tiny NEXT.
+                Circle()
+                    .inset(by: 2.5)
+                    .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2.5, 3.5]))
+                    .opacity(0.55)
+                VStack(spacing: 0) {
+                    Text("next")
+                        .font(.system(size: 7, weight: .medium, design: .rounded))
+                        .tracking(1)
+                        .textCase(.uppercase)
+                        .opacity(0.7)
                     Image(systemName: prayerIcon(for: prayer.name))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 11, weight: .medium))
                     Text(prayer.name)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .lineLimit(1).minimumScaleFactor(0.6)
                     Text(Self.clock.string(from: prayer.start))   // "5:32", no zero, no AM
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
                         .monospacedDigit()
                 }
+                .padding(.horizontal, 6)
             }
         }
         .widgetAccentable()
@@ -891,7 +905,8 @@ struct PrayerLockScreenView: View {
                 .font(.system(size: 13, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
             if live {
-                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: true) {
+                // Fills left → right as the window passes (it used to empty).
+                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
                     EmptyView()
                 } currentValueLabel: {
                     EmptyView()

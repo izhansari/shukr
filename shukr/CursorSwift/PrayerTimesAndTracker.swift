@@ -628,7 +628,7 @@ struct PrayerTimesView: View {
             SettingsView()
         }
         .navigationDestination(isPresented: $showMapPage) {
-            LocationMapContentView().onDisappear { sharedState.allowQiblaHaptics = true }
+            LocationMapContentView()
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
         .navigationDestination(isPresented: $showMantrasPage) { ZikrLibraryView(start: .mantras) }
@@ -658,13 +658,7 @@ struct PrayerTimesView: View {
         }
         .fullScreenCover(isPresented: $showTasbeehPage) {
             tasbeehView(isPresented: $showTasbeehPage)
-                .onAppear{
-                    print("showNewPage (from tabview): \(showTasbeehPage)")
-                    sharedState.allowQiblaHaptics = false
-                }
-                .onDisappear{
-                    sharedState.allowQiblaHaptics = true
-                }
+
         }
         
         .edgesIgnoringSafeArea(.bottom)
