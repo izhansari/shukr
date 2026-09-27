@@ -168,6 +168,10 @@ code; in UI strings write "zikr". New UI text must follow this.
   name-only "Add this to list?" alert and `saveToMantraList` are gone. A zikr's page: a glass ＋ at
   the end of the Tasks header (always) and, with no tasks, the Zikr page's dashed "New task" circle
   (`MantraTaskCircles(onNewTask:)`); both open the locked task sheet. Sim ✓ both paths.
+- **The zikr picker looks like the Azkar page** (owner, 2026-09-27): `MantraPickerView` is a
+  `NavigationStack` ("Choose a zikr", ✕ / ＋ in the bar) over the Azkar rows — `ZikrListRow`
+  (MantrasView.swift), shared with `MantrasView`, a green check on the current pick instead of the
+  chevron — and the system `.searchable` at the bottom (name, text or notes).
 
 ## Handoff — 2026-09-25 evening (read this first)
 

@@ -796,8 +796,15 @@ struct MantraPickerView: View {
     @State private var creatingNew = false
 
     private var presentation: Set<PresentationDetent>
+    private var trimmedQuery: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// Same match as the Azkar page: name, full text or notes.
     private var filteredMantras: [MantraModel] {
-        mantraItems.filter { searchQuery.isEmpty || $0.name.lowercased().contains(searchQuery.lowercased()) }
+        let q = trimmedQuery
+        guard !q.isEmpty else { return mantraItems }
+        return mantraItems.filter {
+            $0.name.localizedCaseInsensitiveContains(q) || $0.fullText.localizedCaseInsensitiveContains(q)
+                || $0.notes.localizedCaseInsensitiveContains(q)
+        }
     }
     private var  uniqueItem: Bool {
         !mantraItems.contains { $0.name.lowercased() == searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
@@ -898,50 +905,46 @@ struct MantraPickerView: View {
 //        .padding()
 //    }
     
+    /// Laid out like the Azkar page (owner, 2026-09-27): a titled bar with ✕ and ＋, the Azkar rows
+    /// (name, text, pace; a check on the current one) and the system search field.
     var body: some View {
-        VStack(spacing: 0) {
-            
-            // Search Bar and Add Button
-            HStack {
-                TextField("Search azkar", text: $searchQuery)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .autocorrectionDisabled(true)
-                
-                Button {
-                    creatingNew = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.green)
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(Color.green.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("New zikr")
-            }
-            .padding()
-            
-            
-            if filteredMantras.isEmpty {
-                Spacer()
-                // If no matches, show option to add new mantra
-                VStack(spacing: 6) {
-                    Text("No results.")
-                    Button("New zikr “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”") {
-                        creatingNew = true
+        NavigationStack {
+            List {
+                if filteredMantras.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("No azkar match “\(trimmedQuery)”.")
+                            .foregroundStyle(.secondary)
+                        Button("New zikr “\(trimmedQuery)”") { creatingNew = true }
+                            .tint(.green)
                     }
-                    .tint(.green)
+                } else {
+                    ForEach(filteredMantras) { mantra in
+                        Button { select(mantra) } label: {
+                            ZikrListRow(mantra: mantra,
+                                        selected: mantra.persistentModelID == selectedMantraObject?.persistentModelID,
+                                        showsChevron: false)
+                        }
+                        .tint(.primary)
+                    }
                 }
-                .padding()
-                Spacer()
-            } else {
-
-                // List instead of Wheel Picker
-                List(filteredMantras) { mantra in
-                    Button(mantra.name) { select(mantra) }
-                        .tint(Color.primary)
+            }
+            .fontDesign(.rounded)
+            .searchable(text: $searchQuery, prompt: "Search azkar")   // at the bottom, as on the Azkar page
+            .autocorrectionDisabled(true)
+            .navigationTitle("Choose a zikr")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { isPresented = false } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel("Close")
                 }
-                .listStyle(DefaultListStyle())
+                ToolbarItem(placement: .primaryAction) {
+                    Button { creatingNew = true } label: {
+                        Image(systemName: "plus")
+                            .foregroundStyle(Color.green)
+                    }
+                    .accessibilityLabel("New zikr")
+                }
             }
         }
         .sheet(isPresented: $creatingNew) {
@@ -949,15 +952,11 @@ struct MantraPickerView: View {
                 select(new)
             }
         }
-        .onChange(of: selectedMantra) { _, newValue in
-            print("Selected mantra: \(newValue ?? "nil")")
-        }
         .onDisappear {
             searchQuery = ""
         }
-//        .presentationDetents(presentation)
     }
-    
+
     // Conditionally assign the mantra to a session if selectedSession is not nil
     private func assignMantraToSession(_ mantra: MantraModel) {
         if let session = selectedSession {

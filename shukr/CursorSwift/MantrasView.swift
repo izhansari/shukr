@@ -71,32 +71,7 @@ struct MantrasView: View {
                     Button {
                         editing = mantra
                     } label: {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(mantra.name)
-                                    .foregroundStyle(.primary)
-                                if !mantra.fullText.isEmpty {
-                                    Text(mantra.fullText)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                if let pace = mantra.secondsPerCount {
-                                    Text("\(mantra.totalCount.formatted()) counted · \(String(format: "%.1fs", pace)) each")
-                                        .font(.caption)
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            Spacer()
-                            if !mantra.notes.isEmpty {
-                                Image(systemName: "note.text")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
+                        ZikrListRow(mantra: mantra)
                     }
                     .tint(.primary) // rows, not links
                     .noPageZone("mantra-\(mantra.id)")   // row swipes (delete) stay the row's
@@ -115,6 +90,52 @@ struct MantrasView: View {
         for index in offsets {
             context.delete(rows[index]) // relationships are .nullify: tasks/sessions survive, unlinked
         }
+    }
+}
+
+
+/// One zikr as the Azkar list shows it: name, the full text on one line, lifetime count and pace,
+/// a note mark. Shared with the zikr picker (`MantraPickerView`), which trails a check instead of
+/// the chevron.
+struct ZikrListRow: View {
+    let mantra: MantraModel
+    var selected = false
+    var showsChevron = true
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(mantra.name)
+                    .foregroundStyle(.primary)
+                if !mantra.fullText.isEmpty {
+                    Text(mantra.fullText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if let pace = mantra.secondsPerCount {
+                    Text("\(mantra.totalCount.formatted()) counted · \(String(format: "%.1fs", pace)) each")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            if !mantra.notes.isEmpty {
+                Image(systemName: "note.text")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            if selected {
+                Image(systemName: "checkmark")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.green)
+            } else if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .contentShape(Rectangle())
     }
 }
 
