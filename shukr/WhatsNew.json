@@ -495,9 +495,15 @@
       "checked": "sim"
     },
     {
-      "id": "whats-new-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#19",
+      "id": "whats-new-4", "date": "2026-09-27", "commit": "e104611", "time": "2026-09-27T14:56:03-04:00", "topic": "whats-new", "notes": "#19",
       "title": "What's new: \"Open in shukr\" on each card takes you straight to that feature",
       "tryIt": ["Open a card → Open in shukr → What's new closes and you land on that page (History, the map, Azkar, the Salah page…)", "Or tap the small arrow on a card in the list"],
+      "checked": "sim"
+    },
+    {
+      "id": "zikr-history-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": null,
+      "title": "History ⇄ Azkar pages without the lag; the Edit button stays put",
+      "tryIt": ["☰ → Zikr History → swipe to Azkar and back: smooth, and Edit doesn't redraw", "Edit still works on both pages"],
       "checked": "sim"
     }
   ]

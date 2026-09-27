@@ -688,6 +688,9 @@ struct ZikrLibraryView: View {
     }
 
     private var editing: Bool { editingHistory || editingAzkar }
+    private var showsEdit: Bool {
+        tab == .history ? !anySession.isEmpty : (hasOwnZikr || editingAzkar)
+    }
 
     private static var bottomBarPlus: Bool {
         if #available(iOS 26.0, *) { return true } else { return false }
@@ -707,14 +710,24 @@ struct ZikrLibraryView: View {
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
-                HistoryPageView(search: search, editing: $editingHistory)
-                    .scrollDisabled(false)          // the lists keep scrolling while paging is off
-                    .containerRelativeFrame(.horizontal)
-                    .id(Tab.history)
-                MantrasView(embedded: true, externalSearch: search, editing: $editingAzkar)
-                    .scrollDisabled(false)
-                    .containerRelativeFrame(.horizontal)
-                    .id(Tab.mantras)
+                // Each page redraws only when its own inputs change: the library's body runs on every
+                // page turn (the scroll position, the switch, the toolbar), and without these walls
+                // both lists — History regrouping every session — redrew three times mid-swipe (owner:
+                // paging lagged).
+                LibraryPage(search: search, editing: $editingHistory) { search, editing in
+                    HistoryPageView(search: search, editing: editing)
+                }
+                .equatable()
+                .scrollDisabled(false)          // the lists keep scrolling while paging is off
+                .containerRelativeFrame(.horizontal)
+                .id(Tab.history)
+                LibraryPage(search: search, editing: $editingAzkar) { search, editing in
+                    MantrasView(embedded: true, externalSearch: search, editing: editing)
+                }
+                .equatable()
+                .scrollDisabled(false)
+                .containerRelativeFrame(.horizontal)
+                .id(Tab.mantras)
             }
             .scrollTargetLayout()
         }
@@ -748,23 +761,19 @@ struct ZikrLibraryView: View {
                 .frame(width: 210)
                 .disabled(editing)
             }
-            if tab == .history && !anySession.isEmpty {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(editingHistory ? "Done" : "Edit") {
-                        withAnimation { editingHistory.toggle() }
+            // One Edit button for both pages, the same toolbar item throughout: two items (one per
+            // page) swapped on every page turn and the button redrew itself (owner).
+            if showsEdit {
+                ToolbarItem(id: "libraryEdit", placement: .topBarTrailing) {
+                    Button(editing ? "Done" : "Edit") {
+                        withAnimation {
+                            if tab == .history { editingHistory.toggle() } else { editingAzkar.toggle() }
+                        }
                     }
-                    .fontWeight(editingHistory ? .semibold : .regular)
+                    .fontWeight(editing ? .semibold : .regular)
                 }
             }
-            if tab == .mantras {   // a hidden button still drew its empty glass circle
-                if hasOwnZikr || editingAzkar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(editingAzkar ? "Done" : "Edit") {
-                            withAnimation { editingAzkar.toggle() }
-                        }
-                        .fontWeight(editingAzkar ? .semibold : .regular)
-                    }
-                }
+            if tab == .mantras {
                 // iOS 18: the ＋ stays top right (iOS 26 puts it beside the search field, below).
                 if !editingAzkar && !Self.bottomBarPlus {
                     ToolbarItem(placement: .topBarTrailing) { newZikrButton }
@@ -789,6 +798,20 @@ struct ZikrLibraryView: View {
         .sheet(isPresented: $showingNewMantra) {
             MantraEditorView(mantra: nil)
         }
+    }
+}
+
+/// A library page behind an equality wall: it redraws only when the search or its own edit mode
+/// changes (a Binding is never equal to the last one, so the value is compared instead).
+private struct LibraryPage<Content: View>: View, Equatable {
+    let search: String
+    let editing: Binding<Bool>
+    let content: (String, Binding<Bool>) -> Content
+
+    var body: some View { content(search, editing) }
+
+    static func == (a: Self, b: Self) -> Bool {
+        a.search == b.search && a.editing.wrappedValue == b.editing.wrappedValue
     }
 }
 
