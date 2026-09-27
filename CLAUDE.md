@@ -261,6 +261,12 @@ code; in UI strings write "zikr". New UI text must follow this.
   bottom bar left of the search on iOS 26, top right on iOS 18 / the standalone page;
   `@AppStorage(AzkarFilter.key)` "azkar.hideBuiltIns", filled green while on) hides the built-ins,
   with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own.
+  **Current (2026-09-27, feedback ADD5836A):** `AzkarSortButton` — sort by ONE field (`AzkarSort`: Default · Times recited ·
+  Pace · Last used · Name, AppStorage "azkar.sortField") plus a direction (↑ / ↓, "azkar.sortAscending"; picking a field
+  sets its natural direction: Name / Pace ascending, the others descending; the menu spells each out — "Most first",
+  "Fastest first" = fewest seconds per count, "Longest untouched first"…). Missing data sorts last either way; ties keep
+  the section order. The built-ins filter is gone (built-ins always show, below yours; the old key is cleared on appear).
+  Icon: arrow.up.arrow.down on Default, arrow.up / arrow.down while sorted. History of the earlier versions follows.
   Since 2026-09-27 (feedback E164092C) the button is a native Menu (`AzkarFilterButton`): Sort (`AzkarSort`, AppStorage
   "azkar.sort": Default · Most / Least recited · Recently used · Slowest / Fastest pace (never-counted last) · A–Z,
   applied within each section, stats computed once per list render) and "Show built-ins" (only with azkar of your
@@ -1447,7 +1453,7 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   sheets, and re-rendering everything on each write) is gone. NEXT is a small tag (9 pt medium, tracking
   2.5) at `offset(y: -31)` in the app (~12 pt under the qibla arrow at its highest, r 80; its gap
   to the name ~3× the name–caption gap so it reads as separate), 6 pt at `-15` in the home widget;
-  never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
+  never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift; defaults = the owner's playground values since 2026-09-27, feedback CC72A6E8: offset −28.76, size 8.72, opacity 0.263, spacing 2.57 — Release always uses them), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
   "Next prayer": NEXT + dashed ring / dashed ring only (`NextLabel.key` in the app group, so the
   widget follows; reloads timelines). DEBUG `-demoNextLabel on|off`.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when

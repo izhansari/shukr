@@ -14,11 +14,12 @@ import SwiftUI
 
 struct NextLabelTuning: Codable, Equatable {
     /// Points above the name's top (negative = up).
-    var offset: Double = -31
-    var size: Double = 9
-    /// Of the primary colour (0.3 ≈ the tertiary label it used to be).
-    var opacity: Double = 0.3
-    var tracking: Double = 2.5
+    /// The owner's playground values (2026-09-27, feedback CC72A6E8).
+    var offset: Double = -28.76
+    var size: Double = 8.72
+    /// Of the tertiary label, scaled from 0.3 (see NextTag).
+    var opacity: Double = 0.263
+    var tracking: Double = 2.57
 
     static let key = "nextLabelTuning"
     static let defaults = NextLabelTuning()
