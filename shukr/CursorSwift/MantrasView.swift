@@ -53,6 +53,9 @@ struct MantrasView: View {
                 .navigationTitle("Azkar")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
+                    if mantras.contains(where: { !$0.isBuiltIn }) && !ownEditing {
+                        ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton() }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
                     }
@@ -86,22 +89,33 @@ struct MantrasView: View {
                 // Built-ins apart from the user's own (owner, 2026-09-27); they can't be deleted.
                 let builtIns = shown.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
                 let own = shown.filter { !$0.isBuiltIn }
-                if !builtIns.isEmpty {
-                    Section {
-                        if !builtInsFolded {
-                            ForEach(builtIns) { row($0).selectionDisabled() }
-                        }
-                    } header: {
-                        builtInHeader(count: builtIns.count)
-                    }
-                }
-                Section("Your azkar") {
+                // Yours first, built-ins below (owner, 2026-09-27, feedback 6B1CFEB8 — it replaced
+                // a folding Built-in header). The filter button can hide the built-ins.
+                Section {
                     if own.isEmpty {
                         Text(query.isEmpty ? "Your own azkar go here. Tap + to add one." : "None of yours match.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     ForEach(own) { row($0).tag($0.persistentModelID) }
+                } header: {
+                    Text("Your azkar")
+                } footer: {
+                    if builtInsHidden && !builtIns.isEmpty {
+                        Button {
+                            withAnimation(.snappy(duration: 0.25)) { hideBuiltIns = false }
+                        } label: {
+                            Text("\(builtIns.count) built-in azkar hidden · Show")
+                                .font(.footnote)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                if !builtIns.isEmpty && !builtInsHidden {
+                    Section("Built-in") {
+                        ForEach(builtIns) { row($0).selectionDisabled() }
+                    }
                 }
             }
         }
@@ -131,36 +145,11 @@ struct MantrasView: View {
         }
     }
 
-    /// Built-ins fold away once there's a zikr of your own (owner, 2026-09-27) — never while
-    /// they're all there is (the page would be empty) or while searching (results must show).
-    @AppStorage("azkar.builtInsCollapsed") private var builtInsCollapsed = false
-    private var canFoldBuiltIns: Bool { mantras.contains { !$0.isBuiltIn } && query.isEmpty }
-    private var builtInsFolded: Bool { builtInsCollapsed && canFoldBuiltIns }
-
-    @ViewBuilder private func builtInHeader(count: Int) -> some View {
-        if canFoldBuiltIns {
-            Button {
-                triggerSomeVibration(type: .light)
-                withAnimation(.snappy(duration: 0.25)) { builtInsCollapsed.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Text("Built-in")
-                    if builtInsFolded {
-                        Text("\(count)").foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
-                        .rotationEffect(.degrees(builtInsFolded ? -90 : 0))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(builtInsFolded ? "Show built-in azkar" : "Hide built-in azkar")
-        } else {
-            Text("Built-in")
-        }
-    }
+    /// The filter button (the library's toolbar, or this page's own) hides the built-ins so only
+    /// yours show — remembered. Never while searching or with none of your own (the page would
+    /// be empty).
+    @AppStorage(AzkarFilter.key) private var hideBuiltIns = false
+    private var builtInsHidden: Bool { hideBuiltIns && mantras.contains { !$0.isBuiltIn } && query.isEmpty }
 
     private func row(_ mantra: MantraModel) -> some View {
         Button {
@@ -846,14 +835,20 @@ struct ZikrLibraryView: View {
                 }
             }
             if tab == .mantras {
-                // iOS 18: the ＋ stays top right (iOS 26 puts it beside the search field, below).
+                // iOS 18: the ＋ and the filter stay top right (iOS 26 puts them by the search field).
                 if !editingAzkar && !Self.bottomBarPlus {
+                    if hasOwnZikr { ToolbarItem(placement: .topBarTrailing) { AzkarFilterButton() } }
                     ToolbarItem(placement: .topBarTrailing) { newZikrButton }
                 }
             }
             // iOS 26: the search field in the bottom bar, with the ＋ beside it on Azkar — it
             // animates in as the page turns (owner, 2026-09-27).
             if #available(iOS 26.0, *) {
+                // Azkar: the built-ins filter, left of the search field (only with azkar of your own).
+                if tab == .mantras && !editingAzkar && hasOwnZikr {
+                    ToolbarItem(placement: .bottomBar) { AzkarFilterButton() }
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                }
                 if !editing {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                 }
@@ -884,6 +879,25 @@ private struct LibraryPage<Content: View>: View, Equatable {
 
     static func == (a: Self, b: Self) -> Bool {
         a.search == b.search && a.editing.wrappedValue == b.editing.wrappedValue
+    }
+}
+
+/// Hide the built-in azkar so only yours show (owner, 2026-09-27, feedback 6B1CFEB8).
+enum AzkarFilter { static let key = "azkar.hideBuiltIns" }
+
+/// The filter-style toggle: filled while the built-ins are hidden.
+struct AzkarFilterButton: View {
+    @AppStorage(AzkarFilter.key) private var hideBuiltIns = false
+    var body: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            withAnimation(.snappy(duration: 0.25)) { hideBuiltIns.toggle() }
+        } label: {
+            Image(systemName: hideBuiltIns ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                .foregroundStyle(hideBuiltIns ? Color.green : Color.primary)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .accessibilityLabel(hideBuiltIns ? "Show built-in azkar" : "Only my azkar")
     }
 }
 

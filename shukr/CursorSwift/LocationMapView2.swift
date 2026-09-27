@@ -902,8 +902,6 @@ struct MapView: UIViewRepresentable {
 // MARK: - ContentView
 
 struct LocationMapContentView: View {
-    /// When the qibla last stopped being lined up (the buzz re-arms a second after).
-    @State private var alignLostAt = Date.distantPast
     @StateObject private var viewModel = LocationViewModel()
     @AppStorage(MapModes.satelliteKey) private var satellite = false
     /// Light / dark / auto from Settings (0 light, 1 dark, 2 by the sun), like the rest of the app.
@@ -1058,12 +1056,14 @@ struct LocationMapContentView: View {
             AlignedEdgeGlow(on: compass.qibla.aligned && inQiblaMode)
                 // The buzz on lining up, like the Salah circle's — qibla mode only (it went
                 // missing when the circle's haptic was limited to the Salah page).
-                // One buzz per lining up: a heading wobbling across the threshold flickers
-                // `aligned` off and on, so it re-arms only after a second turned away.
-                .onChange(of: compass.qibla.aligned) { _, aligned in
-                    guard aligned else { alignLostAt = Date(); return }
-                    if inQiblaMode, Date().timeIntervalSince(alignLostAt) >= 1 {
+                // Buzzes the whole time you're lined up — once a second — and stops when you turn
+                // off the line (owner, 2026-09-27, feedback 6FB814B9: not once per line-up).
+                // Qibla mode only; the task ends when either changes.
+                .task(id: compass.qibla.aligned && inQiblaMode) {
+                    guard compass.qibla.aligned && inQiblaMode else { return }
+                    while !Task.isCancelled {
                         triggerSomeVibration(type: .heavy)
+                        try? await Task.sleep(for: .seconds(1))
                     }
                 }
 

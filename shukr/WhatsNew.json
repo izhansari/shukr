@@ -35,12 +35,12 @@
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
     {"id": "zikr-wording", "area": "Zikr", "title": "The app says \"zikr\" and \"Azkar\" (never \"mantra\")", "link": "azkar"},
     {"id": "zikr-media", "area": "Zikr", "title": "A zikr can hold a voice memo and a photo beside its notes", "link": "azkar"},
-    {"id": "built-in-azkar", "area": "Zikr", "title": "Eight built-in azkar with their Arabic and a note; locked (name and text), listed apart from yours", "link": "azkar"},
+    {"id": "built-in-azkar", "area": "Zikr", "title": "Built-in azkar (Arabic + a note, locked) listed under your own; a filter button hides them so only yours show", "link": "azkar"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page", "link": "zikr",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
-    {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz only happens when the Salah circle is on screen", "link": "salah"},
+    {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"}
   ],
   "entries": [
@@ -402,7 +402,7 @@
       "id": "prayer-begins-8", "date": "2026-09-27", "commit": "c404e44", "time": "2026-09-27T07:00:22-04:00", "topic": "prayer-begins", "notes": null,
       "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only",
       "tryIt": ["Mark the current prayer → a small NEXT, well above the name, not part of the stack", "Settings → My Dev Stuff → Next prayer → \"Dashed ring only\" → no NEXT anywhere (app and home-screen widget)", "Lock Screen widget: a prayer that hasn't started shows just the dashed ring"],
-      "checked": "sim", "shots": ["wn-next-options.jpg"]
+      "checked": "sim", "shots": ["wn-next-options.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048"]
     },
     {
       "id": "zikr-media-4", "date": "2026-09-27", "commit": "2613923", "time": "2026-09-27T07:24:22-04:00", "topic": "zikr-media", "notes": "#17",
@@ -444,13 +444,13 @@
       "id": "zikr-history-3", "date": "2026-09-27", "commit": "d25417d", "time": "2026-09-27T13:32:33-04:00", "topic": "zikr-history", "notes": "#2b",
       "title": "Tap a session: a small glass menu (Open zikr · Feel the pace) instead of a strip under the row",
       "tryIt": ["History → tap a session → Open zikr / Feel the pace; nothing in the list moves", "While the pace plays, tap the row again → it stops", "On a zikr's page, tapping a session offers Feel the pace"],
-      "checked": "sim", "shots": ["wn-session-popover.jpg"]
+      "checked": "sim", "shots": ["wn-session-popover.jpg"], "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "zikr-history-4", "date": "2026-09-27", "commit": "5119925", "time": "2026-09-27T13:47:29-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "History ⇄ Azkar pages smoothly (native paging); Azkar has Edit → select → Delete too, no row swipes",
       "tryIt": ["Books → swipe between History and Azkar: smooth, the switch follows", "Azkar → Edit → tick your own azkar (built-ins can't be) → Delete N azkar (says what happens to their tasks)", "Scrub the 14-day chart sideways: it scrubs, the page doesn't turn"],
-      "checked": "sim"
+      "checked": "sim", "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "zikr-history-5", "date": "2026-09-27", "commit": "5279fc1", "time": "2026-09-27T14:08:59-04:00", "topic": "zikr-history", "notes": "#2b",
@@ -468,7 +468,7 @@
       "id": "zikr-history-7", "date": "2026-09-27", "commit": "04c4dab", "time": "2026-09-27T14:43:31-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "Azkar's ＋ sits beside the search field at the bottom and slides in; a long press no longer leaves a session grey",
       "tryIt": ["Books → swipe to Azkar → the ＋ appears next to \"Search azkar\"", "History → hold a session to feel its pace, let go → the row goes back to normal"],
-      "checked": "sim"
+      "checked": "sim", "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "widget-next-2", "date": "2026-09-27", "commit": "d7e02b9", "time": "2026-09-27T14:43:32-04:00", "topic": "widget-next", "notes": "#1",
@@ -486,19 +486,19 @@
       "id": "zikr-history-8", "date": "2026-09-27", "commit": "3b2a6b2", "time": "2026-09-27T14:48:00-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "Edit mode looks like iOS: selection circles, a plain red Delete in the bottom bar, no grey rows; holding a session to feel its pace no longer slides the page",
       "tryIt": ["History → Edit → tick sessions → Delete (N) at the bottom → confirm", "Same on Azkar and on a zikr's page (Sessions → Edit)", "Hold a session to feel its pace and drift sideways → the page stays"],
-      "checked": "sim", "shots": ["wn-edit-stock.jpg"]
+      "checked": "sim", "shots": ["wn-edit-stock.jpg"], "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "prayer-begins-9", "date": "2026-09-27", "commit": "34b5f00", "time": "2026-09-27T14:50:14-04:00", "topic": "prayer-begins", "notes": null,
       "title": "Dev builds: a NEXT label playground to tune its offset, size, opacity and spacing live",
       "tryIt": ["Settings → My Dev Stuff → NEXT label playground… → move the sliders; the Salah circle follows", "Copy values → paste them back to Claude to make them the default"],
-      "checked": "sim"
+      "checked": "sim", "addresses": ["6A490706-8873-4B9F-B0E8-353F804D7777"]
     },
     {
       "id": "whats-new-4", "date": "2026-09-27", "commit": "e104611", "time": "2026-09-27T14:56:03-04:00", "topic": "whats-new", "notes": "#19",
       "title": "What's new: \"Open in shukr\" on each card takes you straight to that feature",
       "tryIt": ["Open a card → Open in shukr → What's new closes and you land on that page (History, the map, Azkar, the Salah page…)", "Or tap the small arrow on a card in the list"],
-      "checked": "sim"
+      "checked": "sim", "addresses": ["AE73908E-CC17-43E0-83FC-0664B27F1091"]
     },
     {
       "id": "zikr-history-9", "date": "2026-09-27", "commit": "aa97b94", "time": "2026-09-27T15:44:15-04:00", "topic": "zikr-history", "notes": null,
@@ -531,16 +531,28 @@
       "checked": "sim", "shots": ["wn-widget-plain-dark.jpg"]
     },
     {
-      "id": "qibla-haptic-4", "date": "2026-09-27", "commit": "d932ca2", "time": "2026-09-27T15:57:55-04:00", "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-4", "date": "2026-09-27", "commit": "d932ca2", "time": "2026-09-27T15:57:55-04:00", "topic": "qibla-haptic", "notes": null, "status": "replaced",
       "title": "The map buzzes once when you line up with the qibla, not again and again as the compass wobbles",
       "tryIt": ["Map (qibla) → turn slowly onto the line: one buzz"],
       "checked": "no"
     },
     {
-      "id": "built-in-azkar-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "id": "built-in-azkar-4", "date": "2026-09-27", "commit": "b46504d", "time": "2026-09-27T16:19:13-04:00", "topic": "built-in-azkar", "notes": null, "status": "replaced",
       "title": "Azkar: fold the built-ins away (once you have your own); in Edit, a built-in does nothing when tapped",
       "tryIt": ["Azkar → tap the chevron by Built-in: it folds to \"Built-in 9\"", "With none of your own there's no chevron (the page would be empty)", "Edit → tap a greyed built-in: nothing opens"],
       "checked": "sim"
+    },
+    {
+      "id": "built-in-azkar-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar: your own azkar on top, built-ins below, and a filter button that hides the built-ins (no more folding)",
+      "tryIt": ["Azkar → your azkar are first, built-ins under them", "Tap the filter button left of the search field: only yours show; tap again to bring the built-ins back", "Search always shows built-ins too"],
+      "checked": "sim", "shots": ["wn-azkar-yours-first.jpg", "wn-azkar-mine-only.jpg"], "addresses": ["6B1CFEB8-4CD8-433D-AED6-C2A5BC8B6D9F"]
+    },
+    {
+      "id": "qibla-haptic-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "title": "The qibla map keeps buzzing (once a second) the whole time you're lined up, and stops when you turn off the line",
+      "tryIt": ["Map (qibla) → turn onto the green line and hold: it keeps buzzing; turn away: it stops"],
+      "checked": "no", "addresses": ["6FB814B9-9F96-4045-965D-F8240F812DCC"]
     }
   ]
 }

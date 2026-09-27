@@ -222,9 +222,11 @@ code; in UI strings write "zikr". New UI text must follow this.
   exact match) uses `BuiltInAzkar.key` (letters and digits, any script; falls back to the name). `MantraCardFields(identityLocked:)` keeps
   name and full text read-only (a lock overlay in the name field, no layout change); notes, memo,
   photo, sets stay editable. They can't be deleted (Azkar list `deleteDisabled`, no Delete button).
-  The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections. The Built-in header folds the section
-  (chevron, `@AppStorage("azkar.builtInsCollapsed")`, "Built-in 9" when folded) — only when there's a
-  zikr of your own and no search (`canFoldBuiltIns`), so the page can never fold to nothing. Rows are
+  The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections. Since 2026-09-27 (feedback 6B1CFEB8; the folding
+  header was dropped): "Your azkar" first, "Built-in" below; `AzkarFilterButton` (the library's
+  bottom bar left of the search on iOS 26, top right on iOS 18 / the standalone page;
+  `@AppStorage(AzkarFilter.key)` "azkar.hideBuiltIns", filled green while on) hides the built-ins,
+  with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own. Rows are
   Buttons, and a List row fires its Button on a tap even with `allowsHitTesting(false)`: the action
   itself returns in Edit mode (a greyed built-in opened its sheet — owner, 2026-09-27).
 - **The original four are seeded once** (`BuiltInAzkar.originalsSeededKey`; the V2 data pass
@@ -1374,8 +1376,9 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   it used to hang under the list with a bare gap; a top row of score dots was tried and dropped —
   owner); all five come back when the day's complete; perfect day pops the
   dots in turn and shows "✦ perfect day".
-- **Map buzz** (qibla mode, `LocationMapContentView`): once per lining up — `aligned` flickers when the
-  heading wobbles across the threshold, so it re-arms only after a second not aligned (`alignLostAt`).
+- **Map buzz** (qibla mode, `LocationMapContentView`): a heavy buzz once a second the whole time you're
+  lined up (`.task(id: aligned && inQiblaMode)` loop), stopping when you turn off the line — owner,
+  feedback 6FB814B9 (the once-per-line-up version, d932ca2, is replaced).
   NextTag uses `NextLabelTuning.defaults` in Release (the playground's AppStorage is DEBUG only) and
   draws in `tertiaryLabel` scaled by opacity / 0.3 (primary 0.3 read darker). What's new hides "Open
   in shukr" for a link outside `WhatsNew.links`.

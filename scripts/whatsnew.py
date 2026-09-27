@@ -18,6 +18,14 @@ topic, notes item, one-line title, try-it steps, checked, optional status "dropp
       Append an entry ("commit": "next"). A new topic needs --area and --topic-title;
       --topic-title on an existing topic rewrites its title (keep it the current state).
 
+      [--addresses <feedback id>]…   (feedback this change fixes — the app shows it "Addressed")
+
+  scripts/whatsnew.py address --entry <entry id> --feedback <id> [--feedback <id>]…
+      Add feedback ids to an existing entry's "addresses" (e.g. a fix committed earlier).
+
+  scripts/whatsnew.py status --entry <entry id> --set dropped|replaced|removed
+      Mark an older change as undone / replaced (shown greyed).
+
   scripts/whatsnew.py shot <screenshot.png> <name>
       Save a small JPEG (≤ 600 px wide) as shukr/WhatsNewShots/wn-<name>.jpg and print the name
       to pass as --shot.
@@ -65,6 +73,8 @@ def save(data):
         last = f'"checked": {j(e["checked"])}'
         if e.get("shots"):
             last += f', "shots": {j(e["shots"])}'
+        if e.get("addresses"):
+            last += f', "addresses": {j(e["addresses"])}'
         out += ["    {",
                 f"      {first},",
                 f'      "title": {j(e["title"])},',
@@ -131,9 +141,34 @@ def add(a):
         e["status"] = a.status
     if a.shot:
         e["shots"] = a.shot
+    if a.addresses:
+        e["addresses"] = [x.upper() for x in a.addresses]
     data["entries"].append(e)
     save(data)
     print(f"added to {a.topic}: {a.title}")
+
+
+def address(entry_id, ids):
+    data = load()
+    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
+    if e is None:
+        sys.exit(f"no entry {entry_id!r}")
+    have = e.setdefault("addresses", [])
+    for i in ids:
+        if i.upper() not in have:
+            have.append(i.upper())
+    save(data)
+    print(f"{entry_id} addresses {', '.join(have)}")
+
+
+def set_status(entry_id, status):
+    data = load()
+    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
+    if e is None:
+        sys.exit(f"no entry {entry_id!r}")
+    e["status"] = status
+    save(data)
+    print(f"{entry_id}: {status}")
 
 
 def shot(png, name):
@@ -215,7 +250,20 @@ if __name__ == "__main__":
         p.add_argument("--shot", action="append")
         p.add_argument("--checked", default="sim", choices=["sim", "phone", "no"])
         p.add_argument("--status", choices=["dropped", "replaced", "removed"])
+        p.add_argument("--addresses", action="append", help="a feedback id this change fixes")
         add(p.parse_args(sys.argv[2:]))
+    elif cmd == "address":
+        p = argparse.ArgumentParser(prog="whatsnew.py address")
+        p.add_argument("--entry", required=True)
+        p.add_argument("--feedback", action="append", required=True)
+        a = p.parse_args(sys.argv[2:])
+        address(a.entry, a.feedback)
+    elif cmd == "status":
+        p = argparse.ArgumentParser(prog="whatsnew.py status")
+        p.add_argument("--entry", required=True)
+        p.add_argument("--set", required=True, choices=["dropped", "replaced", "removed"])
+        a = p.parse_args(sys.argv[2:])
+        set_status(a.entry, a.set)
     elif cmd == "shot" and len(sys.argv) == 4:
         shot(sys.argv[2], sys.argv[3])
     elif cmd == "testflight" and len(sys.argv) >= 4 and sys.argv[2] == "--since":
