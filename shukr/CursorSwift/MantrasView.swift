@@ -581,6 +581,8 @@ struct ZikrLibraryView: View {
     @State private var tab: Tab
     @State private var search = ""
     @State private var showingNewMantra = false
+    /// History's Edit mode (select → Delete); its button lives in this bar.
+    @State private var editingHistory = false
     /// Our own pager: a sideways drag turns the page only when it starts on the background —
     /// not on a session / mantra row (their swipe actions) or the history chart (it scrubs).
     /// A system paged TabView took every sideways swipe, rows included (owner wanted both).
@@ -623,7 +625,7 @@ struct ZikrLibraryView: View {
         GeometryReader { geo in
             let width = geo.size.width
             HStack(spacing: 0) {
-                HistoryPageView(search: search)
+                HistoryPageView(search: search, editing: $editingHistory)
                     .frame(width: width)
                 MantrasView(embedded: true, externalSearch: search)
                     .frame(width: width)
@@ -646,6 +648,14 @@ struct ZikrLibraryView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 210)
             }
+            if tab == .history {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(editingHistory ? "Done" : "Edit") {
+                        withAnimation { editingHistory.toggle() }
+                    }
+                    .fontWeight(editingHistory ? .semibold : .regular)
+                }
+            }
             if tab == .mantras {   // a hidden button still drew its empty glass circle
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -660,6 +670,7 @@ struct ZikrLibraryView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: tab)
+        .onChange(of: tab) { _, _ in editingHistory = false }
         .sheet(isPresented: $showingNewMantra) {
             MantraEditorView(mantra: nil)
         }

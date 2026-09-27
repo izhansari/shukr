@@ -38,7 +38,8 @@
     {"id": "built-in-azkar", "area": "Zikr", "title": "Eight built-in azkar with their Arabic and a note; locked (name and text), listed apart from yours"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
-    {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot"}
+    {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot"},
+    {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete"}
   ],
   "entries": [
     {
@@ -360,16 +361,22 @@
       "checked": "no"
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "new-task-flow", "notes": "#17",
+      "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "new-task-flow", "notes": "#17",
       "title": "A new zikr can't be swiped away with something in it; Delete zikr while editing; no double ＋",
       "tryIt": ["Picker ＋ → type a name → swipe down: it stays; Cancel asks \"Discard this zikr?\"", "Save a new zikr → the card closes, then the picker, and it's picked", "Open one of your azkar → ✎ → Delete zikr at the bottom (says what happens to its tasks and sessions)", "A zikr with no tasks shows only the dashed New task circle; the ＋ appears once it has one"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Built-ins are locked and listed apart: a Built-in section above Your azkar",
       "tryIt": ["Books → Azkar → \"Built-in\" then \"Your azkar\"", "Open a built-in → ✎ → the name and full text are locked (a small lock), notes / memo / photo still edit", "Built-ins can't be swiped to delete and have no Delete button"],
       "checked": "sim", "shots": ["wn-azkar-sections.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "title": "History: day time in the headers, Edit to select and delete sessions; no more row swipes",
+      "tryIt": ["Books → History → each day's header shows its time; tap one → every header shows counts (remembered)", "Edit (top right) → tick sessions → Delete N sessions → confirm; totals and today's tasks update", "Rows no longer swipe; tap one for Zikr · Pace"],
+      "checked": "sim", "shots": ["wn-zikr-history-edit.jpg"]
     }
   ]
 }

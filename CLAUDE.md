@@ -1848,6 +1848,14 @@ fresh goal. The results card of a task session says "5 of 100 today". Sim-verifi
 drag to read a day's count and time — a two-line label above the bars: "last 14 days" or the
 day, rounded medium, over "N counted · time" in plain SF), and sessions · time tiles (per-count tile removed, owner).
 DEBUG `-demoZikrHistory`.
+**Zikr History (2026-09-27, notes #2b):** day headers show that day's time (sum of
+`secondsPassed`, like the rows); a tap flips every header to "N counted" (`@AppStorage
+zikrHistory.headersShowCount`). Deleting is **only** Edit → select (native List multi-select via
+`editMode`) → "Delete N sessions" (bottom capsule) → confirm; then `WidgetCenter` reloads and
+totals / task progress recompute from the queries. Row swipes (both ways) and the strip's Delete
+are gone — the strip is Zikr · Pace — and History rows no longer register no-page zones, so the
+library pages from them too. The Edit button is in `ZikrLibraryView`'s bar on the History tab
+(`HistoryPageView(editing:)`); shown on its own, History has its own Edit. Leaving the tab ends editing.
 **History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side
 in our own pager with a History | Mantras segmented switch in the nav bar that follows. A sideways
 drag turns the page **only when it starts on the background** (owner): rows (sessions, mantras)

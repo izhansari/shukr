@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import WidgetKit
 import SwiftData
 
 import SwiftUI
@@ -16,14 +17,26 @@ import SwiftUI
 struct HistoryPageView: View {
     @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
     @Environment(\.modelContext) private var context
-    /// Swipe → delete asks first.
-    @State private var pendingDelete: SessionDataModel?
-    /// Swipe the other way → that session's mantra (its stats + editor).
+    /// Tap a row's Zikr → that session's mantra (its stats + editor).
     @State private var mantraToOpen: MantraModel?
     /// The session tapped open to show its actions (one at a time).
     @State private var expandedID: PersistentIdentifier?
     /// From the library's search field: keeps sessions whose mantra (or title) matches.
     var search = ""
+    /// Edit mode (select → Delete) — the only way to delete here (owner, 2026-09-27, notes #2b).
+    /// Inside the library its bar owns the Edit button and passes this in; shown on its own,
+    /// the page has its own.
+    var editing: Binding<Bool>? = nil
+    @State private var ownEditing = false
+    @State private var selection = Set<PersistentIdentifier>()
+    @State private var confirmDelete = false
+    /// Day headers show that day's time; a tap flips every header to its count (remembered).
+    @AppStorage("zikrHistory.headersShowCount") private var headersShowCount = false
+
+    private var isEditing: Bool { editing?.wrappedValue ?? ownEditing }
+    private func setEditing(_ on: Bool) {
+        if let editing { editing.wrappedValue = on } else { ownEditing = on }
+    }
 
     private var calendar: Calendar { Calendar.current }
 
@@ -43,7 +56,7 @@ struct HistoryPageView: View {
     }
 
     var body: some View {
-        List {
+        List(selection: $selection) {
             if sessions.isEmpty {
                 ContentUnavailableView(
                     "No sessions yet",
@@ -56,82 +69,114 @@ struct HistoryPageView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
+                .selectionDisabled()
                 ForEach(days, id: \.date) { day in
                     Section {
                         ForEach(day.sessions) { session in
                             sessionRow(session)
                         }
                     } header: {
-                        HStack {
-                            Text(dayLabel(day.date))
-                            Spacer()
-                            Text("\(day.sessions.reduce(0) { $0 + $1.totalCount }) counted")
-                        }
+                        dayHeader(day)
                     }
                 }
             }
         }
+        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .fontDesign(.rounded)
         .navigationTitle("Zikr History")
         .navigationBarTitleDisplayMode(.inline)
-        // The same centered alert as unmarking a prayer (a bottom action sheet felt out of place).
-        .alert("Delete this session?",
-               isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-               presenting: pendingDelete) { session in
-            Button("Delete", role: .destructive) {
-                withAnimation {
-                    context.delete(session)   // task progress and mantra stats recompute from what's left
-                    try? context.save()
+        .toolbar {
+            if editing == nil && !sessions.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
                 }
-                triggerSomeVibration(type: .medium)
-                pendingDelete = nil
             }
-            Button("Cancel", role: .cancel) { pendingDelete = nil }
-        } message: { session in
-            Text("\(session.totalCount) counts of \(session.mantra?.name ?? session.title), \(session.startTime.formatted(date: .abbreviated, time: .shortened)). This can't be undone.")
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isEditing {
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Text(selection.isEmpty ? "Select sessions to delete"
+                         : selection.count == 1 ? "Delete 1 session" : "Delete \(selection.count) sessions")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(.regularMaterial))
+                        .background(Capsule().fill(selection.isEmpty ? Color(.tertiarySystemFill) : Color.red.opacity(0.12)).padding(-0.5))
+                        .overlay(Capsule().fill(selection.isEmpty ? Color.clear : Color.red.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .disabled(selection.isEmpty)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: isEditing) { _, on in
+            if on { expandedID = nil } else { selection.removeAll() }
+        }
+        // The same centered alert as unmarking a prayer (a bottom action sheet felt out of place).
+        .alert(selection.count == 1 ? "Delete 1 session?" : "Delete \(selection.count) sessions?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) { deleteSelected() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Their counts come off your totals and today's task progress. This can't be undone.")
         }
         .sheet(item: $mantraToOpen) { mantra in
             MantraEditorView(mantra: mantra)
         }
     }
 
+    private func deleteSelected() {
+        let doomed = sessions.filter { selection.contains($0.persistentModelID) }
+        withAnimation {
+            for session in doomed { context.delete(session) }   // task progress and mantra stats recompute
+            try? context.save()
+        }
+        WidgetCenter.shared.reloadAllTimelines()                  // the Zikr widget's progress
+        triggerSomeVibration(type: .medium)
+        selection.removeAll()
+        setEditing(false)
+    }
+
     private func dayLabel(_ date: Date) -> String { zikrDayLabel(date) }
 
-    /// One session with its swipes (left: delete, confirmed; right: its mantra). Sideways drags
-    /// that start on a row are the row's; the library pages only from the background.
+    /// "Today" · that day's time (tap: its count, for every header at once).
+    private func dayHeader(_ day: (date: Date, sessions: [SessionDataModel])) -> some View {
+        let count = day.sessions.reduce(0) { $0 + $1.totalCount }
+        let seconds = day.sessions.reduce(0) { $0 + $1.secondsPassed }
+        return HStack {
+            Text(dayLabel(day.date))
+            Spacer()
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(.snappy(duration: 0.2)) { headersShowCount.toggle() }
+            } label: {
+                Text(headersShowCount ? "\(count.formatted()) counted" : zikrDurationString(seconds))
+                    .contentTransition(.numericText())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// One session. Tap → Zikr · Pace under it; in Edit mode a tap selects instead. No swipes:
+    /// deleting is Edit → select → Delete (owner), so sideways drags on rows can page the library.
+    @ViewBuilder
     private func sessionRow(_ session: SessionDataModel) -> some View {
         let id = session.persistentModelID
-        return SessionRow(session: session,
-                   expanded: expandedID == id,
-                   onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } },
-                   onDelete: { pendingDelete = session })
-            .onTapGesture {
+        let row = SessionRow(session: session,
+                             expanded: !isEditing && expandedID == id,
+                             onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
+            .tag(id)
+        if isEditing {
+            row
+        } else {
+            row.onTapGesture {
                 triggerSomeVibration(type: .light)
                 withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
             }
-            // Swipe left: delete (confirmed below).
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button { pendingDelete = session } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                .tint(.red)
-            }
-            // Sideways drags that start on a row are the row's (swipe
-            // actions); the library pages only from the background.
-            .noPageZone(zoneID(session))
-            // Swipe right: the mantra's page (stats, tasks, sessions).
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                if let mantra = session.mantra {
-                    Button { mantraToOpen = mantra } label: {
-                        Label("Zikr", systemImage: "text.quote")   // the menu's Mantras icon
-                    }
-                    .tint(.sage)
-                }
-            }
+        }
     }
-
-    private func zoneID(_ session: SessionDataModel) -> String { "session-\(session.persistentModelID.hashValue)" }
-
 }
 
 /// The top of Zikr History (2026-09-25 — owner: the "All time" rows looked plain): the
