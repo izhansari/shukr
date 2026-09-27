@@ -234,9 +234,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "date": "2026-09-27", "commit": "438dff7", "area": "Salah",
     "title": "Tomorrow's Fajr countdown reads \"in 8h 5m\"",
     "tryIt": ["After all five are marked, the circle's Fajr says \"in 8h 5m\" (no comma)", "Tap it → its window, e.g. 5:56 - 7:10 AM"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "title": "Post-salah: only the bottom pill",
+    "tryIt": ["Mark a prayer → after the sweep, the \"Post-salah tasbih?\" pill at the bottom (no in-circle offer, no top pill)", "Settings → My Dev Stuff no longer has a Post-salah prompt picker"],
     "checked": "sim"
   }
 ]

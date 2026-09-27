@@ -28,11 +28,9 @@ struct PrayerTimesView: View {
         
     @State private var showDailyAyahView: Bool = false
     @State private var showMantraSheetFromHomePage: Bool = false
-    @State private var showChainZikrButton: Bool = false
     @State private var settingsViewNavBool: Bool = false
     @State private var showTasbeehPage: Bool = false
     @State private var showQiblaMap: Bool = false
-    @State private var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
 
     @State private var chosenMantra: String? = "" {
         didSet{
@@ -452,11 +450,6 @@ struct PrayerTimesView: View {
 
                 }
             }
-            if ProcessInfo.processInfo.arguments.contains("-demoChainButton") {
-                try? await Task.sleep(for: .seconds(1.5))
-                showChainZikrButton = true   // the post-salah prompt, held for screenshots
-                return
-            }
             if ProcessInfo.processInfo.arguments.contains("-demoMosques") {
                 try? await Task.sleep(for: .seconds(1))
                 showMapPage = true   // the map opens straight into mosque mode (LocationMapContentView)
@@ -661,8 +654,8 @@ struct PrayerTimesView: View {
 
             SalahPageContent(
                 live: live,
-                showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton,
-                showTasbeehPage: $showTasbeehPage, dismissChainZikrItem: $dismissChainZikrItem,
+                showQiblaMap: $showQiblaMap,
+                showTasbeehPage: $showTasbeehPage,
                 showDailyAyahView: $showDailyAyahView, showMantraSheetFromHomePage: $showMantraSheetFromHomePage
             )
         }
@@ -680,9 +673,7 @@ struct PrayerTimesView: View {
         @EnvironmentObject var viewModel: PrayerViewModel
         var live: PagerLiveState
         @Binding var showQiblaMap: Bool
-        @Binding var showChainZikrButton: Bool
         @Binding var showTasbeehPage: Bool
-        @Binding var dismissChainZikrItem: DispatchWorkItem?
         @Binding var showDailyAyahView: Bool
         @Binding var showMantraSheetFromHomePage: Bool
 
@@ -708,7 +699,7 @@ struct PrayerTimesView: View {
                 }
 
                 ZStack {
-                    MainCircleView(showQiblaMap: $showQiblaMap, showChainZikrButton: $showChainZikrButton, showTasbeehPage: $showTasbeehPage)
+                    MainCircleView(showQiblaMap: $showQiblaMap, showTasbeehPage: $showTasbeehPage)
                         .geometryGroup()
                         .onAppear {
                             print("⭐️ prayerTimesView onAppear")
@@ -725,8 +716,6 @@ struct PrayerTimesView: View {
                 if showBottom {
                     Spacer()
                     BottomSharedView(
-                        showChainZikrButton: $showChainZikrButton,
-                        dismissChainZikrItem: $dismissChainZikrItem,
                         showDailyAyahView: $showDailyAyahView,
                         showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
                         showTasbeehPage: $showTasbeehPage
@@ -737,10 +726,6 @@ struct PrayerTimesView: View {
                 }
 
                 Color.clear.frame(height: showBottom ? bottomChromeHeight : closedBottomReserve)
-            }
-            .overlay(alignment: .top) {
-                // Post-salah chain-zikr prompt; floats near the top of this page only.
-                FloatingChainZikrButton(showTasbeehPage: $showTasbeehPage, showChainZikrButton: $showChainZikrButton)
             }
         }
     }
@@ -956,8 +941,6 @@ struct PrayerTimesView: View {
         @EnvironmentObject var sharedState: SharedStateClass
         
         // Bindings coming from the parent view
-        @Binding var showChainZikrButton: Bool
-        @Binding var dismissChainZikrItem: DispatchWorkItem?
         @Binding var showDailyAyahView: Bool
         @Binding var showMantraSheetFromHomePage: Bool
         @Binding var showTasbeehPage: Bool
@@ -982,8 +965,6 @@ struct PrayerTimesView: View {
 //                ZStack {
                 if sharedState.bottomTabPosition == .salah {
                     TodaysPrayerListView(
-                        showChainZikrButton: $showChainZikrButton,
-                        dismissChainZikrItem: $dismissChainZikrItem,
                         showDailyAyahView: $showDailyAyahView
                     )
                     
@@ -996,8 +977,6 @@ struct PrayerTimesView: View {
                         .font(.callout)
 
                     SomedaysPrayerListView(
-                        showChainZikrButton: $showChainZikrButton,
-                        dismissChainZikrItem: $dismissChainZikrItem,
                         showDailyAyahView: $showDailyAyahView,
                         selectedDate: selectedDate
                     )
@@ -1138,8 +1117,6 @@ struct ContentView3_Previews: PreviewProvider {
 struct TodaysPrayerListView: View {
 
     @EnvironmentObject var viewModel: PrayerViewModel
-    @Binding var showChainZikrButton: Bool
-    @Binding var dismissChainZikrItem: DispatchWorkItem?
     @Binding var showDailyAyahView: Bool
     let spacing: CGFloat = 6
 
@@ -1174,7 +1151,6 @@ struct TodaysPrayerListView: View {
                 ForEach(Array(visible.enumerated()), id: \.element) { index, prayerName in
                     VStack(spacing: 0) {
                         PrayerButton(
-                            showChainZikrButton: $showChainZikrButton, dismissChainZikrItem: $dismissChainZikrItem,
                             name: prayerName,
                             viewModel: viewModel
                         )
@@ -1289,8 +1265,6 @@ struct TodaysPrayerListView: View {
 struct SomedaysPrayerListView: View {
 
     @EnvironmentObject var viewModel: PrayerViewModel
-    @Binding var showChainZikrButton: Bool
-    @Binding var dismissChainZikrItem: DispatchWorkItem?
     @Binding var showDailyAyahView: Bool
     let selectedDate: Date
     let spacing: CGFloat = 6
@@ -1299,8 +1273,7 @@ struct SomedaysPrayerListView: View {
         VStack{
             VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 ForEach(viewModel.orderedPrayerNames, id: \.self) { prayerName in
-                    PrayerButton(forDate: selectedDate, name: prayerName, viewModel: viewModel,
-                        showChainZikrButton: $showChainZikrButton, dismissChainZikrItem: $dismissChainZikrItem)
+                    PrayerButton(forDate: selectedDate, name: prayerName, viewModel: viewModel)
                     .padding(.bottom, prayerName == "Isha" ? 0 : spacing)
                     
                     if prayerName != "Isha" {
@@ -1333,8 +1306,6 @@ struct PrayerButton: View {
     @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
 
 
-    @Binding var showChainZikrButton: Bool
-    @Binding var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
     
     @State private var toggledText: Bool = false
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
@@ -1352,8 +1323,7 @@ struct PrayerButton: View {
         // Only allow pressing on Future Prayers
         if !isFuturePrayer {
             if !prayerObject.isCompleted {
-                viewModel.togglePrayerCompletion(for: prayerObject)
-                if PostSalahPromptStyle.current == .pill { dismissChainZikrItem?.cancel(); withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { showChainZikrButton = true } }   // pill style only; the circle offers it otherwise
+                viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
             }
             else {
                 showMarkIncompleteAlert = true
@@ -1364,23 +1334,18 @@ struct PrayerButton: View {
     let prayerObject: PrayerModel
     let name: String
         
-    init(showChainZikrButton: Binding<Bool>, dismissChainZikrItem: Binding<DispatchWorkItem?>, name: String, viewModel: PrayerViewModel) {
+    init(name: String, viewModel: PrayerViewModel) {
         guard let foundPrayer = viewModel.todaysPrayers.first(where: { $0.name == name }) else {
             fatalError("PrayerModel not found for name: \(name)")
         }
-        self._showChainZikrButton = showChainZikrButton
-        self._dismissChainZikrItem = dismissChainZikrItem
         self.prayerObject = foundPrayer
         self.name = name
     }
   
     // added this so we can get the prayerList for another date other than today.
-    init(forDate: Date, name: String, viewModel: PrayerViewModel, showChainZikrButton: Binding<Bool>, dismissChainZikrItem: Binding<DispatchWorkItem?>) {
+    init(forDate: Date, name: String, viewModel: PrayerViewModel) {
         let updatingToday = Calendar.current.isDate(forDate, inSameDayAs: Date())
         let objectsToCheck: [PrayerModel] = updatingToday ? viewModel.todaysPrayers : viewModel.loadPrayerObjects(for: forDate)
-
-        self._showChainZikrButton = showChainZikrButton
-        self._dismissChainZikrItem = dismissChainZikrItem
         self.name = name
         // check if the prayerObect is not nil
         // if so, make it. use some viewmodel function.

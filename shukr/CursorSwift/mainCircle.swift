@@ -17,11 +17,6 @@ struct MainCircleView: View {
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
     @State private var flourishID = 0
-    @State private var dismissChainZikrItem: DispatchWorkItem? // Manage the dismissal timer
-    /// Just prayed: the circle offers the post-salah tasbih (tap to begin) until it's started,
-    /// dismissed ("not now"), or the next prayer begins. The prayer it's for.
-    @State private var postSalahFor: String?
-    @AppStorage(PostSalahPromptStyle.key) private var promptStyleRaw = PostSalahPromptStyle.nudge.rawValue
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
     @State private var trackSolid: CGFloat = 1
@@ -34,14 +29,11 @@ struct MainCircleView: View {
     /// When the circle last appeared: a flip in the first moments (launch, coming back) doesn't play.
     @State private var appearedAt = Date()
     @Environment(\.scenePhase) private var scenePhase
-    private var promptInCircle: Bool { promptStyleRaw == PostSalahPromptStyle.circle.rawValue }
-    private var promptAsNudge: Bool { promptStyleRaw == PostSalahPromptStyle.nudge.rawValue }
     /// The pager's live state — the bottom nudge lives in the chrome and reads it.
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
     
     
     @Binding var showQiblaMap: Bool
-    @Binding var showChainZikrButton: Bool
     @Binding var showTasbeehPage: Bool
     let animationStyle: Animation = .spring
     
@@ -59,11 +51,7 @@ struct MainCircleView: View {
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
             Group {
                 //Inner Content
-                if postSalahFor != nil {
-                    PostSalahCircleOffer()
-                        .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                }
-                else if sharedState.bottomTabPosition == .zikr {
+                if sharedState.bottomTabPosition == .zikr {
     //                Text("Zikr")
                     VStack{
                         HStack(alignment: .center){
@@ -231,44 +219,17 @@ struct MainCircleView: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
-                            // While the circle offers the tasbih it isn't showing a prayer, so a
-                            // hold mustn't mark / unmark one behind it.
-                            if postSalahFor == nil, let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
+                            if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
                                 viewModel.togglePrayerCompletion(for: prayer)
-                                // The post-salah offer: in the circle (after the flourish, see
-                                // .prayerCompleted) or the old pill, per the dev setting.
-                                if promptStyleRaw == PostSalahPromptStyle.pill.rawValue {   // only the old top pill; the circle / bottom pill come from .prayerCompleted
-                                    dismissChainZikrItem?.cancel(); withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { showChainZikrButton = true }   // stays until swiped away or tapped (owner)
-                                }
+                                // The post-salah pill follows the flourish (.prayerCompleted).
                             }
                         }
                 )
             
             
             
-            // "not now" inside the circle, above the tap layer (a tap elsewhere on it begins).
-            if postSalahFor != nil {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.3)) { postSalahFor = nil }
-                } label: {
-                    Text("not now")
-                        .font(.footnote)
-                        .fontWeight(.light)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(Capsule().fill(Color.primary.opacity(0.05)))
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .offset(y: 56)
-                .transition(.opacity)
-            }
 
-            // The qibla arrow hides while the circle offers the tasbih.
-            if sharedState.bottomTabPosition != .zikr && postSalahFor == nil {
+            if sharedState.bottomTabPosition != .zikr {
                 // Qibla Arrow
                 Image(systemName: "chevron.up")
                     .font(.subheadline)
@@ -308,7 +269,7 @@ struct MainCircleView: View {
         .onAppear {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-demoPostSalahOffer") {
-                if promptAsNudge { live?.postSalahNudge = "Asr" } else { postSalahFor = "Asr" }
+                live?.postSalahNudge = "Asr"
             }
             #endif
             appearedAt = Date()
@@ -334,17 +295,12 @@ struct MainCircleView: View {
                 flourishEndedAt = Date()
                 withAnimation(.easeInOut(duration: 0.45)) {
                     flourish = nil
-                    if promptInCircle { postSalahFor = event.name }   // the circle offers the tasbih
-                    if promptAsNudge { live?.postSalahNudge = event.name }   // or the bottom nudge
+                    live?.postSalahNudge = event.name   // the post-salah pill at the bottom
                 }
             }
         }
         // The offer goes once the next prayer has begun (its moment has passed).
         .onChange(of: viewModel.relevantPrayer?.name) { _, name in
-            if let offered = postSalahFor, let name, name != offered,
-               viewModel.relevantPrayer?.status() == .current {
-                withAnimation(.easeInOut(duration: 0.3)) { postSalahFor = nil }
-            }
             if let offered = live?.postSalahNudge, let name, name != offered,
                viewModel.relevantPrayer?.status() == .current {
                 withAnimation(.easeInOut(duration: 0.3)) { live?.postSalahNudge = nil }
@@ -361,7 +317,7 @@ struct MainCircleView: View {
                   old.dropLast(5) == new.dropLast(4),                // same prayer, next → now
                   scenePhase == .active, Date().timeIntervalSince(appearedAt) > 2,
                   sharedState.horizontalPage == .main, WelcomeTarget.canLand,
-                  flourish == nil, postSalahFor == nil else { return }
+                  flourish == nil else { return }
             playStartMoment()
             print("🌅 prayer begins moment played (\(new))")
         }
@@ -369,7 +325,7 @@ struct MainCircleView: View {
         // transition exactly as the real one plays it (haptic included). Visual only — no prayer
         // rows, test times or notifications are touched.
         .onReceive(NotificationCenter.default.publisher(for: PrayerStartPreview.request)) { _ in
-            guard viewModel.relevantPrayer != nil, flourish == nil, postSalahFor == nil else { return }
+            guard viewModel.relevantPrayer != nil, flourish == nil else { return }
             let onSalah = sharedState.horizontalPage == .main && sharedState.navPosition == .main
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 sharedState.navPosition = .main
@@ -408,7 +364,7 @@ struct MainCircleView: View {
     /// mark the track shrinks back only once the sweep is done.
     private var trackWantsSolid: Bool {
         _ = currentTime
-        if flourish != nil || postSalahFor != nil { return true }
+        if flourish != nil { return true }
         if let preview { return preview != .upcoming }
         guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else {
             return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
@@ -446,7 +402,7 @@ struct MainCircleView: View {
     private var showsPrayer: Bool {
         _ = currentTime
         if preview != nil { return true }
-        guard postSalahFor == nil, let p = viewModel.relevantPrayer else { return false }
+        guard let p = viewModel.relevantPrayer else { return false }
         return !(p.status() == .upcoming && p.name == "Fajr")
     }
 
@@ -468,14 +424,6 @@ struct MainCircleView: View {
     }
     
     private func handleTap() {
-        // Offering the post-salah tasbih: a tap starts it.
-        if postSalahFor != nil {
-            triggerSomeVibration(type: .success)
-            withAnimation(.easeInOut(duration: 0.25)) { postSalahFor = nil }
-            sharedState.isDoingPostNamazZikr = true
-            showTasbeehPage = true
-            return
-        }
         if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an

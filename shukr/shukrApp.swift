@@ -225,6 +225,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #endif
         // The "hide Ahmadiyya mosques" toggle is gone (871ae72): drop its leftover value.
         UserDefaults.standard.removeObject(forKey: "hideAhmadiyyaMosques")
+        // The post-salah prompt is only the bottom pill now (2026-09-27): its dev picker is gone.
+        UserDefaults.standard.removeObject(forKey: "postSalahPromptStyle")
         
         // Register notification categories
         // "I already prayed": marks that prayer complete in place, the way the widget's

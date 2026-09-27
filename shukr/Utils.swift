@@ -3803,58 +3803,6 @@ struct TopBar: View {
 
 
 
-/// The post-salah prompt that drops in after a prayer is marked (2026-09-25): a glass pill,
-/// just the icon and "Post-salah tasbih" (owner: less text — once tapped they know what it is).
-/// It stays until tapped (→ the 33 · 33 · 34 session) or swiped away — up or to either side —
-/// and its tappable area reaches past the pill.
-struct FloatingChainZikrButton: View {
-    @EnvironmentObject var sharedState: SharedStateClass
-    @State private var pressed = false
-    @Binding var showTasbeehPage: Bool
-    @Binding var showChainZikrButton: Bool
-
-    var body: some View {
-        ZStack {
-            // Built only while shown, so the flick's state starts fresh each time.
-            if showChainZikrButton {
-                HStack(spacing: 10) {
-                    Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
-                        .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(Color.green)
-                    Text("Post-salah tasbih?")
-                        .font(.system(size: 17, weight: .regular, design: .rounded))
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 24)
-                .frame(height: 56)
-                .mapGlass(Capsule())
-                .scaleEffect(pressed ? 0.95 : 1)
-                .padding(.horizontal, 24)                 // a bigger target than the pill
-                .padding(.vertical, 14)
-                .contentShape(Rectangle())
-                .onTapGesture { start() }
-                // Same drag as the bottom pill: any direction, resisted, fades — no edge wall (owner).
-                .flickAway { showChainZikrButton = false }
-                .offset(y: 50)
-                .transition(.opacity.combined(with: .offset(y: -30)))
-                .accessibilityAddTraits(.isButton)
-                .accessibilityLabel("Start post-salah tasbih")
-            }
-        }
-        .animation(.spring(response: 0.45, dampingFraction: 0.8), value: showChainZikrButton)
-    }
-
-    private func start() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) { pressed = true }
-        triggerSomeVibration(type: .success)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            pressed = false
-            showChainZikrButton = false
-            sharedState.isDoingPostNamazZikr = true
-            showTasbeehPage = true
-        }
-    }
-}
 
 
 struct NeumorphicBorder: View {

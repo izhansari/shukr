@@ -292,25 +292,8 @@ enum PrayerStartPreview {
 
 // MARK: - Post-salah offer
 
-/// Where the post-salah tasbih is offered after a prayer is marked (owner, 2026-09-25, comparing):
-/// in the main circle (hold to mark, lift, tap again — no reaching for a pill) or the old pill.
-enum PostSalahPromptStyle: String, CaseIterable, Identifiable {
-    case nudge, circle, pill
-    static let key = "postSalahPromptStyle"
-    static var current: PostSalahPromptStyle {
-        PostSalahPromptStyle(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .nudge
-    }
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .nudge: "Pill at the bottom"
-        case .circle: "In the circle"
-        case .pill: "Pill at the top"
-        }
-    }
-}
-
-/// Drag-to-dismiss for the post-salah pills (both styles): it pulls a resisting ~70 pt toward the
+/// Drag-to-dismiss for the post-salah pill (the one prompt since 2026-09-27; the in-circle offer,
+/// the top pill and their dev picker were deleted): it pulls a resisting ~70 pt toward the
 /// finger in any direction and fades as it goes; let go past 60 pt (or flick) and it finishes
 /// fading where it is, then `onDismiss` runs with no animation (resetting its offset while it was
 /// being removed made it pop back — owner). A short pull springs back. While the finger is on it
@@ -422,34 +405,3 @@ struct PostSalahNudge: View {
     }
 }
 
-/// The main circle while it offers the post-salah tasbih: the Zikr circle's glowing green ring,
-/// "post-salah / Tasbih? / tap to begin" in the circle's light type. A tap on the circle starts it
-/// (`MainCircleView.handleTap`); "not now" sits under the circle.
-struct PostSalahCircleOffer: View {
-    // Laid out like a prayer on the circle: the icon left of the name ("Tasbih Fatimah", the
-    // circle's big light type), a thin caption under it. The ring stays the circle's plain gray —
-    // a calm rest after the score moment (score-coloured red read as demotivating; all-green
-    // shouted — owner). The beads (`circle.hexagonpath`, the app's zikr symbol) are the one green
-    // touch; the hands are the prayer-spot pins. "not now" sits inside the circle (MainCircleView).
-    var body: some View {
-        VStack(spacing: 2) {
-            HStack(alignment: .center, spacing: 8) {
-                Image(systemName: "circle.hexagonpath")
-                    .font(.system(size: 20, weight: .light))
-                    .foregroundStyle(Color.green)
-                    .symbolEffect(.breathe, options: .repeating)
-                Text("Tasbih Fatimah")
-                    .font(.system(size: 26, weight: .light, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            Text("after salah?")
-                .font(.subheadline)
-                .fontWeight(.thin)
-                .fontDesign(.rounded)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: 176)
-        .offset(y: -6)
-    }
-}

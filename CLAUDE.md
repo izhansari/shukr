@@ -148,11 +148,10 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
 **Owner's answers (2026-09-25):**
 - **Zikr wheel:** "gentle arc / half tilt" is the default (`ZikrWheelStyle.gentle`). The others
   stay in dev settings.
-- **Post-salah prompt:** the bottom pill is final and the default. Keep the circle and top-pill
-  variants in dev settings. Both pills now share `FlickAway` (PrayerCompletionFX.swift): a
+- **Post-salah prompt:** the bottom pill is the only prompt (the in-circle offer, the top pill and
+  their dev picker were deleted 2026-09-27). It uses `FlickAway` (PrayerCompletionFX.swift): a
   resisted pull of ~70 pt in any direction that fades as it goes; past 60 pt (or on a flick) it
-  finishes fading in place and is removed without animation. No edge wall. The top pill
-  (`FloatingChainZikrButton`) was rebuilt on it and is built only while shown.
+  finishes fading in place and is removed without animation. No edge wall.
 - **Confirmed good:** the mosque finder, the "fine" ring, the "N done" footer, the time editor's
   colour-bar scrub (lag fixed), the two-tap Finish, and the pause fade.
 - **Two-tap Finish:** the owner asked for a smoother change between states. The two labels are
@@ -1758,29 +1757,12 @@ the list is the common path — owner saw no prompt at all while the list was up
 State: `PagerLiveState.postSalahNudge` (prayer name), set by MainCircleView; drawn by
 `PagerChromeView` above the pager — as part of the page, dragging it to dismiss dragged the page
 (owner); sim-verified a sideways flick dismisses it and the page stays. Owner tried a bottom arc
-("drag up to open") and an in-circle prompt first and came back to the pill. The two earlier tries stay selectable (Settings → My Dev Stuff → Post-salah prompt):
-
-**Post-salah offer in the main circle (alternative)**: once a prayer is marked (hold the
-circle, or the list) and the completion flourish ends, the circle becomes `PostSalahCircleOffer`
-(PrayerCompletionFX.swift), laid out like a prayer on the circle: the bead icon (`circle.hexagonpath`,
-green — the hands are the prayer-spot pins) left of **"Tasbih Fatimah"** in the circle's big light
-type, "after salah?" thin under it; the ring stays the circle's plain gray (a score-coloured ring —
-red after a Late — read as demotivating, and all-green shouted: owner). "not now" is a small
-capsule inside the circle, and the qibla arrow hides while the offer is up. A tap on the circle starts the 33 · 33 · 34 session
-(owner: hold to mark, lift, tap — no reaching for a pill); "not now" under the circle dismisses it
-(a swipe on the circle belongs to the pager / sheet); it also clears when the next prayer begins.
-While it's up the circle's hold does nothing (it would mark / unmark the prayer behind it — found
-in the sim). `MainCircleView.postSalahFor`. The pill below is the alternative, Settings → My Dev
-Stuff → Post-salah prompt (`PostSalahPromptStyle`, `postSalahPromptStyle`).
-
-The prompt that drops in after marking a prayer (`FloatingChainZikrButton`, Utils.swift) is a
-glass capsule since 2026-09-25 — just the green hands icon and "Post-salah tasbih" (owner: less
-text), 56 pt tall with a target ~24 pt past the pill. It **stays until tapped** (→ the session)
-**or swiped away** (up or to either side; no more 5 s auto-hide) — was an outlined gray box, "post
-salah zikr?"; same for Settings' light / dark / auto toast
-(`floatingMessageView`: mode symbol + "Light mode" / "Dark mode" / "Auto · follows the sun").
-Both use `mapGlass` (LocationMapView2.swift — the app's glass capsule helper; Liquid Glass on
-iOS 26+). DEBUG `-demoChainButton` shows the prompt.
+("drag up to open") and an in-circle prompt first and came back to the pill. **It's the only
+prompt** (2026-09-27): the in-circle offer (`PostSalahCircleOffer`, `MainCircleView.postSalahFor`),
+the top pill (`FloatingChainZikrButton`, `-demoChainButton`), the dev picker
+(`PostSalahPromptStyle`) and the `showChainZikrButton` / `dismissChainZikrItem` bindings threaded
+through the Salah page were deleted; the old `postSalahPromptStyle` key is cleared at launch.
+DEBUG `-demoPostSalahOffer` shows the pill.
 
 **Post-salah zikr** (`PostSalahTasbeeh` / `PostSalahPhaseStrip`, tasbeehView.swift, 2026-09-25):
 one 100-count session (Subhanallah 33 · Alhamdulillah 33 · Allahu Akbar 34) saved once under a
