@@ -70,6 +70,7 @@ struct PrayerTimesView: View {
     @State private var showNamesPage = false
     #if DEBUG
     @State private var demoMantra: MantraModel?
+    @State private var demoWhatsNew = false
     #endif
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -471,6 +472,12 @@ struct PrayerTimesView: View {
                 let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoWhatsNew") {
+                // The What's new page; `-demoWhatsNewTopic <id>` opens that card's detail.
+                try? await Task.sleep(for: .seconds(1))
+                demoWhatsNew = true
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
                 try? await Task.sleep(for: .seconds(1))
                 showMantrasPage = true
@@ -639,6 +646,7 @@ struct PrayerTimesView: View {
         }
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
+        .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(

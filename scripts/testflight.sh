@@ -5,6 +5,8 @@
 #
 #   scripts/testflight.sh          # next build number
 #   scripts/testflight.sh 12       # a specific build number
+#   SHUKR_APPSTORE=1 scripts/testflight.sh   # the App Store build: leaves out the "What's new"
+#                                            # screenshots (shukr/WhatsNewShots/wn-*.jpg)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,8 +28,11 @@ rm -rf "$ARCHIVE" "build/export-$NEXT"
 # Which commit this is, shown under the hamburger menu / Settings (BuildInfo.swift). "+" = the
 # build bump (and anything else) wasn't committed yet.
 STAMP="$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . ':!*.xcuserstate' ':!*xcschememanagement.plist' || echo +)"
+# TestFlight and the App Store get the same binary, so the screenshots are left out only on request.
+EXTRA=()
+[[ "${SHUKR_APPSTORE:-}" == 1 ]] && EXTRA=(EXCLUDED_SOURCE_FILE_NAMES='wn-*.jpg') && echo "→ App Store build: no What's new screenshots"
 xcodebuild -project shukr.xcodeproj -scheme shukr -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath "$ARCHIVE" "${AUTH[@]}" SHUKR_BUILD_STAMP="$STAMP" archive | tail -3
+  -archivePath "$ARCHIVE" "${AUTH[@]}" SHUKR_BUILD_STAMP="$STAMP" "${EXTRA[@]}" archive | tail -3
 
 cat > build/ExportOptions.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

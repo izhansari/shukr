@@ -13,22 +13,37 @@ Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidg
 
 ## Standing rule: a "What's new" entry with every visible change
 
-**Every commit that changes anything a user could see or feel adds an entry to
-`shukr/WhatsNew.json` in the same commit.** Internal-only changes (refactors, logging, scripts,
-notes) don't need one. The owner reads these in the app (tap the build line at the bottom of the ☰
-menu or Settings → "What's new", DEBUG / TestFlight builds only) to know what to test.
-- Before committing, run `scripts/whatsnew.py resolve` (fills in the hashes of earlier "next"
-  entries), then append yours at the end (the file is chronological):
-  `{ "date": "2026-09-27", "commit": "next", "area": "Salah", "title": "…", "tryIt": ["…"],
-  "checked": "sim" }` — `area`: Salah / Zikr / Map / Mosques / Widget / Notifications / Settings /
-  99 Names / Daily Ayah / …; `checked`: "sim" | "phone" | "no".
-- Plain, short language; 1–3 concrete "try it" steps ("☰ → 99 Names → tap Known").
-- The page (`CursorSwift/WhatsNew.swift`): newest first by day and commit, NEW since the build last
-  opened (`whatsNew.currentBuild` / `previousBuild`), "← this build" on the running commit (and
-  "next"), a tested tick per entry (`whatsNew.tested`) and "Untested only". Gated by
-  `WhatsNewAccess` (DEBUG, or `AppTransaction.environment != .production`).
+**Every commit that changes anything a user could see or feel adds a What's new entry in the same
+commit** — with a **topic**, the **notes item #** (from shukr-ideas.md, when there is one), **try-it
+steps** and **a screenshot when it can be seen**. Internal-only changes (refactors, logging,
+scripts, notes) don't need one. The owner reads these in the app (tap the build line at the bottom
+of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them and sends feedback back.
+- **Never hand-edit the entries** — use `scripts/whatsnew.py` (it keeps `shukr/WhatsNew.json`'s layout):
+  1. `scripts/whatsnew.py resolve` (fills in earlier "next" hashes and every commit's time).
+  2. Screenshot in the sim, then `scripts/whatsnew.py shot <png> <name>` → `shukr/WhatsNewShots/wn-<name>.jpg`
+     (≤ 600 px, ~20–40 KB; keep the folder modest — it ships in TestFlight builds). The folder is a
+     synchronized group in the app target, so nothing else to add.
+  3. `scripts/whatsnew.py add --topic <id> --notes "#17" --title "<this change, one line>" --try "…"
+     --try "…" --shot wn-<name>.jpg`. A new feature: also `--area Zikr --topic-title "…"`.
+- **Topics are features, not commits** (one card each). Reuse the topic when a change touches an
+  existing feature, and update `--topic-title` so it always describes the feature **as it is now**
+  ("The map's globe toggles Standard ⇄ Satellite…"), plus `--topic-try` when the steps changed. A
+  change that undoes / replaces an earlier one: `--status dropped|replaced` on the old entry (edit
+  that one field in the JSON) so it shows greyed ("Map Modes sheet: dropped").
+- `area`: Salah / Zikr / Map / Mosques / Widget / Notifications / Settings / 99 Names / Daily Ayah /
+  …; `checked`: sim | phone | no. Plain, short language; 1–3 concrete steps ("☰ → 99 Names → Known").
+- **Feedback comes back**: the owner marks 👍 / 👎 / 💬 with a note / photo per topic and either
+  shares a Markdown summary into the chat, or `scripts/pull-feedback.sh` pulls it from the phones
+  to `shukrGit/feedback/<date>.md` (+ photos). Read it when asked "check my feedback".
+- The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
+  on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's
+  `Library/Feedback/`: feedback.json, feedback.md, photos/). Gated by `WhatsNewAccess` (DEBUG, or
+  `AppTransaction.environment != .production`). DEBUG `-demoWhatsNew [-demoWhatsNewTopic <id>]`.
 - TestFlight notes: `scripts/whatsnew.py testflight --since <last uploaded build's commit> --out
-  notes.txt` (≤ 4000 chars, no emoji; titles only if it's too long), then `scripts/asc.py release`.
+  notes.txt` (one line per topic as it is now, ≤ 4000 chars, no emoji), then `scripts/asc.py release`.
+- App Store build: `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves the screenshots out
+  (`EXCLUDED_SOURCE_FILE_NAMES='wn-*.jpg'`; TestFlight and the App Store otherwise get the same
+  binary). The page itself never shows there.
 
 ## Feature list (for the App Store listing)
 
@@ -797,7 +812,7 @@ Accounts"). That line still prints in logs and is harmless now.
   read it out, print it or commit it; the scripts only pass its path.
 
 Steps, when the owner says "push a new build":
-1. **`scripts/testflight.sh`** bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
+1. **`scripts/testflight.sh`** (for the App Store release itself: `SHUKR_APPSTORE=1 scripts/testflight.sh`, which leaves out the What's new screenshots) bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
    watch targets included), archives Release (iPhone app + embedded watch app), and uploads. The
    export runs with the system PATH, since Homebrew's rsync breaks it. Commit the bump afterwards.
 2. **Write tester notes**: start from `scripts/whatsnew.py testflight --since <previous build's

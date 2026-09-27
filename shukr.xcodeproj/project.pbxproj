@@ -193,6 +193,7 @@
 		5A7C0E000000000000000003 /* shukrWatch */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatch; sourceTree = "<group>"; };
 		5A7C0E000000000000000004 /* shukrWatchShared */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatchShared; sourceTree = "<group>"; };
 		5A7C0E000000000000000005 /* shukrWatchWidgets */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = shukrWatchWidgets; sourceTree = "<group>"; };
+		5A7C0E0000000000000000F3 /* WhatsNewShots */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = WhatsNewShots; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -282,6 +283,7 @@
 			children = (
 				361F895C2D0402D300E81F07 /* Info.plist */,
 				5A7C0E0000000000000000F1 /* WhatsNew.json */,
+				5A7C0E0000000000000000F3 /* WhatsNewShots */,
 				A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */,
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
 				369BE93C2CA4D160003A58B7 /* Preview Content */,
@@ -391,6 +393,7 @@
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
 				365AC42A2D4C467D002DDCE7 /* LocationManagers */,
 				369BE9272CA49384003A58B7 /* Models */,
+				5A7C0E0000000000000000F3 /* WhatsNewShots */,
 			);
 			name = shukr;
 			packageProductDependencies = (
