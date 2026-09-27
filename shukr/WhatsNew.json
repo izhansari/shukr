@@ -246,9 +246,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "date": "2026-09-27", "commit": "75e7d7d", "area": "Map",
     "title": "Map Modes: Standard or Satellite, Traffic and Labels",
     "tryIt": ["Open the map → tap the globe (top right) → pick Satellite", "Turn Labels off for pure imagery, or Traffic on", "Close and reopen the app → the map keeps your choice"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "title": "The map's style button is a globe: tap for Satellite, tap again for Standard",
+    "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Close and reopen the app → the map keeps your choice"],
     "checked": "sim"
   }
 ]

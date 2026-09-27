@@ -116,12 +116,7 @@ final class LocationViewModel: ObservableObject {
             }
         }
     }
-    /// Map Modes sheet (MapModes.swift) is up.
-    @Published var showMapModes = false
-    /// Where Map Modes takes its preview snapshots: the user, else the map's centre.
-    var modesCentre: CLLocationCoordinate2D {
-        mapView?.userLocation.location?.coordinate ?? mapView?.centerCoordinate ?? LocationViewModel.meccaCoordinate
-    }
+
     @Published var showPrayers: Bool = false
 
     // Mosque finder (MosqueFinder.swift)
@@ -528,11 +523,9 @@ struct MapView: UIViewRepresentable {
     @ObservedObject var viewModel: LocationViewModel
     var envLocation: EnvLocationManager
     var anchor: MapAnchor
-    // Map Modes (MapModes.swift), remembered.
+    // Standard / Satellite (the globe button, MapModes.swift), remembered.
     @AppStorage(MapModes.satelliteKey) private var satellite = false
-    @AppStorage(MapModes.trafficKey) private var traffic = false
-    @AppStorage(MapModes.labelsKey) private var labels = true
-    private var modesKey: String { "\(satellite)|\(traffic)|\(labels)" }
+    private var modesKey: String { "\(satellite)" }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -544,7 +537,7 @@ struct MapView: UIViewRepresentable {
         mapView.isRotateEnabled = true         // turn the map to match what's in front of you
         mapView.showsCompass = false           // our own glass north button (MapNorthButton)
         mapView.isPitchEnabled = false
-        mapView.preferredConfiguration = MapModes.configuration(satellite: satellite, traffic: traffic, labels: labels)
+        mapView.preferredConfiguration = MapModes.configuration(satellite: satellite)
         context.coordinator.appliedModes = modesKey
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
@@ -574,7 +567,7 @@ struct MapView: UIViewRepresentable {
         // Only when the mode changed: a new configuration reloads the map's tiles.
         if context.coordinator.appliedModes != modesKey {
             context.coordinator.appliedModes = modesKey
-            mapView.preferredConfiguration = MapModes.configuration(satellite: satellite, traffic: traffic, labels: labels)
+            mapView.preferredConfiguration = MapModes.configuration(satellite: satellite)
         }
     }
 
@@ -884,6 +877,7 @@ struct MapView: UIViewRepresentable {
 
 struct LocationMapContentView: View {
     @StateObject private var viewModel = LocationViewModel()
+    @AppStorage(MapModes.satelliteKey) private var satellite = false
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @Environment(\.modelContext) private var context
     @EnvironmentObject var compass: CompassState
@@ -1090,13 +1084,13 @@ struct LocationMapContentView: View {
                         VStack(spacing: 10) {
                             // Map style + locate: one glass capsule, like Apple Maps groups them.
                             VStack(spacing: 0) {
-                                // Map Modes (Standard / Satellite, Traffic, Labels), like Apple Maps.
-                                Button { viewModel.showMapModes = true } label: {
+                                // Standard ⇄ Satellite.
+                                Button { satellite.toggle() } label: {
                                     Image(systemName: MapModes.globeSymbol(longitude: envLocation.userLocation?.coordinate.longitude))
                                         .mapControlIcon()
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Map modes")
+                                .accessibilityLabel(satellite ? "Standard map" : "Satellite map")
                                 Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
                                 Button { centreOnUser() } label: {
                                     Image(systemName: "location")
@@ -1222,8 +1216,6 @@ struct LocationMapContentView: View {
             // Half sheet: the pin is already on the map behind it, so just the data. The map
             // stays usable underneath up to the medium detent.
             PrayerSpotSheet(selection: selection, viewModel: viewModel)
-                // Map Modes opens over this sheet when it's up.
-                .mapModesSheet(isPresented: $viewModel.showMapModes) { viewModel.modesCentre }
                 .presentationDetents(viewModel.spotDetents, selection: $viewModel.spotDetent)
                 .interactiveDismissDisabled(viewModel.spotMode != .browse)   // Save / Cancel while editing
                 .presentationDragIndicator(.visible)
@@ -1255,11 +1247,6 @@ struct LocationMapContentView: View {
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
         }
-        // Map Modes from the map itself, when no prayer / mosque sheet is up (those present it over
-        // themselves).
-        .mapModesSheet(isPresented: Binding(
-            get: { viewModel.showMapModes && viewModel.selection == nil && !viewModel.showMosqueList },
-            set: { viewModel.showMapModes = $0 })) { viewModel.modesCentre }
         .sheet(isPresented: $viewModel.showMosqueList) {
             NavigationStack(path: $viewModel.mosquePath) {
                 MosqueListSheet(items: viewModel.mosques,
@@ -1273,8 +1260,6 @@ struct LocationMapContentView: View {
                             .toolbar(.hidden, for: .navigationBar)
                     }
             }
-            // Map Modes opens over the mosque sheet when it's up.
-            .mapModesSheet(isPresented: $viewModel.showMapModes) { viewModel.modesCentre }
             .presentationDetents([LocationViewModel.mosqueCollapsed, .medium, .large], selection: $viewModel.mosqueDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
