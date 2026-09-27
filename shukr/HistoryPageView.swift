@@ -125,6 +125,8 @@ struct HistoryPageView: View {
         .sheet(item: $mantraToOpen) { mantra in
             MantraEditorView(mantra: mantra)
         }
+        .onChange(of: mantraToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
+        .onChange(of: isEditing) { _, on in if on { PaceCoordinator.stopAll() } }
     }
 
     private func deleteSelected() {
@@ -350,14 +352,16 @@ struct SessionRow: View {
                     triggerSomeVibration(type: .light)
                     if feelingPace { stopFeelingPace() } else { showMenu = true }
                 }
-                .popover(isPresented: $showMenu, arrowEdge: .top) {
+                // No arrow edge: iOS puts it above or below, so rows near the bottom aren't squeezed.
+                .popover(isPresented: $showMenu) {
                     menu.presentationCompactAdaptation(.popover)
                 }
                 .onChange(of: showMenu) { _, open in
-                    // Run the pick once the popover is away (a sheet over a dismissing popover fails).
+                    // Run the pick once the popover is really away: its dismissal can take ~0.3 s,
+                    // and a sheet presented during it fails ("presentation in progress").
                     guard !open, let action = pendingAction else { return }
                     pendingAction = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: action)
                 }
         } else {
             core
@@ -378,6 +382,10 @@ struct SessionRow: View {
             holding ? startFeelingPace(pace) : stopFeelingPace()
         })
         .onDisappear { stopFeelingPace() }
+        // Another row started pacing, or the page / a sheet asked everyone to stop.
+        .onChange(of: pacer.activeID) { _, active in
+            if feelingPace && active != session.persistentModelID { stopFeelingPace() }
+        }
         // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
         .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
         // The whole row tints while held — the finger covers the pace text.
@@ -483,6 +491,9 @@ struct SessionRow: View {
         }
     }
 
+    /// One pace at a time, app-wide: starting one stops another; paging away or a sheet opening
+    /// stops it (the History list stays mounted in the pager, so onDisappear doesn't come).
+    private var pacer = PaceCoordinator.shared
     @State private var feelingPace = false
     @State private var paceBeat = 0
     @State private var paceStart: Date?
@@ -490,6 +501,7 @@ struct SessionRow: View {
     @State private var paceTask: Task<Void, Never>?
 
     private func startFeelingPace(_ pace: TimeInterval) {
+        pacer.activeID = session.persistentModelID
         paceTask?.cancel()
         paceTask = Task { @MainActor in
             let interval = min(max(pace, 0.12), 5)
@@ -518,11 +530,20 @@ struct SessionRow: View {
     }
 
     private func stopFeelingPace() {
+        if pacer.activeID == session.persistentModelID { pacer.activeID = nil }
         paceTask?.cancel()
         paceTask = nil
         withAnimation(.easeOut(duration: 0.2)) { feelingPace = false }
         paceStart = nil
     }
+}
+
+/// The session whose pace is playing (one at a time). `stopAll()` from the library's pager on a page
+/// change and from lists presenting a sheet.
+@MainActor @Observable final class PaceCoordinator {
+    static let shared = PaceCoordinator()
+    var activeID: PersistentIdentifier?
+    static func stopAll() { shared.activeID = nil }
 }
 
 /// A soft green glow hugging the row's edge that flashes once per `beat` — the same blurred

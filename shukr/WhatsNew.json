@@ -447,9 +447,15 @@
       "checked": "sim", "shots": ["wn-session-popover.jpg"]
     },
     {
-      "id": "zikr-history-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "id": "zikr-history-4", "date": "2026-09-27", "commit": "5119925", "time": "2026-09-27T13:47:29-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "History ⇄ Azkar pages smoothly (native paging); Azkar has Edit → select → Delete too, no row swipes",
       "tryIt": ["Books → swipe between History and Azkar: smooth, the switch follows", "Azkar → Edit → tick your own azkar (built-ins can't be) → Delete N azkar (says what happens to their tasks)", "Scrub the 14-day chart sideways: it scrubs, the page doesn't turn"],
+      "checked": "sim"
+    },
+    {
+      "id": "zikr-history-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "title": "Feel the pace stops when you page away or open a zikr; only one session paces at a time",
+      "tryIt": ["History → a session → Feel the pace → swipe to Azkar → the buzzing stops", "Start the pace on one session, then another → the first stops"],
       "checked": "sim"
     }
   ]

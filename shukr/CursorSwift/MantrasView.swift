@@ -694,6 +694,7 @@ struct ZikrLibraryView: View {
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .environment(lock)
         .onChange(of: page) { _, new in
+            PaceCoordinator.stopAll()          // a pace on the page left behind stops
             if let new, new != tab { tab = new }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
