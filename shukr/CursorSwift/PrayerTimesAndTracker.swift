@@ -306,19 +306,6 @@ struct PrayerTimesView: View {
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
         }
-        // The welcome is about to play: put the Salah page (list closed) under it so its ring has
-        // the main circle to become. Not over a tasbeeh session — that stays as it was.
-        .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.willShow)) { _ in
-            WelcomeTarget.canLand = !showTasbeehPage
-            guard !showTasbeehPage else { return }
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                dismissCovers()
-                sharedState.horizontalPage = .main
-                sharedState.navPosition = .main
-            }
-        }
         // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
         // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
         .onChange(of: somethingCovers || showTasbeehPage, initial: true) { _, covered in

@@ -206,8 +206,9 @@ simulator; "phone" = installed on the owner's 13 Pro Max (iOS 27), and they reac
   - A sage light sweeps over the word, with two soft taps like a heartbeat.
   - It holds about 1.1 s (owner: "a little longer"), then fades (0.7 s, no scale). About 2.5 s in
     all.
-  - Plays on a cold launch, and after more than 5 min in the background
-    (`WelcomeGate.awayThreshold`).
+  - Plays only on a cold launch (the process starting fresh). It used to replay after more than
+    5 min in the background; the owner found that too often (2026-09-27), so `awayThreshold` /
+    `willShow` are gone.
   - Reduce Motion: just the fade. DEBUG `-demo…` args skip it (`-demoWelcome` forces it).
 
 - **Qibla map: rotation + first-time guide** (owner: people find the map compass confusing, since
@@ -1492,7 +1493,7 @@ summary before Fajr, not a NEXT ring). Looks (`PrayerStartStyle`, Settings → M
 draw (the dashed ring turns solid sage and swells into the track), glow (one sage breath round the
 track). **Owner is choosing** — keep the winner, delete the rest. Reduce Motion: the crossfade
 only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow] [-demoPrayerStartPrayer Fajr]
-[-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows in memory; logs
+[-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows — they get saved, simulator only; logs
 "🌅 prayer begins moment played").
 
 **Custom task names — schema 2.4.0 (2026-09-27, notes #7).** `TaskModel.customName` (optional),

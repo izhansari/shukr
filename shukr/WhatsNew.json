@@ -210,9 +210,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "a247790", "area": "Zikr",
     "title": "Zikr reminders: fixes and no more \"Skip today\"",
     "tryIt": ["Give a task a reminder, then delete the task → its reminders stop", "With notifications off, open a task's Reminder → \"Notifications are off · Open Settings\"", "A reminder's actions are now just Start now and Later (30 min)"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Welcome",
+    "title": "The welcome animation plays only on a fresh start",
+    "tryIt": ["Leave shukr for a while and come back → no welcome", "Swipe shukr away in the app switcher, open it again → the welcome plays"],
     "checked": "sim"
   }
 ]

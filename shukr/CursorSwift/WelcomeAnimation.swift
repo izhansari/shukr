@@ -9,14 +9,14 @@
 //  track as the word fades; once it's there, the page fades in around it (owner, 2026-09-26:
 //  "the circle grows into the other one"). It
 //  always lands on the Salah page (list closed) so there's a circle to land on. About 2.6 s.
-//  Plays on a cold launch, and again only after the app has been in the background for more than
-//  five minutes (not on a quick hop to another app and back).
+//  Plays only on a cold launch — when iOS had ended the app and it starts fresh (owner,
+//  2026-09-27: after every 5 min away it came too often).
 //
 
 import SwiftUI
 
 extension View {
-    /// Shows `WelcomeOverlay` on launch and after a long time away.
+    /// Shows `WelcomeOverlay` once per launch of the app process.
     func welcomeOnLaunch() -> some View { modifier(WelcomeGate()) }
 }
 
@@ -29,15 +29,7 @@ enum WelcomeTarget {
 }
 
 struct WelcomeGate: ViewModifier {
-    /// How long the app must have been in the background to be welcomed again.
-    static let awayThreshold: TimeInterval = 5 * 60
-    /// Posted just before the welcome shows: PrayerTimesView brings the Salah page up under it.
-    static let willShow = Notification.Name("welcomeWillShow")
-
-    @Environment(\.scenePhase) private var scenePhase
     @State private var showing = WelcomeGate.shouldShowOnLaunch
-    @State private var run = 0
-    @State private var wentAway: Date?
 
     private static var shouldShowOnLaunch: Bool {
         #if DEBUG
@@ -53,23 +45,7 @@ struct WelcomeGate: ViewModifier {
             .overlay {
                 if showing {
                     WelcomeOverlay { showing = false }
-                        .id(run)
                         .transition(.identity)
-                }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                switch phase {
-                case .background:
-                    wentAway = Date()
-                case .active:
-                    if let away = wentAway, Date().timeIntervalSince(away) > Self.awayThreshold {
-                        NotificationCenter.default.post(name: Self.willShow, object: nil)
-                        run += 1
-                        showing = true
-                    }
-                    wentAway = nil
-                default:
-                    break
                 }
             }
     }
