@@ -399,10 +399,16 @@
       "checked": "sim", "shots": ["wn-lockscreen-next.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "date": "2026-09-27", "commit": "c404e44", "time": "2026-09-27T07:00:22-04:00", "topic": "prayer-begins", "notes": null,
       "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only",
       "tryIt": ["Mark the current prayer → a small NEXT, well above the name, not part of the stack", "Settings → My Dev Stuff → Next prayer → \"Dashed ring only\" → no NEXT anywhere (app and home-screen widget)", "Lock Screen widget: a prayer that hasn't started shows just the dashed ring"],
       "checked": "sim", "shots": ["wn-next-options.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": "#17",
+      "title": "A voice memo that's still opening never starts after Resume; a double tap opens it once",
+      "tryIt": ["Pause a session → tap the memo's ▶︎ and Resume straight away → it stays silent while you count", "Double-tap ▶︎ → it plays once"],
+      "checked": "sim"
     }
   ]
 }

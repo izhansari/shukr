@@ -28,7 +28,8 @@ import SwiftData
 final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate {
     static let maxSeconds: TimeInterval = 120
 
-    enum State: Equatable { case idle, recording, playing, paused }
+    /// `.loading`: a memo is being opened on the audio queue (taps are ignored; a stop cancels it).
+    enum State: Equatable { case idle, loading, recording, playing, paused }
     private(set) var state: State = .idle
     /// 0…1, the recording's live level (for the meter).
     private(set) var level: Float = 0
@@ -47,7 +48,8 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private let fileURL = FileManager.default.temporaryDirectory.appending(path: "zikr-memo-\(UUID().uuidString.prefix(8)).m4a")
 
-    /// Bumped by every stop, so a recording that finishes starting after a stop is dropped.
+    /// Bumped by every start and stop, so a recording or a memo that finishes starting after a
+    /// stop (or a newer start) is dropped instead of playing / recording on regardless.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private static weak var active: ZikrAudio?
     /// Stop whatever is playing or recording anywhere (Resume / Finish in a session).
@@ -83,19 +85,21 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         observers.forEach(NotificationCenter.default.removeObserver)
         recorder?.stop()
         ticker?.invalidate()
+        try? FileManager.default.removeItem(at: fileURL)
     }
 
     // Record
     func startRecording() async {
         Self.takeOver(self)
         stopPlaying()
+        generation += 1
+        let gen = generation
         let allowed: Bool = await withCheckedContinuation { c in
             AVAudioApplication.requestRecordPermission { c.resume(returning: $0) }
         }
         guard allowed else { micDenied = true; return }
         micDenied = false
-        generation += 1
-        let gen = generation
+        guard gen == generation else { return }     // dismissed / stopped during the prompt
         let url = fileURL
         do {
             // Session activation can block for a while (it hung the simulator's main thread), so
@@ -114,7 +118,12 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
                 return Unchecked(value: r)
             }
             let r = made.value
-            guard gen == generation else { r.stop(); endSession(); return }   // stopped meanwhile
+            guard gen == generation else {                // stopped meanwhile
+                r.stop()
+                try? FileManager.default.removeItem(at: url)
+                if Self.active === self && state == .idle { endSession() }   // unless audio moved on
+                return
+            }
             r.delegate = self
             recorder = r
             state = .recording
@@ -122,6 +131,7 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
             startTicker()
         } catch {
             print("❌ zikr memo record: \(error.localizedDescription)")
+            try? FileManager.default.removeItem(at: url)
             endSession()
         }
     }
@@ -148,11 +158,15 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         switch state {
         case .playing: pause()
         case .paused: resume()
-        default: play(data)
+        case .loading, .recording: break       // a second tap while it opens doesn't start another
+        case .idle: play(data)
         }
     }
     private func play(_ data: Data) {
         Self.takeOver(self)
+        generation += 1
+        let gen = generation
+        state = .loading
         Task {
             do {
                 let made = try await Self.onAudioQueue { () -> Unchecked<AVAudioPlayer> in
@@ -162,6 +176,11 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
                     return Unchecked(value: try AVAudioPlayer(data: data))
                 }
                 let p = made.value
+                // Stopped (Resume, Finish, the page going) while it opened: never play late.
+                guard gen == generation, state == .loading else {
+                    if Self.active === self && state == .idle { endSession() }
+                    return
+                }
                 p.delegate = self
                 p.enableRate = true
                 p.rate = slow ? 0.75 : 1
@@ -173,6 +192,7 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
                 startTicker()
             } catch {
                 print("❌ zikr memo play: \(error.localizedDescription)")
+                if gen == generation { state = .idle }
                 endSession()
             }
         }
@@ -199,7 +219,9 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         }
     }
     func stopPlaying() {
-        guard player != nil else { return }
+        let loading = state == .loading
+        if loading { generation += 1 }             // cancels the memo being opened
+        guard player != nil || loading else { return }
         player?.stop()
         player = nil
         stopTicker()
@@ -207,8 +229,10 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         elapsed = 0
         endSession()
     }
-    /// The memo's length without playing it (for "0:14").
-    static func length(of data: Data) -> TimeInterval { (try? AVAudioPlayer(data: data))?.duration ?? 0 }
+    /// The memo's length without playing it (for "0:14"). Off the main thread: it parses the file.
+    nonisolated static func length(of data: Data) async -> TimeInterval {
+        await Task.detached(priority: .utility) { (try? AVAudioPlayer(data: data))?.duration ?? 0 }.value
+    }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in self.stopPlaying() }
@@ -267,6 +291,20 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
     }
 }
 
+/// A cheap identity for a photo / memo blob (size + its ends), for `.task(id:)` — comparing the
+/// whole Data on every render is what the id would otherwise do.
+func blobKey(_ data: Data?) -> String? {
+    guard let data else { return nil }
+    return "\(data.count)-\(data.prefix(64).hashValue)-\(data.suffix(64).hashValue)"
+}
+
+extension Optional {
+    func asyncMap<T>(_ transform: (Wrapped) async -> T) async -> T? {
+        guard let value = self else { return nil }
+        return await transform(value)
+    }
+}
+
 /// Carries an AVAudioRecorder / AVAudioPlayer back from the audio queue (used on main only after).
 struct Unchecked<T>: @unchecked Sendable { let value: T }
 
@@ -318,8 +356,8 @@ struct VoiceMemoPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { if let audio { length = ZikrAudio.length(of: audio) } }
-        .onChange(of: audio) { _, new in length = new.map(ZikrAudio.length(of:)) ?? 0 }
+        // Once per memo, off the main thread; keyed by a cheap fingerprint, not the whole blob.
+        .task(id: blobKey(audio)) { length = await audio.asyncMap(ZikrAudio.length(of:)) ?? 0 }
     }
 
     private var empty: some View {
@@ -380,7 +418,7 @@ struct VoiceMemoPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel(engine.state == .playing ? "Pause" : "Play voice memo")
             VStack(alignment: .leading, spacing: 8) {
-                Text(engine.state == .idle ? "voice memo · \(mmss(length))" : "\(mmss(engine.elapsed)) / \(mmss(engine.duration))")
+                Text(engine.state == .idle || engine.state == .loading ? "voice memo · \(mmss(length))" : "\(mmss(engine.elapsed)) / \(mmss(engine.duration))")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
@@ -487,7 +525,7 @@ struct ZikrPhotoPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task(id: image) { decoded = await decodedImage(image) }
+        .task(id: blobKey(image)) { decoded = await decodedImage(image) }
         .onChange(of: pick) { _, item in
             guard let item else { return }
             Task {
@@ -702,7 +740,7 @@ struct ZikrMediaStrip: View {
                     .fullScreenCover(isPresented: $viewing) { ZikrPhotoViewer(image: ui) }
                 }
             }
-            .task(id: mantra.imageData) { thumbnail = await decodedImage(mantra.imageData) }
+            .task(id: blobKey(mantra.imageData)) { thumbnail = await decodedImage(mantra.imageData) }
             .onDisappear { engine.stopPlaying() }
             .onChange(of: paused) { _, now in if !now { engine.stopPlaying() } }
         }

@@ -68,7 +68,11 @@ enum SharedStore {
         let dir = url.deletingLastPathComponent()
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return }
         let defaults = UserDefaults(suiteName: appGroup)
-        for name in names.sorted() where name.hasPrefix("shukr.store.unopenable-") && !name.hasSuffix("-wal") && !name.hasSuffix("-shm") {
+        for name in names.sorted() where name.hasPrefix("shukr.store.unopenable-") && !name.hasSuffix("-wal")
+            && !name.hasSuffix("-shm") && !name.hasSuffix("_SUPPORT") {
+            // (the set-aside media folder is a directory, never a store)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: dir.appending(path: name).path, isDirectory: &isDir), !isDir.boolValue else { continue }
             let key = "salvaged." + name
             guard defaults?.bool(forKey: key) != true else { continue }
             do {

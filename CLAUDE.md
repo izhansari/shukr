@@ -166,7 +166,11 @@ code; in UI strings write "zikr". New UI text must follow this.
   `paused` → false (the pause screen only fades). **All session activation, deactivation and
   recorder / player setup run on a serial audio queue** — `setActive(true)` for recording froze the
   simulator's main thread (and never returns there, so recording can't be tested in the sim). A
-  start that resolves after a stop is dropped (`generation`). Ticker in `.common` mode; 64 kbps AAC;
+  start that resolves after a stop is dropped (`generation`, bumped by every start and stop;
+  playback has a `.loading` state — taps ignored, a stop cancels it — and recording re-checks
+  after the mic prompt). The temp .m4a is removed on every exit path (and in `deinit`). Memo
+  length is computed off the main thread; `.task(id:)` uses `blobKey` (size + ends), never the blob.
+  `onRecorded` is re-wired on every render of the card (current binding). Ticker in `.common` mode; 64 kbps AAC;
   the temp file is deleted after reading.
 - **Photos:** `downscaledJPEG` is async (ImageIO thumbnail in a detached task); the camera hands a
   UIImage straight in; views decode with `decodedImage` in `.task(id:)`, never in `body`.
@@ -1806,6 +1810,9 @@ Since 2026-09-27 the backup also copies the external-storage folder (zikr photos
 `.shukr_SUPPORT/_EXTERNAL_DATA` beside the store) as `Library/Backups/shukr_SUPPORT.<label>` —
 visible on purpose; to restore, put it back beside the store as `.shukr_SUPPORT`.
 `recoverFromUnopenableStore` sets it aside with the store (`shukr.store.unopenable-<stamp>_SUPPORT`).
+Salvage skips that folder. **Not done:** salvage doesn't copy photos / memos back from a set-aside
+store — its SQLite column holds Core Data's undocumented inline / external-reference markers
+(the blobs are in the `_SUPPORT` folder by UUID); recover them by hand if it ever matters.
 DEBUG `-demoBackUpStore` makes a `debug-<time>` backup at launch.
 **Pause card ✎** opens `MantraCardEditor` (MantrasView.swift): the card itself, editable (name,
 full mantra in the inset box, notes, count in sets) on the pause colour; Save gray until a change,

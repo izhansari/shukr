@@ -372,6 +372,9 @@ struct MantraCardFields: View {
     static let paneHeight: CGFloat = 132
 
     var body: some View {
+        // Re-wired on every render, so a take always lands in the card's current binding (one
+        // captured once in onAppear could go stale if the parent handed in a new one).
+        let _ = wireRecorder()
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 TextField("name", text: $name)
@@ -442,17 +445,18 @@ struct MantraCardFields: View {
         .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: editable)
         .onChange(of: editable) { _, on in if !on { focus = nil } }
-        .onAppear {
-            let binding = $audioData
-            audio.onRecorded = { data in
-                binding.wrappedValue = data
-                triggerSomeVibration(type: .success)
-            }
-        }
         .onChange(of: pane) { old, _ in
             if old == .memo { audio.finishRecording(); audio.stopPlaying() }
         }
         .preference(key: MemoRecordingKey.self, value: audio.state == .recording)
+    }
+
+    private func wireRecorder() {
+        let binding = $audioData
+        audio.onRecorded = { data in
+            binding.wrappedValue = data
+            triggerSomeVibration(type: .success)
+        }
     }
 
     /// The notes tab: the editor while editing, else the notes as text in the same box.
@@ -916,7 +920,9 @@ struct MantraEditorView: View {
                 Text(mantra.map(MantraModel.deleteMessage) ?? "")
             }
         }
-        .onDisappear { ZikrAudio.stopAll() }   // closed (or covered by the task sheet): keep a take
+        // Fires when this sheet closes, and when the New task cover (full screen) goes over it:
+        // either way a take in progress is finished and saved, and playback stops.
+        .onDisappear { ZikrAudio.stopAll() }
     }
 
     private func save() {
