@@ -381,22 +381,28 @@
       "checked": "sim", "shots": ["wn-zikr-history-edit.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "prayer-begins", "notes": null,
       "title": "More air between NEXT and the prayer name (circle, next Fajr, widget)",
       "tryIt": ["Mark the current prayer → NEXT sits clearly above the next prayer's name", "Home-screen Prayers widget: same gap, scaled"],
       "checked": "sim", "shots": ["wn-next-gap.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "The qibla buzz only happens when the Salah circle is on screen",
       "tryIt": ["Salah page: point the phone at the qibla → it buzzes", "Zikr page, Settings, History, the task sheets, the map or a tasbeeh session → no buzz"],
       "checked": "no"
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "lockscreen-prayers", "notes": null,
+      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "lockscreen-prayers", "notes": null,
       "title": "Lock Screen Prayers widget: ring and bar fill up; dashed ring + NEXT for the next prayer",
       "tryIt": ["Add the Prayers widget to the Lock Screen (small and wide)", "During a prayer the ring and the bar grow as time passes", "Before a prayer starts (or after you've marked one) the small one shows a dashed ring with NEXT"],
       "checked": "sim", "shots": ["wn-lockscreen-next.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only",
+      "tryIt": ["Mark the current prayer → a small NEXT, well above the name, not part of the stack", "Settings → My Dev Stuff → Next prayer → \"Dashed ring only\" → no NEXT anywhere (app and home-screen widget)", "Lock Screen widget: a prayer that hasn't started shows just the dashed ring"],
+      "checked": "sim", "shots": ["wn-next-options.jpg"]
     }
   ]
 }

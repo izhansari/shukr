@@ -65,6 +65,11 @@ struct shukrApp: App {
             // Rows scored by the old rule (fraction of window left) → points, once.
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
             #if DEBUG
+            // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
+            if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
+               i + 1 < ProcessInfo.processInfo.arguments.count {
+                UserDefaults(suiteName: SharedStore.appGroup)?.set(ProcessInfo.processInfo.arguments[i + 1] == "on", forKey: NextLabel.key)
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoBackUpStore") {
                 PrayerScoring.backUpStore(label: "debug-\(Int(Date().timeIntervalSince1970))")
             }

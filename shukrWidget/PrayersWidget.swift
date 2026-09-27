@@ -387,14 +387,14 @@ struct PrayersWidgetView: View {
                                 .foregroundStyle(relevantPrayer.current ? Color.primary : Color.primary.opacity(0.55))
                                 // "NEXT" over the name without taking space, so the name stays put.
                                 .overlay(alignment: .top) {
-                                    if !relevantPrayer.current {
+                                    if !relevantPrayer.current && NextLabel.shown {
                                         Text("next")
-                                            .font(.system(size: 7, weight: .regular, design: .rounded))
-                                            .tracking(1.2)
+                                            .font(.system(size: 6, weight: .medium, design: .rounded))
+                                            .tracking(1.4)
                                             .textCase(.uppercase)
                                             .foregroundStyle(.tertiary)
                                             .fixedSize()
-                                            .offset(y: -12)   // the app's gap, scaled
+                                            .offset(y: -15)   // the app's tag, scaled: set apart from the name
                                     }
                                 }
                                 .lineLimit(1)
@@ -858,25 +858,20 @@ struct PrayerLockScreenView: View {
                 }
                 .progressViewStyle(.circular)
             } else {
-                // Not started (most of the time once the current one is marked): the app's
-                // "next" look — a thin dashed ring and a tiny NEXT.
+                // Not started (most of the time once the current one is marked): just the app's
+                // dashed ring — no NEXT here (owner, 2026-09-27: it didn't look good).
                 Circle()
                     .inset(by: 2.5)
                     .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2.5, 3.5]))
                     .opacity(0.55)
-                VStack(spacing: 0) {
-                    Text("next")
-                        .font(.system(size: 7, weight: .medium, design: .rounded))
-                        .tracking(1)
-                        .textCase(.uppercase)
-                        .opacity(0.7)
+                VStack(spacing: 1) {
                     Image(systemName: prayerIcon(for: prayer.name))
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                     Text(prayer.name)
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .lineLimit(1).minimumScaleFactor(0.6)
                     Text(Self.clock.string(from: prayer.start))   // "5:32", no zero, no AM
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
                         .monospacedDigit()
                 }
                 .padding(.horizontal, 6)

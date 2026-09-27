@@ -5,6 +5,8 @@ import SwiftData
 
 
 struct MainCircleView: View {
+    /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
+    @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
@@ -135,13 +137,16 @@ struct MainCircleView: View {
                                 // spot whether the prayer is next or current — it used to jump.
                                 .overlay(alignment: .top) {
                                     Text("next")
-                                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                                        .tracking(2)
+                                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                                        .tracking(2.5)
                                         .textCase(.uppercase)
                                         .foregroundStyle(.tertiary)
                                         .fixedSize()
-                                        .offset(y: -19)   // ~6 pt of air above the name (owner, 2026-09-27)
-                                        .opacity(upcoming ? 1 : 0)
+                                        // A small tag set apart, not a line of the stack: its gap to
+                                        // the name is ~3× the name–caption gap; ~12 pt under the
+                                        // qibla arrow at its highest (r 80), well inside the ring.
+                                        .offset(y: -31)
+                                        .opacity(upcoming && showNextLabel ? 1 : 0)
                                         .animation(.easeInOut(duration: 0.5), value: upcoming)
                                 }
                                 .animation(animationStyle, value: prayer.name)
@@ -456,6 +461,7 @@ struct MainCircleView: View {
 
 
 struct summaryCircle: View{
+    @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     // FIXME: think this through more and make sure it makes sense.
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var sharedState: SharedStateClass
@@ -559,12 +565,13 @@ struct summaryCircle: View{
                 .foregroundStyle(Color.primary.opacity(0.55))
                 .overlay(alignment: .top) {
                     Text("next")
-                        .font(.system(size: 11, weight: .regular, design: .rounded))
-                        .tracking(2)
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .tracking(2.5)
                         .textCase(.uppercase)
                         .foregroundStyle(.tertiary)
                         .fixedSize()
-                        .offset(y: -19)   // ~6 pt of air above the name (owner, 2026-09-27)
+                        .offset(y: -31)   // same tag as the main circle's (set apart from the name)
+                        .opacity(showNextLabel ? 1 : 0)
                 }
 
                 // Displayed Fajr Time:

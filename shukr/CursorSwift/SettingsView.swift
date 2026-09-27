@@ -63,6 +63,7 @@ struct SettingsView: View {
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
+    @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -368,6 +369,12 @@ struct SettingsView: View {
                             Picker("Prayer list dot", selection: $prayerDotStyle) {
                                 ForEach(PrayerDotStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }
+                            // A prayer that hasn't started: "NEXT" above it, or the dashed ring alone.
+                            Picker("Next prayer", selection: $showNextLabel) {
+                                Text("NEXT + dashed ring").tag(true)
+                                Text("Dashed ring only").tag(false)
+                            }
+                            .onChange(of: showNextLabel) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
                             // Plays the prayer-begins moment on the Salah circle (visual only: no test
                             // times, no prayer rows or notifications touched).
                             Button("Preview prayer begins", systemImage: "play.circle") {
