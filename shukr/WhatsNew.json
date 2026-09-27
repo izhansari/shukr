@@ -617,16 +617,22 @@
       "checked": "sim"
     },
     {
-      "id": "built-in-azkar-8", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "id": "built-in-azkar-8", "date": "2026-09-27", "commit": "81593de", "time": "2026-09-27T18:37:37-04:00", "topic": "built-in-azkar", "notes": null,
       "title": "Azkar sort, simpler: pick one field (Times recited, Pace, Last used, Name) and an ↑ / ↓ direction; built-ins always show, below yours",
       "tryIt": ["Azkar → the sort button left of the search → Times recited: most first; open it again → Ascending: fewest first", "The button shows ↑ or ↓ while a sort is on; Default puts it back"],
       "checked": "sim", "shots": ["wn-azkar-sort-field-direction.jpg"], "addresses": ["ADD5836A-58CE-4555-9425-E66B3AC18406"]
     },
     {
-      "id": "prayer-begins-10", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-10", "date": "2026-09-27", "commit": "81593de", "time": "2026-09-27T18:37:37-04:00", "topic": "prayer-begins", "notes": null, "status": "replaced",
       "title": "NEXT uses your playground settings by default (a touch smaller, lighter and closer to the name)",
       "tryIt": ["Mark the current prayer → the circle shows NEXT with the new look"],
       "checked": "sim", "shots": ["wn-next-label-owner-defaults.jpg"], "addresses": ["CC72A6E8-44D8-4745-ADCC-A2C65CDDCB96"]
+    },
+    {
+      "id": "prayer-begins-11", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "NEXT is back to its original look (your playground tweak is undone); saved playground values are cleared once",
+      "tryIt": ["Open the app → the circle's NEXT looks as it did before the tweak (no playground reset needed)"],
+      "checked": "sim", "shots": ["wn-next-label-original.jpg"]
     }
   ]
 }
