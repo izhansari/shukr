@@ -735,6 +735,8 @@ struct PrayerTimesView: View {
 
         @State private var showMenu = false
         @State private var pendingMenuAction: (() -> Void)? = nil
+        /// "What's new" (tap the build line in the menu; DEBUG / TestFlight only).
+        @State private var showWhatsNew = false
 
         /// One row of the hamburger popover; closes it and runs `action` after it's gone.
         private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
@@ -819,7 +821,11 @@ struct PrayerTimesView: View {
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 // Which build this is (BuildInfo): when it was built + the commit.
-                                Text(BuildInfo.line)
+                                // Tap → What's new (DEBUG / TestFlight).
+                                BuildLineButton {
+                                    pendingMenuAction = { showWhatsNew = true }
+                                    showMenu = false
+                                }
                                     .font(.caption2)
                                     .fontDesign(.rounded)
                                     .foregroundStyle(.tertiary)
@@ -837,6 +843,7 @@ struct PrayerTimesView: View {
                             pendingMenuAction = nil
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
                         }
+                        .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
                         .opacity(Double(1 - zikrness))
                         .allowsHitTesting(zikrness < 0.5)
                         }

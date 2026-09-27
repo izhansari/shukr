@@ -11,6 +11,25 @@ Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehV
 (PrayersWidget + AppIntents shared with the app via `SharedTargetForIntents.swift`).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
+## Standing rule: a "What's new" entry with every visible change
+
+**Every commit that changes anything a user could see or feel adds an entry to
+`shukr/WhatsNew.json` in the same commit.** Internal-only changes (refactors, logging, scripts,
+notes) don't need one. The owner reads these in the app (tap the build line at the bottom of the ☰
+menu or Settings → "What's new", DEBUG / TestFlight builds only) to know what to test.
+- Before committing, run `scripts/whatsnew.py resolve` (fills in the hashes of earlier "next"
+  entries), then append yours at the end (the file is chronological):
+  `{ "date": "2026-09-27", "commit": "next", "area": "Salah", "title": "…", "tryIt": ["…"],
+  "checked": "sim" }` — `area`: Salah / Zikr / Map / Mosques / Widget / Notifications / Settings /
+  99 Names / Daily Ayah / …; `checked`: "sim" | "phone" | "no".
+- Plain, short language; 1–3 concrete "try it" steps ("☰ → 99 Names → tap Known").
+- The page (`CursorSwift/WhatsNew.swift`): newest first by day and commit, NEW since the build last
+  opened (`whatsNew.currentBuild` / `previousBuild`), "← this build" on the running commit (and
+  "next"), a tested tick per entry (`whatsNew.tested`) and "Untested only". Gated by
+  `WhatsNewAccess` (DEBUG, or `AppTransaction.environment != .production`).
+- TestFlight notes: `scripts/whatsnew.py testflight --since <last uploaded build's commit> --out
+  notes.txt` (≤ 4000 chars, no emoji; titles only if it's too long), then `scripts/asc.py release`.
+
 ## Feature list (for the App Store listing)
 
 What shukr does, meatiest first — keep this current; it's the source for the description,
@@ -722,8 +741,9 @@ Steps, when the owner says "push a new build":
 1. **`scripts/testflight.sh`** bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
    watch targets included), archives Release (iPhone app + embedded watch app), and uploads. The
    export runs with the system PATH, since Homebrew's rsync breaks it. Commit the bump afterwards.
-2. **Write tester notes**: `TestFlightNotes-<version>.<build>.md` with a "What to Test (paste
-   this)" block (≤ 4000 chars, **no emoji** — Apple rejects characters outside the BMP) and a
+2. **Write tester notes**: start from `scripts/whatsnew.py testflight --since <previous build's
+   commit>` (the WhatsNew.json entries), then `TestFlightNotes-<version>.<build>.md` with a "What
+   to Test (paste this)" block (≤ 4000 chars, **no emoji** — Apple rejects characters outside the BMP) and a
    by-build record. See `TestFlightNotes-2.0.8.md`.
 3. Wait for processing: `scripts/asc.py builds` shows VALID, usually 5–30 min after upload.
 4. **`scripts/asc.py release <build> <notes.txt>`**:

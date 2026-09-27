@@ -48,6 +48,7 @@
 		5A7C0E000000000000000007 /* shukrWatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000002 /* shukrWatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5A7C0E000000000000000008 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 5A7C0E00000000000000001E /* Adhan */; };
 		5A7C0E000000000000000009 /* Adhan in Frameworks */ = {isa = PBXBuildFile; productRef = 5A7C0E00000000000000001F /* Adhan */; };
+		5A7C0E0000000000000000F2 /* WhatsNew.json in Resources */ = {isa = PBXBuildFile; fileRef = 5A7C0E0000000000000000F1 /* WhatsNew.json */; };
 		A1B2C3D40000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */; };
 		A1B2C3D40000000000000004 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000003 /* PrivacyInfo.xcprivacy */; };
 		A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */; };
@@ -169,6 +170,7 @@
 		36F471162C8FF9B40077DB22 /* JPSVolumeButtonHandler.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = JPSVolumeButtonHandler.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A7C0E000000000000000001 /* shukrWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = shukrWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5A7C0E000000000000000002 /* shukrWatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = shukrWatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5A7C0E0000000000000000F1 /* WhatsNew.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = WhatsNew.json; sourceTree = "<group>"; };
 		A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A1B2C3D40000000000000003 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A1B2C3D4E5F60718293A4B5D /* MoreWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MoreWidgets.swift; sourceTree = "<group>"; };
@@ -279,6 +281,7 @@
 			isa = PBXGroup;
 			children = (
 				361F895C2D0402D300E81F07 /* Info.plist */,
+				5A7C0E0000000000000000F1 /* WhatsNew.json */,
 				A1B2C3D40000000000000001 /* PrivacyInfo.xcprivacy */,
 				3647F2BE2CC7CD46009A8DD9 /* CursorSwift */,
 				369BE93C2CA4D160003A58B7 /* Preview Content */,
@@ -562,6 +565,7 @@
 			files = (
 				369A05D12C5E8617002CD697 /* Preview Assets.xcassets in Resources */,
 				369A05CE2C5E8617002CD697 /* Assets.xcassets in Resources */,
+				5A7C0E0000000000000000F2 /* WhatsNew.json in Resources */,
 				365AC4982D532658002DDCE7 /* english_ar.sqlite in Resources */,
 				365AC4992D532658002DDCE7 /* KFGQPCUthmanTahaNaskh.ttf in Resources */,
 				365AC49A2D532658002DDCE7 /* Surahs.json in Resources */,

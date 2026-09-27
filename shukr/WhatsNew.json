@@ -1,0 +1,194 @@
+[
+  {
+    "date": "2026-09-26", "commit": "5e962e3", "area": "Daily Ayah",
+    "title": "Share card says \"join the beta on TestFlight\"",
+    "tryIt": ["Daily Ayah → reveal → Share → the line under the shukr mark"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b73f12", "area": "Map",
+    "title": "The explore button opens in place",
+    "tryIt": ["Open the map → tap the magnifying glass → Qibla · Prayers · Mosques fan out", "Tap the map to fold it back"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b73f12", "area": "Mosques",
+    "title": "My masajid: star the mosques you pray at",
+    "tryIt": ["Mosques → open a mosque → tap ☆", "The list shows it under MY MASAJID and its pin has a star"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b73f12", "area": "Salah",
+    "title": "Jumu'ah at a masjid scores full",
+    "tryIt": ["On a Friday, mark Dhuhr while at a masjid → it reads Jumu'ah with a small mosque mark"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b73f12", "area": "Zikr",
+    "title": "The \"fine\" ring is the tasbeeh default",
+    "tryIt": ["Start a freestyle zikr → the thin glowing ring"],
+    "checked": "phone"
+  },
+  {
+    "date": "2026-09-26", "commit": "b3dc3d4", "area": "Salah",
+    "title": "Jumu'ah is instant at your own masajid",
+    "tryIt": ["At a starred masjid on Friday, mark Dhuhr → the moment says Jumu'ah straight away"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "b3dc3d4", "area": "Map",
+    "title": "Filter prayer pins to \"Only at a masjid\"",
+    "tryIt": ["Map → Prayers → the range menu → Only at a masjid"],
+    "checked": "no"
+  },
+  {
+    "date": "2026-09-26", "commit": "b3dc3d4", "area": "Settings",
+    "title": "Duas when you arrive at / leave your masajid",
+    "tryIt": ["Settings → Masjid → turn on Duas at my masajid (asks for Always location)", "Tap Preview the notification"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "b3dc3d4", "area": "Location",
+    "title": "Welcome to Makkah / Madinah",
+    "tryIt": ["Only in Makkah or Madinah: open the app → a welcome notification"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "ba98814", "area": "Salah",
+    "title": "\"Early\" is now \"Perfect\"; Jumu'ah shows no grade",
+    "tryIt": ["Mark a prayer in its first 30 min → \"Perfect · 100\"", "Long-press a prayed prayer → the editor says Perfect"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "ba98814", "area": "Widget",
+    "title": "The Prayers widget shows NEXT like the app",
+    "tryIt": ["Mark the current prayer → the widget shows NEXT over the next prayer with a dashed ring"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "ba98814", "area": "Salah",
+    "title": "The time editor opens on the time you saved",
+    "tryIt": ["Long-press a prayed prayer → the wheel shows its saved time, not now"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "c48814f", "area": "Salah",
+    "title": "Change where you prayed",
+    "tryIt": ["Long-press a prayed prayer → tap the location → drag the map → Set location → Save"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "c48814f", "area": "Settings",
+    "title": "Build stamp under the menu and Settings",
+    "tryIt": ["Open the ☰ menu → the small line at the bottom shows version, build time and commit"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "64aceae", "area": "Map",
+    "title": "Each prayer gets its own page in the map sheet",
+    "tryIt": ["Map → Prayers → tap a cluster → tap a prayer → its page slides in and its pin lifts out"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "64aceae", "area": "Map",
+    "title": "Type an address when moving a pin",
+    "tryIt": ["While moving a prayer's pin, tap the address → type a place → pick a suggestion", "The card says how far it is from where you marked it"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b5f1f6", "area": "Salah",
+    "title": "Edits keep what the app recorded",
+    "tryIt": ["Change a prayer's time → reopen the editor → \"You marked it at … · use that\""],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "5b5f1f6", "area": "Mosques",
+    "title": "Mosques open inside the list sheet",
+    "tryIt": ["Map → Mosques → tap a mosque in the list → its page slides in → back returns to the list"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "01fb4e7", "area": "Mosques",
+    "title": "No empty row above a mosque's name",
+    "tryIt": ["Open a mosque from the list → back button sits beside the name"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "2d4c84d", "area": "Mosques",
+    "title": "The mosque sheet shrinks to a bar instead of closing",
+    "tryIt": ["Map → Mosques → the sheet opens at once", "Swipe it down → a slim bar stays; ✕ goes back to the qibla"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "2d4c84d", "area": "Map",
+    "title": "Edit a prayer from its page",
+    "tryIt": ["Open a prayer's page on the map → Edit → the same sheet shows the time wheel and location"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "eb64b14", "area": "Map",
+    "title": "Quieter prayer page, and when the window ended",
+    "tryIt": ["Open a prayer's page → \"… after the window ended at 4:10 PM\" and a small gray Edit"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "871ae72", "area": "Mosques",
+    "title": "The filter menu is gone",
+    "tryIt": ["Mosque list header: just drive / walk and ✕", "Long-press a mosque → Don't recommend still works"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "17d1d07", "area": "Map",
+    "title": "The moving pin points at the right spot",
+    "tryIt": ["Edit a prayer → Change location → the pin's tip sits exactly on where you prayed"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "17d1d07", "area": "Map",
+    "title": "Smooth edit transitions, and Back to the pin",
+    "tryIt": ["Prayer page → Edit → Change location → Cancel → Cancel: the sheet glides between sizes", "Pan away from the prayer's pin → tap \"Back to Dhuhr\""],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "dfe05ff", "area": "Notifications",
+    "title": "Fajr notifications work again, a week ahead",
+    "tryIt": ["After Isha, check tomorrow's \"Fajr Time\" arrives", "Tap \"Nudge in 10 minutes\", open the app → the nudge still comes"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "6f9e7a3", "area": "Salah",
+    "title": "NEXT no longer moves the prayer name",
+    "tryIt": ["Watch the circle as a prayer starts → the name stays put, NEXT fades above it"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "6f9e7a3", "area": "Salah",
+    "title": "A soft moment when a prayer begins (3 looks to pick from)",
+    "tryIt": ["Keep the app open as a prayer starts → crossfade + a soft tap", "Settings → My Dev Stuff → Prayer begins: fade / draw / glow"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "6ed8876", "area": "99 Names",
+    "title": "Filter names by All · Learning · Known",
+    "tryIt": ["☰ → 99 Names → tap Known", "··· → Reset progress (asks first)"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "dacffe2", "area": "Zikr",
+    "title": "Give a zikr task its own name",
+    "tryIt": ["Zikr → long-press a task → tap it → type a name like \"After Fajr\" → Save", "The circle shows the name with the mantra under it"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-26", "commit": "1de3ebe", "area": "Zikr",
+    "title": "Reminders for zikr tasks",
+    "tryIt": ["Edit a task → Reminder → Around a prayer (e.g. 10 min after Fajr) → Save", "When it fires, try Start now / Later / Skip today"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Settings",
+    "title": "What's new: tap the build line",
+    "tryIt": ["☰ menu → tap the build line at the bottom → this page", "Tick an item as tested → turn on Untested only"],
+    "checked": "sim"
+  }
+]

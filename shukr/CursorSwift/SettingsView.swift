@@ -56,6 +56,7 @@ struct SettingsView: View {
     @State private var showDevStuff = false
     @State private var showCityPicker = false
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
+    @State private var showWhatsNew = false
     @State private var showRingPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
@@ -347,7 +348,7 @@ struct SettingsView: View {
                         Text("Sneak Peek...")
                     } footer: {
                         // Which build this is (BuildInfo), under the last section users see.
-                        Text(BuildInfo.line)
+                        BuildLineButton { showWhatsNew = true }   // → What's new (DEBUG / TestFlight)
                             .font(.caption2)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 16)
@@ -413,6 +414,7 @@ struct SettingsView: View {
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
+        .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
         #if DEBUG
         .task {
             if ProcessInfo.processInfo.arguments.contains("-demoRingPlayground") {

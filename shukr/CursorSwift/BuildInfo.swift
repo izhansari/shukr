@@ -15,18 +15,28 @@
 import Foundation
 
 enum BuildInfo {
+    /// The ShukrBuildStamp ("ba98814", "ba98814+" with uncommitted changes), nil in a plain build.
+    static let stamp: String? = {
+        guard let s = Bundle.main.infoDictionary?["ShukrBuildStamp"] as? String, !s.isEmpty, !s.hasPrefix("$(") else { return nil }
+        return s
+    }()
+    /// The commit this build was made from, without the "+".
+    static var commit: String? { stamp.map { $0.hasSuffix("+") ? String($0.dropLast()) : $0 } }
+    /// When the executable was built.
+    static let builtAt: Date? = {
+        guard let exe = Bundle.main.executableURL else { return nil }
+        return (try? exe.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+    }()
+
     static let line: String = {
         let info = Bundle.main.infoDictionary ?? [:]
         let version = info["CFBundleShortVersionString"] as? String ?? "?"
         let build = info["CFBundleVersion"] as? String ?? "?"
         var parts = ["\(version) (\(build))"]
-        if let exe = Bundle.main.executableURL,
-           let built = (try? exe.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
-            parts.append(built.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
+        if let builtAt {
+            parts.append(builtAt.formatted(.dateTime.month(.abbreviated).day().hour().minute()))
         }
-        if let stamp = info["ShukrBuildStamp"] as? String, !stamp.isEmpty, !stamp.hasPrefix("$(") {
-            parts.append(stamp)
-        }
+        if let stamp { parts.append(stamp) }
         return parts.joined(separator: " · ")
     }()
 }
