@@ -1900,7 +1900,7 @@ DEBUG `-demoZikrHistory`.
 zikrHistory.headersShowCount`). Deleting is **only** Edit → select (native List multi-select via
 `editMode`) → "Delete N sessions" (bottom capsule) → confirm; then `WidgetCenter` reloads and
 totals / task progress recompute from the queries. Row swipes (both ways) and the strip's Delete
-are gone — the strip is Zikr · Pace — and History rows no longer register no-page zones, so the
+are gone, and a tap opens a glass popover (`SessionRow`, like the ☰ menu: Open zikr · Feel the pace; a tap on the row stops a playing pace; `tappable: false` in Edit mode) — History rows no longer register no-page zones, so the
 library pages from them too. The Edit button is in `ZikrLibraryView`'s bar on the History tab
 (`HistoryPageView(editing:)`); shown on its own, History has its own Edit. Leaving the tab ends editing.
 **History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side

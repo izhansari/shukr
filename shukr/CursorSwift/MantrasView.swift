@@ -1120,7 +1120,6 @@ struct MantraSessionsSection: View {
     /// A section per day, headed "Today · 249 counted" — the same look as Zikr History. Deleting
     /// is Edit → select → Delete, as on History (no swipes, no Delete in the tap strip; 2026-09-27).
     @Environment(\.modelContext) private var context
-    @State private var expandedID: PersistentIdentifier?
     @State private var editing = false
     @State private var selected = Set<PersistentIdentifier>()
     @State private var confirmDelete = false
@@ -1166,7 +1165,6 @@ struct MantraSessionsSection: View {
                     Button(editing ? "Done" : "Edit") {
                         withAnimation(.snappy(duration: 0.2)) {
                             editing.toggle()
-                            expandedID = nil
                             if !editing { selected.removeAll() }
                         }
                     }
@@ -1207,11 +1205,8 @@ struct MantraSessionsSection: View {
                 if on { selected.remove(id) } else { selected.insert(id) }
             }
         } else {
-            SessionRow(session: session, showsMantraName: false, expanded: expandedID == id)
-                .onTapGesture {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
-                }
+            // Tap → Feel the pace (no "Open zikr": this is its page).
+            SessionRow(session: session, showsMantraName: false)
         }
     }
 }

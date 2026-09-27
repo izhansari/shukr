@@ -429,16 +429,22 @@
       "checked": "sim"
     },
     {
-      "id": "qibla-haptic-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-2", "date": "2026-09-27", "commit": "3d7f417", "time": "2026-09-27T07:39:31-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "No qibla buzz while What's new, the ☰ menu or a prayer's time editor is open",
       "tryIt": ["Open ☰ (or What's new, or long-press a prayer to edit its time) and point at the qibla → no buzz"],
       "checked": "no"
     },
     {
-      "id": "lockscreen-prayers-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "lockscreen-prayers", "notes": null,
+      "id": "lockscreen-prayers-2", "date": "2026-09-27", "commit": "3d7f417", "time": "2026-09-27T07:39:31-04:00", "topic": "lockscreen-prayers", "notes": null,
       "title": "The Lock Screen ring switches from dashed to live right when the prayer starts",
       "tryIt": ["Before a prayer, look at the Lock Screen widget at its start time → the dashed ring becomes the filling ring on the minute"],
       "checked": "no"
+    },
+    {
+      "id": "zikr-history-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "title": "Tap a session: a small glass menu (Open zikr · Feel the pace) instead of a strip under the row",
+      "tryIt": ["History → tap a session → Open zikr / Feel the pace; nothing in the list moves", "While the pace plays, tap the row again → it stops", "On a zikr's page, tapping a session offers Feel the pace"],
+      "checked": "sim", "shots": ["wn-session-popover.jpg"]
     }
   ]
 }

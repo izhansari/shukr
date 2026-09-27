@@ -19,8 +19,6 @@ struct HistoryPageView: View {
     @Environment(\.modelContext) private var context
     /// Tap a row's Zikr → that session's mantra (its stats + editor).
     @State private var mantraToOpen: MantraModel?
-    /// The session tapped open to show its actions (one at a time).
-    @State private var expandedID: PersistentIdentifier?
     /// From the library's search field: keeps sessions whose mantra (or title) matches.
     var search = ""
     /// Edit mode (select → Delete) — the only way to delete here (owner, 2026-09-27, notes #2b).
@@ -113,7 +111,7 @@ struct HistoryPageView: View {
             }
         }
         .onChange(of: isEditing) { _, on in
-            if on { expandedID = nil } else { selection.removeAll() }
+            if !on { selection.removeAll() }
         }
         // Selected sessions a new search hides must not be deleted (or counted) unseen.
         .onChange(of: search) { _, _ in selection.removeAll() }
@@ -161,23 +159,12 @@ struct HistoryPageView: View {
         }
     }
 
-    /// One session. Tap → Zikr · Pace under it; in Edit mode a tap selects instead. No swipes:
-    /// deleting is Edit → select → Delete (owner), so sideways drags on rows can page the library.
-    @ViewBuilder
+    /// One session. Tap → a small glass menu (Open zikr · Feel the pace); in Edit mode a tap
+    /// selects instead. No swipes: deleting is Edit → select → Delete (owner).
     private func sessionRow(_ session: SessionDataModel) -> some View {
-        let id = session.persistentModelID
-        let row = SessionRow(session: session,
-                             expanded: !isEditing && expandedID == id,
-                             onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
-            .tag(id)
-        if isEditing {
-            row
-        } else {
-            row.onTapGesture {
-                triggerSomeVibration(type: .light)
-                withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
-            }
-        }
+        SessionRow(session: session, tappable: !isEditing,
+                   onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
+            .tag(session.persistentModelID)
     }
 }
 
@@ -322,10 +309,15 @@ struct SessionRow: View {
     /// Off inside a mantra's own page, where every row would repeat the same name: the time
     /// becomes the headline instead.
     var showsMantraName = true
-    /// Tapped open: a strip of actions under the row (owner: show that a session can be acted
-    /// on). `onMantra` nil hides that button (no mantra, or already on its page).
-    var expanded = false
+    /// A tap opens a small glass menu anchored to the row, like the ☰ menu (owner, 2026-09-27:
+    /// cleaner than the strip that opened under the row and pushed the list down): Open zikr ·
+    /// Feel the pace. While the pace plays, a tap on the row stops it. Off in Edit mode (a tap
+    /// selects there), which also stops any pace (the row is rebuilt).
+    var tappable = true
+    /// "Open zikr"; nil hides it (no zikr, or already on its page).
     var onMantra: (() -> Void)? = nil
+    @State private var showMenu = false
+    @State private var pendingAction: (() -> Void)?
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -346,10 +338,28 @@ struct SessionRow: View {
     private var pace: TimeInterval? { session.secondsPerCount }   // active time only (see activeSeconds)
 
     var body: some View {
-        VStack(spacing: 12) {
-            summary
-            if expanded { actionStrip.transition(.opacity.combined(with: .move(edge: .top))) }
+        if tappable {
+            core
+                .onTapGesture {
+                    triggerSomeVibration(type: .light)
+                    if feelingPace { stopFeelingPace() } else { showMenu = true }
+                }
+                .popover(isPresented: $showMenu, arrowEdge: .top) {
+                    menu.presentationCompactAdaptation(.popover)
+                }
+                .onChange(of: showMenu) { _, open in
+                    // Run the pick once the popover is away (a sheet over a dismissing popover fails).
+                    guard !open, let action = pendingAction else { return }
+                    pendingAction = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
+                }
+        } else {
+            core
         }
+    }
+
+    private var core: some View {
+        summary
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
@@ -368,33 +378,41 @@ struct SessionRow: View {
         .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
     }
 
-    /// Zikr · Pace (plays the session's rhythm until tapped again — the hold, hands-free), as
-    /// soft capsules (deleting is Edit → select → Delete on the list). Borderless so each button gets its own tap inside the row.
-    private var actionStrip: some View {
-        HStack(spacing: 8) {
+    /// The popover: the ☰ menu's rows. Feel the pace plays the session's rhythm (a tick and a
+    /// glow each count, the pace pill filling) until the row is tapped again.
+    private var menu: some View {
+        VStack(alignment: .leading, spacing: 0) {
             if let onMantra {
-                action("Zikr", icon: "text.quote", color: .sage, action: onMantra)
+                menuRow("Open zikr", "text.quote") { onMantra() }
             }
             if let pace {
-                action(feelingPace ? "Stop" : "Pace", icon: feelingPace ? "stop.fill" : "metronome",
-                       color: .green) {
-                    feelingPace ? stopFeelingPace() : startFeelingPace(pace)
-                }
+                if onMantra != nil { Divider().padding(.leading, 20) }
+                menuRow("Feel the pace", "metronome") { startFeelingPace(pace) }
+            }
+            if onMantra == nil && pace == nil {
+                Text("Nothing to do with this one")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .padding(.horizontal, 20).padding(.vertical, 12)
             }
         }
-        .buttonStyle(.borderless)
+        .padding(.vertical, 6)
+        .frame(width: 230)
+        .fontDesign(.rounded)
     }
 
-    private func action(_ title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(color)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
-                .background(Capsule().fill(color.opacity(0.12)))
-                .contentShape(Capsule())
+    private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
+        Button {
+            pendingAction = action
+            showMenu = false
+        } label: {
+            Label(title, systemImage: symbol)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 
     private var summary: some View {
