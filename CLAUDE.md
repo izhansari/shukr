@@ -906,7 +906,7 @@ Phones:
 Install with `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`.
 
 Uploaded: 2.0 (3) 09-24, (6) 09-25, (7) and (8) 09-26, (9) 09-27 (first with the Apple Watch app).
-2.0 (8) went to the public link 09-26.
+2.0 (8) went to the public link 09-26. 2.0 (9) went to the public link 09-27 (IN_BETA_TESTING right away).
 When a build goes to external testers, remind the owner about the share card's "download on the
 App Store" wording (see Share card).
 
