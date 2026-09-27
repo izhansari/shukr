@@ -472,6 +472,13 @@ struct PrayerTimesView: View {
                 showZikrHistory = true
                 return
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartPreview") {
+                // What Settings → My Dev Stuff → Preview prayer begins does (from the Settings page).
+                sharedState.horizontalPage = .settings
+                try? await Task.sleep(for: .seconds(2))
+                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoManyTasks") {
                 // Six zikr tasks, one with a very long name (the Zikr widget's rows; simulator).
                 try? await Task.sleep(for: .seconds(1))

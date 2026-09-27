@@ -216,9 +216,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Welcome",
+    "date": "2026-09-27", "commit": "1e22cc6", "area": "Welcome",
     "title": "The welcome animation plays only on a fresh start",
     "tryIt": ["Leave shukr for a while and come back → no welcome", "Swipe shukr away in the app switcher, open it again → the welcome plays"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Settings",
+    "title": "Preview the prayer-begins moment (dev builds)",
+    "tryIt": ["Settings → tap the \"Calculation Method\" header → My Dev Stuff", "Pick a look under Prayer begins → tap Preview prayer begins", "The Salah circle shows NEXT, then plays the look with its haptic"],
     "checked": "sim"
   }
 ]

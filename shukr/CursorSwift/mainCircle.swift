@@ -25,6 +25,9 @@ struct MainCircleView: View {
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     @State private var startMoment: PrayerStartStyle?
     @State private var startMomentID = 0
+    /// Settings → My Dev Stuff → Preview (`PrayerStartPreview`): the circle draws its prayer in this
+    /// state instead of the real one — "next", then "now" as the moment plays. Visual only.
+    @State private var preview: PrayerModel.prayerStatus?
     @AppStorage(PrayerStartStyle.key) private var startStyleRaw = PrayerStartStyle.fade.rawValue
     /// When the circle last appeared: a flip in the first moments (launch, coming back) doesn't play.
     @State private var appearedAt = Date()
@@ -84,16 +87,18 @@ struct MainCircleView: View {
                         .shadow(color: Color.green.opacity(0.2), radius: 15)
                         .background(Color.clear) // Ensures the inside remains transparent
                 }
-                else if let prayer = viewModel.relevantPrayer, !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+                else if let prayer = viewModel.relevantPrayer, preview != nil || !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+                    // The real state, or the dev preview's.
+                    let status = preview ?? prayer.status()
                     var progress: Double {
                         // Not started: 0, so when it starts the arc grows from nothing (it was 1 in
                         // a clear colour, and sprang back from full to empty, green, at the start).
-                        if prayer.status() == .upcoming { return 0 }
-                        guard prayer.status() == .current else { return 1 }
+                        if status == .upcoming { return 0 }
+                        guard status == .current else { return 1 }
                         let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
                         let elapsed = currentTime.timeIntervalSince(prayer.startTime)
                         let endVal = elapsed / totalDuration
-                        return endVal
+                        return max(endVal, 0)
                     }
                     /// The score you'd get marking it now (PrayerScoring): green Early, yellow On time,
                     /// red Late. Was elapsed-time bands (yellow past 50 %) that didn't match the score.
@@ -102,7 +107,7 @@ struct MainCircleView: View {
                         return PrayerScoring.color(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: currentTime))
                     }
                     var timeText: Text{
-                        switch prayer.status() {
+                        switch status {
                         case .current:
                             return Text(prayer.endTime, style: ogText ? .relative : .time)
                         case .upcoming:
@@ -112,7 +117,7 @@ struct MainCircleView: View {
                             return Text("Missed")
                         }
                     }
-                    let upcoming = prayer.status() == .upcoming
+                    let upcoming = status == .upcoming
                     ZStack{
                         // "Next" → "now" crossfades (ring, NEXT, the name's dimming) instead of
                         // flipping when the window opens (2026-09-27).
@@ -157,7 +162,7 @@ struct MainCircleView: View {
                                 }
                                 .animation(animationStyle, value: prayer.name)
                                // Going back to the old way (want h and m with no comma. Better cleaner transition):
-                                if prayer.status() == .current{
+                                if status == .current{
                                     ExternalToggleText(
                                         originalText: "ends \(shortTimePM(prayer.endTime))",
                                         toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
@@ -169,7 +174,7 @@ struct MainCircleView: View {
                                     )
                                     .foregroundStyle(.secondary)
                                 }
-                                else if prayer.status() ==  .upcoming{
+                                else if status ==  .upcoming{
                                     ExternalToggleText(
                                         originalText: "at \(shortTimePM(prayer.startTime))",
                                         toggledText: timeUntilStart(prayer.startTime),
@@ -363,12 +368,30 @@ struct MainCircleView: View {
                   scenePhase == .active, Date().timeIntervalSince(appearedAt) > 2,
                   sharedState.horizontalPage == .main, WelcomeTarget.canLand,
                   flourish == nil, postSalahFor == nil else { return }
-            startMomentID += 1
-            let id = startMomentID
-            startMoment = PrayerStartStyle(rawValue: startStyleRaw) ?? .fade
+            playStartMoment()
             print("🌅 prayer begins moment played (\(new))")
-            DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration) {
-                if startMomentID == id { startMoment = nil }
+        }
+        // Dev preview: the Salah page, then this prayer as "next" for a moment, then the look's
+        // transition exactly as the real one plays it (haptic included). Visual only — no prayer
+        // rows, test times or notifications are touched.
+        .onReceive(NotificationCenter.default.publisher(for: PrayerStartPreview.request)) { _ in
+            guard viewModel.relevantPrayer != nil, flourish == nil, postSalahFor == nil else { return }
+            let onSalah = sharedState.horizontalPage == .main && sharedState.navPosition == .main
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sharedState.navPosition = .main
+                sharedState.horizontalPage = .main
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (onSalah ? 0.1 : 0.8)) {
+                var snap = Transaction()
+                snap.disablesAnimations = true
+                withTransaction(snap) { preview = .upcoming }      // straight into "next"
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
+                    preview = .current                              // …and it begins
+                    playStartMoment()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration + 0.6) {
+                        preview = nil                               // back to the real state
+                    }
+                }
             }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { appearedAt = Date() } }
@@ -378,9 +401,20 @@ struct MainCircleView: View {
         }
     }
 
+    /// The moment itself (the real start and the dev preview share it).
+    private func playStartMoment() {
+        startMomentID += 1
+        let id = startMomentID
+        startMoment = PrayerStartStyle(rawValue: startStyleRaw) ?? .fade
+        DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration) {
+            if startMomentID == id { startMoment = nil }
+        }
+    }
+
     /// The circle shows a prayer (vs the day summary — e.g. before Fajr, or all done).
     private var showsPrayer: Bool {
         _ = currentTime
+        if preview != nil { return true }
         guard postSalahFor == nil, let p = viewModel.relevantPrayer else { return false }
         return !(p.status() == .upcoming && p.name == "Fajr")
     }

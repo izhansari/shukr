@@ -53,7 +53,8 @@ struct SettingsView: View {
     @State private var showFloatingMessage = false // State to control visibility
     
     // For minimizing and expanding the devSection
-    @State private var showDevStuff = false
+    /// DEBUG: tap the "Calculation Method" header, or launch with `-devStuff`.
+    @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
     @State private var showCityPicker = false
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
@@ -374,6 +375,11 @@ struct SettingsView: View {
                             }
                             Picker("Prayer begins", selection: $prayerStartStyle) {
                                 ForEach(PrayerStartStyle.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            // Plays the chosen look on the Salah circle (visual only: no test times,
+                            // no prayer rows or notifications touched).
+                            Button("Preview prayer begins", systemImage: "play.circle") {
+                                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
                             }
                             Picker("Mosque icon", selection: $mosqueIconStyle) {
                                 ForEach(MosqueIconStyle.allCases) { style in

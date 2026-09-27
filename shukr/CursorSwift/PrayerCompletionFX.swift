@@ -274,6 +274,12 @@ enum PrayerStartStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Settings → My Dev Stuff → Prayer begins → Preview: asks the main circle to show the moment
+/// (DEBUG; visual only — see MainCircleView).
+enum PrayerStartPreview {
+    static let request = Notification.Name("prayerStartPreview")
+}
+
 /// Plays once over the circle when its prayer begins (`PrayerStartStyle`), then the caller clears it.
 struct PrayerStartMoment: View {
     let style: PrayerStartStyle

@@ -1491,7 +1491,13 @@ soft haptic — only on the Salah page with nothing over the circle (`horizontal
 summary ↔ prayer switch crossfades too, which carries the moment at Fajr (the circle shows the
 summary before Fajr, not a NEXT ring). Looks (`PrayerStartStyle`, Settings → My Dev Stuff → Prayer begins): fade (default),
 draw (the dashed ring turns solid sage and swells into the track), glow (one sage breath round the
-track). **Owner is choosing** — keep the winner, delete the rest. Reduce Motion: the crossfade
+track). **Owner is choosing** — keep the winner, delete the rest. **Preview** (DEBUG, under the
+picker; 2026-09-27): posts `PrayerStartPreview.request`; MainCircleView brings up the Salah page
+(sheet closed), draws its prayer as "next" (`preview` overrides the status it draws with — visual
+only) for 1.4 s, then "now" + `playStartMoment()` (the real path, haptic included), then back.
+Writes no prayer rows, doesn't touch `useTestPrayers` or notifications (sim ✓: rows' hash
+unchanged). DEBUG `-demoPrayerStartPreview` does the same from the Settings page; `-devStuff`
+opens My Dev Stuff (simulated taps don't reach that list). Reduce Motion: the crossfade
 only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow] [-demoPrayerStartPrayer Fajr]
 [-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows — they get saved, simulator only; logs
 "🌅 prayer begins moment played").
