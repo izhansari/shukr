@@ -240,9 +240,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "date": "2026-09-27", "commit": "342189c", "area": "Salah",
     "title": "Post-salah: only the bottom pill",
     "tryIt": ["Mark a prayer → after the sweep, the \"Post-salah tasbih?\" pill at the bottom (no in-circle offer, no top pill)", "Settings → My Dev Stuff no longer has a Post-salah prompt picker"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "title": "Map Modes: Standard or Satellite, Traffic and Labels",
+    "tryIt": ["Open the map → tap the globe (top right) → pick Satellite", "Turn Labels off for pure imagery, or Traffic on", "Close and reopen the app → the map keeps your choice"],
     "checked": "sim"
   }
 ]

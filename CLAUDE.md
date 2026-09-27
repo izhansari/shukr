@@ -1384,6 +1384,20 @@ active layer's settings (prayer filter sentence → the filter sheet; mosques: D
 tapping it opens the filters. Filter sheet chips are green tints now (were solid green).
 DEBUG `-demoPrayerPins` seeds 26 pinned prayers around the sim's location when there are none. One sheet at a time: tapping a pin while Explore is up closes it first.
 
+**Map Modes (2026-09-27, notes #15)** — `MapModes.swift`. The map / map.fill toggle became a globe
+(`globe.americas.fill`, or europe.africa / asia.australia by the user's longitude) that opens a
+short glass sheet like Apple Maps': ✕, "Map Modes", two cards — live `MKMapSnapshotter` shots of the
+user's spot in each style (rendered taller and cropped from the top so the Maps logo stays out),
+blue edge on the chosen one — and a grouped card with Traffic, plus Labels for Satellite (Apple
+shows Labels only there too). `preferredConfiguration`: Standard = `MKStandardMapConfiguration`,
+Satellite + Labels = `MKHybridMapConfiguration`, Satellite − Labels = `MKImageryMapConfiguration`,
+`showsTraffic`; `@AppStorage` `mapMode.satellite / .traffic / .labels`, applied in `MapView` only
+when they change. No 3D. **Over other sheets:** it opens *over* an open prayer / mosque sheet
+(`.mapModesSheet` is attached to each sheet's content and to the map, the map's one only while no
+other sheet is up) — closing that sheet first, then reopening it, read as three animations and lost
+your place. `LocationViewModel.mapType` is gone. Sim ✓: sheet, satellite with / without labels,
+remembered across a relaunch, over a cluster's sheet (✕ leaves it where it was).
+
 **Mosque finder** (`CursorSwift/MosqueFinder.swift`, 2026-09-25): a layer in Explore — no mosque SF Symbol exists, an emoji clashed with the pills and the moons are taken
 (Isha `moon.stars.fill`, 99 Names `moon.stars`), so the owner is picking a `MosqueIconStyle`
 (button + pin symbols: Finder = `sparkle.magnifyingglass` / `building.columns.fill` (default),

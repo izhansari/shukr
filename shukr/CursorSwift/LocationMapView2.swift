@@ -116,7 +116,12 @@ final class LocationViewModel: ObservableObject {
             }
         }
     }
-    @Published var mapType: MKMapType = .standard
+    /// Map Modes sheet (MapModes.swift) is up.
+    @Published var showMapModes = false
+    /// Where Map Modes takes its preview snapshots: the user, else the map's centre.
+    var modesCentre: CLLocationCoordinate2D {
+        mapView?.userLocation.location?.coordinate ?? mapView?.centerCoordinate ?? LocationViewModel.meccaCoordinate
+    }
     @Published var showPrayers: Bool = false
 
     // Mosque finder (MosqueFinder.swift)
@@ -523,6 +528,11 @@ struct MapView: UIViewRepresentable {
     @ObservedObject var viewModel: LocationViewModel
     var envLocation: EnvLocationManager
     var anchor: MapAnchor
+    // Map Modes (MapModes.swift), remembered.
+    @AppStorage(MapModes.satelliteKey) private var satellite = false
+    @AppStorage(MapModes.trafficKey) private var traffic = false
+    @AppStorage(MapModes.labelsKey) private var labels = true
+    private var modesKey: String { "\(satellite)|\(traffic)|\(labels)" }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -534,7 +544,8 @@ struct MapView: UIViewRepresentable {
         mapView.isRotateEnabled = true         // turn the map to match what's in front of you
         mapView.showsCompass = false           // our own glass north button (MapNorthButton)
         mapView.isPitchEnabled = false
-        mapView.mapType = viewModel.mapType
+        mapView.preferredConfiguration = MapModes.configuration(satellite: satellite, traffic: traffic, labels: labels)
+        context.coordinator.appliedModes = modesKey
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
         mapView.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
         mapView.register(MeccaMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: "MeccaAnnotationView")
@@ -560,7 +571,11 @@ struct MapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        if mapView.mapType != viewModel.mapType { mapView.mapType = viewModel.mapType }
+        // Only when the mode changed: a new configuration reloads the map's tiles.
+        if context.coordinator.appliedModes != modesKey {
+            context.coordinator.appliedModes = modesKey
+            mapView.preferredConfiguration = MapModes.configuration(satellite: satellite, traffic: traffic, labels: labels)
+        }
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
@@ -570,6 +585,7 @@ struct MapView: UIViewRepresentable {
         static let qiblaSpan = MKCoordinateSpan(latitudeDelta: 0.002, longitudeDelta: 0.002)
         var parent: MapView
         var didCentreOnUser = false
+        var appliedModes = ""
         private var prayerAnnotations: [CustomPrayerAnnotation] = []
         private var mosqueAnnotations: [MosqueAnnotation] = []
         private var qiblaLine: MKGeodesicPolyline?
@@ -1074,12 +1090,13 @@ struct LocationMapContentView: View {
                         VStack(spacing: 10) {
                             // Map style + locate: one glass capsule, like Apple Maps groups them.
                             VStack(spacing: 0) {
-                                Button { viewModel.mapType = viewModel.mapType == .standard ? .hybrid : .standard } label: {
-                                    Image(systemName: viewModel.mapType == .standard ? "map" : "map.fill")
+                                // Map Modes (Standard / Satellite, Traffic, Labels), like Apple Maps.
+                                Button { viewModel.showMapModes = true } label: {
+                                    Image(systemName: MapModes.globeSymbol(longitude: envLocation.userLocation?.coordinate.longitude))
                                         .mapControlIcon()
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel("Map style")
+                                .accessibilityLabel("Map modes")
                                 Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
                                 Button { centreOnUser() } label: {
                                     Image(systemName: "location")
@@ -1205,6 +1222,8 @@ struct LocationMapContentView: View {
             // Half sheet: the pin is already on the map behind it, so just the data. The map
             // stays usable underneath up to the medium detent.
             PrayerSpotSheet(selection: selection, viewModel: viewModel)
+                // Map Modes opens over this sheet when it's up.
+                .mapModesSheet(isPresented: $viewModel.showMapModes) { viewModel.modesCentre }
                 .presentationDetents(viewModel.spotDetents, selection: $viewModel.spotDetent)
                 .interactiveDismissDisabled(viewModel.spotMode != .browse)   // Save / Cancel while editing
                 .presentationDragIndicator(.visible)
@@ -1236,6 +1255,11 @@ struct LocationMapContentView: View {
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled)
         }
+        // Map Modes from the map itself, when no prayer / mosque sheet is up (those present it over
+        // themselves).
+        .mapModesSheet(isPresented: Binding(
+            get: { viewModel.showMapModes && viewModel.selection == nil && !viewModel.showMosqueList },
+            set: { viewModel.showMapModes = $0 })) { viewModel.modesCentre }
         .sheet(isPresented: $viewModel.showMosqueList) {
             NavigationStack(path: $viewModel.mosquePath) {
                 MosqueListSheet(items: viewModel.mosques,
@@ -1249,6 +1273,8 @@ struct LocationMapContentView: View {
                             .toolbar(.hidden, for: .navigationBar)
                     }
             }
+            // Map Modes opens over the mosque sheet when it's up.
+            .mapModesSheet(isPresented: $viewModel.showMapModes) { viewModel.modesCentre }
             .presentationDetents([LocationViewModel.mosqueCollapsed, .medium, .large], selection: $viewModel.mosqueDetent)
             .presentationDragIndicator(.visible)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
