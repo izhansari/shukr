@@ -4,6 +4,16 @@ import Foundation
 import SwiftData
 
 
+/// What's presented over the Salah page from views PrayerTimesView's `somethingCovers` can't see
+/// (the What's new sheet, the ☰ popover, a prayer row's time editor). The circle counts as not on
+/// screen while any is up — no qibla buzz, no track animation. 2026-09-27 review.
+@MainActor enum CircleCover {
+    private(set) static var active = Set<String>()
+    static func set(_ key: String, _ on: Bool) {
+        if on { active.insert(key) } else { active.remove(key) }
+    }
+}
+
 struct MainCircleView: View {
     /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
@@ -375,7 +385,7 @@ struct MainCircleView: View {
     /// does the track animate; otherwise it just is what it should be.
     private var circleOnScreen: Bool {
         scenePhase == .active && sharedState.horizontalPage == .main && WelcomeTarget.canLand
-            && Date().timeIntervalSince(appearedAt) > 0.6
+            && CircleCover.active.isEmpty && Date().timeIntervalSince(appearedAt) > 0.6
     }
 
     private func settleTrack(_ solid: Bool) {

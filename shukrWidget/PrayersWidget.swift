@@ -51,6 +51,14 @@ struct PrayersWidgetEntry: TimelineEntry {
     var completedToday: Set<String> { Set(completedScores.keys) }
     /// Tomorrow's Fajr, for the circle once the day's prayers are over.
     var nextFajr: Date? = nil
+
+    /// The same data, shown from `date` on (a later timeline entry).
+    func at(_ date: Date) -> PrayersWidgetEntry {
+        PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
+                           toggleShowAllTImes: toggleShowAllTImes, prayerDict: prayerDict,
+                           todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
+                           completedScores: completedScores, nextFajr: nextFajr)
+    }
 }
 
 
@@ -96,10 +104,19 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<PrayersWidgetEntry> {
         let entry = await makeEntry()
-        // Refresh policy: e.g. every 60 seconds
+        // Plus an entry when the shown prayer starts (and when it ends), so the Lock Screen's dashed
+        // "next" ring turns into the live ring on time rather than at the next (throttled) reload.
+        // A couple of entries at most — a long timeline was "not performant" (owner).
+        var entries = [entry]
+        let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: entry).relevantPrayer
+        if !shown.current, shown.start > entry.date, shown.end > shown.start {
+            entries.append(entry.at(shown.start))
+            entries.append(entry.at(shown.end))
+        } else if shown.current, shown.end > entry.date {
+            entries.append(entry.at(shown.end))
+        }
         let nextRefresh = Date().addingTimeInterval(60)
-        let timeline = Timeline(entries: [entry], policy: .after(nextRefresh))
-        return timeline
+        return Timeline(entries: entries, policy: .after(nextRefresh))
     }
     
     /// Helper function that calculates the data you want in the widget entry.
@@ -232,11 +249,11 @@ struct PrayersWidgetView: View {
             VStack(spacing: 3){
                 ForEach(prayerOrder, id: \.self) { name in
                     if let prayer = entry.prayerDict[name] {
-                        let currentPrayer: Bool = prayer.start <= Date() && Date() < prayer.end
+                        let currentPrayer: Bool = prayer.start <= entry.date && entry.date < prayer.end
                         var progressColor: Color {
                             guard (currentPrayer) else { return .secondary }
                             
-                            let elapsedDuration = Date().timeIntervalSince(prayer.start)
+                            let elapsedDuration = entry.date.timeIntervalSince(prayer.start)
                             let totalDuration = prayer.end.timeIntervalSince(prayer.start)
                             let progress: Double = elapsedDuration / totalDuration
                             
@@ -286,7 +303,8 @@ struct PrayersWidgetView: View {
         
 
         var relevantPrayer: (name: String, current: Bool, start: Date, end: Date, window: TimeInterval) {
-            let now = Date()
+            // The entry's time, not the clock: WidgetKit can render a future entry ahead of time.
+            let now = entry.date
             
             /// Check if indexed prayer is a current prayer -- else check if indexed prayer is the next one.
             /// Prayers already completed today are skipped so the circle moves on after a tap; the
@@ -313,7 +331,7 @@ struct PrayersWidgetView: View {
         }
                 
         var progress: Double {
-            let now = Date()
+            let now = entry.date
             let startDate = relevantPrayer.start
             let endDate = relevantPrayer.end
             
@@ -329,7 +347,7 @@ struct PrayersWidgetView: View {
         
         /// The prayer whose window is open right now (Sunrise isn't one), marked or not.
         private var prayerInWindow: String? {
-            let now = Date()
+            let now = entry.date
             return prayerOrder.first { name in
                 guard name != "Sunrise", let p = entry.prayerDict[name] else { return false }
                 return p.start <= now && now < p.end
@@ -450,7 +468,7 @@ struct PrayersWidgetView: View {
                     .foregroundColor(.primary)
                     .frame(width: 30, height: 30)
             } else {
-                let canComplete = shown.start <= Date() && !entry.completedToday.contains(shown.name) && shown.name != "Sunrise"   // sunrise isn't a prayer
+                let canComplete = shown.start <= entry.date && !entry.completedToday.contains(shown.name) && shown.name != "Sunrise"   // sunrise isn't a prayer
                 Button(intent: MarkCompleteIntent(prayerName: shown.name, prayerStart: shown.start, prayerEnd: shown.end)) {
                     Image(systemName: "circle")
                         .font(.system(size: 15))
@@ -813,9 +831,11 @@ extension SharedStore {
 /// The Prayers widget on the Lock Screen (2026-09-26). Same prayer as the home-screen circle
 /// (`WidgetPrayerCircleView.relevantPrayer`: the prayer that's on, else the next, done ones
 /// skipped).
-/// - Circular: the time left drains round the ring live (`ProgressView(timerInterval:)`), the
-///   prayer's symbol and name inside; before it starts, the symbol and its start time.
-/// - Rectangular: name, "ends 6:48 PM" / "at 4:10 PM", and a live bar or countdown.
+/// - Circular: the ring fills live as the window passes (`ProgressView(timerInterval:)`,
+///   `countsDown: false`), the prayer's symbol and name inside; before it starts, a thin dashed
+///   ring with the symbol, name and start time (no NEXT here). The timeline carries an entry at
+///   the start / end, so it switches on time.
+/// - Rectangular: name, "ends 6:48 PM" / "at 4:10 PM", and a bar that fills, or a countdown.
 /// - Inline (above the clock): "Asr · ends 6:48 PM".
 struct PrayerLockScreenView: View {
     let entry: PrayersWidgetEntry

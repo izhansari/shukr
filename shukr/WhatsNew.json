@@ -423,10 +423,22 @@
       "checked": "sim"
     },
     {
-      "id": "whats-new-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#19",
+      "id": "whats-new-3", "date": "2026-09-27", "commit": "9df0676", "time": "2026-09-27T07:36:18-04:00", "topic": "whats-new", "notes": "#19",
       "title": "Send feedback shares a .md file with your photos; Copy asks before marking sent",
       "tryIt": ["Give a card 👎 with a photo → Send feedback → AirDrop / Save to Files: the .md and the photo arrive together", "Send feedback → Copy → \"Mark as sent?\" (Not yet keeps it unsent)"],
       "checked": "sim"
+    },
+    {
+      "id": "qibla-haptic-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "title": "No qibla buzz while What's new, the ☰ menu or a prayer's time editor is open",
+      "tryIt": ["Open ☰ (or What's new, or long-press a prayer to edit its time) and point at the qibla → no buzz"],
+      "checked": "no"
+    },
+    {
+      "id": "lockscreen-prayers-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "lockscreen-prayers", "notes": null,
+      "title": "The Lock Screen ring switches from dashed to live right when the prayer starts",
+      "tryIt": ["Before a prayer, look at the Lock Screen widget at its start time → the dashed ring becomes the filling ring on the minute"],
+      "checked": "no"
     }
   ]
 }

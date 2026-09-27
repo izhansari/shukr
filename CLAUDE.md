@@ -799,6 +799,9 @@ too many sheets.
     symbol and name inside; before a prayer starts, symbol, name and "5:32";
   - rectangular: name, "ends 6:48 PM" / "at 5:32 AM", and a live bar or "in 2 hr 30 min";
   - inline (above the clock): "Asr · ends 6:48 PM".
+- The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
+  the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
+  (WidgetKit can render future entries ahead of time).
 - **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
   the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
   thin dashed ring and a tiny NEXT (circular).
@@ -1329,7 +1332,10 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   owner); all five come back when the day's complete; perfect day pops the
   dots in turn and shows "✦ perfect day".
 - **Qibla haptic** (2026-09-27): `checkToTriggerQiblaHaptic` fires only when `circleOnScreen`
-  (active, Salah page, `WelcomeTarget.canLand`, settled) and the circle's own map isn't up. The old
+  (active, Salah page, `WelcomeTarget.canLand`, `CircleCover.active` empty, settled) and the
+  circle's own map isn't up. `CircleCover` (mainCircle.swift) is the register for things presented
+  over the Salah page that `somethingCovers` can't see: the ☰ popover, What's new, a prayer row's
+  time editor — add any new one there. The old
   `@Published allowQiblaHaptics` flag (toggled on appear / disappear, left on by the pager and
   sheets, and re-rendering everything on each write) is gone. NEXT is a small tag (9 pt medium, tracking
   2.5) at `offset(y: -31)` in the app (~12 pt under the qibla arrow at its highest, r 80; its gap

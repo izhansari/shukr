@@ -878,6 +878,7 @@ struct PrayerTimesView: View {
                             .presentationCompactAdaptation(.popover)
                         }
                         .onChange(of: showMenu) { _, open in
+                            CircleCover.set("menu", open)
                             // Run the chosen action once the popover is away, so the push isn't
                             // attempted while a presentation is still dismissing.
                             guard !open, let action = pendingMenuAction else { return }
@@ -885,6 +886,7 @@ struct PrayerTimesView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
                         }
                         .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
+                        .onChange(of: showWhatsNew) { _, open in CircleCover.set("whatsNew", open) }
                         .opacity(Double(1 - zikrness))
                         .allowsHitTesting(zikrness < 0.5)
                         }
@@ -1646,6 +1648,7 @@ struct PrayerButton: View {
                             secondaryButton: .cancel()
                         )
                     }
+            .onChange(of: showTimePicker) { _, open in CircleCover.set("timeEdit.\(prayerObject.name)", open) }
             .sheet(isPresented: $showTimePicker) {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
