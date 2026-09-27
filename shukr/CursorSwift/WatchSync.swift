@@ -11,12 +11,14 @@
 
 import Foundation
 import WatchConnectivity
+import SwiftData
 
 final class WatchSync: NSObject, WCSessionDelegate {
     static let shared = WatchSync()
     private var lastSent: NSDictionary?
 
-    func start() {
+    func start(container: ModelContainer) {
+        Task { @MainActor in WatchZikrSync.start(container: container) }
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -28,7 +30,7 @@ final class WatchSync: NSObject, WCSessionDelegate {
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
         let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         let dayStart = PrayerDay.start()
-        let context: [String: Any] = [
+        var context: [String: Any] = [
             "lat": group?.double(forKey: "lastLatitude") ?? 0,
             "lon": group?.double(forKey: "lastLongitude") ?? 0,
             "method": group?.object(forKey: "calculationMethod") as? Int ?? 2,
@@ -37,6 +39,7 @@ final class WatchSync: NSObject, WCSessionDelegate {
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
             "completedDay": dayStart.timeIntervalSince1970,
         ]
+        context.merge(MainActor.assumeIsolated { WatchZikrSync.payload() }) { current, _ in current }
         guard lastSent != (context as NSDictionary) else { return }
         do {
             try session.updateApplicationContext(context)
@@ -47,7 +50,21 @@ final class WatchSync: NSObject, WCSessionDelegate {
     }
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
+        print("⌚️ phone session: state=\(state.rawValue) paired=\(session.isPaired) installed=\(session.isWatchAppInstalled) reachable=\(session.isReachable) \(error?.localizedDescription ?? "")")
         if state == .activated { DispatchQueue.main.async { self.send() } }
+    }
+    /// Finished watch zikr sessions and memo requests.
+    func sessionReachabilityDidChange(_ session: WCSession) {
+        print("⌚️ phone: watch reachable=\(session.isReachable)")
+    }
+
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        print("⌚️ phone got user info \(userInfo["type"] ?? "")")
+        WatchZikrSync.receive(userInfo)
+    }
+    /// The same, sent directly while the watch is in reach.
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        WatchZikrSync.receive(message)
     }
     func sessionDidBecomeInactive(_ session: WCSession) {}
     func sessionDidDeactivate(_ session: WCSession) { WCSession.default.activate() }

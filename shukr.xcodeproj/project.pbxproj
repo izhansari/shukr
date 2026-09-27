@@ -1043,6 +1043,7 @@
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukrWatchInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = shukr;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.betternorms.shukr;
@@ -1072,6 +1073,7 @@
 				DEVELOPMENT_TEAM = 7R387XZ2Y7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = shukrWatchInfo.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = shukr;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.betternorms.shukr;

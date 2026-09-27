@@ -112,7 +112,7 @@ struct shukrApp: App {
     
     // 2) Now in the init, create local variables first, then assign them.
     init() {
-        WatchSync.shared.start()   // Apple Watch: prayer times + today's ✓s
+        WatchSync.shared.start(container: sharedModelContainer)   // Apple Watch: prayer times, today's ✓s, zikr
         WhatsNew.noteLaunch()      // a new build moves the last one to "previous" (NEW badges)
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()

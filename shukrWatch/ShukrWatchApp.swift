@@ -4,8 +4,8 @@
 //
 //  The watch app: today's prayer on the circle and the day's times. Mostly it exists so the
 //  complications have a home and so the phone has somewhere to send the location / method / marked
-//  prayers (WatchConnectivity → `WatchStore`). Read-only for now: marking prayers happens on the
-//  phone.
+//  prayers (WatchConnectivity → `WatchStore`). Marking prayers happens on the phone. Zikr (swipe
+//  right from Salah) lives in WatchZikr.swift.
 //
 
 import SwiftUI
@@ -19,7 +19,7 @@ struct ShukrWatchApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WatchHomeView()
+            WatchRootView()
                 .environmentObject(session)
         }
         // Woken in the background with a new context from the phone.
@@ -53,15 +53,51 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         if WatchStore.save(context) {
             WidgetCenter.shared.reloadAllTimelines()
         }
+        WatchZikrStore.shared.take(context)   // today's zikr tasks and progress
         DispatchQueue.main.async { self.revision += 1 }
     }
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         take(session.receivedApplicationContext)
+        WatchZikrStore.shared.resendUnconfirmed()
+    }
+
+    func sessionReachabilityDidChange(_ session: WCSession) {
+        if session.isReachable { WatchZikrStore.shared.sendUnconfirmedNow() }
+    }
+
+    func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
+        if let error { print("⌚️ transfer failed: \(error.localizedDescription)") }
+    }
+
+    /// A zikr's voice memo from the phone.
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        WatchZikrStore.shared.saveMemo(file)
     }
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         take(applicationContext)
+    }
+}
+
+/// The phone's three pages, on the wrist: Zikr ← Salah → Settings (Salah first).
+struct WatchRootView: View {
+    @State private var page: Int = {
+        #if DEBUG
+        // `-watchPage 0|1|2`: open on Zikr / Salah / Settings (simulator checks).
+        let v = UserDefaults.standard.integer(forKey: "watchPage")
+        if UserDefaults.standard.object(forKey: "watchPage") != nil { return v }
+        #endif
+        return 1
+    }()
+
+    var body: some View {
+        TabView(selection: $page) {
+            WatchZikrPage().tag(0)
+            WatchHomeView().tag(1)
+            WatchSettingsPage().tag(2)
+        }
+        .tabViewStyle(.page)
     }
 }
 
