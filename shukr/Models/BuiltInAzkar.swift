@@ -51,19 +51,41 @@ enum BuiltInAzkar {
     /// The original four's own seed-once flag (the V2 data pass used to re-seed one every launch).
     static let originalsSeededKey = "builtInAzkar.originalsSeeded"
 
-    /// Built-ins (and the app's own Tasbih Fatimah) are locked: name and full text can't change
-    /// and they can't be deleted; notes, memo and photo stay the user's (owner, 2026-09-27).
-    static let lockedKeys: Set<String> = Set(all.map { key($0.name) } + MantraModel.builtIn.map(key) + [key("Tasbih Fatimah")])
-    static func isBuiltIn(_ name: String) -> Bool { lockedKeys.contains(key(name)) }
     /// Built-ins in their own order (the four originals, then the rest, then Tasbih Fatimah).
     static func order(_ name: String) -> Int {
         let k = key(name)
         return all.firstIndex { key($0.name) == k } ?? all.count
     }
 
-    /// "SubhanAllahi wa bihamdihi" == "subhanallahi wabihamdihi": letters and digits only.
+    /// "SubhanAllahi wa bihamdihi" == "subhanallahi wabihamdihi": letters and digits only (any
+    /// script). A name with none (all emoji / punctuation) falls back to itself, lowercased, so
+    /// such names don't all collapse to "". Used for every zikr-name comparison: duplicates,
+    /// seeding, the data pass's linking.
     static func key(_ name: String) -> String {
-        String(name.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+        let k = String(name.lowercased().unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.map(Character.init))
+        return k.isEmpty ? name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() : k
+    }
+
+    /// The app's own zikr names and their built-in ids (the id is the key of the name).
+    static let tasbihFatimahName = "Tasbih Fatimah"
+    static var canonicalNames: [String] { MantraModel.builtIn + all.map(\.name) + [tasbihFatimahName] }
+
+    /// Every launch, cheap: mark the app's own rows as built-in (`builtInID`), by their EXACT
+    /// seeded name — a user's "Subhan Allah" is never taken for one (2026-09-27 review; this used
+    /// to be decided by a loose name match, which locked such rows). One row per id.
+    @discardableResult
+    static func tagRows(in context: ModelContext) -> Int {
+        guard let rows = try? context.fetch(FetchDescriptor<MantraModel>()) else { return 0 }
+        let taken = Set(rows.compactMap(\.builtInID))
+        var tagged = 0
+        for name in Set(canonicalNames) where !taken.contains(key(name)) {
+            if let row = rows.first(where: { $0.builtInID == nil && $0.name == name }) {
+                row.builtInID = key(name)
+                tagged += 1
+            }
+        }
+        if tagged > 0 { try? context.save() }
+        return tagged
     }
 
     /// App only, after the V2 data pass. Returns a log summary, or nil when already done.
@@ -85,6 +107,7 @@ enum BuiltInAzkar {
                     if touched { filled += 1 }
                 } else {
                     let m = MantraModel(name: z.name, fullText: z.arabic, notes: z.note)
+                    m.builtInID = key(z.name)
                     context.insert(m)
                     byKey[key(z.name)] = m
                     added += 1

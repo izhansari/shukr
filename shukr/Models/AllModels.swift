@@ -331,14 +331,18 @@ class MantraModel: Identifiable {
         self.createdAt = .now
     }
 
+    /// Set on the app's own rows (the built-ins and Tasbih Fatimah) by the seeders / `tagRows`
+    /// (schema 2.6.0). Never guessed from the name.
+    var builtInID: String? = nil
     /// A built-in (or Tasbih Fatimah): name and full text locked, never deleted.
-    var isBuiltIn: Bool { BuiltInAzkar.isBuiltIn(name) }
+    var isBuiltIn: Bool { builtInID != nil }
 
     /// Case-insensitive, whitespace-trimmed lookup by name.
     static func find(named name: String, in context: ModelContext) -> MantraModel? {
-        let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !key.isEmpty, let all = try? context.fetch(FetchDescriptor<MantraModel>()) else { return nil }
-        return all.first { $0.name.lowercased() == key }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let all = try? context.fetch(FetchDescriptor<MantraModel>()) else { return nil }
+        // Exact name first, then the shared normalisation (letters and digits).
+        return all.first { $0.name == trimmed } ?? all.first { BuiltInAzkar.key($0.name) == BuiltInAzkar.key(trimmed) }
     }
 
     /// Insert any built-in that isn't there yet. Runs on fresh installs (the migration seeds

@@ -115,6 +115,8 @@ struct HistoryPageView: View {
         .onChange(of: isEditing) { _, on in
             if on { expandedID = nil } else { selection.removeAll() }
         }
+        // Selected sessions a new search hides must not be deleted (or counted) unseen.
+        .onChange(of: search) { _, _ in selection.removeAll() }
         // The same centered alert as unmarking a prayer (a bottom action sheet felt out of place).
         .alert(selection.count == 1 ? "Delete 1 session?" : "Delete \(selection.count) sessions?", isPresented: $confirmDelete) {
             Button("Delete", role: .destructive) { deleteSelected() }
@@ -128,12 +130,12 @@ struct HistoryPageView: View {
     }
 
     private func deleteSelected() {
-        let doomed = sessions.filter { selection.contains($0.persistentModelID) }
-        withAnimation {
-            for session in doomed { context.delete(session) }   // task progress and mantra stats recompute
-            try? context.save()
-        }
-        WidgetCenter.shared.reloadAllTimelines()                  // the Zikr widget's progress
+        // Only what's selected AND on screen (the search may have changed since).
+        let visible = Set(days.flatMap(\.sessions).map(\.persistentModelID))
+        let doomed = sessions.filter { selection.contains($0.persistentModelID) && visible.contains($0.persistentModelID) }
+        // Task progress and zikr stats recompute from the queries; the widget reloads and the
+        // reminders are rescheduled (a task no longer done today gets its reminder back).
+        withAnimation { SessionDeletion.delete(doomed, in: context) }
         triggerSomeVibration(type: .medium)
         selection.removeAll()
         setEditing(false)
@@ -324,7 +326,6 @@ struct SessionRow: View {
     /// on). `onMantra` nil hides that button (no mantra, or already on its page).
     var expanded = false
     var onMantra: (() -> Void)? = nil
-    var onDelete: (() -> Void)? = nil
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -367,8 +368,8 @@ struct SessionRow: View {
         .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
     }
 
-    /// Mantra · Pace (plays the session's rhythm until tapped again — the hold, hands-free) ·
-    /// Delete, as soft capsules. Borderless so each button gets its own tap inside the row.
+    /// Zikr · Pace (plays the session's rhythm until tapped again — the hold, hands-free), as
+    /// soft capsules (deleting is Edit → select → Delete on the list). Borderless so each button gets its own tap inside the row.
     private var actionStrip: some View {
         HStack(spacing: 8) {
             if let onMantra {
@@ -379,9 +380,6 @@ struct SessionRow: View {
                        color: .green) {
                     feelingPace ? stopFeelingPace() : startFeelingPace(pace)
                 }
-            }
-            if let onDelete {
-                action("Delete", icon: "trash", color: .red, action: onDelete)
             }
         }
         .buttonStyle(.borderless)
@@ -855,7 +853,7 @@ struct MantraPickerView: View {
         }
     }
     private var  uniqueItem: Bool {
-        !mantraItems.contains { $0.name.lowercased() == searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        !mantraItems.contains { BuiltInAzkar.key($0.name) == BuiltInAzkar.key(trimmedQuery) }
     }
 
     // Allow selectedSession and selectedMantra to be optional in the initializer
@@ -953,6 +951,15 @@ struct MantraPickerView: View {
 //        .padding()
 //    }
     
+    private func pickRow(_ mantra: MantraModel) -> some View {
+        Button { select(mantra) } label: {
+            ZikrListRow(mantra: mantra,
+                        selected: mantra.persistentModelID == selectedMantraObject?.persistentModelID,
+                        showsChevron: false)
+        }
+        .tint(.primary)
+    }
+
     /// Laid out like the Azkar page (owner, 2026-09-27): a titled bar with ✕ and ＋, the Azkar rows
     /// (name, text, pace; a check on the current one) and the system search field.
     var body: some View {
@@ -966,13 +973,14 @@ struct MantraPickerView: View {
                             .tint(.green)
                     }
                 } else {
-                    ForEach(filteredMantras) { mantra in
-                        Button { select(mantra) } label: {
-                            ZikrListRow(mantra: mantra,
-                                        selected: mantra.persistentModelID == selectedMantraObject?.persistentModelID,
-                                        showsChevron: false)
-                        }
-                        .tint(.primary)
+                    // The same sections as the Azkar list.
+                    let builtIns = filteredMantras.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
+                    let own = filteredMantras.filter { !$0.isBuiltIn }
+                    if !builtIns.isEmpty {
+                        Section("Built-in") { ForEach(builtIns) { pickRow($0) } }
+                    }
+                    if !own.isEmpty {
+                        Section("Your azkar") { ForEach(own) { pickRow($0) } }
                     }
                 }
             }

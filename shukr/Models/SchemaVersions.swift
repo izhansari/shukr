@@ -33,7 +33,9 @@ enum ShukrSchemaV2: VersionedSchema {
     /// 2.3.0 (2026-09-26): `PrayerModel.recorded…` (optional — lightweight).
     /// 2.4.0 (2026-09-27): `TaskModel.customName` + the reminder fields (optional — lightweight).
     /// 2.5.0 (2026-09-27): `MantraModel.imageData` / `audioData` (optional, external storage).
-    static let versionIdentifier = Schema.Version(2, 5, 0)
+    /// 2.6.0 (2026-09-27): `MantraModel.builtInID` (optional) — built-ins are marked on the row,
+    /// not guessed from the name.
+    static let versionIdentifier = Schema.Version(2, 6, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }
@@ -54,15 +56,16 @@ enum ShukrV2DataPass {
         var byName: [String: MantraModel] = [:]
         var keys = Set<String>()
         for mantra in try context.fetch(FetchDescriptor<MantraModel>()) {
-            byName[mantra.name.lowercased()] = mantra
+            byName[BuiltInAzkar.key(mantra.name)] = mantra
             keys.insert(BuiltInAzkar.key(mantra.name))
         }
         var seeded = 0
         if seedOriginals {
             for name in MantraModel.builtIn where !keys.contains(BuiltInAzkar.key(name)) {
                 let mantra = MantraModel(name: name)
+                mantra.builtInID = BuiltInAzkar.key(name)
                 context.insert(mantra)
-                byName[name.lowercased()] = mantra
+                byName[BuiltInAzkar.key(name)] = mantra
                 keys.insert(BuiltInAzkar.key(name))
                 seeded += 1
             }
@@ -73,13 +76,13 @@ enum ShukrV2DataPass {
         for task in tasks where task.mantraRef == nil {
             let name = task.mantraName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !name.isEmpty else { continue }
-            if byName[name.lowercased()] == nil {
+            if byName[BuiltInAzkar.key(name)] == nil {
                 let mantra = MantraModel(name: name)
                 context.insert(mantra)
-                byName[name.lowercased()] = mantra
+                byName[BuiltInAzkar.key(name)] = mantra
                 tasksCreatedFor += 1
             }
-            task.mantra = byName[name.lowercased()]
+            task.mantra = byName[BuiltInAzkar.key(name)]
             tasksLinked += 1
         }
         // V1 had no order. If nobody has been numbered yet, fetch order becomes the initial one.
@@ -93,7 +96,7 @@ enum ShukrV2DataPass {
         // Only the unlinked ones come out of the store; on a linked store this fetches nothing.
         let unlinked = FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.mantra == nil })
         for session in try context.fetch(unlinked) {
-            let key = session.title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let key = BuiltInAzkar.key(session.title)
             if let mantra = byName[key] {
                 session.mantra = mantra
                 sessionsLinked += 1

@@ -193,14 +193,24 @@ code; in UI strings write "zikr". New UI text must follow this.
   **⚠️ The hadith sources were written from memory — they need a knowledgeable check before
   release** (with the Tasbih Fatimah reminders).
 - DEBUG `-demoZikrName <name>` with `-demoZikrEmpty` opens that zikr's page.
-- **Built-ins are locked** (owner, 2026-09-27): `MantraModel.isBuiltIn` = `BuiltInAzkar.lockedKeys`
-  (the eight + Tasbih Fatimah, letters-and-digits match). `MantraCardFields(identityLocked:)` keeps
+- **Built-ins are locked** (owner, 2026-09-27): `MantraModel.isBuiltIn` = `builtInID != nil`
+  (**schema 2.6.0**, set by the seeders, Tasbih Fatimah's creation and `BuiltInAzkar.tagRows` —
+  every launch, EXACT seeded names only, one row per id; a user's "Subhan Allah" is never tagged).
+  Every zikr-name comparison (duplicates, seeding, the data pass's linking, `find(named:)` after an
+  exact match) uses `BuiltInAzkar.key` (letters and digits, any script; falls back to the name). `MantraCardFields(identityLocked:)` keeps
   name and full text read-only (a lock overlay in the name field, no layout change); notes, memo,
   photo, sets stay editable. They can't be deleted (Azkar list `deleteDisabled`, no Delete button).
   The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections.
 - **The original four are seeded once** (`BuiltInAzkar.originalsSeededKey`; the V2 data pass
   re-seeded a missing one every launch), matched letters-and-digits like the new four.
   `recoverFromUnopenableStore` clears both seed flags so a fresh store gets them again.
+- **Deleting**: `MantraModel.delete` / `TaskModel.delete` post `TaskModel.didDelete` (persistent
+  ids) → PrayerTimesView clears `selectedTask`; `ZikrFocus.forget`. The zikr page dismisses first,
+  then deletes (0.35 s later) so no view reads the gone row; alerts capture their text up front.
+  Sessions: `SessionDeletion.delete` (save, widget reload, reschedule) from History and from a
+  zikr page's own "Sessions · Edit" (custom checkmarks; no swipes, no strip Delete anywhere).
+  History clears its selection when the search changes and deletes only selected ∩ visible;
+  the library doesn't page while History is editing; Edit hides with no sessions.
 - **Deleting a zikr**: `MantraModel.delete(_:in:)` only (the zikr page's "Delete zikr" while editing,
   the Azkar list swipe — both confirm with `deleteMessage`). Its tasks are deleted too: a task left
   with only its name snapshot made the data pass re-create the zikr next launch. Sessions stay.

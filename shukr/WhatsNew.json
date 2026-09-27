@@ -405,9 +405,21 @@
       "checked": "sim", "shots": ["wn-next-options.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": "#17",
+      "date": "2026-09-27", "commit": "2613923", "time": "2026-09-27T07:24:22-04:00", "topic": "zikr-media", "notes": "#17",
       "title": "A voice memo that's still opening never starts after Resume; a double tap opens it once",
       "tryIt": ["Pause a session → tap the memo's ▶︎ and Resume straight away → it stays silent while you count", "Double-tap ▶︎ → it plays once"],
+      "checked": "sim"
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "title": "Built-ins are marked on the zikr itself; your own \"Subhan Allah\" is never locked; the picker has the Built-in section too",
+      "tryIt": ["Make a zikr named \"Subhan Allah\" → it's rejected as a duplicate of Subhanallah (same name ignoring spaces / case)", "New task → Zikr → \"Built-in\" then \"Your azkar\", like the Azkar list", "Books → Azkar with none of your own → the \"Your azkar\" header stays with its hint"],
+      "checked": "sim"
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "title": "A zikr's own sessions: Edit → select → Delete too; History keeps its selection safe while editing",
+      "tryIt": ["Open a zikr → Sessions → Edit → tick → Delete N sessions", "History → Edit → select → type a search: the selection clears; sideways drags don't page to Azkar while editing", "Delete a session that finished a task today → its reminder comes back"],
       "checked": "sim"
     }
   ]

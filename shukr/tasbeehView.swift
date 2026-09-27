@@ -1534,6 +1534,7 @@ enum PostSalahTasbeeh {
                 + "\nSubhanallah · Alhamdulillah · Allahu Akbar"
             let new = MantraModel(name: mantraName, fullText: text,
                                   notes: "After each obligatory prayer: 33, 33 and 34 — 100 in all.")
+            new.builtInID = BuiltInAzkar.key(BuiltInAzkar.tasbihFatimahName)
             context.insert(new)
             return new
         }()

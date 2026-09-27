@@ -179,15 +179,40 @@ enum ZikrReminders {
 extension TaskModel {
     /// The one way to delete a task: its sessions stay in history (nullify), its reminders go.
     @MainActor static func delete(_ task: TaskModel, in context: ModelContext) {
+        let ids = (uuids: Set([task.id]), models: Set([task.persistentModelID]))
         context.delete(task)
         try? context.save()
         NotificationScheduler.reschedule(context: context, reason: "task deleted")
+        deleted(ids.uuids, models: ids.models)
+    }
+
+    /// Posted with the deleted tasks' ids, so nothing keeps pointing at them (the home screen's
+    /// `selectedTask`, a pending `ZikrFocus`).
+    static let didDelete = Notification.Name("tasksDeleted")
+    /// `models` is what observers compare against (a deleted row's attributes can't be read).
+    @MainActor static func deleted(_ ids: Set<UUID>, models: Set<PersistentIdentifier>) {
+        guard !ids.isEmpty else { return }
+        ZikrFocus.forget(ids.map(\.uuidString))
+        NotificationCenter.default.post(name: didDelete, object: models)
+    }
+}
+
+/// Deleting sessions (History's and a zikr page's Edit → Delete): task progress, the widget and
+/// the reminders (a task that's no longer done today gets its reminder back) all follow.
+enum SessionDeletion {
+    @MainActor static func delete(_ sessions: [SessionDataModel], in context: ModelContext) {
+        guard !sessions.isEmpty else { return }
+        for session in sessions { context.delete(session) }
+        try? context.save()
+        WidgetCenter.shared.reloadAllTimelines()
+        NotificationScheduler.reschedule(context: context, reason: "sessions deleted")
     }
 }
 
 // MARK: - The picker
 
 import SwiftUI
+import WidgetKit
 
 /// A task's reminder while it's being set (applied to the task on Save / on create).
 struct ReminderDraft: Equatable {

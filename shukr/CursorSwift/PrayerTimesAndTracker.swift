@@ -315,6 +315,13 @@ struct PrayerTimesView: View {
         }
         // A zikr reminder's "Start now" while the app is open (on a cold / background launch the
         // app-group flags below do it on activation).
+        // A deleted task (its zikr deleted, or the task itself) must not stay selected: reading a
+        // deleted row's attributes crashes.
+        .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
+            guard let gone = note.object as? Set<PersistentIdentifier>,
+                  let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }
+            sharedState.selectedTask = nil
+        }
         .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
             guard let taskID = note.object as? String, scenePhase == .active else { return }
             let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")

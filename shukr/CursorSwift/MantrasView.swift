@@ -78,7 +78,7 @@ struct MantrasView: View {
                         ForEach(builtIns) { row($0).deleteDisabled(true) }
                     }
                 }
-                Section(own.isEmpty && !builtIns.isEmpty ? "" : "Your azkar") {
+                Section("Your azkar") {
                     if own.isEmpty {
                         Text(query.isEmpty ? "Your own azkar go here. Tap + to add one." : "None of yours match.")
                             .font(.subheadline)
@@ -96,7 +96,10 @@ struct MantrasView: View {
         .alert("Delete “\(deleting?.name ?? "")”?",
                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                presenting: deleting) { m in
-            Button("Delete", role: .destructive) { withAnimation { MantraModel.delete(m, in: context) }; deleting = nil }
+            Button("Delete", role: .destructive) {
+                deleting = nil                                   // the alert lets go of the row first
+                withAnimation { MantraModel.delete(m, in: context) }
+            }
             Button("Cancel", role: .cancel) { deleting = nil }
         } message: { m in
             Text(MantraModel.deleteMessage(m))
@@ -120,13 +123,15 @@ extension MantraModel {
     /// reminders; its sessions stay in history under their saved title. Built-ins never.
     @MainActor static func delete(_ mantra: MantraModel, in context: ModelContext) {
         guard !mantra.isBuiltIn else { return }
-        let hadTasks = !mantra.tasks.isEmpty
-        for task in mantra.tasks { context.delete(task) }
+        let tasks = Array(mantra.tasks)              // a copy: deleting edits the relationship
+        let taskIDs = Set(tasks.map(\.id)), taskModels = Set(tasks.map(\.persistentModelID))
+        for task in tasks { context.delete(task) }
         context.delete(mantra)
         try? context.save()
-        if hadTasks {
+        if !tasks.isEmpty {
             NotificationScheduler.reschedule(context: context, reason: "zikr deleted")
             WidgetCenter.shared.reloadAllTimelines()
+            TaskModel.deleted(taskIDs, models: taskModels)
         }
     }
 
@@ -274,8 +279,8 @@ struct MantraCardEditor: View {
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var isDuplicate: Bool {
-        let lower = trimmedName.lowercased()
-        return allMantras.contains { $0.name.lowercased() == lower && $0.persistentModelID != mantra.persistentModelID }
+        let key = BuiltInAzkar.key(trimmedName)   // the same match as seeding ("Subhan Allah" = "Subhanallah")
+        return allMantras.contains { BuiltInAzkar.key($0.name) == key && $0.persistentModelID != mantra.persistentModelID }
     }
     private var hasEdits: Bool {
         name != mantra.name || fullText != mantra.fullText || notes != mantra.notes || quickAdd != mantra.quickAddStep
@@ -594,11 +599,21 @@ struct ZikrLibraryView: View {
     @State private var dragX: CGFloat = 0
     @State private var pagingDrag: Bool?
 
-    init(start: Tab) { _tab = State(initialValue: start) }
+    /// Just whether there's any session (History's Edit hides when there are none).
+    @Query private var anySession: [SessionDataModel]
+
+    init(start: Tab) {
+        _tab = State(initialValue: start)
+        var one = FetchDescriptor<SessionDataModel>()
+        one.fetchLimit = 1
+        _anySession = Query(one)
+    }
 
     private func pageGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
             .onChanged { value in
+                // While History is selecting, a sideways drag must not page (and wipe the selection).
+                guard !editingHistory else { return }
                 if pagingDrag == nil {
                     let horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.4
                     // Mantras → History (finger moving right) clashes with nothing (mantra rows
@@ -652,7 +667,7 @@ struct ZikrLibraryView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 210)
             }
-            if tab == .history {
+            if tab == .history && !anySession.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editingHistory ? "Done" : "Edit") {
                         withAnimation { editingHistory.toggle() }
@@ -728,6 +743,9 @@ struct MantraEditorView: View {
     @State private var recording = false
     @State private var confirmDiscard = false
     @State private var confirmDelete = false
+    /// Worked out when Delete is tapped, so nothing reads the row once it's gone.
+    @State private var deleteTitle = ""
+    @State private var deleteMessage = ""
 
     /// Create only: called with the new zikr once it's saved (the picker selects it).
     var onCreate: ((MantraModel) -> Void)? = nil
@@ -748,8 +766,8 @@ struct MantraEditorView: View {
 
     /// Another mantra (other than the one being edited) already uses this name.
     private var isDuplicate: Bool {
-        let lower = trimmedName.lowercased()
-        return allMantras.contains { $0.name.lowercased() == lower && $0.persistentModelID != mantra?.persistentModelID }
+        let key = BuiltInAzkar.key(trimmedName)   // the same match as seeding ("Subhan Allah" = "Subhanallah")
+        return allMantras.contains { BuiltInAzkar.key($0.name) == key && $0.persistentModelID != mantra?.persistentModelID }
     }
 
     private var hasEdits: Bool {
@@ -847,7 +865,11 @@ struct MantraEditorView: View {
                     // Only while editing, never for a built-in (owner, 2026-09-27).
                     if isEditing && !mantra.isBuiltIn {
                         Section {
-                            Button(role: .destructive) { confirmDelete = true } label: {
+                            Button(role: .destructive) {
+                                deleteTitle = "Delete “\(mantra.name)”?"
+                                deleteMessage = MantraModel.deleteMessage(mantra)
+                                confirmDelete = true
+                            } label: {
                                 Text("Delete zikr")
                                     .frame(maxWidth: .infinity)
                             }
@@ -907,17 +929,18 @@ struct MantraEditorView: View {
             } message: {
                 Text("What you've typed, recorded or added isn't saved.")
             }
-            .alert("Delete “\(mantra?.name ?? name)”?", isPresented: $confirmDelete) {
+            .alert(deleteTitle, isPresented: $confirmDelete) {
                 Button("Delete", role: .destructive) {
-                    if let mantra {
-                        ZikrAudio.stopAll()
-                        MantraModel.delete(mantra, in: context)
-                        dismiss()
+                    guard let mantra else { return }
+                    ZikrAudio.stopAll()
+                    dismiss()                                   // leave first…
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        MantraModel.delete(mantra, in: context) // …then delete, so no view reads it
                     }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(mantra.map(MantraModel.deleteMessage) ?? "")
+                Text(deleteMessage)
             }
         }
         // Fires when this sheet closes, and when the New task cover (full screen) goes over it:
@@ -1094,28 +1117,29 @@ struct MantraSessionsSection: View {
         return order.map { (date: $0, sessions: byDay[$0] ?? []) }
     }
 
-    /// A section per day, headed "Today · 249 counted" — the same look as Zikr History; swipe
-    /// a session to delete it (confirmed), as there.
+    /// A section per day, headed "Today · 249 counted" — the same look as Zikr History. Deleting
+    /// is Edit → select → Delete, as on History (no swipes, no Delete in the tap strip; 2026-09-27).
     @Environment(\.modelContext) private var context
-    @State private var pendingDelete: SessionDataModel?
     @State private var expandedID: PersistentIdentifier?
+    @State private var editing = false
+    @State private var selected = Set<PersistentIdentifier>()
+    @State private var confirmDelete = false
 
     var body: some View {
         sections
-            .alert("Delete this session?",
-                   isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
-                   presenting: pendingDelete) { session in
+            .alert(selected.count == 1 ? "Delete 1 session?" : "Delete \(selected.count) sessions?", isPresented: $confirmDelete) {
                 Button("Delete", role: .destructive) {
+                    let doomed = mantra.sessions.filter { selected.contains($0.persistentModelID) }
+                    selected.removeAll()
                     withAnimation {
-                        context.delete(session)
-                        try? context.save()
+                        editing = false
+                        SessionDeletion.delete(doomed, in: context)
                     }
                     triggerSomeVibration(type: .medium)
-                    pendingDelete = nil
                 }
-                Button("Cancel", role: .cancel) { pendingDelete = nil }
-            } message: { session in
-                Text("\(session.totalCount) counts, \(session.startTime.formatted(date: .abbreviated, time: .shortened)). This can't be undone.")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Their counts come off this zikr's totals and today's task progress. This can't be undone.")
             }
     }
 
@@ -1125,22 +1149,35 @@ struct MantraSessionsSection: View {
                 Text("No sessions with this zikr yet.").foregroundStyle(.secondary)
             }
         } else {
+            // "Sessions" with Edit / Done; while editing, the Delete button.
+            Section {
+                if editing {
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Text(selected.isEmpty ? "Select sessions to delete"
+                             : selected.count == 1 ? "Delete 1 session" : "Delete \(selected.count) sessions")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .disabled(selected.isEmpty)
+                }
+            } header: {
+                HStack {
+                    Text("Sessions")
+                    Spacer()
+                    Button(editing ? "Done" : "Edit") {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            editing.toggle()
+                            expandedID = nil
+                            if !editing { selected.removeAll() }
+                        }
+                    }
+                    .font(.subheadline.weight(editing ? .semibold : .regular))
+                    .textCase(nil)
+                }
+            }
             ForEach(days, id: \.date) { day in
                 Section {
                     ForEach(day.sessions) { session in
-                        let id = session.persistentModelID
-                        SessionRow(session: session, showsMantraName: false,
-                                   expanded: expandedID == id, onDelete: { pendingDelete = session })
-                            .onTapGesture {
-                                triggerSomeVibration(type: .light)
-                                withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button { pendingDelete = session } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                .tint(.red)
-                            }
+                        row(session)
                     }
                 } header: {
                     HStack {
@@ -1150,6 +1187,31 @@ struct MantraSessionsSection: View {
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder private func row(_ session: SessionDataModel) -> some View {
+        let id = session.persistentModelID
+        if editing {
+            let on = selected.contains(id)
+            HStack(spacing: 12) {
+                Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(on ? Color.green : Color(.tertiaryLabel))
+                    .contentTransition(.symbolEffect(.replace))
+                SessionRow(session: session, showsMantraName: false)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                triggerSomeVibration(type: .light)
+                if on { selected.remove(id) } else { selected.insert(id) }
+            }
+        } else {
+            SessionRow(session: session, showsMantraName: false, expanded: expandedID == id)
+                .onTapGesture {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.snappy(duration: 0.25)) { expandedID = expandedID == id ? nil : id }
+                }
         }
     }
 }

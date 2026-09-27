@@ -128,6 +128,8 @@ enum ZikrFocus {
         NotificationCenter.default.post(name: notification, object: nil)
     }
     static func take() -> String? { defer { pending = nil }; return pending }
+    /// A deleted task can't be focused later.
+    static func forget(_ ids: [String]) { if let p = pending, ids.contains(p) { pending = nil } }
 }
 
 struct ZikrCircleWheel: View {

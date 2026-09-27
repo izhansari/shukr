@@ -144,6 +144,8 @@ enum SharedStore {
             print("✅ schema V2 data pass: \(summary)")
             // The built-ins' Arabic + notes and four new ones, once (BuiltInAzkar.swift).
             if let azkar = BuiltInAzkar.applyIfNeeded(in: context) { print("✅ built-in azkar: \(azkar)") }
+            let tagged = BuiltInAzkar.tagRows(in: context)
+            if tagged > 0 { print("✅ built-in azkar tagged: \(tagged)") }
         } catch {
             print("❌ schema V2 data pass failed (will retry next launch): \(error)")
         }
