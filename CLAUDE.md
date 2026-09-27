@@ -1484,8 +1484,10 @@ suck").** The track (`CircleTrack`, PrayerCompletionFX.swift) *is* the state:
 - **Dashed** (1 pt, 3 / 5 dashes, secondary 0.35 — the old future-prayer line, moved out to the
   200 pt track) while the circle shows a prayer that hasn't started: an upcoming prayer, and the
   summary circle's next Fajr (sheet closed). "NEXT" (an overlay above the name, offset −13, so the
-  name never moves) and the name / icon at 55 % stay. Next Fajr keeps its own time text ("in 4 hr"
-  ⇄ its window) — the only future prayer shown that way.
+  name never moves) and the name / icon at 55 % stay. Next Fajr keeps its own time text ("in 8h 5m"
+  ⇄ its window) — the only future prayer shown that way. The countdown is the app's `timeUntilStart`
+  in a 1 s `TimelineView` (the summary isn't redrawn by the circle's tick); `.relative` said
+  "in 8 hr, 5 min".
 - **Solid** 12 pt band for a prayer that's on, a missed one, the day's score (sheet open), while a
   completion sweeps and while the in-circle tasbih offer is up.
 - `MainCircleView.trackSolid` 0…1, set by `settleTrack(trackWantsSolid)`: when the circle is on

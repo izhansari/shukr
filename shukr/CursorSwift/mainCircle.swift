@@ -626,7 +626,12 @@ struct summaryCircle: View{
                 if let fajrTime = nextFajr{
                     ZStack{
                         if ogText{
-                            Text("in \(fajrTime.start, style: .relative)")
+                            // The app's own countdown ("in 8h 5m", seconds only under a minute) —
+                            // `.relative` said "in 8 hr, 5 min" (owner, 2026-09-27). Its own clock:
+                            // this view isn't redrawn by the circle's tick.
+                            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                Text(timeUntilStart(fajrTime.start))
+                            }
                         }
                         else {
                             Text("\(shortTime(fajrTime.start)) - \(shortTimePM(fajrTime.end))")
