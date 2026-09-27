@@ -23,12 +23,14 @@ struct MainCircleView: View {
     @State private var postSalahFor: String?
     @AppStorage(PostSalahPromptStyle.key) private var promptStyleRaw = PostSalahPromptStyle.nudge.rawValue
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
-    @State private var startMoment: PrayerStartStyle?
-    @State private var startMomentID = 0
+    /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
+    @State private var trackSolid: CGFloat = 1
+    /// When the last completion sweep faded: the track's shrink waits for it to be gone.
+    @State private var flourishEndedAt: Date?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Settings → My Dev Stuff → Preview (`PrayerStartPreview`): the circle draws its prayer in this
     /// state instead of the real one — "next", then "now" as the moment plays. Visual only.
     @State private var preview: PrayerModel.prayerStatus?
-    @AppStorage(PrayerStartStyle.key) private var startStyleRaw = PrayerStartStyle.fade.rawValue
     /// When the circle last appeared: a flip in the first moments (launch, coming back) doesn't play.
     @State private var appearedAt = Date()
     @Environment(\.scenePhase) private var scenePhase
@@ -49,11 +51,8 @@ struct MainCircleView: View {
     
     var body: some View {
         ZStack {
-            // main outer circle
-            Circle()
-                .fill(Color(.clear))
-                .stroke(Color(.secondarySystemFill), lineWidth: 12)
-                .frame(width: 200, height: 200)
+            // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
+            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
             
@@ -119,11 +118,8 @@ struct MainCircleView: View {
                     }
                     let upcoming = status == .upcoming
                     ZStack{
-                        // "Next" → "now" crossfades (ring, NEXT, the name's dimming) instead of
-                        // flipping when the window opens (2026-09-27).
-                        NextPrayerRing()
-                            .opacity(upcoming ? 1 : 0)
-                            .animation(.easeInOut(duration: 0.8), value: upcoming)
+                        // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
+                        // dimming crossfade (2026-09-27).
                         // progress arc
                         Circle()
                             .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
@@ -224,10 +220,6 @@ struct MainCircleView: View {
                     .transition(.opacity)
             }
 
-            if let startMoment {
-                PrayerStartMoment(style: startMoment)
-                    .id(startMomentID)
-            }
             
             // tappable circle on top (cant mix with outer circle cuz then the progress goes under the circle stroke)
             Circle()
@@ -320,6 +312,7 @@ struct MainCircleView: View {
             }
             #endif
             appearedAt = Date()
+            settleTrack(trackWantsSolid)
             locationManager.startUpdating() // Start location updates
             sharedState.allowQiblaHaptics = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -338,6 +331,7 @@ struct MainCircleView: View {
             withAnimation(.easeInOut(duration: 0.3)) { flourish = event }
             DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
                 guard flourishID == id else { return }   // a newer completion took over
+                flourishEndedAt = Date()
                 withAnimation(.easeInOut(duration: 0.45)) {
                     flourish = nil
                     if promptInCircle { postSalahFor = event.name }   // the circle offers the tasbih
@@ -388,26 +382,63 @@ struct MainCircleView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                     preview = .current                              // …and it begins
                     playStartMoment()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration + 0.6) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                         preview = nil                               // back to the real state
                     }
                 }
             }
         }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { appearedAt = Date() } }
+        .onChange(of: trackWantsSolid) { _, solid in settleTrack(solid) }
+        .onChange(of: scenePhase) { _, phase in if phase == .active { appearedAt = Date(); settleTrack(trackWantsSolid) } }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
             currentTime = newTime
 //            prayer = viewModel.relevantPrayer
         }
     }
 
-    /// The moment itself (the real start and the dev preview share it).
+    /// The moment's haptic (the expanding track does the rest; the real start and the dev preview
+    /// share it).
     private func playStartMoment() {
-        startMomentID += 1
-        let id = startMomentID
-        startMoment = PrayerStartStyle(rawValue: startStyleRaw) ?? .fade
-        DispatchQueue.main.asyncAfter(deadline: .now() + PrayerStartMoment.duration) {
-            if startMomentID == id { startMoment = nil }
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
+    }
+
+    /// Should the track be solid? Dashed only while the circle shows a prayer that hasn't started:
+    /// an upcoming prayer, or the summary's next Fajr (sheet closed; with the sheet open it shows the
+    /// day's score, solid). Solid while a completion sweeps or the tasbih is offered, so after a
+    /// mark the track shrinks back only once the sweep is done.
+    private var trackWantsSolid: Bool {
+        _ = currentTime
+        if flourish != nil || postSalahFor != nil { return true }
+        if let preview { return preview != .upcoming }
+        guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else {
+            return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
+        }
+        return p.status() != .upcoming
+    }
+
+    /// The circle can be seen (the Salah page, nothing over it, app active, settled) — only then
+    /// does the track animate; otherwise it just is what it should be.
+    private var circleOnScreen: Bool {
+        scenePhase == .active && sharedState.horizontalPage == .main && WelcomeTarget.canLand
+            && Date().timeIntervalSince(appearedAt) > 0.6
+    }
+
+    private func settleTrack(_ solid: Bool) {
+        let target: CGFloat = solid ? 1 : 0
+        WelcomeTarget.trackDashed = !solid
+        guard trackSolid != target else { return }
+        if circleOnScreen && preview != .upcoming {
+            // Expand like the welcome's ring into the track; shrink a touch quicker. Right after a
+            // completion the shrink waits until the green sweep has faded, or it happens hidden
+            // under it.
+            let afterSweep = !solid && (flourishEndedAt.map { Date().timeIntervalSince($0) < 1 } ?? false)
+            let animation: Animation = reduceMotion ? .easeInOut(duration: 0.35)
+                : solid ? .spring(response: 0.75, dampingFraction: 0.9) : .easeInOut(duration: 0.6)
+            withAnimation(afterSweep ? animation.delay(0.45) : animation) { trackSolid = target }
+        } else {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { trackSolid = target }
         }
     }
 
@@ -571,13 +602,24 @@ struct summaryCircle: View{
             .opacity(Double(scoreness))
             .scaleEffect(0.9 + 0.1 * scoreness)
 
-            // Fajr Icon, Title, Time:
+            // Fajr Icon, Title, Time — a prayer that hasn't started, so the future look (NEXT over
+            // a dimmed name, the dashed track), keeping its own time text: "in 4 hr" ⇄ its window.
             VStack{
                 HStack(alignment: .center, spacing: 8){
                     Image(systemName: prayerIcon(for: "Fajr"))
                         .font(.system(size: 22, weight: .light))
                     Text("Fajr")
                         .font(.system(size: 32, weight: .light, design: .rounded))
+                }
+                .foregroundStyle(Color.primary.opacity(0.55))
+                .overlay(alignment: .top) {
+                    Text("next")
+                        .font(.system(size: 11, weight: .regular, design: .rounded))
+                        .tracking(2)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize()
+                        .offset(y: -13)
                 }
 
                 // Displayed Fajr Time:

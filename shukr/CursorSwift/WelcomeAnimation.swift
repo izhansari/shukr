@@ -26,6 +26,9 @@ extension View {
 enum WelcomeTarget {
     static var circleFrame: CGRect?
     static var canLand = true
+    /// The circle's track is the dashed "hasn't started" ring right now (MainCircleView): the
+    /// welcome lands as that instead of the solid band.
+    static var trackDashed = false
 }
 
 struct WelcomeGate: ViewModifier {
@@ -79,6 +82,8 @@ struct WelcomeOverlay: View {
     /// ring opens out past the edges like a doorway instead of landing on a circle.
     @State private var portal = false
     @State private var target: CGPoint?
+    /// Landing on a dashed track (a prayer that hasn't started): grow to it and become the dashes.
+    @State private var dashedTarget = false
 
     private let word = Array("shukr")
     /// The Salah page's circle: 200 pt with a 12 pt track centred on it (mainCircle.swift).
@@ -98,8 +103,8 @@ struct WelcomeOverlay: View {
             Color(.systemBackground)
             ZStack {
                 // The ring: drawn as a hairline, then grown into the circle's track.
-                WelcomeRing(width: grow ? 12 : 1.2)
-                    .fill(grow ? Color(.secondarySystemFill) : Color.sage.opacity(0.6))
+                WelcomeRing(width: grow ? (dashedTarget ? 1 : 12) : 1.2)
+                    .fill(grow ? (dashedTarget ? Color.clear : Color(.secondarySystemFill)) : Color.sage.opacity(0.6))
                     .mask {
                         Circle()
                             .trim(from: 0, to: ringDrawn || reduceMotion ? 1 : 0)
@@ -112,6 +117,11 @@ struct WelcomeOverlay: View {
                     .frame(width: portal ? portalSize : (grow ? ringSize : startSize),
                            height: portal ? portalSize : (grow ? ringSize : startSize))
                     .opacity(reduceMotion || portal ? 0 : 1)
+                // The dashed track, when that's what the circle is showing.
+                Circle()
+                    .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                    .frame(width: ringSize, height: ringSize)
+                    .opacity(grow && dashedTarget && !portal ? 1 : 0)
                 wordmark
                     .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
                     .blur(radius: grow || portal ? 4 : 0)
@@ -196,7 +206,9 @@ struct WelcomeOverlay: View {
             return
         }
         // Become the circle: the word lets go and the ring grows out to the Salah circle,
-        // thickening into its gray track…
+        // thickening into its gray track — or, over a prayer that hasn't started, turning into its
+        // dashed ring…
+        dashedTarget = WelcomeTarget.trackDashed
         withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { grow = true }
         try? await Task.sleep(for: .milliseconds(650))
         // …and once it's there, the page fades in around it. The welcome's ring and the real track

@@ -401,9 +401,8 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   round the ring. The owner asked for "the circle grows into the other one". Sim ✓ frame by frame.
 - **Next prayer** (the circle showing a prayer that hasn't started, e.g. Asr after Dhuhr is
   marked): the owner found it read like a prayer that's on with no progress. It now has a tracked
-  "NEXT" above the name, the name / icon at 55 % opacity, and `NextPrayerRing`, a thin dashed ring
-  inside the track (PrayerCompletionFX.swift). The owner picked the dashed ring over "label only"
-  and "fills in the last hour", which are deleted.
+  "NEXT" above the name, the name / icon at 55 % opacity, and (since 2026-09-27) the track itself
+  drawn dashed — see "Main circle next → now" below (`NextPrayerRing`, an inner dashed ring, is gone).
 - **Welcome onto a page with no circle:** a widget opening Daily Ayah / 99 Names / the map.
   PrayerTimesView keeps `WelcomeTarget.canLand = !(somethingCovers || showTasbeehPage)`. When it
   can't land, the ring opens out past the screen edges like a doorway (`portal`: grows to 1.4× the
@@ -1480,27 +1479,34 @@ open the app and check the prayer shows complete with the right score. If the nu
 fires, the extension can't cancel app notifications and we need another approach (e.g. the app
 schedules nudges as fewer, later-verified notifications).
 
-**Main circle "next" → "now" (2026-09-27, quick fixes).** "NEXT" is an overlay above the name row
-(offset −13; widget −8), so the name sits at the same y whether the prayer is next or current (it
-jumped). An upcoming prayer's progress is 0 (was 1 in a clear colour, so at the start the arc
-sprang from full to empty in green). When the circle's prayer comes into its window *on screen*
-(`circleStateKey` "Asr|next" → "Asr|now", app active, circle up > 2 s, no flourish / post-salah
-offer), the dashed ring / NEXT / dimmed name crossfade (0.8 s) and `PrayerStartMoment` plays with a
-soft haptic — only on the Salah page with nothing over the circle (`horizontalPage == .main` +
-`WelcomeTarget.canLand`; it used to buzz from the Zikr page / Settings / under the map). The day
-summary ↔ prayer switch crossfades too, which carries the moment at Fajr (the circle shows the
-summary before Fajr, not a NEXT ring). Looks (`PrayerStartStyle`, Settings → My Dev Stuff → Prayer begins): fade (default),
-draw (the dashed ring turns solid sage and swells into the track), glow (one sage breath round the
-track). **Owner is choosing** — keep the winner, delete the rest. **Preview** (DEBUG, under the
-picker; 2026-09-27): posts `PrayerStartPreview.request`; MainCircleView brings up the Salah page
-(sheet closed), draws its prayer as "next" (`preview` overrides the status it draws with — visual
-only) for 1.4 s, then "now" + `playStartMoment()` (the real path, haptic included), then back.
-Writes no prayer rows, doesn't touch `useTestPrayers` or notifications (sim ✓: rows' hash
-unchanged). DEBUG `-demoPrayerStartPreview` does the same from the Settings page; `-devStuff`
-opens My Dev Stuff (simulated taps don't reach that list). Reduce Motion: the crossfade
-only. DEBUG `-demoPrayerStart [-prayerStartStyle draw|glow] [-demoPrayerStartPrayer Fajr]
-[-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows — they get saved, simulator only; logs
-"🌅 prayer begins moment played").
+**Main circle "next" → "now" (2026-09-27; redesigned the same day, owner: "all of these options
+suck").** The track (`CircleTrack`, PrayerCompletionFX.swift) *is* the state:
+- **Dashed** (1 pt, 3 / 5 dashes, secondary 0.35 — the old future-prayer line, moved out to the
+  200 pt track) while the circle shows a prayer that hasn't started: an upcoming prayer, and the
+  summary circle's next Fajr (sheet closed). "NEXT" (an overlay above the name, offset −13, so the
+  name never moves) and the name / icon at 55 % stay. Next Fajr keeps its own time text ("in 4 hr"
+  ⇄ its window) — the only future prayer shown that way.
+- **Solid** 12 pt band for a prayer that's on, a missed one, the day's score (sheet open), while a
+  completion sweeps and while the in-circle tasbih offer is up.
+- `MainCircleView.trackSolid` 0…1, set by `settleTrack(trackWantsSolid)`: when the circle is on
+  screen (`circleOnScreen`: app active, Salah page, `WelcomeTarget.canLand`, settled 0.6 s) it
+  **expands** like the welcome's ring (the band grows from a hairline while the dashes fade;
+  spring 0.75) or **shrinks** (0.6 s) — after a mark it waits 0.45 s so it happens once the green
+  sweep has faded (`flourishEndedAt`); off screen it just switches. Reduce Motion: the band fades
+  at full width. The start also gives one soft haptic (`playStartMoment`, on "Asr|next" →
+  "Asr|now" with the same on-screen guards). The fade / draw / glow looks and their picker are gone.
+- The welcome lands as the dashed ring when `WelcomeTarget.trackDashed` (set by `settleTrack`).
+- Prayers widget: the dashed track (no inner ring) for a prayer that hasn't started, no animation.
+- An upcoming prayer's progress is 0 (it was 1 in a clear colour and sprang from full to empty).
+- **Preview** (DEBUG, Settings → My Dev Stuff → Preview prayer begins): `PrayerStartPreview.request`
+  → the Salah page, the circle's prayer drawn "next" (`preview` overrides the status it draws with —
+  visual only), then "now" (the expand + haptic), then back. No rows, test times or notifications
+  touched (sim ✓: rows' hash unchanged). `-demoPrayerStartPreview` does it from Settings; `-devStuff`
+  opens My Dev Stuff (simulated taps don't reach that list).
+- DEBUG `-demoPrayerStart [-demoPrayerStartPrayer Fajr] [-demoPrayerStartThenMark]
+  [-demoPrayerStartOnZikr]` starts a prayer 6 s after launch (moves the loaded rows — they get saved,
+  simulator only); `ThenMark` marks it 4 s later (the shrink). Sim ✓ frame by frame: expand, shrink
+  after the sweep, summary next Fajr → Fajr, welcome landing dashed.
 
 **Custom task names — schema 2.4.0 (2026-09-27, notes #7).** `TaskModel.customName` (optional),
 plus the reminder fields for notes #11 in the same lightweight bump: `reminderKind` ("time" /

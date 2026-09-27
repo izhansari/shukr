@@ -557,7 +557,6 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoPrayerStart") {
                 // A prayer comes into its window 6 s after launch (simulator only): test prayer
                 // times, then Asr's window closed and Maghrib moved to start in 6 s.
-                // `-prayerStartStyle draw|glow|fade` picks the look.
                 try? await Task.sleep(for: .seconds(1))
                 // The loaded prayer day's rows, moved in memory (works at any hour; test prayer
                 // times fell outside the day after midnight).
@@ -574,6 +573,15 @@ struct PrayerTimesView: View {
                     else { p.startTime = now.addingTimeInterval(3600 * Double(i - target)); p.endTime = p.startTime.addingTimeInterval(1800) }
                 }
                 viewModel.objectWillChange.send()
+                // `-demoPrayerStartThenMark`: mark it 4 s after it starts → the circle moves on to the
+                // next (not started) prayer and the track shrinks back to dashed after the sweep.
+                if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartThenMark") {
+                    try? await Task.sleep(for: .seconds(10))
+                    if let now = viewModel.relevantPrayer, now.status() == .current {
+                        viewModel.togglePrayerCompletion(for: now)
+                    }
+                    return
+                }
                 // `-demoPrayerStartOnZikr`: be on the Zikr page when it starts (must not play).
                 if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartOnZikr") {
                     sharedState.horizontalPage = .zikr

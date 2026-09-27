@@ -222,9 +222,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Settings",
+    "date": "2026-09-27", "commit": "8294c53", "area": "Settings",
     "title": "Preview the prayer-begins moment (dev builds)",
     "tryIt": ["Settings → tap the \"Calculation Method\" header → My Dev Stuff", "Pick a look under Prayer begins → tap Preview prayer begins", "The Salah circle shows NEXT, then plays the look with its haptic"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "title": "A prayer that hasn't started has a dashed ring, which fills in when it begins",
+    "tryIt": ["Mark the current prayer → after the green sweep, the ring thins into dashes for the next one", "Stay on the Salah page as a prayer starts → the dashes expand into the ring", "After Isha, tomorrow's Fajr shows NEXT on the dashed ring (open the list → the score's solid ring)"],
     "checked": "sim"
   }
 ]

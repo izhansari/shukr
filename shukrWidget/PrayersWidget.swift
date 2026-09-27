@@ -356,15 +356,15 @@ struct PrayersWidgetView: View {
                     // Circular Timer with Text Button
                     Button(intent: textToggleIntent()){
                         ZStack {
-                            Circle()
-                                .stroke(Color.gray.opacity(0.2), lineWidth: 6)
-
-                            // Not started yet: the app's "next prayer" look (mainCircle.swift) —
-                            // a thin dashed ring inside the track, "NEXT" over a dimmed name.
-                            if !relevantPrayer.current {
+                            // The track, like the app's (CircleTrack): the solid band for a prayer
+                            // that's on, the thin dashed ring for one that hasn't started (with
+                            // "NEXT" over a dimmed name below).
+                            if relevantPrayer.current {
+                                Circle()
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 6)
+                            } else {
                                 Circle()
                                     .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 0.75, dash: [2, 3.5]))
-                                    .frame(width: 80, height: 80)
                             }
 
                             Circle()

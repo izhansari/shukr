@@ -170,17 +170,42 @@ struct CompletionDotPop: ViewModifier {
     }
 }
 
-// MARK: - Next prayer look
+// MARK: - The circle's track
 
-/// A prayer that hasn't started yet (Asr, after Dhuhr is marked) gets a thin dashed ring inside
-/// the track, with "NEXT" over a dimmed name (MainCircleView), so it doesn't read like a prayer
-/// that's on with no progress (owner, 2026-09-26: picked this over "label only" and "fills in the
-/// last hour").
-struct NextPrayerRing: View {
+/// The main circle's track (2026-09-27, owner). A prayer that hasn't started yet — including the
+/// summary circle's next Fajr — draws it as the thin dashed ring (1 pt, 3 / 5 dashes, faint gray);
+/// a prayer that's on, a missed one, or the day's score draws the solid 12 pt band. `solid` runs
+/// 0…1: the band grows from a hairline to 12 pt as the dashes fade — "the dashed ring expands into
+/// the ring", like the welcome's ring thickening into the track — and shrinks back the same way.
+/// With Reduce Motion the band stays 12 pt and just fades.
+struct CircleTrack: View {
+    var solid: CGFloat
+    var reduceMotion = false
+    static let size: CGFloat = 200
+
     var body: some View {
-        Circle()
-            .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-            .frame(width: 180, height: 180)
+        ZStack {
+            Circle()
+                .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                .opacity(Double(1 - solid))
+            TrackBand(width: reduceMotion ? 12 : max(12 * solid, 0.001))
+                .fill(Color(.secondarySystemFill))
+                .opacity(reduceMotion ? Double(solid) : (solid > 0.001 ? 1 : 0))
+        }
+        .frame(width: Self.size, height: Self.size)
+        .allowsHitTesting(false)
+    }
+}
+
+/// A ring drawn as a filled annulus centred on the circle, so its thickness animates.
+private struct TrackBand: Shape {
+    var width: CGFloat
+    var animatableData: CGFloat {
+        get { width }
+        set { width = newValue }
+    }
+    func path(in rect: CGRect) -> Path {
+        Path(ellipseIn: rect).strokedPath(StrokeStyle(lineWidth: width))
     }
 }
 
@@ -258,63 +283,11 @@ struct PrayerStatusDot: View {
 
 // MARK: - Prayer begins
 
-/// The moment a prayer on the circle comes into its window (notes quick fix, 2026-09-27). Every
-/// style crossfades "next" → "now" (dashed ring, NEXT and the dimmed name) with one soft haptic;
-/// the owner is choosing the extra between these in Settings → My Dev Stuff → Prayer begins.
-enum PrayerStartStyle: String, CaseIterable, Identifiable {
-    case fade, draw, glow
-    static let key = "prayerStartStyle"
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .fade: "Just the fade"
-        case .draw: "Ring draws into the track"
-        case .glow: "Soft sage glow"
-        }
-    }
-}
-
-/// Settings → My Dev Stuff → Prayer begins → Preview: asks the main circle to show the moment
-/// (DEBUG; visual only — see MainCircleView).
+/// Settings → My Dev Stuff → Preview prayer begins: asks the main circle to show the moment
+/// (DEBUG; visual only — see MainCircleView). The moment is the track expanding (`CircleTrack`)
+/// with a soft haptic; the three trial looks (fade / draw / glow) were dropped (owner, 2026-09-27).
 enum PrayerStartPreview {
     static let request = Notification.Name("prayerStartPreview")
-}
-
-/// Plays once over the circle when its prayer begins (`PrayerStartStyle`), then the caller clears it.
-struct PrayerStartMoment: View {
-    let style: PrayerStartStyle
-    static let duration: Double = 1.6
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var go = false
-
-    var body: some View {
-        ZStack {
-            if !reduceMotion {
-                switch style {
-                case .fade:
-                    EmptyView()
-                case .draw:
-                    // The dashed ring turns solid sage and swells out into the track, fading.
-                    Circle()
-                        .stroke(Color.sage, lineWidth: go ? 12 : 1.5)
-                        .frame(width: go ? 200 : 180, height: go ? 200 : 180)
-                        .opacity(go ? 0 : 0.9)
-                case .glow:
-                    // One soft breath of sage round the track (quieter than a completion).
-                    Circle()
-                        .stroke(Color.sage.opacity(0.7), lineWidth: 4)
-                        .frame(width: 200, height: 200)
-                        .shadow(color: Color.sage.opacity(0.55), radius: go ? 14 : 2)
-                        .opacity(go ? 0 : 1)
-                }
-            }
-        }
-        .allowsHitTesting(false)
-        .onAppear {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
-            withAnimation(.easeOut(duration: style == .glow ? 1.4 : 0.9)) { go = true }
-        }
-    }
 }
 
 // MARK: - Post-salah offer

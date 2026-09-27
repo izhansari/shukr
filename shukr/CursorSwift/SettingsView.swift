@@ -62,7 +62,6 @@ struct SettingsView: View {
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(PostSalahPromptStyle.key) private var postSalahPromptStyle = PostSalahPromptStyle.nudge.rawValue
-    @AppStorage(PrayerStartStyle.key) private var prayerStartStyle = PrayerStartStyle.fade.rawValue
     @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
 
@@ -373,11 +372,8 @@ struct SettingsView: View {
                             Picker("Post-salah prompt", selection: $postSalahPromptStyle) {
                                 ForEach(PostSalahPromptStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }
-                            Picker("Prayer begins", selection: $prayerStartStyle) {
-                                ForEach(PrayerStartStyle.allCases) { Text($0.title).tag($0.rawValue) }
-                            }
-                            // Plays the chosen look on the Salah circle (visual only: no test times,
-                            // no prayer rows or notifications touched).
+                            // Plays the prayer-begins moment on the Salah circle (visual only: no test
+                            // times, no prayer rows or notifications touched).
                             Button("Preview prayer begins", systemImage: "play.circle") {
                                 NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
                             }
