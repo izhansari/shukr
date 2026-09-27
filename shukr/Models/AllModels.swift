@@ -332,6 +332,9 @@ class MantraModel: Identifiable {
         self.createdAt = .now
     }
 
+    /// A built-in (or Tasbih Fatimah): name and full text locked, never deleted.
+    var isBuiltIn: Bool { BuiltInAzkar.isBuiltIn(name) }
+
     /// Case-insensitive, whitespace-trimmed lookup by name.
     static func find(named name: String, in context: ModelContext) -> MantraModel? {
         let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

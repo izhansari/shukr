@@ -189,6 +189,23 @@ code; in UI strings write "zikr". New UI text must follow this.
   **⚠️ The hadith sources were written from memory — they need a knowledgeable check before
   release** (with the Tasbih Fatimah reminders).
 - DEBUG `-demoZikrName <name>` with `-demoZikrEmpty` opens that zikr's page.
+- **Built-ins are locked** (owner, 2026-09-27): `MantraModel.isBuiltIn` = `BuiltInAzkar.lockedKeys`
+  (the eight + Tasbih Fatimah, letters-and-digits match). `MantraCardFields(identityLocked:)` keeps
+  name and full text read-only (a lock overlay in the name field, no layout change); notes, memo,
+  photo, sets stay editable. They can't be deleted (Azkar list `deleteDisabled`, no Delete button).
+  The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections.
+- **The original four are seeded once** (`BuiltInAzkar.originalsSeededKey`; the V2 data pass
+  re-seeded a missing one every launch), matched letters-and-digits like the new four.
+  `recoverFromUnopenableStore` clears both seed flags so a fresh store gets them again.
+- **Deleting a zikr**: `MantraModel.delete(_:in:)` only (the zikr page's "Delete zikr" while editing,
+  the Azkar list swipe — both confirm with `deleteMessage`). Its tasks are deleted too: a task left
+  with only its name snapshot made the data pass re-create the zikr next launch. Sessions stay.
+- **New zikr card**: can't be swiped away once anything's in it (text, sets, photo, memo, or a take
+  in progress via `MemoRecordingKey`); Cancel asks "Discard this zikr?". The picker selects a new
+  zikr in the card sheet's `onDismiss` (`pendingNew`), so the two sheets close one after the other.
+- Task sheet: goal focus = `.defaultFocus` + set in onAppear and again next run-loop turn (no fixed
+  delay); from a zikr's page `createTask` doesn't touch `selectedTask`; the fields aren't cleared
+  before the cover closes.
 - **New task flow:** `AddDailyTaskView` focuses the goal field 0.35 s after it appears (a new task
   only). `AddDailyTaskView(for: mantra, …)` = a new task with that zikr locked (`lockedMantra`,
   also true in edit mode). **Creating a zikr always opens the whole card**: `MantraPickerView`'s ＋

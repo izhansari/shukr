@@ -1335,16 +1335,17 @@ struct AddDailyTaskView: View {
 
         isGoalEntryFocused = false //Dismiss keyboard when background tapped
 
-        // i think we can get rid of this all since its all State vars... and we close the view so it will be redrawn anyways
+        // The fields stay as they are while the cover slides away (clearing selectedMantra here
+        // flashed "Zikr" in the label).
         isZikrFocused = false
         isGoalFocused = false
-        self.selectedMantra = nil
-        goal = 0
         
         // Dismiss the view after task creation
         isPresented = false
 
-        //set proxy to this
+        // From the Zikr page: scroll to the new circle. From a zikr's page (locked) there's no
+        // wheel to focus, and selectedTask re-renders the home screen behind the sheets.
+        guard !lockedMantra else { return }
         scrollProxy = task.id
         sharedState.selectedTask = task
     }
@@ -1633,12 +1634,14 @@ struct AddDailyTaskView: View {
             .border(borderColor)
         }
 //        .scrollDismissesKeyboard(.automatic)
-        // A new task starts on the goal: the number pad is up straight away (notes #17). The
-        // short wait lets the cover finish presenting, or the focus is dropped.
-        .task {
+        // A new task starts on the goal: the number pad is up straight away (notes #17). Focus
+        // set while the cover is still presenting can be dropped, so it's re-asserted on the
+        // next run-loop turn too (no fixed delay).
+        .defaultFocus($isGoalFocused, !isEditing)
+        .onAppear {
             guard !isEditing else { return }
-            try? await Task.sleep(for: .seconds(0.35))
             isGoalFocused = true
+            DispatchQueue.main.async { isGoalFocused = true }
         }
 
     }

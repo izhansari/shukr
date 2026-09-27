@@ -111,6 +111,9 @@ enum SharedStore {
             catch { print("⚠️ store recovery: couldn't set the media aside: \(error)") }
         }
         UserDefaults(suiteName: appGroup)?.set(false, forKey: legacyImportedKey) // re-import from default.store
+        // The fresh store gets the built-ins again (their seed-once flags belong to the old one).
+        UserDefaults.standard.removeObject(forKey: BuiltInAzkar.originalsSeededKey)
+        UserDefaults.standard.removeObject(forKey: BuiltInAzkar.doneKey)
         do {
             let fresh = try makeContainer()
             print("✅ store recovery: fresh store opened; legacy import + data pass follow")
@@ -131,7 +134,9 @@ enum SharedStore {
         guard Bundle.main.bundleURL.pathExtension != "appex" else { return }
         do {
             let context = ModelContext(container)
-            let summary = try ShukrV2DataPass.run(in: context)
+            let seed = !UserDefaults.standard.bool(forKey: BuiltInAzkar.originalsSeededKey)
+            let summary = try ShukrV2DataPass.run(in: context, seedOriginals: seed)
+            if seed { UserDefaults.standard.set(true, forKey: BuiltInAzkar.originalsSeededKey) }
             print("✅ schema V2 data pass: \(summary)")
             // The built-ins' Arabic + notes and four new ones, once (BuiltInAzkar.swift).
             if let azkar = BuiltInAzkar.applyIfNeeded(in: context) { print("✅ built-in azkar: \(azkar)") }

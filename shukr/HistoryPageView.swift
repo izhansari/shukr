@@ -794,6 +794,9 @@ struct MantraPickerView: View {
     /// Creating a zikr always opens the whole card (name, text, notes, memo, photo) — never a
     /// bare name (owner, 2026-09-27, notes #17). Saving it selects it here.
     @State private var creatingNew = false
+    /// The zikr just made on the card; selected (which closes this picker) only once the card
+    /// has gone, so two stacked sheets never close in one pass.
+    @State private var pendingNew: MantraModel?
 
     private var presentation: Set<PresentationDetent>
     private var trimmedQuery: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -947,10 +950,10 @@ struct MantraPickerView: View {
                 }
             }
         }
-        .sheet(isPresented: $creatingNew) {
-            MantraEditorView(mantra: nil, initialName: uniqueItem ? searchQuery : "") { new in
-                select(new)
-            }
+        .sheet(isPresented: $creatingNew, onDismiss: {
+            if let new = pendingNew { pendingNew = nil; select(new) }
+        }) {
+            MantraEditorView(mantra: nil, initialName: uniqueItem ? trimmedQuery : "") { pendingNew = $0 }
         }
         .onDisappear {
             searchQuery = ""
@@ -967,14 +970,6 @@ struct MantraPickerView: View {
             } catch {
                 print("Error saving context: \(error)")
             }
-        }
-    }
-    
-    // Function to delete custom mantra
-    private func deleteMantra(at offsets: IndexSet) {
-        for index in offsets {
-            let mantra = mantraItems[index]
-            context.delete(mantra) // Delete from SwiftData
         }
     }
 }

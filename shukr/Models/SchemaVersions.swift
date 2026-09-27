@@ -46,17 +46,26 @@ enum ShukrSchemaV2: VersionedSchema {
 /// Safe to run repeatedly: it only touches rows that still need it.
 enum ShukrV2DataPass {
     @discardableResult
-    static func run(in context: ModelContext) throws -> String {
+    /// `seedOriginals`: add any of the original four built-ins that's missing — only on the pass
+    /// that hasn't done it yet (`BuiltInAzkar.originalsSeededKey`), so one the user can't have
+    /// deleted anyway is never re-seeded bare every launch. Matched like BuiltInAzkar (letters and
+    /// digits only).
+    static func run(in context: ModelContext, seedOriginals: Bool) throws -> String {
         var byName: [String: MantraModel] = [:]
+        var keys = Set<String>()
         for mantra in try context.fetch(FetchDescriptor<MantraModel>()) {
             byName[mantra.name.lowercased()] = mantra
+            keys.insert(BuiltInAzkar.key(mantra.name))
         }
         var seeded = 0
-        for name in MantraModel.builtIn where byName[name.lowercased()] == nil {
-            let mantra = MantraModel(name: name)
-            context.insert(mantra)
-            byName[name.lowercased()] = mantra
-            seeded += 1
+        if seedOriginals {
+            for name in MantraModel.builtIn where !keys.contains(BuiltInAzkar.key(name)) {
+                let mantra = MantraModel(name: name)
+                context.insert(mantra)
+                byName[name.lowercased()] = mantra
+                keys.insert(BuiltInAzkar.key(name))
+                seeded += 1
+            }
         }
 
         var tasksLinked = 0, tasksCreatedFor = 0

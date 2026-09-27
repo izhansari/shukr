@@ -11,6 +11,7 @@
 
 import SwiftUI
 import SwiftData
+import WidgetKit
 
 struct MantrasView: View {
     @Environment(\.modelContext) private var context
@@ -19,14 +20,16 @@ struct MantrasView: View {
     @State private var editing: MantraModel? = nil
     @State private var showingNewMantra = false
     @State private var search = ""
+    @State private var deleting: MantraModel?
     /// Inside `ZikrLibraryView`: the library owns the search field and the + (both pages stay
     /// mounted side by side, so a page's own toolbar / search would show on the other page).
     var embedded = false
     var externalSearch = ""
 
     /// Matches the name, the full wording or the notes.
+    private var query: String { (embedded ? externalSearch : search).trimmingCharacters(in: .whitespaces) }
     private var shown: [MantraModel] {
-        let q = (embedded ? externalSearch : search).trimmingCharacters(in: .whitespaces)
+        let q = query
         guard !q.isEmpty else { return mantras }
         return mantras.filter {
             $0.name.localizedCaseInsensitiveContains(q) || $0.fullText.localizedCaseInsensitiveContains(q)
@@ -64,32 +67,75 @@ struct MantrasView: View {
                 Text("No azkar yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
             } else if shown.isEmpty {
-                Text("No azkar match “\(search)”.")
+                Text("No azkar match “\(query)”.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(shown) { mantra in
-                    Button {
-                        editing = mantra
-                    } label: {
-                        ZikrListRow(mantra: mantra)
+                // Built-ins apart from the user's own (owner, 2026-09-27); they can't be deleted.
+                let builtIns = shown.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
+                let own = shown.filter { !$0.isBuiltIn }
+                if !builtIns.isEmpty {
+                    Section("Built-in") {
+                        ForEach(builtIns) { row($0).deleteDisabled(true) }
                     }
-                    .tint(.primary) // rows, not links
-                    .noPageZone("mantra-\(mantra.id)")   // row swipes (delete) stay the row's
                 }
-                .onDelete(perform: delete)
+                Section(own.isEmpty && !builtIns.isEmpty ? "" : "Your azkar") {
+                    if own.isEmpty {
+                        Text(query.isEmpty ? "Your own azkar go here. Tap + to add one." : "None of yours match.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(own) { row($0) }
+                        .onDelete { offsets in deleting = offsets.first.map { own[$0] } }
+                }
             }
         }
         .fontDesign(.rounded)
         .sheet(item: $editing) { mantra in
             MantraEditorView(mantra: mantra)
         }
+        .alert("Delete “\(deleting?.name ?? "")”?",
+               isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+               presenting: deleting) { m in
+            Button("Delete", role: .destructive) { withAnimation { MantraModel.delete(m, in: context) }; deleting = nil }
+            Button("Cancel", role: .cancel) { deleting = nil }
+        } message: { m in
+            Text(MantraModel.deleteMessage(m))
+        }
     }
 
-    private func delete(at offsets: IndexSet) {
-        let rows = shown
-        for index in offsets {
-            context.delete(rows[index]) // relationships are .nullify: tasks/sessions survive, unlinked
+    private func row(_ mantra: MantraModel) -> some View {
+        Button {
+            editing = mantra
+        } label: {
+            ZikrListRow(mantra: mantra)
         }
+        .tint(.primary) // rows, not links
+        .noPageZone("mantra-\(mantra.id)")   // row swipes (delete) stay the row's
+    }
+}
+
+extension MantraModel {
+    /// The one way to delete a zikr. Its tasks go with it (a task left with only the name
+    /// snapshot would bring the zikr back on the next launch's data pass) and so do their
+    /// reminders; its sessions stay in history under their saved title. Built-ins never.
+    @MainActor static func delete(_ mantra: MantraModel, in context: ModelContext) {
+        guard !mantra.isBuiltIn else { return }
+        let hadTasks = !mantra.tasks.isEmpty
+        for task in mantra.tasks { context.delete(task) }
+        context.delete(mantra)
+        try? context.save()
+        if hadTasks {
+            NotificationScheduler.reschedule(context: context, reason: "zikr deleted")
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+    }
+
+    /// What deleting it does, for the confirmation.
+    static func deleteMessage(_ mantra: MantraModel) -> String {
+        let t = mantra.tasks.count, n = mantra.sessions.count
+        let tasks = t == 0 ? "" : (t == 1 ? "Its task is deleted too. " : "Its \(t) tasks are deleted too. ")
+        let sessions = n == 0 ? "" : (n == 1 ? "Its session stays in your history." : "Its \(n) sessions stay in your history.")
+        return (tasks + sessions).isEmpty ? "This can't be undone." : tasks + sessions
     }
 }
 
@@ -241,7 +287,7 @@ struct MantraCardEditor: View {
             ScrollView {
                 MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
                                  imageData: liveMedia(\.imageData), audioData: liveMedia(\.audioData),
-                                 isDuplicate: isDuplicate)
+                                 isDuplicate: isDuplicate, identityLocked: mantra.isBuiltIn)
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
@@ -302,6 +348,9 @@ struct MantraCardFields: View {
     /// sage edge (the full mantra's box shows either way). Every field keeps the box's padding
     /// in both modes, so switching moves nothing (owner). Count in sets is always adjustable.
     var editable = true
+    /// A built-in: its name and full text stay as they are (notes, memo, photo, sets are the
+    /// user's) — owner, 2026-09-27.
+    var identityLocked = false
     @FocusState private var focus: Field?
     private enum Field { case name, fullText, notes }
     /// Which of notes / voice memo / photo the box shows. The box keeps one size for all three
@@ -329,10 +378,20 @@ struct MantraCardFields: View {
                     .font(.system(size: 24, weight: .light, design: .rounded))
                     .autocorrectionDisabled(true)
                     .focused($focus, equals: .name)
-                    .disabled(!editable)
+                    .disabled(!editable || identityLocked)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(fieldBox(alwaysFilled: false))
+                    .background(fieldBox(alwaysFilled: false, editing: editable && !identityLocked))
+                    // Built-in: a small lock in the field while editing (an overlay, so nothing moves).
+                    .overlay(alignment: .trailing) {
+                        if identityLocked && editable {
+                            Image(systemName: "lock.fill")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                                .padding(.trailing, 10)
+                                .accessibilityLabel("Built-in: name and text can't be changed")
+                        }
+                    }
                 if isDuplicate {
                     Text("another zikr already has this name")
                         .font(.caption)
@@ -342,7 +401,7 @@ struct MantraCardFields: View {
 
             editorBox(text: $fullText, field: .fullText,
                       placeholder: "the full zikr — Arabic, transliteration, meaning",
-                      minHeight: 110, centered: true)
+                      minHeight: 110, centered: true, enabled: !identityLocked)
 
             HStack(alignment: .top, spacing: 8) {
                 // doc.text / waveform / photo, top to bottom — tabs for the box beside them.
@@ -455,7 +514,7 @@ struct MantraCardFields: View {
 
     /// A text editor with a placeholder, in the card's inset box (or bare, for notes).
     private func editorBox(text: Binding<String>, field: Field, placeholder: String,
-                           minHeight: CGFloat, centered: Bool, inset: Bool = true) -> some View {
+                           minHeight: CGFloat, centered: Bool, inset: Bool = true, enabled: Bool = true) -> some View {
         ZStack(alignment: centered ? .top : .topLeading) {
             if text.wrappedValue.isEmpty {
                 Text(placeholder)
@@ -470,23 +529,24 @@ struct MantraCardFields: View {
                 .multilineTextAlignment(centered ? .center : .leading)
                 .focused($focus, equals: field)
                 .frame(minHeight: minHeight)
-                .disabled(!editable)
+                .disabled(!editable || !enabled)
                 .foregroundStyle(.primary)
         }
         .font(centered ? .system(size: 17, weight: .light, design: .rounded) : .subheadline)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(fieldBox(alwaysFilled: inset))
+        .background(fieldBox(alwaysFilled: inset, editing: editable && enabled))
     }
 
     /// The box behind a field: filled always (`alwaysFilled`, the full mantra) or only while
     /// editing, with a sage edge while editing. Drawn behind fixed padding, so it never moves
     /// anything.
-    private func fieldBox(alwaysFilled: Bool) -> some View {
+    private func fieldBox(alwaysFilled: Bool, editing: Bool? = nil) -> some View {
+        let on = editing ?? editable
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         return shape
-            .fill(Color.primary.opacity(alwaysFilled || editable ? 0.04 : 0))
-            .overlay(shape.stroke(Color.sage.opacity(editable ? 0.45 : 0), lineWidth: 1))
+            .fill(Color.primary.opacity(alwaysFilled || on ? 0.04 : 0))
+            .overlay(shape.stroke(Color.sage.opacity(on ? 0.45 : 0), lineWidth: 1))
     }
 }
 
@@ -649,6 +709,10 @@ struct MantraEditorView: View {
     @State private var isEditing: Bool
     /// The task sheet for a new task with this zikr locked in (notes #17).
     @State private var creatingTask = false
+    /// The card is recording a voice memo (a new zikr can't be swiped away then).
+    @State private var recording = false
+    @State private var confirmDiscard = false
+    @State private var confirmDelete = false
 
     /// Create only: called with the new zikr once it's saved (the picker selects it).
     var onCreate: ((MantraModel) -> Void)? = nil
@@ -692,6 +756,14 @@ struct MantraEditorView: View {
         hasEdits && !trimmedName.isEmpty && !isDuplicate
     }
 
+    /// A new zikr with anything in it — typed, recorded, a photo, sets — won't swipe away, and
+    /// Cancel asks first (2026-09-27 review: it could be swiped away with a memo on it).
+    private var newHasContent: Bool {
+        guard mantra == nil else { return false }
+        let t = { (s: String) in !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        return t(name) || t(fullText) || t(notes) || quickAdd != 0 || draftImage != nil || draftAudio != nil || recording
+    }
+
     private func media(_ key: ReferenceWritableKeyPath<MantraModel, Data?>, draft: Binding<Data?>) -> Binding<Data?> {
         guard let mantra else { return draft }
         return Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
@@ -707,10 +779,12 @@ struct MantraEditorView: View {
                     MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: liveQuickAdd,
                                      imageData: media(\.imageData, draft: $draftImage),
                                      audioData: media(\.audioData, draft: $draftAudio),
-                                     isDuplicate: isDuplicate, editable: isEditing)
+                                     isDuplicate: isDuplicate, editable: isEditing,
+                                     identityLocked: mantra?.isBuiltIn ?? false)
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .fill(Color(.secondarySystemGroupedBackground)))
+                        .onPreferenceChange(MemoRecordingKey.self) { recording = $0 }
                 }
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
@@ -736,22 +810,34 @@ struct MantraEditorView: View {
                             Text("Tasks")
                             Spacer()
                             Text(mantra.tasks.count == 1 ? "1 task" : "\(mantra.tasks.count) tasks")
-                            // Always here, however many tasks (owner).
-                            Button { creatingTask = true } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.green)
-                                    .frame(width: 28, height: 28)
-                                    .mapGlass(Circle())
+                            // With no tasks the dashed "New task" circle is the only way in (owner).
+                            if !mantra.tasks.isEmpty {
+                                Button { creatingTask = true } label: {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.green)
+                                        .frame(width: 28, height: 28)
+                                        .mapGlass(Circle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("New task with this zikr")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("New task with this zikr")
                         }
                         .padding(.horizontal, 16)
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     MantraSessionsSection(mantra: mantra)
+
+                    // Only while editing, never for a built-in (owner, 2026-09-27).
+                    if isEditing && !mantra.isBuiltIn {
+                        Section {
+                            Button(role: .destructive) { confirmDelete = true } label: {
+                                Text("Delete zikr")
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -796,9 +882,27 @@ struct MantraEditorView: View {
                 }
             }
             // Don't lose typed edits to a swipe; with no edits it swipes away like any sheet.
-            .interactiveDismissDisabled(mantra != nil && hasEdits)
+            .interactiveDismissDisabled((mantra != nil && hasEdits) || newHasContent)
             .fullScreenCover(isPresented: $creatingTask) {
                 if let mantra { AddDailyTaskView(for: mantra, isPresented: $creatingTask) }
+            }
+            .alert("Discard this zikr?", isPresented: $confirmDiscard) {
+                Button("Discard", role: .destructive) { ZikrAudio.stopAll(); dismiss() }
+                Button("Keep editing", role: .cancel) {}
+            } message: {
+                Text("What you've typed, recorded or added isn't saved.")
+            }
+            .alert("Delete “\(mantra?.name ?? name)”?", isPresented: $confirmDelete) {
+                Button("Delete", role: .destructive) {
+                    if let mantra {
+                        ZikrAudio.stopAll()
+                        MantraModel.delete(mantra, in: context)
+                        dismiss()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(mantra.map(MantraModel.deleteMessage) ?? "")
             }
         }
         .onDisappear { ZikrAudio.stopAll() }   // closed (or covered by the task sheet): keep a take
@@ -835,10 +939,14 @@ struct MantraEditorView: View {
         }
     }
 
-    /// Existing mantra: put the fields back as they were (the sheet stays). New: close.
+    /// Existing mantra: put the fields back as they were (the sheet stays). New: close (asking
+    /// first when there's something in it).
     private func cancelEdits() {
         dismissKeyboard()
-        guard let mantra else { dismiss(); return }
+        guard let mantra else {
+            if newHasContent { confirmDiscard = true } else { dismiss() }
+            return
+        }
         withAnimation(.easeInOut(duration: 0.2)) {
             name = mantra.name; fullText = mantra.fullText; notes = mantra.notes; quickAdd = mantra.quickAddStep
             isEditing = false

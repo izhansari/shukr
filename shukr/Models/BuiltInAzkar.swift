@@ -48,6 +48,18 @@ enum BuiltInAzkar {
     ]
 
     static let doneKey = "builtInAzkar.v1"
+    /// The original four's own seed-once flag (the V2 data pass used to re-seed one every launch).
+    static let originalsSeededKey = "builtInAzkar.originalsSeeded"
+
+    /// Built-ins (and the app's own Tasbih Fatimah) are locked: name and full text can't change
+    /// and they can't be deleted; notes, memo and photo stay the user's (owner, 2026-09-27).
+    static let lockedKeys: Set<String> = Set(all.map { key($0.name) } + MantraModel.builtIn.map(key) + [key("Tasbih Fatimah")])
+    static func isBuiltIn(_ name: String) -> Bool { lockedKeys.contains(key(name)) }
+    /// Built-ins in their own order (the four originals, then the rest, then Tasbih Fatimah).
+    static func order(_ name: String) -> Int {
+        let k = key(name)
+        return all.firstIndex { key($0.name) == k } ?? all.count
+    }
 
     /// "SubhanAllahi wa bihamdihi" == "subhanallahi wabihamdihi": letters and digits only.
     static func key(_ name: String) -> String {
