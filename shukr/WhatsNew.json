@@ -41,7 +41,7 @@
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
-    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"},
+    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring before a prayer starts"},
     {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
     {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"}
   ],
@@ -629,10 +629,16 @@
       "checked": "sim", "shots": ["wn-next-label-owner-defaults.jpg"], "addresses": ["CC72A6E8-44D8-4745-ADCC-A2C65CDDCB96"]
     },
     {
-      "id": "prayer-begins-11", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-11", "date": "2026-09-27", "commit": "ea6a065", "time": "2026-09-27T19:34:10-04:00", "topic": "prayer-begins", "notes": null,
       "title": "NEXT is back to its original look (your playground tweak is undone); saved playground values are cleared once",
       "tryIt": ["Open the app → the circle's NEXT looks as it did before the tweak (no playground reset needed)"],
       "checked": "sim", "shots": ["wn-next-label-original.jpg"]
+    },
+    {
+      "id": "lockscreen-prayers-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "lockscreen-prayers", "notes": null,
+      "title": "Lock Screen round Prayers widget: a smaller prayer icon, so the name and time have more room",
+      "tryIt": ["Lock Screen → the round Prayers widget: the icon is smaller above the name (and time, before a prayer starts)"],
+      "checked": "sim", "shots": ["wn-lockscreen-circular-small-icon.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048", "8F6E3C4B-D226-4180-9BE3-94D2B5D31E90"]
     }
   ]
 }

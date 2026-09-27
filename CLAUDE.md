@@ -903,7 +903,8 @@ too many sheets.
   was rejected. Changing a parameter's type under the same name leaves stale saved values: rename it.
 - **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
   the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
-  thin dashed ring and a tiny NEXT (circular).
+  thin dashed ring (circular; NEXT removed there in c404e44). The circular's prayer icon is 9.5 pt medium in both states
+  (was 12; owner, 2026-09-27: room for the name and time). Keep What's new topic titles describing the current state.
 - **Zikr** (MoreWidgets.swift): circular = the overall ring (`accessoryCircularCapacity`) with
   beads or ✓ inside; rectangular = "Zikr · N left", the next task "Subhanallah · 0/10 min", and a
   bar.
