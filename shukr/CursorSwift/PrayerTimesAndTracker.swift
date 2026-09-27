@@ -485,6 +485,25 @@ struct PrayerTimesView: View {
                 showZikrHistory = true
                 return
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoManyTasks") {
+                // Six zikr tasks, one with a very long name (the Zikr widget's rows; simulator).
+                try? await Task.sleep(for: .seconds(1))
+                let existing = (try? context.fetchCount(FetchDescriptor<TaskModel>())) ?? 0
+                if existing < 6 {
+                    let names = [("Alhamdulillah", "After Fajr, before the morning walk to the masjid"), ("Astaghfirullah", ""),
+                                 ("Subhanallah", "Evening"), ("Allahu Akbar", ""), ("Alhamdulillah", "Before bed"),
+                                 ("Astaghfirullah", "After Isha")]
+                    for (i, (mantra, own)) in names.prefix(6 - existing).enumerated() {
+                        let t = TaskModel(mantra: MantraModel.find(named: mantra, in: context),
+                                          isCountMode: true, goal: [100, 33, 1000, 34, 50, 70][i], sortOrder: existing + i)
+                        t.customName = own.isEmpty ? nil : own
+                        context.insert(t)
+                    }
+                    try? context.save()
+                    WidgetCenter.shared.reloadAllTimelines()
+                }
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrPage") {
                 // The Zikr page's circle wheel, with a few tasks if there are none (simulator).
                 try? await Task.sleep(for: .seconds(1))

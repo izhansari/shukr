@@ -198,9 +198,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "99 Names",
+    "date": "2026-09-27", "commit": "c4a3a30", "area": "99 Names",
     "title": "Counts no longer include \"Allah\"",
     "tryIt": ["Mark Allah as known → the header, Learning and Known counts stay out of 99"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Widget",
+    "title": "The medium Zikr widget fits more tasks and always shows progress",
+    "tryIt": ["Add the medium Zikr widget with 5–6 tasks → it shows as many as fit", "A very long task name truncates; its 0/100 stays visible"],
     "checked": "sim"
   }
 ]

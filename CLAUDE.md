@@ -1500,6 +1500,11 @@ plus the reminder fields for notes #11 in the same lightweight bump: `reminderKi
 "prayer", nil = off), `reminderTimeMinutes`, `reminderPrayer`, `reminderOffsetMinutes`,
 `reminderWeekdays` (bitmask, Sunday = bit 0; nil = every day). Backup `…before-2.4.0` made; sim ✓.
 `TaskModel.title` = own name else mantra; `mantraLine` = the mantra when there's an own name.
+Medium Zikr widget rows (2026-09-27 review): progress / goal only (no per-row estimate; the header
+keeps the total), `fixedSize` + top layout priority so a long name truncates first, the mantra only
+when name + mantra fit whole (`ViewThatFits`), and `ViewThatFits(in: .vertical)` over 6 / 5 / 4 / 3
+rows (tighter padding for 5–6) so each phone's widget height is used — 6 fit on the 17 Pro sim.
+DEBUG `-demoManyTasks` seeds six tasks, one with a very long name.
 Shown via `ZikrCircleFace(mantraLine:)` (wheel, arranging grid), the mantra page's task circles
 (own name as title, "goal 100" under it), the Zikr widget rows (medium: the mantra quieter after
 the name), the Lock Screen card (`name`), the results card ("After Fajr · 5 of 100 today"),

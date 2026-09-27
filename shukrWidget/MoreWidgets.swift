@@ -198,11 +198,9 @@ private extension ZikrTasksEntry {
 
 extension ZikrTaskSnapshot {
     /// "5/100 · ~4 min" beside a row (medium).
-    var rowTrailing: String {
-        if done { return "" }
-        guard let note else { return progressText }
-        return progressText + " · " + note
-    }
+    /// The row's end: progress / goal only (the per-task estimate was dropped from the rows,
+    /// owner 2026-09-27; the header keeps the total).
+    var rowTrailing: String { done ? "" : progressText }
 }
 
 /// A row's circle, Reminders style: an empty circle that fills round with the task's progress,
@@ -256,28 +254,41 @@ private struct TaskRow: View {
     let task: ZikrTaskSnapshot
     /// Small widget: names only, like Reminders — the circle shows the progress.
     var showsProgress = true
+    private var name: some View {
+        Text(task.name)
+            .font(.system(size: 13, weight: .light, design: .rounded))
+            .foregroundStyle(task.done ? .secondary : .primary)
+            .lineLimit(1)
+    }
     var body: some View {
         HStack(spacing: 8) {
             TaskDot(task: task)
-            Text(task.name)
-                .font(.system(size: 13, weight: .light, design: .rounded))
-                .foregroundStyle(task.done ? .secondary : .primary)
-                .lineLimit(1)
-                .layoutPriority(1)
-            if showsProgress, let mantra = task.mantra {
-                // The mantra under a task's own name, quieter (medium only; small is tight).
-                Text(mantra)
-                    .font(.system(size: 11, weight: .light, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+            // The mantra after a task's own name, quieter (medium only), when both fit whole;
+            // otherwise just the name, truncated (a squeezed "A…" read as noise).
+            ViewThatFits(in: .horizontal) {
+                if showsProgress, let mantra = task.mantra {
+                    HStack(spacing: 6) {
+                        name.fixedSize()
+                        Text(mantra)
+                            .font(.system(size: 11, weight: .light, design: .rounded))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                }
+                name.truncationMode(.tail)
             }
+            .layoutPriority(1)
             Spacer(minLength: 4)
             if showsProgress {
+            // Always shown in full: a long name truncates before the progress does.
             Text(task.rowTrailing)
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .fixedSize()
+                .layoutPriority(2)
             }
         }
     }
@@ -356,14 +367,14 @@ struct ZikrTasksWidgetView: View {
             .foregroundStyle(Brand.accent(scheme))
     }
 
-    private func rows(_ limit: Int, progress: Bool = true) -> some View {
+    private func rows(_ limit: Int, progress: Bool = true, rowPadding: CGFloat = 5) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             let shown = Array(entry.tasks.prefix(limit))
             ForEach(Array(shown.enumerated()), id: \.element.id) { i, task in
                 // Each row opens the Zikr page on its own task (owner).
                 Button(intent: OpenZikrTaskIntent(taskID: task.id)) {
                     TaskRow(task: task, showsProgress: progress)
-                        .padding(.vertical, 5)
+                        .padding(.vertical, rowPadding)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -402,8 +413,12 @@ struct ZikrTasksWidgetView: View {
                     title.padding(.top, 2)
                 }
                 .frame(width: 88)
-                rows(4)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                // As many rows as this phone's widget is tall enough for (the 13 Pro Max had room
+                // left over at 4).
+                ViewThatFits(in: .vertical) {
+                    rows(6, rowPadding: 2.5); rows(5, rowPadding: 3.5); rows(4); rows(3)
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
             }
         } else {
             VStack(alignment: .leading, spacing: 2) {
