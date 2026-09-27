@@ -54,7 +54,10 @@ struct HistoryPageView: View {
     }
 
     var body: some View {
-        List(selection: $selection) {
+        // Selection only in Edit mode: outside it a long press (Feel the pace) selected the row
+        // and left it grey until another row was touched (owner, 2026-09-27).
+        List(selection: Binding(get: { isEditing ? selection : [] },
+                                set: { if isEditing { selection = $0 } })) {
             if sessions.isEmpty {
                 ContentUnavailableView(
                     "No sessions yet",

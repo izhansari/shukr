@@ -72,7 +72,10 @@ struct MantrasView: View {
     }
 
     private var list: some View {
-        List(selection: $selection) {
+        // Selection only in Edit mode: outside it a long press (Feel the pace) selected the row
+        // and left it grey until another row was touched (owner, 2026-09-27).
+        List(selection: Binding(get: { isEditing ? selection : [] },
+                                set: { if isEditing { selection = $0 } })) {
             if mantras.isEmpty {
                 Text("No azkar yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
@@ -693,6 +696,21 @@ struct ZikrLibraryView: View {
 
     private var editing: Bool { editingHistory || editingAzkar }
 
+    private static var bottomBarPlus: Bool {
+        if #available(iOS 26.0, *) { return true } else { return false }
+    }
+
+    private var newZikrButton: some View {
+        Button {
+            showingNewMantra = true
+        } label: {
+            Image(systemName: "plus")
+                .fontWeight(.semibold)
+                .foregroundStyle(Color.green)
+        }
+        .accessibilityLabel("New zikr")
+    }
+
     var body: some View {
         ScrollView(.horizontal) {
             HStack(spacing: 0) {
@@ -719,7 +737,7 @@ struct ZikrLibraryView: View {
         .environment(lock)
         .onChange(of: page) { _, new in
             PaceCoordinator.stopAll()          // a pace on the page left behind stops
-            if let new, new != tab { tab = new }
+            if let new, new != tab { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { tab = new } }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .searchable(text: $search, prompt: tab == .history ? "Search sessions" : "Search azkar")
@@ -752,19 +770,22 @@ struct ZikrLibraryView: View {
                         .fontWeight(editingAzkar ? .semibold : .regular)
                     }
                 }
-                if !editingAzkar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingNewMantra = true
-                        } label: {
-                            Image(systemName: "plus.circle")
-                                .foregroundColor(.green.opacity(0.7))
-                        }
-                        .accessibilityLabel("New zikr")
-                    }
+                // iOS 18: the ＋ stays top right (iOS 26 puts it beside the search field, below).
+                if !editingAzkar && !Self.bottomBarPlus {
+                    ToolbarItem(placement: .topBarTrailing) { newZikrButton }
+                }
+            }
+            // iOS 26: the search field in the bottom bar, with the ＋ beside it on Azkar — it
+            // animates in as the page turns (owner, 2026-09-27).
+            if #available(iOS 26.0, *) {
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                if tab == .mantras && !editingAzkar {
+                    ToolbarSpacer(.fixed, placement: .bottomBar)
+                    ToolbarItem(placement: .bottomBar) { newZikrButton }
                 }
             }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tab)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: tab)
         .onChange(of: tab) { _, _ in editingHistory = false; editingAzkar = false }

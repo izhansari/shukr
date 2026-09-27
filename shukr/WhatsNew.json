@@ -459,9 +459,15 @@
       "checked": "sim"
     },
     {
-      "id": "zikr-history-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "id": "zikr-history-6", "date": "2026-09-27", "commit": "ca925c6", "time": "2026-09-27T14:18:19-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "History ⇄ Azkar: the switch changes past halfway; paging never gets stuck after scrubbing the chart; Edit on Azkar only when you have your own",
       "tryIt": ["Scrub the 14-day chart, then swipe to Azkar → it pages", "Drag a little toward Azkar and let go → the switch doesn't flicker", "With no azkar of your own, Azkar shows no Edit button"],
+      "checked": "sim"
+    },
+    {
+      "id": "zikr-history-7", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "title": "Azkar's ＋ sits beside the search field at the bottom and slides in; a long press no longer leaves a session grey",
+      "tryIt": ["Books → swipe to Azkar → the ＋ appears next to \"Search azkar\"", "History → hold a session to feel its pace, let go → the row goes back to normal"],
       "checked": "sim"
     }
   ]
