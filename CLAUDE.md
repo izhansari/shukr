@@ -222,7 +222,11 @@ code; in UI strings write "zikr". New UI text must follow this.
   exact match) uses `BuiltInAzkar.key` (letters and digits, any script; falls back to the name). `MantraCardFields(identityLocked:)` keeps
   name and full text read-only (a lock overlay in the name field, no layout change); notes, memo,
   photo, sets stay editable. They can't be deleted (Azkar list `deleteDisabled`, no Delete button).
-  The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections.
+  The Azkar list has "Built-in" (BuiltInAzkar order) and "Your azkar" sections. The Built-in header folds the section
+  (chevron, `@AppStorage("azkar.builtInsCollapsed")`, "Built-in 9" when folded) — only when there's a
+  zikr of your own and no search (`canFoldBuiltIns`), so the page can never fold to nothing. Rows are
+  Buttons, and a List row fires its Button on a tap even with `allowsHitTesting(false)`: the action
+  itself returns in Edit mode (a greyed built-in opened its sheet — owner, 2026-09-27).
 - **The original four are seeded once** (`BuiltInAzkar.originalsSeededKey`; the V2 data pass
   re-seeded a missing one every launch), matched letters-and-digits like the new four.
   `recoverFromUnopenableStore` clears both seed flags so a fresh store gets them again.

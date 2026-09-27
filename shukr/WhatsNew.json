@@ -525,16 +525,22 @@
       "checked": "sim"
     },
     {
-      "id": "widget-next-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "widget-next", "notes": "#40",
+      "id": "widget-next-4", "date": "2026-09-27", "commit": "d932ca2", "time": "2026-09-27T15:57:55-04:00", "topic": "widget-next", "notes": "#40",
       "title": "Prayers widget: plain grey dots when Score colours is off; a clearer dashed ring for the next prayer; the times list fits Isha on smaller phones; a doubled corner button shows as picked",
       "tryIt": ["Edit Widget → Score colours off: prayed dots are grey", "In dark mode, the dashed ring around a prayer that hasn't started is easy to see", "Tap the list icon: all six times fit"],
       "checked": "sim", "shots": ["wn-widget-plain-dark.jpg"]
     },
     {
-      "id": "qibla-haptic-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-4", "date": "2026-09-27", "commit": "d932ca2", "time": "2026-09-27T15:57:55-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "The map buzzes once when you line up with the qibla, not again and again as the compass wobbles",
       "tryIt": ["Map (qibla) → turn slowly onto the line: one buzz"],
       "checked": "no"
+    },
+    {
+      "id": "built-in-azkar-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar: fold the built-ins away (once you have your own); in Edit, a built-in does nothing when tapped",
+      "tryIt": ["Azkar → tap the chevron by Built-in: it folds to \"Built-in 9\"", "With none of your own there's no chevron (the page would be empty)", "Edit → tap a greyed built-in: nothing opens"],
+      "checked": "sim"
     }
   ]
 }

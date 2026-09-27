@@ -87,8 +87,12 @@ struct MantrasView: View {
                 let builtIns = shown.filter(\.isBuiltIn).sorted { BuiltInAzkar.order($0.name) < BuiltInAzkar.order($1.name) }
                 let own = shown.filter { !$0.isBuiltIn }
                 if !builtIns.isEmpty {
-                    Section("Built-in") {
-                        ForEach(builtIns) { row($0).selectionDisabled() }
+                    Section {
+                        if !builtInsFolded {
+                            ForEach(builtIns) { row($0).selectionDisabled() }
+                        }
+                    } header: {
+                        builtInHeader(count: builtIns.count)
                     }
                 }
                 Section("Your azkar") {
@@ -127,8 +131,42 @@ struct MantrasView: View {
         }
     }
 
+    /// Built-ins fold away once there's a zikr of your own (owner, 2026-09-27) — never while
+    /// they're all there is (the page would be empty) or while searching (results must show).
+    @AppStorage("azkar.builtInsCollapsed") private var builtInsCollapsed = false
+    private var canFoldBuiltIns: Bool { mantras.contains { !$0.isBuiltIn } && query.isEmpty }
+    private var builtInsFolded: Bool { builtInsCollapsed && canFoldBuiltIns }
+
+    @ViewBuilder private func builtInHeader(count: Int) -> some View {
+        if canFoldBuiltIns {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(.snappy(duration: 0.25)) { builtInsCollapsed.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Text("Built-in")
+                    if builtInsFolded {
+                        Text("\(count)").foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(builtInsFolded ? -90 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(builtInsFolded ? "Show built-in azkar" : "Hide built-in azkar")
+        } else {
+            Text("Built-in")
+        }
+    }
+
     private func row(_ mantra: MantraModel) -> some View {
         Button {
+            // A List row fires its Button on a tap even with hit testing off, so the action
+            // checks too: in Edit mode a tap only selects (built-ins: nothing — owner, 2026-09-27).
+            guard !isEditing else { return }
             editingMantra = mantra
         } label: {
             ZikrListRow(mantra: mantra)
