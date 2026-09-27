@@ -28,6 +28,8 @@ struct WhatsNewTopic: Decodable {
 }
 
 struct WhatsNewEntry: Decodable, Identifiable {
+    /// Stable ("<topic>-<n>"); older files had none, so the id falls back to commit | title.
+    let entryID: String?
     let date: String          // "2026-09-27"
     let commit: String        // short hash, or "next"
     let time: String?         // ISO 8601 commit time (filled by `whatsnew.py resolve`)
@@ -38,7 +40,13 @@ struct WhatsNewEntry: Decodable, Identifiable {
     let checked: String       // "sim" | "phone" | "no"
     let status: String?       // "dropped" | "replaced" | "removed"
     let shots: [String]?
-    var id: String { "\(commit)|\(title)" }
+    var id: String { entryID ?? legacyID }
+    /// v1's id (commit | title) — old tested ticks and NEW marks were keyed by it.
+    var legacyID: String { "\(commit)|\(title)" }
+
+    enum CodingKeys: String, CodingKey {
+        case entryID = "id", date, commit, time, topic, notes, title, tryIt, checked, status, shots
+    }
 
     /// Part of the build that's running.
     var inThisBuild: Bool { commit == "next" || commit == BuildInfo.commit }
@@ -73,28 +81,47 @@ struct WhatsNewCard: Identifiable {
     var thumbnail: String? { shots.first }
     var inThisBuild: Bool { entries.contains(where: \.inThisBuild) }
     var isNew: Bool { entries.contains { WhatsNew.newIDs.contains($0.id) } }
-    /// A new change on a tested topic makes it untested again.
-    var testedKey: String { "topic:\(topic.id)@\(latest.commit)" }
+    /// A new change on a tested topic makes it untested again. Keyed by the latest change's
+    /// stable id, so resolving "next" → its hash doesn't untick it.
+    var testedKey: String { "topic:\(topic.id)@\(latest.id)" }
+    /// Keys earlier builds used for the same tick.
+    var olderTestedKeys: [String] { ["topic:\(topic.id)@\(latest.commit)", latest.legacyID] }
 }
 
 enum WhatsNew {
-    private struct File: Decodable { let topics: [WhatsNewTopic]; let entries: [WhatsNewEntry] }
+    /// One bad element never loses the rest: each topic / entry decodes on its own.
+    private struct Lossy<T: Decodable>: Decodable {
+        let value: T?
+        init(from decoder: Decoder) throws { value = try? decoder.singleValueContainer().decode(T.self) }
+    }
+    private struct RawFile: Decodable { let topics: [Lossy<WhatsNewTopic>]?; let entries: [Lossy<WhatsNewEntry>]? }
+    private struct File { let topics: [WhatsNewTopic]; let entries: [WhatsNewEntry] }
 
     private static let file: File = {
         guard let url = Bundle.main.url(forResource: "WhatsNew", withExtension: "json"),
               let data = try? Data(contentsOf: url),
-              let file = try? JSONDecoder().decode(File.self, from: data) else { return File(topics: [], entries: []) }
-        return file
+              let raw = try? JSONDecoder().decode(RawFile.self, from: data) else {
+            print("⚠️ What's new: WhatsNew.json missing or unreadable")
+            return File(topics: [], entries: [])
+        }
+        let topics = (raw.topics ?? []).compactMap(\.value)
+        let entries = (raw.entries ?? []).compactMap(\.value)
+        let skipped = (raw.topics?.count ?? 0) - topics.count + (raw.entries?.count ?? 0) - entries.count
+        if skipped > 0 { print("⚠️ What's new: skipped \(skipped) unreadable topic(s) / entr(ies)") }
+        return File(topics: topics, entries: entries)
     }()
     static var entries: [WhatsNewEntry] { file.entries }
 
     /// Newest change first.
     static let cards: [WhatsNewCard] = {
         let byTopic = Dictionary(grouping: file.entries, by: \.topic)
-        return file.topics.compactMap { t in
-            byTopic[t.id].map { WhatsNewCard(topic: t, entries: $0) }
+        var topics = Dictionary(file.topics.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        // An entry whose topic is missing still shows: a stand-in topic from its latest entry.
+        for (id, list) in byTopic where topics[id] == nil {
+            topics[id] = WhatsNewTopic(id: id, area: "Other", title: list.last?.title ?? id, tryIt: nil)
         }
-        .sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
+        return byTopic.compactMap { id, list in topics[id].map { WhatsNewCard(topic: $0, entries: list) } }
+            .sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
     }()
     static func card(id: String) -> WhatsNewCard? { cards.first { $0.id == id } }
 
@@ -159,11 +186,11 @@ enum WhatsNew {
     static let testedKey = "whatsNew.tested"
     static func tested() -> Set<String> { Set(UserDefaults.standard.stringArray(forKey: testedKey) ?? []) }
     static func isTested(_ card: WhatsNewCard, in set: Set<String> = tested()) -> Bool {
-        set.contains(card.testedKey) || set.contains(card.latest.id)
+        set.contains(card.testedKey) || card.olderTestedKeys.contains(where: set.contains)
     }
     static func setTested(_ card: WhatsNewCard, _ on: Bool) {
         var set = tested()
-        if on { set.insert(card.testedKey) } else { set.remove(card.testedKey); set.remove(card.latest.id) }
+        if on { set.insert(card.testedKey) } else { set.remove(card.testedKey); card.olderTestedKeys.forEach { set.remove($0) } }
         UserDefaults.standard.set(Array(set), forKey: testedKey)
     }
 }
@@ -220,6 +247,8 @@ struct WhatsNewView: View {
     @State private var path: [String] = []
     @State private var composing: (card: WhatsNewCard, kind: FeedbackItem.Kind)?
     @State private var sharing: [FeedbackItem]?
+    /// Copied rather than sent somewhere: ask before marking them sent.
+    @State private var askMarkSent: [FeedbackItem]?
 
     private var shown: [WhatsNewCard] {
         WhatsNew.cards.filter { !untestedOnly || !WhatsNew.isTested($0, in: tested) }
@@ -303,12 +332,23 @@ struct WhatsNewView: View {
         }
         .sheet(isPresented: Binding(get: { sharing != nil }, set: { if !$0 { sharing = nil } })) {
             if let list = sharing {
-                FeedbackShareSheet(items: [feedback.markdown(for: list)] + list.compactMap(feedback.image(for:))) { done in
-                    if done { feedback.markSent(Set(list.map(\.id))) }
+                FeedbackShareSheet(items: feedback.shareFiles(for: list)) { done, activity in
                     sharing = nil
+                    guard done else { return }
+                    if activity == .copyToPasteboard {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { askMarkSent = list }
+                    } else {
+                        feedback.markSent(Set(list.map(\.id)))
+                    }
                 }
                 .presentationDetents([.medium, .large])
             }
+        }
+        .alert("Mark as sent?", isPresented: Binding(get: { askMarkSent != nil }, set: { if !$0 { askMarkSent = nil } })) {
+            Button("Mark sent") { if let list = askMarkSent { feedback.markSent(Set(list.map(\.id))) }; askMarkSent = nil }
+            Button("Not yet", role: .cancel) { askMarkSent = nil }
+        } message: {
+            Text("You copied it. Once it's pasted into Claude, mark it sent so it isn't sent again.")
         }
     }
 

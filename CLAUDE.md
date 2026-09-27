@@ -41,6 +41,14 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   `AppTransaction.environment != .production`). DEBUG `-demoWhatsNew [-demoWhatsNewTopic <id>]`.
 - TestFlight notes: `scripts/whatsnew.py testflight --since <last uploaded build's commit> --out
   notes.txt` (one line per topic as it is now, ≤ 4000 chars, no emoji), then `scripts/asc.py release`.
+- Entries have a stable `id` ("<topic>-<n>"); `resolve` finds an entry's commit by it (titles can
+  be edited). The app decodes topics / entries one by one (a bad one is skipped and logged) and
+  gives an entry with no topic a stand-in card. Tested ticks are keyed by topic + the latest
+  entry's id (older topic@commit / commit|title keys still count).
+- Feedback: every field decodes optionally; an unreadable feedback.json is moved to
+  `feedback.json.bad-<stamp>`, never overwritten. Send feedback shares FILES (the .md + each photo
+  under the name the .md uses). Only a real share marks items sent; Copy asks "Mark as sent?".
+  `pull-feedback.sh` never overwrites (<date>-<phone>, then -HHMM, then -2…).
 - App Store build: `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves the screenshots out
   (`EXCLUDED_SOURCE_FILE_NAMES='wn-*.jpg'`; TestFlight and the App Store otherwise get the same
   binary). The page itself never shows there.
@@ -860,6 +868,10 @@ Accounts"). That line still prints in logs and is harmless now.
   read it out, print it or commit it; the scripts only pass its path.
 
 Steps, when the owner says "push a new build":
+0. **App Store submission checklist:** archive with `SHUKR_APPSTORE=1 scripts/testflight.sh` so the
+   What's new screenshots (~230 KB, `wn-*.jpg`) are left out — or accept them (the page never shows
+   in production) — and check the archive really drops them:
+   `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
 1. **`scripts/testflight.sh`** (for the App Store release itself: `SHUKR_APPSTORE=1 scripts/testflight.sh`, which leaves out the What's new screenshots) bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
    watch targets included), archives Release (iPhone app + embedded watch app), and uploads. The
    export runs with the system PATH, since Homebrew's rsync breaks it. Commit the bump afterwards.

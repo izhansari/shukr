@@ -3,8 +3,9 @@
 
 The file has two lists: `topics` (one card each: id, area, a title that describes the CURRENT
 state, optional current try-it steps) and `entries` (one per visible change, chronological:
-date, commit, time, topic, notes item, one-line title, try-it steps, checked, optional status
-"dropped" / "replaced" / "removed", optional screenshots).
+a stable `id` ("<topic>-<n>", never changes, even if the title is edited), date, commit, time,
+topic, notes item, one-line title, try-it steps, checked, optional status "dropped" /
+"replaced" / "removed", optional screenshots).
 
   scripts/whatsnew.py resolve
       Fill in "commit": "next" with the hash of the commit that added the entry, and every
@@ -54,7 +55,7 @@ def save(data):
         out.append(head + "}" + ("," if i < len(data["topics"]) - 1 else ""))
     out += ["  ],", '  "entries": [']
     for i, e in enumerate(data["entries"]):
-        first = f'"date": {j(e["date"])}, "commit": {j(e["commit"])}, "time": {j(e.get("time"))}, ' \
+        first = f'"id": {j(e["id"])}, "date": {j(e["date"])}, "commit": {j(e["commit"])}, "time": {j(e.get("time"))}, ' \
                 f'"topic": {j(e["topic"])}, "notes": {j(e.get("notes"))}'
         if e.get("status"):
             first += f', "status": {j(e["status"])}'
@@ -78,8 +79,8 @@ def resolve():
     hashes_filled = times_filled = 0
     for e in data["entries"]:
         if e["commit"] == "next":
-            # The oldest commit whose diff added this entry's title.
-            found = git("log", "--format=%h", "--reverse", "-S", j(e["title"]), "--", "shukr/WhatsNew.json").split()
+            # The oldest commit whose diff added this entry's id (stable; titles can be edited).
+            found = git("log", "--format=%h", "--reverse", "-S", f'"id": {j(e["id"])}', "--", "shukr/WhatsNew.json").split()
             if found:
                 e["commit"] = found[0]
                 hashes_filled += 1
@@ -115,7 +116,11 @@ def add(a):
     for s in a.shot or []:
         if not (SHOTS / s).exists():
             sys.exit(f"no screenshot {SHOTS / s} (make it with `whatsnew.py shot`)")
-    e = {"date": datetime.date.today().isoformat(), "commit": "next", "time": None, "topic": a.topic,
+    used = {x["id"] for x in data["entries"]}
+    n = 1
+    while f"{a.topic}-{n}" in used:
+        n += 1
+    e = {"id": f"{a.topic}-{n}", "date": datetime.date.today().isoformat(), "commit": "next", "time": None, "topic": a.topic,
          "notes": a.notes, "title": a.title, "tryIt": a.tryit, "checked": a.checked}
     if a.status:
         e["status"] = a.status

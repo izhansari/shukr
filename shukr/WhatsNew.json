@@ -45,381 +45,387 @@
   ],
   "entries": [
     {
-      "date": "2026-09-26", "commit": "5e962e3", "time": "2026-09-26T16:36:16-04:00", "topic": "share-card", "notes": null,
+      "id": "share-card-1", "date": "2026-09-26", "commit": "5e962e3", "time": "2026-09-26T16:36:16-04:00", "topic": "share-card", "notes": null,
       "title": "Share card says \"join the beta on TestFlight\"",
       "tryIt": ["Daily Ayah → reveal → Share → the line under the shukr mark"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "explore-dock", "notes": null,
+      "id": "explore-dock-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "explore-dock", "notes": null,
       "title": "The explore button opens in place",
       "tryIt": ["Open the map → tap the magnifying glass → Qibla · Prayers · Mosques fan out", "Tap the map to fold it back"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "my-masajid", "notes": null,
+      "id": "my-masajid-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "my-masajid", "notes": null,
       "title": "My masajid: star the mosques you pray at",
       "tryIt": ["Mosques → open a mosque → tap ☆", "The list shows it under MY MASAJID and its pin has a star"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "jumuah", "notes": null,
+      "id": "jumuah-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "jumuah", "notes": null,
       "title": "Jumu'ah at a masjid scores full",
       "tryIt": ["On a Friday, mark Dhuhr while at a masjid → it reads Jumu'ah with a small mosque mark"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "fine-ring", "notes": null,
+      "id": "fine-ring-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "fine-ring", "notes": null,
       "title": "The \"fine\" ring is the tasbeeh default",
       "tryIt": ["Start a freestyle zikr → the thin glowing ring"],
       "checked": "phone"
     },
     {
-      "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "jumuah", "notes": null,
+      "id": "jumuah-2", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "jumuah", "notes": null,
       "title": "Jumu'ah is instant at your own masajid",
       "tryIt": ["At a starred masjid on Friday, mark Dhuhr → the moment says Jumu'ah straight away"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "masjid-filter", "notes": null,
+      "id": "masjid-filter-1", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "masjid-filter", "notes": null,
       "title": "Filter prayer pins to \"Only at a masjid\"",
       "tryIt": ["Map → Prayers → the range menu → Only at a masjid"],
       "checked": "no"
     },
     {
-      "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "masjid-duas", "notes": null,
+      "id": "masjid-duas-1", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "masjid-duas", "notes": null,
       "title": "Duas when you arrive at / leave your masajid",
       "tryIt": ["Settings → Masjid → turn on Duas at my masajid (asks for Always location)", "Tap Preview the notification"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "holy-cities", "notes": null,
+      "id": "holy-cities-1", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "holy-cities", "notes": null,
       "title": "Welcome to Makkah / Madinah",
       "tryIt": ["Only in Makkah or Madinah: open the app → a welcome notification"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "jumuah", "notes": null,
+      "id": "jumuah-3", "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "jumuah", "notes": null,
       "title": "\"Early\" is now \"Perfect\"; Jumu'ah shows no grade",
       "tryIt": ["Mark a prayer in its first 30 min → \"Perfect · 100\"", "Long-press a prayed prayer → the editor says Perfect"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "widget-next", "notes": null,
+      "id": "widget-next-1", "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "widget-next", "notes": null,
       "title": "The Prayers widget shows NEXT like the app",
       "tryIt": ["Mark the current prayer → the widget shows NEXT over the next prayer with a dashed ring"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "time-editor-opens", "notes": null,
+      "id": "time-editor-opens-1", "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "time-editor-opens", "notes": null,
       "title": "The time editor opens on the time you saved",
       "tryIt": ["Long-press a prayed prayer → the wheel shows its saved time, not now"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "c48814f", "time": "2026-09-26T17:38:39-04:00", "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-1", "date": "2026-09-26", "commit": "c48814f", "time": "2026-09-26T17:38:39-04:00", "topic": "move-prayer", "notes": null,
       "title": "Change where you prayed",
       "tryIt": ["Long-press a prayed prayer → tap the location → drag the map → Set location → Save"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "c48814f", "time": "2026-09-26T17:38:39-04:00", "topic": "build-stamp", "notes": null,
+      "id": "build-stamp-1", "date": "2026-09-26", "commit": "c48814f", "time": "2026-09-26T17:38:39-04:00", "topic": "build-stamp", "notes": null,
       "title": "Build stamp under the menu and Settings",
       "tryIt": ["Open the ☰ menu → the small line at the bottom shows version, build time and commit"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "64aceae", "time": "2026-09-26T17:55:34-04:00", "topic": "prayer-page", "notes": null,
+      "id": "prayer-page-1", "date": "2026-09-26", "commit": "64aceae", "time": "2026-09-26T17:55:34-04:00", "topic": "prayer-page", "notes": null,
       "title": "Each prayer gets its own page in the map sheet",
       "tryIt": ["Map → Prayers → tap a cluster → tap a prayer → its page slides in and its pin lifts out"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "64aceae", "time": "2026-09-26T17:55:34-04:00", "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-2", "date": "2026-09-26", "commit": "64aceae", "time": "2026-09-26T17:55:34-04:00", "topic": "move-prayer", "notes": null,
       "title": "Type an address when moving a pin",
       "tryIt": ["While moving a prayer's pin, tap the address → type a place → pick a suggestion", "The card says how far it is from where you marked it"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b5f1f6", "time": "2026-09-26T18:12:51-04:00", "topic": "recorded-vs-edited", "notes": null,
+      "id": "recorded-vs-edited-1", "date": "2026-09-26", "commit": "5b5f1f6", "time": "2026-09-26T18:12:51-04:00", "topic": "recorded-vs-edited", "notes": null,
       "title": "Edits keep what the app recorded",
       "tryIt": ["Change a prayer's time → reopen the editor → \"You marked it at … · use that\""],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "5b5f1f6", "time": "2026-09-26T18:12:51-04:00", "topic": "mosque-sheet", "notes": null,
+      "id": "mosque-sheet-1", "date": "2026-09-26", "commit": "5b5f1f6", "time": "2026-09-26T18:12:51-04:00", "topic": "mosque-sheet", "notes": null,
       "title": "Mosques open inside the list sheet",
       "tryIt": ["Map → Mosques → tap a mosque in the list → its page slides in → back returns to the list"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "01fb4e7", "time": "2026-09-26T18:17:45-04:00", "topic": "mosque-sheet", "notes": null,
+      "id": "mosque-sheet-2", "date": "2026-09-26", "commit": "01fb4e7", "time": "2026-09-26T18:17:45-04:00", "topic": "mosque-sheet", "notes": null,
       "title": "No empty row above a mosque's name",
       "tryIt": ["Open a mosque from the list → back button sits beside the name"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "2d4c84d", "time": "2026-09-26T18:38:20-04:00", "topic": "mosque-sheet", "notes": null,
+      "id": "mosque-sheet-3", "date": "2026-09-26", "commit": "2d4c84d", "time": "2026-09-26T18:38:20-04:00", "topic": "mosque-sheet", "notes": null,
       "title": "The mosque sheet shrinks to a bar instead of closing",
       "tryIt": ["Map → Mosques → the sheet opens at once", "Swipe it down → a slim bar stays; ✕ goes back to the qibla"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "2d4c84d", "time": "2026-09-26T18:38:20-04:00", "topic": "prayer-page", "notes": null,
+      "id": "prayer-page-2", "date": "2026-09-26", "commit": "2d4c84d", "time": "2026-09-26T18:38:20-04:00", "topic": "prayer-page", "notes": null,
       "title": "Edit a prayer from its page",
       "tryIt": ["Open a prayer's page on the map → Edit → the same sheet shows the time wheel and location"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "eb64b14", "time": "2026-09-26T19:01:18-04:00", "topic": "prayer-page", "notes": null,
+      "id": "prayer-page-3", "date": "2026-09-26", "commit": "eb64b14", "time": "2026-09-26T19:01:18-04:00", "topic": "prayer-page", "notes": null,
       "title": "Quieter prayer page, and when the window ended",
       "tryIt": ["Open a prayer's page → \"… after the window ended at 4:10 PM\" and a small gray Edit"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "871ae72", "time": "2026-09-26T19:03:40-04:00", "topic": "mosque-sheet", "notes": null, "status": "removed",
+      "id": "mosque-sheet-4", "date": "2026-09-26", "commit": "871ae72", "time": "2026-09-26T19:03:40-04:00", "topic": "mosque-sheet", "notes": null, "status": "removed",
       "title": "The mosque filter menu (\"Hide Ahmadiyya mosques\")",
       "tryIt": ["Mosque list header: just drive / walk and ✕", "Long-press a mosque → Don't recommend still works"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-3", "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "move-prayer", "notes": null,
       "title": "The moving pin points at the right spot",
       "tryIt": ["Edit a prayer → Change location → the pin's tip sits exactly on where you prayed"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "prayer-page", "notes": null,
+      "id": "prayer-page-4", "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "prayer-page", "notes": null,
       "title": "Smooth edit transitions, and Back to the pin",
       "tryIt": ["Prayer page → Edit → Change location → Cancel → Cancel: the sheet glides between sizes", "Pan away from the prayer's pin → tap \"Back to Dhuhr\""],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "dfe05ff", "time": "2026-09-26T19:31:47-04:00", "topic": "notifications", "notes": "#10",
+      "id": "notifications-1", "date": "2026-09-26", "commit": "dfe05ff", "time": "2026-09-26T19:31:47-04:00", "topic": "notifications", "notes": "#10",
       "title": "Fajr notifications work again, a week ahead",
       "tryIt": ["After Isha, check tomorrow's \"Fajr Time\" arrives", "Tap \"Nudge in 10 minutes\", open the app → the nudge still comes"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "6f9e7a3", "time": "2026-09-26T19:38:08-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-1", "date": "2026-09-26", "commit": "6f9e7a3", "time": "2026-09-26T19:38:08-04:00", "topic": "prayer-begins", "notes": null,
       "title": "NEXT no longer moves the prayer name",
       "tryIt": ["Watch the circle as a prayer starts → the name stays put, NEXT fades above it"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "6f9e7a3", "time": "2026-09-26T19:38:08-04:00", "topic": "prayer-begins", "notes": null, "status": "replaced",
+      "id": "prayer-begins-2", "date": "2026-09-26", "commit": "6f9e7a3", "time": "2026-09-26T19:38:08-04:00", "topic": "prayer-begins", "notes": null, "status": "replaced",
       "title": "A soft moment when a prayer begins (3 looks to pick from)",
       "tryIt": ["Keep the app open as a prayer starts → crossfade + a soft tap", "Settings → My Dev Stuff → Prayer begins: fade / draw / glow"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "6ed8876", "time": "2026-09-26T19:41:02-04:00", "topic": "names-filter", "notes": "#3",
+      "id": "names-filter-1", "date": "2026-09-26", "commit": "6ed8876", "time": "2026-09-26T19:41:02-04:00", "topic": "names-filter", "notes": "#3",
       "title": "Filter names by All · Learning · Known",
       "tryIt": ["☰ → 99 Names → tap Known", "··· → Reset progress (asks first)"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "dacffe2", "time": "2026-09-26T19:46:25-04:00", "topic": "task-names", "notes": "#7",
+      "id": "task-names-1", "date": "2026-09-26", "commit": "dacffe2", "time": "2026-09-26T19:46:25-04:00", "topic": "task-names", "notes": "#7",
       "title": "Give a zikr task its own name",
       "tryIt": ["Zikr → long-press a task → tap it → type a name like \"After Fajr\" → Save", "The circle shows the name with the zikr under it"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-26", "commit": "1de3ebe", "time": "2026-09-26T19:54:49-04:00", "topic": "zikr-reminders", "notes": "#11",
+      "id": "zikr-reminders-1", "date": "2026-09-26", "commit": "1de3ebe", "time": "2026-09-26T19:54:49-04:00", "topic": "zikr-reminders", "notes": "#11",
       "title": "Reminders for zikr tasks",
       "tryIt": ["Edit a task → Reminder → Around a prayer (e.g. 10 min after Fajr) → Save", "When it fires, try Start now / Later / Skip today"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "e659a77", "time": "2026-09-27T01:14:01-04:00", "topic": "whats-new", "notes": "#16",
+      "id": "whats-new-1", "date": "2026-09-27", "commit": "e659a77", "time": "2026-09-27T01:14:01-04:00", "topic": "whats-new", "notes": "#16",
       "title": "What's new: tap the build line",
       "tryIt": ["☰ menu → tap the build line at the bottom → this page", "Tick an item as tested → turn on Untested only"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "1ccb412", "time": "2026-09-27T01:21:30-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-3", "date": "2026-09-27", "commit": "1ccb412", "time": "2026-09-27T01:21:30-04:00", "topic": "prayer-begins", "notes": null,
       "title": "The prayer-begins moment only plays where you can see the circle",
       "tryIt": ["Sit on the Zikr page or the map as a prayer starts → no buzz", "Stay on the Salah page at Fajr → the summary circle fades into Fajr's ring"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "c4a3a30", "time": "2026-09-27T01:24:03-04:00", "topic": "names-filter", "notes": "#3",
+      "id": "names-filter-2", "date": "2026-09-27", "commit": "c4a3a30", "time": "2026-09-27T01:24:03-04:00", "topic": "names-filter", "notes": "#3",
       "title": "Counts no longer include \"Allah\"",
       "tryIt": ["Mark Allah as known → the header, Learning and Known counts stay out of 99"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "a0a0901", "time": "2026-09-27T01:29:21-04:00", "topic": "zikr-widget", "notes": null,
+      "id": "zikr-widget-1", "date": "2026-09-27", "commit": "a0a0901", "time": "2026-09-27T01:29:21-04:00", "topic": "zikr-widget", "notes": null,
       "title": "The medium Zikr widget fits more tasks and always shows progress",
       "tryIt": ["Add the medium Zikr widget with 5–6 tasks → it shows as many as fit", "A very long task name truncates; its 0/100 stays visible"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "a247790", "time": "2026-09-27T01:34:28-04:00", "topic": "zikr-reminders", "notes": "#11",
+      "id": "zikr-reminders-2", "date": "2026-09-27", "commit": "a247790", "time": "2026-09-27T01:34:28-04:00", "topic": "zikr-reminders", "notes": "#11",
       "title": "Zikr reminders: fixes and no more \"Skip today\"",
       "tryIt": ["Give a task a reminder, then delete the task → its reminders stop", "With notifications off, open a task's Reminder → \"Notifications are off · Open Settings\"", "A reminder's actions are now just Start now and Later (30 min)"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "1e22cc6", "time": "2026-09-27T01:35:56-04:00", "topic": "welcome", "notes": "#9",
+      "id": "welcome-1", "date": "2026-09-27", "commit": "1e22cc6", "time": "2026-09-27T01:35:56-04:00", "topic": "welcome", "notes": "#9",
       "title": "The welcome animation plays only on a fresh start",
       "tryIt": ["Leave shukr for a while and come back → no welcome", "Swipe shukr away in the app switcher, open it again → the welcome plays"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "8294c53", "time": "2026-09-27T01:59:26-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-4", "date": "2026-09-27", "commit": "8294c53", "time": "2026-09-27T01:59:26-04:00", "topic": "prayer-begins", "notes": null,
       "title": "Preview the prayer-begins moment (dev builds)",
       "tryIt": ["Settings → tap the \"Calculation Method\" header → My Dev Stuff", "Pick a look under Prayer begins → tap Preview prayer begins", "The Salah circle shows NEXT, then plays the look with its haptic"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "9d4b029", "time": "2026-09-27T02:18:04-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-5", "date": "2026-09-27", "commit": "9d4b029", "time": "2026-09-27T02:18:04-04:00", "topic": "prayer-begins", "notes": null,
       "title": "A prayer that hasn't started has a dashed ring, which fills in when it begins",
       "tryIt": ["Mark the current prayer → after the green sweep, the ring thins into dashes for the next one", "Stay on the Salah page as a prayer starts → the dashes expand into the ring", "After Isha, tomorrow's Fajr shows NEXT on the dashed ring (open the list → the score's solid ring)"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "438dff7", "time": "2026-09-27T02:41:51-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-6", "date": "2026-09-27", "commit": "438dff7", "time": "2026-09-27T02:41:51-04:00", "topic": "prayer-begins", "notes": null,
       "title": "Tomorrow's Fajr countdown reads \"in 8h 5m\"",
       "tryIt": ["After all five are marked, the circle's Fajr says \"in 8h 5m\" (no comma)", "Tap it → its window, e.g. 5:56 - 7:10 AM"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "342189c", "time": "2026-09-27T02:46:08-04:00", "topic": "post-salah", "notes": null,
+      "id": "post-salah-1", "date": "2026-09-27", "commit": "342189c", "time": "2026-09-27T02:46:08-04:00", "topic": "post-salah", "notes": null,
       "title": "Post-salah: only the bottom pill",
       "tryIt": ["Mark a prayer → after the sweep, the \"Post-salah tasbih?\" pill at the bottom (no in-circle offer, no top pill)", "Settings → My Dev Stuff no longer has a Post-salah prompt picker"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "75e7d7d", "time": "2026-09-27T03:25:49-04:00", "topic": "map-style", "notes": "#15", "status": "dropped",
+      "id": "map-style-1", "date": "2026-09-27", "commit": "75e7d7d", "time": "2026-09-27T03:25:49-04:00", "topic": "map-style", "notes": "#15", "status": "dropped",
       "title": "Map Modes sheet (Standard / Satellite cards, Traffic, Labels)",
       "tryIt": ["Open the map → tap the globe (top right) → pick Satellite", "Turn Labels off for pure imagery, or Traffic on", "Close and reopen the app → the map keeps your choice"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "95b56cb", "time": "2026-09-27T03:56:56-04:00", "topic": "map-style", "notes": "#15",
+      "id": "map-style-2", "date": "2026-09-27", "commit": "95b56cb", "time": "2026-09-27T03:56:56-04:00", "topic": "map-style", "notes": "#15",
       "title": "The map's style button is a globe: tap for Satellite, tap again for Standard",
       "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Close and reopen the app → the map keeps your choice"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "332d04a", "time": "2026-09-27T04:06:58-04:00", "topic": "map-style", "notes": "#15",
+      "id": "map-style-3", "date": "2026-09-27", "commit": "332d04a", "time": "2026-09-27T04:06:58-04:00", "topic": "map-style", "notes": "#15",
       "title": "The map follows the app's light / dark / auto setting; ? has its own button",
       "tryIt": ["Settings → switch to dark (or auto after Maghrib) → open the map → the standard map is dark", "The ? sits on its own under the globe / locate buttons"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "b76d6f7", "time": "2026-09-27T04:12:53-04:00", "topic": "zikr-wording", "notes": "#17",
+      "id": "zikr-wording-1", "date": "2026-09-27", "commit": "b76d6f7", "time": "2026-09-27T04:12:53-04:00", "topic": "zikr-wording", "notes": "#17",
       "title": "\"Mantra\" is now \"zikr\" everywhere; the library is \"Azkar\"",
       "tryIt": ["Zikr page → the books button → History | Azkar", "Open a zikr → \"Edit zikr\", \"No tasks use this zikr\"", "Pause a session → \"choose a zikr\" / \"Edit zikr\""],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "9b55d78", "time": "2026-09-27T04:32:51-04:00", "topic": "zikr-media", "notes": "#17",
+      "id": "zikr-media-1", "date": "2026-09-27", "commit": "9b55d78", "time": "2026-09-27T04:32:51-04:00", "topic": "zikr-media", "notes": "#17",
       "title": "A zikr can hold a voice memo and a photo beside its notes",
       "tryIt": ["Open a zikr → the three icons left of the notes box: notes / voice memo / photo — tapping swaps the box in place", "Voice memo → Tap to record (asks for the mic once, max 2 min) → play, 0.75×, loop; ··· to record again or delete", "Photo → Add a photo or Take one → tap it to zoom; hold for replace / remove", "Start that zikr, pause → the memo's ▶︎ and the photo's thumbnail are on the pause card", "Music playing? It carries on after the memo"],
       "checked": "sim", "shots": ["wn-zikr-media-memo.jpg", "wn-zikr-media-photo.jpg", "wn-zikr-media-pause.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "f235e3a", "time": "2026-09-27T04:35:21-04:00", "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-1", "date": "2026-09-27", "commit": "f235e3a", "time": "2026-09-27T04:35:21-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "The built-in azkar have their Arabic and a note, and there are four more",
       "tryIt": ["Zikr page → books → Azkar: Alhamdulillah, Subhanallah, Allahu Akbar, Astaghfirullah now show their Arabic", "New: La ilaha illallahu wahdahu, SubhanAllahi wa bihamdihi, Allahumma salli 'ala Muhammad, Hasbunallahu wa ni'mal-wakil", "Open one → the note says what it means and where it's from (long notes scroll in the box)", "Anything you'd already written in a built-in's text or notes is kept"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "6143b19", "time": "2026-09-27T04:40:27-04:00", "topic": "new-task-flow", "notes": "#17",
+      "id": "new-task-flow-1", "date": "2026-09-27", "commit": "6143b19", "time": "2026-09-27T04:40:27-04:00", "topic": "new-task-flow", "notes": "#17",
       "title": "New task: the goal is focused, a ＋ for a new zikr, and New task from a zikr's page",
       "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → ＋ (top right) → the whole new-zikr card (name, text, notes, memo, photo) → Save → you're back with it picked", "Open a zikr (books → Azkar) → ＋ beside \"N tasks\" → the task sheet with that zikr locked", "A zikr with no tasks shows a dashed New task circle instead"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "7099059", "time": "2026-09-27T04:45:06-04:00", "topic": "new-task-flow", "notes": "#17",
+      "id": "new-task-flow-2", "date": "2026-09-27", "commit": "7099059", "time": "2026-09-27T04:45:06-04:00", "topic": "new-task-flow", "notes": "#17",
       "title": "Choosing a zikr looks like the Azkar page",
       "tryIt": ["New task → tap Zikr → \"Choose a zikr\" with ✕ and ＋, the same rows as Azkar (text, pace), search at the bottom", "The zikr already picked has a green check", "Search also finds words in a zikr's text or notes"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "c7a2260", "time": "2026-09-27T04:48:20-04:00", "topic": "qibla-up", "notes": null,
+      "id": "qibla-up-1", "date": "2026-09-27", "commit": "c7a2260", "time": "2026-09-27T04:48:20-04:00", "topic": "qibla-up", "notes": null,
       "title": "The green qibla-up button also brings you back to your dot",
       "tryIt": ["Open the map → turn it with two fingers, zoom out and drag away", "Tap the green arrow under locate → one move back to your dot, qibla-up, at the qibla zoom", "In prayer spots / mosques the red needle still only turns the map north"],
       "checked": "sim", "shots": ["wn-qibla-up.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "a138fa1", "time": "2026-09-27T05:12:42-04:00", "topic": "whats-new", "notes": "#19",
+      "id": "whats-new-2", "date": "2026-09-27", "commit": "a138fa1", "time": "2026-09-27T05:12:42-04:00", "topic": "whats-new", "notes": "#19",
       "title": "What's new v2: cards per feature, detail page with screenshots and a timeline, feedback back to Claude",
       "tryIt": ["Open What's new → cards grouped by feature (e.g. Map style has 3 changes)", "Tap Map style → the dropped Map Modes sheet is greyed in Changes", "Tap 👎 on a card, write a line → Send feedback → Copy → the card says sent"],
       "checked": "sim", "shots": ["wn-whats-new-cards.jpg", "wn-whats-new-detail.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "8e76e9c", "time": "2026-09-27T06:13:32-04:00", "topic": "zikr-media", "notes": "#17",
+      "id": "zikr-media-2", "date": "2026-09-27", "commit": "8e76e9c", "time": "2026-09-27T06:13:32-04:00", "topic": "zikr-media", "notes": "#17",
       "title": "Voice memo: takes are never lost, and it stops when it should",
       "tryIt": ["Record a memo and let it run to 2:00, or take a call / go home mid-take → the take is kept", "Play a memo on the pause card → Resume → it stops; your music comes back when you pause it", "Start the memo on the ✎ sheet while the pause card's plays → only one plays"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "8e76e9c", "time": "2026-09-27T06:13:32-04:00", "topic": "zikr-media", "notes": "#17",
+      "id": "zikr-media-3", "date": "2026-09-27", "commit": "8e76e9c", "time": "2026-09-27T06:13:32-04:00", "topic": "zikr-media", "notes": "#17",
       "title": "Photos are prepared in the background (no hitch when picking a big one)",
       "tryIt": ["Add a big photo or take one with the camera → the card doesn't stutter"],
       "checked": "no"
     },
     {
-      "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "new-task-flow", "notes": "#17",
+      "id": "new-task-flow-3", "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "new-task-flow", "notes": "#17",
       "title": "A new zikr can't be swiped away with something in it; Delete zikr while editing; no double ＋",
       "tryIt": ["Picker ＋ → type a name → swipe down: it stays; Cancel asks \"Discard this zikr?\"", "Save a new zikr → the card closes, then the picker, and it's picked", "Open one of your azkar → ✎ → Delete zikr at the bottom (says what happens to its tasks and sessions)", "A zikr with no tasks shows only the dashed New task circle; the ＋ appears once it has one"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-2", "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Built-ins are locked and listed apart: a Built-in section above Your azkar",
       "tryIt": ["Books → Azkar → \"Built-in\" then \"Your azkar\"", "Open a built-in → ✎ → the name and full text are locked (a small lock), notes / memo / photo still edit", "Built-ins can't be swiped to delete and have no Delete button"],
       "checked": "sim", "shots": ["wn-azkar-sections.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "232f54c", "time": "2026-09-27T06:32:02-04:00", "topic": "zikr-history", "notes": "#2b",
+      "id": "zikr-history-1", "date": "2026-09-27", "commit": "232f54c", "time": "2026-09-27T06:32:02-04:00", "topic": "zikr-history", "notes": "#2b",
       "title": "History: day time in the headers, Edit to select and delete sessions; no more row swipes",
       "tryIt": ["Books → History → each day's header shows its time; tap one → every header shows counts (remembered)", "Edit (top right) → tick sessions → Delete N sessions → confirm; totals and today's tasks update", "Rows no longer swipe; tap one for Zikr · Pace"],
       "checked": "sim", "shots": ["wn-zikr-history-edit.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-7", "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "prayer-begins", "notes": null,
       "title": "More air between NEXT and the prayer name (circle, next Fajr, widget)",
       "tryIt": ["Mark the current prayer → NEXT sits clearly above the next prayer's name", "Home-screen Prayers widget: same gap, scaled"],
       "checked": "sim", "shots": ["wn-next-gap.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-1", "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "The qibla buzz only happens when the Salah circle is on screen",
       "tryIt": ["Salah page: point the phone at the qibla → it buzzes", "Zikr page, Settings, History, the task sheets, the map or a tasbeeh session → no buzz"],
       "checked": "no"
     },
     {
-      "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "lockscreen-prayers", "notes": null,
+      "id": "lockscreen-prayers-1", "date": "2026-09-27", "commit": "b0a2c97", "time": "2026-09-27T06:42:11-04:00", "topic": "lockscreen-prayers", "notes": null,
       "title": "Lock Screen Prayers widget: ring and bar fill up; dashed ring + NEXT for the next prayer",
       "tryIt": ["Add the Prayers widget to the Lock Screen (small and wide)", "During a prayer the ring and the bar grow as time passes", "Before a prayer starts (or after you've marked one) the small one shows a dashed ring with NEXT"],
       "checked": "sim", "shots": ["wn-lockscreen-next.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "c404e44", "time": "2026-09-27T07:00:22-04:00", "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-8", "date": "2026-09-27", "commit": "c404e44", "time": "2026-09-27T07:00:22-04:00", "topic": "prayer-begins", "notes": null,
       "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only",
       "tryIt": ["Mark the current prayer → a small NEXT, well above the name, not part of the stack", "Settings → My Dev Stuff → Next prayer → \"Dashed ring only\" → no NEXT anywhere (app and home-screen widget)", "Lock Screen widget: a prayer that hasn't started shows just the dashed ring"],
       "checked": "sim", "shots": ["wn-next-options.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "2613923", "time": "2026-09-27T07:24:22-04:00", "topic": "zikr-media", "notes": "#17",
+      "id": "zikr-media-4", "date": "2026-09-27", "commit": "2613923", "time": "2026-09-27T07:24:22-04:00", "topic": "zikr-media", "notes": "#17",
       "title": "A voice memo that's still opening never starts after Resume; a double tap opens it once",
       "tryIt": ["Pause a session → tap the memo's ▶︎ and Resume straight away → it stays silent while you count", "Double-tap ▶︎ → it plays once"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-3", "date": "2026-09-27", "commit": "9673248", "time": "2026-09-27T07:32:07-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Built-ins are marked on the zikr itself; your own \"Subhan Allah\" is never locked; the picker has the Built-in section too",
       "tryIt": ["Make a zikr named \"Subhan Allah\" → it's rejected as a duplicate of Subhanallah (same name ignoring spaces / case)", "New task → Zikr → \"Built-in\" then \"Your azkar\", like the Azkar list", "Books → Azkar with none of your own → the \"Your azkar\" header stays with its hint"],
       "checked": "sim"
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "id": "zikr-history-2", "date": "2026-09-27", "commit": "9673248", "time": "2026-09-27T07:32:07-04:00", "topic": "zikr-history", "notes": "#2b",
       "title": "A zikr's own sessions: Edit → select → Delete too; History keeps its selection safe while editing",
       "tryIt": ["Open a zikr → Sessions → Edit → tick → Delete N sessions", "History → Edit → select → type a search: the selection clears; sideways drags don't page to Azkar while editing", "Delete a session that finished a task today → its reminder comes back"],
+      "checked": "sim"
+    },
+    {
+      "id": "whats-new-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#19",
+      "title": "Send feedback shares a .md file with your photos; Copy asks before marking sent",
+      "tryIt": ["Give a card 👎 with a photo → Send feedback → AirDrop / Save to Files: the .md and the photo arrive together", "Send feedback → Copy → \"Mark as sent?\" (Not yet keeps it unsent)"],
       "checked": "sim"
     }
   ]

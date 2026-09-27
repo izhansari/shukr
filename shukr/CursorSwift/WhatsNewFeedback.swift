@@ -36,6 +36,29 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     var updated = Date()
     var sentAt: Date?
     var build: String
+
+    init(topic: String, topicTitle: String, notes: [String], commits: [String], kind: Kind, text: String, build: String) {
+        self.topic = topic; self.topicTitle = topicTitle; self.notes = notes; self.commits = commits
+        self.kind = kind; self.text = text; self.build = build
+    }
+
+    /// Every field optional with a default, so a file written by an older or newer build still
+    /// reads (a failed decode used to lose the whole list).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID()
+        topic = (try? c.decodeIfPresent(String.self, forKey: .topic)) ?? "unknown"
+        topicTitle = (try? c.decodeIfPresent(String.self, forKey: .topicTitle)) ?? topic
+        notes = (try? c.decodeIfPresent([String].self, forKey: .notes)) ?? []
+        commits = (try? c.decodeIfPresent([String].self, forKey: .commits)) ?? []
+        kind = (try? c.decodeIfPresent(Kind.self, forKey: .kind)) ?? .note
+        text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        photo = try? c.decodeIfPresent(String.self, forKey: .photo)
+        created = (try? c.decodeIfPresent(Date.self, forKey: .created)) ?? Date()
+        updated = (try? c.decodeIfPresent(Date.self, forKey: .updated)) ?? created
+        sentAt = try? c.decodeIfPresent(Date.self, forKey: .sentAt)
+        build = (try? c.decodeIfPresent(String.self, forKey: .build)) ?? ""
+    }
 }
 
 @MainActor @Observable
@@ -110,7 +133,9 @@ final class FeedbackStore {
     // MARK: Markdown
 
     /// One summary for Claude: build, then each item — kind, topic, notes #, commits, status, note.
-    func markdown(for list: [FeedbackItem], title: String = "shukr feedback") -> String {
+    /// `photoPrefix`: "photos/" in the stored copy (next to its folder); "" when shared (the
+    /// photos travel as files with exactly those names).
+    func markdown(for list: [FeedbackItem], title: String = "shukr feedback", photoPrefix: String = "photos/") -> String {
         let when = Date().formatted(date: .abbreviated, time: .shortened)
         var lines = ["# \(title) — \(when)", "", "Build: \(BuildInfo.line)", ""]
         for item in list {
@@ -121,12 +146,31 @@ final class FeedbackStore {
             let tested = WhatsNew.card(id: item.topic).map { WhatsNew.isTested($0) } ?? false
             lines.append("- Status: \(item.sentAt == nil ? "unsent" : "sent \(item.sentAt!.formatted(date: .abbreviated, time: .shortened))") · \(tested ? "tested ✓" : "not ticked tested")")
             lines.append("- Written: \(item.updated.formatted(date: .abbreviated, time: .shortened)) on \(item.build)")
-            if let p = item.photo { lines.append("- Photo: photos/\(p)") }
+            if let p = item.photo { lines.append("- Photo: \(photoPrefix)\(p)") }
             lines.append("")
             lines.append(item.text.isEmpty ? "_(no note)_" : item.text)
             lines.append("")
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// What "Send feedback" shares: the Markdown as a .md file plus each photo as a file named
+    /// as the Markdown references it — so AirDrop / Files / the Claude app keep them together.
+    func shareFiles(for list: [FeedbackItem]) -> [URL] {
+        let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+            .replacingOccurrences(of: ":", with: "")
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("shukr-feedback-\(stamp)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var urls: [URL] = []
+        let md = dir.appendingPathComponent("shukr-feedback-\(stamp).md")
+        if (try? markdown(for: list, photoPrefix: "").write(to: md, atomically: true, encoding: .utf8)) != nil { urls.append(md) }
+        for item in list {
+            guard let name = item.photo, let from = Self.photos?.appendingPathComponent(name) else { continue }
+            let to = dir.appendingPathComponent(name)
+            try? FileManager.default.removeItem(at: to)
+            if (try? FileManager.default.copyItem(at: from, to: to)) != nil { urls.append(to) }
+        }
+        return urls
     }
 
     // MARK: Files
@@ -136,7 +180,16 @@ final class FeedbackStore {
               let data = try? Data(contentsOf: url) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        items = (try? decoder.decode([FeedbackItem].self, from: data)) ?? []
+        do {
+            items = try decoder.decode([FeedbackItem].self, from: data)
+        } catch {
+            // Never overwrite what can't be read: move it aside and start a new list.
+            let stamp = Int(Date().timeIntervalSince1970)
+            let aside = url.deletingLastPathComponent().appendingPathComponent("feedback.json.bad-\(stamp)")
+            try? FileManager.default.moveItem(at: url, to: aside)
+            print("⚠️ feedback.json unreadable (\(error)); moved to \(aside.lastPathComponent)")
+            items = []
+        }
     }
 
     private func persist() {
@@ -261,11 +314,12 @@ struct FeedbackComposer: View {
 /// UIActivityViewController for the Markdown + photos; `completed` only when something was done.
 struct FeedbackShareSheet: UIViewControllerRepresentable {
     let items: [Any]
-    let onFinish: (_ completed: Bool) -> Void
+    /// `activity`: where it went (Copy is told apart: copying isn't sending).
+    let onFinish: (_ completed: Bool, _ activity: UIActivity.ActivityType?) -> Void
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        vc.completionWithItemsHandler = { _, completed, _, _ in onFinish(completed) }
+        vc.completionWithItemsHandler = { activity, completed, _, _ in onFinish(completed, activity) }
         return vc
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}

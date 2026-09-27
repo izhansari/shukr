@@ -2,8 +2,9 @@
 # Pull "What's new" feedback from the phones (notes #19) into shukrGit/feedback/.
 # The app keeps it in the app group's Library/Feedback: feedback.json, feedback.md (unsent first)
 # and photos/. Each phone that's connected and has feedback gives:
-#   shukrGit/feedback/<date>[-<phone>].md          the summary, photo links fixed up
-#   shukrGit/feedback/<date>[-<phone>]/            feedback.json + photos/
+#   shukrGit/feedback/<date>-<phone>.md          the summary, photo links fixed up
+#   shukrGit/feedback/<date>-<phone>/            feedback.json + photos/
+# Never overwrites: if that name is taken it becomes <date>-<phone>-<HHMM>, then -2, -3…
 #
 #   scripts/pull-feedback.sh            # both phones
 #   scripts/pull-feedback.sh 15Pro      # one: 13ProMax | 15Pro | <udid>
@@ -35,9 +36,13 @@ for name in "${PICK[@]}"; do
   if [[ ! -f "$tmp/Feedback/feedback.md" ]]; then
     echo "· $name: no feedback yet"; rm -rf "$tmp"; continue
   fi
-  base="$DAY"
-  [[ ${#PICK[@]} -gt 1 ]] && base="$DAY-$name"
-  rm -rf "$OUT/$base"; mkdir -p "$OUT/$base"
+  base="$DAY-$name"
+  if [[ -e "$OUT/$base.md" || -e "$OUT/$base" ]]; then
+    base="$DAY-$name-$(date +%H%M)"
+    n=2; stem="$base"
+    while [[ -e "$OUT/$base.md" || -e "$OUT/$base" ]]; do base="$stem-$n"; n=$((n + 1)); done
+  fi
+  mkdir -p "$OUT/$base"
   cp "$tmp/Feedback/feedback.json" "$OUT/$base/" 2>/dev/null
   [[ -d "$tmp/Feedback/photos" ]] && cp -R "$tmp/Feedback/photos" "$OUT/$base/"
   # "Photo: photos/x.jpg" → a Markdown image pointing into the folder next to the file.
