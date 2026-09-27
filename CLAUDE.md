@@ -1523,6 +1523,10 @@ edit task sheet's "Name (optional), e.g. After Fajr" field. Widget not looked at
 - Ids are dated: `PrayerNotificationID` (Models/PrayerDay.swift, both targets) →
   "2026-09-27.FajrStart"; `parse` also recognises the old undated "AsrMid". Only ids the scheduler
   owns are removed — never `removeAllPending…` — so snoozes ("snooze-<uuid>") survive.
+- Diffed, not rebuilt (2026-09-27 review): a request is the same when its id, minute and wording
+  (title / subtitle / body) match; only changed / gone ones are removed and only new / changed ones
+  added, and a run with nothing to do logs nothing. It used to remove and re-add ~55 requests on
+  every re-plan (every 500 m / 30 s while moving — a suspect for the compass freezing while moving).
 - Earlier days' delivered prayer notifications (and legacy undated ones) are removed on each run,
   so Notification Center still shows only today's, as when "AsrStart" replaced yesterday's.
 - `cancelUpcomingNudges` (AllModels, runs in the widget too) removes that day's dated Mid / End.

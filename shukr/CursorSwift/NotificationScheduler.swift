@@ -79,14 +79,22 @@ enum NotificationScheduler {
         let items = plan(context: context, todayOverride: todayOverride)
 
         let pending = await center.pendingNotificationRequests()
-        let ownedPending = pending.map(\.identifier).filter(owns)
+        let ownedPending = pending.filter { owns($0.identifier) }
         let others = pending.count - ownedPending.count
         let budget = max(limit - others - spare, 0)
         let chosen = Array(items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }.prefix(budget))
 
-        // Only ours go; snoozes and other kinds stay.
-        center.removePendingNotificationRequests(withIdentifiers: ownedPending)
-        for item in chosen {
+        // Only what changed (2026-09-27 review): while moving, the app re-plans every 500 m / 30 s,
+        // and removing + re-adding ~55 requests each time was wasted work. A request is "the same"
+        // when its id, minute and wording match.
+        let have = Dictionary(ownedPending.map { ($0.identifier, signature($0.content, trigger: $0.trigger)) },
+                              uniquingKeysWith: { a, _ in a })
+        let want = Dictionary(chosen.map { ($0.id, (item: $0, sig: signature($0.content, date: $0.date))) },
+                              uniquingKeysWith: { a, _ in a })
+        let stalePending = have.filter { id, sig in want[id]?.sig != sig }.map(\.key)
+        let toAdd = want.values.filter { have[$0.item.id] != $0.sig }.map(\.item)
+        if !stalePending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stalePending) }
+        for item in toAdd {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: item.date)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
             do {
@@ -106,7 +114,9 @@ enum NotificationScheduler {
         if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
 
         scheduleBackgroundRefresh()
-        print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned, \(others) other pending, cleared \(stale.count) delivered")
+        if !stalePending.isEmpty || !toAdd.isEmpty || !stale.isEmpty {
+            print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-logPendingNotifs") {
             let now = await center.pendingNotificationRequests()
@@ -118,6 +128,16 @@ enum NotificationScheduler {
             print("PENDINGNOTIFS \(now.count)\n" + lines.joined(separator: "\n"))
         }
         #endif
+    }
+
+    /// "yyyy-MM-dd HH:mm|title|subtitle|body" — what makes two requests the same.
+    private static func signature(_ c: UNNotificationContent, date: Date?) -> String {
+        let minute = date.map { Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: $0) }
+        let when = minute.map { "\($0.year ?? 0)-\($0.month ?? 0)-\($0.day ?? 0) \($0.hour ?? 0):\($0.minute ?? 0)" } ?? "?"
+        return "\(when)|\(c.title)|\(c.subtitle)|\(c.body)"
+    }
+    private static func signature(_ c: UNNotificationContent, trigger: UNNotificationTrigger?) -> String {
+        signature(c, date: (trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate())
     }
 
     // MARK: The plan

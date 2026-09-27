@@ -186,7 +186,7 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Settings",
+    "date": "2026-09-27", "commit": "e659a77", "area": "Settings",
     "title": "What's new: tap the build line",
     "tryIt": ["☰ menu → tap the build line at the bottom → this page", "Tick an item as tested → turn on Untested only"],
     "checked": "sim"
