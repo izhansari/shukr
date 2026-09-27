@@ -32,11 +32,11 @@ def resolve():
         if e["commit"] != "next":
             continue
         # The oldest commit whose diff added this entry's title.
-        title = json.dumps(e["title"])[1:-1]
+        title = json.dumps(e["title"], ensure_ascii=False)[1:-1]
         hashes = git("log", "--format=%h", "--reverse", "-S", title, "--", "shukr/WhatsNew.json").split()
         if not hashes:
             continue          # not committed yet: stays "next"
-        text = re.sub(r'("commit":\s*)"next"(?=[^\]]*?' + re.escape(json.dumps(e["title"])) + ')',
+        text = re.sub(r'("commit":\s*)"next"(?=[^\]]*?' + re.escape(json.dumps(e["title"], ensure_ascii=False)) + ')',
                       r'\1"' + hashes[0] + '"', text, count=1)
         changed += 1
     FILE.write_text(text)

@@ -282,13 +282,13 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "6143b19", "area": "Zikr",
     "title": "New task: the goal is focused, a ＋ for a new zikr, and New task from a zikr's page",
     "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → ＋ (top right) → the whole new-zikr card (name, text, notes, memo, photo) → Save → you're back with it picked", "Open a zikr (books → Azkar) → ＋ beside \"N tasks\" → the task sheet with that zikr locked", "A zikr with no tasks shows a dashed New task circle instead"],
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "7099059", "area": "Zikr",
     "title": "Choosing a zikr looks like the Azkar page",
     "tryIt": ["New task → tap Zikr → \"Choose a zikr\" with ✕ and ＋, the same rows as Azkar (text, pace), search at the bottom", "The zikr already picked has a green check", "Search also finds words in a zikr's text or notes"],
     "checked": "sim"
