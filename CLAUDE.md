@@ -160,6 +160,14 @@ code; in UI strings write "zikr". New UI text must follow this.
   **⚠️ The hadith sources were written from memory — they need a knowledgeable check before
   release** (with the Tasbih Fatimah reminders).
 - DEBUG `-demoZikrName <name>` with `-demoZikrEmpty` opens that zikr's page.
+- **New task flow:** `AddDailyTaskView` focuses the goal field 0.35 s after it appears (a new task
+  only). `AddDailyTaskView(for: mantra, …)` = a new task with that zikr locked (`lockedMantra`,
+  also true in edit mode). **Creating a zikr always opens the whole card**: `MantraPickerView`'s ＋
+  (top right, beside search) and its "no results" button open `MantraEditorView(mantra: nil,
+  initialName:onCreate:)`; Save calls `onCreate`, which selects it and closes the picker. The old
+  name-only "Add this to list?" alert and `saveToMantraList` are gone. A zikr's page: a glass ＋ at
+  the end of the Tasks header (always) and, with no tasks, the Zikr page's dashed "New task" circle
+  (`MantraTaskCircles(onNewTask:)`); both open the locked task sheet. Sim ✓ both paths.
 
 ## Handoff — 2026-09-25 evening (read this first)
 

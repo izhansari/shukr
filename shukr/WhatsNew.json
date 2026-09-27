@@ -276,9 +276,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "f235e3a", "area": "Zikr",
     "title": "The built-in azkar have their Arabic and a note, and there are four more",
     "tryIt": ["Zikr page → books → Azkar: Alhamdulillah, Subhanallah, Allahu Akbar, Astaghfirullah now show their Arabic", "New: La ilaha illallahu wahdahu, SubhanAllahi wa bihamdihi, Allahumma salli 'ala Muhammad, Hasbunallahu wa ni'mal-wakil", "Open one → the note says what it means and where it's from (long notes scroll in the box)", "Anything you'd already written in a built-in's text or notes is kept"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "title": "New task: the goal is focused, a ＋ for a new zikr, and New task from a zikr's page",
+    "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → ＋ (top right) → the whole new-zikr card (name, text, notes, memo, photo) → Save → you're back with it picked", "Open a zikr (books → Azkar) → ＋ beside \"N tasks\" → the task sheet with that zikr locked", "A zikr with no tasks shows a dashed New task circle instead"],
     "checked": "sim"
   }
 ]

@@ -1258,11 +1258,23 @@ struct AddDailyTaskView: View {
     /// Edit mode: the task being changed. Its mantra is locked (the sheet is opened from that
     /// mantra's page); only goal and units can change, saved after a confirmation.
     private let editingTask: TaskModel?
+    /// A new task from a zikr's page: that zikr is picked and locked (notes #17).
+    private let lockedMantra: Bool
 
     init( isPresented: Binding<Bool>, scrollProxy: Binding<UUID?>) {
         self._isPresented = isPresented
         self._scrollProxy = scrollProxy
         self.editingTask = nil
+        self.lockedMantra = false
+    }
+
+    /// A new task for `mantra`, which can't be changed here.
+    init(for mantra: MantraModel, isPresented: Binding<Bool>) {
+        self._isPresented = isPresented
+        self._scrollProxy = .constant(nil)
+        self.editingTask = nil
+        self.lockedMantra = true
+        _selectedMantra = State(initialValue: mantra)
     }
 
     /// Same sheet, prefilled from `task`, with the mantra locked.
@@ -1270,6 +1282,7 @@ struct AddDailyTaskView: View {
         self._isPresented = isPresented
         self._scrollProxy = .constant(nil)
         self.editingTask = task
+        self.lockedMantra = true
         _goal = State(initialValue: task.goal)
         _taskIsCountMode = State(initialValue: task.isCountMode)
         _selectedMantra = State(initialValue: task.mantra)
@@ -1516,21 +1529,21 @@ struct AddDailyTaskView: View {
                         HStack(spacing: 4) {
                             Text(selectedMantra?.name ?? editingTask?.displayName ?? "Zikr")
                                 .lineLimit(1)
-                            if isEditing {
+                            if lockedMantra {
                                 Image(systemName: "lock.fill").font(.caption2)
                             }
                         }
                             .font(.headline)
-                            .foregroundColor(selectedMantra == nil && !isEditing ? Color.secondary.opacity(0.5) : accentColor.opacity(isEditing ? 0.6 : 1))
+                            .foregroundColor(selectedMantra == nil && !lockedMantra ? Color.secondary.opacity(0.5) : accentColor.opacity(lockedMantra ? 0.6 : 1))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
                                 RoundedRectangle(cornerRadius: 5)
-                                    .stroke(accentColor.opacity(isEditing ? 0.25 : 0.5), lineWidth: 1)
-                                    .foregroundStyle(accentColor.opacity(isEditing ? 0.06 : 0.15))
+                                    .stroke(accentColor.opacity(lockedMantra ? 0.25 : 0.5), lineWidth: 1)
+                                    .foregroundStyle(accentColor.opacity(lockedMantra ? 0.06 : 0.15))
                             )
                     }
-                    .disabled(isEditing)
+                    .disabled(lockedMantra)
                     .sheet(isPresented: $showMantraPicker) {
                         MantraPickerView(
                             isPresented: $showMantraPicker,
@@ -1620,6 +1633,13 @@ struct AddDailyTaskView: View {
             .border(borderColor)
         }
 //        .scrollDismissesKeyboard(.automatic)
+        // A new task starts on the goal: the number pad is up straight away (notes #17). The
+        // short wait lets the cover finish presenting, or the focus is dropped.
+        .task {
+            guard !isEditing else { return }
+            try? await Task.sleep(for: .seconds(0.35))
+            isGoalFocused = true
+        }
 
     }
     

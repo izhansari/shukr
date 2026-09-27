@@ -791,7 +791,9 @@ struct MantraPickerView: View {
     @Binding var selectedSession: SessionDataModel?
 
     @State private var searchQuery: String = ""
-    @State private var showAlertToAdd: Bool = false
+    /// Creating a zikr always opens the whole card (name, text, notes, memo, photo) — never a
+    /// bare name (owner, 2026-09-27, notes #17). Saving it selects it here.
+    @State private var creatingNew = false
 
     private var presentation: Set<PresentationDetent>
     private var filteredMantras: [MantraModel] {
@@ -822,7 +824,7 @@ struct MantraPickerView: View {
 //    var body: some View {
 //        VStack {
 //            // Search Bar
-//            TextField("Search or Add Zikr", text: $searchQuery)
+//            TextField("Search azkar", text: $searchQuery)
 //                .textFieldStyle(RoundedBorderTextFieldStyle())
 //                .padding()
 //            
@@ -901,18 +903,21 @@ struct MantraPickerView: View {
             
             // Search Bar and Add Button
             HStack {
-                TextField("Search or Add Zikr", text: $searchQuery)
+                TextField("Search azkar", text: $searchQuery)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
                     .autocorrectionDisabled(true)
                 
-                    Button(action: {
-                        showAlertToAdd = true
-                    }) {
-                        Image(systemName: "plus.circle")
-                            .foregroundColor(.green.opacity(0.7))
-                    }
-                    .opacity(searchQuery.isEmpty || !uniqueItem ? 0.3 : 1)
-                    .disabled(searchQuery.isEmpty || !uniqueItem)
+                Button {
+                    creatingNew = true
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.green)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.green.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New zikr")
             }
             .padding()
             
@@ -920,12 +925,12 @@ struct MantraPickerView: View {
             if filteredMantras.isEmpty {
                 Spacer()
                 // If no matches, show option to add new mantra
-                VStack {
+                VStack(spacing: 6) {
                     Text("No results.")
-                    Text("Add '\(searchQuery)' as a new zikr?")
-                    Button("Add") {
-                        select(saveToMantraList(searchQuery))
+                    Button("New zikr “\(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines))”") {
+                        creatingNew = true
                     }
+                    .tint(.green)
                 }
                 .padding()
                 Spacer()
@@ -939,16 +944,11 @@ struct MantraPickerView: View {
                 .listStyle(DefaultListStyle())
             }
         }
-        .alert(isPresented: $showAlertToAdd) {
-                    Alert(
-                        title: Text("Add this to list?"),
-                        message: Text("\(searchQuery)"),
-                        primaryButton: .default(Text("Add")) {
-                            select(saveToMantraList(searchQuery))
-                        },
-                        secondaryButton: .cancel()
-                    )
-                }
+        .sheet(isPresented: $creatingNew) {
+            MantraEditorView(mantra: nil, initialName: uniqueItem ? searchQuery : "") { new in
+                select(new)
+            }
+        }
         .onChange(of: selectedMantra) { _, newValue in
             print("Selected mantra: \(newValue ?? "nil")")
         }
@@ -958,18 +958,6 @@ struct MantraPickerView: View {
 //        .presentationDetents(presentation)
     }
     
-    /// The mantra with this name, creating it if there isn't one.
-    private func saveToMantraList(_ name: String) -> MantraModel {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let existing = mantraItems.first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
-            return existing
-        }
-        let newMantraItem = MantraModel(name: trimmed)
-        context.insert(newMantraItem)
-        print("Saved new mantra: \(trimmed)")
-        return newMantraItem
-    }
-
     // Conditionally assign the mantra to a session if selectedSession is not nil
     private func assignMantraToSession(_ mantra: MantraModel) {
         if let session = selectedSession {

@@ -604,10 +604,16 @@ struct MantraEditorView: View {
     @State private var showTitle = false
     /// Viewing by default; the pencil unlocks the fields in place (a new mantra starts editing).
     @State private var isEditing: Bool
+    /// The task sheet for a new task with this zikr locked in (notes #17).
+    @State private var creatingTask = false
 
-    init(mantra: MantraModel?) {
+    /// Create only: called with the new zikr once it's saved (the picker selects it).
+    var onCreate: ((MantraModel) -> Void)? = nil
+
+    init(mantra: MantraModel?, initialName: String = "", onCreate: ((MantraModel) -> Void)? = nil) {
         self.mantra = mantra
-        _name = State(initialValue: mantra?.name ?? "")
+        self.onCreate = onCreate
+        _name = State(initialValue: mantra?.name ?? initialName.trimmingCharacters(in: .whitespacesAndNewlines))
         _fullText = State(initialValue: mantra?.fullText ?? "")
         _notes = State(initialValue: mantra?.notes ?? "")
         _quickAdd = State(initialValue: mantra?.quickAddStep ?? 0)
@@ -681,12 +687,22 @@ struct MantraEditorView: View {
                     .listRowBackground(Color.clear)
 
                     Section {
-                        MantraTaskCircles(mantra: mantra)
+                        MantraTaskCircles(mantra: mantra) { creatingTask = true }
                     } header: {
-                        HStack {
+                        HStack(spacing: 10) {
                             Text("Tasks")
                             Spacer()
                             Text(mantra.tasks.count == 1 ? "1 task" : "\(mantra.tasks.count) tasks")
+                            // Always here, however many tasks (owner).
+                            Button { creatingTask = true } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.green)
+                                    .frame(width: 28, height: 28)
+                                    .mapGlass(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("New task with this zikr")
                         }
                         .padding(.horizontal, 16)
                     }
@@ -738,6 +754,9 @@ struct MantraEditorView: View {
             }
             // Don't lose typed edits to a swipe; with no edits it swipes away like any sheet.
             .interactiveDismissDisabled(mantra != nil && hasEdits)
+            .fullScreenCover(isPresented: $creatingTask) {
+                if let mantra { AddDailyTaskView(for: mantra, isPresented: $creatingTask) }
+            }
         }
     }
 
@@ -765,7 +784,10 @@ struct MantraEditorView: View {
             new.imageData = draftImage
             new.audioData = draftAudio
             context.insert(new)
+            try? context.save()
+            triggerSomeVibration(type: .success)
             dismiss()
+            onCreate?(new)
         }
     }
 
@@ -795,13 +817,16 @@ struct MantraEditorView: View {
 /// mantra locked); long-press → Edit / Delete.
 struct MantraTaskCircles: View {
     let mantra: MantraModel
+    /// The empty state's dashed "New task" circle.
+    var onNewTask: () -> Void = {}
     @Environment(\.modelContext) private var context
     @Query private var todaysSessions: [SessionDataModel]
     @State private var editing: TaskModel?
     @State private var deleting: TaskModel?
 
-    init(mantra: MantraModel) {
+    init(mantra: MantraModel, onNewTask: @escaping () -> Void = {}) {
         self.mantra = mantra
+        self.onNewTask = onNewTask
         let todayStart = PrayerDay.sessionDayStart()   // the prayer day (Fajr to Fajr)
         _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart })
     }
@@ -810,11 +835,15 @@ struct MantraTaskCircles: View {
 
     var body: some View {
         if tasks.isEmpty {
-            Text("No tasks use this zikr.")
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            // Like the Zikr page's last circle.
+            ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
+                .scaleEffect(0.7)
+                .frame(width: 140, height: 140)
+                .contentShape(Circle())
+                .onTapGesture { onNewTask() }
+                .accessibilityAddTraits(.isButton)
+                .frame(maxWidth: .infinity)
+                .frame(height: 152)
         } else {
             // The focused circle sits in the middle of the width (owner).
             GeometryReader { geo in
