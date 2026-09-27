@@ -64,6 +64,11 @@ struct shukrApp: App {
             SharedStore.runV2DataPass(in: container)
             // Rows scored by the old rule (fraction of window left) → points, once.
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-demoBackUpStore") {
+                PrayerScoring.backUpStore(label: "debug-\(Int(Date().timeIntervalSince1970))")
+            }
+            #endif
             return container
         } catch {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.

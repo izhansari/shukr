@@ -103,6 +103,13 @@ enum SharedStore {
             do { try fm.moveItem(at: from, to: to) }
             catch { print("❌ store recovery: couldn't move \(from.lastPathComponent): \(error)"); return nil }
         }
+        // Its photos / voice memos (external storage) go aside with it, never deleted.
+        let support = url.deletingLastPathComponent().appending(path: ".shukr_SUPPORT")
+        if fm.fileExists(atPath: support.path) {
+            let aside = url.deletingLastPathComponent().appending(path: "shukr.store.unopenable-\(stamp)_SUPPORT")
+            do { try fm.moveItem(at: support, to: aside) }
+            catch { print("⚠️ store recovery: couldn't set the media aside: \(error)") }
+        }
         UserDefaults(suiteName: appGroup)?.set(false, forKey: legacyImportedKey) // re-import from default.store
         do {
             let fresh = try makeContainer()

@@ -1773,6 +1773,11 @@ MantrasView.swift — mantra page section and the pause card. Migrated on the ow
 **Backup before any migration**: `SharedStore.makeContainer()` (app only) copies the store to
 `<group>/Library/Backups/shukr.store.before-<version>` whenever it's about to open a store that
 isn't at the current version — the group root isn't reachable with `devicectl`, Library is.
+Since 2026-09-27 the backup also copies the external-storage folder (zikr photos / voice memos,
+`.shukr_SUPPORT/_EXTERNAL_DATA` beside the store) as `Library/Backups/shukr_SUPPORT.<label>` —
+visible on purpose; to restore, put it back beside the store as `.shukr_SUPPORT`.
+`recoverFromUnopenableStore` sets it aside with the store (`shukr.store.unopenable-<stamp>_SUPPORT`).
+DEBUG `-demoBackUpStore` makes a `debug-<time>` backup at launch.
 **Pause card ✎** opens `MantraCardEditor` (MantrasView.swift): the card itself, editable (name,
 full mantra in the inset box, notes, count in sets) on the pause colour; Save gray until a change,
 no swipe-dismiss with edits; a rename updates the session title on dismiss. The Mantras page still

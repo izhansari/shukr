@@ -148,6 +148,14 @@ enum PrayerScoring {
             guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { continue }
             do { try fm.copyItem(at: from, to: to) } catch { print("⚠️ store backup \(suffix): \(error.localizedDescription)") }
         }
+        // External-storage blobs (zikr photos / voice memos, schema 2.5.0) live beside the store
+        // in .shukr_SUPPORT/_EXTERNAL_DATA; the rows only point at them. Kept visible here — to
+        // restore, put it back next to the store as ".shukr_SUPPORT".
+        let support = group.appending(path: ".shukr_SUPPORT")
+        let supportCopy = dir.appending(path: "shukr_SUPPORT.\(label)")
+        if fm.fileExists(atPath: support.path), !fm.fileExists(atPath: supportCopy.path) {
+            do { try fm.copyItem(at: support, to: supportCopy) } catch { print("⚠️ store backup (media): \(error.localizedDescription)") }
+        }
     }
 
     /// Average of the five prayers' points; unmarked (or missing) prayers count 0.
