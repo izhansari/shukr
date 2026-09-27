@@ -1910,10 +1910,10 @@ lagged — its per-frame `@State dragX` re-rendered both lists). `.scrollTargetB
 the right page — the first layout ignores the initial position). No swipes on either page: History
 and Azkar both delete via Edit → select → Delete (Azkar: native List selection, built-ins
 `selectionDisabled` and dimmed; `MantraModel.delete` per zikr). Paging is off while editing or while
-the history chart is scrubbed (`LibraryPagerLock`, taken by a simultaneous drag on the chart):
+the history chart is scrubbed (`LibraryPagerLock`, driven by a `@GestureState` on the chart so a system-cancelled scrub can't leave it locked; also unlocked on disappear; `scrollPosition(id:anchor: .center)` so the switch changes past halfway):
 `.scrollDisabled` on the pager with `.scrollDisabled(false)` on each page so the lists still scroll.
 (A UIKit `isScrollEnabled` switch didn't stick — SwiftUI resets it.) iOS 26's swipe-back-from-
-anywhere still works while editing (a right swipe closes the page). `NoPageZones` is gone.
+anywhere still works while editing (a right swipe closes the page). `NoPageZones` is gone. **Trap:** a `@Query` with `#Predicate { $0.builtInID == nil }` (+ fetchLimit) in this view looped SwiftUI's layout at 100 % CPU and the page never appeared — the view fetches all azkar and checks `isBuiltIn` in memory instead. Several azkar delete via `MantraModel.deleteMany` (one save / reschedule / widget reload).
 The old write-up follows. **History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side
 in our own pager with a History | Mantras segmented switch in the nav bar that follows. A sideways
 drag turns the page **only when it starts on the background** (owner): rows (sessions, mantras)

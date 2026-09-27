@@ -2,11 +2,12 @@
 //  MantrasView.swift
 //  shukr
 //
-//  Manage the mantra list from the side menu. A mantra has a short `name` (what cards, the
-//  picker and session titles show), the `fullText` (Arabic / transliteration) and free `notes`.
-//  The four built-ins are ordinary rows here — seeded on migration / first launch — so they can
-//  be edited like the rest. Tasks and sessions point at the row, so a rename shows everywhere;
-//  deleting a row unlinks them (tasks fall back to their name snapshot, sessions keep `title`).
+//  The Azkar library (code name "mantra"). A zikr has a short `name` (what cards, the picker and
+//  session titles show), the `fullText` (Arabic / transliteration), free `notes`, a photo and a
+//  voice memo. Built-ins (`builtInID`) are locked: name and text fixed, never deleted. Tasks and
+//  sessions point at the row, so a rename shows everywhere. Deleting a zikr deletes its tasks too
+//  (and their reminders); its sessions stay in history under their saved title
+//  (`MantraModel.delete` / `deleteMany`).
 //
 
 import SwiftUI
@@ -154,14 +155,15 @@ struct MantrasView: View {
         var parts: [String] = []
         if tasks > 0 { parts.append(tasks == 1 ? "Their 1 task is deleted too." : "Their \(tasks) tasks are deleted too.") }
         if sessions > 0 { parts.append(sessions == 1 ? "Their 1 session stays in your history." : "Their \(sessions) sessions stay in your history.") }
-        return parts.isEmpty ? "This can't be undone." : parts.joined(separator: " ")
+        parts.append("This can't be undone.")
+        return parts.joined(separator: " ")
     }
 
     private func deleteSelected() {
         let doomed = selectedMantras
         selection.removeAll()
         if let editing { editing.wrappedValue = false } else { ownEditing = false }
-        withAnimation { for m in doomed { MantraModel.delete(m, in: context) } }
+        withAnimation { MantraModel.deleteMany(doomed, in: context) }
         triggerSomeVibration(type: .medium)
     }
 }
@@ -184,12 +186,28 @@ extension MantraModel {
         }
     }
 
+    /// Several at once: one save, one reschedule, one widget reload.
+    @MainActor static func deleteMany(_ mantras: [MantraModel], in context: ModelContext) {
+        let doomed = mantras.filter { !$0.isBuiltIn }
+        guard !doomed.isEmpty else { return }
+        let tasks = doomed.flatMap { Array($0.tasks) }
+        let taskIDs = Set(tasks.map(\.id)), taskModels = Set(tasks.map(\.persistentModelID))
+        for task in tasks { context.delete(task) }
+        for m in doomed { context.delete(m) }
+        try? context.save()
+        if !tasks.isEmpty {
+            NotificationScheduler.reschedule(context: context, reason: "azkar deleted")
+            WidgetCenter.shared.reloadAllTimelines()
+            TaskModel.deleted(taskIDs, models: taskModels)
+        }
+    }
+
     /// What deleting it does, for the confirmation.
     static func deleteMessage(_ mantra: MantraModel) -> String {
         let t = mantra.tasks.count, n = mantra.sessions.count
         let tasks = t == 0 ? "" : (t == 1 ? "Its task is deleted too. " : "Its \(t) tasks are deleted too. ")
-        let sessions = n == 0 ? "" : (n == 1 ? "Its session stays in your history." : "Its \(n) sessions stay in your history.")
-        return (tasks + sessions).isEmpty ? "This can't be undone." : tasks + sessions
+        let sessions = n == 0 ? "" : (n == 1 ? "Its session stays in your history. " : "Its \(n) sessions stay in your history. ")
+        return tasks + sessions + "This can't be undone."
     }
 }
 
@@ -654,8 +672,12 @@ struct ZikrLibraryView: View {
     /// Held while the history chart is being scrubbed (and while editing): no paging.
     @State private var lock = LibraryPagerLock()
 
-    /// Just whether there's any session (History's Edit hides when there are none).
+    /// Just whether there's any session / any own zikr (the Edit buttons hide without). The azkar
+    /// are few, so all are fetched and checked here: a `#Predicate { $0.builtInID == nil }` query
+    /// looped SwiftUI's layout at 100 % CPU (the library never appeared).
     @Query private var anySession: [SessionDataModel]
+    @Query private var allZikr: [MantraModel]
+    private var hasOwnZikr: Bool { allZikr.contains { !$0.isBuiltIn } }
 
     private let start: Tab
 
@@ -666,6 +688,7 @@ struct ZikrLibraryView: View {
         var one = FetchDescriptor<SessionDataModel>()
         one.fetchLimit = 1
         _anySession = Query(one)
+
     }
 
     private var editing: Bool { editingHistory || editingAzkar }
@@ -687,7 +710,8 @@ struct ZikrLibraryView: View {
         // Editing (a sideways drag would page and drop the selection) or scrubbing the chart.
         .scrollDisabled(editing || lock.locked)
         .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $page)
+        // Anchored at the centre: the switch changes past halfway, not on the first pixel of a drag.
+        .scrollPosition(id: $page, anchor: .center)
         // The first layout ignores the initial scroll position: start on the right page.
         .defaultScrollAnchor(start == .mantras ? .trailing : .leading)
         .scrollIndicators(.hidden)
@@ -720,11 +744,13 @@ struct ZikrLibraryView: View {
                 }
             }
             if tab == .mantras {   // a hidden button still drew its empty glass circle
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button(editingAzkar ? "Done" : "Edit") {
-                        withAnimation { editingAzkar.toggle() }
+                if hasOwnZikr || editingAzkar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(editingAzkar ? "Done" : "Edit") {
+                            withAnimation { editingAzkar.toggle() }
+                        }
+                        .fontWeight(editingAzkar ? .semibold : .regular)
                     }
-                    .fontWeight(editingAzkar ? .semibold : .regular)
                 }
                 if !editingAzkar {
                     ToolbarItem(placement: .topBarTrailing) {

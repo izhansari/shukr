@@ -177,6 +177,7 @@ struct HistoryPageView: View {
 struct ZikrHistoryHeader: View {
     let sessions: [SessionDataModel]
     @Environment(LibraryPagerLock.self) private var pagerLock: LibraryPagerLock?
+    @GestureState private var scrubbing = false
     @State private var picked: Date?
 
     private struct Day: Identifiable { let date: Date; let count: Int; let seconds: TimeInterval; var id: Date { date } }
@@ -260,17 +261,18 @@ struct ZikrHistoryHeader: View {
                                 }
                             }
                             .onEnded { _ in
-                                pagerLock?.locked = false
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { picked = nil } }
                             }
                     )
                     // The touch lands here first: hold the library's pager so a sideways scrub
                     // never turns the page (the pager's pan needs ~10 pt before it starts).
-                    .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
-                        if pagerLock?.locked == false { pagerLock?.locked = true }
-                    }.onEnded { _ in pagerLock?.locked = false })
+                    // @GestureState resets by itself even when the system cancels the touch
+                    // (a call, Control Center, the list's pan winning) — onEnded wouldn't run.
+                    .simultaneousGesture(DragGesture(minimumDistance: 0).updating($scrubbing) { _, s, _ in s = true })
                 }
                 .frame(height: 84)
+                .onChange(of: scrubbing) { _, on in pagerLock?.locked = on }
+                .onDisappear { pagerLock?.locked = false }
             }
             .padding(.horizontal, 4)
 
@@ -543,7 +545,9 @@ struct SessionRow: View {
 @MainActor @Observable final class PaceCoordinator {
     static let shared = PaceCoordinator()
     var activeID: PersistentIdentifier?
-    static func stopAll() { shared.activeID = nil }
+    /// Only writes when something is pacing: an @Observable write notifies even with the same
+    /// value, and the pager calls this on every position change (it looped the layout).
+    static func stopAll() { if shared.activeID != nil { shared.activeID = nil } }
 }
 
 /// A soft green glow hugging the row's edge that flashes once per `beat` — the same blurred
