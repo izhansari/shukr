@@ -9,7 +9,7 @@
     {"id": "masjid-filter", "area": "Map", "title": "Filter your prayer pins to \"Only at a masjid\""},
     {"id": "masjid-duas", "area": "Settings", "title": "Duas when you arrive at / leave your masajid (opt-in)"},
     {"id": "holy-cities", "area": "Location", "title": "A welcome in Makkah and Madinah"},
-    {"id": "widget-next", "area": "Widget", "title": "The Prayers widget shows a prayer that hasn't started as NEXT with a dashed ring"},
+    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring with the day's five prayers as dots, your choice of bottom corners, and a times list that goes back to the ring"},
     {"id": "time-editor-opens", "area": "Salah", "title": "The time editor opens on the time you saved"},
     {"id": "move-prayer", "area": "Salah", "title": "Change where you prayed: drag the map under the pin, or type an address",
      "tryIt": ["Long-press a done prayer → edit time → the location chip → drag the map under the pin", "Tap the address → type one → pick a suggestion; it says how far that is from where you marked it", "Set → Save"]},
@@ -465,10 +465,16 @@
       "checked": "sim"
     },
     {
-      "id": "zikr-history-7", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "id": "zikr-history-7", "date": "2026-09-27", "commit": "04c4dab", "time": "2026-09-27T14:43:31-04:00", "topic": "zikr-history", "notes": "#2",
       "title": "Azkar's ＋ sits beside the search field at the bottom and slides in; a long press no longer leaves a session grey",
       "tryIt": ["Books → swipe to Azkar → the ＋ appears next to \"Search azkar\"", "History → hold a session to feel its pace, let go → the row goes back to normal"],
       "checked": "sim"
+    },
+    {
+      "id": "widget-next-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "widget-next", "notes": "#1",
+      "title": "Prayers widget: prayer dots, choosable corners (no duplicates), a new times list that returns to the ring",
+      "tryIt": ["The dots along the bottom: done in its score colour, started = outlined, later = dim", "Long-press → Edit Widget → Bottom left / Bottom right: Qibla, Tasbeeh, Daily Ayah, 99 Names or None (the right can't repeat the left)", "Tap the list icon → the day's times in the app's look; it goes back to the ring after 30 s"],
+      "checked": "sim", "shots": ["wn-prayers-widget-v2.jpg"]
     }
   ]
 }

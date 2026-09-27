@@ -51,13 +51,18 @@ struct PrayersWidgetEntry: TimelineEntry {
     var completedToday: Set<String> { Set(completedScores.keys) }
     /// Tomorrow's Fajr, for the circle once the day's prayers are over.
     var nextFajr: Date? = nil
+    /// The bottom corners (Edit Widget; notes #1).
+    var leftCorner: WidgetCornerAction = .qibla
+    var rightCorner: WidgetCornerAction = .tasbeeh
 
-    /// The same data, shown from `date` on (a later timeline entry).
-    func at(_ date: Date) -> PrayersWidgetEntry {
+    /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
+    /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
+    func at(_ date: Date, list: Bool? = nil) -> PrayersWidgetEntry {
         PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
-                           toggleShowAllTImes: toggleShowAllTImes, prayerDict: prayerDict,
+                           toggleShowAllTImes: list ?? toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
-                           completedScores: completedScores, nextFajr: nextFajr)
+                           completedScores: completedScores, nextFajr: nextFajr,
+                           leftCorner: leftCorner, rightCorner: rightCorner)
     }
 }
 
@@ -97,33 +102,40 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     }
     
     func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> PrayersWidgetEntry {
-        // Called when the system wants a quick "snapshot" — often for widget previews.
-        // You can replicate the logic from 'timeline' or do something simpler.
-        return await makeEntry()
+        // The gallery / Edit Widget preview always shows the ring (what people get by default).
+        let entry = await makeEntry(configuration)
+        return context.isPreview ? entry.at(entry.date, list: false) : entry
     }
-    
+
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<PrayersWidgetEntry> {
-        let entry = await makeEntry()
+        let entry = await makeEntry(configuration)
+        var entries = [entry]
+        // The times list doesn't stick: the ring again `openFor` after it was opened (one entry).
+        var base = entry
+        if entry.toggleShowAllTImes, let openedAt = WidgetListState.openedAt {
+            base = entry.at(max(openedAt.addingTimeInterval(WidgetListState.openFor), entry.date.addingTimeInterval(1)), list: false)
+            entries.append(base)
+        }
         // Plus an entry when the shown prayer starts (and when it ends), so the Lock Screen's dashed
         // "next" ring turns into the live ring on time rather than at the next (throttled) reload.
-        // A couple of entries at most — a long timeline was "not performant" (owner).
-        var entries = [entry]
-        let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: entry).relevantPrayer
-        if !shown.current, shown.start > entry.date, shown.end > shown.start {
-            entries.append(entry.at(shown.start))
-            entries.append(entry.at(shown.end))
-        } else if shown.current, shown.end > entry.date {
-            entries.append(entry.at(shown.end))
+        // A few entries at most — a long timeline was "not performant" (owner). No per-minute ones.
+        let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: base).relevantPrayer
+        var moments: [Date] = []
+        if !shown.current, shown.start > base.date, shown.end > shown.start {
+            moments = [shown.start, shown.end]
+        } else if shown.current, shown.end > base.date {
+            moments = [shown.end]
         }
+        entries += moments.map { base.at($0, list: false) }
         let nextRefresh = Date().addingTimeInterval(60)
-        return Timeline(entries: entries, policy: .after(nextRefresh))
+        return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
     }
-    
+
     /// Helper function that calculates the data you want in the widget entry.
-    private func makeEntry() async -> PrayersWidgetEntry {
+    private func makeEntry(_ configuration: ConfigurationAppIntent? = nil) async -> PrayersWidgetEntry {
         // Grab the values from your location manager
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")!
-        let showLocation = store.bool(forKey: "toggleShowAllTImes")
+        let showLocation = WidgetListState.isOpen(at: Date())
         let latitude = store.double(forKey: "lastLatitude")
         let longitude = store.double(forKey: "lastLongitude")
         let locationName = store.string(forKey: "lastCityName") ?? "Wonderland"
@@ -169,9 +181,27 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             toggleShowAllTImes: showLocation, prayerDict: windows,
             todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
             completedScores: SharedStore.completedPrayerScoresToday(),
-            nextFajr: nextFajr
+            nextFajr: nextFajr,
+            leftCorner: configuration?.corners.left ?? .qibla,
+            rightCorner: configuration?.corners.right ?? .tasbeeh
         )
-        
+        #if DEBUG
+        // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
+        if let demo = store.string(forKey: "demoWidget.scores") {
+            var scores: [String: Double] = [:]
+            for pair in demo.split(separator: ",") {
+                let kv = pair.split(separator: "=")
+                if kv.count == 2, let v = Double(kv[1]) { scores[String(kv[0])] = v }
+            }
+            let corners = (store.string(forKey: "demoWidget.corners") ?? "").split(separator: ",").compactMap { WidgetCornerAction(rawValue: String($0)) }
+            return PrayersWidgetEntry(date: entry.date, heading: 0, latitude: latitude, longitude: longitude,
+                                      toggleShowAllTImes: showLocation, prayerDict: windows,
+                                      todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
+                                      completedScores: scores, nextFajr: nextFajr,
+                                      leftCorner: corners.first ?? entry.leftCorner,
+                                      rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner)
+        }
+        #endif
         return entry
     }
 }
@@ -194,108 +224,133 @@ struct PrayersWidgetView: View {
 
     private var homeScreen: some View {
         ZStack {
-            // Main content centered
             if entry.toggleShowAllTImes {
-//                ZStack {
-////                    Color.black
-//                    Color("widgetBgColor")
-//                        .ignoresSafeArea()
-//                }
-                //Old Top Button
-                VStack{
-                    HStack{
-    
-                        Button(intent: showListToggleIntent()) {
-                            Image(systemName: "chevron.left")
-                                .font(.caption2)
-                                .foregroundColor(.primary/*.white*/)
-                                .frame(width: 20, height: 20)
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                        
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 9)
-                .padding(.vertical, 13)
-                
-                VStack (alignment: .center){
-                    
-                    //debugDetailsView(entry: entry)
-                    
-                    Label(entry.locationName, systemImage: "location.fill")
-                        .fontDesign(.rounded)
-                        .font(.system(size: 12))
-
-                    Divider().background(Color.secondary)
-                    
-                    TimesListView(prayerOrder: prayerOrder, entry: entry)
-                }
-                .foregroundColor(.primary/*.white*/)
-            }
-            else {
+                TimesListView(entry: entry)
+            } else {
                 WidgetPrayerCircleView(entry: entry)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
-    
+
+    /// Today's times in the app's look (2026-09-27, notes #1): a back button and the city as a tiny
+    /// caption; the five prayers + Sunrise (dimmed); the current prayer in sage, done ones with
+    /// their score dot, the next one tagged. Rounded light type like the ring. It goes back to the
+    /// ring by itself after `WidgetListState.openFor` (the timeline's next entry).
     struct TimesListView: View {
-        let prayerOrder: [String]
         let entry: PrayersWidgetEntry
-        
+        private let order = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+        /// The first prayer that hasn't started (not Sunrise).
+        private var nextName: String? {
+            order.first { $0 != "Sunrise" && (entry.prayerDict[$0]?.start ?? .distantPast) > entry.date }
+        }
+
         var body: some View {
-            VStack(spacing: 3){
-                ForEach(prayerOrder, id: \.self) { name in
-                    if let prayer = entry.prayerDict[name] {
-                        let currentPrayer: Bool = prayer.start <= entry.date && entry.date < prayer.end
-                        var progressColor: Color {
-                            guard (currentPrayer) else { return .secondary }
-                            
-                            let elapsedDuration = entry.date.timeIntervalSince(prayer.start)
-                            let totalDuration = prayer.end.timeIntervalSince(prayer.start)
-                            let progress: Double = elapsedDuration / totalDuration
-                            
-                            if progress < 0.5 { return .green }
-                            else if progress < 0.75 { return .yellow }
-                            else if progress < 1 { return .red }
-                            else {return .secondary}
-                        }
-                        HStack {
-                            Text(name)
-                            Spacer()
-                            Text("\(shortTime(prayer.start))")
-                        }
-                        .padding(.horizontal)
-                        .fontDesign(.rounded)
-//                        .fontWeight(.thin)
-                        .fontWeight(currentPrayer ? .regular : .thin)
-//                        .foregroundStyle(.white)
-                        .foregroundStyle(/*currentPrayer ? progressColor : */.primary/*.white*/)
-                        .font(.system(size: 13))
-//                        .border(prayer.start <= Date() && Date() < prayer.end ? .green : .clear, width: 0.5)
-                        if name != "Isha"{
-                            Divider().background(Color.secondary.opacity(0.4))
-                        }
-                        
-                        
-                    } else {
-                        HStack{
-                            Text(name)
-                            Spacer()
-                            Text("7:00")
-                        }
-                        
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Button(intent: showListToggleIntent()) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 24, height: 24)
+                            .background(Circle().fill(Color.primary.opacity(0.08)))
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to the ring")
+                    Text(entry.locationName.lowercased())
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .tracking(1)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: 0)
+                }
+                .padding(.bottom, 6)
+
+                ForEach(order, id: \.self) { name in
+                    if let p = entry.prayerDict[name] {
+                        row(name, p.start, p.end)
                     }
                 }
             }
-            .font(.footnote)
-            .frame(width: 120)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+
+        private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
+            let sunrise = name == "Sunrise"
+            let current = !sunrise && start <= entry.date && entry.date < end
+            let score = entry.completedScores[name]
+            return HStack(spacing: 6) {
+                PrayerDot(score: score, started: start <= entry.date, current: current)
+                    .opacity(sunrise ? 0 : 1)
+                Text(name)
+                    .font(.system(size: 12, weight: current ? .regular : .light, design: .rounded))
+                if name == nextName {
+                    Text("next")
+                        .font(.system(size: 7, weight: .medium, design: .rounded))
+                        .tracking(1)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer(minLength: 4)
+                Text(start, style: .time)
+                    .font(.system(size: 11, weight: current ? .regular : .light, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(current ? Brand.sage : (sunrise ? Color.secondary.opacity(0.7) : Color.primary))
+            .padding(.vertical, 2.5)
+            .padding(.horizontal, 5)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(current ? Brand.sage.opacity(0.14) : Color.clear))
         }
     }
 
-    
+    /// One prayer at a glance (display only): done = filled in its score colour, faded like the
+    /// app's list dots; started but not marked = outlined; not started = dim.
+    struct PrayerDot: View {
+        let score: Double?
+        let started: Bool
+        var current = false
+        var size: CGFloat = 7
+
+        var body: some View {
+            ZStack {
+                if let score {
+                    Circle().fill(PrayerScoring.color(for: score).opacity(0.6))
+                    Circle().strokeBorder(PrayerScoring.color(for: score).opacity(0.9), lineWidth: 0.75)
+                } else if started {
+                    Circle().strokeBorder(current ? Brand.sage : Color.secondary.opacity(0.7), lineWidth: 1)
+                } else {
+                    Circle().fill(Color.primary.opacity(0.12))
+                }
+            }
+            .frame(width: size, height: size)
+        }
+    }
+
+    /// The day's five prayers as dots (no Sunrise), same prayer day as the app.
+    struct PrayerDotsRow: View {
+        let entry: PrayersWidgetEntry
+        var spacing: CGFloat = 5
+        var body: some View {
+            HStack(spacing: spacing) {
+                ForEach(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"], id: \.self) { name in
+                    let p = entry.prayerDict[name]
+                    PrayerDot(score: entry.completedScores[name],
+                              started: (p?.start ?? .distantFuture) <= entry.date,
+                              current: p.map { $0.start <= entry.date && entry.date < $0.end } ?? false)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(entry.completedScores.count) of 5 prayers done")
+        }
+    }
+
     struct WidgetPrayerCircleView: View {
         let entry: PrayersWidgetEntry
         
@@ -439,8 +494,9 @@ struct PrayersWidgetView: View {
                     Spacer()
                 }
 
-                // A button in each corner (2026-09-25; was a boxed row of three under the circle):
-                // today's times · mark prayed / qibla · tasbeeh. Same intents as before.
+                // A button in each corner (2026-09-25): today's times · mark prayed on top; the
+                // bottom two are chosen in Edit Widget (Qibla / Tasbeeh by default, or Daily Ayah,
+                // 99 Names, None). The day's five prayers sit between them as dots (display only).
                 VStack {
                     HStack {
                         CornerButton(intent: showListToggleIntent(), systemImage: "list.bullet")
@@ -448,13 +504,26 @@ struct PrayersWidgetView: View {
                         checkButton
                     }
                     Spacer()
-                    HStack {
-                        CornerButton(intent: OpenCompassIntent(), systemImage: "location")
-                        Spacer()
-                        CornerButton(intent: OpenTasbeehIntent(), systemImage: "circle.hexagonpath")
+                    HStack(spacing: 0) {
+                        corner(entry.leftCorner)
+                        Spacer(minLength: 2)
+                        PrayerDotsRow(entry: entry, spacing: bothCornersEmpty ? 9 : 5)
+                        Spacer(minLength: 2)
+                        corner(entry.rightCorner)
                     }
                 }
                 .padding(6)
+            }
+        }
+
+        private var bothCornersEmpty: Bool { entry.leftCorner == .none && entry.rightCorner == .none }
+
+        /// A chosen corner, or an empty 30 pt slot for None (so the dots stay centred).
+        @ViewBuilder private func corner(_ action: WidgetCornerAction) -> some View {
+            if let intent = action.intent, let symbol = action.symbol {
+                CornerButton(intent: intent, systemImage: symbol)
+            } else {
+                Color.clear.frame(width: bothCornersEmpty ? 0 : 30, height: 30)
             }
         }
 
@@ -566,7 +635,7 @@ import Adhan
         heading: 10,
         latitude: 33,
         longitude: 43,
-        toggleShowAllTImes: true, prayerDict: dummyWindows,
+        toggleShowAllTImes: false, prayerDict: dummyWindows,
         todayPrayerTimes: dummyPrayerTimes, locationName: dummyLocationName, textToggle: false
     )
 }

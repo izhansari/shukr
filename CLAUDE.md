@@ -802,6 +802,18 @@ too many sheets.
 - The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
   the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
   (WidgetKit can render future entries ahead of time).
+- **Home-screen Prayers widget v2 (2026-09-27, notes #1):** five display-only `PrayerDot`s along
+  the bottom between the corners (done = score colour, started = outlined, later = dim; prayer
+  day = `completedPrayerScoresToday`); the bottom corners come from Edit Widget
+  (`ConfigurationAppIntent.bottomLeft / bottomRight`, `WidgetCornerAction`: Qibla / Tasbeeh / Daily
+  Ayah / 99 Names / None; defaults Qibla / Tasbeeh; "Bottom right" leaves out the left's choice via
+  `BottomRightOptions` — two-way dependencies are a circular type reference — and `corners` shows
+  the next unused one if both still match). The times list (`TimesListView`, app look) doesn't
+  stick: `WidgetListState` stores when it opened, the timeline adds one ring entry 30 s later, a
+  tap while it's up closes it. The gallery / Edit preview always shows the ring. The Lock Screen
+  families share the intent, so their Edit Widget also lists the two (unused) corner settings.
+  DEBUG `-demoWidget "Fajr=1.0,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,names] [-demoWidgetList]`
+  (`off` clears) feeds the widget fixed scores for screenshots.
 - **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
   the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
   thin dashed ring and a tiny NEXT (circular).

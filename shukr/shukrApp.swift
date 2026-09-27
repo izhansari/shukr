@@ -10,6 +10,7 @@ import SwiftData
 import CoreLocation
 import UserNotifications
 import CoreHaptics
+import WidgetKit
 
 
 @main
@@ -69,6 +70,28 @@ struct shukrApp: App {
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
                i + 1 < ProcessInfo.processInfo.arguments.count {
                 UserDefaults(suiteName: SharedStore.appGroup)?.set(ProcessInfo.processInfo.arguments[i + 1] == "on", forKey: NextLabel.key)
+            }
+            // `-demoWidget "Fajr=0.95,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,none] [-demoWidgetList]`:
+            // the Prayers widget (DEBUG) shows these scores / corners / the list, for screenshots.
+            // `-demoWidget off` clears it.
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-demoWidget"), i + 1 < args.count {
+                let group = UserDefaults(suiteName: SharedStore.appGroup)
+                if args[i + 1] == "off" {
+                    group?.removeObject(forKey: "demoWidget.scores"); group?.removeObject(forKey: "demoWidget.corners")
+                } else {
+                    group?.set(args[i + 1], forKey: "demoWidget.scores")
+                    if let j = args.firstIndex(of: "-demoWidgetCorners"), j + 1 < args.count {
+                        group?.set(args[j + 1], forKey: "demoWidget.corners")
+                    } else { group?.removeObject(forKey: "demoWidget.corners") }
+                }
+                if args.contains("-demoWidgetList") {
+                    group?.set(true, forKey: WidgetListState.openKey)
+                    group?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
+                } else {
+                    group?.set(false, forKey: WidgetListState.openKey)
+                }
+                WidgetCenter.shared.reloadAllTimelines()
             }
             if ProcessInfo.processInfo.arguments.contains("-demoBackUpStore") {
                 PrayerScoring.backUpStore(label: "debug-\(Int(Date().timeIntervalSince1970))")

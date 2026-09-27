@@ -32,7 +32,7 @@ private extension View {
 
 /// The app's greens, from the Daily Ayah share card: deep-green ink and a leaf-green accent on
 /// mint; white and a brighter green on forest.
-private enum Brand {
+enum Brand {   // (internal: the Prayers widget uses sage too)
     static let accentLight = Color(red: 0.12, green: 0.52, blue: 0.29)
     static let accentDark = Color(red: 0.45, green: 0.85, blue: 0.55)
     static let inkLight = Color(red: 0.06, green: 0.15, blue: 0.10)

@@ -516,16 +516,39 @@ struct OpenNamesIntent: AppIntent {
     }
 }
 
+/// The Prayers widget's times list doesn't stick (2026-09-27, notes #1): opening it stores when,
+/// and the timeline shows the list now plus the ring again `openFor` seconds later.
+enum WidgetListState {
+    static let openKey = "toggleShowAllTImes"
+    static let openedAtKey = "widgetListOpenedAt"
+    static let openFor: TimeInterval = 30
+
+    static var openedAt: Date? {
+        let store = UserDefaults(suiteName: SharedStore.appGroup)
+        guard store?.bool(forKey: openKey) == true else { return nil }
+        let t = store?.double(forKey: openedAtKey) ?? 0
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+    /// Showing at `date` (opened less than `openFor` ago).
+    static func isOpen(at date: Date) -> Bool {
+        guard let openedAt else { return false }
+        return date >= openedAt && date.timeIntervalSince(openedAt) < openFor
+    }
+}
+
 struct showListToggleIntent: AppIntent {
     static var title: LocalizedStringResource = "Open Screen"
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        
-        if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
-            store.setValue(!store.bool(forKey: "toggleShowAllTImes"), forKey: "toggleShowAllTImes")
-//            WidgetCenter.shared.reloadAllTimelines()
-            print("toggleShowAllTImes: \(store.bool(forKey: "toggleShowAllTImes"))")
+        if let store = UserDefaults(suiteName: SharedStore.appGroup) {
+            // Showing → back to the ring at once; otherwise open it (again) from now.
+            if WidgetListState.isOpen(at: Date()) {
+                store.set(false, forKey: WidgetListState.openKey)
+            } else {
+                store.set(true, forKey: WidgetListState.openKey)
+                store.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
+            }
         }
         return .result()
     }
