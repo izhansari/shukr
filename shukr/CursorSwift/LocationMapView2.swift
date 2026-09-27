@@ -1054,6 +1054,11 @@ struct LocationMapContentView: View {
 
             // Facing Mecca: the whole screen edge glows green.
             AlignedEdgeGlow(on: compass.qibla.aligned && inQiblaMode)
+                // The buzz on lining up, like the Salah circle's — qibla mode only (it went
+                // missing when the circle's haptic was limited to the Salah page).
+                .onChange(of: compass.qibla.aligned) { _, aligned in
+                    if aligned && inQiblaMode { triggerSomeVibration(type: .heavy) }
+                }
 
             // Dock open: a tap anywhere on the map folds it back.
             if exploreOpen {

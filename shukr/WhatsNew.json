@@ -471,10 +471,16 @@
       "checked": "sim"
     },
     {
-      "id": "widget-next-2", "date": "2026-09-27", "commit": "next", "time": null, "topic": "widget-next", "notes": "#1",
+      "id": "widget-next-2", "date": "2026-09-27", "commit": "d7e02b9", "time": "2026-09-27T14:43:32-04:00", "topic": "widget-next", "notes": "#1",
       "title": "Prayers widget: prayer dots, choosable corners (no duplicates), a new times list that returns to the ring",
       "tryIt": ["The dots along the bottom: done in its score colour, started = outlined, later = dim", "Long-press → Edit Widget → Bottom left / Bottom right: Qibla, Tasbeeh, Daily Ayah, 99 Names or None (the right can't repeat the left)", "Tap the list icon → the day's times in the app's look; it goes back to the ring after 30 s"],
       "checked": "sim", "shots": ["wn-prayers-widget-v2.jpg"]
+    },
+    {
+      "id": "qibla-haptic-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "title": "The qibla map buzzes again when you line up (qibla mode only)",
+      "tryIt": ["Open the map → turn until you face the qibla → one buzz with the green edge glow"],
+      "checked": "no"
     }
   ]
 }
