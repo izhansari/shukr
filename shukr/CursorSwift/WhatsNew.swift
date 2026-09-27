@@ -25,6 +25,9 @@ struct WhatsNewTopic: Decodable {
     let area: String
     let title: String
     let tryIt: [String]?
+    /// Where "Open in shukr" goes: salah / zikr / settings / history / azkar / map / names /
+    /// ayah / insights (PrayerTimesView handles `WhatsNew.go`). Nil = nothing to open (widgets…).
+    var link: String? = nil
 }
 
 struct WhatsNewEntry: Decodable, Identifiable {
@@ -118,12 +121,16 @@ enum WhatsNew {
         var topics = Dictionary(file.topics.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // An entry whose topic is missing still shows: a stand-in topic from its latest entry.
         for (id, list) in byTopic where topics[id] == nil {
-            topics[id] = WhatsNewTopic(id: id, area: "Other", title: list.last?.title ?? id, tryIt: nil)
+            topics[id] = WhatsNewTopic(id: id, area: "Other", title: list.last?.title ?? id, tryIt: nil, link: nil)
         }
         return byTopic.compactMap { id, list in topics[id].map { WhatsNewCard(topic: $0, entries: list) } }
             .sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
     }()
     static func card(id: String) -> WhatsNewCard? { cards.first { $0.id == id } }
+
+    /// "Open in shukr": What's new closes and PrayerTimesView takes the user to `link`, so testing
+    /// starts from the note (owner, 2026-09-27).
+    static let go = Notification.Name("whatsNewGo")
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -287,7 +294,8 @@ struct WhatsNewView: View {
                                                  unsent: feedback.unsent(for: card.id),
                                                  anySent: feedback.all(for: card.id).contains { $0.sentAt != nil },
                                                  toggleTested: { toggle(card) },
-                                                 giveFeedback: { composing = (card, $0) })
+                                                 giveFeedback: { composing = (card, $0) },
+                                                 open: card.topic.link.map { link in { open(link) } })
                                     .contentShape(Rectangle())
                                     .onTapGesture { path.append(card.id) }
                             }
@@ -311,7 +319,8 @@ struct WhatsNewView: View {
             #endif
             .navigationDestination(for: String.self) { id in
                 if let card = WhatsNew.card(id: id) {
-                    WhatsNewDetailView(card: card, tested: $tested)
+                    WhatsNewDetailView(card: card, tested: $tested,
+                                       open: card.topic.link.map { link in { open(link) } })
                 }
             }
         }
@@ -402,6 +411,11 @@ struct WhatsNewView: View {
         .disabled(unsent.isEmpty)
     }
 
+    private func open(_ link: String) {
+        dismiss()
+        NotificationCenter.default.post(name: WhatsNew.go, object: link)
+    }
+
     private func toggle(_ card: WhatsNewCard) {
         let now = !WhatsNew.isTested(card, in: tested)
         WhatsNew.setTested(card, now)
@@ -426,6 +440,8 @@ struct WhatsNewCardView: View {
     let anySent: Bool
     let toggleTested: () -> Void
     let giveFeedback: (FeedbackItem.Kind) -> Void
+    /// "Open in shukr" (nil when the feature has no page to open).
+    var open: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -503,6 +519,17 @@ struct WhatsNewCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(kind.label)
             }
+            if let open {
+                Button(action: open) {
+                    Image(systemName: "arrow.up.forward.app")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.sage)
+                        .frame(width: 26, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open in shukr")
+            }
             if unsent != nil {
                 Text(unsent?.photo != nil ? "unsent · photo" : "unsent")
                     .font(.caption2.weight(.medium))
@@ -521,6 +548,7 @@ struct WhatsNewCardView: View {
 struct WhatsNewDetailView: View {
     let card: WhatsNewCard
     @Binding var tested: Set<String>
+    var open: (() -> Void)? = nil
     @State private var feedback = FeedbackStore.shared
     @State private var viewing: UIImage?
 
@@ -623,6 +651,16 @@ struct WhatsNewDetailView: View {
             .buttonStyle(.plain)
             .sensoryFeedback(.selection, trigger: isTested)
             .padding(.top, 2)
+            if let open {
+                Button(action: open) {
+                    Label("Open in shukr", systemImage: "arrow.up.forward.app")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.sage)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(Capsule().fill(Color.sage.opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 

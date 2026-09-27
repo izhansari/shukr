@@ -14,6 +14,7 @@ topic, notes item, one-line title, try-it steps, checked, optional status "dropp
   scripts/whatsnew.py add --topic ID --title "…" --try "…" [--try "…"] [--notes "#17"]
                           [--area Zikr --topic-title "…"] [--topic-try "…"]… [--shot wn-x.jpg]…
                           [--checked sim|phone|no] [--status dropped|replaced|removed]
+                          [--topic-link salah|zikr|settings|history|azkar|map|names|ayah|insights]
       Append an entry ("commit": "next"). A new topic needs --area and --topic-title;
       --topic-title on an existing topic rewrites its title (keep it the current state).
 
@@ -50,6 +51,8 @@ def save(data):
     out = ["{", '  "topics": [']
     for i, t in enumerate(data["topics"]):
         head = f'    {{"id": {j(t["id"])}, "area": {j(t["area"])}, "title": {j(t["title"])}'
+        if t.get("link"):
+            head += f', "link": {j(t["link"])}'
         if t.get("tryIt"):
             head += f',\n     "tryIt": {j(t["tryIt"])}'
         out.append(head + "}" + ("," if i < len(data["topics"]) - 1 else ""))
@@ -109,6 +112,8 @@ def add(a):
             t["area"] = a.area
     if a.topic_try:
         t["tryIt"] = a.topic_try
+    if a.topic_link:
+        t["link"] = a.topic_link
     # Keep key order stable in the file.
     for k in ("tryIt",):
         if k in t:
@@ -205,6 +210,8 @@ if __name__ == "__main__":
         p.add_argument("--area")
         p.add_argument("--topic-title")
         p.add_argument("--topic-try", action="append")
+        p.add_argument("--topic-link", choices=["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"],
+                       help="where What's new's \"Open in shukr\" goes")
         p.add_argument("--shot", action="append")
         p.add_argument("--checked", default="sim", choices=["sim", "phone", "no"])
         p.add_argument("--status", choices=["dropped", "replaced", "removed"])

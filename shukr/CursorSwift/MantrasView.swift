@@ -733,7 +733,9 @@ struct ZikrLibraryView: View {
             if let new, new != tab { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { tab = new } }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .searchable(text: $search, prompt: tab == .history ? "Search sessions" : "Search azkar")
+        // `.toolbar`: the field lives only where the toolbar puts it (the bottom-bar item above on
+        // iOS 26) — with the automatic placement it could also draw its own, a second field.
+        .searchable(text: $search, placement: .toolbar, prompt: tab == .history ? "Search sessions" : "Search azkar")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Section", selection: Binding(get: { tab }, set: { new in

@@ -317,6 +317,28 @@ struct PrayerTimesView: View {
         // app-group flags below do it on activation).
         // A deleted task (its zikr deleted, or the task itself) must not stay selected: reading a
         // deleted row's attributes crashes.
+        // What's new → "Open in shukr": after its sheet has gone, go to that feature.
+        .onReceive(NotificationCenter.default.publisher(for: WhatsNew.go)) { note in
+            guard let link = note.object as? String else { return }
+            // Well after the sheet has gone: pushing the library while it was still closing
+            // left a second search field in its bottom bar.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                clearCovers {
+                    switch link {
+                    case "salah": sharedState.horizontalPage = .main
+                    case "zikr": sharedState.horizontalPage = .zikr
+                    case "settings": sharedState.horizontalPage = .settings
+                    case "history": showZikrHistory = true
+                    case "azkar": showMantrasPage = true
+                    case "map": sharedState.horizontalPage = .main; showQiblaMap = true
+                    case "names": showNamesPage = true
+                    case "ayah": showDailyAyahPage = true
+                    case "insights": showInsightsPage = true
+                    default: break
+                    }
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
             guard let gone = note.object as? Set<PersistentIdentifier>,
                   let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }
