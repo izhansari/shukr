@@ -3058,7 +3058,7 @@ struct sideMenu: View {
                     }
                     
                     NavigationLink(destination: MantrasView()) {
-                        Label("Mantras", systemImage: "text.quote")
+                        Label("Azkar", systemImage: "text.quote")
                     }
                     
                     NavigationLink(destination: SettingsView().environmentObject(viewModel)) {

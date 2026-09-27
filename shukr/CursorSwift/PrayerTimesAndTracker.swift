@@ -808,7 +808,7 @@ struct PrayerTimesView: View {
                         }
                         .opacity(Double(zikrness))
                         .allowsHitTesting(zikrness > 0.5)
-                        .accessibilityLabel("Zikr history and mantras")
+                        .accessibilityLabel("Zikr history and azkar")
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")

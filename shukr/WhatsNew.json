@@ -176,7 +176,7 @@
   {
     "date": "2026-09-26", "commit": "dacffe2", "area": "Zikr",
     "title": "Give a zikr task its own name",
-    "tryIt": ["Zikr → long-press a task → tap it → type a name like \"After Fajr\" → Save", "The circle shows the name with the mantra under it"],
+    "tryIt": ["Zikr → long-press a task → tap it → type a name like \"After Fajr\" → Save", "The circle shows the name with the zikr under it"],
     "checked": "sim"
   },
   {
@@ -258,9 +258,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Map",
+    "date": "2026-09-27", "commit": "332d04a", "area": "Map",
     "title": "The map follows the app's light / dark / auto setting; ? has its own button",
     "tryIt": ["Settings → switch to dark (or auto after Maghrib) → open the map → the standard map is dark", "The ? sits on its own under the globe / locate buttons"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "title": "\"Mantra\" is now \"zikr\" everywhere; the library is \"Azkar\"",
+    "tryIt": ["Zikr page → the books button → History | Azkar", "Open a zikr → \"Edit zikr\", \"No tasks use this zikr\"", "Pause a session → \"choose a zikr\" / \"Edit zikr\""],
     "checked": "sim"
   }
 ]

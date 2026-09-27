@@ -39,8 +39,8 @@ struct MantrasView: View {
             list
         } else {
             list
-                .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search mantras")
-                .navigationTitle("Mantras")
+                .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search azkar")
+                .navigationTitle("Azkar")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -61,10 +61,10 @@ struct MantrasView: View {
     private var list: some View {
         List {
             if mantras.isEmpty {
-                Text("No mantras yet. Tap + to add one.")
+                Text("No azkar yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
             } else if shown.isEmpty {
-                Text("No mantras match “\(search)”.")
+                Text("No azkar match “\(search)”.")
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(shown) { mantra in
@@ -228,7 +228,7 @@ struct MantraCardEditor: View {
             .scrollDismissesKeyboard(.interactively)
             .background(Color("pauseColor").ignoresSafeArea())
             .fontDesign(.rounded)
-            .navigationTitle("Edit mantra")
+            .navigationTitle("Edit zikr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -285,14 +285,14 @@ struct MantraCardFields: View {
                     .padding(.vertical, 6)
                     .background(fieldBox(alwaysFilled: false))
                 if isDuplicate {
-                    Text("another mantra already has this name")
+                    Text("another zikr already has this name")
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
             }
 
             editorBox(text: $fullText, field: .fullText,
-                      placeholder: "the full mantra — Arabic, transliteration, meaning",
+                      placeholder: "the full zikr — Arabic, transliteration, meaning",
                       minHeight: 110, centered: true)
 
             HStack(alignment: .top, spacing: 8) {
@@ -374,7 +374,7 @@ struct SaveButton: View {
 /// two existing pages. Reached from the Zikr tab's top-left button (the hamburger stays on
 /// Salah), and from the old routes (`showZikrHistory` / `showMantrasPage`).
 struct ZikrLibraryView: View {
-    enum Tab: String, CaseIterable { case history = "History", mantras = "Mantras" }
+    enum Tab: String, CaseIterable { case history = "History", mantras = "Azkar" }
     @State private var tab: Tab
     @State private var search = ""
     @State private var showingNewMantra = false
@@ -432,7 +432,7 @@ struct ZikrLibraryView: View {
         .clipped()
         .environment(zones)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .searchable(text: $search, prompt: tab == .history ? "Search sessions" : "Search mantras")
+        .searchable(text: $search, prompt: tab == .history ? "Search sessions" : "Search azkar")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Section", selection: Binding(get: { tab }, set: { new in
@@ -451,7 +451,7 @@ struct ZikrLibraryView: View {
                         Image(systemName: "plus.circle")
                             .foregroundColor(.green.opacity(0.7))
                     }
-                    .accessibilityLabel("New mantra")
+                    .accessibilityLabel("New zikr")
                 }
             }
         }
@@ -597,11 +597,11 @@ struct MantraEditorView: View {
             } action: { _, scrolledPast in
                 withAnimation(.easeInOut(duration: 0.2)) { showTitle = scrolledPast }
             }
-            .navigationTitle(mantra?.name ?? "New Mantra")
+            .navigationTitle(mantra?.name ?? "New Zikr")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text(mantra == nil ? "New Mantra" : name)
+                    Text(mantra == nil ? "New Zikr" : name)
                         .font(.headline)
                         .lineLimit(1)
                         .opacity(mantra == nil || showTitle ? 1 : 0)
@@ -698,7 +698,7 @@ struct MantraTaskCircles: View {
 
     var body: some View {
         if tasks.isEmpty {
-            Text("No tasks use this mantra.")
+            Text("No tasks use this zikr.")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(16)
@@ -812,7 +812,7 @@ struct MantraSessionsSection: View {
     @ViewBuilder private var sections: some View {
         if mantra.sessions.isEmpty {
             Section("Sessions") {
-                Text("No sessions with this mantra yet.").foregroundStyle(.secondary)
+                Text("No sessions with this zikr yet.").foregroundStyle(.secondary)
             }
         } else {
             ForEach(days, id: \.date) { day in

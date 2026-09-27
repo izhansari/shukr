@@ -96,14 +96,14 @@ keywords, "What's New" and screenshot captions.
 - Freestyle, count goals (e.g. 100) or time goals (e.g. 10 min), with a live finish estimate.
 - Daily zikr tasks shown as a wheel of circles, each ringed with today's progress; continue
   where you left off or start over; arrange them home-screen style.
-- Mantras: your own library of dhikr with the full Arabic / transliteration and notes (who
-  taught you, why), shown right on the pause screen; lifetime count, time and pace per mantra.
-- Count in sets: switch on a per-mantra "+N" and every tap counts N — for when you recite a set
+- Azkar: your own library of zikr with the full Arabic / transliteration and notes (who
+  taught you, why), shown right on the pause screen; lifetime count, time and pace per zikr.
+- Count in sets: switch on a per-zikr "+N" and every tap counts N — for when you recite a set
   on your fingers and tap once.
 - Post-salah tasbih (Tasbih Fatimah): 33 · 33 · 34 in one flowing session, the phrase
   changing as you go, with the hadith on why it matters.
 - Zikr history: all-time total, a 14-day chart you can scrub, every session with its pace;
-  swipe to delete or jump to the mantra.
+  swipe to delete or jump to the zikr.
 
 **Quran & more**
 - Daily Ayah: a verse a day (Arabic in the Uthmani script + translation) to reveal, with a
@@ -116,6 +116,13 @@ keywords, "What's New" and screenshot captions.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
 - A short welcome — "shukr" writes itself inside a ring that settles onto the prayer circle, with
   a soft heartbeat haptic — when the app starts fresh.
+
+## Wording: "zikr" / "Azkar", never "mantra" in the UI (owner, 2026-09-27)
+
+Everything a user reads says **zikr** (one) / **Azkar** (the library, the History | Azkar switch);
+tasks stay "tasks". **Code and SwiftData names keep "Mantra"** (`MantraModel`, `MantrasView`,
+`mantraName`…) — renaming a model is a schema risk. So in these notes "mantra" means the model /
+code; in UI strings write "zikr". New UI text must follow this.
 
 ## Handoff — 2026-09-25 evening (read this first)
 

@@ -123,7 +123,7 @@ struct HistoryPageView: View {
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 if let mantra = session.mantra {
                     Button { mantraToOpen = mantra } label: {
-                        Label("Mantra", systemImage: "text.quote")   // the menu's Mantras icon
+                        Label("Zikr", systemImage: "text.quote")   // the menu's Mantras icon
                     }
                     .tint(.sage)
                 }
@@ -327,7 +327,7 @@ struct SessionRow: View {
     private var actionStrip: some View {
         HStack(spacing: 8) {
             if let onMantra {
-                action("Mantra", icon: "text.quote", color: .sage, action: onMantra)
+                action("Zikr", icon: "text.quote", color: .sage, action: onMantra)
             }
             if let pace {
                 action(feelingPace ? "Stop" : "Pace", icon: feelingPace ? "stop.fill" : "metronome",

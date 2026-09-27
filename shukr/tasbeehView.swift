@@ -876,7 +876,7 @@ struct tasbeehView: View {
                 HStack(spacing: 8) {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            Text(title.isEmpty ? "choose a mantra" : title)
+                            Text(title.isEmpty ? "choose a zikr" : title)
                                 .font(.system(size: 24, weight: .light, design: .rounded))
                                 .foregroundStyle(title.isEmpty ? .secondary : .primary)
                                 .multilineTextAlignment(.leading)
@@ -1069,7 +1069,7 @@ struct tasbeehView: View {
                     Button { showMantraPicker = true } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
-                                Text(title.isEmpty ? "choose a mantra" : title)
+                                Text(title.isEmpty ? "choose a zikr" : title)
                                     .font(.system(size: 24, weight: .light, design: .rounded))
                                     .foregroundStyle(title.isEmpty ? .secondary : .primary)
                                     .multilineTextAlignment(.leading)
@@ -1103,7 +1103,7 @@ struct tasbeehView: View {
                                 .background(Circle().fill(Color.sage.opacity(0.14)))
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Edit mantra")
+                        .accessibilityLabel("Edit zikr")
                     }
                 }
 
@@ -1151,7 +1151,7 @@ struct tasbeehView: View {
                     }
                     if full.isEmpty && notes.isEmpty {
                         Button { editingMantra = mantra } label: {
-                            Label("add the full mantra or notes", systemImage: "plus")
+                            Label("add the full zikr or notes", systemImage: "plus")
                                 .font(.footnote)
                                 .foregroundStyle(Color.sage)
                         }
