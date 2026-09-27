@@ -156,6 +156,20 @@ code; in UI strings write "zikr". New UI text must follow this.
   `.notifyOthersOnDeactivation`, so the user's music resumes), `VoiceMemoPanel`, `ZikrPhotoPanel`
   (PhotosPicker + camera, `downscaledJPEG` 1200 px, tap → `ZikrPhotoViewer` zoom), `ZikrMediaStrip`
   (pause card: ▶︎ + 0.75× / loop + a 56 pt thumbnail).
+- **Audio rules (2026-09-27 review):** the card owns the one `ZikrAudio` (VoiceMemoPanel borrows
+  it) so tab switches / List recycling can't drop a take; every end of a recording (Stop, the 2-min
+  cap via `AVAudioRecorderDelegate`, interruptions, background, leaving the memo tab, the sheet
+  closing → `ZikrAudio.stopAll()` from the sheet root's `onDisappear`) goes through
+  `finishRecording()` → `onRecorded`. One engine is active app-wide (`takeOver`). Pause deactivates
+  the session (`.notifyOthersOnDeactivation`, music resumes); interruption / route-change
+  (headphones out) pause. Resume / Finish in a session call `stopAll()`; the strip also stops on
+  `paused` → false (the pause screen only fades). **All session activation, deactivation and
+  recorder / player setup run on a serial audio queue** — `setActive(true)` for recording froze the
+  simulator's main thread (and never returns there, so recording can't be tested in the sim). A
+  start that resolves after a stop is dropped (`generation`). Ticker in `.common` mode; 64 kbps AAC;
+  the temp file is deleted after reading.
+- **Photos:** `downscaledJPEG` is async (ImageIO thumbnail in a detached task); the camera hands a
+  UIImage straight in; views decode with `decodedImage` in `.task(id:)`, never in `body`.
 - Media save straight to the row (existing zikr: pause ✎ and the zikr page); a new zikr keeps them
   as drafts until Save.
 - Info.plist: `NSMicrophoneUsageDescription`, `NSCameraUsageDescription`.

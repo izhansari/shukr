@@ -545,6 +545,7 @@ struct tasbeehView: View {
     
         
     private func stopTimer() {
+        ZikrAudio.stopAll()     // a memo started on the pause card doesn't play on into the results
         guard timerIsActive else {
             print("Timer is not active")
             return
@@ -658,6 +659,7 @@ struct tasbeehView: View {
     private func togglePause() {
         print("ran a togglePause().")
         paused.toggle()
+        if !paused { ZikrAudio.stopAll() }   // Resume: the pause card's memo stops
         updateIdleTimer()
         triggerSomeVibration(type: .medium)
         if(paused){
@@ -1150,7 +1152,7 @@ struct tasbeehView: View {
                         .font(.footnote)
                     }
                     // The voice memo (▶︎, 0.75×, loop) and a tap-to-expand photo, for learning it.
-                    ZikrMediaStrip(mantra: mantra)
+                    ZikrMediaStrip(mantra: mantra, paused: paused)
                     if full.isEmpty && notes.isEmpty && mantra.audioData == nil && mantra.imageData == nil {
                         Button { editingMantra = mantra } label: {
                             Label("add the full zikr or notes", systemImage: "plus")

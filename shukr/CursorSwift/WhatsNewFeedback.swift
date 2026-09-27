@@ -80,7 +80,7 @@ final class FeedbackStore {
         if let photo {
             if let old = item.photo { removePhoto(old) }
             item.photo = nil
-            if let data = photo, let small = downscaledJPEG(data), let dir = Self.photos {
+            if let small = photo, let dir = Self.photos {             // already downscaled by the composer
                 try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 let name = "\(item.id.uuidString.prefix(8))-\(Int(Date().timeIntervalSince1970)).jpg"
                 if (try? small.write(to: dir.appendingPathComponent(name))) != nil { item.photo = name }
@@ -249,7 +249,9 @@ struct FeedbackComposer: View {
         .onChange(of: pick) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self) { photoData = .some(data) }
+                if let data = try? await item.loadTransferable(type: Data.self), let small = await downscaledJPEG(data) {
+                    photoData = .some(small)
+                }
                 pick = nil
             }
         }

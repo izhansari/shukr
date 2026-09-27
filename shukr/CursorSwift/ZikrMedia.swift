@@ -19,8 +19,13 @@ import SwiftData
 
 // MARK: - Recording and playback
 
+/// One per card / strip. Only one engine is ever active app-wide (`active`): starting one stops
+/// the other (the ✎ sheet over the pause card could play alongside the strip).
+/// Every way a recording ends — Stop, the 2-min cap, a call / Siri (interruption), going to the
+/// background, the sheet closing — goes through `finishRecording()`, which hands the take to
+/// `onRecorded`; nothing is thrown away (2026-09-27 review).
 @MainActor @Observable
-final class ZikrAudio: NSObject, AVAudioPlayerDelegate {
+final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate {
     static let maxSeconds: TimeInterval = 120
 
     enum State: Equatable { case idle, recording, playing, paused }
@@ -33,32 +38,84 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate {
     var loop = false { didSet { player?.numberOfLoops = loop ? -1 : 0 } }
     /// The microphone was refused (the panel says so, with a way to Settings).
     private(set) var micDenied = false
+    /// Where a finished take goes (set by the card: it writes the zikr's `audioData`).
+    @ObservationIgnored var onRecorded: ((Data) -> Void)?
 
     @ObservationIgnored private var recorder: AVAudioRecorder?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var ticker: Timer?
-    @ObservationIgnored private var fileURL: URL { FileManager.default.temporaryDirectory.appending(path: "zikr-memo.m4a") }
+    @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private let fileURL = FileManager.default.temporaryDirectory.appending(path: "zikr-memo-\(UUID().uuidString.prefix(8)).m4a")
+
+    /// Bumped by every stop, so a recording that finishes starting after a stop is dropped.
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private static weak var active: ZikrAudio?
+    /// Stop whatever is playing or recording anywhere (Resume / Finish in a session).
+    static func stopAll() {
+        guard let a = active else { return }
+        a.finishRecording()
+        a.stopPlaying()
+    }
 
     var progress: Double { duration > 0 ? min(elapsed / duration, 1) : 0 }
 
+    override init() {
+        super.init()
+        let nc = NotificationCenter.default
+        observers = [
+            nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
+                let began = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init) == .began
+                MainActor.assumeIsolated { if began { self?.interrupted() } }
+            },
+            nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
+                // Headphones out → pause, as every player does.
+                let reason = (note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt).flatMap(AVAudioSession.RouteChangeReason.init)
+                MainActor.assumeIsolated { if reason == .oldDeviceUnavailable { self?.pause() } }
+            },
+            nc.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.interrupted() }
+            },
+        ]
+    }
+
+    /// Only stop observing here — the card finishes a take itself before letting go of the engine.
+    isolated deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+        recorder?.stop()
+        ticker?.invalidate()
+    }
+
     // Record
     func startRecording() async {
+        Self.takeOver(self)
         stopPlaying()
         let allowed: Bool = await withCheckedContinuation { c in
             AVAudioApplication.requestRecordPermission { c.resume(returning: $0) }
         }
         guard allowed else { micDenied = true; return }
         micDenied = false
+        generation += 1
+        let gen = generation
+        let url = fileURL
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try session.setActive(true)
-            try? FileManager.default.removeItem(at: fileURL)
-            let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100,
-                                           AVNumberOfChannelsKey: 1, AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue]
-            let r = try AVAudioRecorder(url: fileURL, settings: settings)
-            r.isMeteringEnabled = true
-            r.record(forDuration: Self.maxSeconds)
+            // Session activation can block for a while (it hung the simulator's main thread), so
+            // it and the recorder's setup run on the audio queue.
+            let made = try await Self.onAudioQueue { () -> Unchecked<AVAudioRecorder> in
+                let session = AVAudioSession.sharedInstance()
+                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                try session.setActive(true)
+                try? FileManager.default.removeItem(at: url)
+                let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100,
+                                               AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 64_000,
+                                               AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue]
+                let r = try AVAudioRecorder(url: url, settings: settings)
+                r.isMeteringEnabled = true
+                guard r.record(forDuration: ZikrAudio.maxSeconds) else { throw CocoaError(.fileWriteUnknown) }
+                return Unchecked(value: r)
+            }
+            let r = made.value
+            guard gen == generation else { r.stop(); endSession(); return }   // stopped meanwhile
+            r.delegate = self
             recorder = r
             state = .recording
             elapsed = 0
@@ -69,53 +126,77 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    /// Stops and returns the recording (nil if nothing usable).
-    func stopRecording() -> Data? {
-        guard let r = recorder else { return nil }
-        let length = r.currentTime
-        r.stop()
+    /// Ends a recording, if one is running, and hands the take (if long enough) to `onRecorded`.
+    func finishRecording() {
+        generation += 1
+        guard let r = recorder else { return }
+        let length = max(r.currentTime, elapsed)
         recorder = nil
+        r.delegate = nil
+        r.stop()
         stopTicker()
         state = .idle
         level = 0
         endSession()
-        guard length > 0.4 || elapsed > 0.4 else { return nil }
-        return try? Data(contentsOf: fileURL)
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+        guard length > 0.4, let data = try? Data(contentsOf: fileURL), !data.isEmpty else { return }
+        onRecorded?(data)
     }
 
     // Play
     func togglePlay(_ data: Data) {
         switch state {
-        case .playing: player?.pause(); state = .paused; stopTicker()
+        case .playing: pause()
         case .paused: resume()
         default: play(data)
         }
     }
     private func play(_ data: Data) {
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .spokenAudio)
-            try session.setActive(true)
-            let p = try AVAudioPlayer(data: data)
-            p.delegate = self
-            p.enableRate = true
-            p.rate = slow ? 0.75 : 1
-            p.numberOfLoops = loop ? -1 : 0
-            p.play()
-            player = p
-            duration = p.duration
-            state = .playing
-            startTicker()
-        } catch {
-            print("❌ zikr memo play: \(error.localizedDescription)")
-            endSession()
+        Self.takeOver(self)
+        Task {
+            do {
+                let made = try await Self.onAudioQueue { () -> Unchecked<AVAudioPlayer> in
+                    let session = AVAudioSession.sharedInstance()
+                    try session.setCategory(.playback, mode: .spokenAudio)
+                    try session.setActive(true)
+                    return Unchecked(value: try AVAudioPlayer(data: data))
+                }
+                let p = made.value
+                p.delegate = self
+                p.enableRate = true
+                p.rate = slow ? 0.75 : 1
+                p.numberOfLoops = loop ? -1 : 0
+                p.play()
+                player = p
+                duration = p.duration
+                state = .playing
+                startTicker()
+            } catch {
+                print("❌ zikr memo play: \(error.localizedDescription)")
+                endSession()
+            }
         }
     }
+    /// Paused keeps the position, but gives the audio back so the user's music can play.
+    func pause() {
+        guard state == .playing else { return }
+        player?.pause()
+        state = .paused
+        stopTicker()
+        endSession()
+    }
     private func resume() {
-        try? AVAudioSession.sharedInstance().setActive(true)
-        player?.play()
+        Self.takeOver(self)
         state = .playing
-        startTicker()
+        Task {
+            _ = try? await Self.onAudioQueue {
+                try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+                try AVAudioSession.sharedInstance().setActive(true)
+            }
+            guard state == .playing else { return }
+            player?.play()
+            startTicker()
+        }
     }
     func stopPlaying() {
         guard player != nil else { return }
@@ -132,13 +213,31 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in self.stopPlaying() }
     }
+    /// The 2-min cap (record(forDuration:)) or the system ending it: keep the take.
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        Task { @MainActor in self.finishRecording() }
+    }
 
     // Plumbing
+    private static func takeOver(_ engine: ZikrAudio) {
+        if let other = active, other !== engine {
+            other.finishRecording()
+            other.stopPlaying()
+        }
+        active = engine
+    }
+    private func interrupted() {
+        finishRecording()
+        pause()
+    }
     private func startTicker() {
         stopTicker()
-        ticker = Timer.scheduledTimer(withTimeInterval: 1 / 20, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+        // .common: keeps ticking while a list scrolls.
+        let t = Timer(timeInterval: 1 / 20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
         }
+        RunLoop.main.add(t, forMode: .common)
+        ticker = t
     }
     private func stopTicker() { ticker?.invalidate(); ticker = nil }
     private func tick() {
@@ -147,16 +246,29 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate {
             let db = r.averagePower(forChannel: 0)            // -160…0
             level = max(0, min(1, (db + 50) / 50))
             elapsed = r.currentTime
-            if !r.isRecording { _ = stopRecording() }          // hit the 2 min cap
+            if !r.isRecording { finishRecording() }           // hit the cap / stopped by the system
         } else if let p = player {
             elapsed = p.currentTime
         }
     }
-    /// Hand audio back: other apps' music resumes.
+    /// Hand audio back: other apps' music resumes. On the audio queue, after any activation.
     private func endSession() {
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Self.audioQueue.async {
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        }
+    }
+
+    /// Session activation / deactivation and player / recorder setup, in order, off the main thread.
+    private static let audioQueue = DispatchQueue(label: "shukr.zikr-audio", qos: .userInitiated)
+    private static func onAudioQueue<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { c in
+            audioQueue.async { c.resume(with: Result { try work() }) }
+        }
     }
 }
+
+/// Carries an AVAudioRecorder / AVAudioPlayer back from the audio queue (used on main only after).
+struct Unchecked<T>: @unchecked Sendable { let value: T }
 
 func mmss(_ t: TimeInterval) -> String {
     let s = max(Int(t.rounded()), 0)
@@ -187,9 +299,12 @@ struct RingPlayButton: View {
 
 // MARK: - The memo panel (inside the card's box)
 
+/// The engine belongs to the card (`MantraCardFields`), not to this panel: switching tabs or a
+/// List recycling the cell must never throw a take away. The card finishes a recording when you
+/// leave the memo tab or the sheet really closes; the take arrives through `engine.onRecorded`.
 struct VoiceMemoPanel: View {
     @Binding var audio: Data?
-    @State private var engine = ZikrAudio()
+    let engine: ZikrAudio
     @State private var length: TimeInterval = 0
 
     var body: some View {
@@ -205,10 +320,6 @@ struct VoiceMemoPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { if let audio { length = ZikrAudio.length(of: audio) } }
         .onChange(of: audio) { _, new in length = new.map(ZikrAudio.length(of:)) ?? 0 }
-        .onDisappear {
-            if engine.state == .recording { audio = engine.stopRecording() ?? audio }
-            engine.stopPlaying()
-        }
     }
 
     private var empty: some View {
@@ -240,10 +351,7 @@ struct VoiceMemoPanel: View {
     private var recording: some View {
         HStack(spacing: 14) {
             Button {
-                if let data = engine.stopRecording() {
-                    audio = data
-                    triggerSomeVibration(type: .success)
-                }
+                engine.finishRecording()        // the take arrives through onRecorded
             } label: {
                 ZStack {
                     Circle().fill(Color.red.opacity(0.14))
@@ -344,10 +452,13 @@ struct ZikrPhotoPanel: View {
     @State private var pick: PhotosPickerItem?
     @State private var showCamera = false
     @State private var viewing = false
+    @State private var decoded: UIImage?
 
     var body: some View {
         Group {
-            if let image, let ui = UIImage(data: image) {
+            if image != nil, decoded == nil {
+                Color.primary.opacity(0.04)               // decoding (a moment)
+            } else if image != nil, let ui = decoded {
                 Button { viewing = true } label: {
                     Image(uiImage: ui).resizable().scaledToFill()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -376,17 +487,21 @@ struct ZikrPhotoPanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: image) { decoded = await decodedImage(image) }
         .onChange(of: pick) { _, item in
             guard let item else { return }
             Task {
-                if let data = try? await item.loadTransferable(type: Data.self), let small = downscaledJPEG(data) {
+                if let data = try? await item.loadTransferable(type: Data.self), let small = await downscaledJPEG(data) {
                     image = small
                 }
                 pick = nil
             }
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraPicker { data in image = downscaledJPEG(data) }.ignoresSafeArea()
+            CameraPicker { photo in
+                Task { if let small = await downscaledJPEG(photo) { image = small } }
+            }
+            .ignoresSafeArea()
         }
     }
 
@@ -423,21 +538,42 @@ struct ZikrPhotoPanel: View {
     }
 }
 
-/// ~1200 px on the long side, JPEG 0.82.
-func downscaledJPEG(_ data: Data, maxSide: CGFloat = 1200) -> Data? {
-    guard let image = UIImage(data: data) else { return nil }
-    let longest = max(image.size.width, image.size.height)
-    let scale = min(1, maxSide / max(longest, 1))
-    let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-    let format = UIGraphicsImageRendererFormat.default()
-    format.scale = 1
-    let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
-    return resized.jpegData(compressionQuality: 0.82)
+/// ~1200 px on the long side, JPEG 0.82 — decoded and scaled by ImageIO off the main thread
+/// (a 12 MP photo decoded in the view was a visible hitch; 2026-09-27 review).
+func downscaledJPEG(_ data: Data, maxSide: CGFloat = 1200) async -> Data? {
+    await Task.detached(priority: .userInitiated) { jpegThumbnail(data, maxSide: maxSide) }.value
 }
 
-/// The camera, returning the photo's data.
+/// The camera's photo, straight in (no JPEG round trip first).
+func downscaledJPEG(_ image: UIImage, maxSide: CGFloat = 1200) async -> Data? {
+    nonisolated(unsafe) let image = image
+    return await Task.detached(priority: .userInitiated) { () -> Data? in
+        let longest = max(image.size.width, image.size.height)
+        let scale = min(1, maxSide / max(longest, 1))
+        let size = CGSize(width: (image.size.width * scale).rounded(), height: (image.size.height * scale).rounded())
+        return (image.preparingThumbnail(of: size) ?? image).jpegData(compressionQuality: 0.82)
+    }.value
+}
+
+nonisolated func jpegThumbnail(_ data: Data, maxSide: CGFloat) -> Data? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                    kCGImageSourceCreateThumbnailWithTransform: true,
+                                    kCGImageSourceShouldCacheImmediately: true,
+                                    kCGImageSourceThumbnailMaxPixelSize: maxSide]
+    guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+    return UIImage(cgImage: cg).jpegData(compressionQuality: 0.82)
+}
+
+/// A stored photo decoded for display off the main thread (views keep it in @State via `.task(id:)`).
+func decodedImage(_ data: Data?) async -> UIImage? {
+    guard let data else { return nil }
+    return await Task.detached(priority: .userInitiated) { UIImage(data: data)?.preparingForDisplay() }.value
+}
+
+/// The camera, returning the photo.
 struct CameraPicker: UIViewControllerRepresentable {
-    var onPick: (Data) -> Void
+    var onPick: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let c = UIImagePickerController()
@@ -451,7 +587,7 @@ struct CameraPicker: UIViewControllerRepresentable {
         let parent: CameraPicker
         init(_ parent: CameraPicker) { self.parent = parent }
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage, let data = image.jpegData(compressionQuality: 0.9) { parent.onPick(data) }
+            if let image = info[.originalImage] as? UIImage { parent.onPick(image) }
             parent.dismiss()
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
@@ -528,8 +664,11 @@ private struct ZoomableImage: UIViewRepresentable {
 /// The pause card's row: ▶︎ the voice memo (ring, 0.75×, loop) and a tap-to-expand thumbnail.
 struct ZikrMediaStrip: View {
     let mantra: MantraModel
+    /// The pause screen only fades on Resume (it stays mounted), so playback stops on this.
+    var paused = true
     @State private var engine = ZikrAudio()
     @State private var viewing = false
+    @State private var thumbnail: UIImage?
 
     var body: some View {
         if mantra.audioData != nil || mantra.imageData != nil {
@@ -551,7 +690,7 @@ struct ZikrMediaStrip: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if let data = mantra.imageData, let ui = UIImage(data: data) {
+                if mantra.imageData != nil, let ui = thumbnail {
                     Button { viewing = true } label: {
                         Image(uiImage: ui).resizable().scaledToFill()
                             .frame(width: 56, height: 56)
@@ -563,7 +702,9 @@ struct ZikrMediaStrip: View {
                     .fullScreenCover(isPresented: $viewing) { ZikrPhotoViewer(image: ui) }
                 }
             }
+            .task(id: mantra.imageData) { thumbnail = await decodedImage(mantra.imageData) }
             .onDisappear { engine.stopPlaying() }
+            .onChange(of: paused) { _, now in if !now { engine.stopPlaying() } }
         }
     }
 

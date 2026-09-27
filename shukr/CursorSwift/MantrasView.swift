@@ -263,6 +263,7 @@ struct MantraCardEditor: View {
             .interactiveDismissDisabled(hasEdits)
         }
         .presentationDragIndicator(.visible)
+        .onDisappear { ZikrAudio.stopAll() }   // really closed: keep a take, stop playback
     }
 
     /// The photo / voice memo save straight to the zikr (like count in sets on its page): a
@@ -309,6 +310,10 @@ struct MantraCardFields: View {
         var symbol: String { switch self { case .notes: "doc.text"; case .memo: "waveform"; case .photo: "photo" } }
         var label: String { switch self { case .notes: "Notes"; case .memo: "Voice memo"; case .photo: "Photo" } }
     }
+    /// The card's one audio engine (VoiceMemoPanel only borrows it), so a take survives tab
+    /// switches and List cell recycling. Leaving the memo tab finishes it; the sheets call
+    /// `ZikrAudio.stopAll()` when they really close.
+    @State private var audio = ZikrAudio()
     @State private var pane: Pane = {
         #if DEBUG
         switch UserDefaults.standard.string(forKey: "demoZikrPane") { case "memo": return .memo; case "photo": return .photo; default: break }
@@ -349,7 +354,7 @@ struct MantraCardFields: View {
                 ZStack {
                     switch pane {
                     case .memo:
-                        VoiceMemoPanel(audio: $audioData)
+                        VoiceMemoPanel(audio: $audioData, engine: audio)
                             .padding(8)
                             .background(fieldBox(alwaysFilled: true))
                             .transition(.opacity)
@@ -378,6 +383,17 @@ struct MantraCardFields: View {
         .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: editable)
         .onChange(of: editable) { _, on in if !on { focus = nil } }
+        .onAppear {
+            let binding = $audioData
+            audio.onRecorded = { data in
+                binding.wrappedValue = data
+                triggerSomeVibration(type: .success)
+            }
+        }
+        .onChange(of: pane) { old, _ in
+            if old == .memo { audio.finishRecording(); audio.stopPlaying() }
+        }
+        .preference(key: MemoRecordingKey.self, value: audio.state == .recording)
     }
 
     /// The notes tab: the editor while editing, else the notes as text in the same box.
@@ -472,6 +488,12 @@ struct MantraCardFields: View {
             .fill(Color.primary.opacity(alwaysFilled || editable ? 0.04 : 0))
             .overlay(shape.stroke(Color.sage.opacity(editable ? 0.45 : 0), lineWidth: 1))
     }
+}
+
+/// True while the card is recording a voice memo (a new zikr's sheet won't swipe away then).
+struct MemoRecordingKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }
 
 /// Save in a sheet's bar: green text when there's something to save, gray otherwise (owner,
@@ -779,6 +801,7 @@ struct MantraEditorView: View {
                 if let mantra { AddDailyTaskView(for: mantra, isPresented: $creatingTask) }
             }
         }
+        .onDisappear { ZikrAudio.stopAll() }   // closed (or covered by the task sheet): keep a take
     }
 
     private func save() {

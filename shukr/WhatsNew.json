@@ -342,10 +342,22 @@
       "checked": "sim", "shots": ["wn-qibla-up.jpg"]
     },
     {
-      "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#19",
+      "date": "2026-09-27", "commit": "a138fa1", "time": "2026-09-27T05:12:42-04:00", "topic": "whats-new", "notes": "#19",
       "title": "What's new v2: cards per feature, detail page with screenshots and a timeline, feedback back to Claude",
       "tryIt": ["Open What's new → cards grouped by feature (e.g. Map style has 3 changes)", "Tap Map style → the dropped Map Modes sheet is greyed in Changes", "Tap 👎 on a card, write a line → Send feedback → Copy → the card says sent"],
       "checked": "sim", "shots": ["wn-whats-new-cards.jpg", "wn-whats-new-detail.jpg"]
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": "#17",
+      "title": "Voice memo: takes are never lost, and it stops when it should",
+      "tryIt": ["Record a memo and let it run to 2:00, or take a call / go home mid-take → the take is kept", "Play a memo on the pause card → Resume → it stops; your music comes back when you pause it", "Start the memo on the ✎ sheet while the pause card's plays → only one plays"],
+      "checked": "sim"
+    },
+    {
+      "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": "#17",
+      "title": "Photos are prepared in the background (no hitch when picking a big one)",
+      "tryIt": ["Add a big photo or take one with the camera → the card doesn't stutter"],
+      "checked": "no"
     }
   ]
 }
