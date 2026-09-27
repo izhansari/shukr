@@ -477,10 +477,16 @@
       "checked": "sim", "shots": ["wn-prayers-widget-v2.jpg"]
     },
     {
-      "id": "qibla-haptic-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "id": "qibla-haptic-3", "date": "2026-09-27", "commit": "98a49ab", "time": "2026-09-27T14:45:34-04:00", "topic": "qibla-haptic", "notes": null,
       "title": "The qibla map buzzes again when you line up (qibla mode only)",
       "tryIt": ["Open the map → turn until you face the qibla → one buzz with the green edge glow"],
       "checked": "no"
+    },
+    {
+      "id": "zikr-history-8", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "title": "Edit mode looks like iOS: selection circles, a plain red Delete in the bottom bar, no grey rows; holding a session to feel its pace no longer slides the page",
+      "tryIt": ["History → Edit → tick sessions → Delete (N) at the bottom → confirm", "Same on Azkar and on a zikr's page (Sessions → Edit)", "Hold a session to feel its pace and drift sideways → the page stays"],
+      "checked": "sim", "shots": ["wn-edit-stock.jpg"]
     }
   ]
 }

@@ -93,24 +93,17 @@ struct HistoryPageView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        // Edit mode, the stock way (owner, 2026-09-27: the floating capsule looked un-iOS): a plain
+        // red Delete in the bottom toolbar, the count in its title; the confirmation says the rest.
+        .toolbar {
             if isEditing {
-                Button(role: .destructive) { confirmDelete = true } label: {
-                    Text(selection.isEmpty ? "Select sessions to delete"
-                         : selection.count == 1 ? "Delete 1 session" : "Delete \(selection.count) sessions")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Capsule().fill(.regularMaterial))
-                        .background(Capsule().fill(selection.isEmpty ? Color(.tertiarySystemFill) : Color.red.opacity(0.12)).padding(-0.5))
-                        .overlay(Capsule().fill(selection.isEmpty ? Color.clear : Color.red.opacity(0.1)))
+                ToolbarItem(placement: .bottomBar) {
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Text(selection.isEmpty ? "Delete" : "Delete (\(selection.count))")
+                    }
+                    .tint(.red)
+                    .disabled(selection.isEmpty)
                 }
-                .buttonStyle(.plain)
-                .disabled(selection.isEmpty)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onChange(of: isEditing) { _, on in
@@ -383,10 +376,12 @@ struct SessionRow: View {
         // versions swallowed scrolls that began on a row). Once it has begun the list doesn't
         // scroll, and it lasts until the finger lifts.
         .gesture(PaceHoldGesture { holding in
+            // While the finger is held the library can't page (a sideways drift slid the page).
+            pagerLock?.locked = holding
             guard let pace else { return }
             holding ? startFeelingPace(pace) : stopFeelingPace()
         })
-        .onDisappear { stopFeelingPace() }
+        .onDisappear { stopFeelingPace(); if pagerLock?.locked == true { pagerLock?.locked = false } }
         // Another row started pacing, or the page / a sheet asked everyone to stop.
         .onChange(of: pacer.activeID) { _, active in
             if feelingPace && active != session.persistentModelID { stopFeelingPace() }
@@ -394,7 +389,9 @@ struct SessionRow: View {
         // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
         .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
         // The whole row tints while held — the finger covers the pace text.
-        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : nil)
+        // Always an explicit background: the system's grey selected-row fill looked off in Edit
+        // mode (owner) — the selection circle is enough.
+        .listRowBackground(feelingPace ? Color.green.opacity(0.08) : Color(.secondarySystemGroupedBackground))
     }
 
     /// The popover: the ☰ menu's rows. Feel the pace plays the session's rhythm (a tick and a
@@ -499,6 +496,7 @@ struct SessionRow: View {
     /// One pace at a time, app-wide: starting one stops another; paging away or a sheet opening
     /// stops it (the History list stays mounted in the pager, so onDisappear doesn't come).
     private var pacer = PaceCoordinator.shared
+    @Environment(LibraryPagerLock.self) private var pagerLock: LibraryPagerLock?
     @State private var feelingPace = false
     @State private var paceBeat = 0
     @State private var paceStart: Date?

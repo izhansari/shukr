@@ -103,23 +103,15 @@ struct MantrasView: View {
         }
         .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .fontDesign(.rounded)
-        .safeAreaInset(edge: .bottom) {
+        .toolbar {
             if isEditing {
-                Button(role: .destructive) { confirmDelete = true } label: {
-                    Text(selection.isEmpty ? "Select azkar to delete"
-                         : selection.count == 1 ? "Delete 1 zikr" : "Delete \(selection.count) azkar")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Capsule().fill(.regularMaterial))
-                        .overlay(Capsule().fill(selection.isEmpty ? Color.clear : Color.red.opacity(0.1)))
+                ToolbarItem(placement: .bottomBar) {
+                    Button(role: .destructive) { confirmDelete = true } label: {
+                        Text(selection.isEmpty ? "Delete" : "Delete (\(selection.count))")
+                    }
+                    .tint(.red)
+                    .disabled(selection.isEmpty)
                 }
-                .buttonStyle(.plain)
-                .disabled(selection.isEmpty)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .onChange(of: isEditing) { _, on in if !on { selection.removeAll() } }
@@ -144,6 +136,7 @@ struct MantrasView: View {
         .tint(.primary) // rows, not links
         .allowsHitTesting(!isEditing)                    // in Edit mode a tap selects
         .opacity(isEditing && mantra.isBuiltIn ? 0.45 : 1) // built-ins can't be selected
+        .listRowBackground(Color(.secondarySystemGroupedBackground))   // no grey selected fill
     }
 
     private var selectedMantras: [MantraModel] {
@@ -778,7 +771,9 @@ struct ZikrLibraryView: View {
             // iOS 26: the search field in the bottom bar, with the ＋ beside it on Azkar — it
             // animates in as the page turns (owner, 2026-09-27).
             if #available(iOS 26.0, *) {
-                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                if !editing {
+                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                }
                 if tab == .mantras && !editingAzkar {
                     ToolbarSpacer(.fixed, placement: .bottomBar)
                     ToolbarItem(placement: .bottomBar) { newZikrButton }
@@ -1223,6 +1218,21 @@ struct MantraSessionsSection: View {
     }
 
     @ViewBuilder private var sections: some View {
+        sectionsBody
+            .toolbar {
+                if editing {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(role: .destructive) { confirmDelete = true } label: {
+                            Text(selected.isEmpty ? "Delete" : "Delete (\(selected.count))")
+                        }
+                        .tint(.red)
+                        .disabled(selected.isEmpty)
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder private var sectionsBody: some View {
         if mantra.sessions.isEmpty {
             Section("Sessions") {
                 Text("No sessions with this zikr yet.").foregroundStyle(.secondary)
@@ -1230,14 +1240,7 @@ struct MantraSessionsSection: View {
         } else {
             // "Sessions" with Edit / Done; while editing, the Delete button.
             Section {
-                if editing {
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Text(selected.isEmpty ? "Select sessions to delete"
-                             : selected.count == 1 ? "Delete 1 session" : "Delete \(selected.count) sessions")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .disabled(selected.isEmpty)
-                }
+                EmptyView()
             } header: {
                 HStack {
                     Text("Sessions")
@@ -1275,7 +1278,7 @@ struct MantraSessionsSection: View {
             HStack(spacing: 12) {
                 Image(systemName: on ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(on ? Color.green : Color(.tertiaryLabel))
+                    .foregroundStyle(on ? Color.accentColor : Color(.tertiaryLabel))   // stock, no green
                     .contentTransition(.symbolEffect(.replace))
                 SessionRow(session: session, showsMantraName: false)
             }
