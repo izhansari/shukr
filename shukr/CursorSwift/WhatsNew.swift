@@ -131,6 +131,9 @@ enum WhatsNew {
     /// "Open in shukr": What's new closes and PrayerTimesView takes the user to `link`, so testing
     /// starts from the note (owner, 2026-09-27).
     static let go = Notification.Name("whatsNewGo")
+    /// The pages "Open in shukr" can go to (PrayerTimesView's `WhatsNew.go` handler); a topic with
+    /// any other link shows no button.
+    static let links: Set<String> = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"]
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -295,7 +298,7 @@ struct WhatsNewView: View {
                                                  anySent: feedback.all(for: card.id).contains { $0.sentAt != nil },
                                                  toggleTested: { toggle(card) },
                                                  giveFeedback: { composing = (card, $0) },
-                                                 open: card.topic.link.map { link in { open(link) } })
+                                                 open: card.topic.link.flatMap { link in WhatsNew.links.contains(link) ? { open(link) } : nil })
                                     .contentShape(Rectangle())
                                     .onTapGesture { path.append(card.id) }
                             }
@@ -320,7 +323,7 @@ struct WhatsNewView: View {
             .navigationDestination(for: String.self) { id in
                 if let card = WhatsNew.card(id: id) {
                     WhatsNewDetailView(card: card, tested: $tested,
-                                       open: card.topic.link.map { link in { open(link) } })
+                                       open: card.topic.link.flatMap { link in WhatsNew.links.contains(link) ? { open(link) } : nil })
                 }
             }
         }

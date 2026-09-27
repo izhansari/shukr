@@ -257,7 +257,7 @@ struct PrayersWidgetView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.primary)
-                            .frame(width: 24, height: 24)
+                            .frame(width: 22, height: 22)
                             .background(Circle().fill(Color.primary.opacity(0.08)))
                             .contentShape(Circle())
                     }
@@ -271,17 +271,21 @@ struct PrayersWidgetView: View {
                         .minimumScaleFactor(0.7)
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, 3)
 
+                // The rows share what's left, so Isha fits on the smallest widget (~158 pt on a
+                // 6.1" phone; the fixed layout needed ~168 — review, 2026-09-27).
                 ForEach(order, id: \.self) { name in
                     if let p = entry.prayerDict[name] {
                         row(name, p.start, p.end)
+                            .frame(maxHeight: 22)
                     }
                 }
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 8)
+            .padding(.top, 9)
+            .padding(.bottom, 6)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
 
@@ -307,7 +311,7 @@ struct PrayersWidgetView: View {
                     .monospacedDigit()
             }
             .foregroundStyle(current ? Brand.sage : (sunrise ? Color.secondary.opacity(0.7) : Color.primary))
-            .padding(.vertical, 2.5)
+            .padding(.vertical, 1.5)
             .padding(.horizontal, 5)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(current ? Brand.sage.opacity(0.14) : Color.clear))
@@ -320,14 +324,14 @@ struct PrayersWidgetView: View {
         let score: Double?
         let started: Bool
         var current = false
-        /// Off: done is the app's sage, whatever the score.
+        /// Off: a prayed dot is plain grey, whatever the score (owner, 2026-09-27: not green).
         var colored = true
         var size: CGFloat = 7
 
         var body: some View {
             ZStack {
                 if let score {
-                    let tint = colored ? PrayerScoring.color(for: score) : Brand.sage
+                    let tint = colored ? PrayerScoring.color(for: score) : Color.gray
                     Circle().fill(tint.opacity(0.6))
                     Circle().strokeBorder(tint.opacity(0.9), lineWidth: 0.75)
                 } else if started {
@@ -444,8 +448,10 @@ struct PrayersWidgetView: View {
                                 Circle()
                                     .stroke(Color.gray.opacity(0.2), lineWidth: 6)
                             } else {
+                                // Stronger than the app's (0.35 / 0.75 pt): at widget size, in dark
+                                // mode especially, the ring was hard to see (owner, 2026-09-27).
                                 Circle()
-                                    .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 0.75, dash: [2, 3.5]))
+                                    .stroke(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
                             }
 
                             Circle()

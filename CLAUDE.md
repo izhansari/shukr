@@ -831,7 +831,11 @@ too many sheets.
 - **Score colours + centring (2026-09-27, notes #40):** Edit Widget has "Score colours" (`scoreColors`,
   default on); off, a prayed dot is `Brand.sage` whatever the score (`PrayerDot(colored:)`, list and
   row). DEBUG `-demoWidgetPlain` with `-demoWidget`. The ring is lifted 24 pt (`ringLift`) so it sits
-  evenly between the top edge and the dots (the full 36 pt row put it too high). **Corner pickers
+  evenly between the top edge and the dots (the full 36 pt row put it too high). Follow-ups the same day
+  (owner): with Score colours off a prayed dot is plain grey (`Color.gray`, not sage); the dashed
+  "next" ring is secondary 0.6 at 1 pt (was 0.35 / 0.75 pt — hard to see in dark mode); the times
+  list's rows share the space (`.frame(maxHeight: 22)`, tighter header / padding) so Isha fits a
+  ~158 pt widget; `corners` shows a doubled button as picked (it used to swap one silently). **Corner pickers
   stay two enums** (right leaves out the left; the owner is fine with a doubled button): a sized
   `AppEntity` list ("Bottom buttons", add up to two) was tried — its picks never reached the widget
   (the timeline got `[]`, even for the default; `entities(for:)` never ran) — and a picker of pairs
@@ -1366,6 +1370,11 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   it used to hang under the list with a bare gap; a top row of score dots was tried and dropped —
   owner); all five come back when the day's complete; perfect day pops the
   dots in turn and shows "✦ perfect day".
+- **Map buzz** (qibla mode, `LocationMapContentView`): once per lining up — `aligned` flickers when the
+  heading wobbles across the threshold, so it re-arms only after a second not aligned (`alignLostAt`).
+  NextTag uses `NextLabelTuning.defaults` in Release (the playground's AppStorage is DEBUG only) and
+  draws in `tertiaryLabel` scaled by opacity / 0.3 (primary 0.3 read darker). What's new hides "Open
+  in shukr" for a link outside `WhatsNew.links`.
 - **Qibla haptic** (2026-09-27): `checkToTriggerQiblaHaptic` fires only when `circleOnScreen`
   (active, Salah page, `WelcomeTarget.canLand`, `CircleCover.active` empty, settled) and the
   circle's own map isn't up. `CircleCover` (mainCircle.swift) is the register for things presented

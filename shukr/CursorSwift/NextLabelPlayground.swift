@@ -37,15 +37,22 @@ struct NextLabelTuning: Codable, Equatable {
 /// "NEXT" over a name, without taking space (an overlay on the name, so the name never moves).
 struct NextTag: View {
     var shown = true
+    #if DEBUG
     @AppStorage(NextLabelTuning.key) private var tuningJSON = ""
     private var tuning: NextLabelTuning { NextLabelTuning.decode(tuningJSON) }
+    #else
+    // Release: the fixed defaults, never values a debug install left in the defaults.
+    private let tuning = NextLabelTuning.defaults
+    #endif
 
     var body: some View {
         Text("next")
             .font(.system(size: tuning.size, weight: .medium, design: .rounded))
             .tracking(tuning.tracking)
             .textCase(.uppercase)
-            .foregroundStyle(Color.primary.opacity(tuning.opacity))
+            // The tertiary label at the default opacity (0.3), scaled from there — `primary` at
+            // 0.3 read darker than the `.tertiary` it replaced (review, 2026-09-27).
+            .foregroundStyle(Color(uiColor: .tertiaryLabel).opacity(min(tuning.opacity / 0.3, 1)))
             .fixedSize()
             .offset(y: tuning.offset)
             .opacity(shown ? 1 : 0)

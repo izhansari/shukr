@@ -40,7 +40,7 @@
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
-    {"id": "qibla-haptic", "area": "Salah", "title": "The qibla buzz only happens when the Salah circle is on screen", "link": "salah"},
+    {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz only happens when the Salah circle is on screen", "link": "salah"},
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"}
   ],
   "entries": [
@@ -510,19 +510,31 @@
       "id": "widget-next-3", "date": "2026-09-27", "commit": "01c951b", "time": "2026-09-27T15:44:29-04:00", "topic": "widget-next", "notes": "#40",
       "title": "Prayers widget: Score colours switch (off = one plain colour for prayed), and the circle centred above the dots",
       "tryIt": ["Long-press the Prayers widget → Edit Widget → turn Score colours off: prayed dots all go sage", "The circle now sits evenly between the top edge and the dots"],
-      "checked": "sim", "shots": ["wn-widget-plain.jpg"]
+      "checked": "sim", "shots": ["wn-widget-plain-dark.jpg"]
     },
     {
-      "id": "zikr-media-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": null,
+      "id": "zikr-media-5", "date": "2026-09-27", "commit": "9a0ec9a", "time": "2026-09-27T15:57:36-04:00", "topic": "zikr-media", "notes": null,
       "title": "Editing a zikr: a new photo or voice memo lights up Save; Cancel asks and puts it back",
       "tryIt": ["A zikr's page → ✎ → long-press the photo → Remove photo: Save turns green", "Cancel → Discard changes? → Discard: the photo is back", "Same on the pause card's ✎"],
       "checked": "sim"
     },
     {
-      "id": "zikr-media-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-media", "notes": null,
+      "id": "zikr-media-6", "date": "2026-09-27", "commit": "9a0ec9a", "time": "2026-09-27T15:57:36-04:00", "topic": "zikr-media", "notes": null,
       "title": "A zikr's sessions: one Delete button in Edit mode, and a tap selects (no Feel the pace popover)",
       "tryIt": ["A zikr's page → Sessions → Edit → tap a session: it's selected, one Delete at the bottom"],
       "checked": "sim"
+    },
+    {
+      "id": "widget-next-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "widget-next", "notes": "#40",
+      "title": "Prayers widget: plain grey dots when Score colours is off; a clearer dashed ring for the next prayer; the times list fits Isha on smaller phones; a doubled corner button shows as picked",
+      "tryIt": ["Edit Widget → Score colours off: prayed dots are grey", "In dark mode, the dashed ring around a prayer that hasn't started is easy to see", "Tap the list icon: all six times fit"],
+      "checked": "sim", "shots": ["wn-widget-plain-dark.jpg"]
+    },
+    {
+      "id": "qibla-haptic-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "qibla-haptic", "notes": null,
+      "title": "The map buzzes once when you line up with the qibla, not again and again as the compass wobbles",
+      "tryIt": ["Map (qibla) → turn slowly onto the line: one buzz"],
+      "checked": "no"
     }
   ]
 }

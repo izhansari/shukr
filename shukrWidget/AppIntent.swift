@@ -73,12 +73,7 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
     @Parameter(title: "Score colours", default: true)
     var scoreColors: Bool?
 
-    /// The corners as shown: a widget already set to the same button twice shows the next unused
-    /// one on the right instead of a duplicate.
-    var corners: (left: WidgetCornerAction, right: WidgetCornerAction) {
-        let left = bottomLeft
-        guard bottomRight != .none, bottomRight == left else { return (left, bottomRight) }
-        let fallback = [WidgetCornerAction.tasbeeh, .qibla, .dailyAyah, .names].first { $0 != left } ?? .none
-        return (left, fallback)
-    }
+    /// The corners as picked — the same button on both is allowed (owner, 2026-09-27: "fine if
+    /// they put the same thing twice"); it used to swap in another one silently.
+    var corners: (left: WidgetCornerAction, right: WidgetCornerAction) { (bottomLeft, bottomRight) }
 }
