@@ -54,6 +54,8 @@ struct PrayersWidgetEntry: TimelineEntry {
     /// The bottom corners (Edit Widget; notes #1).
     var leftCorner: WidgetCornerAction = .qibla
     var rightCorner: WidgetCornerAction = .tasbeeh
+    /// Prayed dots in their score colours (Edit Widget); off = one plain colour.
+    var scoreColors = true
 
     /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
     /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
@@ -62,7 +64,7 @@ struct PrayersWidgetEntry: TimelineEntry {
                            toggleShowAllTImes: list ?? toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
                            completedScores: completedScores, nextFajr: nextFajr,
-                           leftCorner: leftCorner, rightCorner: rightCorner)
+                           leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors)
     }
 }
 
@@ -183,7 +185,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             completedScores: SharedStore.completedPrayerScoresToday(),
             nextFajr: nextFajr,
             leftCorner: configuration?.corners.left ?? .qibla,
-            rightCorner: configuration?.corners.right ?? .tasbeeh
+            rightCorner: configuration?.corners.right ?? .tasbeeh,
+            scoreColors: configuration?.scoreColors ?? true
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
@@ -199,7 +202,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                                       todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
                                       completedScores: scores, nextFajr: nextFajr,
                                       leftCorner: corners.first ?? entry.leftCorner,
-                                      rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner)
+                                      rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner,
+                                      scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors)
         }
         #endif
         return entry
@@ -286,7 +290,7 @@ struct PrayersWidgetView: View {
             let current = !sunrise && start <= entry.date && entry.date < end
             let score = entry.completedScores[name]
             return HStack(spacing: 6) {
-                PrayerDot(score: score, started: start <= entry.date, current: current)
+                PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors)
                     .opacity(sunrise ? 0 : 1)
                 Text(name)
                     .font(.system(size: 12, weight: current ? .regular : .light, design: .rounded))
@@ -316,13 +320,16 @@ struct PrayersWidgetView: View {
         let score: Double?
         let started: Bool
         var current = false
+        /// Off: done is the app's sage, whatever the score.
+        var colored = true
         var size: CGFloat = 7
 
         var body: some View {
             ZStack {
                 if let score {
-                    Circle().fill(PrayerScoring.color(for: score).opacity(0.6))
-                    Circle().strokeBorder(PrayerScoring.color(for: score).opacity(0.9), lineWidth: 0.75)
+                    let tint = colored ? PrayerScoring.color(for: score) : Brand.sage
+                    Circle().fill(tint.opacity(0.6))
+                    Circle().strokeBorder(tint.opacity(0.9), lineWidth: 0.75)
                 } else if started {
                     Circle().strokeBorder(current ? Brand.sage : Color.secondary.opacity(0.7), lineWidth: 1)
                 } else {
@@ -343,7 +350,8 @@ struct PrayersWidgetView: View {
                     let p = entry.prayerDict[name]
                     PrayerDot(score: entry.completedScores[name],
                               started: (p?.start ?? .distantFuture) <= entry.date,
-                              current: p.map { $0.start <= entry.date && entry.date < $0.end } ?? false)
+                              current: p.map { $0.start <= entry.date && entry.date < $0.end } ?? false,
+                              colored: entry.scoreColors)
                 }
             }
             .accessibilityElement(children: .ignore)
@@ -493,6 +501,11 @@ struct PrayersWidgetView: View {
                     
                     Spacer()
                 }
+                // Centred between the widget's top edge and the dots, not in the whole widget: the
+                // full-width dots row weighs the bottom down, so the true centre read low (owner,
+                // 2026-09-27). The full row height (36) put it too close to the top; 24 splits the
+                // gaps evenly (checked in the simulator).
+                .padding(.bottom, Self.ringLift)
 
                 // A button in each corner (2026-09-25): today's times · mark prayed on top; the
                 // bottom two are chosen in Edit Widget (Qibla / Tasbeeh by default, or Daily Ayah,
@@ -515,6 +528,8 @@ struct PrayersWidgetView: View {
                 .padding(6)
             }
         }
+
+        static let ringLift: CGFloat = 24
 
         private var bothCornersEmpty: Bool { entry.leftCorner == .none && entry.rightCorner == .none }
 

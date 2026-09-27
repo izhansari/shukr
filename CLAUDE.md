@@ -818,6 +818,14 @@ too many sheets.
   families share the intent, so their Edit Widget also lists the two (unused) corner settings.
   DEBUG `-demoWidget "Fajr=1.0,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,names] [-demoWidgetList]`
   (`off` clears) feeds the widget fixed scores for screenshots.
+- **Score colours + centring (2026-09-27, notes #40):** Edit Widget has "Score colours" (`scoreColors`,
+  default on); off, a prayed dot is `Brand.sage` whatever the score (`PrayerDot(colored:)`, list and
+  row). DEBUG `-demoWidgetPlain` with `-demoWidget`. The ring is lifted 24 pt (`ringLift`) so it sits
+  evenly between the top edge and the dots (the full 36 pt row put it too high). **Corner pickers
+  stay two enums** (right leaves out the left; the owner is fine with a doubled button): a sized
+  `AppEntity` list ("Bottom buttons", add up to two) was tried — its picks never reached the widget
+  (the timeline got `[]`, even for the default; `entities(for:)` never ran) — and a picker of pairs
+  was rejected. Changing a parameter's type under the same name leaves stale saved values: rename it.
 - **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
   the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
   thin dashed ring and a tiny NEXT (circular).

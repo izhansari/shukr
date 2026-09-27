@@ -71,7 +71,7 @@ struct shukrApp: App {
                i + 1 < ProcessInfo.processInfo.arguments.count {
                 UserDefaults(suiteName: SharedStore.appGroup)?.set(ProcessInfo.processInfo.arguments[i + 1] == "on", forKey: NextLabel.key)
             }
-            // `-demoWidget "Fajr=0.95,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,none] [-demoWidgetList]`:
+            // `-demoWidget "Fajr=0.95,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,none] [-demoWidgetList] [-demoWidgetPlain]`:
             // the Prayers widget (DEBUG) shows these scores / corners / the list, for screenshots.
             // `-demoWidget off` clears it.
             let args = ProcessInfo.processInfo.arguments
@@ -85,6 +85,7 @@ struct shukrApp: App {
                         group?.set(args[j + 1], forKey: "demoWidget.corners")
                     } else { group?.removeObject(forKey: "demoWidget.corners") }
                 }
+                group?.set(args.contains("-demoWidgetPlain"), forKey: "demoWidget.plain")   // score colours off
                 if args.contains("-demoWidgetList") {
                     group?.set(true, forKey: WidgetListState.openKey)
                     group?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)

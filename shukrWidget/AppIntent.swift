@@ -44,6 +44,10 @@ enum WidgetCornerAction: String, AppEnum, CaseIterable {
     }
 }
 
+/// Tried 2026-09-27 and dropped: one "Bottom buttons" list of up to two (an `AppEntity` array with
+/// `size: 2` — the only list type iOS offers). Its picks never reached the widget (the timeline got
+/// an empty list, even for the default, and `entities(for:)` was never called), and iOS offers a
+/// button already in the list anyway. A picker of ready-made pairs was rejected by the owner.
 /// "Bottom right" leaves out what "Bottom left" has (owner, 2026-09-27: choosing the same button
 /// twice made no sense). "None" is always offered. Only one way: two providers depending on each
 /// other is a circular type reference; `corners` covers a left changed to match the right.
@@ -64,6 +68,10 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
 
     @Parameter(title: "Bottom right", default: .tasbeeh, optionsProvider: BottomRightOptions())
     var bottomRight: WidgetCornerAction
+
+    /// Off: a prayed prayer's dot is one plain colour instead of its score's (owner, 2026-09-27).
+    @Parameter(title: "Score colours", default: true)
+    var scoreColors: Bool?
 
     /// The corners as shown: a widget already set to the same button twice shows the next unused
     /// one on the right instead of a duplicate.

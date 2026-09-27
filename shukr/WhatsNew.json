@@ -9,7 +9,7 @@
     {"id": "masjid-filter", "area": "Map", "title": "Filter your prayer pins to \"Only at a masjid\"", "link": "map"},
     {"id": "masjid-duas", "area": "Settings", "title": "Duas when you arrive at / leave your masajid (opt-in)", "link": "settings"},
     {"id": "holy-cities", "area": "Location", "title": "A welcome in Makkah and Madinah"},
-    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring with the day's five prayers as dots, your choice of bottom corners, and a times list that goes back to the ring"},
+    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring (centred above the day's five prayers as dots), your choice of bottom corners, score colours on or off, and a times list that goes back to the ring"},
     {"id": "time-editor-opens", "area": "Salah", "title": "The time editor opens on the time you saved", "link": "salah"},
     {"id": "move-prayer", "area": "Salah", "title": "Change where you prayed: drag the map under the pin, or type an address", "link": "salah",
      "tryIt": ["Long-press a done prayer → edit time → the location chip → drag the map under the pin", "Tap the address → type one → pick a suggestion; it says how far that is from where you marked it", "Set → Save"]},
@@ -501,10 +501,16 @@
       "checked": "sim"
     },
     {
-      "id": "zikr-history-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": null,
+      "id": "zikr-history-9", "date": "2026-09-27", "commit": "aa97b94", "time": "2026-09-27T15:44:15-04:00", "topic": "zikr-history", "notes": null,
       "title": "History ⇄ Azkar pages without the lag; the Edit button stays put",
       "tryIt": ["☰ → Zikr History → swipe to Azkar and back: smooth, and Edit doesn't redraw", "Edit still works on both pages"],
       "checked": "sim"
+    },
+    {
+      "id": "widget-next-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "widget-next", "notes": "#40",
+      "title": "Prayers widget: Score colours switch (off = one plain colour for prayed), and the circle centred above the dots",
+      "tryIt": ["Long-press the Prayers widget → Edit Widget → turn Score colours off: prayed dots all go sage", "The circle now sits evenly between the top edge and the dots"],
+      "checked": "sim", "shots": ["wn-widget-plain.jpg"]
     }
   ]
 }
