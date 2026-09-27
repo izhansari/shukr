@@ -313,6 +313,11 @@ class MantraModel: Identifiable {
     /// 0 = no button (schema 2.1.0, 2026-09-25; briefly lived in UserDefaults before that).
     var quickAddStep: Int = 0
     var createdAt: Date = Date()
+    /// For learning it (schema 2.5.0, 2026-09-27, notes #17): one photo (a written dua, calligraphy,
+    /// a teacher's handwriting; JPEG, ~1200 px) and one voice memo (how it's said; AAC .m4a, ≤ 2 min).
+    /// Stored outside the database file.
+    @Attribute(.externalStorage) var imageData: Data? = nil
+    @Attribute(.externalStorage) var audioData: Data? = nil
 
     @Relationship(deleteRule: .nullify, inverse: \TaskModel.mantraRef)
     var tasks: [TaskModel] = []

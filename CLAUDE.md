@@ -98,6 +98,8 @@ keywords, "What's New" and screenshot captions.
   where you left off or start over; arrange them home-screen style.
 - Azkar: your own library of zikr with the full Arabic / transliteration and notes (who
   taught you, why), shown right on the pause screen; lifetime count, time and pace per zikr.
+- Each zikr can keep a voice memo (how it's said — you, a teacher; slow 0.75× and loop) and a
+  photo (a written dua, calligraphy), both a tap away on the pause screen.
 - Count in sets: switch on a per-zikr "+N" and every tap counts N — for when you recite a set
   on your fingers and tap once.
 - Post-salah tasbih (Tasbih Fatimah): 33 · 33 · 34 in one flowing session, the phrase
@@ -123,6 +125,30 @@ Everything a user reads says **zikr** (one) / **Azkar** (the library, the Histor
 tasks stay "tasks". **Code and SwiftData names keep "Mantra"** (`MantraModel`, `MantrasView`,
 `mantraName`…) — renaming a model is a schema risk. So in these notes "mantra" means the model /
 code; in UI strings write "zikr". New UI text must follow this.
+
+## Zikr card: notes / voice memo / photo — schema 2.5.0 (2026-09-27, notes #17)
+
+- `MantraModel.imageData` / `audioData` (`Data?`, `@Attribute(.externalStorage)`). Backup
+  `…before-2.5.0` is made by `makeContainer` as usual.
+- `MantraCardFields` (MantrasView.swift): the notes row is three tab buttons (doc.text / waveform /
+  photo, sage when selected, a sage dot when that tab has something) beside ONE box of fixed
+  height (`paneHeight` 132). The box's content is a `switch pane` with `.transition(.opacity)` —
+  nothing on the card moves. **Trap:** the first version stacked all three layers in a ZStack and
+  hid two with `.opacity(0)`; a hidden memo / photo layer covered the top ~30 pt of the notes text
+  (it rendered, just unseen). Don't go back to stacked hidden layers.
+- `CursorSwift/ZikrMedia.swift`: `ZikrAudio` (AVAudioRecorder AAC, 2 min max, metering; AVAudioPlayer
+  with 0.75× and loop; the session (`.playAndRecord` / `.playback` `.spokenAudio`) is ended with
+  `.notifyOthersOnDeactivation`, so the user's music resumes), `VoiceMemoPanel`, `ZikrPhotoPanel`
+  (PhotosPicker + camera, `downscaledJPEG` 1200 px, tap → `ZikrPhotoViewer` zoom), `ZikrMediaStrip`
+  (pause card: ▶︎ + 0.75× / loop + a 56 pt thumbnail).
+- Media save straight to the row (existing zikr: pause ✎ and the zikr page); a new zikr keeps them
+  as drafts until Save.
+- Info.plist: `NSMicrophoneUsageDescription`, `NSCameraUsageDescription`.
+- DEBUG: `-demoZikrMedia` (Alhamdulillah gets a rendered calligraphy image and a 3 s tone; its page
+  opens; add `-demoPauseScreen` for the pause card), `-demoZikrPane notes|memo|photo`,
+  `-demoZikrEmpty` (Astaghfirullah, empty tabs).
+- Sim ✓: all three tabs filled and empty, the pause strip. Recording on a real mic and the camera
+  are untested (no mic / camera in the sim).
 
 ## Handoff — 2026-09-25 evening (read this first)
 

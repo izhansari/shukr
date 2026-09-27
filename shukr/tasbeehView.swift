@@ -1141,7 +1141,7 @@ struct tasbeehView: View {
                     }
                     if !notes.isEmpty {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            Image(systemName: "note.text")
+                            Image(systemName: "doc.text")
                                 .foregroundStyle(.tertiary)
                             Text(notes)
                                 .foregroundStyle(.secondary)
@@ -1149,7 +1149,9 @@ struct tasbeehView: View {
                         }
                         .font(.footnote)
                     }
-                    if full.isEmpty && notes.isEmpty {
+                    // The voice memo (▶︎, 0.75×, loop) and a tap-to-expand photo, for learning it.
+                    ZikrMediaStrip(mantra: mantra)
+                    if full.isEmpty && notes.isEmpty && mantra.audioData == nil && mantra.imageData == nil {
                         Button { editingMantra = mantra } label: {
                             Label("add the full zikr or notes", systemImage: "plus")
                                 .font(.footnote)

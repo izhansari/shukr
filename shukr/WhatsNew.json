@@ -264,9 +264,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "date": "2026-09-27", "commit": "b76d6f7", "area": "Zikr",
     "title": "\"Mantra\" is now \"zikr\" everywhere; the library is \"Azkar\"",
     "tryIt": ["Zikr page → the books button → History | Azkar", "Open a zikr → \"Edit zikr\", \"No tasks use this zikr\"", "Pause a session → \"choose a zikr\" / \"Edit zikr\""],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "Zikr",
+    "title": "A zikr can hold a voice memo and a photo beside its notes",
+    "tryIt": ["Open a zikr → the three icons left of the notes box: notes / voice memo / photo — tapping swaps the box in place", "Voice memo → Tap to record (asks for the mic once, max 2 min) → play, 0.75×, loop; ··· to record again or delete", "Photo → Add a photo or Take one → tap it to zoom; hold for replace / remove", "Start that zikr, pause → the memo's ▶︎ and the photo's thumbnail are on the pause card", "Music playing? It carries on after the memo"],
     "checked": "sim"
   }
 ]

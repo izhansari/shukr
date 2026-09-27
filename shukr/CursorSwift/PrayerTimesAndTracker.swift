@@ -68,6 +68,9 @@ struct PrayerTimesView: View {
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State private var showNamesPage = false
+    #if DEBUG
+    @State private var demoMantra: MantraModel?
+    #endif
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
     private var somethingCovers: Bool {
@@ -455,6 +458,18 @@ struct PrayerTimesView: View {
                 showMapPage = true   // the map opens straight into mosque mode (LocationMapContentView)
                 return
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoZikrMedia") {
+                // Alhamdulillah with a sample photo + memo; its page opens unless `-demoPauseScreen`
+                // (then the pause card shows them). `-demoZikrPane memo|photo` picks the tab.
+                try? await Task.sleep(for: .seconds(1))
+                let m = ZikrMediaDemo.seed(in: context)
+                if !ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") { demoMantra = m; return }
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoZikrEmpty") {
+                // A zikr with no photo / memo, for the empty tabs.
+                try? await Task.sleep(for: .seconds(1))
+                if let m = MantraModel.find(named: "Astaghfirullah", in: context) { demoMantra = m; return }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
                 try? await Task.sleep(for: .seconds(1))
                 showMantrasPage = true
@@ -621,6 +636,9 @@ struct PrayerTimesView: View {
                 sharedState.mantraForSession = chosenMantraObject
             }
         }
+        #if DEBUG
+        .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
+        #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
                 isPresented: $showMantraSheetFromHomePage,

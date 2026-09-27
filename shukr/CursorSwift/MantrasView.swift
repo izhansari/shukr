@@ -219,6 +219,7 @@ struct MantraCardEditor: View {
         NavigationStack {
             ScrollView {
                 MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
+                                 imageData: liveMedia(\.imageData), audioData: liveMedia(\.audioData),
                                  isDuplicate: isDuplicate)
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
@@ -243,6 +244,12 @@ struct MantraCardEditor: View {
         .presentationDragIndicator(.visible)
     }
 
+    /// The photo / voice memo save straight to the zikr (like count in sets on its page): a
+    /// recording shouldn't hang on Save.
+    private func liveMedia(_ key: ReferenceWritableKeyPath<MantraModel, Data?>) -> Binding<Data?> {
+        Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
+    }
+
     private func save() {
         guard canSave else { return }
         dismissKeyboard()
@@ -265,6 +272,9 @@ struct MantraCardFields: View {
     @Binding var fullText: String
     @Binding var notes: String
     @Binding var quickAdd: Int
+    /// The photo and voice memo (notes #17), shown in the notes box's other two tabs.
+    @Binding var imageData: Data?
+    @Binding var audioData: Data?
     var isDuplicate = false
     /// Viewing: fields locked. Editing: the name, full mantra and notes each sit in a box with a
     /// sage edge (the full mantra's box shows either way). Every field keeps the box's padding
@@ -272,6 +282,19 @@ struct MantraCardFields: View {
     var editable = true
     @FocusState private var focus: Field?
     private enum Field { case name, fullText, notes }
+    /// Which of notes / voice memo / photo the box shows. The box keeps one size for all three
+    /// (owner, 2026-09-27: nothing on the card or page may move when switching).
+    enum Pane: CaseIterable { case notes, memo, photo
+        var symbol: String { switch self { case .notes: "doc.text"; case .memo: "waveform"; case .photo: "photo" } }
+        var label: String { switch self { case .notes: "Notes"; case .memo: "Voice memo"; case .photo: "Photo" } }
+    }
+    @State private var pane: Pane = {
+        #if DEBUG
+        switch UserDefaults.standard.string(forKey: "demoZikrPane") { case "memo": return .memo; case "photo": return .photo; default: break }
+        #endif
+        return .notes
+    }()
+    static let paneHeight: CGFloat = 132
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -296,12 +319,32 @@ struct MantraCardFields: View {
                       minHeight: 110, centered: true)
 
             HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "note.text")
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, 9)
-                editorBox(text: $notes, field: .notes,
-                          placeholder: "notes — why or when you read it, who taught you",
-                          minHeight: 70, centered: false, inset: false)
+                // doc.text / waveform / photo, top to bottom — tabs for the box beside them.
+                VStack(spacing: 6) {
+                    ForEach(Pane.allCases, id: \.self) { p in
+                        paneButton(p)
+                    }
+                }
+                ZStack {
+                    switch pane {
+                    case .memo:
+                        VoiceMemoPanel(audio: $audioData)
+                            .padding(8)
+                            .background(fieldBox(alwaysFilled: true))
+                            .transition(.opacity)
+                    case .photo:
+                        ZikrPhotoPanel(image: $imageData)
+                            .padding(imageData != nil ? 0 : 8)
+                            .background(fieldBox(alwaysFilled: true))
+                            .transition(.opacity)
+                    case .notes:
+                        notesPane
+                            .transition(.opacity)
+                    }
+                }
+                .frame(height: Self.paneHeight)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .animation(.easeInOut(duration: 0.22), value: pane)
             }
             .font(.footnote)
 
@@ -314,6 +357,57 @@ struct MantraCardFields: View {
         .fontDesign(.rounded)
         .animation(.easeInOut(duration: 0.2), value: editable)
         .onChange(of: editable) { _, on in if !on { focus = nil } }
+    }
+
+    /// The notes tab: the editor while editing, else the notes as text in the same box.
+    private var notesPane: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+            if editable {
+                editorBox(text: $notes, field: .notes,
+                          placeholder: "notes — why or when you read it, who taught you",
+                          minHeight: Self.paneHeight - 8, centered: false, inset: false)
+            } else {
+                Text(notes.isEmpty ? "no notes yet" : notes)
+                    .font(.subheadline)
+                    .foregroundStyle(notes.isEmpty ? .tertiary : .primary)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 12)
+            }
+        }
+        // Same filled box as the memo / photo tabs (editing draws its own).
+        .background { if !editable { fieldBox(alwaysFilled: true) } }
+    }
+
+    /// A tab in the left column: highlighted when selected; a small dot when that tab has something.
+    private func paneButton(_ p: Pane) -> some View {
+        let selected = pane == p
+        let filled = switch p {
+        case .notes: !notes.isEmpty
+        case .memo: audioData != nil
+        case .photo: imageData != nil
+        }
+        return Button {
+            guard pane != p else { return }
+            focus = nil
+            pane = p
+        } label: {
+            Image(systemName: p.symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(selected ? Color.sage : (filled ? Color.secondary : Color(.tertiaryLabel)))
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(selected ? Color.sage.opacity(0.16) : Color.clear))
+                .overlay(alignment: .topTrailing) {
+                    if filled && !selected {
+                        Circle().fill(Color.sage).frame(width: 5, height: 5).offset(x: -5, y: 6)
+                    }
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .sensoryFeedback(.selection, trigger: selected)
+        .accessibilityLabel(p.label)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// A text editor with a placeholder, in the card's inset box (or bare, for notes).
@@ -498,6 +592,9 @@ struct MantraEditorView: View {
     @State private var fullText: String
     @State private var notes: String
     @State private var quickAdd: Int
+    /// A new zikr's photo / memo wait here until Save; an existing one's save straight to it.
+    @State private var draftImage: Data?
+    @State private var draftAudio: Data?
     @State private var showTitle = false
     /// Viewing by default; the pencil unlocks the fields in place (a new mantra starts editing).
     @State private var isEditing: Bool
@@ -540,6 +637,11 @@ struct MantraEditorView: View {
         hasEdits && !trimmedName.isEmpty && !isDuplicate
     }
 
+    private func media(_ key: ReferenceWritableKeyPath<MantraModel, Data?>, draft: Binding<Data?>) -> Binding<Data?> {
+        guard let mantra else { return draft }
+        return Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
+    }
+
     /// Restyled 2026-09-25 to match the pause screen (owner: "very plain"): the same card as
     /// its ✎ editor, the lifetime stats as `ZikrBento` tiles, and sessions grouped by day like
     /// Zikr History.
@@ -548,6 +650,8 @@ struct MantraEditorView: View {
             List {
                 Section {
                     MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: liveQuickAdd,
+                                     imageData: media(\.imageData, draft: $draftImage),
+                                     audioData: media(\.audioData, draft: $draftAudio),
                                      isDuplicate: isDuplicate, editable: isEditing)
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -652,6 +756,8 @@ struct MantraEditorView: View {
         } else {
             let new = MantraModel(name: trimmedName, fullText: fullTextTrimmed, notes: notesTrimmed)
             new.quickAddStep = quickAdd
+            new.imageData = draftImage
+            new.audioData = draftAudio
             context.insert(new)
             dismiss()
         }

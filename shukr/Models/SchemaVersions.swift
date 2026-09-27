@@ -32,7 +32,8 @@ enum ShukrSchemaV2: VersionedSchema {
     /// 2.2.0 (2026-09-26): `PrayerModel.mosqueName` (optional String — lightweight).
     /// 2.3.0 (2026-09-26): `PrayerModel.recorded…` (optional — lightweight).
     /// 2.4.0 (2026-09-27): `TaskModel.customName` + the reminder fields (optional — lightweight).
-    static let versionIdentifier = Schema.Version(2, 4, 0)
+    /// 2.5.0 (2026-09-27): `MantraModel.imageData` / `audioData` (optional, external storage).
+    static let versionIdentifier = Schema.Version(2, 5, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }

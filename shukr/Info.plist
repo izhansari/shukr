@@ -10,6 +10,10 @@
 	<array>
 		<string>fetch</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>To record how a zikr is said, so you can listen and practise it. The recording stays on your iPhone.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>To photograph a written dua or a teacher's handwriting and keep it with your zikr. The photo stays on your iPhone.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>ShukrBuildStamp</key>
