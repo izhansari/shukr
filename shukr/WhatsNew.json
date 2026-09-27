@@ -441,10 +441,16 @@
       "checked": "no"
     },
     {
-      "id": "zikr-history-3", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2b",
+      "id": "zikr-history-3", "date": "2026-09-27", "commit": "d25417d", "time": "2026-09-27T13:32:33-04:00", "topic": "zikr-history", "notes": "#2b",
       "title": "Tap a session: a small glass menu (Open zikr · Feel the pace) instead of a strip under the row",
       "tryIt": ["History → tap a session → Open zikr / Feel the pace; nothing in the list moves", "While the pace plays, tap the row again → it stops", "On a zikr's page, tapping a session offers Feel the pace"],
       "checked": "sim", "shots": ["wn-session-popover.jpg"]
+    },
+    {
+      "id": "zikr-history-4", "date": "2026-09-27", "commit": "next", "time": null, "topic": "zikr-history", "notes": "#2",
+      "title": "History ⇄ Azkar pages smoothly (native paging); Azkar has Edit → select → Delete too, no row swipes",
+      "tryIt": ["Books → swipe between History and Azkar: smooth, the switch follows", "Azkar → Edit → tick your own azkar (built-ins can't be) → Delete N azkar (says what happens to their tasks)", "Scrub the 14-day chart sideways: it scrubs, the page doesn't turn"],
+      "checked": "sim"
     }
   ]
 }

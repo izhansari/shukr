@@ -17,14 +17,20 @@ struct MantrasView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \MantraModel.name) private var mantras: [MantraModel]
 
-    @State private var editing: MantraModel? = nil
+    @State private var editingMantra: MantraModel? = nil
     @State private var showingNewMantra = false
     @State private var search = ""
-    @State private var deleting: MantraModel?
-    /// Inside `ZikrLibraryView`: the library owns the search field and the + (both pages stay
-    /// mounted side by side, so a page's own toolbar / search would show on the other page).
+    /// Inside `ZikrLibraryView`: the library owns the search field, the + and Edit (both pages
+    /// stay mounted side by side, so a page's own toolbar / search would show on the other page).
     var embedded = false
     var externalSearch = ""
+    /// Edit → select your own azkar → Delete (built-ins can't be selected). No row swipes
+    /// (owner, 2026-09-27). The library passes its binding; on its own the page has its own Edit.
+    var editing: Binding<Bool>? = nil
+    @State private var ownEditing = false
+    @State private var selection = Set<PersistentIdentifier>()
+    @State private var confirmDelete = false
+    private var isEditing: Bool { editing?.wrappedValue ?? ownEditing }
 
     /// Matches the name, the full wording or the notes.
     private var query: String { (embedded ? externalSearch : search).trimmingCharacters(in: .whitespaces) }
@@ -47,6 +53,9 @@ struct MantrasView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
+                        Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showingNewMantra = true
                         } label: {
@@ -62,7 +71,7 @@ struct MantrasView: View {
     }
 
     private var list: some View {
-        List {
+        List(selection: $selection) {
             if mantras.isEmpty {
                 Text("No azkar yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
@@ -75,7 +84,7 @@ struct MantrasView: View {
                 let own = shown.filter { !$0.isBuiltIn }
                 if !builtIns.isEmpty {
                     Section("Built-in") {
-                        ForEach(builtIns) { row($0).deleteDisabled(true) }
+                        ForEach(builtIns) { row($0).selectionDisabled() }
                     }
                 }
                 Section("Your azkar") {
@@ -84,36 +93,76 @@ struct MantrasView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(own) { row($0) }
-                        .onDelete { offsets in deleting = offsets.first.map { own[$0] } }
+                    ForEach(own) { row($0).tag($0.persistentModelID) }
                 }
             }
         }
+        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .fontDesign(.rounded)
-        .sheet(item: $editing) { mantra in
+        .safeAreaInset(edge: .bottom) {
+            if isEditing {
+                Button(role: .destructive) { confirmDelete = true } label: {
+                    Text(selection.isEmpty ? "Select azkar to delete"
+                         : selection.count == 1 ? "Delete 1 zikr" : "Delete \(selection.count) azkar")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(selection.isEmpty ? Color.secondary : Color.red)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Capsule().fill(.regularMaterial))
+                        .overlay(Capsule().fill(selection.isEmpty ? Color.clear : Color.red.opacity(0.1)))
+                }
+                .buttonStyle(.plain)
+                .disabled(selection.isEmpty)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: isEditing) { _, on in if !on { selection.removeAll() } }
+        .onChange(of: query) { _, _ in selection.removeAll() }
+        .sheet(item: $editingMantra) { mantra in
             MantraEditorView(mantra: mantra)
         }
-        .alert("Delete “\(deleting?.name ?? "")”?",
-               isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-               presenting: deleting) { m in
-            Button("Delete", role: .destructive) {
-                deleting = nil                                   // the alert lets go of the row first
-                withAnimation { MantraModel.delete(m, in: context) }
-            }
-            Button("Cancel", role: .cancel) { deleting = nil }
-        } message: { m in
-            Text(MantraModel.deleteMessage(m))
+        .alert(selection.count == 1 ? "Delete 1 zikr?" : "Delete \(selection.count) azkar?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) { deleteSelected() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(deleteSummary)
         }
     }
 
     private func row(_ mantra: MantraModel) -> some View {
         Button {
-            editing = mantra
+            editingMantra = mantra
         } label: {
             ZikrListRow(mantra: mantra)
         }
         .tint(.primary) // rows, not links
-        .noPageZone("mantra-\(mantra.id)")   // row swipes (delete) stay the row's
+        .allowsHitTesting(!isEditing)                    // in Edit mode a tap selects
+        .opacity(isEditing && mantra.isBuiltIn ? 0.45 : 1) // built-ins can't be selected
+    }
+
+    private var selectedMantras: [MantraModel] {
+        let visible = Set(shown.map(\.persistentModelID))
+        return mantras.filter { selection.contains($0.persistentModelID) && visible.contains($0.persistentModelID) && !$0.isBuiltIn }
+    }
+
+    /// What deleting the selection does: their tasks go too, sessions stay (MantraModel.delete).
+    private var deleteSummary: String {
+        let list = selectedMantras
+        let tasks = list.reduce(0) { $0 + $1.tasks.count }, sessions = list.reduce(0) { $0 + $1.sessions.count }
+        var parts: [String] = []
+        if tasks > 0 { parts.append(tasks == 1 ? "Their 1 task is deleted too." : "Their \(tasks) tasks are deleted too.") }
+        if sessions > 0 { parts.append(sessions == 1 ? "Their 1 session stays in your history." : "Their \(sessions) sessions stay in your history.") }
+        return parts.isEmpty ? "This can't be undone." : parts.joined(separator: " ")
+    }
+
+    private func deleteSelected() {
+        let doomed = selectedMantras
+        selection.removeAll()
+        if let editing { editing.wrappedValue = false } else { ownEditing = false }
+        withAnimation { for m in doomed { MantraModel.delete(m, in: context) } }
+        triggerSomeVibration(type: .medium)
     }
 }
 
@@ -581,91 +630,85 @@ struct SaveButton: View {
     }
 }
 
-/// Zikr History and Mantras as one page (2026-09-25 — owner: they're the same subject and
-/// shouldn't be two hamburger rows): a History | Mantras switch in the navigation bar over the
-/// two existing pages. Reached from the Zikr tab's top-left button (the hamburger stays on
-/// Salah), and from the old routes (`showZikrHistory` / `showMantrasPage`).
+/// Zikr History and Azkar as one page (2026-09-25 — owner: they're the same subject and
+/// shouldn't be two hamburger rows): a History | Azkar switch in the navigation bar over the two
+/// pages. Reached from the Zikr tab's top-left button (the hamburger stays on Salah), and from
+/// the old routes (`showZikrHistory` / `showMantrasPage`).
+///
+/// **A native paging ScrollView** since 2026-09-27 (owner: paging was laggy). The hand-made pager
+/// changed `@State dragX` every frame, re-rendering both big lists each time. Now the scrolling is
+/// UIKit's, with no SwiftUI state per frame; the switch follows `scrollPosition`. It only
+/// existed so rows could keep sideways swipes, and neither page has any now (both delete via
+/// Edit → select → Delete).
 struct ZikrLibraryView: View {
-    enum Tab: String, CaseIterable { case history = "History", mantras = "Azkar" }
+    enum Tab: String, CaseIterable, Hashable { case history = "History", mantras = "Azkar" }
+    /// The page, bound to the pager's scroll position (nil while between pages).
+    @State private var page: Tab?
+    /// The switch's value: follows the page once it settles; a tap scrolls there.
     @State private var tab: Tab
     @State private var search = ""
     @State private var showingNewMantra = false
-    /// History's Edit mode (select → Delete); its button lives in this bar.
+    /// Edit modes (select → Delete); their buttons live in this bar.
     @State private var editingHistory = false
-    /// Our own pager: a sideways drag turns the page only when it starts on the background —
-    /// not on a session / mantra row (their swipe actions) or the history chart (it scrubs).
-    /// A system paged TabView took every sideways swipe, rows included (owner wanted both).
-    @State private var zones = NoPageZones()
-    @State private var dragX: CGFloat = 0
-    @State private var pagingDrag: Bool?
+    @State private var editingAzkar = false
+    /// Held while the history chart is being scrubbed (and while editing): no paging.
+    @State private var lock = LibraryPagerLock()
 
     /// Just whether there's any session (History's Edit hides when there are none).
     @Query private var anySession: [SessionDataModel]
 
+    private let start: Tab
+
     init(start: Tab) {
+        self.start = start
         _tab = State(initialValue: start)
+        _page = State(initialValue: start)
         var one = FetchDescriptor<SessionDataModel>()
         one.fetchLimit = 1
         _anySession = Query(one)
     }
 
-    private func pageGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12, coordinateSpace: .global)
-            .onChanged { value in
-                // While History is selecting, a sideways drag must not page (and wipe the selection).
-                guard !editingHistory else { return }
-                if pagingDrag == nil {
-                    let horizontal = abs(value.translation.width) > abs(value.translation.height) * 1.4
-                    // Mantras → History (finger moving right) clashes with nothing (mantra rows
-                    // only swipe left to delete), so it pages from anywhere; everything else
-                    // leaves rows and the chart to their own drags.
-                    let freeDirection = tab == .mantras && value.translation.width > 0
-                    pagingDrag = horizontal && (freeDirection || !zones.contains(value.startLocation))
-                }
-                guard pagingDrag == true else { return }
-                // Rubber-band past the ends (right on History, left on Mantras).
-                let t = value.translation.width
-                let pastEnd = (tab == .history && t > 0) || (tab == .mantras && t < 0)
-                dragX = pastEnd ? t / 4 : t
-            }
-            .onEnded { value in
-                defer { pagingDrag = nil }
-                guard pagingDrag == true else { return }
-                let projected = value.predictedEndTranslation.width
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                    if tab == .history && projected < -width / 3 { tab = .mantras }
-                    else if tab == .mantras && projected > width / 3 { tab = .history }
-                    dragX = 0
-                }
-            }
-    }
+    private var editing: Bool { editingHistory || editingAzkar }
 
     var body: some View {
-        GeometryReader { geo in
-            let width = geo.size.width
+        ScrollView(.horizontal) {
             HStack(spacing: 0) {
                 HistoryPageView(search: search, editing: $editingHistory)
-                    .frame(width: width)
-                MantrasView(embedded: true, externalSearch: search)
-                    .frame(width: width)
+                    .scrollDisabled(false)          // the lists keep scrolling while paging is off
+                    .containerRelativeFrame(.horizontal)
+                    .id(Tab.history)
+                MantrasView(embedded: true, externalSearch: search, editing: $editingAzkar)
+                    .scrollDisabled(false)
+                    .containerRelativeFrame(.horizontal)
+                    .id(Tab.mantras)
             }
-            .offset(x: (tab == .history ? 0 : -width) + dragX)
-            .scrollDisabled(pagingDrag == true)   // no vertical wobble during a page swipe
-            .simultaneousGesture(pageGesture(width: width))
+            .scrollTargetLayout()
         }
-        .clipped()
-        .environment(zones)
+        // Editing (a sideways drag would page and drop the selection) or scrubbing the chart.
+        .scrollDisabled(editing || lock.locked)
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $page)
+        // The first layout ignores the initial scroll position: start on the right page.
+        .defaultScrollAnchor(start == .mantras ? .trailing : .leading)
+        .scrollIndicators(.hidden)
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .environment(lock)
+        .onChange(of: page) { _, new in
+            if let new, new != tab { tab = new }
+        }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .searchable(text: $search, prompt: tab == .history ? "Search sessions" : "Search azkar")
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Section", selection: Binding(get: { tab }, set: { new in
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { tab = new }
+                    tab = new
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { page = new }
                 })) {
                     ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 210)
+                .disabled(editing)
             }
             if tab == .history && !anySession.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -677,47 +720,36 @@ struct ZikrLibraryView: View {
             }
             if tab == .mantras {   // a hidden button still drew its empty glass circle
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingNewMantra = true
-                    } label: {
-                        Image(systemName: "plus.circle")
-                            .foregroundColor(.green.opacity(0.7))
+                    Button(editingAzkar ? "Done" : "Edit") {
+                        withAnimation { editingAzkar.toggle() }
                     }
-                    .accessibilityLabel("New zikr")
+                    .fontWeight(editingAzkar ? .semibold : .regular)
+                }
+                if !editingAzkar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingNewMantra = true
+                        } label: {
+                            Image(systemName: "plus.circle")
+                                .foregroundColor(.green.opacity(0.7))
+                        }
+                        .accessibilityLabel("New zikr")
+                    }
                 }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: tab)
-        .onChange(of: tab) { _, _ in editingHistory = false }
+        .onChange(of: tab) { _, _ in editingHistory = false; editingAzkar = false }
         .sheet(isPresented: $showingNewMantra) {
             MantraEditorView(mantra: nil)
         }
     }
 }
 
-/// Screen areas (global frames) where a sideways drag belongs to the view there, not to the
-/// library's pager. Written by `.noPageZone(_:)`; read only inside the pager's gesture, so
-/// frame updates while scrolling don't re-render anything.
-@Observable final class NoPageZones {
-    @ObservationIgnored var frames: [String: CGRect] = [:]
-    func contains(_ point: CGPoint) -> Bool { frames.values.contains { $0.contains(point) } }
-}
-
-private struct NoPageZoneModifier: ViewModifier {
-    let id: String
-    @Environment(NoPageZones.self) private var zones: NoPageZones?
-
-    func body(content: Content) -> some View {
-        content
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { zones?.frames[id] = $0 }
-            .onDisappear { zones?.frames[id] = nil }
-    }
-}
-
-extension View {
-    /// Marks this view as a place where sideways drags aren't page turns (see ZikrLibraryView).
-    func noPageZone(_ id: String) -> some View { modifier(NoPageZoneModifier(id: id)) }
+/// Held while something on a library page owns sideways drags (the history chart scrubbing).
+@Observable final class LibraryPagerLock {
+    var locked = false
 }
 
 /// Create or edit one mantra. `mantra == nil` means create.

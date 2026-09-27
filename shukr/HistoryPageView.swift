@@ -174,6 +174,7 @@ struct HistoryPageView: View {
 /// tile went, owner).
 struct ZikrHistoryHeader: View {
     let sessions: [SessionDataModel]
+    @Environment(LibraryPagerLock.self) private var pagerLock: LibraryPagerLock?
     @State private var picked: Date?
 
     private struct Day: Identifiable { let date: Date; let count: Int; let seconds: TimeInterval; var id: Date { date } }
@@ -257,12 +258,17 @@ struct ZikrHistoryHeader: View {
                                 }
                             }
                             .onEnded { _ in
+                                pagerLock?.locked = false
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { withAnimation { picked = nil } }
                             }
                     )
+                    // The touch lands here first: hold the library's pager so a sideways scrub
+                    // never turns the page (the pager's pan needs ~10 pt before it starts).
+                    .simultaneousGesture(DragGesture(minimumDistance: 0).onChanged { _ in
+                        if pagerLock?.locked == false { pagerLock?.locked = true }
+                    }.onEnded { _ in pagerLock?.locked = false })
                 }
                 .frame(height: 84)
-                .noPageZone("history-chart")   // dragging here scrubs the chart, never pages
             }
             .padding(.horizontal, 4)
 

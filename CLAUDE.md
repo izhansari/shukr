@@ -1903,7 +1903,17 @@ totals / task progress recompute from the queries. Row swipes (both ways) and th
 are gone, and a tap opens a glass popover (`SessionRow`, like the ☰ menu: Open zikr · Feel the pace; a tap on the row stops a playing pace; `tappable: false` in Edit mode) — History rows no longer register no-page zones, so the
 library pages from them too. The Edit button is in `ZikrLibraryView`'s bar on the History tab
 (`HistoryPageView(editing:)`); shown on its own, History has its own Edit. Leaving the tab ends editing.
-**History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side
+**History & Azkar: a native paging ScrollView since 2026-09-27** (owner: the hand-made pager
+lagged — its per-frame `@State dragX` re-rendered both lists). `.scrollTargetBehavior(.paging)` +
+`.scrollPosition(id: page)` (the switch follows; a tap scrolls; `.defaultScrollAnchor` starts on
+the right page — the first layout ignores the initial position). No swipes on either page: History
+and Azkar both delete via Edit → select → Delete (Azkar: native List selection, built-ins
+`selectionDisabled` and dimmed; `MantraModel.delete` per zikr). Paging is off while editing or while
+the history chart is scrubbed (`LibraryPagerLock`, taken by a simultaneous drag on the chart):
+`.scrollDisabled` on the pager with `.scrollDisabled(false)` on each page so the lists still scroll.
+(A UIKit `isScrollEnabled` switch didn't stick — SwiftUI resets it.) iOS 26's swipe-back-from-
+anywhere still works while editing (a right swipe closes the page). `NoPageZones` is gone.
+The old write-up follows. **History & Mantras are one page** (`ZikrLibraryView`, MantrasView.swift): two pages side by side
 in our own pager with a History | Mantras segmented switch in the nav bar that follows. A sideways
 drag turns the page **only when it starts on the background** (owner): rows (sessions, mantras)
 and the history chart register their global frames with `.noPageZone(_:)` (`NoPageZones`, read
