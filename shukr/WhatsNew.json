@@ -41,7 +41,8 @@
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
-    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"}
+    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"},
+    {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"}
   ],
   "entries": [
     {
@@ -577,6 +578,12 @@
       "title": "Each change shows its own screenshots in the card's timeline",
       "tryIt": ["Open a card with several changes → Changes: each has its own picture"],
       "checked": "sim", "shots": ["wn-whatsnew-timeline-shots.jpg"]
+    },
+    {
+      "id": "settings-rows-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "settings-rows", "notes": null,
+      "title": "Settings rows respond again on iOS 26: Calculation Method / School pickers, Refresh Location, Choose City, Sneak Peek rows",
+      "tryIt": ["Settings → Calculation Method → tap Method or School: the menu opens", "Settings → Sneak Peek → Masjid Map: its sheet opens"],
+      "checked": "sim", "shots": ["wn-settings-picker-fixed.jpg"]
     }
   ]
 }

@@ -117,8 +117,11 @@ struct PrayerTimesView: View {
     // (resisted, capped) so the page acknowledges it. Attached to the pager itself so nothing
     // inside a page can block it; a no-op unless the Salah page is showing.
     //
-    // Axis lock: `minimumDistance: 0` and the axis is decided after 6 pt of movement, before
-    // the pager's own pan reaches its 10 pt slop. Vertical → `live.pagerLocked` (the pager is
+    // Axis lock: the gesture starts at 5 pt and the axis is decided at 6 pt of movement, before
+    // the pager's own pan reaches its 10 pt slop. Not `minimumDistance: 0`: a zero-distance drag
+    // on the pager claimed every touch, and on iOS 26 that cancelled the Settings Form's row taps
+    // (pickers, button rows, navigation rows — dead in build 9 on a 15 Pro, iOS 26.6; fine on
+    // iOS 27). A tap never moves 5 pt, so rows get it; drags still lock early enough. Vertical → `live.pagerLocked` (the pager is
     // `.scrollDisabled` while it's set) so sideways drift during a vertical drag can never
     // turn into a page swipe; horizontal → this gesture stays out of it. Cleared on release.
     private var abstractedDragGesture: _EndedGesture<_ChangedGesture<DragGesture>> {
@@ -127,7 +130,7 @@ struct PrayerTimesView: View {
         let threshold: CGFloat = 30
         let decideAt: CGFloat = 6
 
-        return DragGesture(minimumDistance: 0, coordinateSpace: .global)
+        return DragGesture(minimumDistance: 5, coordinateSpace: .global)
             .onChanged { value in
                 // A touch that starts on the Zikr page's task strip belongs to the strip: hold
                 // the pager from the first move so a drag past the strip's last card can't chain

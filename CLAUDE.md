@@ -1227,8 +1227,10 @@ extra Spacers above the circle; all of it animates from the `withAnimation(.spri
 0.35, dampingFraction: 0.85))` around the `navPosition` change. A vertical swipe past 30 pt on
 the pager (`abstractedDragGesture`, `.simultaneousGesture` on the pager itself, ignored unless
 `horizontalPage == .main`) flips it: up opens, down closes, down-while-closed refreshes.
-**Axis lock:** the gesture has `minimumDistance: 0` and decides the axis after 6 pt of
-movement, before the pager's own pan reaches its 10 pt slop. Vertical → `live.pagerLocked`
+**Axis lock:** the gesture starts at 5 pt (`minimumDistance: 5`) and decides the axis at 6 pt of
+movement, before the pager's own pan reaches its 10 pt slop. **Never `minimumDistance: 0` on the pager** (2026-09-27):
+a zero-distance drag claimed every touch, and on iOS 26 that cancelled the Settings Form's row taps (pickers, button /
+navigation rows) — Debug and Release alike in the iOS 26.5 simulator; iOS 27 unaffected. Build 9 shipped with it dead. Vertical → `live.pagerLocked`
 (the pager is `.scrollDisabled` while set), so sideways drift during a vertical drag can never
 turn into a page swipe; horizontal → the gesture stays out of it. Cleared on release. Without
 this, a diagonal-ish vertical swipe both paged and flipped the sheet (owner, twice). While the finger is down only `live.pull` moves (resisted ×0.5,
