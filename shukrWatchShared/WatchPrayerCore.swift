@@ -140,10 +140,19 @@ enum WatchPrayers {
     /// Moments the complications should redraw: every prayer start and end from now on, plus the
     /// grade boundaries inside each window (Perfect → On time at +30 min, On time → Late halfway
     /// through the rest), so the stock timer ring changes colour on time (it can't within an entry).
+    /// Also the next prayer day's (at least its Fajr window: +30 min, On time → Late, sunrise), so
+    /// after Isha the timeline doesn't stop at Fajr and lean on the reload hint (a watch treats it
+    /// as a hint only; Fajr could stay green, or still show after sunrise).
     static func boundaries(after now: Date = Date()) -> [Date] {
         guard let day = day(at: now) else { return [] }
-        var dates = day.prayers.flatMap { [$0.start, $0.end] + WatchScoring.gradeChanges(start: $0.start, end: $0.end) }
-        if let f = day.nextFajr { dates.append(f) }
+        func marks(_ prayers: [WatchPrayer]) -> [Date] {
+            prayers.flatMap { [$0.start, $0.end] + WatchScoring.gradeChanges(start: $0.start, end: $0.end) }
+        }
+        var dates = marks(day.prayers)
+        if let f = day.nextFajr {
+            dates.append(f)
+            if let next = self.day(at: f.addingTimeInterval(1)) { dates += marks(Array(next.prayers.prefix(2))) }
+        }
         return Array(Set(dates.filter { $0 > now })).sorted()
     }
 

@@ -40,6 +40,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         // York, ISNA, Shafi'i so the ring and complications can be looked at.
         if ProcessInfo.processInfo.arguments.contains("-demoWatch") {
             _ = WatchStore.save(["lat": 40.7128, "lon": -74.006, "method": 2, "school": 0, "city": "New York"])
+            WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
         guard WCSession.isSupported() else { return }
@@ -137,6 +138,7 @@ struct WatchPrayerRing: View {
     /// "31m left" / "1h 5m left".
     private var leftText: String {
         let minutes = max(0, Int(prayer.end.timeIntervalSince(now) / 60))
+        if minutes < 1 { return "<1m left" }
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m left" : "\(minutes)m left"
     }
 
@@ -185,6 +187,8 @@ struct WatchPrayerRing: View {
             }
         }
         .contentShape(Circle())
+        // A new prayer on the ring starts on "ends …" again.
+        .onChange(of: prayer.name) { _, _ in showLeft = false }
         .onTapGesture {
             guard current else { return }
             WKInterfaceDevice.current().play(.click)
