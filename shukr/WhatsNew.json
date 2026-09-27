@@ -555,25 +555,25 @@
       "checked": "no", "addresses": ["6FB814B9-9F96-4045-965D-F8240F812DCC"]
     },
     {
-      "id": "whats-new-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "id": "whats-new-5", "date": "2026-09-27", "commit": "92eb8ea", "time": "2026-09-27T17:00:42-04:00", "topic": "whats-new", "notes": "#23",
       "title": "What's new v3: \"To check\" for notes a change addressed (Looks good / Still off), only what needs you up top, the rest in a searchable Archive; hide any card",
       "tryIt": ["☰ → build line → To check: a note of yours with \"Addressed in …\" → Looks good closes it; Still off asks for a new note", "Scroll down: To test, then Archive (tap to open, search it)", "Long-press a card → Hide"],
       "checked": "sim", "shots": ["wn-whatsnew-to-check.jpg", "wn-whatsnew-archive.jpg"]
     },
     {
-      "id": "whats-new-6", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "id": "whats-new-6", "date": "2026-09-27", "commit": "92eb8ea", "time": "2026-09-27T17:00:42-04:00", "topic": "whats-new", "notes": "#23",
       "title": "Notes Claude has pulled show \"Received by Claude · time\", greyed, with a fresh box for new feedback",
       "tryIt": ["Open a card you sent feedback on → the note is greyed \"Received by Claude\"; the box under it starts empty"],
       "checked": "sim", "shots": ["wn-whatsnew-received.jpg"]
     },
     {
-      "id": "whats-new-7", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "id": "whats-new-7", "date": "2026-09-27", "commit": "92eb8ea", "time": "2026-09-27T17:00:42-04:00", "topic": "whats-new", "notes": "#23",
       "title": "Open in shukr comes back: History, Azkar, 99 Names, Daily Ayah and Insights open inside What's new (‹ Back = the card); the Salah / Zikr / Settings pages and the map leave a \"‹ What's new\" pill",
       "tryIt": ["A Zikr card → Open in shukr → Azkar opens in the sheet → ‹ Back: the same card", "A Salah card → Open in shukr → the Salah page with a \"‹ What's new\" pill → tap it: back on the card"],
       "checked": "sim", "shots": ["wn-whatsnew-return-pill.jpg"]
     },
     {
-      "id": "whats-new-8", "date": "2026-09-27", "commit": "next", "time": null, "topic": "whats-new", "notes": "#23",
+      "id": "whats-new-8", "date": "2026-09-27", "commit": "92eb8ea", "time": "2026-09-27T17:00:42-04:00", "topic": "whats-new", "notes": "#23",
       "title": "Each change shows its own screenshots in the card's timeline",
       "tryIt": ["Open a card with several changes → Changes: each has its own picture"],
       "checked": "sim", "shots": ["wn-whatsnew-timeline-shots.jpg"]
