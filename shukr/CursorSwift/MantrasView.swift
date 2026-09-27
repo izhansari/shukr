@@ -127,7 +127,10 @@ struct MantrasView: View {
         .onChange(of: query) { _, _ in selection.removeAll() }
         // The last zikr of your own deleted: the "only mine" filter would come back on by itself later.
         // The old "only mine" filter's setting (2026-09-27, removed): don't leave it behind.
-        .onAppear { UserDefaults.standard.removeObject(forKey: "azkar.hideBuiltIns") }
+        .onAppear {
+            UserDefaults.standard.removeObject(forKey: "azkar.hideBuiltIns")
+            AzkarSort.migrateStoredDefault()
+        }
         .sheet(item: $editingMantra) { mantra in
             MantraEditorView(mantra: mantra)
         }
@@ -141,13 +144,13 @@ struct MantrasView: View {
 
     /// The sort menu (the library's toolbar, or this page's own): one field + a direction, both
     /// remembered, applied within each section.
-    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.standard.rawValue
-    @AppStorage(AzkarSort.ascendingKey) private var ascending = false
+    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.name.rawValue
+    @AppStorage(AzkarSort.ascendingKey) private var ascending = true
     private var hasOwn: Bool { mantras.contains { !$0.isBuiltIn } }
 
     /// Within a section. Stats come from each zikr's sessions, worked out once per call.
     private func sorted(_ list: [MantraModel], builtIn: Bool) -> [MantraModel] {
-        let sort = AzkarSort(rawValue: sortRaw) ?? .standard
+        let sort = AzkarSort(rawValue: sortRaw) ?? .name
         // Ties (same count, never used, no pace…) keep the section's own order: the built-ins'
         // curated order, yours A–Z. Swift's sort isn't stable, so it's an explicit tiebreak.
         let rank: [PersistentIdentifier: Int] = Dictionary(uniqueKeysWithValues: list
@@ -168,8 +171,6 @@ struct MantrasView: View {
             }
         }
         switch sort {
-        case .standard:
-            return list.sorted(by: tie)
         case .name:
             return list.sorted {
                 let r = $0.name.localizedCaseInsensitiveCompare($1.name)
@@ -919,80 +920,86 @@ private struct LibraryPage<Content: View>: View, Equatable {
 }
 
 /// How the Azkar list is ordered, within each section: one field and a direction, Notion-style
-/// (owner, 2026-09-27, feedback ADD5836A — it was a list of opposite pairs, "Most / Least
-/// recited", "Fastest / Slowest pace"). Default is the curated order (yours A–Z, built-ins as set).
+/// (owner, 2026-09-27, feedback ADD5836A — it was a list of opposite pairs). The default is Name,
+/// A to Z, for both sections (feedback F5FDC4C1: no separate "Default"; the built-ins go
+/// alphabetical too).
 enum AzkarSort: String, CaseIterable, Identifiable {
-    case standard, timesRecited, pace, lastUsed, name
+    case name, timesRecited, pace, lastUsed
     static let key = "azkar.sortField"
     static let ascendingKey = "azkar.sortAscending"
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .standard: "Default"
+        case .name: "Name"
         case .timesRecited: "Times recited"
         case .pace: "Pace"
         case .lastUsed: "Last used"
-        case .name: "Name"
         }
     }
     var symbol: String {
         switch self {
-        case .standard: "list.bullet"
+        case .name: "textformat"
         case .timesRecited: "number"
         case .pace: "gauge.with.needle"
         case .lastUsed: "clock"
-        case .name: "textformat"
         }
     }
-    /// What each direction means for this field (the menu says it in words).
+    /// The result of each direction, one short line (the arrow icon carries ↑ / ↓).
     func meaning(ascending: Bool) -> String {
         switch self {
-        case .standard: ""
+        case .name: ascending ? "A to Z" : "Z to A"
         case .timesRecited: ascending ? "Fewest first" : "Most first"
         case .pace: ascending ? "Fastest first" : "Slowest first"      // seconds per count, low → high
-        case .lastUsed: ascending ? "Longest untouched first" : "Most recent first"
-        case .name: ascending ? "A to Z" : "Z to A"
+        case .lastUsed: ascending ? "Oldest first" : "Recent first"
         }
     }
     /// The direction a field starts in when picked (the natural one); the toggle flips it.
     var naturalAscending: Bool { self == .name || self == .pace }
+
+    /// A stored "standard" (the old Default) or anything unknown becomes Name, A to Z.
+    static func migrateStoredDefault() {
+        let d = UserDefaults.standard
+        guard let raw = d.string(forKey: key), AzkarSort(rawValue: raw) == nil else { return }
+        d.set(AzkarSort.name.rawValue, forKey: key)
+        d.set(true, forKey: ascendingKey)
+    }
 }
 
-/// The sort menu: pick a field, then ↑ / ↓. The icon is a plain sort glyph on Default and an
-/// arrow showing the direction when another field is on.
+/// The sort menu: pick a field, then ↑ / ↓. The icon is the plain sort glyph on the default
+/// (Name, A to Z) and an arrow showing the direction otherwise.
 struct AzkarSortButton: View {
-    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.standard.rawValue
-    @AppStorage(AzkarSort.ascendingKey) private var ascending = false
+    @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.name.rawValue
+    @AppStorage(AzkarSort.ascendingKey) private var ascending = true
 
-    private var sort: AzkarSort { AzkarSort(rawValue: sortRaw) ?? .standard }
+    private var sort: AzkarSort { AzkarSort(rawValue: sortRaw) ?? .name }
+    private var isDefault: Bool { sort == .name && ascending }
 
     var body: some View {
         Menu {
-            Picker("Sort by", selection: Binding(get: { sortRaw }, set: { new in
+            Picker("Sort by", selection: Binding(get: { sort.rawValue }, set: { new in
                 withAnimation(.snappy(duration: 0.25)) {
                     sortRaw = new
-                    ascending = (AzkarSort(rawValue: new) ?? .standard).naturalAscending
+                    ascending = (AzkarSort(rawValue: new) ?? .name).naturalAscending
                 }
             })) {
                 ForEach(AzkarSort.allCases) { Label($0.title, systemImage: $0.symbol).tag($0.rawValue) }
             }
             .pickerStyle(.inline)
-            if sort != .standard {
-                Picker("Direction", selection: Binding(get: { ascending }, set: { up in
-                    withAnimation(.snappy(duration: 0.25)) { ascending = up }
-                })) {
-                    Label("Ascending · \(sort.meaning(ascending: true))", systemImage: "arrow.up").tag(true)
-                    Label("Descending · \(sort.meaning(ascending: false))", systemImage: "arrow.down").tag(false)
-                }
-                .pickerStyle(.inline)
+            Picker("Direction", selection: Binding(get: { ascending }, set: { up in
+                withAnimation(.snappy(duration: 0.25)) { ascending = up }
+            })) {
+                Label(sort.meaning(ascending: true), systemImage: "arrow.up").tag(true)
+                Label(sort.meaning(ascending: false), systemImage: "arrow.down").tag(false)
             }
+            .pickerStyle(.inline)
         } label: {
-            Image(systemName: sort == .standard ? "arrow.up.arrow.down" : (ascending ? "arrow.up" : "arrow.down"))
-                .fontWeight(sort == .standard ? .regular : .semibold)
+            Image(systemName: isDefault ? "arrow.up.arrow.down" : (ascending ? "arrow.up" : "arrow.down"))
+                .fontWeight(isDefault ? .regular : .semibold)
                 .foregroundStyle(Color.primary)
                 .contentTransition(.symbolEffect(.replace))
         }
-        .accessibilityLabel(sort == .standard ? "Sort azkar" : "Sorted by \(sort.title), \(sort.meaning(ascending: ascending))")
+        .onAppear { AzkarSort.migrateStoredDefault() }
+        .accessibilityLabel("Sorted by \(sort.title), \(sort.meaning(ascending: ascending))")
         .sensoryFeedback(.selection, trigger: sortRaw)
         .sensoryFeedback(.selection, trigger: ascending)
     }

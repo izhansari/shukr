@@ -261,6 +261,10 @@ code; in UI strings write "zikr". New UI text must follow this.
   bottom bar left of the search on iOS 26, top right on iOS 18 / the standalone page;
   `@AppStorage(AzkarFilter.key)` "azkar.hideBuiltIns", filled green while on) hides the built-ins,
   with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own.
+  **Current (2026-09-27, feedback F5FDC4C1):** no "Default" — the default is Name, A to Z, for both sections (built-ins
+  alphabetical too); `AzkarSort.migrateStoredDefault()` turns a stored "standard" into Name ↑. Direction rows are just the
+  result with the arrow icon: A to Z / Z to A · Most / Fewest first · Fastest / Slowest first · Recent / Oldest first. The
+  plain arrow.up.arrow.down icon means Name A→Z; anything else shows ↑ / ↓. The first version follows:
   **Current (2026-09-27, feedback ADD5836A):** `AzkarSortButton` — sort by ONE field (`AzkarSort`: Default · Times recited ·
   Pace · Last used · Name, AppStorage "azkar.sortField") plus a direction (↑ / ↓, "azkar.sortAscending"; picking a field
   sets its natural direction: Name / Pace ascending, the others descending; the menu spells each out — "Most first",
