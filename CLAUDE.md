@@ -186,8 +186,18 @@ code; in UI strings write "zikr". New UI text must follow this.
   the temp file is deleted after reading.
 - **Photos:** `downscaledJPEG` is async (ImageIO thumbnail in a detached task); the camera hands a
   UIImage straight in; views decode with `decodedImage` in `.task(id:)`, never in `body`.
-- Media save straight to the row (existing zikr: pause ✎ and the zikr page); a new zikr keeps them
-  as drafts until Save.
+- **Media are part of an edit (2026-09-27, quick fix — owner: "the flow looks broken"):** in any editor
+  with Save / Cancel (the pause ✎ `MantraCardEditor`, the zikr page in ✎ mode, a new zikr) the photo /
+  memo wait in drafts (`draftImage` / `draftAudio`, `mediaEdited`) and a take in progress counts as an
+  edit; Save lights up, calls `ZikrAudio.stopAll()` first (the take lands in the draft synchronously)
+  and writes them; Cancel with edits asks "Discard changes?" and drops them (`discarding` keeps a
+  take from landing). The zikr page in read mode (no ✎) still saves them straight away. Sim ✓ on the
+  zikr page (remove photo → Save green; Cancel → Discard → back; Save keeps it); the pause card has
+  the same code, not tapped in the sim.
+- A zikr's sessions: `MantraSessionsSection` is several Sections, so its toolbar / alert were attached
+  per Section (duplicate Delete). The edit state, bottom-bar Delete and alert live on
+  `MantraEditorView` (bindings in); edit-mode rows are `SessionRow(tappable: false)` (a tap opened
+  Feel the pace). Sim ✓.
 - Info.plist: `NSMicrophoneUsageDescription`, `NSCameraUsageDescription`.
 - DEBUG: `-demoZikrMedia` (Alhamdulillah gets a rendered calligraphy image and a 3 s tone; its page
   opens; add `-demoPauseScreen` for the pause card), `-demoZikrPane notes|memo|photo`,

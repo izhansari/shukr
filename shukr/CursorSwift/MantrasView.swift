@@ -331,6 +331,15 @@ struct MantraCardEditor: View {
     @State private var fullText: String
     @State private var notes: String
     @State private var quickAdd: Int
+    /// The photo / voice memo are part of the edit (owner, 2026-09-27: adding one left Save grey —
+    /// it had quietly saved already): drafts until Save, dropped by Cancel.
+    @State private var draftImage: Data?
+    @State private var draftAudio: Data?
+    @State private var mediaEdited = false
+    @State private var recording = false
+    /// Set while Cancel throws a take in progress away, so it doesn't land in the draft.
+    @State private var discarding = false
+    @State private var confirmDiscard = false
 
     init(mantra: MantraModel) {
         self.mantra = mantra
@@ -338,6 +347,8 @@ struct MantraCardEditor: View {
         _fullText = State(initialValue: mantra.fullText)
         _notes = State(initialValue: mantra.notes)
         _quickAdd = State(initialValue: mantra.quickAddStep)
+        _draftImage = State(initialValue: mantra.imageData)
+        _draftAudio = State(initialValue: mantra.audioData)
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -347,6 +358,7 @@ struct MantraCardEditor: View {
     }
     private var hasEdits: Bool {
         name != mantra.name || fullText != mantra.fullText || notes != mantra.notes || quickAdd != mantra.quickAddStep
+            || mediaEdited || recording
     }
     private var canSave: Bool { hasEdits && !trimmedName.isEmpty && !isDuplicate }
 
@@ -354,8 +366,9 @@ struct MantraCardEditor: View {
         NavigationStack {
             ScrollView {
                 MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
-                                 imageData: liveMedia(\.imageData), audioData: liveMedia(\.audioData),
+                                 imageData: draft($draftImage), audioData: draft($draftAudio),
                                  isDuplicate: isDuplicate, identityLocked: mantra.isBuiltIn)
+                    .onPreferenceChange(MemoRecordingKey.self) { recording = $0 }
                     .padding(16)
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
                     .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
@@ -368,27 +381,48 @@ struct MantraCardEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        dismissKeyboard()
+                        if hasEdits { confirmDiscard = true } else { dismiss() }
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     SaveButton(enabled: canSave) { save() }
                 }
             }
             .interactiveDismissDisabled(hasEdits)
+            .alert("Discard changes?", isPresented: $confirmDiscard) {
+                Button("Discard", role: .destructive) {
+                    discarding = true
+                    ZikrAudio.stopAll()          // a take in progress goes too
+                    dismiss()
+                }
+                Button("Keep editing", role: .cancel) {}
+            } message: {
+                Text("Your edits, photo and voice memo changes aren't saved.")
+            }
         }
         .presentationDragIndicator(.visible)
         .onDisappear { ZikrAudio.stopAll() }   // really closed: keep a take, stop playback
     }
 
-    /// The photo / voice memo save straight to the zikr (like count in sets on its page): a
-    /// recording shouldn't hang on Save.
-    private func liveMedia(_ key: ReferenceWritableKeyPath<MantraModel, Data?>) -> Binding<Data?> {
-        Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
+    /// A photo / memo change waits in the draft (and marks the edit) until Save.
+    private func draft(_ value: Binding<Data?>) -> Binding<Data?> {
+        Binding(get: { value.wrappedValue }, set: { new in
+            guard !discarding else { return }
+            value.wrappedValue = new
+            mediaEdited = true
+        })
     }
 
     private func save() {
+        ZikrAudio.stopAll()   // a take in progress is finished into the draft (synchronously) and kept
         guard canSave else { return }
         dismissKeyboard()
+        if mediaEdited {
+            mantra.imageData = draftImage
+            mantra.audioData = draftAudio
+        }
         mantra.name = trimmedName
         mantra.fullText = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         mantra.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -842,6 +876,15 @@ struct MantraEditorView: View {
     /// The card is recording a voice memo (a new zikr can't be swiped away then).
     @State private var recording = false
     @State private var confirmDiscard = false
+    /// An existing zikr in ✎ mode: its photo / memo changes wait in the drafts until Save (read
+    /// mode keeps saving them straight away). Cancel with changes asks first.
+    @State private var mediaEdited = false
+    @State private var discarding = false
+    @State private var confirmDiscardChanges = false
+    /// The sessions list's Edit → select → Delete (MantraSessionsSection draws the rows).
+    @State private var sessionsEditing = false
+    @State private var selectedSessions = Set<PersistentIdentifier>()
+    @State private var confirmDeleteSessions = false
     @State private var confirmDelete = false
     /// Worked out when Delete is tapped, so nothing reads the row once it's gone.
     @State private var deleteTitle = ""
@@ -873,6 +916,7 @@ struct MantraEditorView: View {
     private var hasEdits: Bool {
         guard let mantra else { return true }
         return name != mantra.name || fullText != mantra.fullText || notes != mantra.notes
+            || (isEditing && (mediaEdited || recording))
     }
 
     /// Count in sets works without the pencil (owner): on an existing mantra each step saves
@@ -897,9 +941,23 @@ struct MantraEditorView: View {
         return t(name) || t(fullText) || t(notes) || quickAdd != 0 || draftImage != nil || draftAudio != nil || recording
     }
 
+    /// Read mode on an existing zikr: saved straight to it. ✎ mode (and a new zikr): the draft.
     private func media(_ key: ReferenceWritableKeyPath<MantraModel, Data?>, draft: Binding<Data?>) -> Binding<Data?> {
-        guard let mantra else { return draft }
-        return Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
+        if let mantra, !isEditing {
+            return Binding(get: { mantra[keyPath: key] }, set: { mantra[keyPath: key] = $0; try? context.save() })
+        }
+        return Binding(get: { draft.wrappedValue }, set: { new in
+            guard !discarding else { return }
+            draft.wrappedValue = new
+            mediaEdited = true
+        })
+    }
+
+    /// ✎ on an existing zikr: the drafts start as its current photo / memo.
+    private func beginEditing() {
+        if let mantra { draftImage = mantra.imageData; draftAudio = mantra.audioData }
+        mediaEdited = false
+        withAnimation(.easeInOut(duration: 0.2)) { isEditing = true }
     }
 
     /// Restyled 2026-09-25 to match the pause screen (owner: "very plain"): the same card as
@@ -960,7 +1018,7 @@ struct MantraEditorView: View {
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
-                    MantraSessionsSection(mantra: mantra)
+                    MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions)
 
                     // Only while editing, never for a built-in (owner, 2026-09-27).
                     if isEditing && !mantra.isBuiltIn {
@@ -1010,7 +1068,7 @@ struct MantraEditorView: View {
                     } else {
                         Button {
                             triggerSomeVibration(type: .light)
-                            withAnimation(.easeInOut(duration: 0.2)) { isEditing = true }
+                            beginEditing()
                         } label: {
                             Image(systemName: "pencil")
                         }
@@ -1022,6 +1080,39 @@ struct MantraEditorView: View {
             .interactiveDismissDisabled((mantra != nil && hasEdits) || newHasContent)
             .fullScreenCover(isPresented: $creatingTask) {
                 if let mantra { AddDailyTaskView(for: mantra, isPresented: $creatingTask) }
+            }
+            .toolbar {
+                if sessionsEditing {
+                    ToolbarItem(placement: .bottomBar) {
+                        Button(role: .destructive) { confirmDeleteSessions = true } label: {
+                            Text(selectedSessions.isEmpty ? "Delete" : "Delete (\(selectedSessions.count))")
+                        }
+                        .tint(.red)
+                        .disabled(selectedSessions.isEmpty)
+                    }
+                }
+            }
+            .alert(selectedSessions.count == 1 ? "Delete 1 session?" : "Delete \(selectedSessions.count) sessions?",
+                   isPresented: $confirmDeleteSessions) {
+                Button("Delete", role: .destructive) {
+                    guard let mantra else { return }
+                    let doomed = mantra.sessions.filter { selectedSessions.contains($0.persistentModelID) }
+                    selectedSessions.removeAll()
+                    withAnimation {
+                        sessionsEditing = false
+                        SessionDeletion.delete(doomed, in: context)
+                    }
+                    triggerSomeVibration(type: .medium)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Their counts come off this zikr's totals and today's task progress. This can't be undone.")
+            }
+            .alert("Discard changes?", isPresented: $confirmDiscardChanges) {
+                Button("Discard", role: .destructive) { revertEdits() }
+                Button("Keep editing", role: .cancel) {}
+            } message: {
+                Text("Your edits, photo and voice memo changes aren't saved.")
             }
             .alert("Discard this zikr?", isPresented: $confirmDiscard) {
                 Button("Discard", role: .destructive) { ZikrAudio.stopAll(); dismiss() }
@@ -1049,6 +1140,7 @@ struct MantraEditorView: View {
     }
 
     private func save() {
+        ZikrAudio.stopAll()   // a take in progress is finished into the draft (synchronously) and kept
         guard canSave else { return }
         dismissKeyboard()
         let fullTextTrimmed = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1060,6 +1152,12 @@ struct MantraEditorView: View {
             // Tasks read the live name through the relationship; keep their snapshot in step too
             // so a later deletion still shows the right name. Sessions keep their historical title.
             for task in mantra.tasks { task.mantraName = trimmedName }
+            if mediaEdited {
+                mantra.imageData = draftImage
+                mantra.audioData = draftAudio
+                mediaEdited = false
+            }
+            try? context.save()
             // Stay on the mantra, back to viewing.
             withAnimation(.easeInOut(duration: 0.2)) {
                 name = mantra.name; fullText = mantra.fullText; notes = mantra.notes; quickAdd = mantra.quickAddStep
@@ -1083,10 +1181,22 @@ struct MantraEditorView: View {
     /// first when there's something in it).
     private func cancelEdits() {
         dismissKeyboard()
-        guard let mantra else {
+        guard mantra != nil else {
             if newHasContent { confirmDiscard = true } else { dismiss() }
             return
         }
+        if hasEdits { confirmDiscardChanges = true } else { revertEdits() }
+    }
+
+    /// Back to viewing, as the zikr was: typed edits and photo / memo drafts dropped (a take in
+    /// progress too).
+    private func revertEdits() {
+        guard let mantra else { return }
+        discarding = true
+        ZikrAudio.stopAll()
+        discarding = false
+        mediaEdited = false
+        draftImage = nil; draftAudio = nil
         withAnimation(.easeInOut(duration: 0.2)) {
             name = mantra.name; fullText = mantra.fullText; notes = mantra.notes; quickAdd = mantra.quickAddStep
             isEditing = false
@@ -1219,45 +1329,13 @@ struct MantraSessionsSection: View {
 
     /// A section per day, headed "Today · 249 counted" — the same look as Zikr History. Deleting
     /// is Edit → select → Delete, as on History (no swipes, no Delete in the tap strip; 2026-09-27).
-    @Environment(\.modelContext) private var context
-    @State private var editing = false
-    @State private var selected = Set<PersistentIdentifier>()
-    @State private var confirmDelete = false
+    /// The edit state, the bottom-bar Delete and its alert live on `MantraEditorView`: this body
+    /// is several Sections, and modifiers on it were attached once per Section (duplicate or
+    /// vanishing Delete buttons — review, 2026-09-27).
+    @Binding var editing: Bool
+    @Binding var selected: Set<PersistentIdentifier>
 
-    var body: some View {
-        sections
-            .alert(selected.count == 1 ? "Delete 1 session?" : "Delete \(selected.count) sessions?", isPresented: $confirmDelete) {
-                Button("Delete", role: .destructive) {
-                    let doomed = mantra.sessions.filter { selected.contains($0.persistentModelID) }
-                    selected.removeAll()
-                    withAnimation {
-                        editing = false
-                        SessionDeletion.delete(doomed, in: context)
-                    }
-                    triggerSomeVibration(type: .medium)
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Their counts come off this zikr's totals and today's task progress. This can't be undone.")
-            }
-    }
-
-    @ViewBuilder private var sections: some View {
-        sectionsBody
-            .toolbar {
-                if editing {
-                    ToolbarItem(placement: .bottomBar) {
-                        Button(role: .destructive) { confirmDelete = true } label: {
-                            Text(selected.isEmpty ? "Delete" : "Delete (\(selected.count))")
-                        }
-                        .tint(.red)
-                        .disabled(selected.isEmpty)
-                    }
-                }
-            }
-    }
-
-    @ViewBuilder private var sectionsBody: some View {
+    @ViewBuilder var body: some View {
         if mantra.sessions.isEmpty {
             Section("Sessions") {
                 Text("No sessions with this zikr yet.").foregroundStyle(.secondary)
@@ -1305,7 +1383,7 @@ struct MantraSessionsSection: View {
                     .font(.title3)
                     .foregroundStyle(on ? Color.accentColor : Color(.tertiaryLabel))   // stock, no green
                     .contentTransition(.symbolEffect(.replace))
-                SessionRow(session: session, showsMantraName: false)
+                SessionRow(session: session, showsMantraName: false, tappable: false)   // a tap selects
             }
             .contentShape(Rectangle())
             .onTapGesture {
