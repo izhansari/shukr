@@ -192,9 +192,15 @@
     "checked": "sim"
   },
   {
-    "date": "2026-09-27", "commit": "next", "area": "Salah",
+    "date": "2026-09-27", "commit": "1ccb412", "area": "Salah",
     "title": "The prayer-begins moment only plays where you can see the circle",
     "tryIt": ["Sit on the Zikr page or the map as a prayer starts → no buzz", "Stay on the Salah page at Fajr → the summary circle fades into Fajr's ring"],
+    "checked": "sim"
+  },
+  {
+    "date": "2026-09-27", "commit": "next", "area": "99 Names",
+    "title": "Counts no longer include \"Allah\"",
+    "tryIt": ["Mark Allah as known → the header, Learning and Known counts stay out of 99"],
     "checked": "sim"
   }
 ]

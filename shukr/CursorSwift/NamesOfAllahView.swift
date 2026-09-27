@@ -29,12 +29,14 @@ struct NamesOfAllahView: View {
     @State private var confirmReset = false
 
     private var known: Set<Int> { KnownNames.decode(knownRaw) }
+    /// The 99 known — "Allah" (id 0) sits above the 99 and is never counted, like the header.
+    private var knownOf99: Set<Int> { known.filter { $0 > 0 } }
 
     private func matches(_ f: Filter, _ name: AllahName) -> Bool {
         switch f {
         case .all: true
-        case .learning: !known.contains(name.id)
-        case .known: known.contains(name.id)
+        case .learning: name.id > 0 && !known.contains(name.id)
+        case .known: name.id > 0 && known.contains(name.id)
         }
     }
     private var searched: [AllahName] {
@@ -47,7 +49,7 @@ struct NamesOfAllahView: View {
     }
     private var shown: [AllahName] { searched.filter { matches(filter, $0) } }
     /// "Known 12": how many of the searched names each filter would show.
-    private func count(_ f: Filter) -> Int { searched.filter { matches(f, $0) }.count }
+    private func count(_ f: Filter) -> Int { searched.filter { $0.id > 0 && matches(f, $0) }.count }
 
     var body: some View {
         // Our own list, not a stock inset List: a compact header, then every name on one soft
@@ -136,8 +138,9 @@ struct NamesOfAllahView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(known.count == 1 ? "The name you've marked known goes back to still learning."
-                                  : "All \(known.count) names you've marked known go back to still learning.")
+            Text(knownOf99.count > 1 ? "All \(knownOf99.count) names you've marked known go back to still learning."
+                 : knownOf99.count == 1 ? "The name you've marked known goes back to still learning."
+                 : "Your marks go back to still learning.")
         }
         .sheet(item: $selected) { name in
             NameDetailSheet(start: name)
