@@ -932,6 +932,8 @@ func prayerIcon(for prayerName: String) -> String {
     switch prayerName.lowercased() {
     case "fajr":
         return "sunrise.fill"
+    case "sunrise":
+        return "sun.horizon.fill"   // not Isha's moon (feedback 99D47ABE)
     case "dhuhr":
         return "sun.max.fill"
     case "asr":

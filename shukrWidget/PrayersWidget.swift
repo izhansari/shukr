@@ -167,6 +167,21 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     }
                 }
             }
+            // Between sunrise and Dhuhr (the ring shows Dhuhr as NEXT).
+            if let sunrise = entry.prayerDict["Sunrise"]?.start {
+                for dark in [false, true] {
+                    let view = PrayersWidgetView(entry: entry.at(sunrise.addingTimeInterval(3 * 3600), list: false))
+                        .frame(width: size, height: size)
+                        .background(Color("widgetBgColor"))
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                    let renderer = ImageRenderer(content: view)
+                    renderer.scale = 3
+                    if let data = renderer.uiImage?.pngData() {
+                        try? data.write(to: dir.appendingPathComponent("w\(Int(size))-morning-\(dark ? "dark" : "light").png"))
+                    }
+                }
+            }
         }
     }
     #endif
@@ -322,6 +337,12 @@ struct PrayersWidgetView: View {
             }
         }
 
+        private func nameText(_ name: String, _ current: Bool) -> some View {
+            Text(name)
+                .font(.system(size: 12, weight: current ? .regular : .light, design: .rounded))
+                .fixedSize()
+        }
+
         private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
             let sunrise = name == "Sunrise"
             let current = !sunrise && start <= entry.date && entry.date < end
@@ -329,19 +350,26 @@ struct PrayersWidgetView: View {
             return HStack(spacing: 6) {
                 PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors)
                     .opacity(sunrise ? 0 : 1)
-                Text(name)
-                    .font(.system(size: 12, weight: current ? .regular : .light, design: .rounded))
-                if name == nextName {
-                    Text("next")
-                        .font(.system(size: 7, weight: .medium, design: .rounded))
-                        .tracking(1)
-                        .textCase(.uppercase)
-                        .foregroundStyle(.tertiary)
+                // The NEXT tag gives way on a narrow widget: at 158 pt "Dhuhr NEXT" truncated both
+                // the name and its time (feedback 99D47ABE follow-up check).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        nameText(name, current)
+                        if name == nextName {
+                            Text("next")
+                                .font(.system(size: 7, weight: .medium, design: .rounded))
+                                .tracking(1)
+                                .textCase(.uppercase)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    nameText(name, current)
                 }
                 Spacer(minLength: 4)
                 Text(start, style: .time)
                     .font(.system(size: 11, weight: current ? .regular : .light, design: .rounded))
                     .monospacedDigit()
+                    .fixedSize()
             }
             .foregroundStyle(current ? Brand.sage : (sunrise ? Color.secondary.opacity(0.7) : Color.primary))
             .padding(.vertical, 1)
@@ -390,7 +418,10 @@ struct PrayersWidgetView: View {
             /// Check if indexed prayer is a current prayer -- else check if indexed prayer is the next one.
             /// Prayers already completed today are skipped so the circle moves on after a tap; the
             /// top-left check shows the current one was prayed.
-            for name in prayerOrder where !entry.completedToday.contains(name) {
+            // Sunrise isn't a prayer: between sunrise and Dhuhr the ring shows Dhuhr as NEXT, as the
+            // app's circle does (its day has no Sunrise row). It showed "Sunrise" with a moon and the
+            // time to Dhuhr (owner, 2026-09-28, feedback 99D47ABE). The list still shows Sunrise.
+            for name in prayerOrder where name != "Sunrise" && !entry.completedToday.contains(name) {
                 if let prayer = entry.prayerDict[name] {
                     //if prayer.start <= now  && now < prayer.end && name != "Sunrise" { // current prayer
                     if prayer.start <= now  && now < prayer.end { // current prayer
@@ -521,6 +552,11 @@ struct PrayersWidgetView: View {
                     
                     Spacer()
                 }
+                // Centred between the widget's top edge and the chevron's circle, not in the whole
+                // widget: the bottom row weighs the bottom down, and centred in the widget the ring
+                // nearly touched the chevron with a wide gap above (owner, 2026-09-28, feedback
+                // 99D47ABE). Equal space above the ring and between it and the chevron.
+                .padding(.bottom, WidgetChevronButton.clearance)
 
                 // The mark-prayed check top left (it was top right, beside a list button — owner,
                 // 2026-09-28, feedback D56CB3C2), the top right empty; along the bottom the two
@@ -587,6 +623,8 @@ struct PrayersWidgetView: View {
         /// Height the list keeps free above the bottom edge for it (6 pt inset + its 30 pt target,
         /// less the target's slack round the 22 pt circle).
         static let reserved: CGFloat = 30
+        /// From the bottom edge to the top of its visible circle (6 inset + 4 slack + 22).
+        static let clearance: CGFloat = 32
 
         var body: some View {
             Button(intent: showListToggleIntent()) {
