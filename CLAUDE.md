@@ -1291,6 +1291,11 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   **Counts (owner, feedback BF79A0FC):** a sage count badge beside each row's name (1 = start, 2 = + halfway, 3 = + 30 min
   left; zikr / snoozed count theirs), "Today · 10" on each day header (all kinds), and the other times are now a quiet
   caption2 tertiary line.
+  Kinds (2026-09-28): `.snooze` ("Later" cell, the reveal headed "From “Nudge me later”", rows "Dhuhr · “It's been 5
+  minutes”" from userInfo["prayerName"] + the title), `.masjid` (`masjidArrival.*`: "Masjid" cell, "Islamic Center of
+  Cary · Leaving the masjid"), `.other` ("Other", its title) — they all used to show as "Snoozed · nudge". Rows wrap to
+  two lines; "Next:" uses the same wording. `snooze-debug-*` (DEBUG `-debugQueueSnooze`) never shows outside DEBUG.
+  DEBUG `-demoMasjidDua` posts a leaving dua.
   Review: "nudges are added tomorrow / later today / on Tue"; the empty state says prayer reminders are off in
   Settings when every prayer is off; the lost page's caption fits the snug ring (one line, 112 pt max).
   **Style A, day cards (owner's pick from Bradley's canvas, feedback C84220ED):** a ScrollView of cards on the grouped
@@ -1369,6 +1374,11 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
     creates a second.
   - Sim ✓ (simctl location + `privacy grant location-always`): entering and leaving banners at
     Assafa.
+- **Only real crossings (2026-09-28):** the owner saw two "Leaving the masjid" duas at once (Cary + Morrisville, 2:05 PM,
+  and a pair at 10:58) without having been there. CLMonitor reports each region's state when it (re)starts — every
+  launch, every install — and an initial "outside" was read as leaving. `handle` now keeps `masjidArrival.inside.<id>`:
+  entering only when not already inside, leaving only after a remembered arrival. (Found from his app's prefs via
+  `devicectl … copy from --domain-type appDataContainer`: `masjidArrival.last.out.*` at 18:05:52Z, no `.in`.)
 - **Still to verify on the phone:** a real Jumu'ah at the masjid (GPS indoors); the arrival
   notification with the app killed (background relaunch); "Only at a masjid" in the map bar (not
   looked at in the sim). The open question stands: should any jama'ah prayer at a masjid score

@@ -101,6 +101,14 @@ final class MasjidArrival {
         case .unsatisfied: entering = false
         default: return
         }
+        // Only a real crossing: leaving needs a remembered arrival, and a repeat of the same state
+        // is ignored. The monitor reports every region's state when it (re)starts — each launch — and
+        // an "outside" there read as leaving: two "Leaving the masjid" duas at once for masajid the
+        // owner hadn't been to (2026-09-28).
+        let insideKey = "masjidArrival.inside.\(fav.id)"
+        let wasInside = UserDefaults.standard.bool(forKey: insideKey)
+        guard entering != wasInside else { return }
+        UserDefaults.standard.set(entering, forKey: insideKey)
         // Once per masjid and direction every 3 hours (GPS wobble at the edge).
         let key = "masjidArrival.last.\(entering ? "in" : "out").\(fav.id)"
         if let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 3 * 3600 { return }

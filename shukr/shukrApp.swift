@@ -316,6 +316,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #if DEBUG
         // Scheduler test: queue a snooze like "Nudge in 10 minutes" does, then relaunch without
         // the flag — it must still be pending (NotificationScheduler never removes it).
+        // `-demoMasjidDua`: a delivered "Leaving the masjid" dua (Upcoming reminders' Masjid cell).
+        if ProcessInfo.processInfo.arguments.contains("-demoMasjidDua") {
+            Task { @MainActor in MasjidArrival.notify(masjid: "Islamic Center of Cary", entering: false) }
+        }
         if ProcessInfo.processInfo.arguments.contains("-debugQueueSnooze") {
             let content = UNMutableNotificationContent()
             content.title = "It's been 10 minutes"

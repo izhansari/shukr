@@ -918,6 +918,12 @@
       "title": "Insights: each prayer's usual moment is a real day's (your middle prayer), so its minutes, colour and grade always match — and one usually prayed after its time reads 'usually Qaza'",
       "tryIt": ["☰ → Insights → tap a prayer → 'usually On time' and its minutes come from the same day"],
       "checked": "sim", "shots": ["wn-insights-median-prayer.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
+    },
+    {
+      "id": "notifications-8", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Upcoming reminders names what each one is: 'Later' (from Nudge me later, with its prayer and words), 'Masjid' (the arrival / leaving duas), 'Other'; and the masjid duas only come for a real arrival or departure",
+      "tryIt": ["Settings → Notifications → Upcoming reminders → today's card: tap Masjid or Later to see each one as it read"],
+      "checked": "sim", "shots": ["wn-upcoming-masjid-later.jpg"]
     }
   ]
 }

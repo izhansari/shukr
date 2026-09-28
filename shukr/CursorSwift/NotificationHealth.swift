@@ -235,7 +235,7 @@ struct UpcomingRemindersView: View {
     @State private var loaded = false
     @State private var showDetails = ProcessInfo.processInfo.arguments.contains("-upcomingDetails")   // DEBUG screenshots
     @State private var previewCard: NotificationHealth.Issue?
-    /// The open cell per day card (day key → "Fajr" … "Zikr" / "Snoozed"); one at a time per card.
+    /// The open cell per day card (day key → "Fajr" … "Zikr" / "Later" / "Masjid" / "Other"); one at a time per card.
     @State private var open: [String: String] = {
         // DEBUG `-upcomingOpen Maghrib`: today's card opens on it (screenshots).
         // `-upcomingOpenDay N`: N days after today instead.
@@ -253,9 +253,10 @@ struct UpcomingRemindersView: View {
         let kind: Kind
         let prayer: String?
         let title: String
+        var subtitle = ""
     }
     enum Kind {
-        case start, halfway, endingSoon, zikr, zikrLater, snooze, other
+        case start, halfway, endingSoon, zikr, zikrLater, snooze, masjid, other
         var label: String {
             switch self {
             case .start: "starts"
@@ -263,19 +264,24 @@ struct UpcomingRemindersView: View {
             case .endingSoon: "30 min left"
             case .zikr: "zikr reminder"
             case .zikrLater: "zikr, later"
-            case .snooze: "nudge"
+            case .snooze: "nudge me later"
+            case .masjid: "masjid dua"
             case .other: "reminder"
             }
         }
     }
 
-    /// The icon cells of a day card: the five prayers, Zikr, and Snoozed when there are any.
+    /// The icon cells of a day card: the five prayers, Zikr, then — only when there are some —
+    /// "Later" (from "Nudge me later"), "Masjid" (the arrival / leaving duas) and "Other".
     private static let cellNames = PrayerNotificationID.prayers + ["Zikr"]
+    private static let extraCells = ["Later", "Masjid", "Other"]
     private static func cell(of item: Item) -> String {
         switch item.kind {
-        case .start, .halfway, .endingSoon: item.prayer ?? "Snoozed"
+        case .start, .halfway, .endingSoon: item.prayer ?? "Other"
         case .zikr, .zikrLater: "Zikr"
-        case .snooze, .other: "Snoozed"
+        case .snooze: "Later"
+        case .masjid: "Masjid"
+        case .other: "Other"
         }
     }
 
@@ -377,14 +383,14 @@ struct UpcomingRemindersView: View {
         return "iOS keeps 64 reminders at a time, so shukr schedules every start for the week and your nudges for the next \(days) days. Open shukr every few days to roll them forward."
     }
 
-    /// Starts · Halfway · 30 min left · Zikr, and Snoozed only when there are some.
+    /// Starts · Halfway · 30 min left · Zikr, and Later (from "Nudge me later") only when there are some.
     private var breakdown: [(label: String, count: Int)] {
         let all = pending.map(\.kind)
         func n(_ kinds: Kind...) -> Int { all.filter { kinds.contains($0) }.count }
         var parts: [(label: String, count: Int)] = [("Starts", n(.start)), ("Halfway", n(.halfway)),
                                                      ("30 min left", n(.endingSoon)), ("Zikr", n(.zikr, .zikrLater))]
-        let snoozed = n(.snooze, .other)
-        if snoozed > 0 { parts.append(("Snoozed", snoozed)) }
+        let later = n(.snooze)
+        if later > 0 { parts.append(("Later", later)) }
         return parts
     }
 
@@ -413,8 +419,8 @@ struct UpcomingRemindersView: View {
     private func dayCard(_ key: String, items: [Item], note: String?) -> some View {
         let isToday = key == PrayerNotificationID.dayKey(PrayerDay.date())
         let delivered = isToday ? deliveredToday : []
-        let hasSnoozed = items.contains { Self.cell(of: $0) == "Snoozed" } || delivered.contains { Self.cell(of: $0) == "Snoozed" }
-        let names = Self.cellNames + (hasSnoozed ? ["Snoozed"] : [])
+        let present = Set((items + delivered).map { Self.cell(of: $0) })
+        let names = Self.cellNames + Self.extraCells.filter(present.contains)
         let selected = open[key]
         return card {
             VStack(alignment: .leading, spacing: 12) {
@@ -460,7 +466,7 @@ struct UpcomingRemindersView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Divider()
                         (Text("Next: ").foregroundStyle(.secondary)
-                         + Text("\(Self.cell(of: next) == "Zikr" ? (next.title.isEmpty ? "Zikr" : next.title) : (next.prayer ?? "Reminder")) \(next.kind == .start ? "starts" : next.kind.label) \(time(next))").fontWeight(.medium))
+                         + Text("\(line(for: next)) · \(time(next))").fontWeight(.medium))
                             .font(.system(.footnote, design: .rounded))
                     }
                 }
@@ -501,7 +507,9 @@ struct UpcomingRemindersView: View {
     private func cellSymbol(_ name: String) -> String {
         switch name {
         case "Zikr": return "circle.hexagonpath"
-        case "Snoozed": return "clock.arrow.circlepath"
+        case "Later": return "clock.arrow.circlepath"
+        case "Masjid": return "building.columns"
+        case "Other": return "bell"
         default: return prayerSymbol(name)
         }
     }
@@ -514,6 +522,12 @@ struct UpcomingRemindersView: View {
             && !items.isEmpty && !items.contains { $0.kind == .halfway || $0.kind == .endingSoon }
             && key != PrayerNotificationID.dayKey(PrayerDay.date())
         return VStack(alignment: .leading, spacing: 0) {
+            if cell == "Later" {
+                Text("From \u{201C}Nudge me later\u{201D}")
+                    .font(.system(.caption, design: .rounded, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.bottom, 2)
+            }
             ForEach(delivered.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }) { revealRow($0, cell: cell, delivered: true) }
             ForEach(items) { revealRow($0, cell: cell, delivered: false) }
             if startsOnly, let added = nudgesAddedOn(key) {
@@ -528,18 +542,24 @@ struct UpcomingRemindersView: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.systemGroupedBackground)))
     }
 
+    /// A notification as it reads, so it can be recognised ("Dhuhr · halfway", "Zikr · After Fajr",
+    /// "Dhuhr · “It's been 5 minutes”", "Islamic Center of Cary · Leaving the masjid").
+    private func line(for item: Item) -> String {
+        switch item.kind {
+        case .start, .halfway, .endingSoon: "\(item.prayer ?? "Prayer") · \(item.kind.label)"
+        case .zikr, .zikrLater: "Zikr · \(item.title.isEmpty ? "reminder" : item.title)"
+        case .snooze: [item.prayer, item.title.isEmpty ? "nudge me later" : "\u{201C}\(item.title)\u{201D}"]
+            .compactMap { $0 }.joined(separator: " · ")
+        case .masjid: [item.title, item.subtitle].filter { !$0.isEmpty }.joined(separator: " · ")
+        case .other: item.title.isEmpty ? "Reminder" : item.title
+        }
+    }
+
     private func revealRow(_ item: Item, cell: String, delivered: Bool) -> some View {
-        let what: String = {
-            switch item.kind {
-            case .zikr, .zikrLater: item.title.isEmpty ? "reminder" : item.title
-            case .start, .halfway, .endingSoon: item.kind.label
-            default: "nudge"
-            }
-        }()
-        return HStack {
-            Text("\(cell) · \(what)")
+        return HStack(alignment: .firstTextBaseline) {
+            Text(line(for: item))
                 .font(.system(.subheadline, design: .rounded))
-                .lineLimit(1)
+                .lineLimit(2)
             Spacer(minLength: 8)
             Text(delivered ? "delivered \(time(item))" : time(item))
                 .font(.system(.subheadline, design: .rounded))
@@ -651,28 +671,41 @@ struct UpcomingRemindersView: View {
         await health.refresh()
         let center = UNUserNotificationCenter.current()
         let requests = await center.pendingNotificationRequests()
-        pending = requests.map { item(id: $0.identifier, date: Self.nextDate($0), title: $0.content.title) }
+        pending = requests.filter { Self.shown($0.identifier) }
+            .map { item(id: $0.identifier, date: Self.nextDate($0), content: $0.content) }
             .sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
         let todayStart = PrayerDay.sessionDayStart()
         deliveredToday = await center.deliveredNotifications()
-            .filter { $0.date >= todayStart }
-            .map { item(id: $0.request.identifier, date: $0.date, title: $0.request.content.title) }
+            .filter { $0.date >= todayStart && Self.shown($0.request.identifier) }
+            .map { item(id: $0.request.identifier, date: $0.date, content: $0.request.content) }
             .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
         loaded = true
     }
 
-    private func item(id: String, date: Date?, title: String) -> Item {
+    /// The DEBUG scheduler test's snoozes never show outside DEBUG builds.
+    private static func shown(_ id: String) -> Bool {
+        #if DEBUG
+        return true
+        #else
+        return !id.hasPrefix("snooze-debug-")
+        #endif
+    }
+
+    private func item(id: String, date: Date?, content: UNNotificationContent) -> Item {
+        let title = content.title
         let fallbackDay = PrayerNotificationID.dayKey(PrayerDay.date(for: date ?? Date()))
         if let p = PrayerNotificationID.parse(id) {
             let kind: Kind = p.kind == "Start" ? .start : p.kind == "Mid" ? .halfway : .endingSoon
             return Item(id: id, date: date, dayKey: p.dayKey ?? fallbackDay, kind: kind, prayer: p.prayer, title: title)
         }
         let kind: Kind = id.hasPrefix("zikrlater.") ? .zikrLater : id.hasPrefix(ZikrReminders.prefix) ? .zikr
-            : id.hasPrefix("snooze") ? .snooze : .other
+            : id.hasPrefix("snooze") ? .snooze : id.hasPrefix("masjidArrival.") ? .masjid : .other
         // A zikr reminder's id ends in its prayer day ("zikr.<task>.2026-09-28"): group by that.
         let zikrDay = kind == .zikr ? String(id.suffix(10)) : nil
         let day = zikrDay.flatMap { Self.dayKeyFormatter.date(from: $0) != nil ? $0 : nil } ?? fallbackDay
-        return Item(id: id, date: date, dayKey: day, kind: kind, prayer: nil, title: title)
+        // A "Nudge me later" follow-up carries its prayer (the original notification's userInfo).
+        let prayer = kind == .snooze ? content.userInfo["prayerName"] as? String : nil
+        return Item(id: id, date: date, dayKey: day, kind: kind, prayer: prayer, title: title, subtitle: content.subtitle)
     }
 
     private static func nextDate(_ r: UNNotificationRequest) -> Date? {
