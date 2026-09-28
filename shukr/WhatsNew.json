@@ -680,7 +680,7 @@
       "checked": "sim", "shots": ["wn-azkar-sort-tint.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
     },
     {
-      "id": "completion-moment-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "completion-moment", "notes": null,
+      "id": "completion-moment-1", "date": "2026-09-27", "commit": "0096b62", "time": "2026-09-27T23:48:54-04:00", "topic": "completion-moment", "notes": null,
       "title": "Completion moment smooth again: the circle keeps the prayer you marked until the sweep ends (no flash of the next prayer or the day's score), and the list waits too",
       "tryIt": ["Hold the circle to mark the current prayer: its arc sweeps closed, then the next prayer fades in", "Open the list and mark the last prayer of the day: the circle stays still through the moment, then 'today's score' comes in and all five rows unfold"],
       "checked": "sim", "shots": ["wn-completion-moment.jpg"]
