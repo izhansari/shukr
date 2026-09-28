@@ -29,16 +29,30 @@ enum WatchZikrSync {
     private static var container: ModelContainer?
     private static var saveObserver: NSObjectProtocol?
     private static var pendingSend: Task<Void, Never>?
-    /// Memo hashes by zikr id + audio size, so a payload doesn't re-hash unchanged audio.
+    /// Each zikr's memo hash ("" = no memo), so a payload doesn't load the audio (external
+    /// storage) on every save. Cleared when a save touches a zikr (MantraModel).
     private static var memoHashes: [String: String] = [:]
+    /// Ids of every watch session received (with when), confirmed back to the watch for a week so
+    /// it never resends one — even if it's since been deleted here, or started before today's Fajr.
+    private static let receivedKey = "watchZikr.received"
+    private static var received: [String: Double] {
+        get { UserDefaults.standard.dictionary(forKey: receivedKey) as? [String: Double] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: receivedKey) }
+    }
 
     static func start(container: ModelContainer) {
         self.container = container
         guard saveObserver == nil else { return }
         // Any save (a session, a task edit or delete, a zikr's memo) may change what the watch
         // shows. WatchSync.send() only sends when the context actually changed.
-        saveObserver = NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { _ in
-            Task { @MainActor in scheduleSend() }
+        saveObserver = NotificationCenter.default.addObserver(forName: ModelContext.didSave, object: nil, queue: .main) { note in
+            let keys: [ModelContext.NotificationKey] = [.insertedIdentifiers, .updatedIdentifiers, .deletedIdentifiers]
+            let touched = keys.flatMap { note.userInfo?[$0.rawValue] as? [PersistentIdentifier] ?? [] }
+            let zikrChanged = touched.contains { $0.entityName == "MantraModel" }
+            Task { @MainActor in
+                if zikrChanged { memoHashes.removeAll() }
+                scheduleSend()
+            }
         }
     }
 
@@ -76,7 +90,7 @@ enum WatchZikrSync {
             if let line = task.mantraLine { row["mantraLine"] = line }
             if let mantra = task.mantra {
                 row["mantraID"] = mantra.id.uuidString
-                if let audio = mantra.audioData { row["memo"] = memoHash(mantra.id.uuidString, audio) }
+                if let memo = memoHash(mantra), !memo.isEmpty { row["memo"] = memo }
             }
             return row
         }
@@ -90,17 +104,30 @@ enum WatchZikrSync {
             "scores": scores,
             "zikrDay": dayStart.timeIntervalSince1970,
             "zikrTasks": rows,
-            "zikrSessions": sessions.map(\.id.uuidString),
+            "zikrSessions": Array(Set(sessions.map(\.id.uuidString)).union(recentReceived())),
             "freestyleStep": QuickAddSteps.step(for: nil),
         ]
     }
 
-    private static func memoHash(_ id: String, _ audio: Data) -> String {
-        let key = "\(id).\(audio.count)"
-        if let hash = memoHashes[key] { return hash }
-        let hash = SHA256.hash(data: audio).prefix(8).map { String(format: "%02x", $0) }.joined()
-        memoHashes[key] = hash
+    /// The zikr's memo hash, loading its audio only when it isn't cached.
+    private static func memoHash(_ mantra: MantraModel) -> String? {
+        let id = mantra.id.uuidString
+        if let hash = memoHashes[id] { return hash }
+        let hash = mantra.audioData.map(hash(of:)) ?? ""
+        memoHashes[id] = hash
         return hash
+    }
+
+    private static func hash(of audio: Data) -> String {
+        SHA256.hash(data: audio).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Watch session ids received in the last week.
+    private static func recentReceived() -> [String] {
+        let cutoff = Date().addingTimeInterval(-7 * 86_400).timeIntervalSince1970
+        let kept = received.filter { $0.value > cutoff }
+        if kept.count != received.count { received = kept }
+        return Array(kept.keys)
     }
 
     // MARK: Watch → phone
@@ -121,10 +148,15 @@ enum WatchZikrSync {
               let idString = info["id"] as? String, let id = UUID(uuidString: idString),
               let count = info["count"] as? Int, count > 0,
               let start = info["start"] as? Double else { return }
-        // Already saved (a repeated delivery)?
+        // Already received (a repeated delivery, or one deleted here since)? Confirm it again.
+        guard received[idString] == nil else { scheduleSend(); return }
         var existing = FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.id == id })
         existing.fetchLimit = 1
-        if let found = try? context.fetch(existing), !found.isEmpty { return }
+        if let found = try? context.fetch(existing), !found.isEmpty {
+            received[idString] = Date().timeIntervalSince1970
+            scheduleSend()
+            return
+        }
 
         var task: TaskModel?
         if let taskString = info["taskID"] as? String, let taskID = UUID(uuidString: taskString) {
@@ -134,7 +166,9 @@ enum WatchZikrSync {
         }
         let name = (info["name"] as? String) ?? ""
         let seconds = info["seconds"] as? Double ?? 0
-        let perCount = seconds / Double(count)
+        // Pace from the time at the last count, like the phone (pauses and idle time after the
+        // last tap excluded).
+        let perCount = info["perCount"] as? Double ?? seconds / Double(count)
         let item = SessionDataModel(
             title: task?.displayName ?? (name.isEmpty ? "Untitled" : name),
             sessionMode: info["mode"] as? Int ?? 0,
@@ -150,6 +184,7 @@ enum WatchZikrSync {
         )
         item.id = id
         context.insert(item)
+        received[idString] = Date().timeIntervalSince1970
         if let task { ZikrReminders.taskMaybeDone(task, context: context) }
         do { try context.save() } catch { print("⌚️ watch session not saved: \(error)") }
         WidgetCenter.shared.reloadAllTimelines()
@@ -171,10 +206,16 @@ enum WatchZikrSync {
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("WatchMemos", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let file = folder.appendingPathComponent("\(mantraID).m4a")
+        // A file per transfer: rewriting one a transfer is still reading would corrupt it. Old
+        // ones (a day+) are cleared first.
+        let old = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.creationDateKey])) ?? []
+        for url in old where ((try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast) < Date().addingTimeInterval(-86_400) {
+            try? FileManager.default.removeItem(at: url)
+        }
+        let file = folder.appendingPathComponent("\(mantraID)-\(UUID().uuidString).m4a")
         do {
             try audio.write(to: file, options: .atomic)
-            WCSession.default.transferFile(file, metadata: ["mantraID": mantraID, "memo": memoHash(mantraID, audio)])
+            WCSession.default.transferFile(file, metadata: ["mantraID": mantraID, "memo": hash(of: audio)])
         } catch {
             print("⌚️ memo not sent: \(error)")
         }

@@ -53,17 +53,17 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         if WatchStore.save(context) {
             WidgetCenter.shared.reloadAllTimelines()
         }
-        WatchZikrStore.shared.take(context)   // today's zikr tasks and progress
+        DispatchQueue.main.async { WatchZikrStore.shared.take(context) }   // today's zikr tasks and progress
         DispatchQueue.main.async { self.revision += 1 }
     }
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         take(session.receivedApplicationContext)
-        WatchZikrStore.shared.resendUnconfirmed()
+        DispatchQueue.main.async { WatchZikrStore.shared.resendUnconfirmed() }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        if session.isReachable { WatchZikrStore.shared.sendUnconfirmedNow() }
+        if session.isReachable { DispatchQueue.main.async { WatchZikrStore.shared.sendUnconfirmedNow() } }
     }
 
     func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
@@ -72,7 +72,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
 
     /// A zikr's voice memo from the phone.
     func session(_ session: WCSession, didReceive file: WCSessionFile) {
-        WatchZikrStore.shared.saveMemo(file)
+        WatchZikrStore.saveMemo(file)
     }
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {

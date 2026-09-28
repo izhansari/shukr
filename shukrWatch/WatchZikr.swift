@@ -71,16 +71,21 @@ struct WatchZikrRecord: Codable, Equatable {
     let count: Int
     let start: Date
     let seconds: Double
+    /// Time per count at the last count (pauses and idle time after it excluded), like the phone.
+    var perCount: Double? = nil
 
     var userInfo: [String: Any] {
         var info: [String: Any] = ["type": "zikrSession", "id": id, "name": name, "mode": mode,
                                    "targetMin": targetMin, "targetCount": targetCount, "count": count,
                                    "start": start.timeIntervalSince1970, "seconds": seconds]
         if let taskID { info["taskID"] = taskID }
+        if let perCount { info["perCount"] = perCount }
         return info
     }
 }
 
+/// Main actor only: the WCSession delegate (a background queue) hops here before touching it.
+@MainActor
 final class WatchZikrStore: ObservableObject {
     static let shared = WatchZikrStore()
     @Published private(set) var revision = 0
@@ -240,21 +245,27 @@ final class WatchZikrStore: ObservableObject {
         WCSession.default.transferUserInfo(["type": "memoRequest", "mantraID": id])
     }
 
-    /// A memo arrived (WCSession file transfer; the file is only valid during the callback).
-    func saveMemo(_ file: WCSessionFile) {
+    /// A memo arrived (WCSession file transfer). The file is only valid during the delegate
+    /// callback, so it's moved there (any queue); only the bookkeeping hops to the main actor.
+    nonisolated static func saveMemo(_ file: WCSessionFile) {
         guard let id = file.metadata?["mantraID"] as? String, let memo = file.metadata?["memo"] as? String else { return }
-        let target = memoFolder.appendingPathComponent("\(id).m4a")
+        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("memos", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let target = folder.appendingPathComponent("\(id).m4a")
         try? FileManager.default.removeItem(at: target)
         do {
             try FileManager.default.moveItem(at: file.fileURL, to: target)
-            memoVersions[id] = memo
-            bump()
+            DispatchQueue.main.async {
+                shared.memoVersions[id] = memo
+                shared.bump()
+            }
         } catch {
             print("⌚️ memo not kept: \(error)")
         }
     }
 
-    private func bump() { DispatchQueue.main.async { self.revision += 1 } }
+    private func bump() { revision += 1 }
 }
 
 // MARK: - Haptics
@@ -272,12 +283,9 @@ enum WatchHaptics {
         }
         WKInterfaceDevice.current().play(type)
     }
-    /// Counting in sets: the tap, then two quick light ticks (the phone's ta-ta-ta).
-    static func set() {
-        count()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { WKInterfaceDevice.current().play(.click) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { WKInterfaceDevice.current().play(.click) }
-    }
+    /// Counting in sets: the phone's ta-ta-ta. watchOS drops haptics played that close together,
+    /// so one built-in multi-tap pattern (.retry) instead.
+    static func set() { WKInterfaceDevice.current().play(.retry) }
     static func hundred() { WKInterfaceDevice.current().play(.notification) }
     static func goal() { WKInterfaceDevice.current().play(.success) }
     static func minus() { WKInterfaceDevice.current().play(.directionDown) }
@@ -514,6 +522,10 @@ struct WatchCounterView: View {
     @State private var finishArmToken = 0
     @State private var now = Date()
     @State private var runtime = WatchRuntime()
+    /// Kept in state: made inside `body`, every tap re-rendered a new timer and it never fired
+    /// while tapping faster than once a second (timed goals froze).
+    @State private var ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    @State private var lastCountActive: Double = 0
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
     @State private var highest: CGFloat = 0
@@ -607,7 +619,7 @@ struct WatchCounterView: View {
             #endif
         }
         .onDisappear { runtime.stop() }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { date in
+        .onReceive(ticker) { date in
             guard finished == nil, !paused else { return }
             now = date
             // A timed goal stops itself, like the phone.
@@ -663,6 +675,7 @@ struct WatchCounterView: View {
         let before = count
         count = min(count + tapWorth, 10_000)
         lastCountAt = Date()
+        lastCountActive = activeSeconds(at: Date())
         tapWorth > 1 ? WatchHaptics.set() : WatchHaptics.count()
         if count / 100 > before / 100 { WatchHaptics.hundred() }
         if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() }
@@ -680,9 +693,11 @@ struct WatchCounterView: View {
             if let p = pausedAt {
                 pausedTotal += Date().timeIntervalSince(p)
                 pausedAt = nil
+                runtime.start()
             } else {
                 pausedAt = Date()
                 finishArmed = false
+                runtime.stop()      // a paused session doesn't need to outlive a lowered wrist
             }
         }
     }
@@ -704,7 +719,8 @@ struct WatchCounterView: View {
             targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? 0,
             count: sessionCount,
             start: startedAt,
-            seconds: seconds)
+            seconds: seconds,
+            perCount: lastCountActive / Double(max(sessionCount, 1)))
         WatchZikrStore.shared.record(record)
         runtime.stop()
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
@@ -731,7 +747,7 @@ struct WatchCounterView: View {
                 HStack(spacing: 6) {
                     stat("\(sessionCount)", "count")
                     stat(minutesText(activeSeconds(at: Date())), "time")
-                    stat(sessionCount > 0 ? String(format: "%.1fs", activeSeconds(at: Date()) / Double(sessionCount)) : "–", "pace")
+                    stat(sessionCount > 0 ? String(format: "%.1fs", lastCountActive / Double(sessionCount)) : "–", "pace")
                 }
                 if let task, task.memo != nil {
                     WatchMemoButton(task: task)
@@ -940,16 +956,22 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
     }
 
     func stop() {
-        if session?.state == .running { session?.invalidate() }
+        // Also one still starting (.scheduled): invalidating that cancels it.
+        if let state = session?.state, state == .running || state == .scheduled { session?.invalidate() }
         session = nil
     }
 
     func extendedRuntimeSession(_ extendedRuntimeSession: WKExtendedRuntimeSession,
                                 didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason, error: Error?) {
         if let error { print("⌚️ runtime session ended: \(reason.rawValue) \(error)") }
+        if extendedRuntimeSession === session { session = nil }
     }
     func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
-    func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
+    /// The hour a mindfulness session gets is nearly up: a buzz so a long session isn't silently
+    /// dropped (the count stays on screen; finishing still saves it).
+    func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        WKInterfaceDevice.current().play(.notification)
+    }
 }
 
 // MARK: - Settings page

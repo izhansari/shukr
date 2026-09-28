@@ -17,14 +17,23 @@ final class WatchSync: NSObject, WCSessionDelegate {
     static let shared = WatchSync()
     private var lastSent: NSDictionary?
 
+    /// Called from shukrApp.init (the main thread). The container is set before the session
+    /// activates, so a queued watch session delivered at launch always has somewhere to go.
     func start(container: ModelContainer) {
-        Task { @MainActor in WatchZikrSync.start(container: container) }
+        MainActor.assumeIsolated { WatchZikrSync.start(container: container) }
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
     }
 
+    /// Callable from anywhere: the context (which reads SwiftData) is always built on the main
+    /// actor — at once when already on the main thread, else hopped there.
     func send() {
+        if Thread.isMainThread { MainActor.assumeIsolated { sendNow() } }
+        else { Task { @MainActor in self.sendNow() } }
+    }
+
+    @MainActor private func sendNow() {
         guard WCSession.isSupported() else { return }
         let session = WCSession.default
         guard session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
@@ -39,7 +48,7 @@ final class WatchSync: NSObject, WCSessionDelegate {
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
             "completedDay": dayStart.timeIntervalSince1970,
         ]
-        context.merge(MainActor.assumeIsolated { WatchZikrSync.payload() }) { current, _ in current }
+        context.merge(WatchZikrSync.payload()) { current, _ in current }
         guard lastSent != (context as NSDictionary) else { return }
         do {
             try session.updateApplicationContext(context)
@@ -51,7 +60,7 @@ final class WatchSync: NSObject, WCSessionDelegate {
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         print("⌚️ phone session: state=\(state.rawValue) paired=\(session.isPaired) installed=\(session.isWatchAppInstalled) reachable=\(session.isReachable) \(error?.localizedDescription ?? "")")
-        if state == .activated { DispatchQueue.main.async { self.send() } }
+        if state == .activated { send() }
     }
     /// Finished watch zikr sessions and memo requests.
     func sessionReachabilityDidChange(_ session: WCSession) {
