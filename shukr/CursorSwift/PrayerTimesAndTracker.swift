@@ -798,7 +798,7 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
-        .sheet(isPresented: $demoScheduled) { NavigationStack { ScheduledNotificationsView() } }
+        .sheet(isPresented: $demoScheduled) { NavigationStack { UpcomingRemindersView() } }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(

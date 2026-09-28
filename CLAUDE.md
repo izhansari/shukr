@@ -1224,6 +1224,16 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   sheet: the map never came, the flag stayed true, `canLand` stayed false and later compass taps were ignored). DEBUG
   `-demoHealthThenCompass` (with `-healthPretend off`): card up → the compass flag + `openFromWidgetFlags` → sim ✓ card
   closed, map open, then ⌄ and the circle's arrow reopened it.
+  **Upcoming reminders (2026-09-28, feedback E37CE0F0)** replaced the beta "Scheduled notifications" dump:
+  `UpcomingRemindersView` (NotificationHealth.swift), Settings → Notifications → "Upcoming reminders". The summary ring
+  ("49 of 64", "Covers you through Mon, Oct 5"), then every pending request grouped by prayer day (a prayer id's own day
+  key, else `PrayerDay.date(for:)` of the fire date) — prayer symbol / kind icon, title, "Asr · halfway", time — and
+  today's delivered ones greyed at the end; a collapsed Details (background refresh, raw checks, counts by kind) and,
+  beta only, the card's rules, when each card may next come (`NotificationHealth.nextCardDate`) and "Preview the card:
+  off / held" (a local sheet: nothing is marked shown). **Public = one line:** `UpcomingReminders.isPublic`
+  (NotificationHealth.swift) — false = beta only (the `WhatsNewAccess` gate in SettingsView); the card previews stay
+  beta-only either way. DEBUG `-demoScheduledNotifications`, `-upcomingDetails` (Details open). Sim ✓ light / dark,
+  Details, the off preview.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after

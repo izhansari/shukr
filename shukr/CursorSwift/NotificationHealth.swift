@@ -12,9 +12,8 @@
 //    so with it on the summary lets them through) → the same kind of card;
 //  - Time Sensitive off alone, Background App Refresh off → no card, a quiet line in Settings.
 //  Settings → Notifications shows the overall status at the top (`NotificationHealthRows`), the
-//  setup's review uses the same checks, and beta builds get Settings → Scheduled notifications
-//  (`ScheduledNotificationsView`: what's pending out of iOS's 64, by kind, the days covered, when
-//  background refresh last ran).
+//  setup's review uses the same checks, and Settings → Notifications → Upcoming reminders
+//  (`UpcomingRemindersView`, beta-only until `UpcomingReminders.isPublic`) lists everything waiting.
 //
 
 import SwiftUI
@@ -83,6 +82,13 @@ final class NotificationHealth: ObservableObject {
         #endif
         let last = UserDefaults.standard.double(forKey: Self.shownKey(issue))
         return last == 0 || Date().timeIntervalSince1970 - last > Self.cardInterval
+    }
+    /// When the card for `issue` may next come (nil = any time), by the 3-day rule only.
+    func nextCardDate(for issue: Issue) -> Date? {
+        let last = UserDefaults.standard.double(forKey: Self.shownKey(issue))
+        guard last != 0 else { return nil }
+        let next = Date(timeIntervalSince1970: last + Self.cardInterval)
+        return next > Date() ? next : nil
     }
     func markCardShown(_ issue: Issue) {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: Self.shownKey(issue))
@@ -210,99 +216,252 @@ struct NotificationHealthRows: View {
     }
 }
 
-// MARK: - Dev: Scheduled notifications (beta builds, Settings)
+// MARK: - Upcoming reminders (Settings → Notifications)
 
-/// Read-only: what's pending (out of iOS's 64) by kind, the prayer days covered, when background
-/// refresh last ran, and every check above.
-struct ScheduledNotificationsView: View {
+/// Whether "Upcoming reminders" is in everyone's Settings. **The one line to flip to make it public**
+/// (feedback E37CE0F0): `true` shows it in the App Store build too; the beta-only card previews in its
+/// Details section stay behind `WhatsNewAccess` either way.
+enum UpcomingReminders {
+    static let isPublic = false
+}
+
+/// Every notification shukr has waiting with iOS (out of its 64), grouped by prayer day, with what
+/// each one is; today's delivered ones greyed at the end; the technical bits in a collapsed Details.
+struct UpcomingRemindersView: View {
     @ObservedObject private var health = NotificationHealth.shared
-    @State private var pending: [UNNotificationRequest] = []
-    @State private var delivered = 0
+    @ObservedObject private var betaAccess = WhatsNewAccess.shared
+    @State private var pending: [Item] = []
+    @State private var deliveredToday: [Item] = []
     @State private var loaded = false
+    @State private var showDetails = ProcessInfo.processInfo.arguments.contains("-upcomingDetails")   // DEBUG screenshots
+    @State private var previewCard: NotificationHealth.Issue?
 
-    private struct Counts { var start = 0, mid = 0, end = 0, zikr = 0, zikrLater = 0, snooze = 0, other = 0 }
-
-    private var counts: Counts {
-        var c = Counts()
-        for r in pending {
-            let id = r.identifier
-            if let p = PrayerNotificationID.parse(id) {
-                switch p.kind { case "Start": c.start += 1; case "Mid": c.mid += 1; default: c.end += 1 }
-            } else if id.hasPrefix("zikrlater.") { c.zikrLater += 1 }
-            else if id.hasPrefix("zikr.") { c.zikr += 1 }
-            else if id.hasPrefix("snooze") { c.snooze += 1 }
-            else { c.other += 1 }
-        }
-        return c
+    /// One notification, read once from its request.
+    struct Item: Identifiable {
+        let id: String
+        let date: Date?
+        let dayKey: String          // its prayer day ("2026-09-28")
+        let kind: Kind
+        let prayer: String?
+        let title: String
     }
-
-    /// First and last prayer day with a start notification.
-    private var daysCovered: String {
-        let days = pending.compactMap { r -> String? in
-            guard let p = PrayerNotificationID.parse(r.identifier), p.kind == "Start" else { return nil }
-            return p.dayKey
-        }.sorted()
-        guard let first = days.first, let last = days.last else { return "none" }
-        return first == last ? first : "\(first) → \(last)"
+    enum Kind {
+        case start, halfway, endingSoon, zikr, zikrLater, snooze, other
+        var label: String {
+            switch self {
+            case .start: "starts"
+            case .halfway: "halfway"
+            case .endingSoon: "30 min left"
+            case .zikr: "zikr reminder"
+            case .zikrLater: "zikr, later"
+            case .snooze: "nudge"
+            case .other: "reminder"
+            }
+        }
     }
 
     var body: some View {
         List {
             Section {
-                LabeledContent("Pending", value: "\(pending.count) of 64")
-                LabeledContent("Delivered, in Notification Center", value: "\(delivered)")
-                LabeledContent("Prayer days with a start", value: daysCovered)
+                summary
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
             }
-            Section("By kind") {
-                let c = counts
-                LabeledContent("Prayer starts", value: "\(c.start)")
-                LabeledContent("Halfway nudges", value: "\(c.mid)")
-                LabeledContent("30 min left nudges", value: "\(c.end)")
-                LabeledContent("Zikr reminders", value: "\(c.zikr)")
-                LabeledContent("Zikr \"later\"", value: "\(c.zikrLater)")
-                LabeledContent("Snoozes", value: "\(c.snooze)")
-                LabeledContent("Other", value: "\(c.other)")
+            if loaded && pending.isEmpty {
+                Section {
+                    Text(health.authorization == .denied
+                         ? "Notifications are off for shukr, so nothing is scheduled."
+                         : "Nothing is scheduled right now. Open shukr and it tops them up.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
             }
-            Section("Background refresh") {
-                LabeledContent("Status", value: refreshStatus)
-                LabeledContent("Last ran", value: lastRefresh)
+            ForEach(days, id: \.key) { day in
+                Section {
+                    ForEach(day.items) { row($0, faded: false) }
+                } header: {
+                    Text(dayTitle(day.key))
+                }
             }
-            Section("Checks") {
+            if !deliveredToday.isEmpty {
+                Section {
+                    ForEach(deliveredToday) { row($0, faded: true) }
+                } header: {
+                    Text("Already delivered today")
+                }
+            }
+            details
+        }
+        .navigationTitle("Upcoming reminders")
+        .navigationBarTitleDisplayMode(.inline)
+        .fontDesign(.rounded)
+        .refreshable { await load() }
+        .task { await load() }
+        .sheet(item: $previewCard) { issue in
+            ReminderHealthCard(issue: issue) { previewCard = nil }
+        }
+    }
+
+    // MARK: pieces
+
+    /// "51 of 64 · through Sat, Oct 4" in the app's ring look.
+    private var summary: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle().stroke(Color(.secondarySystemFill), lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: min(Double(pending.count) / 64, 1))
+                    .stroke(Color.sage, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: -2) {
+                    Text("\(pending.count)").font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
+                    Text("of 64").font(.system(size: 10, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 70, height: 70)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(coverText)
+                    .font(.system(.headline, design: .rounded, weight: .regular))
+                Text("iOS keeps up to 64 waiting at once. shukr fills them a week ahead: every prayer's start, and your nudges for the next two days.")
+                    .font(.system(.caption, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var coverText: String {
+        guard let last = pending.compactMap(\.date).max() else { return loaded ? "Nothing scheduled" : " " }
+        return "Covers you through \(last.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
+    }
+
+    private func row(_ item: Item, faded: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol(for: item))
+                .font(.system(size: 15, weight: .light))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(item.kind == .start ? Color.sage : Color.secondary)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title.isEmpty ? (item.prayer ?? "Reminder") : item.title)
+                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .lineLimit(1)
+                Text([item.prayer, item.kind.label].compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(.caption, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Text(item.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–")
+                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .opacity(faded ? 0.45 : 1)
+    }
+
+    private func symbol(for item: Item) -> String {
+        switch item.kind {
+        case .start: return item.prayer.map(prayerSymbol) ?? "bell"
+        case .halfway: return "circle.lefthalf.filled"
+        case .endingSoon: return "hourglass"
+        case .zikr, .zikrLater: return "circle.hexagonpath"
+        case .snooze: return "clock.arrow.circlepath"
+        case .other: return "bell"
+        }
+    }
+
+    /// Background refresh, the raw checks and (beta) the card previews: collapsed, at the bottom.
+    private var details: some View {
+        Section {
+            DisclosureGroup(isExpanded: $showDetails) {
+                LabeledContent("Background refresh", value: refreshStatus)
+                LabeledContent("Last ran in the background", value: lastRefresh)
                 LabeledContent("Notifications", value: authText)
                 LabeledContent("Scheduled Summary", value: health.summaryOn ? "on" : "off")
                 LabeledContent("Time Sensitive", value: settingText(health.timeSensitive))
-                LabeledContent("Card due", value: health.cardIssue.map { "\($0.rawValue) (\(health.cardDue(for: $0) ? "yes" : "shown recently"))" } ?? "none")
-            }
-            Section("Next ten") {
-                ForEach(pending.prefix(10), id: \.identifier) { r in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(r.identifier).font(.caption.monospaced())
-                        Text(fireDate(r)).font(.caption2).foregroundStyle(.secondary)
+                LabeledContent("Waiting, by kind", value: kindCounts)
+                if betaAccess.available {
+                    // Testing the reminders card (feedback E37CE0F0): it follows rules, so it
+                    // doesn't come every time — these show it now, whatever the rules say.
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("The reminders card")
+                            .font(.subheadline.weight(.medium))
+                        Text("Shows on the Salah page with nothing else open, not during the opening or within 10 s of a widget, at most every 3 days per kind, and not for 3 days after a \"no\" in the setup.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Off card: \(nextCardText(.off))\nHeld card: \(nextCardText(.held))")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 2)
+                    Button("Preview the card: off") { previewCard = .off }
+                        .tint(Color.sage)
+                    Button("Preview the card: held") { previewCard = .held }
+                        .tint(Color.sage)
                 }
+            } label: {
+                Text("Details").font(.subheadline).foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("Scheduled notifications")
-        .navigationBarTitleDisplayMode(.inline)
-        .refreshable { await load() }
-        .task { await load() }
+    }
+
+    private func nextCardText(_ issue: NotificationHealth.Issue) -> String {
+        let applies = health.cardIssue == issue
+        let next = health.nextCardDate(for: issue)
+        let when = next.map { "from \($0.formatted(date: .abbreviated, time: .shortened))" } ?? "any time"
+        return applies ? "applies now · may appear \(when)" : "doesn't apply now · would appear \(when)"
+    }
+
+    // MARK: data
+
+    private var days: [(key: String, items: [Item])] {
+        Dictionary(grouping: pending, by: \.dayKey)
+            .map { (key: $0.key, items: $0.value) }
+            .sorted { $0.key < $1.key }
+    }
+
+    private func dayTitle(_ key: String) -> String {
+        let today = PrayerNotificationID.dayKey(PrayerDay.date())
+        let tomorrow = PrayerNotificationID.dayKey(Calendar.current.date(byAdding: .day, value: 1, to: PrayerDay.date()) ?? Date())
+        if key == today { return "Today" }
+        if key == tomorrow { return "Tomorrow" }
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: key).map { $0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) } ?? key
+    }
+
+    private var kindCounts: String {
+        let all = pending.map(\.kind)
+        func n(_ k: Kind) -> Int { all.filter { $0 == k }.count }
+        return "\(n(.start)) starts · \(n(.halfway) + n(.endingSoon)) nudges · \(n(.zikr) + n(.zikrLater)) zikr · \(n(.snooze)) snoozes"
     }
 
     private func load() async {
         await health.refresh()
         let center = UNUserNotificationCenter.current()
         let requests = await center.pendingNotificationRequests()
-        pending = requests.sorted { (nextDate($0) ?? .distantFuture) < (nextDate($1) ?? .distantFuture) }
-        delivered = await center.deliveredNotifications().count
+        pending = requests.map { item(id: $0.identifier, date: Self.nextDate($0), title: $0.content.title) }
+            .sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+        let todayStart = PrayerDay.sessionDayStart()
+        deliveredToday = await center.deliveredNotifications()
+            .filter { $0.date >= todayStart }
+            .map { item(id: $0.request.identifier, date: $0.date, title: $0.request.content.title) }
+            .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
         loaded = true
     }
 
-    private func nextDate(_ r: UNNotificationRequest) -> Date? {
+    private func item(id: String, date: Date?, title: String) -> Item {
+        let fallbackDay = PrayerNotificationID.dayKey(PrayerDay.date(for: date ?? Date()))
+        if let p = PrayerNotificationID.parse(id) {
+            let kind: Kind = p.kind == "Start" ? .start : p.kind == "Mid" ? .halfway : .endingSoon
+            return Item(id: id, date: date, dayKey: p.dayKey ?? fallbackDay, kind: kind, prayer: p.prayer, title: title)
+        }
+        let kind: Kind = id.hasPrefix("zikrlater.") ? .zikrLater : id.hasPrefix("zikr.") ? .zikr
+            : id.hasPrefix("snooze") ? .snooze : .other
+        return Item(id: id, date: date, dayKey: fallbackDay, kind: kind, prayer: nil, title: title)
+    }
+
+    private static func nextDate(_ r: UNNotificationRequest) -> Date? {
         (r.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
             ?? (r.trigger as? UNTimeIntervalNotificationTrigger)?.nextTriggerDate()
-    }
-    private func fireDate(_ r: UNNotificationRequest) -> String {
-        nextDate(r).map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "no trigger"
     }
     private var refreshStatus: String {
         switch health.backgroundRefresh {
@@ -314,7 +473,7 @@ struct ScheduledNotificationsView: View {
     }
     private var lastRefresh: String {
         let t = UserDefaults.standard.double(forKey: NotificationHealth.lastRefreshKey)
-        return t == 0 ? "never (since this was added)" : Date(timeIntervalSince1970: t).formatted(date: .abbreviated, time: .shortened)
+        return t == 0 ? "not yet" : Date(timeIntervalSince1970: t).formatted(date: .abbreviated, time: .shortened)
     }
     private var authText: String {
         switch health.authorization {

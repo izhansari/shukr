@@ -224,6 +224,14 @@ struct SettingsView: View {
                         if isNotifPopupVisible{
                             NotificationDropdownInfo()
                         }
+                        // Everything shukr has waiting with iOS. Beta-only until `UpcomingReminders.isPublic`.
+                        if UpcomingReminders.isPublic || betaAccess.available {
+                            NavigationLink {
+                                UpcomingRemindersView()
+                            } label: {
+                                Label("Upcoming reminders", systemImage: "calendar.badge.clock")
+                            }
+                        }
                     }
                     
                     
@@ -329,13 +337,8 @@ struct SettingsView: View {
                             } label: {
                                 Label("Run setup again", systemImage: "arrow.counterclockwise.circle")
                             }
-                            NavigationLink {
-                                ScheduledNotificationsView()
-                            } label: {
-                                Label("Scheduled notifications", systemImage: "list.bullet.rectangle")
-                            }
                         } footer: {
-                            Text("Beta builds only: the first-run setup, filled in with your settings; what's scheduled.")
+                            Text("Beta builds only: the first-run setup, filled in with your settings.")
                         }
                     }
 

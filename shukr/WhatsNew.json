@@ -19,7 +19,7 @@
     {"id": "recorded-vs-edited", "area": "Salah", "title": "Edits keep what the app recorded, so you can put it back", "link": "salah"},
     {"id": "mosque-sheet", "area": "Mosques", "title": "Mosques live in one sheet: the list, a mosque's page inside it, and it shrinks to a bar", "link": "map",
      "tryIt": ["Map → Mosques → the sheet opens with the list", "Tap a mosque → its page slides in; back → the list where you left it", "Swipe the sheet down → it shrinks to a bar instead of closing"]},
-    {"id": "notifications", "area": "Notifications", "title": "Prayer notifications are planned a week ahead, Fajr included", "link": "settings"},
+    {"id": "notifications", "area": "Notifications", "title": "Prayer notifications are planned a week ahead, Fajr included; a calm card when they can't reach you; Settings → Notifications → Upcoming reminders lists every one waiting", "link": "settings"},
     {"id": "prayer-begins", "area": "Salah", "title": "A prayer that hasn't started has a dashed ring; it fills in when the prayer begins", "link": "salah",
      "tryIt": ["Mark the current prayer → the circle shows NEXT and a dashed ring", "Wait for it to begin with the app open → the ring expands into the band, with a soft tap", "Dev builds: Settings → My Dev Stuff → Preview prayer begins"]},
     {"id": "names-filter", "area": "99 Names", "title": "99 Names: filter by All · Learning · Known, and reset your progress", "link": "names"},
@@ -810,6 +810,12 @@
       "title": "Insights: each small ring shows its prayer's symbol; tap one and the line underneath stands out (bigger, the name in its ring's colour) with how far in you usually pray",
       "tryIt": ["☰ → Insights → tap Isha's ring → 'Isha · you usually pray 1 h 8 min in · avg 96' in larger type"],
       "checked": "sim", "shots": ["wn-insights-ring-symbols.jpg"], "addresses": ["085F753D-29F4-4E6D-9857-E431B308DDAE"]
+    },
+    {
+      "id": "notifications-4", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Upcoming reminders: every notification shukr has waiting, by day, with its time, prayer and kind; today's delivered ones greyed; Details at the bottom with previews of the reminders card and when it may next come",
+      "tryIt": ["Settings → Notifications → Upcoming reminders → scroll through the days", "At the bottom: Details → Preview the card: off / held"],
+      "checked": "sim", "shots": ["wn-upcoming-reminders.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
     }
   ]
 }
