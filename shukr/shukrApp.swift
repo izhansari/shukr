@@ -118,6 +118,16 @@ struct shukrApp: App {
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()
         let updates = manager.locationUpdates
+        #if DEBUG
+        // `-demoCompassJiggle`: the heading changes 5× a second, like a phone moving (the simulator
+        // has no compass) — reproduces anything that re-renders with the compass.
+        if ProcessInfo.processInfo.arguments.contains("-demoCompassJiggle") {
+            let compass = manager.compass
+            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+                compass.heading = (compass.heading + 3).truncatingRemainder(dividingBy: 360)
+            }
+        }
+        #endif
         Task { @MainActor in
             MasjidArrival.shared.start()                        // entering / leaving duas (opt-in)
             HolyCityWelcome.shared.start(updates)   // "Welcome to Makkah / Madinah"

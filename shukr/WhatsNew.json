@@ -641,10 +641,16 @@
       "checked": "sim", "shots": ["wn-lockscreen-circular-small-icon.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048", "8F6E3C4B-D226-4180-9BE3-94D2B5D31E90"]
     },
     {
-      "id": "built-in-azkar-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "id": "built-in-azkar-9", "date": "2026-09-27", "commit": "0b3955b", "time": "2026-09-27T19:52:47-04:00", "topic": "built-in-azkar", "notes": null,
       "title": "Azkar sort: Name A to Z is the default (both sections alphabetical); no separate Default; direction rows are one short line (A to Z, Most first, Fastest first, Recent first…)",
       "tryIt": ["Azkar → the sort button: pick a field, then the arrow row that reads how you want it", "Name, A to Z shows the plain sort icon; anything else shows ↑ or ↓"],
       "checked": "sim", "shots": ["wn-azkar-sort-name-default.jpg"], "addresses": ["F5FDC4C1-F877-4F2F-B60E-4FA53952BF60"]
+    },
+    {
+      "id": "prayer-begins-12", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "The main circle's ring keeps filling while you're walking or driving (it could freeze empty until you left the app)",
+      "tryIt": ["Walk with the app open on the Salah page as a prayer begins: the ring starts filling on time", "Keep it open while moving: the ring and its colour keep up"],
+      "checked": "sim", "shots": ["wn-circle-ring-fills-while-moving.jpg"]
     }
   ]
 }

@@ -1461,6 +1461,12 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift; defaults −31 / 9 / 0.3 / 2.5 — the original look. The owner's playground values, −28.76 / 8.72 / 0.263 / 2.57, were the default for one commit (81593de, feedback CC72A6E8) and he preferred the original, 2026-09-27. `NextLabelTuning.clearSavedTuningOnce()` in shukrApp.init forgets saved playground JSON once per install (flag `clearedNextTagTuningForOriginal`). Release always uses the defaults. Sim trap: `simctl spawn … defaults write` writes a second, global plist the simulator merges in, so the app can't remove that value — edit prefs through the app, not simctl), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
   "Next prayer": NEXT + dashed ring / dashed ring only (`NextLabel.key` in the app group, so the
   widget follows; reloads timelines). DEBUG `-demoNextLabel on|off`.
+- **Frozen ring while moving (fixed 2026-09-27):** `MainCircleView` made its 1 s timer inline in `body`
+  (`.onReceive(Timer.publish(…).autoconnect())`); it observes `CompassState`, so every heading update re-rendered it and
+  replaced the timer before it fired — `currentTime` froze and a started prayer showed an empty ring (owner: Isha at 8:28 PM).
+  Now `static let ticker` + `currentTime = Date()` on appear and on scene active. Same fix in `TimeColorFadeProgressBar`.
+  **Never create a publisher inline in `body`.** DEBUG `-demoCompassJiggle` turns the heading 5×/s (the sim has no compass);
+  with `-demoPrayerStart`, sim ✓: 0 ticks in 15 s before, 18 in 20 s after, the ring filling.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when
   there's text to flip. Type matches the Insights ring (2026-09-25): name 32 pt light rounded,
   icon 22 pt light, captions subheadline thin secondary, score 44 pt light over "today's score".
