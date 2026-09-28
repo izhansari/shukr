@@ -23,7 +23,7 @@ struct PrayersWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: kind, provider: PrayersWidgetTimelineProvider()) { entry in
             PrayersWidgetView(entry: entry)
-                .containerBackground(Color("widgetBgColor"), for: .widget)
+                .containerBackground(entry.background, for: .widget)
 //                .containerBackground(Color("bgColor")/*Color.white*/, for: .widget)
         }
         .contentMarginsDisabled()
@@ -59,6 +59,34 @@ struct PrayersWidgetEntry: TimelineEntry {
     /// The share of the free space above the ring: 60 / 40 reads centred (owner picked it from 50 /
     /// 55 / 60, feedback D3DC914D / 43D36031; the setting is gone, its stored key ignored).
     var ringAbove = 0.6
+    /// Edit Widget → Style (the home-screen widget only).
+    var style: WidgetStyle = .system
+    /// The times list's rows can be tapped (the prototype, a beta setting in the app).
+    var listTaps = false
+
+    /// "Follows the sun" (`auto`) night: from Maghrib until the next sunrise (the app's auto rule — `isDaytime` is
+    /// after Fajr's window, before Maghrib), and before this prayer day's sunrise.
+    var isNight: Bool {
+        guard let sunrise = prayerDict["Sunrise"]?.start, let maghrib = prayerDict["Maghrib"]?.start else { return false }
+        return date < sunrise || (date >= maghrib && date < sunrise.addingTimeInterval(86_400))
+    }
+    /// The scheme Style forces on the home-screen widget; nil = follow the phone.
+    var forcedScheme: ColorScheme? {
+        switch style {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        case .auto: isNight ? .dark : .light
+        }
+    }
+    /// The container's colour, matching `forcedScheme` (the asset would follow the phone).
+    var background: Color {
+        switch forcedScheme {
+        case .dark?: .black
+        case .light?: .white
+        default: Color("widgetBgColor")
+        }
+    }
 
     /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
     /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
@@ -68,7 +96,7 @@ struct PrayersWidgetEntry: TimelineEntry {
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
                            completedScores: completedScores, nextFajr: nextFajr,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
-                           ringAbove: ringAbove)
+                           ringAbove: ringAbove, style: style, listTaps: listTaps)
     }
 }
 
@@ -141,6 +169,11 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         } else if shown.current, shown.end > base.date {
             moments = [shown.end]
         }
+        // Style "Follows the sun" flips at Maghrib and at sunrise: an entry at each still ahead.
+        if entry.style == .auto, let sunrise = entry.prayerDict["Sunrise"]?.start,
+           let maghrib = entry.prayerDict["Maghrib"]?.start {
+            moments += [sunrise, maghrib, sunrise.addingTimeInterval(86_400)].filter { $0 > base.date }
+        }
         entries += moments.map { base.at($0, list: false) }
         let nextRefresh = Date().addingTimeInterval(60)
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
@@ -152,38 +185,49 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     @MainActor static func renderDebugShots(_ entry: PrayersWidgetEntry) {
         guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
             .appendingPathComponent("Library/Caches/widget-shots", isDirectory: true) else { return }
+        try? FileManager.default.removeItem(at: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        /// Drawn as the home screen would: `phoneDark` is the phone's appearance, the container
+        /// colour is the entry's (Style can force it).
+        func render(_ shown: PrayersWidgetEntry, size: Double, phoneDark: Bool, _ name: String) {
+            let view = PrayersWidgetView(entry: shown)
+                .frame(width: size, height: size)
+                .background(shown.background)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .environment(\.colorScheme, phoneDark ? .dark : .light)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 3
+            if let data = renderer.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent(name + ".png")) }
+        }
         for size in [158.0, 170.0] {
-            for list in [false, true] {
-                for dark in [false, true] {
-                    for colors in [true, false] where list || colors {
-                        var shown = entry.at(entry.date, list: list)
-                        shown.scoreColors = colors
-                        let view = PrayersWidgetView(entry: shown)
-                            .frame(width: size, height: size)
-                            .background(Color("widgetBgColor"))
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .environment(\.colorScheme, dark ? .dark : .light)
-                        let renderer = ImageRenderer(content: view)
-                        renderer.scale = 3
-                        let name = "w\(Int(size))-\(list ? "list" : "ring")-\(dark ? "dark" : "light")\(colors ? "" : "-plain").png"
-                        if let data = renderer.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent(name)) }
-                    }
+            let px = "w\(Int(size))"
+            for phoneDark in [false, true] {
+                let phone = phoneDark ? "phoneDark" : "phoneLight"
+                // Each Style on the ring.
+                for style in [WidgetStyle.system, .light, .dark] {
+                    var shown = entry.at(entry.date, list: false)
+                    shown.style = style
+                    render(shown, size: size, phoneDark: phoneDark, "\(px)-style-\(style.rawValue)-\(phone)")
                 }
+                // The times list, read-only and with the tap prototype on; and with the tap prototype
+                // with only the first prayer marked (the others that started show as empty circles).
+                for taps in [false, true] {
+                    var shown = entry.at(entry.date, list: true)
+                    shown.listTaps = taps
+                    render(shown, size: size, phoneDark: phoneDark, "\(px)-list-\(taps ? "taps" : "plain")-\(phone)")
+                }
+                var open = entry.at(entry.date, list: true)
+                open.listTaps = true
+                open.completedScores = entry.completedScores.filter { $0.key == "Fajr" }
+                render(open, size: size, phoneDark: phoneDark, "\(px)-list-tapsOpen-\(phone)")
             }
-            // Between sunrise and Dhuhr (the ring shows Dhuhr as NEXT).
-            if let sunrise = entry.prayerDict["Sunrise"]?.start {
-                for dark in [false, true] {
-                    let view = PrayersWidgetView(entry: entry.at(sunrise.addingTimeInterval(3 * 3600), list: false))
-                        .frame(width: size, height: size)
-                        .background(Color("widgetBgColor"))
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .environment(\.colorScheme, dark ? .dark : .light)
-                    let renderer = ImageRenderer(content: view)
-                    renderer.scale = 3
-                    if let data = renderer.uiImage?.pngData() {
-                        try? data.write(to: dir.appendingPathComponent("w\(Int(size))-morning-\(dark ? "dark" : "light").png"))
-                    }
+            // "Follows the sun" either side of Maghrib and of sunrise (the phone in light mode).
+            if let maghrib = entry.prayerDict["Maghrib"]?.start, let sunrise = entry.prayerDict["Sunrise"]?.start {
+                for (label, date) in [("beforeMaghrib", maghrib.addingTimeInterval(-60)), ("afterMaghrib", maghrib.addingTimeInterval(60)),
+                                      ("beforeSunrise", sunrise.addingTimeInterval(-60)), ("afterSunrise", sunrise.addingTimeInterval(60))] {
+                    var shown = entry.at(date, list: false)
+                    shown.style = .auto
+                    render(shown, size: size, phoneDark: false, "\(px)-auto-\(label)")
                 }
             }
         }
@@ -244,7 +288,9 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             leftCorner: configuration?.corners.left ?? .qibla,
             rightCorner: configuration?.corners.right ?? .tasbeeh,
             scoreColors: configuration?.scoreColors ?? true,
-            ringAbove: 0.6
+            ringAbove: 0.6,
+            style: configuration?.style ?? .system,
+            listTaps: WidgetListTaps.enabled
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
@@ -262,7 +308,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                                       leftCorner: corners.first ?? entry.leftCorner,
                                       rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner,
                                       scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors,
-                                      ringAbove: entry.ringAbove)
+                                      ringAbove: entry.ringAbove, style: entry.style, listTaps: entry.listTaps)
         }
         #endif
         return entry
@@ -294,6 +340,15 @@ struct PrayersWidgetView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(ForcedScheme(scheme: entry.forcedScheme))
+    }
+
+    /// Edit Widget → Style: Light / Dark / Follows the sun win over the phone's appearance; System leaves it.
+    struct ForcedScheme: ViewModifier {
+        let scheme: ColorScheme?
+        func body(content: Content) -> some View {
+            if let scheme { content.environment(\.colorScheme, scheme) } else { content }
+        }
     }
 
     /// Today's times in the app's look (2026-09-27, notes #1): the city as a tiny caption; the five
@@ -349,12 +404,36 @@ struct PrayersWidgetView: View {
                 .fixedSize()
         }
 
-        private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
+        /// A row. With the prototype on (`entry.listTaps`), a prayer that has started is a button over
+        /// the whole row: not marked → marked here, scored at the tap like the corner check (an earlier
+        /// prayer may come out Late / Qaza); marked → the app opens to "Unmark Asr?" (the widget never
+        /// unmarks). Upcoming prayers and Sunrise never are.
+        @ViewBuilder private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
+            let content = rowContent(name, start, end)
+            if entry.listTaps, name != "Sunrise", start <= entry.date {
+                if entry.completedScores[name] != nil {
+                    Button(intent: AskUnmarkPrayerIntent(prayerName: name, prayerStart: start)) { content }
+                        .buttonStyle(.plain)
+                } else {
+                    Button(intent: MarkFromListIntent(prayerName: name, prayerStart: start, prayerEnd: end)) { content }
+                        .buttonStyle(.plain)
+                }
+            } else {
+                content
+            }
+        }
+
+        private func rowContent(_ name: String, _ start: Date, _ end: Date) -> some View {
             let sunrise = name == "Sunrise"
             let current = !sunrise && start <= entry.date && entry.date < end
             let score = entry.completedScores[name]
             return HStack(spacing: 6) {
-                PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors)
+                // With taps on, a tappable row's dot grows into a circle to tap: empty = not marked
+                // yet, filled = marked. Upcoming prayers keep the small dot (nothing to tap).
+                let tappable = entry.listTaps && !sunrise && start <= entry.date
+                PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors,
+                          size: tappable ? 11 : 7)
+                    .frame(width: entry.listTaps ? 11 : 7)
                     .opacity(sunrise ? 0 : 1)
                 // The NEXT tag gives way on a narrow widget: at 158 pt "Dhuhr NEXT" truncated both
                 // the name and its time (feedback 99D47ABE follow-up check).
@@ -382,6 +461,7 @@ struct PrayersWidgetView: View {
             .padding(.horizontal, 5)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(current ? Brand.sage.opacity(0.14) : Color.clear))
+            .contentShape(Rectangle())
         }
     }
 

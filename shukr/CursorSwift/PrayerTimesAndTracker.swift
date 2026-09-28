@@ -68,6 +68,8 @@ struct PrayerTimesView: View {
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State private var showNamesPage = false
+    /// The Prayers widget's times list (the tap prototype): a marked row opens the app to "Unmark Asr?".
+    @State private var widgetUnmark: WidgetUnmarkRequest?
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoWhatsNew = false
@@ -98,6 +100,18 @@ struct PrayerTimesView: View {
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
             if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
+            // A marked row in the widget's times list (the tap prototype): ask here, never unmark there.
+            if let raw = store.string(forKey: WidgetListTaps.unmarkKey) {
+                store.removeObject(forKey: WidgetListTaps.unmarkKey)
+                lastDeepLinkAt = Date()
+                if let request = WidgetUnmarkRequest(raw) {
+                    clearCovers {
+                        sharedState.horizontalPage = .main
+                        // Once the page is up (a sheet was closing, or the app was just opening).
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { widgetUnmark = request }
+                    }
+                }
+            }
             if openAyahFromWidget {
                 clearCovers {
                     sharedState.horizontalPage = .main
@@ -125,6 +139,31 @@ struct PrayerTimesView: View {
                 }
             }
         }
+    }
+
+    /// "Unmark Asr?" → Unmark, from the widget's times list: today's row goes through the app's own
+    /// unmark (as the list's own alert does: day score, streak, widget); a row of another day has
+    /// every completed row of it reset, then the day and streaks are redone.
+    private func unmarkFromWidget(_ request: WidgetUnmarkRequest) {
+        viewModel.reconcileAfterWidgetWrites()   // a widget mark that just landed
+        if let prayer = viewModel.todaysPrayers.first(where: {
+            $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
+        }) {
+            if prayer.isCompleted { viewModel.togglePrayerCompletion(for: prayer) }
+            return
+        }
+        let name = request.name
+        let dayStart = Calendar.current.startOfDay(for: request.start)
+        let dayEnd = dayStart.addingTimeInterval(86_399)
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate {
+            $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd
+        }))) ?? []
+        let done = rows.filter(\.isCompleted)
+        guard !done.isEmpty else { return }
+        done.forEach { $0.resetPrayer() }
+        viewModel.calculateDayScore(for: request.start)
+        viewModel.recomputeStreaks()
+        viewModel.pushCompletionsToWidget()
     }
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -466,6 +505,16 @@ struct PrayerTimesView: View {
         }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
+        // A marked row tapped in the Prayers widget's times list (the tap prototype): the app asks.
+        .alert(widgetUnmark.map { "Unmark \($0.name)?" } ?? "",
+               isPresented: Binding(get: { widgetUnmark != nil }, set: { if !$0 { widgetUnmark = nil } }),
+               presenting: widgetUnmark) { request in
+            Button("Unmark", role: .destructive) { unmarkFromWidget(request) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Are you sure you want to mark this prayer as incomplete?")
+        }
+        .onChange(of: widgetUnmark != nil) { _, up in CircleCover.set("widgetUnmark", up) }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
@@ -1973,4 +2022,19 @@ struct SettingsPage: View, Equatable {
     var onBack: () -> Void
     static func == (lhs: SettingsPage, rhs: SettingsPage) -> Bool { true }
     var body: some View { SettingsView(onBack: onBack) }
+}
+
+/// A marked row tapped in the Prayers widget's times list: which prayer, on which day
+/// (`WidgetListTaps.unmarkKey`, "Asr|<start, seconds since 1970>").
+struct WidgetUnmarkRequest: Identifiable {
+    let name: String
+    let start: Date
+    var id: String { "\(name)|\(start.timeIntervalSince1970)" }
+
+    init?(_ raw: String) {
+        let parts = raw.split(separator: "|")
+        guard parts.count == 2, let seconds = Double(parts[1]) else { return nil }
+        name = String(parts[0])
+        start = Date(timeIntervalSince1970: seconds)
+    }
 }

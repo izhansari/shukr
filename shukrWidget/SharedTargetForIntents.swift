@@ -505,6 +505,60 @@ struct OpenDailyAyahIntent: AppIntent {
     }
 }
 
+/// Widget times list (the tap-to-mark prototype, `WidgetListTaps`): a started row marks its prayer,
+/// scored at the tap like the corner check, and the list stays up another `openFor` so the filled
+/// circle is seen (the mark reloads the timeline).
+struct MarkFromListIntent: AppIntent {
+    static var title: LocalizedStringResource = "Mark Prayer Complete from the List"
+    static var openAppWhenRun: Bool = false
+    static var isDiscoverable: Bool = false
+
+    @Parameter(title: "Prayer") var prayerName: String
+    @Parameter(title: "Start") var prayerStart: Date
+    @Parameter(title: "End") var prayerEnd: Date
+
+    init() {}
+    init(prayerName: String, prayerStart: Date, prayerEnd: Date) {
+        self.prayerName = prayerName
+        self.prayerStart = prayerStart
+        self.prayerEnd = prayerEnd
+    }
+
+    func perform() async throws -> some IntentResult {
+        if let store = UserDefaults(suiteName: SharedStore.appGroup) {
+            store.set(true, forKey: WidgetListState.openKey)
+            store.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
+        }
+        if !SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
+            WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
+        }
+        return .result()
+    }
+}
+
+/// Widget times list (the tap-to-mark prototype, `WidgetListTaps`): a done row opens the app to
+/// "Unmark Asr?" — the widget never unmarks by itself.
+struct AskUnmarkPrayerIntent: AppIntent {
+    static var title: LocalizedStringResource = "Unmark a Prayer"
+    static var openAppWhenRun: Bool = true
+    static var isDiscoverable: Bool = false
+
+    @Parameter(title: "Prayer") var prayerName: String
+    @Parameter(title: "Start") var prayerStart: Date
+
+    init() {}
+    init(prayerName: String, prayerStart: Date) {
+        self.prayerName = prayerName
+        self.prayerStart = prayerStart
+    }
+
+    func perform() async throws -> some IntentResult {
+        UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?
+            .set("\(prayerName)|\(prayerStart.timeIntervalSince1970)", forKey: WidgetListTaps.unmarkKey)
+        return .result()
+    }
+}
+
 /// Widget → the 99 Names page.
 struct OpenNamesIntent: AppIntent {
     static var title: LocalizedStringResource = "Open 99 Names"

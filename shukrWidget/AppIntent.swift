@@ -58,6 +58,23 @@ struct BottomRightOptions: DynamicOptionsProvider {
     }
 }
 
+/// The home-screen Prayers widget's look (Edit Widget, owner 2026-09-28). System follows the phone
+/// (what every widget did before, so nothing changes unasked); "Follows the sun" (`auto`, the name
+/// the owner picked — "Auto" sounded like System) is the app's own auto mode, "Auto · follows the
+/// sun": dark from Maghrib until sunrise, light between. The Lock Screen ignores it (the system
+/// tints it). Order: System · Light · Dark · Follows the sun.
+enum WidgetStyle: String, AppEnum, CaseIterable {
+    case system, light, dark, auto
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Style"
+    static var caseDisplayRepresentations: [WidgetStyle: DisplayRepresentation] = [
+        .system: DisplayRepresentation(title: "System"),
+        .light: DisplayRepresentation(title: "Light"),
+        .dark: DisplayRepresentation(title: "Dark"),
+        .auto: DisplayRepresentation(title: "Follows the sun", subtitle: "Dark from Maghrib until sunrise"),
+    ]
+}
+
 struct ConfigurationAppIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Prayers"
     static var description = IntentDescription("Today's prayers and how much time is left.")
@@ -72,6 +89,10 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
     /// Off: a prayed prayer's dot is one plain colour instead of its score's (owner, 2026-09-27).
     @Parameter(title: "Score colours", default: true)
     var scoreColors: Bool?
+
+    /// System (follows the phone; the default) · Light · Dark · Follows the sun (Maghrib → sunrise dark).
+    @Parameter(title: "Style", default: .system)
+    var style: WidgetStyle?
 
     /// The corners as picked — the same button on both is allowed (owner, 2026-09-27: "fine if
     /// they put the same thing twice"); it used to swap in another one silently.

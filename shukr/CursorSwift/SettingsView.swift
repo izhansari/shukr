@@ -73,6 +73,7 @@ struct SettingsView: View {
     }
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
+    @AppStorage(WidgetListTaps.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var widgetListTaps = false
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -343,6 +344,14 @@ struct SettingsView: View {
                             }
                         } footer: {
                             Text("Beta builds only: the first-run setup, filled in with your settings.")
+                        }
+                        // The Prayers widget's times list with tappable rows (a prototype, off by default).
+                        Section {
+                            Toggle("Widget: tap prayers in the list (prototype)", isOn: $widgetListTaps)
+                                .tint(.green)
+                                .onChange(of: widgetListTaps) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                        } footer: {
+                            Text("Beta builds only. On the Prayers widget's times list, tap a prayer that has started to mark it; tap a marked one to unmark it here in the app.")
                         }
                     }
 

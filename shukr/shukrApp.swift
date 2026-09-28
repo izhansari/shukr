@@ -100,6 +100,11 @@ struct shukrApp: App {
                 }
                 WidgetCenter.shared.reloadAllTimelines()
             }
+            // `-demoWidgetTaps on|off`: the widget list's tap prototype (Settings, beta builds).
+            if let i = args.firstIndex(of: "-demoWidgetTaps"), i + 1 < args.count {
+                UserDefaults(suiteName: SharedStore.appGroup)?.set(args[i + 1] == "on", forKey: WidgetListTaps.key)
+                WidgetCenter.shared.reloadAllTimelines()
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoBackUpStore") {
                 PrayerScoring.backUpStore(label: "debug-\(Int(Date().timeIntervalSince1970))")
             }
@@ -196,6 +201,9 @@ struct shukrApp: App {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {
                         setupShowing = false
+                        // Before the post: the onChange that mirrors `setupShowing` runs after it, and
+                        // PrayerTimesView's hand-off skipped every waiting deep link while this was true.
+                        FirstRunSetup.isShowing = false
                         // Any widget / control deep link that came in meanwhile, now (PrayerTimesView).
                         NotificationCenter.default.post(name: FirstRunSetup.finished, object: nil)
                     })
