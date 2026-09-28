@@ -846,6 +846,12 @@
       "title": "Location back: the lost-location page says so (the symbol turns on, \"Location's back\", or \"Using London\" for a city), then its ring goes back to the middle and becomes the Salah page's circle",
       "tryIt": ["iOS Settings → shukr → Location → Never → open shukr → the lost page → Turn location back on → Always → back to shukr", "Or on the lost page: Enter a city instead → pick one → \"Using <city>\" → into the app"],
       "checked": "sim", "shots": ["wn-location-back-handoff.jpg"]
+    },
+    {
+      "id": "insights-4", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: a picked ring reads 'Isha · avg 96', then when you usually pray; Week / Month / All time glide to the new numbers; the consistency page says 'in-time streak' and adds how many of the 14 days were in time",
+      "tryIt": ["☰ → Insights → tap Isha → 'Isha · avg 96' / 'you usually pray 1 h 8 min in' / 'prayed 8 of 9'", "Switch Week → Month → All time → the rings and numbers move to their new values", "Swipe to 'how consistent am I?' → a third number, 'days in time'"],
+      "checked": "sim", "shots": ["wn-insights-avg-first.jpg"], "addresses": ["95FF0EB7-A5BF-47C9-A656-9E307F3F9D46"]
     }
   ]
 }

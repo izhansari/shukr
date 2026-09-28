@@ -1769,7 +1769,13 @@ yellow ring: the mean score isn't the score at the mean time (a few late ones pu
 slot is 60 pt (see below). **Symbols (2026-09-28, feedback 085F753D):** each ring shows `prayerSymbol` (17 pt light,
 hierarchical; primary when picked) instead of "12m in"; the time is in the detail line, which stands out while a ring is
 picked — subheadline, primary, the name in the ring's colour (`usualColor`) — in a fixed 60 pt slot. DEBUG
-`-insightsPrayer <name>` picks one. The older write-up follows.
+`-insightsPrayer <name>` picks one. **Follow-ups (feedback 95FF0EB7):** the picked line is three lines —
+"Isha · avg 96" (name in the ring colour), "you usually pray 1 h 8 min in", "prayed 8 of 9" (numericText); the range
+switch animates from the old values (the picker's binding sets `range` inside a spring; the old onChange reset
+`revealed` and drained everything to 0); the streak line says "in-time streak" (so it now stacks on two lines via its
+ViewThatFits); the grid's summary has a third number, "days in time" = the 14 shown days with all five ≥ 60
+(`PrayerScoring.inWindowFloor`). DEBUG `-insightsRangeCycle` (Week → Month → All time → Week, 2.5 s apart). The older
+write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +

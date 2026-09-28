@@ -133,6 +133,14 @@ struct InsightsView: View {
         .onAppear { reveal() }
         #if DEBUG
         // `-insightsPage N`: open on that page (screenshots; the first layout ignores a start position).
+        // `-insightsRangeCycle`: Week → Month → All time every 2 s, animated like the switch (recordings).
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-insightsRangeCycle") else { return }
+            for r in [InsightsRange.week, .month, .all, .week] {
+                try? await Task.sleep(for: .seconds(2.5))
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.88)) { range = r }
+            }
+        }
         // `-insightsPrayer Isha`: that ring picked (screenshots).
         .task {
             guard let name = UserDefaults.standard.string(forKey: "insightsPrayer") else { return }
@@ -145,15 +153,15 @@ struct InsightsView: View {
             pageIndex = UserDefaults.standard.integer(forKey: "insightsPage")
         }
         #endif
-        .onChange(of: range) { _, _ in
-            revealed = false
-            selectedPrayer = nil
-            reveal()
-        }
+
     }
 
     private var rangePicker: some View {
-        Picker("Range", selection: $range) {
+        // The switch animates the page from the old numbers to the new (rings, colours, counts) —
+        // it used to drain everything to 0 and fill it again (feedback 95FF0EB7).
+        Picker("Range", selection: Binding(get: { range }, set: { new in
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.88)) { range = new }
+        })) {
             ForEach(InsightsRange.allCases) { Text($0.rawValue).tag($0) }
         }
         .pickerStyle(.segmented)
@@ -233,15 +241,24 @@ struct InsightsView: View {
             Group {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
                     VStack(spacing: 2) {
-                        // Stands out while a ring is picked: primary, a size up, the name in its ring's colour.
+                        // Stands out while a ring is picked: primary, a size up, the name in its ring's
+                        // colour — "Isha · avg 96", then when you usually pray, then the count (feedback 95FF0EB7).
                         (Text(name).foregroundStyle(stat.usualElapsed == nil ? Color.primary : stat.usualColor).fontWeight(.medium)
-                         + Text(Self.detailLine(stat: stat)).foregroundStyle(Color.primary))
+                         + Text(" · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–")").foregroundStyle(Color.primary))
                             .font(.subheadline)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.8)
+                            .lineLimit(1)
+                            .contentTransition(.numericText())
+                        if let elapsed = stat.usualElapsed {
+                            Text("you usually pray \(Self.longIn(elapsed)) in")
+                                .foregroundStyle(Color.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
+                                .contentTransition(.numericText())
+                        }
                         Text("prayed \(stat.prayed) of \(stat.recorded)" + (stat.jumuahs > 0 ? " · \(stat.jumuahs) Jumu'ah" : ""))
                             .lineLimit(1)
                             .foregroundStyle(.tertiary)
+                            .contentTransition(.numericText())
                     }
                     .multilineTextAlignment(.center)
                 } else {
@@ -255,8 +272,8 @@ struct InsightsView: View {
             .font(.caption)
             .fontWeight(.light)
             .foregroundStyle(.secondary)
-            // A fixed slot, sized for the longest text (two subheadline lines + a caption), so nothing
-            // moves when one is tapped and nothing spills.
+            // A fixed slot, sized for its three lines (a subheadline + two captions), so nothing moves
+            // when one is tapped and nothing spills.
             // A fixed slot can't grow with the text: capped so the largest sizes don't spill.
             .dynamicTypeSize(...DynamicTypeSize.xLarge)
             .frame(height: 60, alignment: .top)
@@ -265,14 +282,6 @@ struct InsightsView: View {
         }
     }
 
-
-    /// The detail line after the name (only Jumu'ahs: no timing to show).
-    /// What follows the name: " · you usually pray 12 min in · avg 85".
-    static func detailLine(stat: InsightsStats.PrayerStat) -> String {
-        let avg = stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–"
-        guard let elapsed = stat.usualElapsed else { return " · avg \(avg)" }
-        return " · you usually pray \(longIn(elapsed)) in · avg \(avg)"
-    }
 
     /// "12 min" / "1 h 5 min" in a sentence.
     static func longIn(_ t: TimeInterval) -> String {
@@ -406,7 +415,7 @@ struct InsightsView: View {
 
     @ViewBuilder private var streakItems: some View {
         streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
-        streakItem("sparkles", value: onTimeStreak, label: "in-time days", best: maxOnTimeStreak)
+        streakItem("sparkles", value: onTimeStreak, label: "in-time streak", best: maxOnTimeStreak)
     }
 
     private func streakItem(_ symbol: String, value: Int, label: String, best: Int) -> some View {
@@ -657,9 +666,16 @@ private struct PrayerTrendsGrid: View {
             .filter { $0.isCompleted || $0.endTime < Date() }
         let prayedCount = outcomes.filter(\.isCompleted).count
         let fullDays = days.filter { d in InsightsStats.names.allSatisfy { rows[d]?[$0]?.isCompleted == true } }.count
+        // Of the days shown, those with all five inside their windows (no Qaza: ≥ 60, like in-time days).
+        let inTimeDays = days.filter { d in
+            InsightsStats.names.allSatisfy { name in
+                guard let p = rows[d]?[name], p.isCompleted, let s = p.numberScore else { return false }
+                return s >= PrayerScoring.inWindowFloor - 0.0001
+            }
+        }.count
 
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 22) {
+            HStack(alignment: .firstTextBaseline, spacing: 18) {
                 VStack(spacing: 0) {
                     Text("\(revealed ? prayedCount : 0)")
                         .font(.system(size: 40, weight: .light, design: .rounded))
@@ -671,6 +687,12 @@ private struct PrayerTrendsGrid: View {
                         .font(.system(size: 40, weight: .light, design: .rounded))
                         .contentTransition(.numericText(value: Double(revealed ? fullDays : 0)))
                     Text("days with all five").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
+                }
+                VStack(spacing: 0) {
+                    Text("\(revealed ? inTimeDays : 0)")
+                        .font(.system(size: 40, weight: .light, design: .rounded))
+                        .contentTransition(.numericText(value: Double(revealed ? inTimeDays : 0)))
+                    Text("days in time").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
                 }
             }
             .frame(maxWidth: .infinity)
