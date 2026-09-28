@@ -20,7 +20,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         self.timeAtLastRefresh = Date()
         self.scheduleDailyRefresh() //this will only run once on initialization. but will not run again if app is kept open in appswitcher.
         self.subscribeToChanges()
-        
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoStreakBackfill") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakBackfill() }
+        }
+        #endif
 //        self.loadDailyScores()
 
     }
@@ -775,11 +779,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart) ?? todayStart
 
-        // In-time days (owner, 2026-09-25: "days where there was no qaza")
+        // In-time days (owner, 2026-09-25: "days where there was no qaza"). The days before today
+        // were just recounted from the rows (refreshStreaksFromHistory, via checkToResetStreak);
+        // only today is added / taken back here, which is also where its celebration fires.
         let lastOnTime = PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI))
-        if lastOnTime != todayStart && lastOnTime != yesterdayStart && onTimeStreak != 0 {
-            onTimeStreak = 0   // a gap
-        }
         if doneNames(minScore: PrayerScoring.inWindowFloor).count == 5 {
             if lastOnTime != todayStart {
                 onTimeStreak += 1
@@ -800,18 +803,79 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
     }
 
+    /// Runs on app activation and at the start of every streak update. It used to only zero the
+    /// streak on a gap in `lastStreakDate`; now it recounts the days before today from the rows.
     func checkToResetStreak() {
+        refreshStreaksFromHistory()
+    }
+
+    /// Streaks from the stored prayers, not incrementally from today (owner-approved fix,
+    /// 2026-09-27): a prayer of an earlier prayer day marked late — a watch mark delivered after
+    /// Fajr, the widget or "I already prayed" around Fajr, a time edit on an old prayer — completed
+    /// that day but the streak never counted it, and the next day's gap check reset it to 0.
+    ///
+    /// The days BEFORE today are recounted from the rows (the run of consecutive complete days
+    /// ending yesterday). Today is left to `calculatePrayerStreak` / `updateDayMilestones`, which add
+    /// it once — and post its celebration — or take it back on an unmark: if today had already been
+    /// counted it stays counted (run + 1), else the streak is the run and "counted through" is
+    /// yesterday. Idempotent (a second call changes nothing) and silent: a past day never plays a
+    /// celebration. Perfect day has no streak (its date only stops today's celebration repeating),
+    /// so there's nothing to recount for it. Entry point for marks made elsewhere (the watch):
+    /// `recomputeStreaks()`.
+    func refreshStreaksFromHistory() {
         let now = Date()
         let todayStart = PrayerDay.start(for: now)
-        let yesterdayStart = Calendar.current.date(byAdding: .day, value: -1, to: todayStart)!
-        let lastStreakDateStart = PrayerDay.start(for: lastStreakDate)
-        
-        // Check if there's a gap between lastStreakDate and today
-        let resetStreak = ( lastStreakDateStart != todayStart && lastStreakDateStart != yesterdayStart )
-        if resetStreak {
-            prayerStreak = 0 // Reset streak if there's a gap
+        let calendar = Calendar.current
+        guard let yesterdayStart = calendar.date(byAdding: .day, value: -1, to: todayStart),
+              let from = calendar.date(byAdding: .day, value: -1000, to: todayStart) else { return }
+
+        let descriptor = FetchDescriptor<PrayerModel>(
+            predicate: #Predicate<PrayerModel> { $0.startTime >= from && $0.startTime < todayStart && $0.isCompleted }
+        )
+        guard let rows = try? context.fetch(descriptor) else { return }
+        // Rows are keyed by the calendar day their prayers start on (PrayerDay.rowRange).
+        var byDay: [Date: [PrayerModel]] = [:]
+        for row in rows { byDay[calendar.startOfDay(for: row.startTime), default: []].append(row) }
+        let five: Set<String> = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+        /// Consecutive days ending yesterday whose five all qualify.
+        func run(_ qualifies: (PrayerModel) -> Bool) -> Int {
+            var count = 0
+            var day = yesterdayStart
+            while let rows = byDay[day], five.isSubset(of: Set(rows.filter(qualifies).map(\.name))) {
+                count += 1
+                guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+                day = previous
+            }
+            return count
+        }
+
+        // The day streak (by the chosen streak mode).
+        let streakRun = run { self.gradingCriteria(for: $0) }
+        if PrayerDay.start(for: lastStreakDate) == todayStart {
+            prayerStreak = streakRun + 1
+        } else {
+            prayerStreak = streakRun
             lastStreakDate = yesterdayStart
         }
+        if prayerStreak > maxPrayerStreak { maxPrayerStreak = prayerStreak; dateOfMaxPrayerStreak = now }
+
+        // In-time days (all five within their windows).
+        let inTimeRun = run { ($0.numberScore ?? 0) >= PrayerScoring.inWindowFloor - 0.0001 }
+        if PrayerDay.start(for: Date(timeIntervalSince1970: lastOnTimeStreakDate_TI)) == todayStart {
+            onTimeStreak = inTimeRun + 1
+        } else {
+            onTimeStreak = inTimeRun
+            lastOnTimeStreakDate_TI = yesterdayStart.timeIntervalSince1970
+        }
+        maxOnTimeStreak = max(maxOnTimeStreak, onTimeStreak)
+    }
+
+    /// For a prayer marked somewhere else, possibly on an earlier prayer day (the watch): recount
+    /// the streaks from the rows, then today's part.
+    func recomputeStreaks() {
+        try? context.save()
+        calculatePrayerStreak()
     }
 
     
@@ -1213,3 +1277,40 @@ extension Notification.Name {
     /// Posted once when all five were Early today; the list celebrates it.
     static let perfectDay = Notification.Name("perfectDay")
 }
+
+#if DEBUG
+extension PrayerViewModel {
+    /// `-demoStreakBackfill` (simulator only; writes rows): the two prayer days before today get all
+    /// five marked on time, the streak is set as if the last counted day was three days ago (what a
+    /// late mark left behind), then the recount runs twice. Logs STREAKBACKFILL before / after.
+    func demoStreakBackfill() {
+        let calendar = Calendar.current
+        let todayStart = PrayerDay.start(for: Date())
+        for back in 1...2 {
+            guard let day = calendar.date(byAdding: .day, value: -back, to: todayStart) else { continue }
+            let (start, end) = PrayerDay.rowRange(forDayStarting: day)
+            let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.startTime >= start && $0.startTime <= end }))) ?? []
+            for (i, name) in ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].enumerated() {
+                let row = rows.first { $0.name == name } ?? {
+                    let s = day.addingTimeInterval(Double(5 + i * 3) * 3600)
+                    let r = PrayerModel(name: name, startTime: s, endTime: s.addingTimeInterval(7200))
+                    context.insert(r); return r
+                }()
+                row.isCompleted = true
+                row.timeAtComplete = row.startTime.addingTimeInterval(600)
+                row.numberScore = 1
+            }
+        }
+        try? context.save()
+        prayerStreak = 1
+        lastStreakDate = calendar.date(byAdding: .day, value: -3, to: todayStart) ?? todayStart
+        onTimeStreak = 1
+        lastOnTimeStreakDate_TI = lastStreakDate.timeIntervalSince1970
+        print("STREAKBACKFILL before: streak=\(prayerStreak) inTime=\(onTimeStreak)")
+        checkToResetStreak()
+        print("STREAKBACKFILL after 1: streak=\(prayerStreak) inTime=\(onTimeStreak) last=\(lastStreakDate)")
+        checkToResetStreak()
+        print("STREAKBACKFILL after 2: streak=\(prayerStreak) inTime=\(onTimeStreak)")
+    }
+}
+#endif

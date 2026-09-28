@@ -43,7 +43,8 @@
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring before a prayer starts"},
     {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
-    {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"}
+    {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"},
+    {"id": "streaks", "area": "Salah", "title": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late", "link": "salah"}
   ],
   "entries": [
     {
@@ -647,10 +648,16 @@
       "checked": "sim", "shots": ["wn-azkar-sort-name-default.jpg"], "addresses": ["F5FDC4C1-F877-4F2F-B60E-4FA53952BF60"]
     },
     {
-      "id": "prayer-begins-12", "date": "2026-09-27", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-12", "date": "2026-09-27", "commit": "b5743b6", "time": "2026-09-27T20:52:49-04:00", "topic": "prayer-begins", "notes": null,
       "title": "The main circle's ring keeps filling while you're walking or driving (it could freeze empty until you left the app)",
       "tryIt": ["Walk with the app open on the Salah page as a prayer begins: the ring starts filling on time", "Keep it open while moving: the ring and its colour keep up"],
       "checked": "sim", "shots": ["wn-circle-ring-fills-while-moving.jpg"]
+    },
+    {
+      "id": "streaks-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "streaks", "notes": null,
+      "title": "Streaks count a day whose last prayer was marked late (from the watch, the widget or a notification around Fajr, or an edited time) instead of resetting to 0",
+      "tryIt": ["Mark yesterday's last prayer after Fajr (widget / notification / watch): tap the city in the top bar → the streak includes yesterday", "Next day: the streak carries on instead of starting from 0"],
+      "checked": "sim", "shots": ["wn-streak-counts-late-marks.jpg"]
     }
   ]
 }

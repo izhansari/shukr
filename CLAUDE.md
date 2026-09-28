@@ -1426,6 +1426,16 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   every mark / time edit / widget reconcile and used to +1 each time once all five were in, and
   −1 on every call after an unmark (streaks went negative; clamped at 0 now). Posts
   `.prayerStreakContinued` once.
+- **Streaks from history (2026-09-27, owner-approved fix):** `checkToResetStreak()` (app activation + the start of every
+  `calculatePrayerStreak`) now calls `refreshStreaksFromHistory()`: the days BEFORE today are recounted from the prayer rows
+  (consecutive days ending yesterday with all five qualifying — day streak by `gradingCriteria`, in-time days by score ≥ 60;
+  last 1000 days fetched); today stays with the incremental code, which adds it once and posts its celebration. Idempotent
+  and silent (no celebration for a past day). Fixes: a prayer of an earlier prayer day marked late (watch mark delivered after
+  Fajr, widget / "I already prayed" around Fajr, a time edit on an old prayer) never counted, and the next day's gap check
+  reset the streak to 0. **Entry point for marks made elsewhere: `PrayerViewModel.recomputeStreaks()`** (saves, then
+  `calculatePrayerStreak`) — the watch's `.watchMarkedPrayer` handler (Sami's branch) should call it. Perfect day has no
+  streak, nothing to recount. DEBUG `-demoStreakBackfill` (writes rows; sim only): marks the two days before today, fakes a
+  stale streak (1, last counted 3 days ago), recounts twice — sim ✓ 1 → 2, then 2 again.
 - **In-time days** (keys still `onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`):
   consecutive days with all five prayed within their windows — no Qaza, none missed (≥ 60,
   `PrayerScoring.inWindowFloor`). Owner, 2026-09-25: "days where there was no qaza". Named
