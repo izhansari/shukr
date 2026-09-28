@@ -932,19 +932,19 @@
       "checked": "no"
     },
     {
-      "id": "notifications-9", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-9", "date": "2026-09-28", "commit": "18c486e", "time": "2026-09-28T15:22:15-04:00", "topic": "notifications", "notes": null,
       "title": "Your reminders: a ring of 64 beads (one per slot iOS allows), this week day by day with each prayer's times, and three cards — why only 64, how it tops itself up, how they arrive on time — from your real settings",
       "tryIt": ["Settings → Notifications → tap 'Reminders are on' → Your reminders", "Tap a day under This week → its prayers and times; tap a card (Why only 64? · Tops itself up · Arrives on time)"],
       "checked": "sim", "shots": ["wn-your-reminders.jpg"]
     },
     {
-      "id": "notifications-10", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-10", "date": "2026-09-28", "commit": "18c486e", "time": "2026-09-28T15:22:15-04:00", "topic": "notifications", "notes": null,
       "title": "Settings → Notifications: the status row is the way in — 'Reminders are on · On time · scheduled through Mon, Oct 5' — and says what's wrong when something is",
       "tryIt": ["Settings → Notifications → the first row"],
       "checked": "sim", "shots": ["wn-reminders-status-row.jpg"]
     },
     {
-      "id": "notifications-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-11", "date": "2026-09-28", "commit": "18c486e", "time": "2026-09-28T15:22:15-04:00", "topic": "notifications", "notes": null,
       "title": "Never a silent stop: if shukr isn't opened or refreshed before its reminders run out, a last one asks you to open it",
       "tryIt": ["Your reminders → Tops itself up → 'Never a silent stop' shows its date"],
       "checked": "sim"
