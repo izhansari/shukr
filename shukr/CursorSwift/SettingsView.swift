@@ -73,6 +73,8 @@ struct SettingsView: View {
     }
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
+    @AppStorage(WidgetRingPosition.key, store: UserDefaults(suiteName: SharedStore.appGroup))
+    private var widgetRingPosition = WidgetRingPosition.default.rawValue
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
@@ -343,6 +345,16 @@ struct SettingsView: View {
                             }
                         } footer: {
                             Text("Beta builds only: the first-run setup, filled in with your settings.")
+                        }
+                        // Where the Prayers widget's ring sits between the top and the chevron
+                        // (feedback D3DC914D): the space above / below it, in percent.
+                        Section {
+                            Picker("Widget ring position", selection: $widgetRingPosition) {
+                                ForEach(WidgetRingPosition.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
+                            .onChange(of: widgetRingPosition) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                        } footer: {
+                            Text("Beta builds only: how the space around the Prayers widget's ring splits, above / below.")
                         }
                     }
 
