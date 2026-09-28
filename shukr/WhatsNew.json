@@ -9,7 +9,7 @@
     {"id": "masjid-filter", "area": "Map", "title": "Filter your prayer pins to \"Only at a masjid\"", "link": "map"},
     {"id": "masjid-duas", "area": "Settings", "title": "Duas when you arrive at / leave your masajid (opt-in)", "link": "settings"},
     {"id": "holy-cities", "area": "Location", "title": "A welcome in Makkah and Madinah"},
-    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring (centred above the day's five prayers as dots), your choice of bottom corners, score colours on or off, and a times list that goes back to the ring"},
+    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring in the centre with the mark-prayed check top left, your choice of bottom corners, and a chevron between them that opens today's times (score colours on or off) and closes them again"},
     {"id": "time-editor-opens", "area": "Salah", "title": "The time editor opens on the time you saved", "link": "salah"},
     {"id": "move-prayer", "area": "Salah", "title": "Change where you prayed: drag the map under the pin, or type an address", "link": "salah",
      "tryIt": ["Long-press a done prayer → edit time → the location chip → drag the map under the pin", "Tap the address → type one → pick a suggestion; it says how far that is from where you marked it", "Set → Save"]},
@@ -776,16 +776,22 @@
       "checked": "sim", "shots": ["wn-ayah-glow.jpg"]
     },
     {
-      "id": "insights-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-1", "date": "2026-09-28", "commit": "4e0462a", "time": "2026-09-28T04:09:56-04:00", "topic": "insights", "notes": null,
       "title": "Insights reworked: scoring comes first; each prayer's small ring is the Salah page's ring at the moment you usually mark it; the consistency grid gets dates, totals and a show-scores switch",
       "tryIt": ["☰ → Insights → the small rings: Fajr '12m in' = you usually pray it 12 minutes into its window, coloured by the score that gets; tap one for more", "Swipe to 'how consistent am I?' → show scores → every square takes its score colour; tap a square for its day"],
       "checked": "sim", "shots": ["wn-insights-scoring.jpg", "wn-insights-consistency.jpg"]
     },
     {
-      "id": "built-in-azkar-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-12", "date": "2026-09-28", "commit": "55423e2", "time": "2026-09-28T04:14:41-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Azkar: History | Azkar stays exactly centred; the sort button is the same size as Edit, its green filling the button",
       "tryIt": ["☰ → Azkar → sort by Times recited → the switcher doesn't move; swipe to History → Edit sits in the same spot"],
       "checked": "sim", "shots": ["wn-azkar-sort-centred.jpg"], "addresses": ["1F97A704-16B5-4F68-BF4E-23FFB033F9F8"]
+    },
+    {
+      "id": "widget-next-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": "#1",
+      "title": "Prayers widget: the check moves top left, the dots are gone, and a chevron at the bottom opens today's times (and closes them from the same spot); the ring sits in the centre",
+      "tryIt": ["Home screen → the Prayers widget → tap ⌃ at the bottom → today's times; tap ⌄ in the same spot → back to the ring", "Tap the circle top left to mark the current prayer prayed", "Edit Widget → Score colours off → the list's prayed dots turn plain grey"],
+      "checked": "sim", "shots": ["wn-widget-chevron.jpg"], "addresses": ["D56CB3C2-9FD7-43ED-863E-DE4DF7460D38"]
     }
   ]
 }

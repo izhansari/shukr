@@ -905,6 +905,12 @@ too many sheets.
 - The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
   the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
   (WidgetKit can render future entries ahead of time).
+- **Prayers widget, current (2026-09-28, Sami, ee0da02, feedback D56CB3C2):** no dots row (`PrayerDotsRow` deleted); the
+  mark-prayed check top left, top right empty; `WidgetChevronButton` (chevron.up in a faint 22 pt circle, 30 pt target)
+  between the Edit Widget bottom corners opens today's times, and chevron.down in the same spot goes back (the list's top
+  back button is gone). `ringLift` is gone: equal top / bottom rows, ring in the true centre. DEBUG `-demoWidgetShots`
+  (with `-demoWidget`) renders ring / list, light / dark, colours on / off at 158 and 170 pt into the app group's
+  Library/Caches/widget-shots. The v2 notes below are history for the dots / ringLift.
 - **Home-screen Prayers widget v2 (2026-09-27, notes #1):** five display-only `PrayerDot`s along
   the bottom between the corners (done = score colour, started = outlined, later = dim; prayer
   day = `completedPrayerScoresToday`); the bottom corners come from Edit Widget
