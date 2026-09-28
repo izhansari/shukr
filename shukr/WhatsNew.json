@@ -788,7 +788,7 @@
       "checked": "sim", "shots": ["wn-azkar-sort-centred.jpg"], "addresses": ["1F97A704-16B5-4F68-BF4E-23FFB033F9F8"]
     },
     {
-      "id": "widget-next-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": "#1",
+      "id": "widget-next-5", "date": "2026-09-28", "commit": "dbe6f2f", "time": "2026-09-28T04:15:11-04:00", "topic": "widget-next", "notes": "#1",
       "title": "Prayers widget: the check moves top left, the dots are gone, and a chevron at the bottom opens today's times (and closes them from the same spot); the ring sits in the centre",
       "tryIt": ["Home screen → the Prayers widget → tap ⌃ at the bottom → today's times; tap ⌄ in the same spot → back to the ring", "Tap the circle top left to mark the current prayer prayed", "Edit Widget → Score colours off → the list's prayed dots turn plain grey"],
       "checked": "sim", "shots": ["wn-widget-chevron.jpg"], "addresses": ["D56CB3C2-9FD7-43ED-863E-DE4DF7460D38"]
