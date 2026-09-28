@@ -1459,8 +1459,10 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   line in the app group key `streakRecount.firstRun`. Idempotent
   and silent (no celebration for a past day). Fixes: a prayer of an earlier prayer day marked late (watch mark delivered after
   Fajr, widget / "I already prayed" around Fajr, a time edit on an old prayer) never counted, and the next day's gap check
-  reset the streak to 0. **Entry point for marks made elsewhere: `PrayerViewModel.recomputeStreaks()`** (saves, then
-  `calculatePrayerStreak`) — the watch's `.watchMarkedPrayer` handler (Sami's branch) should call it. Perfect day has no
+  reset the streak to 0. `PrayerViewModel.recomputeStreaks()` (saves, then
+  `calculatePrayerStreak`) is there for marks made elsewhere, but the watch's `.watchMarkedPrayer` handler doesn't need it
+  (Sami, round 8): watch marks and unmarks set `widgetWroteStore`, so `reconcileAfterWidgetWrites()` already recomputes,
+  even with the app open. Perfect day has no
   streak, nothing to recount. DEBUG `-demoStreakBackfill` (writes rows; sim only): marks the two days before today, fakes a
   stale streak (1, last counted 3 days ago), recounts twice — sim ✓ 1 → 2, then 2 again.
 - **In-time days** (keys still `onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`):

@@ -30,6 +30,7 @@ enum WatchPrayerMarker {
         // An id per mark: the phone applies it once, however many copies arrive, and an undo names it.
         let id = UUID().uuidString
         WatchStore.addLocalMark(prayer.name, dayStart: day.prayers[0].start, score: score, at: date, id: id)
+        WatchStore.clearLocalUnmark(prayer.name)
         WKInterfaceDevice.current().play(.success)
         send(["type": "prayerMarked", "id": id, "name": prayer.name,
               "start": prayer.start.timeIntervalSince1970, "end": prayer.end.timeIntervalSince1970,
@@ -40,9 +41,34 @@ enum WatchPrayerMarker {
         WatchMoment.shared.show(prayer: prayer, score: score, markID: id, jumuahAt: masjid)
     }
 
-    /// Undo (within seconds): the local mark goes, and the phone takes it off again.
-    static func undo(_ prayer: WatchPrayer, markID: String) {
+    /// Unmark a done prayer from the list (marked on the watch, the phone or the widget): shown
+    /// undone at once, and the phone resets it like an in-app unmark. Its own id makes it
+    /// idempotent; a watch mark's id rides along so a late copy of that mark is ignored.
+    static func unmark(_ prayer: WatchPrayer) {
+        guard let day = WatchPrayers.day(at: prayer.start) else { return }
+        let markID = WatchStore.localMarkIDs[prayer.name]
+        let id = UUID().uuidString
         WatchStore.removeLocalMark(prayer.name)
+        WatchStore.addLocalUnmark(prayer.name, dayStart: day.prayers[0].start, id: id)
+        // "at": the tap, so the phone ignores this if the prayer was marked again after it.
+        var info: [String: Any] = ["type": "prayerUnmarked", "id": id, "byName": true,
+                                   "name": prayer.name, "start": prayer.start.timeIntervalSince1970,
+                                   "at": Date().timeIntervalSince1970]
+        if let markID { info["markID"] = markID }
+        send(info)
+        WKInterfaceDevice.current().play(.directionDown)
+        WidgetCenter.shared.reloadAllTimelines()
+        WatchSession.shared.refresh()
+    }
+
+    /// Undo (within seconds): the local mark goes, and the phone takes it off again. Until the
+    /// phone reports the undo handled (its id — the mark's own — under unmarkIDs), a pending local
+    /// unmark keeps it shown undone, even if the phone had already confirmed the mark or is out of
+    /// reach.
+    static func undo(_ prayer: WatchPrayer, markID: String) {
+        let dayStart = WatchPrayers.day(at: prayer.start)?.prayers[0].start ?? prayer.start
+        WatchStore.removeLocalMark(prayer.name)
+        WatchStore.addLocalUnmark(prayer.name, dayStart: dayStart, id: markID)
         send(["type": "prayerUnmarked", "id": markID, "name": prayer.name, "start": prayer.start.timeIntervalSince1970])
         WKInterfaceDevice.current().play(.directionDown)
         WidgetCenter.shared.reloadAllTimelines()
@@ -62,6 +88,9 @@ enum WatchPrayerMarker {
         var box = outbox
         box["\(info["type"] ?? "")-\(info["id"] ?? "")"] = info.merging(["queuedAt": Date().timeIntervalSince1970]) { a, _ in a }
         outbox = box
+        #if DEBUG
+        if offline { return }   // the self-test: queued only, as when the phone is out of reach
+        #endif
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
         WCSession.default.transferUserInfo(info)
         if WCSession.default.isReachable {
@@ -86,6 +115,42 @@ enum WatchPrayerMarker {
         }
         if kept.count != box.count { outbox = kept }
     }
+
+    #if DEBUG
+    static var offline = false
+
+    /// `-demoWatchSettleTest` (simulator): Undo after the phone confirmed the mark, with the phone
+    /// out of reach, then back. Made-up prayer name; nothing is sent; cleans up.
+    static func undoSelfTest() -> [String] {
+        offline = true
+        defer { offline = false }
+        var lines: [String] = []
+        func check(_ name: String, _ ok: Bool) { lines.append("\(ok ? "✅" : "❌") \(name)") }
+        let prayer = WatchPrayer(name: "TestUndo", start: Date(), end: Date().addingTimeInterval(3600))
+        let id = "st-undo-\(UUID().uuidString)"
+        let key = "prayerUnmarked-\(id)"
+        WatchStore.addLocalMark(prayer.name, dayStart: prayer.start, score: 0.9, at: Date(), id: id)
+        WatchStore.save(["markIDs": [id]])                      // the phone confirmed the mark
+        check("confirmed mark settled", WatchStore.localMarks[prayer.name] == nil)
+        undo(prayer, markID: id)                                // Undo, phone out of reach
+        check("undo leaves a pending unmark (shown undone)",
+              WatchStore.localUnmarks[prayer.name] != nil && WatchStore.localUnmarkIDs[prayer.name] == id)
+        check("undo waits in the outbox", outbox[key] != nil)
+        // A context sent before the undo reached the phone still lists the mark as applied.
+        WatchStore.save(["markIDs": [id]])
+        confirm(marks: [id], undos: [])
+        check("stale context: still undone, still queued",
+              WatchStore.localUnmarks[prayer.name] != nil && outbox[key] != nil)
+        // Back in reach: the phone handled the undo (tombstone → unmarkIDs).
+        WatchStore.save(["unmarkIDs": [id]])
+        confirm(marks: [], undos: [id])
+        check("reconnect: pending unmark settled, outbox cleared",
+              WatchStore.localUnmarks[prayer.name] == nil && WatchStore.localUnmarkIDs[prayer.name] == nil && outbox[key] == nil)
+        WatchStore.clearLocalUnmark(prayer.name)
+        outbox = outbox.filter { $0.key != key }
+        return lines
+    }
+    #endif
 
     /// A mark the phone couldn't save isn't retried behind the user's back.
     static func drop(markID: String) {
@@ -122,6 +187,9 @@ final class WatchMoment: ObservableObject {
         var jumuahAt: String? = nil
     }
     @Published private(set) var moment: Moment?
+    /// The phone's CompletionFlourish runs for its first 1.8 s; the ring then crossfades to the
+    /// next prayer while Undo stays for the rest of the 5 s.
+    @Published private(set) var flourish: Moment?
     /// The prayer the tasbih offer is for, and when it goes (the next prayer's start).
     @Published private(set) var offer: (name: String, until: Date)?
     private var token = 0
@@ -129,9 +197,15 @@ final class WatchMoment: ObservableObject {
     func show(prayer: WatchPrayer, score: Double, markID: String, jumuahAt: String? = nil) {
         token += 1
         let t = token
-        withAnimation(.easeOut(duration: 0.3)) {
-            moment = Moment(prayer: prayer, score: score, markID: markID, at: Date(), jumuahAt: jumuahAt)
+        let m = Moment(prayer: prayer, score: score, markID: markID, at: Date(), jumuahAt: jumuahAt)
+        withAnimation(.easeOut(duration: 0.25)) {
+            moment = m
+            flourish = m
             offer = nil
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + WatchCompletionMoment.duration) {
+            guard t == self.token else { return }
+            withAnimation(.easeInOut(duration: 0.4)) { self.flourish = nil }
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             guard t == self.token else { return }
@@ -149,7 +223,7 @@ final class WatchMoment: ObservableObject {
         guard let m = moment else { return }
         token += 1
         WatchPrayerMarker.undo(m.prayer, markID: m.markID)
-        withAnimation(.easeIn(duration: 0.25)) { moment = nil; offer = nil }
+        withAnimation(.easeIn(duration: 0.25)) { moment = nil; flourish = nil; offer = nil }
     }
 
     func dismissOffer() { withAnimation(.easeIn(duration: 0.25)) { offer = nil } }
@@ -158,32 +232,75 @@ final class WatchMoment: ObservableObject {
     func offerIsLive(at now: Date) -> Bool { offer.map { now < $0.until } ?? false }
 }
 
-/// The completion moment over the big ring (the phone's CompletionFlourish, small).
+/// The phone's CompletionFlourish (PrayerCompletionFX.swift), ported and scaled to the watch's
+/// ring: the arc closes from where the prayer was to a full ring in the score colour (0.55 s), a
+/// glow breathes in at 0.5 s and out from 0.85 s, "✓ Asr" over the summary in the score colour
+/// comes in with a blur, and it all goes after 1.8 s. The ring's own content (already the next
+/// prayer) is hidden meanwhile by the home view.
 struct WatchCompletionMoment: View {
     let moment: WatchMoment.Moment
-    @State private var swept = false
+    /// The ring's diameter (the phone's 200 pt circle scaled).
+    let diameter: CGFloat
+    static let duration: Double = 1.8
+
+    @State private var sweep: Double = 0
+    @State private var glow: Double = 0
+    @State private var showText = false
+    /// This run of the flourish: a stale timer from an earlier run never hides the text.
+    @State private var run = UUID()
+
+    private var color: Color { WatchScoring.color(forScore: moment.score) }
+    private var s: CGFloat { diameter / 200 }
+    /// Where the prayer was in its window when it was marked.
+    private var progress: Double {
+        let p = moment.prayer
+        guard p.end > p.start else { return 0 }
+        return moment.at.timeIntervalSince(p.start) / p.end.timeIntervalSince(p.start)
+    }
 
     var body: some View {
         ZStack {
-            Circle().fill(Color.black)
+            // The ring's track stays (the ring's own is faded out under this).
+            Circle().stroke(Color.white.opacity(0.12), lineWidth: 7.7)   // WatchPrayerRing's band
             Circle()
-                .trim(from: 0, to: swept ? 1 : 0)
-                .stroke(WatchScoring.color(forScore: moment.score), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .trim(from: 0, to: sweep)
+                .stroke(color, style: StrokeStyle(lineWidth: 4 * s, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: WatchScoring.color(forScore: moment.score).opacity(0.5), radius: 5)
-            VStack(spacing: 2) {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark")
-                    Text(moment.jumuahAt != nil ? "Jumu'ah" : moment.prayer.name)
+                .shadow(color: color.opacity(0.6 * glow), radius: 12 * s * glow)
+                .shadow(color: color.opacity(0.35 * glow), radius: 24 * s * glow)
+
+            if showText {
+                VStack(spacing: 4 * s) {
+                    HStack(alignment: .center, spacing: 8 * s) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 22 * s, weight: .light))
+                        Text(moment.jumuahAt != nil ? "Jumu'ah" : moment.prayer.name)
+                            .font(.system(size: 32 * s, weight: .light, design: .rounded))
+                    }
+                    Text(moment.jumuahAt.map { "Jumu'ah at \($0)" } ?? WatchScoring.summary(forScore: moment.score))
+                        .font(.system(size: max(15 * s, 11), weight: .thin, design: .rounded))
+                        .foregroundStyle(color)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 14 * s)
                 }
-                .font(.system(size: 20, weight: .light, design: .rounded))
-                Text(moment.jumuahAt.map { "at \($0)" } ?? WatchScoring.summary(forScore: moment.score))
-                    .lineLimit(1).minimumScaleFactor(0.7)
-                    .font(.system(size: 12, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
+                .transition(.blurReplace)
             }
         }
-        .onAppear { withAnimation(.easeOut(duration: 0.7)) { swept = true } }
+        .onAppear {
+            let thisRun = UUID()
+            run = thisRun
+            sweep = min(max(progress, 0.02), 1)
+            withAnimation(.easeInOut(duration: 0.55)) { sweep = 1 }
+            withAnimation(.easeOut(duration: 0.35).delay(0.1)) { showText = true }
+            withAnimation(.easeOut(duration: 0.3).delay(0.5)) { glow = 1 }
+            withAnimation(.easeInOut(duration: 0.8).delay(0.85)) { glow = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration - 0.45) {
+                guard run == thisRun else { return }
+                withAnimation(.easeIn(duration: 0.4)) { showText = false }
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
 

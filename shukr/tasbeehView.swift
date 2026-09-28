@@ -429,6 +429,16 @@ struct tasbeehView: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 simulateTasbeehClicks(times: 45)
             }
+            // `-demoTasbeehCount N [-demoTasbeehTaps M]`: jump to N, then M more taps (watch comparison shots).
+            if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
+                try? await Task.sleep(for: .seconds(1))
+                let n = UserDefaults.standard.integer(forKey: "demoTasbeehCount")
+                if n > 0 { simulateTasbeehClicks(times: n) }
+                for _ in 0..<UserDefaults.standard.integer(forKey: "demoTasbeehTaps") {
+                    try? await Task.sleep(for: .seconds(0.6))
+                    incrementTasbeeh(by: 1)
+                }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
                 try? await Task.sleep(for: .seconds(1))
                 simulateTasbeehClicks(times: 12)

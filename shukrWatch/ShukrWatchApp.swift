@@ -21,6 +21,11 @@ struct ShukrWatchApp: App {
     init() {
         // Before anything else: a background launch from a notification action may arrive first.
         WatchNotifications.register()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") {
+            WatchStore.settleSelfTest(extraLines: WatchPrayerMarker.undoSelfTest)
+        }
+        #endif
     }
 
     var body: some Scene {
@@ -178,11 +183,19 @@ struct WatchHomeView: View {
                         Spacer(minLength: 0)
                         ZStack {
                             if let r = WatchPrayers.relevant(at: context.date) {
+                                // Hidden (blurred away) while the flourish plays, like the phone's
+                                // circle content; the next prayer crossfades in after it.
                                 WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
+                                    .opacity(moments.flourish == nil ? 1 : 0)
+                                    .blur(radius: moments.flourish == nil ? 0 : 6)
+                                    // No hold / tap on the ring while the flourish plays over it.
+                                    .allowsHitTesting(moments.flourish == nil)
                             }
-                            // Just marked: the phone's completion moment over the ring.
-                            if let m = moments.moment {
-                                WatchCompletionMoment(moment: m).transition(.opacity)
+                            // Just marked: the phone's completion flourish over the ring.
+                            if let m = moments.flourish {
+                                WatchCompletionMoment(moment: m, diameter: min(138, WatchScreen.width * 0.72))
+                                    .id(m.markID)   // a second mark within 1.8 s replays the sweep
+                                    .transition(.opacity)
                             }
                         }
                         // 138 pt on 45 / 46 mm, scaled down on smaller faces so it clears the clock.
@@ -233,23 +246,10 @@ struct WatchHomeView: View {
                     .padding(.bottom, 12)   // clear of the page dots on a 41 mm face
                     .tag(0)
 
-                    // The list, under a small ring (tap it to go back up).
-                    ScrollView {
-                        VStack(spacing: 6) {
-                            if let r = WatchPrayers.relevant(at: context.date) {
-                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, compact: true,
-                                                onTap: { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 } })
-                                    .frame(width: 64, height: 64)
-                            }
-                            WatchPrayerList(prayers: day.prayers, now: context.date)
-                            if !WatchStore.city.isEmpty {
-                                Label(WatchStore.city, systemImage: "location.fill")
-                                    .font(.system(size: 11, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.horizontal, 6)
-                    }
+                    // The list alone, fitting on one screen (swipe down or turn the crown to go back).
+                    WatchPrayerList(prayers: day.prayers, now: context.date)
+                        .padding(.horizontal, 4)
+                        .frame(maxHeight: .infinity)
                     .tag(1)
                 }
                 .tabViewStyle(.verticalPage)
@@ -293,7 +293,7 @@ struct WatchPrayerList: View {
     /// so without it SwiftUI kept the old list after a mark (its inputs hadn't changed).
     @EnvironmentObject private var session: WatchSession
     @State private var showDone = false
-    @State private var marking: WatchPrayer?
+    @State private var unmarking: WatchPrayer?
 
     var body: some View {
         let _ = session.revision
@@ -308,12 +308,15 @@ struct WatchPrayerList: View {
                 let isDone = done.contains(p.name)
                 row(p, done: isDone, score: scores[p.name])
                     .contentShape(Rectangle())
-                    // Tap an outstanding prayer that has started → "I prayed". Unmarking stays on
-                    // the phone.
+                    // Tap an outstanding prayer (started) → marked at once, with the moment + Undo.
+                    // Tap a done one → "Unmark X?".
                     .onTapGesture {
-                        guard !isDone, p.start <= now else { return }
-                        WKInterfaceDevice.current().play(.click)
-                        marking = p
+                        if isDone {
+                            WKInterfaceDevice.current().play(.click)
+                            unmarking = p
+                        } else if p.start <= now {
+                            WatchPrayerMarker.mark(p)
+                        }
                     }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -334,7 +337,7 @@ struct WatchPrayerList: View {
                     .font(.system(size: 12, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, WatchScreen.small ? 4.5 : 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -345,8 +348,12 @@ struct WatchPrayerList: View {
         // Asr`: mark one (simulator checks).
         .onAppear {
             let done = WatchPrayers.completed(dayStart: prayers[0].start)
-            if UserDefaults.standard.bool(forKey: "demoWatchAsk") {
-                marking = prayers.first { !done.contains($0.name) && $0.start <= now }
+            if UserDefaults.standard.bool(forKey: "demoWatchShowDone") { showDone = true }
+            if let name = UserDefaults.standard.string(forKey: "demoWatchUnmarkAsk"),
+               let p = prayers.first(where: { $0.name == name }) { unmarking = p }
+            if let name = UserDefaults.standard.string(forKey: "demoWatchUnmark"), done.contains(name),
+               let p = prayers.first(where: { $0.name == name }) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { WatchPrayerMarker.unmark(p) }
             }
             if let name = UserDefaults.standard.string(forKey: "demoWatchMark"), !done.contains(name),
                let p = prayers.first(where: { $0.name == name }) {
@@ -354,17 +361,13 @@ struct WatchPrayerList: View {
             }
         }
         #endif
-        .alert(marking.map { "Prayed \($0.name)?" } ?? "", isPresented: Binding(get: { marking != nil }, set: { if !$0 { marking = nil } }),
-               presenting: marking) { p in
-            Button("I prayed") { WatchPrayerMarker.mark(p); marking = nil }
-            Button("Cancel", role: .cancel) { marking = nil }
-        } message: { p in
-            let score = WatchScoring.score(start: p.start, end: p.end, at: Date())
-            if let masjid = WatchPrayers.jumuahMasjid(for: p, near: WatchCompass.shared.recentLocation) {
-                Text("Jumu'ah at \(masjid)")
-            } else {
-                Text(Date() > p.end ? "Qaza — after its window." : "Right now: \(WatchScoring.summary(forScore: score))")
-            }
+        .alert(unmarking.map { "Unmark \($0.name)?" } ?? "",
+               isPresented: Binding(get: { unmarking != nil }, set: { if !$0 { unmarking = nil } }),
+               presenting: unmarking) { p in
+            Button("Unmark", role: .destructive) { WatchPrayerMarker.unmark(p); unmarking = nil }
+            Button("Cancel", role: .cancel) { unmarking = nil }
+        } message: { _ in
+            Text("It goes back to not prayed, on your iPhone too.")
         }
     }
 
@@ -380,13 +383,14 @@ struct WatchPrayerList: View {
             }
             .frame(width: 12, height: 12)
             Text(p.name)
-                .font(.system(size: 15, weight: .light, design: .rounded))
+                .font(.system(size: WatchScreen.small ? 14 : 15, weight: .light, design: .rounded))
             Spacer()
             Text(p.start, style: .time)
-                .font(.system(size: 14, weight: .light, design: .rounded))
+                .font(.system(size: WatchScreen.small ? 13 : 14, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 7)
+        // Five rows + the "done" row fit one screen on 41 mm and up (no scrolling).
+        .padding(.vertical, WatchScreen.small ? 4.5 : 6)
     }
 }
 
@@ -408,7 +412,21 @@ struct WatchPrayerRing: View {
     @State private var showLeft = false
     /// The hold to mark it: fills round the ring while pressed (like the phone's circle).
     @State private var holdFill: CGFloat = 0
+    /// A hold is cancelled for good once the ring moves on screen during it: a vertical page swipe
+    /// that starts on the ring slides the ring along with the finger, so the press alone never
+    /// saw the finger move and marked the prayer mid-swipe (owner: "really annoying").
+    @State private var holdCancelled = false
+    @State private var holdToken = 0
+    @State private var ringY: CGFloat = 0
+    @State private var pressY: CGFloat?
     private var k: CGFloat { compact ? 0.55 : 1.1 }
+
+    private func cancelHold() {
+        holdCancelled = true
+        pressY = nil
+        holdToken += 1
+        withAnimation(.easeOut(duration: 0.15)) { holdFill = 0 }
+    }
 
     private var elapsed: Double {
         guard current, prayer.end > prayer.start else { return 0 }
@@ -430,11 +448,14 @@ struct WatchPrayerRing: View {
             } else {
                 Circle().stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
             }
+            // Holding to mark: the score arc itself swells and glows in its own colour (no green —
+            // nothing may suggest a grade the prayer doesn't have; owner).
+            let scoreColor = WatchScoring.color(start: prayer.start, end: prayer.end, at: now)
             Circle()
                 .trim(from: 0, to: elapsed)
-                .stroke(WatchScoring.color(start: prayer.start, end: prayer.end, at: now),
-                        style: StrokeStyle(lineWidth: 2.5 * k, lineCap: .butt))
+                .stroke(scoreColor, style: StrokeStyle(lineWidth: (2.5 + 3.5 * holdFill) * k, lineCap: .butt))
                 .rotationEffect(.degrees(-90))
+                .shadow(color: scoreColor.opacity(0.7 * holdFill), radius: 8 * holdFill)
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
                     Image(systemName: WatchPrayers.symbol(prayer.name))
@@ -466,16 +487,17 @@ struct WatchPrayerRing: View {
                 .contentTransition(.opacity)
             }
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
-            if holdFill > 0 {
-                Circle()
-                    .trim(from: 0, to: holdFill)
-                    .stroke(Color.green.opacity(0.8), style: StrokeStyle(lineWidth: 5 * k, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
         }
         .contentShape(Circle())
         // A new prayer on the ring starts on "ends …" again.
         .onChange(of: prayer.name) { _, _ in showLeft = false }
+        #if DEBUG
+        // `-demoWatchHold`: the hold's look, without marking (simulator screenshots).
+        .onAppear {
+            guard showsQibla, current, ProcessInfo.processInfo.arguments.contains("-demoWatchHold") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { withAnimation(.linear(duration: 0.6)) { holdFill = 1 } }
+        }
+        #endif
         .onTapGesture {
             if let onTap { onTap(); return }
             guard current, !compact else { return }
@@ -483,13 +505,33 @@ struct WatchPrayerRing: View {
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
         }
         // Hold to mark it prayed, like the phone's circle.
-        .onLongPressGesture(minimumDuration: 0.6, perform: {
-            guard current, !compact else { return }
+        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { y in
+            ringY = y
+            if let start = pressY, abs(y - start) > 2 { cancelHold() }
+        }
+        .onLongPressGesture(minimumDuration: 0.8, maximumDistance: 4, perform: {
+            guard current, !compact, !holdCancelled else { return }
+            holdToken += 1
+            pressY = nil
             holdFill = 0
             WatchPrayerMarker.mark(prayer)
         }, onPressingChanged: { pressing in
             guard current, !compact else { return }
-            withAnimation(pressing ? .linear(duration: 0.6) : .easeOut(duration: 0.2)) { holdFill = pressing ? 1 : 0 }
+            if pressing {
+                holdCancelled = false
+                pressY = ringY
+                holdToken += 1
+                let t = holdToken
+                // The fill waits a still moment, so a swipe's first touch shows nothing.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    guard t == holdToken, !holdCancelled else { return }
+                    withAnimation(.linear(duration: 0.6)) { holdFill = 1 }
+                }
+            } else {
+                pressY = nil
+                holdToken += 1
+                withAnimation(.easeOut(duration: 0.2)) { holdFill = 0 }
+            }
         })
     }
 }

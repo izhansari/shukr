@@ -579,6 +579,13 @@ struct PrayerTimesView: View {
                 showTasbeehPage = true
                 return
             }
+            if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
+                // A freestyle session for `-demoTasbeehCount` (tasbeehView counts it).
+                try? await Task.sleep(for: .seconds(1))
+                sharedState.selectedMode = 0
+                showTasbeehPage = true
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
                 // A 33-count Alhamdulillah session, paused (tasbeehView counts and pauses it).
                 try? await Task.sleep(for: .seconds(1))

@@ -559,21 +559,23 @@ struct WatchZikrPage: View {
             WatchCounterView(config: config)
         }
         .onAppear { reopenDraft() }
-        .alert(resumeAsk?.title ?? "", isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
-               presenting: resumeAsk) { task in
+        // Continue or start over (owner: shorter) — the zikr's name, then the two choices; the
+        // sheet's own ✕ (top left) cancels.
+        .sheet(item: $resumeAsk) { task in
             let p = store.progress(task)
-            Button(task.countMode ? "Continue from \(p.count)" : "Continue from \(minutesText(p.seconds))") {
-                running = WatchCounterConfig(task: task, startCount: task.countMode ? p.count : 0,
-                                             startSeconds: task.countMode ? 0 : p.seconds)
-                resumeAsk = nil
+            VStack(spacing: 8) {
+                Text(task.title)
+                    .font(.system(size: 13, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Button(task.countMode ? "Continue from \(p.count)" : "Continue from \(minutesText(p.seconds))") {
+                    start(WatchCounterConfig(task: task, startCount: task.countMode ? p.count : 0,
+                                             startSeconds: task.countMode ? 0 : p.seconds))
+                }
+                .tint(.watchSage)
+                Button("Start over") { start(WatchCounterConfig(task: task)) }
             }
-            Button("Start over") { running = WatchCounterConfig(task: task); resumeAsk = nil }
-            Button("Cancel", role: .cancel) { resumeAsk = nil }
-        } message: { task in
-            let p = store.progress(task)
-            Text(task.countMode
-                 ? "You've done \(p.count) of \(task.goal) today. Pick up from there, or count a fresh \(task.goal)?"
-                 : "You've done \(minutesText(p.seconds)) of \(task.goal) min today. Pick up from there, or start a fresh \(task.goal) min?")
+            .padding(.horizontal, 4)
         }
     }
 
@@ -590,6 +592,13 @@ struct WatchZikrPage: View {
                                                                            : "\(Int(p.seconds / 60)) of \(task.goal) min"),
                           fraction: store.fraction(task, at: now), done: done)
         }
+    }
+
+    /// Closes the continue sheet, then opens the counter once it's gone (two presentations at
+    /// once can drop the second).
+    private func start(_ config: WatchCounterConfig) {
+        resumeAsk = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { running = config }
     }
 
     /// A session the app was closed on comes back, paused (or has just been saved, if stale).
@@ -662,6 +671,7 @@ struct WatchCounterView: View {
     @State private var draftToken = 0
     @State private var sessionID = UUID().uuidString
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
     @State private var highest: CGFloat = 0
@@ -702,40 +712,48 @@ struct WatchCounterView: View {
                 if let finished {
                     WatchResultsView(record: finished, task: task) { close() }
                 } else {
+                    // The phone's tasbeeh page colour (bgColor, dark), edge to edge — the neumorphic
+                    // band and inset beads only read on it (owner: no fade at the edges). Black with
+                    // the wrist down, like the rest of watchOS's always-on screens.
+                    (wristDown ? Color.black : WatchNeu.bg)
+                        .ignoresSafeArea()
+                        .opacity(paused ? 0 : 1)
                     counter
                     if paused {
                         // Solid, so nothing behind it makes it hard to read (owner).
                         pauseScreen
                             .background(Color.black.ignoresSafeArea())
-                            .transition(.opacity)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
             }
-            // No bar while paused or on the results: watchOS would put its own ✕ there, which
-            // drops the session in one tap. Resume / Finish early / Done are on the screen.
-            .toolbar(paused || finished != nil ? .hidden : .automatic, for: .navigationBar)
+            // The − / +N and pause buttons live in the bar, which is always filled so watchOS never
+            // puts its own ✕ in the slot (one tap would drop the session). While paused / on the
+            // results (Resume, Finish early and Done are on the screen) the whole bar is hidden:
+            // watchOS 26 draws a glass circle behind each item that stayed as an empty bubble when
+            // only the buttons faded (owner). The system ✕ lives in the same bar, so it can't
+            // appear while the bar is hidden.
+            .toolbarVisibility(finished == nil && !paused ? .automatic : .hidden, for: .navigationBar)
             .toolbar {
-                if finished == nil && !paused {
-                    // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
-                    ToolbarItem(placement: .cancellationAction) {
-                        HStack(spacing: 4) {
-                            Button { minus() } label: { Image(systemName: "minus") }
-                            if step > 1 {
-                                Button {
-                                    WatchHaptics.tick()
-                                    withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
-                                } label: {
-                                    Text("+\(step)")
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(countingInSets ? Color.green : .primary)
-                                }
-                                .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
+                // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
+                ToolbarItem(placement: .cancellationAction) {
+                    HStack(spacing: 4) {
+                        Button { minus() } label: { Image(systemName: "minus") }
+                        if step > 1 {
+                            Button {
+                                WatchHaptics.tick()
+                                withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
+                            } label: {
+                                Text("+\(step)")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(countingInSets ? Color.green : .primary)
                             }
+                            .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
                         }
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { togglePause() } label: { Image(systemName: "pause.fill") }
-                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { togglePause() } label: { Image(systemName: "pause.fill") }
                 }
             }
         }
@@ -764,6 +782,10 @@ struct WatchCounterView: View {
             // `-demoWatchTaps N [-demoWatchPause] [-demoWatchFinish]` (simulator checks).
             let taps = UserDefaults.standard.integer(forKey: "demoWatchTaps")
             let args = ProcessInfo.processInfo.arguments
+            // `-demoWatchPreset N`: start the count at N (e.g. 198, then 2 taps to see 199 → 200).
+            if UserDefaults.standard.object(forKey: "demoWatchPreset") != nil {
+                count = UserDefaults.standard.integer(forKey: "demoWatchPreset")
+            }
             for i in 0..<taps {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1 + Double(i) * 0.15) { increment() }
             }
@@ -802,13 +824,13 @@ struct WatchCounterView: View {
 
     private var counter: some View {
         ZStack {
-            WatchCountRing(fraction: fraction)
-            // Just the number, like the phone: nothing says what's being recited (owner: privacy).
-            Text("\(count)")
-                .font(.system(size: WatchScreen.small ? 38 : 44, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(count)))
-                .animation(.snappy(duration: 0.15), value: count)
+            // The phone's counter, ported (WatchTasbeehPort.swift): TasbeehCountView — the count
+            // within the hundred, beads round the outside, the hundreds as dots below the number —
+            // under NeuCircularProgressView's "fine" ring. Just the number: nothing says what's
+            // being recited (owner: privacy).
+            WatchTasbeehCountView(tasbeeh: count)
+            WatchNeuProgressRing(progress: fraction, animating: !paused)
+                .allowsHitTesting(false)
             // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap —
             // in crown mode too. Its own real, hit-testable button (a disabled one may not get
             // Double Tap), too small to be hit by a finger on the screen.
@@ -847,7 +869,11 @@ struct WatchCounterView: View {
                     .offset(y: 34)
             }
             if postSalah {
-                WatchPostSalahStrip(count: count).offset(y: WatchScreen.small ? 33 : 40)
+                // One up, one down (owner): the phrase above the centred count, "7 of 33" and the
+                // three bars below it, evenly inside the ring (scaled with it).
+                let k = WatchNeu.scale / 0.665
+                WatchPostSalahPhrase(count: count).offset(y: -34 * k)
+                WatchPostSalahStrip(count: count).offset(y: 31 * k)
             }
             if showHint {
                 VStack(spacing: 2) {
@@ -867,6 +893,7 @@ struct WatchCounterView: View {
         .contentShape(Rectangle())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(countGesture)
+        .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
         // The crown counts here (nothing on this screen scrolls). Detent haptics are off: each
         // count plays the tap's own haptic instead.
         .focusable(!paused && finished == nil)
@@ -994,7 +1021,7 @@ struct WatchCounterView: View {
 
     private func togglePause() {
         WatchHaptics.tick()
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeInOut(duration: 0.32)) {
             if let p = pausedAt {
                 pausedTotal += Date().timeIntervalSince(p)
                 pausedAt = nil
@@ -1121,21 +1148,6 @@ struct WatchCounterView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if token == finishArmToken { withAnimation(.easeInOut(duration: 0.3)) { finishArmed = false } }
             }
-        }
-    }
-}
-
-/// The counter's ring: the pale track and the green arc filling toward the goal.
-struct WatchCountRing: View {
-    let fraction: Double
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.14), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(fraction, 0), 1)))
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
         }
     }
 }
@@ -1484,19 +1496,29 @@ enum WatchPostSalah {
     }
 }
 
-/// Above the count in Tasbih Fatimah: the phrase and "12 of 33", and three segments.
+/// The Tasbih Fatimah phrase in Arabic, above the count.
+struct WatchPostSalahPhrase: View {
+    let count: Int
+
+    var body: some View {
+        Text(WatchPostSalah.phases[WatchPostSalah.phase(at: count).index].arabic)
+            .font(.system(size: WatchScreen.small ? 13 : 14))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: WatchNeu.scale * 150)
+            .contentTransition(.opacity)
+            .animation(.easeInOut(duration: 0.3), value: WatchPostSalah.phase(at: count).index)
+    }
+}
+
+/// Under the count: "7 of 33" (within the current phrase) and the three phrase bars.
 struct WatchPostSalahStrip: View {
     let count: Int
 
     var body: some View {
         let p = WatchPostSalah.phase(at: count)
-        // Two lines (owner: one line ran off the edge): the Arabic phrase, then "7 of 33".
         VStack(spacing: 1) {
-            Text(WatchPostSalah.phases[p.index].arabic)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
             Text("\(p.done) of \(p.of)")
                 .font(.system(size: 10, weight: .light, design: .rounded))
                 .monospacedDigit()
@@ -1518,3 +1540,4 @@ enum WatchScreen {
     static let width = WKInterfaceDevice.current().screenBounds.width
     static var small: Bool { width < 180 }
 }
+
