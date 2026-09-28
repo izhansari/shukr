@@ -15,6 +15,8 @@ import SwiftData
 }
 
 struct MainCircleView: View {
+    /// The circle's 1 s clock (see `.onReceive(Self.ticker)`): created once, never per render.
+    private static let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     @EnvironmentObject var sharedState: SharedStateClass
@@ -346,8 +348,15 @@ struct MainCircleView: View {
             }
         }
         .onChange(of: trackWantsSolid) { _, solid in settleTrack(solid) }
-        .onChange(of: scenePhase) { _, phase in if phase == .active { appearedAt = Date(); settleTrack(trackWantsSolid) } }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { newTime in
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { currentTime = Date(); appearedAt = Date(); settleTrack(trackWantsSolid) }
+        }
+        .onAppear { currentTime = Date() }
+        // One timer for the view's lifetime. It was created inline in `body`, so every re-render made a
+        // new one — and this view re-renders on every compass update, so while the phone moved the
+        // timer was replaced before it ever fired: `currentTime` froze and a prayer that had started
+        // showed an empty ring (owner, 2026-09-27: Isha 8:28 PM, empty; fixed by leaving the app).
+        .onReceive(Self.ticker) { newTime in
             currentTime = newTime
 //            prayer = viewModel.relevantPrayer
         }

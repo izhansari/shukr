@@ -266,6 +266,10 @@ struct MosqueListSheet: View {
     var searching = false
     /// ✕: leave mosques (the sheet only shrinks to its header when swiped down).
     var close: () -> Void = {}
+    /// Shrunk to its header (the 96 pt bar): the list can't scroll, and goes back to the top, so the
+    /// bar never shows rows sliding under it (owner, 2026-09-27).
+    var collapsed = false
+    @State private var scrollTop: String? = "top"
     let pick: (MKMapItem) -> Void
     @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
     @AppStorage(MosqueTravel.key) private var travelRaw = MosqueTravel.driving.rawValue
@@ -314,6 +318,7 @@ struct MosqueListSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                    .id("top")
                 if searching && items.isEmpty {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -393,6 +398,12 @@ struct MosqueListSheet: View {
             .padding(.horizontal, 18)
             .padding(.top, 20)
             .padding(.bottom, 30)
+            .scrollTargetLayout()
+        }
+        .scrollPosition(id: $scrollTop, anchor: .top)
+        .scrollDisabled(collapsed)
+        .onChange(of: collapsed) { _, now in
+            if now { withAnimation(.snappy) { scrollTop = "top" } }
         }
         .task(id: "\(travelRaw)|\(hiddenRevision)|\(items.count)") { await loadETAs(list) }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in hiddenRevision += 1 }

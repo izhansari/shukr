@@ -660,7 +660,10 @@ space, and the edit states snapped instead of animating.
   "Mosques · 29 near you" header) / medium / large on `LocationViewModel.mosqueDetent`, so swiping
   down shrinks it to a bar at the bottom (Apple Maps style) instead of closing. ✕ in the header →
   back to the qibla (`setMode`). A pin tap raises it to medium on that mosque. The explore dock
-  hides in mosque mode (the sheet covers it); "Search this area" moved up under the top pill. The
+  hides in mosque mode (the sheet covers it); "Search this area" moved up under the top pill. (2026-09-27 fix: it had
+  drifted mid-map — it sat under the whole top row, whose right column grew with the ? button; now an overlay on the
+  pill row, 56 pt down. The collapsed 96 pt sheet scrolled its list: `MosqueListSheet(collapsed:)` → `.scrollDisabled`
+  + back to the top. Not sim-checked: see the map hang below.) The
   map guide (? / first time) presents over the mosque sheet while it's up (two bindings on `guide`,
   one per presenter). `wantsMosqueList` / `openPendingMosqueList` are gone.
 - **Prayer page** (`PrayerSpotDetail`; owner: rows looked tappable and weren't, the blue ···
@@ -1426,6 +1429,20 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   every mark / time edit / widget reconcile and used to +1 each time once all five were in, and
   −1 on every call after an unmark (streaks went negative; clamped at 0 now). Posts
   `.prayerStreakContinued` once.
+- **Streaks from history (2026-09-27, owner-approved fix):** `checkToResetStreak()` (app activation + the start of every
+  `calculatePrayerStreak`) now calls `refreshStreaksFromHistory()`: the days BEFORE today are recounted from the prayer rows
+  (consecutive days ending yesterday with all five qualifying — day streak by `gradingCriteria`, in-time days by score ≥ 60;
+  walked back from yesterday a week at a time, stopping at the first day that breaks both runs — separate cut-offs for
+  the day streak and in-time days, ≤ ~1000 days); today stays with the incremental code, which adds it once and posts its
+  celebration. Only changed values are written (each write re-renders what's bound to those keys); a new max's date is
+  the day that ended the run. The first recount on an install logs old → new (streak, in-time, both maxes) and keeps the
+  line in the app group key `streakRecount.firstRun`. Idempotent
+  and silent (no celebration for a past day). Fixes: a prayer of an earlier prayer day marked late (watch mark delivered after
+  Fajr, widget / "I already prayed" around Fajr, a time edit on an old prayer) never counted, and the next day's gap check
+  reset the streak to 0. **Entry point for marks made elsewhere: `PrayerViewModel.recomputeStreaks()`** (saves, then
+  `calculatePrayerStreak`) — the watch's `.watchMarkedPrayer` handler (Sami's branch) should call it. Perfect day has no
+  streak, nothing to recount. DEBUG `-demoStreakBackfill` (writes rows; sim only): marks the two days before today, fakes a
+  stale streak (1, last counted 3 days ago), recounts twice — sim ✓ 1 → 2, then 2 again.
 - **In-time days** (keys still `onTimeStreak`, `maxOnTimeStreak`, `lastOnTimeStreakDate`):
   consecutive days with all five prayed within their windows — no Qaza, none missed (≥ 60,
   `PrayerScoring.inWindowFloor`). Owner, 2026-09-25: "days where there was no qaza". Named
@@ -1461,6 +1478,26 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift; defaults −31 / 9 / 0.3 / 2.5 — the original look. The owner's playground values, −28.76 / 8.72 / 0.263 / 2.57, were the default for one commit (81593de, feedback CC72A6E8) and he preferred the original, 2026-09-27. `NextLabelTuning.clearSavedTuningOnce()` in shukrApp.init forgets saved playground JSON once per install (flag `clearedNextTagTuningForOriginal`). Release always uses the defaults. Sim trap: `simctl spawn … defaults write` writes a second, global plist the simulator merges in, so the app can't remove that value — edit prefs through the app, not simctl), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
   "Next prayer": NEXT + dashed ring / dashed ring only (`NextLabel.key` in the app group, so the
   widget follows; reloads timelines). DEBUG `-demoNextLabel on|off`.
+- **One row per prayer in the loaders (2026-09-27):** `loadTodaysPrayerObjects`, `loadPrayerObjects(for:)` and the V2 loader
+  also had `fetchLimit = 5`; they now fetch the day and keep one row per name via `PrayerViewModel.onePerPrayer` (a
+  completed row wins). With a sixth row a prayer used to drop out of today's list (seen: Isha missing, Dhuhr twice).
+- **Duplicate prayer rows (fixed 2026-09-27):** `fetchPrayerTimes` fetched the day's rows with `fetchLimit = 5` sorted by
+  time; once a day held a sixth row (a moved / edited / imported one), Maghrib and Isha fell outside the five and a new
+  pair was inserted on every refresh (the sim had 285 Isha rows for one day). The limit is gone and a completed row wins
+  over an unmarked one. `PrayerViewModel.removeDuplicatePrayerRows(in:)` runs at launch (shukrApp, after the scoring
+  pass): per calendar day + name it deletes extra UNMARKED rows only (never a completed one), backing up to
+  `Library/Backups/shukr.store.before-dedupe` first; a no-op on a healthy store. Sim ✓: 850 removed (910 → 60).
+- **Open problem (2026-09-27): the map hangs in the iOS 26.5 simulator** — opening it (arrow or `-demoMosques`) pins the
+  main thread at 100 % in an AttributeGraph cycle ("cycle detected through attribute"), LocationMapContentView rebuilt
+  ~250×/s with "@self changed". Same on 9df0676 (this morning, when it worked in the sim), on a second iOS 26.5 simulator
+  and with a fresh store — so not today's code or data. The owner's iOS 27 phone opened it fine at 9:25 PM. Unknown
+  whether real iOS 26 devices (his wife's 15 Pro, 26.6) hang: check there before assuming it's only the simulator.
+- **Frozen ring while moving (fixed 2026-09-27):** `MainCircleView` made its 1 s timer inline in `body`
+  (`.onReceive(Timer.publish(…).autoconnect())`); it observes `CompassState`, so every heading update re-rendered it and
+  replaced the timer before it fired — `currentTime` froze and a started prayer showed an empty ring (owner: Isha at 8:28 PM).
+  Now `static let ticker` + `currentTime = Date()` on appear and on scene active. Same fix in `TimeColorFadeProgressBar`.
+  **Never create a publisher inline in `body`.** DEBUG `-demoCompassJiggle` turns the heading 5×/s (the sim has no compass);
+  with `-demoPrayerStart`, sim ✓: 0 ticks in 15 s before, 18 in 20 s after, the ring filling.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when
   there's text to flip. Type matches the Insights ring (2026-09-25): name 32 pt light rounded,
   icon 22 pt light, captions subheadline thin secondary, score 44 pt light over "today's score".

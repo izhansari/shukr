@@ -2879,6 +2879,7 @@ extension Color {
 // MARK: - V1 Prayers Page Experiment
 
 struct TimeColorFadeProgressBar: View {
+    private static let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     // Example start and end times
     let startTime: Date
     let endTime: Date
@@ -2952,7 +2953,8 @@ struct TimeColorFadeProgressBar: View {
             // Update current time when the view appears
             currentTime = Date()
         }
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+        // A stored timer, not one created in `body` (a re-render replaced it before it fired).
+        .onReceive(Self.ticker) { _ in
             // Update current time every second
             withAnimation {
                 currentTime = Date()

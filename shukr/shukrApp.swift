@@ -65,6 +65,8 @@ struct shukrApp: App {
             SharedStore.runV2DataPass(in: container)
             // Rows scored by the old rule (fraction of window left) → points, once.
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
+            // Extra unmarked prayer rows from the old 5-row lookup in fetchPrayerTimes (2026-09-27).
+            PrayerViewModel.removeDuplicatePrayerRows(in: container)
             #if DEBUG
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),
@@ -118,6 +120,16 @@ struct shukrApp: App {
         // 1a) Create EnvLocationManager in a local var
         let manager = EnvLocationManager()
         let updates = manager.locationUpdates
+        #if DEBUG
+        // `-demoCompassJiggle`: the heading changes 5× a second, like a phone moving (the simulator
+        // has no compass) — reproduces anything that re-renders with the compass.
+        if ProcessInfo.processInfo.arguments.contains("-demoCompassJiggle") {
+            let compass = manager.compass
+            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+                compass.heading = (compass.heading + 3).truncatingRemainder(dividingBy: 360)
+            }
+        }
+        #endif
         Task { @MainActor in
             MasjidArrival.shared.start()                        // entering / leaving duas (opt-in)
             HolyCityWelcome.shared.start(updates)   // "Welcome to Makkah / Madinah"
