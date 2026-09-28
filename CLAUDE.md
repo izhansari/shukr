@@ -1177,6 +1177,15 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   launch, and for existing users writes what they effectively had (the scheduler read unset Notif as "not Dhuhr", Nudges as
   on), so their reminders don't change. Sim ✓: upgrade with no keys → nudge / off / nudge / nudge / nudge; fresh install →
   off / nudge / nudge / nudge / start.
+- **Location lost after setup (owner, 2026-09-28):** allowed before, now Never / restricted, no city →
+  `LostLocationView` (FirstRunSetup.swift), not the whole setup: "Uh oh, / shukr lost your location" around the Salah
+  circle's own ring (200 pt, 12 pt `secondarySystemFill` track, reported to `WelcomeTarget.circleFrame`, `canLand`), so the
+  opening lands on it; the three things location gives; "Turn location back on" (iOS Settings), "Enter a city instead"
+  (CityPickerSheet) with an honest line on what a fixed city misses. Location back or a city → the root shows the app.
+  `EnvLocationManager.locationLost` (standard defaults `locationLost`) is set where the revocation is noticed
+  (`noteRevocationIfNeeded`, also run in `init` so the first frame knows) and cleared on authorization / a picked city;
+  revoking still drops the city. A new user who refuses still gets the location step. Sim ✓: grant → revoke → relaunch:
+  the welcome lands on the ring; a city → straight into the app.
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
   Bismillah.

@@ -348,6 +348,72 @@ struct FirstRunSetupView: View {
     }
 }
 
+// MARK: - Location lost (after setup)
+
+/// Location was allowed, then turned off in iOS Settings, and there's no city (owner, 2026-09-28:
+/// the whole "Where do you pray" setup read like starting over, and the opening animation had no
+/// circle to land on). A page with the Salah circle's own ring — 200 pt, the 12 pt track, reported
+/// to `WelcomeTarget` — so the welcome settles onto it; what sharing location gives; "Turn location
+/// back on" (iOS Settings) or "Enter a city instead" (honest about what a fixed city misses). Once
+/// location is back or a city is picked, the root goes straight into the app.
+struct LostLocationView: View {
+    @EnvironmentObject private var location: EnvLocationManager
+    @State private var pickingCity = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 12)
+            VStack(spacing: 6) {
+                Text("Uh oh,")
+                    .font(.system(.title3, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                Text("shukr lost your location")
+                    .font(.system(.title, design: .rounded, weight: .light))
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 28)
+            ZStack {
+                // The Salah circle's track (mainCircle.swift): the welcome lands on this.
+                Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
+                VStack(spacing: 6) {
+                    Image(systemName: "location.slash")
+                        .font(.system(size: 26, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("location is off")
+                        .font(.system(.subheadline, design: .rounded, weight: .thin))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 200, height: 200)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
+            .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
+            VStack(alignment: .leading, spacing: 14) {
+                whyRow("clock", "Prayer times that follow you", "They update by themselves when you travel.")
+                whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed", "On the map, with where you were.")
+                whyRow("building.columns", "Duas at your masjid", "When you arrive and when you leave.")
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 28)
+            Spacer(minLength: 16)
+            PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
+            SecondaryButton(title: "Enter a city instead") { pickingCity = true }
+            Text("A fixed city keeps prayer times, but not the travel updates, the pins or the masjid duas.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+        .fontDesign(.rounded)
+        .background(Color(.systemBackground).ignoresSafeArea())
+        .sheet(isPresented: $pickingCity) {
+            CityPickerSheet(onPicked: { pickingCity = false })
+        }
+    }
+}
+
 // MARK: - The ring (progress + the step's symbol)
 
 /// The opening's sage ring, small, at the top of every step: a hairline track, the sage arc filling

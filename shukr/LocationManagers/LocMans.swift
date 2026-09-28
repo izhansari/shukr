@@ -78,6 +78,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // Known right away, so an authorized launch never shows the location-only setup for a frame.
         authorizationStatus = manager.authorizationStatus
         isAuthorized = authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
+        if authorizationStatus == .denied || authorizationStatus == .restricted { noteRevocationIfNeeded() }
 //        startLocationServices()
     }
     
@@ -100,8 +101,29 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         startLocationServices()
     }
     
+    /// Location was allowed and has been turned off since (iOS Settings → Never), with no city:
+    /// the app shows "shukr lost your location" (LostLocationView) instead of the whole setup.
+    /// Cleared when location comes back or a city is picked.
+    @Published private(set) var locationLost: Bool = UserDefaults.standard.bool(forKey: "locationLost") {
+        didSet { if locationLost != oldValue { UserDefaults.standard.set(locationLost, forKey: "locationLost") } }
+    }
+
+    /// Location was on and has been turned off: drop the picked city (the best chance of getting
+    /// location back is asking for it; a picked city is offered again), and remember it was lost.
+    /// Someone who denied from the start and picked a city keeps it. Also run from `init`, so the
+    /// first frame of a launch already knows.
+    private func noteRevocationIfNeeded() {
+        let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        guard group?.bool(forKey: "locationWasAuthorized") == true else { return }
+        group?.set(false, forKey: "locationWasAuthorized")
+        group?.set(false, forKey: "manualLocation")
+        hasManualLocation = false
+        locationLost = true
+    }
+
     /// Use a picked city for prayer times and the qibla (see `hasManualLocation`).
     func setManualLocation(_ coordinate: CLLocationCoordinate2D, name: String) {
+        locationLost = false
         let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         group?.set(coordinate.latitude, forKey: "lastLatitude")
         group?.set(coordinate.longitude, forKey: "lastLongitude")
@@ -129,6 +151,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             isAuthorized = true
             let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
             if group?.bool(forKey: "locationWasAuthorized") != true { group?.set(true, forKey: "locationWasAuthorized") }
+            if locationLost { locationLost = false }
             manager.startUpdatingLocation()
             manager.startUpdatingHeading()
             // Travel (notes #18): with Always, big moves wake the app — even when it isn't running
@@ -147,15 +170,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         case .denied, .restricted:
             isAuthorized = false
             print("Location services are denied or restricted.")
-            // Location was on and has just been turned off: drop the picked city so the
-            // welcome screen asks again — the best chance of getting it back. Someone who
-            // denied from the start and picked a city keeps it.
-            let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
-            if group?.bool(forKey: "locationWasAuthorized") == true {
-                group?.set(false, forKey: "locationWasAuthorized")
-                group?.set(false, forKey: "manualLocation")
-                hasManualLocation = false
-            }
+            noteRevocationIfNeeded()
             useManualLocation()
         @unknown default:
             isAuthorized = false

@@ -164,9 +164,13 @@ struct shukrApp: App {
                     // page's circle.
                     PrayerTimesView()
                         .transition(.blurReplace())
+                } else if !setupShowing && environmentLocationManager.locationLost {
+                    // Location was on and has been turned off, no city: "shukr lost your location",
+                    // with a circle the opening lands on — not the whole setup again.
+                    LostLocationView()
+                        .transition(.opacity)
                 } else if !setupShowing {
-                    // No location at all (refused with no city, or location turned off later): just
-                    // the setup's location step until there is one.
+                    // No location at all (refused with no city): just the setup's location step.
                     FirstRunSetupView(mode: .locationOnly)
                         .transition(.blurReplace())
                 } else {
