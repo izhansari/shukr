@@ -224,18 +224,6 @@ struct SettingsView: View {
                         if isNotifPopupVisible{
                             NotificationDropdownInfo()
                         }
-                        // Everything shukr has waiting with iOS. Beta-only until `UpcomingReminders.isPublic`.
-                        if UpcomingReminders.isPublic || betaAccess.available {
-                            NavigationLink {
-                                UpcomingRemindersView()
-                            } label: {
-                                Label {
-                                    Text("Upcoming reminders").foregroundStyle(.primary)
-                                } icon: {
-                                    Image(systemName: "calendar.badge.clock").symbolRenderingMode(.monochrome).foregroundStyle(Color.sage)
-                                }
-                            }
-                        }
                     }
                     
                     

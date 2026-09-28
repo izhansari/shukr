@@ -19,7 +19,7 @@
     {"id": "recorded-vs-edited", "area": "Salah", "title": "Edits keep what the app recorded, so you can put it back", "link": "salah"},
     {"id": "mosque-sheet", "area": "Mosques", "title": "Mosques live in one sheet: the list, a mosque's page inside it, and it shrinks to a bar", "link": "map",
      "tryIt": ["Map → Mosques → the sheet opens with the list", "Tap a mosque → its page slides in; back → the list where you left it", "Swipe the sheet down → it shrinks to a bar instead of closing"]},
-    {"id": "notifications", "area": "Notifications", "title": "Prayer notifications are planned a week ahead, Fajr included; a calm card when they can't reach you; Settings → Notifications → Upcoming reminders lists every one waiting", "link": "settings"},
+    {"id": "notifications", "area": "Notifications", "title": "Prayer notifications, planned a week ahead: a calm card when they can't reach you; Settings' status row opens Your reminders (the 64 beads, this week, why and how); a last reminder asks you to open shukr before they run out", "link": "settings"},
     {"id": "prayer-begins", "area": "Salah", "title": "A prayer that hasn't started has a dashed ring; it fills in when the prayer begins", "link": "salah",
      "tryIt": ["Mark the current prayer → the circle shows NEXT and a dashed ring", "Wait for it to begin with the app open → the ring expands into the band, with a soft tap", "Dev builds: Settings → My Dev Stuff → Preview prayer begins"]},
     {"id": "names-filter", "area": "99 Names", "title": "99 Names: filter by All · Learning · Known, and reset your progress", "link": "names"},
@@ -930,6 +930,24 @@
       "title": "Fixed: a masjid dua could appear when you weren't there (e.g. \"Leaving the masjid\" right after opening shukr)",
       "tryIt": ["Settings → Masjid → Duas at my masajid on → open shukr away from your masajid: no dua", "Arrive at one of your masajid → the entering dua; leave → the leaving dua"],
       "checked": "no"
+    },
+    {
+      "id": "notifications-9", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Your reminders: a ring of 64 beads (one per slot iOS allows), this week day by day with each prayer's times, and three cards — why only 64, how it tops itself up, how they arrive on time — from your real settings",
+      "tryIt": ["Settings → Notifications → tap 'Reminders are on' → Your reminders", "Tap a day under This week → its prayers and times; tap a card (Why only 64? · Tops itself up · Arrives on time)"],
+      "checked": "sim", "shots": ["wn-your-reminders.jpg"]
+    },
+    {
+      "id": "notifications-10", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Settings → Notifications: the status row is the way in — 'Reminders are on · On time · scheduled through Mon, Oct 5' — and says what's wrong when something is",
+      "tryIt": ["Settings → Notifications → the first row"],
+      "checked": "sim", "shots": ["wn-reminders-status-row.jpg"]
+    },
+    {
+      "id": "notifications-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Never a silent stop: if shukr isn't opened or refreshed before its reminders run out, a last one asks you to open it",
+      "tryIt": ["Your reminders → Tops itself up → 'Never a silent stop' shows its date"],
+      "checked": "sim"
     }
   ]
 }

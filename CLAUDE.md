@@ -1291,6 +1291,26 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   **Counts (owner, feedback BF79A0FC):** a sage count badge beside each row's name (1 = start, 2 = + halfway, 3 = + 30 min
   left; zikr / snoozed count theirs), "Today · 10" on each day header (all kinds), and the other times are now a quiet
   caption2 tertiary line.
+  **v2, the bead ring (owner-approved canvas "Your reminders · v2", 2026-09-28):** `YourRemindersView` (was
+  `UpcomingRemindersView`; the day cards are gone). Hero: 64 beads on a 264 pt ring (r 118; 5.2 pt, free 4 pt), in
+  order starts #6f9f80 · halfway #e0b84f · 30 min #d9735f · zikr #7aa6c2 · later (purple) · other / masjid / keep-alive
+  (grey) · free (#dcdce1 / #3a3a3c); centre "✓ on time" (or "may be late" / "reminders off" in #b3452f), the count,
+  "of 64 waiting", "through Mon, Oct 5"; a legend of the kinds present. "This week": 7 day rings (fill = count / the
+  week's most, sage dot = has nudges, the picked one tinted); the picked day's card lists each prayer with its times
+  ("Dhuhr 1:07 · 3:13 · 4:49", h:mm), zikr by task, later / other; tagged "with nudges" / "starts only · nudges added
+  tomorrow". Three tiles → a card of points (icon tile, bold line, one small line) from real state: Why only 64?
+  (starts all week, nudges for `nudgeDaysAhead` days, N free), Tops itself up (background refresh on / off + last run,
+  opening tops up, "Never a silent stop" with the keep-alive's date), Arrives on time (Time Sensitive, Summary, the
+  late combination in the warning style + "Fix in Settings" when it applies). Details (beta) at the bottom. DEBUG
+  `-remindersDay N`, `-remindersWhy N`, `-remindersScroll`. `NotificationHealth` now also publishes `pendingCount`,
+  `scheduledThrough`, `keepAliveDate` (on every refresh).
+  **Settings:** `NotificationHealthRows` is one status row — green check "Reminders are on · On time · scheduled through
+  …", or orange "Reminders are off / may arrive late / …" — a NavigationLink to Your reminders (beta gate
+  `UpcomingReminders.isPublic || WhatsNewAccess`), then one sage fix button per problem. The separate "Upcoming
+  reminders" row is gone. The health card waits for the DEBUG screenshot sheet too.
+  **Last-resort reminder:** `NotificationScheduler.keepAliveItem` — one slot kept back from the budget; 20 min after the
+  last start that made it in, "Open shukr to keep your prayer reminders coming"; id `keepalive.<day>` (owned, so each
+  re-plan moves it). Sim ✓ `keepalive.2026-10-05` 6:23 AM.
   Kinds (2026-09-28): `.snooze` ("Later" cell, the reveal headed "From “Nudge me later”", rows "Dhuhr · “It's been 5
   minutes”" from userInfo["prayerName"] + the title), `.masjid` (`masjidArrival.*`: "Masjid" cell, "Islamic Center of
   Cary · Leaving the masjid"), `.other` ("Other", its title) — they all used to show as "Snoozed · nudge". Rows wrap to
