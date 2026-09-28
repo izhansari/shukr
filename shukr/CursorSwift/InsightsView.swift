@@ -213,7 +213,8 @@ struct InsightsView: View {
                         ZStack {
                             Circle().stroke(Color(.secondarySystemFill), lineWidth: 5)
                             Circle()
-                                .trim(from: 0, to: revealed ? (stat.usualFraction ?? 0) : 0)
+                                // A usual moment right at the start still shows a sliver of its colour.
+                                .trim(from: 0, to: revealed ? stat.usualFraction.map { max($0, 0.02) } ?? 0 : 0)
                                 .stroke(stat.usualColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
                                 .rotationEffect(.degrees(-90))
                                 .animation(.spring(response: 0.9, dampingFraction: 0.8).delay(0.08 * Double(index)), value: revealed)
@@ -245,14 +246,17 @@ struct InsightsView: View {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
                     VStack(spacing: 2) {
                         // Stands out while a ring is picked: primary, a size up, the name in its ring's
-                        // colour — "Isha · avg 96", then when you usually pray, then the count (feedback 95FF0EB7).
-                        (Text(name).foregroundStyle(stat.usualElapsed == nil ? Color.primary : stat.usualColor).fontWeight(.medium)
-                         + Text(" · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–")").foregroundStyle(Color.primary))
+                        // colour — the grade at the usual moment, then when you usually pray, then the count.
+                        // "Fajr · usually Perfect" — the grade at the usual moment, in its colour (no "avg":
+                        // the average score is the big ring's).
+                        (Text(name).foregroundStyle(Color.primary).fontWeight(.medium)
+                         + Text(stat.usualGrade == nil ? "" : " · usually ").foregroundStyle(Color.primary)
+                         + Text(stat.usualGrade ?? "").foregroundStyle(stat.usualColor).fontWeight(.medium))
                             .font(.subheadline)
                             .lineLimit(1)
                             .contentTransition(.numericText())
                         if let elapsed = stat.usualElapsed {
-                            Text("you usually pray \(Self.longIn(elapsed)) in")
+                            Text(elapsed < 30 ? "you usually pray right at the start" : "you usually pray \(Self.longIn(elapsed)) in")
                                 .foregroundStyle(Color.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
@@ -485,8 +489,8 @@ struct InsightsStats {
         let prayedRate: Double?  // prayed / (prayed + missed)
         var prayed = 0           // marked in the range
         var recorded = 0         // marked + missed (window over) in the range
-        /// Where in its window it's usually marked (prayed ones with a time): the average share of
-        /// the window that had passed (a Qaza counts as 1), and the average time in / window length —
+        /// Where in its window it's usually marked (prayed ones with a time): the median share of the
+        /// window that had passed (a Qaza counts as 1), times the average window length —
         /// so the ring can be drawn like the Salah page's at that moment (owner, 2026-09-28).
         var usualFraction: Double? = nil
         var usualElapsed: TimeInterval? = nil
@@ -495,13 +499,16 @@ struct InsightsStats {
         var jumuahs = 0
         var id: String { name }
 
-        /// The colour the live ring would show at the usual moment.
-        var usualColor: Color {
-            guard let elapsed = usualElapsed, let window = usualWindow, window > 0 else { return .secondary }
+        /// The score the live ring would give at the usual moment.
+        var usualScore: Double? {
+            guard let elapsed = usualElapsed, let window = usualWindow, window > 0 else { return nil }
             let start = Date(timeIntervalSinceReferenceDate: 0)
-            return PrayerScoring.color(for: PrayerScoring.score(start: start, end: start.addingTimeInterval(window),
-                                                                markedAt: start.addingTimeInterval(elapsed)))
+            return PrayerScoring.score(start: start, end: start.addingTimeInterval(window), markedAt: start.addingTimeInterval(elapsed))
         }
+        /// The colour the live ring would show at the usual moment.
+        var usualColor: Color { usualScore.map { PrayerScoring.color(for: $0) } ?? .secondary }
+        /// Its grade word ("Perfect", "On time", "Late", "Qaza").
+        var usualGrade: String? { usualScore.map { PrayerScoring.grade(for: $0).rawValue } }
     }
 
     static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -553,9 +560,13 @@ struct InsightsStats {
                 return (min(max(at.timeIntervalSince(p.startTime), 0) / window, 1), window)
             }
             if !timed.isEmpty {
-                // One value drives the fill, the "Nm in" and the colour, so they always agree.
+                // One value drives the fill, the "Nm in", the colour and the grade word: the MEDIAN
+                // moment (owner, feedback 8CCECB8E — a few late days dragged a mean; the average score
+                // lives only on the big ring now).
                 let n = Double(timed.count)
-                let fraction = timed.map(\.fraction).reduce(0, +) / n
+                let sorted = timed.map(\.fraction).sorted()
+                let mid = sorted.count / 2
+                let fraction = sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
                 let window = timed.map(\.window).reduce(0, +) / n
                 stat.usualFraction = fraction
                 stat.usualWindow = window

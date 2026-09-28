@@ -1241,6 +1241,12 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   Landing (feedback A4D7B736, "ever so slightly jolts"): the glide is a critically damped spring (no overshoot), then the
   ring rests 0.45 s on the Salah circle with "location is on"; the symbol blurs out (0.28 s), 0.12 s later the page
   fades (0.4 s) with the prayer's own content — nothing moves after landing, the two contents never overlap.
+  **Then (owner: "the opposite of the opening … the same animation"):** the landing IS the welcome's. `WelcomeRing` is
+  shared (no longer private); the lost ring is a `WelcomeRing` (12 pt `secondarySystemFill`, 200 pt). Coming back: words
+  fade + glide (critically damped) while it draws in to the welcome's start ring (`snug`: 150 pt, 1.2 pt sage 0.6, glow
+  0.45 r8) round the symbol; rests 0.35 s; then `WelcomeOverlay.play`'s grow — spring 0.75 / 0.9 to 200 pt / 12 pt
+  track (or 1 pt clear + the dashed circle), the symbol leaving like the word (scale 0.9, blur 4, fade); 0.65 s later
+  the page fades 0.45 s. Frame-checked against a cold welcome.
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
@@ -1810,7 +1816,10 @@ ViewThatFits); the grid's summary has a third number, "days in time" = the 14 sh
 (`PrayerScoring.inWindowFloor`). DEBUG `-insightsRangeCycle` (Week → Month → All time → Week, 2.5 s apart). The older
 (Captions, feedback 8CCECB8E: the range is said once, by the picker — "your average day score", "where each prayer's ring
 usually is when you mark it", "nothing earlier to compare with"; the "all five prayers each day, 0–100 · tap the ring…"
-hint is gone.) The older write-up follows.
+hint is gone.) **The per-prayer rings (owner, option A):** the MEDIAN capped fraction (Qaza = 1), not the mean, drives
+fill / "N min in" / colour and the grade word (`usualScore` / `usualGrade`); the picked line is "Fajr · usually Perfect"
+(grade in its colour), "you usually pray 25 min in" ("right at the start" under 30 s), "prayed 8 of 9" — no "avg"
+(the average score is only on the big ring); a known usual moment fills at least 0.02 so its colour shows. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +

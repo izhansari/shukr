@@ -389,6 +389,9 @@ struct LostLocationView: View {
     @State private var handedOff = false
     /// The Salah circle is the dashed "hasn't started" track: the ring turns into it as it lands.
     @State private var landDashed = false
+    /// Coming back: the ring is the welcome's starting ring (150 pt sage hairline round the symbol)
+    /// before it grows into the Salah circle exactly as the welcome does (owner, feedback A4D7B736).
+    @State private var snug = false
     /// Lost while the app was open (feedback A535F50B): the ring starts on the Salah circle it replaces
     /// (its centre y) and glides up to its place; nil once it has, or on a cold launch.
     @State private var entryY: CGFloat?
@@ -440,11 +443,15 @@ struct LostLocationView: View {
                 ZStack {
                     // The Salah circle's track (mainCircle.swift): the welcome lands on this, and the
                     // hand-off leaves it where the Salah page's own track is.
-                    Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
-                        .opacity(landDashed ? 0 : 1)
+                    // `WelcomeRing`, with the welcome's own sizes, widths and colours: the 12 pt grey track;
+                    // snug = the welcome's starting hairline; then grown back into the track (or dashes).
+                    WelcomeRing(width: snug ? 1.2 : (landDashed ? 1 : 12))
+                        .fill(snug ? Color.sage.opacity(0.6) : (landDashed ? Color.clear : Color(.secondarySystemFill)))
+                        .shadow(color: Color.sage.opacity(snug ? 0.45 : 0), radius: 8)
+                        .frame(width: snug ? 150 : 200, height: snug ? 150 : 200)
                     Circle()
                         .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-                        .opacity(landDashed ? 1 : 0)
+                        .opacity(landDashed && !snug ? 1 : 0)
                     VStack(spacing: 6) {
                         Image(systemName: acknowledged ? onSymbol : "location.slash")
                             .font(.system(size: 26, weight: .light))
@@ -455,8 +462,10 @@ struct LostLocationView: View {
                             .foregroundStyle(.secondary)
                             .contentTransition(.opacity)
                     }
+                    // Leaves like the welcome's word as the ring grows (scale 0.9, blur 4).
+                    .scaleEffect(symbolIn ? 1 : 0.9)
                     .opacity(symbolIn ? 1 : 0)
-                    .blur(radius: symbolIn ? 0 : 8)
+                    .blur(radius: symbolIn ? 0 : 4)
                 }
                 .frame(width: 200, height: 200)
             }
@@ -621,8 +630,8 @@ struct LostLocationView: View {
     }
 
     /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then
-    /// the words go while the ring glides straight onto the Salah circle, and as it lands the page
-    /// fades from round it — the welcome's own landing. Reduce Motion: the acknowledgement, a fade.
+    /// the words go while the ring glides onto the Salah circle as the welcome's starting ring, then
+    /// grows into it exactly as the welcome does. Reduce Motion: the acknowledgement, a fade.
     private func acknowledge() async {
         CircleCover.set("lostHandoff", true)       // no reminders card / qibla buzz under it
         defer { CircleCover.set("lostHandoff", false) }
@@ -652,17 +661,23 @@ struct LostLocationView: View {
         var target = UIScreen.main.bounds.midY
         if let f = WelcomeTarget.circleFrame, f.width > 100,
            UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) { target = f.midY }
+        // The words go while the ring glides onto the Salah circle and draws in to the welcome's
+        // starting ring round the symbol; it rests, then does the welcome's own landing: grows 150 →
+        // 200 pt as the hairline thickens into the track (or the dashes), the symbol letting go like
+        // the word; 0.65 s later the page fades in round it (WelcomeOverlay.play's timings).
         withAnimation(.easeOut(duration: 0.3)) { clearing = true }
-        // No overshoot: once it's there nothing moves again (feedback A4D7B736: "ever so slightly jolts").
-        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { landingY = target }
-        try? await Task.sleep(for: .milliseconds(750))      // landed
-        try? await Task.sleep(for: .milliseconds(450))      // …and sits there, "location is on" inside
-        // The symbol lets go first, then the page comes in round the ring with the prayer's own content,
-        // so the two never overlap.
-        withAnimation(.easeOut(duration: 0.28)) { symbolIn = false; landDashed = WelcomeTarget.trackDashed }
-        try? await Task.sleep(for: .milliseconds(120))
-        withAnimation(.easeInOut(duration: 0.4)) { handedOff = true }
-        try? await Task.sleep(for: .milliseconds(430))
+        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { landingY = target }   // no overshoot
+        withAnimation(.easeInOut(duration: 0.6)) { snug = true }
+        try? await Task.sleep(for: .milliseconds(750))      // landed, snug
+        try? await Task.sleep(for: .milliseconds(350))      // rests, like the welcome before it grows
+        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) {
+            snug = false
+            landDashed = WelcomeTarget.trackDashed
+            symbolIn = false
+        }
+        try? await Task.sleep(for: .milliseconds(650))
+        withAnimation(.easeInOut(duration: 0.45)) { handedOff = true }
+        try? await Task.sleep(for: .milliseconds(470))
         location.clearComeback()
     }
 }

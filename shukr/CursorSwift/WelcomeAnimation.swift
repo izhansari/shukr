@@ -60,7 +60,8 @@ struct WelcomeGate: ViewModifier {
 }
 
 /// A ring drawn as a filled annulus, so its thickness animates (a stroke's line width doesn't).
-private struct WelcomeRing: Shape {
+/// Also the lost-location page's ring, so its hand-off onto the Salah circle is the welcome's own.
+struct WelcomeRing: Shape {
     var width: CGFloat
     var animatableData: CGFloat {
         get { width }
