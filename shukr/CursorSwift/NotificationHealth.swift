@@ -601,7 +601,11 @@ struct YourRemindersView: View {
 
     // MARK: the three whys
 
-    private struct Point { let big: String; let small: String; let symbol: String; let warn: Bool }
+    private struct Point {
+        let big: String; let small: String; let symbol: String; let warn: Bool
+        /// Explaining, not about his settings: drawn in grey, never red.
+        var neutral = false
+    }
 
     private var whyTiles: some View {
         let tiles: [(String, String)] = [("Why only 64?", "list.bullet"), ("Tops itself up", "arrow.clockwise"),
@@ -629,7 +633,8 @@ struct YourRemindersView: View {
 
     private var lateCombination: Bool { health.summaryOn && health.timeSensitive != .enabled }
 
-    private var why: (head: String, points: [Point]) {
+    /// A card's headline, its points, and (Arrives on time) a separate neutral explainer under a heading.
+    private var why: (head: String, points: [Point], explainHead: String?, explain: [Point]) {
         switch selectedWhy {
         case 1:
             let lastRun = UserDefaults.standard.double(forKey: NotificationHealth.lastRefreshKey)
@@ -641,19 +646,37 @@ struct YourRemindersView: View {
                      : Point(big: "Background refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.clockwise", warn: true),
                 Point(big: "Opening shukr tops it up too", small: "Any time you open the app, the week refills.", symbol: "iphone", warn: false),
                 Point(big: "Never a silent stop", small: "If iOS can’t refresh, your last reminder\(keep) asks you to open shukr.", symbol: "exclamationmark", warn: false),
-            ])
+            ], nil, [])
         case 2:
+            // First HIS settings and what they mean for him — red only where one is really a problem —
+            // then, separately and neutrally, how iOS delivers notifications (owner, 9E5AC5BF: the red
+            // "late" row read as his own setting being wrong).
+            let off = health.authorization == .denied
             let ts = health.timeSensitive == .enabled
-            let head = health.authorization == .denied ? "Notifications are off for shukr."
+            let tsOff = health.timeSensitive == .disabled
+            let head = off ? "Notifications are off for shukr."
                 : lateCombination ? "Yours may arrive late." : "Yours arrive on time."
-            return (head, [
-                ts ? Point(big: "Time Sensitive is on", small: "Reminders break through Focus modes and the Scheduled Summary.", symbol: "clock", warn: false)
-                   : Point(big: "Time Sensitive is off", small: "Focus modes can hold reminders back.", symbol: "clock", warn: true),
-                health.summaryOn
-                    ? Point(big: "Scheduled Summary is on", small: ts ? "Time Sensitive lets reminders through anyway." : "Reminders wait for the next summary.", symbol: "tray.full", warn: !ts)
-                    : Point(big: "Scheduled Summary is off", small: "Nothing waits for a summary.", symbol: "checkmark", warn: false),
-                Point(big: "Summary on + Time Sensitive off = late", small: "That combination holds reminders until the next summary. shukr warns you if it happens.", symbol: "exclamationmark", warn: true),
-            ])
+            var mine: [Point] = []
+            mine.append(off
+                ? Point(big: "Notifications: off", small: "shukr can’t remind you at all until you turn them on.", symbol: "bell.slash", warn: true)
+                : Point(big: "Notifications: on", small: "shukr can remind you.", symbol: "bell", warn: false))
+            if !off {
+                mine.append(ts
+                    ? Point(big: "Time Sensitive: on", small: "Reminders come through Focus modes and the Scheduled Summary.", symbol: "clock", warn: false)
+                    : Point(big: "Time Sensitive: \(tsOff ? "off" : "not available")", small: "A Focus mode can hold reminders back.", symbol: "clock", warn: tsOff))
+                mine.append(health.summaryOn
+                    ? Point(big: "Scheduled Summary: on", small: ts ? "Reminders still come right away (Time Sensitive lets them through)."
+                                                                       : "Reminders wait for the next summary, so they can arrive late.",
+                            symbol: "tray.full", warn: !ts)
+                    : Point(big: "Scheduled Summary: off", small: "Reminders come right away.", symbol: "checkmark", warn: false))
+            }
+            let explain = [
+                Point(big: "Time Sensitive", small: "Lets a reminder through Focus modes and the Scheduled Summary. shukr marks prayer reminders Time Sensitive.", symbol: "clock", warn: false, neutral: true),
+                Point(big: "Scheduled Summary", small: "Collects notifications and delivers them at the times you choose, instead of right away.", symbol: "tray.full", warn: false, neutral: true),
+                Point(big: "Focus", small: "Silences notifications, except apps you allow and Time Sensitive ones.", symbol: "moon", warn: false, neutral: true),
+                Point(big: "Together", small: "With the Summary on and Time Sensitive off, reminders wait for the next summary — that’s the one setup that makes them late.", symbol: "info.circle", warn: false, neutral: true),
+            ]
+            return (head, mine, "How iOS delivers notifications", explain)
         default:
             let n = NotificationScheduler.nudgeDaysAhead
             let free = max(NotificationScheduler.limit - pending.count, 0)
@@ -661,7 +684,7 @@ struct YourRemindersView: View {
                 Point(big: "Every start, all week", small: "Each prayer’s start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "checkmark", warn: false),
                 Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "Halfway and 30-min nudges (the dotted days) are added as each day comes closer.", symbol: "bell", warn: false),
                 Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "minus", warn: false),
-            ])
+            ], nil, [])
         }
     }
 
@@ -671,20 +694,14 @@ struct YourRemindersView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(why.head).font(.system(size: 17, weight: .semibold, design: .rounded))
                     .fixedSize(horizontal: false, vertical: true)
+                if why.explainHead != nil {
+                    Text("Your settings")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .tracking(0.5).textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(why.points.indices, id: \.self) { i in
-                    let p = why.points[i]
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: p.symbol)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(p.warn ? warnInk : okInk)
-                            .frame(width: 30, height: 30)
-                            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(p.warn ? warnTint : okTint))
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(p.big).font(.system(size: 15, weight: .semibold, design: .rounded))
-                            Text(p.small).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    pointRow(why.points[i])
                 }
                 if selectedWhy == 2 && (lateCombination || health.authorization == .denied || health.timeSensitive == .disabled) {
                     Button { SettingsLinks.notifications() } label: {
@@ -695,9 +712,35 @@ struct YourRemindersView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                if let explainHead = why.explainHead {
+                    Divider().padding(.vertical, 2)
+                    Text(explainHead)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .tracking(0.5).textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    ForEach(why.explain.indices, id: \.self) { i in
+                        pointRow(why.explain[i])
+                    }
+                }
             }
         }
         .animation(.easeInOut(duration: 0.2), value: selectedWhy)
+    }
+
+    private func pointRow(_ p: Point) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: p.symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(p.neutral ? Color.secondary : p.warn ? warnInk : okInk)
+                .frame(width: 30, height: 30)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(p.neutral ? Color(.tertiarySystemFill) : p.warn ? warnTint : okTint))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(p.big).font(.system(size: 15, weight: .semibold, design: .rounded))
+                Text(p.small).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private static func whenText(_ date: Date) -> String {

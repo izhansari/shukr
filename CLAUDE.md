@@ -1335,8 +1335,10 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   ("Dhuhr 1:07 · 3:13 · 4:49", h:mm), zikr by task, later / other; tagged "with nudges" / "starts only · nudges added
   tomorrow". Three tiles → a card of points (icon tile, bold line, one small line) from real state: Why only 64?
   (starts all week, nudges for `nudgeDaysAhead` days, N free), Tops itself up (background refresh on / off + last run,
-  opening tops up, "Never a silent stop" with the keep-alive's date), Arrives on time (Time Sensitive, Summary, the
-  late combination in the warning style + "Fix in Settings" when it applies). Details (beta) at the bottom. DEBUG
+  opening tops up, "Never a silent stop" with the keep-alive's date), Arrives on time in two parts (owner, 9E5AC5BF):
+  "Your settings" — Notifications / Time Sensitive / Scheduled Summary as they are, red only when one really holds
+  reminders back, "Fix in Settings" under them — then a neutral grey "How iOS delivers notifications" (Time Sensitive,
+  Scheduled Summary, Focus, Together = the one late setup; `Point.neutral`). Details (beta) at the bottom. DEBUG
   `-remindersDay N`, `-remindersWhy N`, `-remindersScroll`. `NotificationHealth` now also publishes `pendingCount`,
   `scheduledThrough`, `keepAliveDate` (on every refresh).
   **Settings:** `NotificationHealthRows` is one status row — green check "Reminders are on · On time · scheduled through
