@@ -318,20 +318,22 @@ struct YourRemindersView: View {
         }
     }
 
-    // MARK: colours — the first-run setup's look (owner, 2026-09-28, EC6B18BC): sage for what's fine,
-    // the setup's soft orange for what needs a hand, and the beads in the brand's family — sage,
-    // soft sand, soft clay, a sea-sage for zikr — rather than stock green / yellow / red / blue.
+    // MARK: colours — iOS-native (owner, 49171DB2: the muted brand tones read "dull … too android"):
+    // sage stays the accent (the ok ink, the week rings, the picked tile); the bead kinds use the
+    // system tints, which adapt to light / dark; free slots a clear system grey.
 
-    private static let startColor = Color.sage                                         // starts: the brand sage
-    private static let halfColor = Color(red: 0.84, green: 0.74, blue: 0.50)           // halfway: soft sand
-    private static let endColor = Color(red: 0.82, green: 0.58, blue: 0.48)            // 30 min left: soft clay
-    private static let zikrColor = Color(red: 0.43, green: 0.62, blue: 0.62)           // zikr: sea-sage
-    private static let laterColor = Color(red: 0.66, green: 0.60, blue: 0.70)          // later: soft mauve
-    private static let otherColor = Color(red: 0.64, green: 0.63, blue: 0.60)          // other: warm grey
-    private var freeColor: Color { Color(.secondarySystemFill) }
+    private static let startColor = Color(.systemGreen)                                // starts
+    private static let halfColor = Color(.systemOrange)                                // halfway
+    private static let endColor = Color(.systemRed)                                    // 30 min left
+    private static let zikrColor = Color(.systemBlue)                                  // zikr
+    private static let laterColor = Color(.systemPurple)                               // later
+    private static let otherColor = Color(.systemGray)                                 // other
+    private var freeColor: Color { Color(.systemGray4) }
+    /// Tile / day switches: one spring for the content swap and the card's height.
+    private static let switchSpring = Animation.spring(response: 0.42, dampingFraction: 0.9)
     private var okInk: Color { Color.sage }
     private var warnInk: Color { Color.orange.opacity(0.9) }                              // the setup's Nudge
-    private var okTint: Color { Color.sage.opacity(scheme == .dark ? 0.16 : 0.10) }
+    private var okTint: Color { Color.sage.opacity(scheme == .dark ? 0.22 : 0.14) }
     private var warnTint: Color { Color.orange.opacity(0.08) }
     /// The setup's small uppercase caption ("today").
     private func caption(_ text: String) -> some View {
@@ -339,7 +341,7 @@ struct YourRemindersView: View {
             .font(.system(.caption, design: .rounded))
             .tracking(2)
             .textCase(.uppercase)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(.secondary)
     }
 
     private func color(_ kind: Kind) -> Color {
@@ -357,6 +359,13 @@ struct YourRemindersView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(spacing: 18) {
+                // What this page is for, before any numbers (owner, 49171DB2).
+                Text("iOS keeps up to 64 notifications per app. shukr budgets them carefully. Here\u{2019}s how.")
+                    .font(.system(.title3, design: .rounded, weight: .medium))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 4)
                 hero
                 week
                 whyTiles
@@ -376,7 +385,7 @@ struct YourRemindersView: View {
         }
         #endif
         }
-        .background(Color(.systemBackground).ignoresSafeArea())   // the setup's plain page
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())   // white / near-black cards on it
         .navigationTitle("Your reminders")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -396,7 +405,7 @@ struct YourRemindersView: View {
         content()
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemBackground)))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
     }
 
     // MARK: hero — 64 beads, one per iOS slot
@@ -435,7 +444,7 @@ struct YourRemindersView: View {
                         .font(.system(size: 56, weight: .light, design: .rounded))
                         .monospacedDigit()
                     Text("of 64 waiting")
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .font(.system(.subheadline, design: .rounded))
                         .foregroundStyle(.secondary)
                     if let through = health.scheduledThrough ?? pending.compactMap(\.date).max() {
                         Text("through " + through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
@@ -455,7 +464,7 @@ struct YourRemindersView: View {
                     }
                 }
             }
-            .font(.system(.caption, design: .rounded, weight: .light))
+            .font(.system(.caption, design: .rounded))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -512,25 +521,25 @@ struct YourRemindersView: View {
                             .foregroundStyle(selected ? okInk : .secondary)
                         ZStack {
                             Circle().fill(selected ? okTint : .clear)
-                            Circle().stroke(Color(.secondarySystemFill), lineWidth: 3)
+                            Circle().stroke(Color(.systemGray5), lineWidth: 3)
                             Circle()
                                 .trim(from: 0, to: CGFloat(counts[i]) / CGFloat(most))
-                                .stroke(nudges ? Self.startColor : Self.startColor.opacity(0.55),
+                                .stroke(nudges ? Color.sage : Color.sage.opacity(0.55),
                                         style: StrokeStyle(lineWidth: 3, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                             Text("\(counts[i])")
-                                .font(.system(.subheadline, design: .rounded, weight: selected ? .regular : .light))
+                                .font(.system(.subheadline, design: .rounded, weight: selected ? .semibold : .regular))
                                 .foregroundStyle(selected ? okInk : .primary)
                                 .monospacedDigit()
                         }
                         .frame(width: days.count > 7 ? 34 : 40, height: days.count > 7 ? 34 : 40)
-                        Circle().fill(nudges ? Self.startColor : .clear).frame(width: 5, height: 5)
+                        Circle().fill(nudges ? Color.sage : .clear).frame(width: 5, height: 5)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         triggerSomeVibration(type: .light)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) { selectedDay = i }
+                        withAnimation(Self.switchSpring) { selectedDay = i }
                     }
                 }
             }
@@ -557,33 +566,35 @@ struct YourRemindersView: View {
             default: return day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
             }
         }()
+        // The card stays put; only its content crossfades, and its height follows with the same spring
+        // (owner, 49171DB2: swapping the whole card overlapped the two and jumped).
         return card {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.system(.body, design: .rounded))
+                    Text(title).font(.system(.body, design: .rounded, weight: .medium))
                     Spacer(minLength: 8)
-                    Text(tag).font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                    Text(tag).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if items.isEmpty {
                     Text(loaded ? "Nothing scheduled this day." : " ")
-                        .font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                        .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
                 }
                 ForEach(dayLines(items), id: \.name) { line in
                     HStack(spacing: 12) {
                         Image(systemName: line.symbol)
-                            .font(.system(size: 16, weight: .light))
+                            .font(.system(size: 16, weight: .regular))
                             .foregroundStyle(Color.sage)
                             .frame(width: 22)
                         Text(line.name).font(.system(.subheadline, design: .rounded)).lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(line.times).font(.system(.footnote, design: .rounded, weight: .light)).monospacedDigit().foregroundStyle(.secondary)
+                        Text(line.times).font(.system(.footnote, design: .rounded)).monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
             }
+            .id(key)
+            .transition(.sheetContent(offset: 6))   // the old goes quickly, the new comes a beat later: no ghosting
         }
-        .id(key)
-        .transition(.opacity)
     }
 
     private func dayLines(_ items: [Item]) -> [(name: String, symbol: String, times: String)] {
@@ -596,9 +607,9 @@ struct YourRemindersView: View {
         for item in items where ![.start, .halfway, .endingSoon].contains(item.kind) {
             let (name, symbol): (String, String) = {
                 switch item.kind {
-                case .zikr, .zikrLater: ("Zikr · \(item.title.isEmpty ? "reminder" : item.title)", "circle.hexagonpath")
+                case .zikr, .zikrLater: ("Zikr · \(item.title.isEmpty ? "reminder" : item.title)", "circle.dotted.circle")
                 case .snooze: ("Later · \(item.prayer ?? item.title)", "clock.arrow.circlepath")
-                case .keepAlive: ("Reminder to open shukr", "arrow.clockwise")
+                case .keepAlive: ("Reminder to open shukr", "arrow.clockwise.circle")
                 case .masjid: (line(for: item), "building.columns")
                 default: (item.title.isEmpty ? "Reminder" : item.title, "bell")
                 }
@@ -625,14 +636,14 @@ struct YourRemindersView: View {
     }
 
     private var whyTiles: some View {
-        let tiles: [(String, String)] = [("Why only 64?", "list.bullet"), ("Tops itself up", "arrow.clockwise"),
-                                          ("Arrives on time", "clock")]
+        let tiles: [(String, String)] = [("Why only 64?", "questionmark.circle"), ("Tops itself up", "arrow.triangle.2.circlepath"),
+                                          ("Arrives on time", "clock.badge.checkmark")]
         return HStack(spacing: 8) {
             ForEach(tiles.indices, id: \.self) { i in
                 // The setup's option cards: a sage tint and edge on the picked one.
                 let picked = i == selectedWhy
                 VStack(spacing: 8) {
-                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .light)).foregroundStyle(Color.sage)
+                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .regular)).foregroundStyle(Color.sage)
                     Text(tiles[i].0).font(.system(.footnote, design: .rounded, weight: picked ? .medium : .regular))
                         .foregroundStyle(picked ? Color.sage : .primary)
                         .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
@@ -640,13 +651,13 @@ struct YourRemindersView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14).padding(.horizontal, 6)
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(picked ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
+                    .fill(picked ? okTint : Color(.secondarySystemGroupedBackground)))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(picked ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
+                    .stroke(picked ? Color.sage.opacity(0.7) : .clear, lineWidth: 1.5))
                 .contentShape(Rectangle())
                 .onTapGesture {
                     triggerSomeVibration(type: .light)
-                    withAnimation(.easeInOut(duration: 0.2)) { selectedWhy = i }
+                    withAnimation(Self.switchSpring) { selectedWhy = i }
                 }
             }
         }
@@ -663,10 +674,10 @@ struct YourRemindersView: View {
             let bgOn = health.backgroundRefresh == .available
             let keep = health.keepAliveDate.map { " (\($0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())))" } ?? ""
             return ("Your week keeps topping itself up.", [
-                bgOn ? Point(big: "Background refresh is on", small: "iOS wakes shukr now and then to add the next days." + ran, symbol: "arrow.clockwise", warn: false)
-                     : Point(big: "Background refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.clockwise", warn: true),
+                bgOn ? Point(big: "Background refresh is on", small: "iOS wakes shukr now and then to add the next days." + ran, symbol: "arrow.triangle.2.circlepath", warn: false)
+                     : Point(big: "Background refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.triangle.2.circlepath", warn: true),
                 Point(big: "Opening shukr tops it up too", small: "Any time you open the app, the week refills.", symbol: "iphone", warn: false),
-                Point(big: "Never a silent stop", small: "If iOS can’t refresh, your last reminder\(keep) asks you to open shukr.", symbol: "exclamationmark", warn: false),
+                Point(big: "Never a silent stop", small: "If iOS can’t refresh, your last reminder\(keep) asks you to open shukr.", symbol: "bell.badge", warn: false),
             ], nil, [])
         case 2:
             // First HIS settings and what they mean for him — red only where one is really a problem —
@@ -689,7 +700,7 @@ struct YourRemindersView: View {
                     ? Point(big: "Scheduled Summary: on", small: ts ? "Reminders still come right away (Time Sensitive lets them through)."
                                                                        : "Reminders wait for the next summary, so they can arrive late.",
                             symbol: "tray.full", warn: !ts)
-                    : Point(big: "Scheduled Summary: off", small: "Reminders come right away.", symbol: "checkmark", warn: false))
+                    : Point(big: "Scheduled Summary: off", small: "Reminders come right away.", symbol: "checkmark.circle", warn: false))
             }
             let explain = [
                 Point(big: "Time Sensitive", small: "Lets a reminder through Focus modes and the Scheduled Summary. shukr marks prayer reminders Time Sensitive.", symbol: "clock", warn: false, neutral: true),
@@ -701,10 +712,10 @@ struct YourRemindersView: View {
         default:
             let n = NotificationScheduler.nudgeDaysAhead
             let free = max(NotificationScheduler.limit - pending.count, 0)
-            return ("iOS keeps 64 reminders per app. shukr spends them carefully.", [
-                Point(big: "Every start, all week", small: "Each prayer’s start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "checkmark", warn: false),
-                Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "Halfway and 30-min nudges (the dotted days) are added as each day comes closer.", symbol: "bell", warn: false),
-                Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "minus", warn: false),
+            return ("How the 64 are spent.", [
+                Point(big: "Every start, all week", small: "Each prayer’s start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "calendar", warn: false),
+                Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "Halfway and 30-min nudges (the dotted days) are added as each day comes closer.", symbol: "bell.badge", warn: false),
+                Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
             ], nil, [])
         }
     }
@@ -713,7 +724,7 @@ struct YourRemindersView: View {
         let why = why
         return card {
             VStack(alignment: .leading, spacing: 12) {
-                Text(why.head).font(.system(.title3, design: .rounded, weight: .light))
+                Text(why.head).font(.system(.title3, design: .rounded, weight: .regular))
                     .fixedSize(horizontal: false, vertical: true)
                 if why.explainHead != nil {
                     caption("Your settings")
@@ -740,8 +751,10 @@ struct YourRemindersView: View {
                     }
                 }
             }
+            // Only the content swaps (out, then in); the card and its height follow `switchSpring`.
+            .id(selectedWhy)
+            .transition(.sheetContent(offset: 6))
         }
-        .animation(.easeInOut(duration: 0.2), value: selectedWhy)
     }
 
     /// The setup's why-row: a light symbol (sage; the setup's orange when it needs a hand; grey for
@@ -749,14 +762,14 @@ struct YourRemindersView: View {
     private func pointRow(_ p: Point) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: p.symbol)
-                .font(.system(size: 18, weight: .light))
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(p.neutral ? Color.secondary : p.warn ? warnInk : okInk)
                 .frame(width: 26)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
                 Text(p.big).font(.system(.body, design: .rounded))
                     .foregroundStyle(p.warn && !p.neutral ? warnInk : .primary)
-                Text(p.small).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                Text(p.small).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -828,7 +841,7 @@ struct YourRemindersView: View {
                             .tint(Color.sage)
                     }
                 }
-                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .font(.system(.subheadline, design: .rounded))
                 .padding(.top, 10)
             } label: {
                 Text("Details").font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)

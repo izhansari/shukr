@@ -1086,6 +1086,12 @@
       "title": "Moving a prayer's pin: a clear green pin with the prayer's symbol that lifts while you drag the map", "headline": "A clear pin when you move a prayer",
       "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; a green pin with the prayer's symbol lifts, then drops where you stop", "Or the time editor (long-press a marked prayer) → the location chip: the same pin"],
       "checked": "sim", "shots": ["wn-pick-pin.jpg"], "addresses": ["723D0745-D06C-4924-85A9-FD320377D08A", "7D8E8B67-2969-44B6-BB2E-4864CC68642A"]
+    },
+    {
+      "id": "notifications-15", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Your reminders: a headline on the 64 limit, iOS colours, readable text, clearer symbols, smooth card switches", "headline": "Your reminders: clearer and smoother",
+      "tryIt": ["Settings → Notifications → the Reminders row → Your reminders: the top says iOS keeps up to 64 notifications and how shukr budgets them", "Tap the three tiles and the days: the card stays put, its content swaps without flicker and its height glides"],
+      "checked": "sim", "shots": ["wn-reminders-polish.jpg"], "addresses": ["49171DB2-A9BD-442D-8C05-A78812B07007"]
     }
   ]
 }

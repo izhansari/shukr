@@ -1365,6 +1365,15 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   Scheduled Summary, Focus, Together = the one late setup; `Point.neutral`). Details (beta) at the bottom. DEBUG
   `-remindersDay N`, `-remindersWhy N`, `-remindersScroll`. `NotificationHealth` now also publishes `pendingCount`,
   `scheduledThrough`, `keepAliveDate` (on every refresh).
+  **Polish (2026-09-28, feedback 49171DB2 — "not that smooth … weird symbols … faint … dull colors … too android"):** a
+  headline above the ring ("iOS keeps up to 64 notifications per app. shukr budgets them carefully. Here's how."); bead
+  kinds in iOS system tints (green starts · orange halfway · red 30 min · blue zikr · purple later · grey other ·
+  `systemGray4` free), sage stays the accent (week rings, picked tile, ok ink); grouped background with white /
+  near-black cards; captions secondary (not tertiary) and no light-weight body text; symbols `questionmark.circle` /
+  `arrow.triangle.2.circlepath` / `clock.badge.checkmark` (tiles), `calendar`, `bell.badge`, `circle.dashed` (was the
+  "straight line" `minus` on "N slots free"), `circle.dotted.circle` (zikr), monochrome (hierarchical washed them out).
+  Tile / day switches: the card stays, only its content swaps with `.sheetContent(offset: 6)` (out 0.1 s, in a beat
+  later — a plain crossfade ghosted the two) and the height follows `switchSpring` (0.42 / 0.9). Sim ✓ frame by frame.
   **Settings:** `NotificationHealthRows` is one status row — green check "Reminders are on · On time · scheduled through
   …", or orange "Reminders are off / may arrive late / …" — a NavigationLink to Your reminders (beta gate
   `UpcomingReminders.isPublic || WhatsNewAccess`), then one sage fix button per problem. The separate "Upcoming
