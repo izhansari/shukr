@@ -79,6 +79,7 @@ struct InsightsView: View {
                     .padding(.top, 12)
                     .animation(.spring(response: 0.45, dampingFraction: 0.85), value: pageIndex)
 
+                    ScrollViewReader { pager in
                     ScrollView(.horizontal) {
                         HStack(spacing: 0) {
                             ForEach(Self.questions.indices, id: \.self) { i in
@@ -109,6 +110,18 @@ struct InsightsView: View {
                     .frame(maxHeight: .infinity)
                     .scrollTargetBehavior(.paging)
                     .scrollPosition(id: $pageIndex)
+                    .defaultScrollAnchor(.leading)
+                    // Always opens on "how am I scoring?" (owner kept landing on the middle page).
+                    .task {
+                        #if DEBUG
+                        if UserDefaults.standard.object(forKey: "insightsPage") != nil { return }
+                        #endif
+                        pager.scrollTo(0, anchor: .leading)
+                        pageIndex = 0
+                        try? await Task.sleep(for: .milliseconds(150))
+                        if pageIndex != 0 { pager.scrollTo(0, anchor: .leading); pageIndex = 0 }
+                    }
+                    }
                     .scrollIndicators(.hidden)
                     .sensoryFeedback(.selection, trigger: pageIndex)
 
@@ -410,33 +423,31 @@ struct InsightsView: View {
 
     // MARK: Streaks — one quiet line
 
+    /// Two centred columns, each streak with its best centred under it (owner, 2026-09-28).
     private var streaks: some View {
-        // One line when it fits; stacked on a narrow phone (each item never wraps).
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 16) { streakItems }
-            VStack(spacing: 6) { streakItems }
+        HStack(alignment: .top, spacing: 12) {
+            streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
+            streakItem("sparkles", value: onTimeStreak, label: "in-time streak", best: maxOnTimeStreak)
         }
-    }
-
-    @ViewBuilder private var streakItems: some View {
-        streakItem("heart.fill", value: max(streak, 0), label: "day streak", best: maxStreak)
-        streakItem("sparkles", value: onTimeStreak, label: "in-time streak", best: maxOnTimeStreak)
     }
 
     private func streakItem(_ symbol: String, value: Int, label: String, best: Int) -> some View {
         let shown = revealed ? value : 0
-        return HStack(spacing: 6) {
-            Image(systemName: symbol).foregroundStyle(.green)
-            Text("\(shown)")
-                .fontWeight(.medium)
-                .contentTransition(.numericText(value: Double(shown)))
-            Text(label).foregroundStyle(.secondary)
-            Text("· best \(best)").foregroundStyle(.tertiary)
+        return VStack(spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol).foregroundStyle(.green)
+                Text("\(shown)")
+                    .fontWeight(.medium)
+                    .contentTransition(.numericText(value: Double(shown)))
+                Text(label).foregroundStyle(.secondary)
+            }
+            Text("best \(best)").foregroundStyle(.tertiary)
         }
         .lineLimit(1)
-        .fixedSize()
+        .minimumScaleFactor(0.8)
         .font(.subheadline)
         .fontWeight(.light)
+        .frame(maxWidth: .infinity)
     }
 
 }

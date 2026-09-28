@@ -1871,7 +1871,9 @@ the three stats (equal columns, one-line captions: "of N prayed" = recorded pray
 `-insightsDayMark allFive|inTime`. Redone (owner: too subtle): no outlines — while a stat is picked every other day fades
 to 25 % (squares and dates), the picked days show their score colours (whatever the switch says), their dates are
 filled pills (white on sage / green), and the detail slot names them ("with all five: Fri 25 · Sat 26"); a square tap
-clears the stat, a stat tap clears the square. The older write-up follows.
+clears the stat, a stat tap clears the square. Streak line: two centred columns, "best N" centred under each (no
+ViewThatFits). The pager always opens on page 0 (`defaultScrollAnchor(.leading)` + a `ScrollViewReader` scroll to 0 on
+appear, skipped under DEBUG `-insightsPage`) — the owner kept landing on the middle page. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
