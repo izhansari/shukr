@@ -41,6 +41,17 @@ enum WatchZikrSync {
         get { UserDefaults.standard.dictionary(forKey: receivedKey) as? [String: Double] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: receivedKey) }
     }
+    /// Prayer marks from the watch by id → [received at, the prayer's start]. Kept apart from
+    /// sessions (they never go to the watch as confirmed sessions). A negative "received at" is an
+    /// undo that arrived before its mark: that mark is then ignored.
+    private static let marksKey = "watchZikr.receivedMarks"
+    private static var receivedMarks: [String: [Double]] {
+        get { UserDefaults.standard.dictionary(forKey: marksKey) as? [String: [Double]] ?? [:] }
+        set {
+            let cutoff = Date().addingTimeInterval(-7 * 86_400).timeIntervalSince1970
+            UserDefaults.standard.set(newValue.filter { abs($0.value.first ?? 0) > cutoff }, forKey: marksKey)
+        }
+    }
 
     static func start(container: ModelContainer) {
         self.container = container
@@ -160,6 +171,7 @@ enum WatchZikrSync {
             case "zikrSession": saveSession(info)
             case "memoRequest": if let id = info["mantraID"] as? String { sendMemo(mantraID: id) }
             case "prayerMarked": markPrayer(info)
+            case "prayerUnmarked": unmarkPrayer(info)
             default: break
             }
         }
@@ -202,7 +214,8 @@ enum WatchZikrSync {
             avgTimePerClick: perCount,
             tasbeehRate: rateString(perCount),
             task: task,
-            mantra: task?.mantra ?? (name.isEmpty ? nil : MantraModel.find(named: name, in: context))
+            mantra: task?.mantra ?? (info["postSalah"] as? Bool == true ? tasbihFatimah(in: context)
+                                     : name.isEmpty ? nil : MantraModel.find(named: name, in: context))
         )
         item.id = id
         context.insert(item)
@@ -230,7 +243,7 @@ enum WatchZikrSync {
         // The same mark arrives twice (direct + queued), and must never re-mark a prayer unmarked
         // here since: each mark has its own id.
         let markID = info["id"] as? String
-        if let markID, received[markID] != nil { scheduleSend(); return }
+        if let markID, receivedMarks[markID] != nil { scheduleSend(); return }
         let context = ModelContext(container)
         let startDate = Date(timeIntervalSince1970: start), endDate = Date(timeIntervalSince1970: end)
         let tapped = Date(timeIntervalSince1970: at)
@@ -240,7 +253,7 @@ enum WatchZikrSync {
             return made
         }()
         guard !prayer.isCompleted else {
-            if let markID { received[markID] = Date().timeIntervalSince1970 }
+            if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }   // not applied
             scheduleSend(); return
         }
         prayer.isCompleted = true
@@ -252,6 +265,63 @@ enum WatchZikrSync {
         prayer.setPrayerScore(atDate: tapped)
         prayer.cancelUpcomingNudges()
         // Its own day's score (a mark delivered after Fajr belongs to yesterday).
+        rescoreDay(of: startDate, in: context)
+        do {
+            try context.save()
+        } catch {
+            print("⌚️ watch mark not saved: \(error)")
+            // Tell the watch, so it stops showing it marked.
+            let reply: [String: Any] = ["type": "markFailed", "name": name, "id": markID ?? "", "start": start]
+            if WCSession.default.activationState == .activated {
+                WCSession.default.transferUserInfo(reply)
+                if WCSession.default.isReachable { WCSession.default.sendMessage(reply, replyHandler: nil, errorHandler: nil) }
+            }
+            return
+        }
+        if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, at] }
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+        // On screen, and about today's prayer day: the app's own completion moment, as for a mark
+        // made here. (Yesterday's Isha delivered after Fajr must not play on today's circle.)
+        if UIApplication.shared.applicationState == .active,
+           Calendar.current.isDate(startDate, inSameDayAs: PrayerDay.date()) {
+            let window = endDate.timeIntervalSince(startDate)
+            let progress = window > 0 ? tapped.timeIntervalSince(startDate) / window : 1
+            NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
+                name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
+                summary: prayer.scoreSummary))
+        }
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
+        WidgetCenter.shared.reloadAllTimelines()
+        scheduleSend()
+        print("⌚️ \(name) marked from the watch")
+    }
+
+    /// Undo on the watch, within seconds of a mark: that mark (by id) comes off again, and its day
+    /// is rescored. An undo that arrives before its mark leaves a tombstone, so the mark is ignored.
+    private static func unmarkPrayer(_ info: [String: Any]) {
+        guard let container, let markID = info["id"] as? String, let name = info["name"] as? String,
+              let start = info["start"] as? Double else { return }
+        let known = receivedMarks[markID]
+        receivedMarks[markID] = [-Date().timeIntervalSince1970, start]
+        guard let known, (known.first ?? 0) > 0, known.count > 2, known[2] > 0 else { return }   // never applied
+        let context = ModelContext(container)
+        let startDate = Date(timeIntervalSince1970: start)
+        // Only while the prayer still carries *this* mark (its tap time): a newer mark, or one made
+        // on the phone since, is never undone by an old undo.
+        guard let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context), prayer.isCompleted,
+              let marked = prayer.timeAtComplete, abs(marked.timeIntervalSince1970 - known[2]) < 1 else { return }
+        prayer.resetPrayer()
+        rescoreDay(of: startDate, in: context)
+        do { try context.save() } catch { print("⌚️ watch undo not saved: \(error)"); return }
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
+        WidgetCenter.shared.reloadAllTimelines()
+        scheduleSend()
+        print("⌚️ \(name) unmarked from the watch (undo)")
+    }
+
+    /// A day's DailyPrayerScore from its rows (a late mark or an undo belongs to its own day).
+    private static func rescoreDay(of startDate: Date, in context: ModelContext) {
         let dayStart = Calendar.current.startOfDay(for: startDate)
         let (rowStart, rowEnd) = PrayerDay.rowRange(forDayStarting: dayStart)
         let dayPrayers = (try? context.fetch(FetchDescriptor<PrayerModel>(
@@ -265,32 +335,20 @@ enum WatchZikrSync {
             row.averageScore = score
             context.insert(row)
         }
-        do {
-            try context.save()
-        } catch {
-            print("⌚️ watch mark not saved: \(error)")
-            // Tell the watch, so it stops showing it marked.
-            let reply: [String: Any] = ["type": "markFailed", "name": name, "id": markID ?? ""]
-            if WCSession.default.activationState == .activated {
-                WCSession.default.transferUserInfo(reply)
-                if WCSession.default.isReachable { WCSession.default.sendMessage(reply, replyHandler: nil, errorHandler: nil) }
-            }
-            return
-        }
-        if let markID { received[markID] = Date().timeIntervalSince1970 }
-        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-        // On screen: the app's own completion moment, as for a mark made here.
-        if UIApplication.shared.applicationState == .active {
-            let window = endDate.timeIntervalSince(startDate)
-            let progress = window > 0 ? tapped.timeIntervalSince(startDate) / window : 1
-            NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
-                name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
-                summary: prayer.scoreSummary))
-        }
-        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
-        WidgetCenter.shared.reloadAllTimelines()
-        scheduleSend()
-        print("⌚️ \(name) marked from the watch")
+    }
+
+    /// The "Tasbih Fatimah" zikr, made on first use exactly as the phone's post-salah session does
+    /// (PostSalahTasbeeh.prepare).
+    private static func tasbihFatimah(in context: ModelContext) -> MantraModel {
+        let name = PostSalahTasbeeh.mantraName
+        if let found = MantraModel.find(named: name, in: context) { return found }
+        let text = PostSalahTasbeeh.phases.map { "\($0.arabic)  ×\($0.count)" }.joined(separator: "\n")
+            + "\nSubhanallah · Alhamdulillah · Allahu Akbar"
+        let new = MantraModel(name: name, fullText: text,
+                              notes: "After each obligatory prayer: 33, 33 and 34 — 100 in all.")
+        new.builtInID = BuiltInAzkar.key(BuiltInAzkar.tasbihFatimahName)
+        context.insert(new)
+        return new
     }
 
     /// The phone's "per 100" rate, as tasbeehView writes it.

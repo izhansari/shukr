@@ -28,6 +28,8 @@ enum WatchStore {
         /// Prayers marked on this watch, shown at once until the phone reports them:
         /// name → [prayer-day start, score, tapped at].
         static let localMarks = "watch.localMarks"
+        /// The mark id sent to the phone for each local mark (name → id), for undo / a failed save.
+        static let localMarkIDs = "watch.localMarkIDs"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -62,16 +64,31 @@ enum WatchStore {
     }
 
     /// Records a prayer marked on the watch (until the phone confirms it).
-    static func addLocalMark(_ name: String, dayStart: Date, score: Double, at: Date) {
+    static func addLocalMark(_ name: String, dayStart: Date, score: Double, at: Date, id: String) {
         var marks = localMarks
         marks[name] = [Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970, score, at.timeIntervalSince1970]
         defaults.set(marks, forKey: Key.localMarks)
+        var ids = localMarkIDs
+        ids[name] = id
+        defaults.set(ids, forKey: Key.localMarkIDs)
+    }
+
+    static var localMarkIDs: [String: String] {
+        defaults.dictionary(forKey: Key.localMarkIDs) as? [String: String] ?? [:]
+    }
+
+    /// The prayer a mark id belongs to, while its local mark is still here.
+    static func localMarkName(forID id: String) -> String? {
+        localMarkIDs.first { $0.value == id }?.key
     }
 
     static func removeLocalMark(_ name: String) {
         var marks = localMarks
         marks[name] = nil
         defaults.set(marks, forKey: Key.localMarks)
+        var ids = localMarkIDs
+        ids[name] = nil
+        defaults.set(ids, forKey: Key.localMarkIDs)
     }
 
     static var hasLocation: Bool {
@@ -228,6 +245,20 @@ enum WatchScoring {
         guard rest > 0 else { return 1 }
         let left = min(max(end.timeIntervalSince(at) / rest, 0), 1)
         return inWindowFloor + (1 - inWindowFloor) * left
+    }
+
+    /// The phone's grade word for a score (PrayerScoring): Perfect · On time · Late · Qaza.
+    static func word(forScore s: Double) -> String {
+        if s >= 0.9999 { return "Perfect" }
+        if s >= 0.8 { return "On time" }
+        if s >= inWindowFloor - 0.0001 { return "Late" }
+        return "Qaza"
+    }
+
+    /// "On time · 88", "Qaza" — the completion moment's line, as on the phone.
+    static func summary(forScore s: Double) -> String {
+        let word = word(forScore: s)
+        return word == "Qaza" ? word : "\(word) · \(Int((s * 100).rounded()))"
     }
 
     /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).

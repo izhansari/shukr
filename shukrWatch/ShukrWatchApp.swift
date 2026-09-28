@@ -12,6 +12,7 @@ import SwiftUI
 import WatchKit
 import WatchConnectivity
 import WidgetKit
+import UserNotifications
 
 @main
 struct ShukrWatchApp: App {
@@ -43,6 +44,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
             WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
+        WatchNotifications.register()
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -69,16 +71,35 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { reply(userInfo) }
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { reply(message) }
 
+    private var handledFailures: Set<String> = []
+
+    /// The phone couldn't save a mark (the direct and queued copies both report it: handled once,
+    /// by mark id). The local mark goes; the failure buzz waits 3 s and is skipped if the phone
+    /// has meanwhile reported the prayer done (a retry that worked).
     private func reply(_ info: [String: Any]) {
-        guard info["type"] as? String == "markFailed", let name = info["name"] as? String else { return }
-        WatchStore.removeLocalMark(name)
-        WidgetCenter.shared.reloadAllTimelines()
-        refresh()
-        DispatchQueue.main.async { WKInterfaceDevice.current().play(.failure) }
+        guard info["type"] as? String == "markFailed", let id = info["id"] as? String, !id.isEmpty else { return }
+        DispatchQueue.main.async {
+            guard !self.handledFailures.contains(id), let name = WatchStore.localMarkName(forID: id) else { return }
+            self.handledFailures.insert(id)
+            let start = (info["start"] as? Double).map(Date.init(timeIntervalSince1970:)) ?? Date()
+            WatchStore.removeLocalMark(name)
+            WidgetCenter.shared.reloadAllTimelines()
+            self.refresh()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                guard let day = WatchPrayers.day(at: start),
+                      !WatchPrayers.completed(dayStart: day.prayers[0].start).contains(name) else { return }
+                WKInterfaceDevice.current().play(.failure)
+            }
+        }
     }
 
     func sessionReachabilityDidChange(_ session: WCSession) {
-        if session.isReachable { DispatchQueue.main.async { WatchZikrStore.shared.sendUnconfirmedNow() } }
+        if session.isReachable {
+            DispatchQueue.main.async {
+                WatchZikrStore.shared.sendUnconfirmedNow()
+                WatchPrayerMarker.flushOutbox()
+            }
+        }
     }
 
     func session(_ session: WCSession, didFinish userInfoTransfer: WCSessionUserInfoTransfer, error: Error?) {
@@ -124,6 +145,8 @@ struct WatchRootView: View {
 /// own gesture, so it never fights the sideways page swipes or the system's edge swipes.
 struct WatchHomeView: View {
     @EnvironmentObject var session: WatchSession
+    @ObservedObject private var moments = WatchMoment.shared
+    @State private var tasbih: WatchCounterConfig?
     @State private var showList: Int = {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "watchSalahList") { return 1 }   // `-watchSalahList YES`
@@ -140,23 +163,60 @@ struct WatchHomeView: View {
                     // The ring alone, the chevron hinting the list below (the phone's chevron).
                     VStack(spacing: 4) {
                         Spacer(minLength: 0)
-                        if let r = WatchPrayers.relevant(at: context.date) {
-                            WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
-                                .frame(width: 138, height: 138)
-                        }
-                        Spacer(minLength: 0)
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 1 }
-                        } label: {
-                            VStack(spacing: 0) {
-                                Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
-                                Text(left > 0 ? "\(left) left today" : "all prayed today")
-                                    .font(.system(size: 10, weight: .light, design: .rounded))
+                        ZStack {
+                            if let r = WatchPrayers.relevant(at: context.date) {
+                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
                             }
-                            .foregroundStyle(.tertiary)
+                            // Just marked: the phone's completion moment over the ring.
+                            if let m = moments.moment {
+                                WatchCompletionMoment(moment: m).transition(.opacity)
+                            }
                         }
-                        .buttonStyle(.plain)
+                        .frame(width: 138, height: 138)
+                        Spacer(minLength: 0)
+                        if moments.moment != nil {
+                            Button("Undo") { moments.undo() }
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .buttonStyle(.plain)
+                                .foregroundStyle(.secondary)
+                                .transition(.opacity)
+                        } else if moments.offerIsLive(at: context.date) {
+                            // The phone's post-salah pill.
+                            HStack(spacing: 6) {
+                                Button {
+                                    moments.dismissOffer()
+                                    tasbih = WatchCounterConfig(postSalah: true)
+                                } label: {
+                                    Label("Post-salah tasbih?", systemImage: "circle.hexagonpath")
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundStyle(Color.watchSage)
+                                }
+                                .buttonStyle(.plain)
+                                Button { moments.dismissOffer() } label: {
+                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Capsule().fill(Color.watchSage.opacity(0.15)))
+                            .transition(.opacity)
+                        } else {
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 1 }
+                            } label: {
+                                VStack(spacing: 0) {
+                                    Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
+                                    Text(left > 0 ? "\(left) left today" : "all prayed today")
+                                        .font(.system(size: 10, weight: .light, design: .rounded))
+                                }
+                                .foregroundStyle(.tertiary)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
+                    .padding(.bottom, 12)   // clear of the page dots on a 41 mm face
                     .tag(0)
 
                     // The list, under a small ring (tap it to go back up).
@@ -179,6 +239,22 @@ struct WatchHomeView: View {
                     .tag(1)
                 }
                 .tabViewStyle(.verticalPage)
+                // A mark made from the list: back up to the ring for the moment.
+                .onChange(of: moments.moment) { _, m in
+                    if m != nil { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 } }
+                }
+                .fullScreenCover(item: $tasbih) { config in WatchCounterView(config: config) }
+                #if DEBUG
+                // `-demoWatchPostSalah`: open Tasbih Fatimah as if from the pill (simulator).
+                .onAppear {
+                    if ProcessInfo.processInfo.arguments.contains("-demoWatchUndo") {   // undo 4 s after a mark
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { moments.undo() }
+                    }
+                    if ProcessInfo.processInfo.arguments.contains("-demoWatchPostSalah") {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { tasbih = WatchCounterConfig(postSalah: true) }
+                    }
+                }
+                #endif
             } else {
                 VStack(spacing: 8) {
                     Text("shukr").font(.system(size: 24, weight: .thin, design: .rounded))
@@ -269,7 +345,8 @@ struct WatchPrayerList: View {
             Button("I prayed") { WatchPrayerMarker.mark(p); marking = nil }
             Button("Cancel", role: .cancel) { marking = nil }
         } message: { p in
-            Text(now > p.end ? "Marked as Qaza, after its window." : "Scored at this moment, like on your iPhone.")
+            let score = WatchScoring.score(start: p.start, end: p.end, at: Date())
+            Text(Date() > p.end ? "Qaza — after its window." : "Right now: \(WatchScoring.summary(forScore: score))")
         }
     }
 
@@ -311,6 +388,8 @@ struct WatchPrayerRing: View {
     /// Replaces the tap's own action (the small ring over the list: back up to the ring).
     var onTap: (() -> Void)? = nil
     @State private var showLeft = false
+    /// The hold to mark it: fills round the ring while pressed (like the phone's circle).
+    @State private var holdFill: CGFloat = 0
     private var k: CGFloat { compact ? 0.55 : 1.1 }
 
     private var elapsed: Double {
@@ -369,6 +448,12 @@ struct WatchPrayerRing: View {
                 .contentTransition(.opacity)
             }
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
+            if holdFill > 0 {
+                Circle()
+                    .trim(from: 0, to: holdFill)
+                    .stroke(Color.green.opacity(0.8), style: StrokeStyle(lineWidth: 5 * k, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
         }
         .contentShape(Circle())
         // A new prayer on the ring starts on "ends …" again.
@@ -380,9 +465,71 @@ struct WatchPrayerRing: View {
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
         }
         // Hold to mark it prayed, like the phone's circle.
-        .onLongPressGesture(minimumDuration: 0.6) {
+        .onLongPressGesture(minimumDuration: 0.6, perform: {
             guard current, !compact else { return }
+            holdFill = 0
             WatchPrayerMarker.mark(prayer)
+        }, onPressingChanged: { pressing in
+            guard current, !compact else { return }
+            withAnimation(pressing ? .linear(duration: 0.6) : .easeOut(duration: 0.2)) { holdFill = pressing ? 1 : 0 }
+        })
+    }
+}
+
+/// The phone's prayer-notification categories, registered on the watch too, so a prayer
+/// notification on the wrist keeps "I already prayed" / "Nudge in 5 / 10 minutes" (with a watch
+/// app installed, watchOS looks for the category in the watch app). If watchOS hands the action to
+/// the watch app, it's done here: marked through the watch's own path (to the phone), or a nudge
+/// scheduled on the watch. Same identifiers as shukrApp's NotificationDelegate.
+final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = WatchNotifications()
+
+    static func register() {
+        let center = UNUserNotificationCenter.current()
+        let markPrayed = UNNotificationAction(identifier: "MARK_PRAYED_ACTION", title: "I already prayed", options: [])
+        let snooze5 = UNNotificationAction(identifier: "SNOOZE_5_ACTION", title: "Nudge in 5 minutes", options: [])
+        let snooze10 = UNNotificationAction(identifier: "SNOOZE_10_ACTION", title: "Nudge in 10 minutes", options: [])
+        let round2 = UNNotificationAction(identifier: "ROUND2_SNOOZE_5_ACTION", title: "5 more minutes", options: [])
+        let confirm = UNNotificationAction(identifier: "ROUND2_CONFIRM_ACTION", title: "Yes", options: [])
+        let deny = UNNotificationAction(identifier: "ROUND2_DENY_ACTION", title: "Lol, I'll pray right now!", options: [.foreground])
+        center.setNotificationCategories([
+            UNNotificationCategory(identifier: "Round1_Snooze", actions: [markPrayed, snooze5, snooze10], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "Round2_Snooze", actions: [markPrayed, round2], intentIdentifiers: []),
+            UNNotificationCategory(identifier: "Round2_Confirm", actions: [markPrayed, confirm, deny], intentIdentifiers: []),
+        ])
+        center.delegate = shared
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+                                withCompletionHandler completionHandler: @escaping () -> Void) {
+        let info = response.notification.request.content.userInfo
+        let prayer: WatchPrayer? = {
+            guard let name = info["prayerName"] as? String, let start = info["prayerStart"] as? Double,
+                  let end = info["prayerEnd"] as? Double else { return nil }
+            return WatchPrayer(name: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
+        }()
+        switch response.actionIdentifier {
+        case "MARK_PRAYED_ACTION":
+            if let prayer { DispatchQueue.main.async { WatchPrayerMarker.mark(prayer) } }
+            completionHandler()
+        case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION", "ROUND2_SNOOZE_5_ACTION", "ROUND2_CONFIRM_ACTION":
+            let minutes = response.actionIdentifier == "SNOOZE_10_ACTION" ? 10 : 5
+            let content = UNMutableNotificationContent()
+            content.title = "It's been \(minutes) minutes"
+            if let prayer { content.body = "\(prayer.name) · pray by \(prayer.end.formatted(date: .omitted, time: .shortened))" }
+            content.sound = .default
+            content.categoryIdentifier = "Round2_Snooze"
+            content.userInfo = info
+            let request = UNNotificationRequest(identifier: "watch-snooze-\(UUID().uuidString)", content: content,
+                                                trigger: UNTimeIntervalNotificationTrigger(timeInterval: Double(minutes * 60), repeats: false))
+            center.add(request) { _ in completionHandler() }
+        default:
+            completionHandler()
         }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 }

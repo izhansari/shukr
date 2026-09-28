@@ -81,6 +81,7 @@ struct WatchDraft: Codable {
     let savedAt: Date
     /// Counting with the Crown (screen taps off) — kept so a reopened session stays that way.
     var crownMode: Bool? = nil
+    var postSalah: Bool? = nil
 
     /// Paused since (a draft saved mid-count counts as paused from its last save).
     var pausedSince: Date { pausedAt ?? savedAt }
@@ -100,6 +101,8 @@ struct WatchZikrRecord: Codable, Equatable {
     let seconds: Double
     /// Time per count at the last count (pauses and idle time after it excluded), like the phone.
     var perCount: Double? = nil
+    /// Tasbih Fatimah: the phone saves it under that zikr, like its own post-salah session.
+    var postSalah: Bool? = nil
 
     var userInfo: [String: Any] {
         var info: [String: Any] = ["type": "zikrSession", "id": id, "name": name, "mode": mode,
@@ -107,6 +110,7 @@ struct WatchZikrRecord: Codable, Equatable {
                                    "start": start.timeIntervalSince1970, "seconds": seconds]
         if let taskID { info["taskID"] = taskID }
         if let perCount { info["perCount"] = perCount }
+        if postSalah == true { info["postSalah"] = true }
         return info
     }
 }
@@ -244,6 +248,14 @@ final class WatchZikrStore: ObservableObject {
     }
 
     // MARK: Draft (a session in progress)
+
+    init() {
+        // Builds before round 4 kept the draft in the app-group suite: move it over once.
+        if UserDefaults.standard.data(forKey: Key.draft) == nil, let old = WatchStore.defaults.data(forKey: Key.draft) {
+            UserDefaults.standard.set(old, forKey: Key.draft)
+        }
+        WatchStore.defaults.removeObject(forKey: Key.draft)
+    }
 
     /// In the standard defaults: written often, and every app-group write would redraw anything
     /// bound to that suite (the Settings page's @AppStorage).
@@ -443,10 +455,18 @@ struct WatchCounterConfig: Identifiable {
     /// Reopening a session the app was closed on (it comes back paused).
     var draft: WatchDraft? = nil
 
+    /// Tasbih Fatimah after a prayer: 33 · 33 · 34 in one session (the phone's post-salah zikr).
+    var postSalah = false
+
     init(task: WatchTask?, startCount: Int = 0, startSeconds: Double = 0) {
         self.task = task
         self.startCount = startCount
         self.startSeconds = startSeconds
+    }
+
+    init(postSalah: Bool) {
+        self.task = nil
+        self.postSalah = postSalah
     }
 
     init(restoring draft: WatchDraft, task: WatchTask?) {
@@ -458,6 +478,7 @@ struct WatchCounterConfig: Identifiable {
         self.startSeconds = orphan ? 0 : draft.startSeconds
         self.draft = draft
         self.restoredCount = orphan ? draft.sessionCount : draft.count
+        self.postSalah = draft.postSalah ?? false
     }
 
     /// The ring's count when reopening a draft.
@@ -508,7 +529,7 @@ struct WatchZikrPage: View {
                             .font(.system(size: 10, design: .rounded))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                            .padding(.bottom, 2)
+                            .padding(.bottom, 16)
                     }
                 }
             }
@@ -646,7 +667,12 @@ struct WatchCounterView: View {
 
     private var task: WatchTask? { config.task }
     private var paused: Bool { pausedAt != nil }
+    private var postSalah: Bool { config.postSalah }
+    /// Tasbih Fatimah's phrase at the count (0-based), how far into it, and of how many.
+    private var phase: (index: Int, done: Int, of: Int) { WatchPostSalah.phase(at: count) }
+
     private var step: Int {
+        if postSalah { return 0 }   // no sets in Tasbih Fatimah (the phone doesn't offer them)
         #if DEBUG
         let demo = UserDefaults.standard.integer(forKey: "demoWatchStep")   // `-demoWatchStep 3`
         if demo > 1 { return demo }
@@ -660,6 +686,7 @@ struct WatchCounterView: View {
         max(0, (pausedAt ?? date).timeIntervalSince(startedAt) - pausedTotal)
     }
     private var fraction: Double {
+        if postSalah { return Double(count) / Double(WatchPostSalah.total) }
         guard let task else { return Double(count % 100) / 100 }
         return task.countMode ? Double(count) / Double(task.goal)
                               : (config.startSeconds + activeSeconds(at: now)) / Double(task.goal * 60)
@@ -786,24 +813,43 @@ struct WatchCounterView: View {
                 .offset(y: 60)
                 .accessibilityLabel("Count")
             if crownMode {
-                VStack(spacing: 2) {
-                    Image(systemName: "digitalcrown.horizontal.arrow.clockwise")
-                        .font(.system(size: 12, weight: .light))
-                    if crownNote {
-                        Text("Counting with the Crown")
-                            .font(.system(size: 11, weight: .light, design: .rounded))
-                            .transition(.opacity)
+                // Tap the badge (or the note) to let screen taps count again.
+                Button { setCrownMode(false) } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "digitalcrown.arrow.clockwise")
+                            .font(.system(size: 12, weight: .light))
+                        if crownNote {
+                            Text("Counting with the Crown")
+                                .font(.system(size: 11, weight: .light, design: .rounded))
+                            Text("tap here for taps")
+                                .font(.system(size: 9, weight: .light, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
+                    .padding(6)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .offset(y: crownNote ? 44 : 36)
+                .offset(y: crownNote ? 50 : 38)
                 .transition(.opacity)
+            } else if let task, !task.countMode, !postSalah {
+                // Timed task: a quiet "4:12 left" (owner: fine for privacy).
+                Text(timeLeftText(task))
+                    .font(.system(size: 11, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .offset(y: 34)
+            }
+            if postSalah {
+                WatchPostSalahStrip(count: count).offset(y: 40)
             }
             if showHint {
                 VStack(spacing: 2) {
                     Image(systemName: "hand.pinch")
-                    Text("Pinch to count")
-                    Text("or turn the Crown")
+                    Text("Pinch to count, or turn the Crown")
+                    Text("(turning it pauses screen taps)")
+                        .foregroundStyle(.tertiary)
                 }
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -824,6 +870,17 @@ struct WatchCounterView: View {
                               sensitivity: .low, isContinuous: true, isHapticFeedbackEnabled: false)
         .onChange(of: crown) { _, value in crownTurned(to: value) }
         .opacity(paused ? 0 : 1)
+    }
+
+    private func timeLeftText(_ task: WatchTask) -> String {
+        let left = max(0, Int(Double(task.goal * 60) - config.startSeconds - activeSeconds(at: now)))
+        return String(format: "%d:%02d left", left / 60, left % 60)
+    }
+
+    private func setCrownMode(_ on: Bool) {
+        WKInterfaceDevice.current().play(.click)
+        withAnimation(.easeInOut(duration: 0.25)) { crownMode = on; crownNote = false }
+        saveDraft()
     }
 
     /// A tap / pump on the screen: a count, unless counting with the Crown.
@@ -880,12 +937,20 @@ struct WatchCounterView: View {
         lastCountAt = Date()
         lastCountActive = activeSeconds(at: Date())
         tapWorth > 1 ? WatchHaptics.set() : WatchHaptics.count()
+        if postSalah {
+            // The phone's success buzz as each phrase ends; the goal is 100.
+            if count >= WatchPostSalah.total { reachedGoal(); return }
+            if WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index { WatchHaptics.goal() }
+            saveDraft()
+            return
+        }
         if count / 100 > before / 100 { WatchHaptics.hundred() }
         if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
     }
 
-    private var sessionName: String { task?.name ?? config.draft?.name ?? "" }
-    private var sessionMode: Int { task.map { $0.countMode ? 2 : 1 } ?? config.draft?.mode ?? 0 }
+    private var sessionName: String { postSalah ? WatchPostSalah.name : task?.name ?? config.draft?.name ?? "" }
+    private var sessionMode: Int { postSalah ? 2 : task.map { $0.countMode ? 2 : 1 } ?? config.draft?.mode ?? 0 }
+    private var sessionTargetCount: Int { postSalah ? WatchPostSalah.total : task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0 }
 
     /// The session so far, so closing the app never loses it. Taps save at most every 2 s; a
     /// pause, leaving the app and finishing save at once.
@@ -893,19 +958,26 @@ struct WatchCounterView: View {
         guard force else {
             draftToken += 1
             let token = draftToken
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if token == draftToken { saveDraft(now: true) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if token == draftToken && finished == nil { saveDraft(now: true) }
+            }
             return
         }
-        guard finished == nil, sessionCount > 0 else { WatchZikrStore.shared.draft = nil; return }
+        guard finished == nil, sessionCount > 0 else {
+            // Only this session's own draft is cleared, never a newer one's.
+            if WatchZikrStore.shared.draft?.startedAt == startedAt { WatchZikrStore.shared.draft = nil }
+            return
+        }
         WatchZikrStore.shared.draft = WatchDraft(
             taskID: task?.id ?? config.draft?.taskID, name: sessionName,
             mode: sessionMode,
             targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? config.draft?.targetMin ?? 0,
-            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0,
+            targetCount: sessionTargetCount,
             startCount: config.startCount, startSeconds: config.startSeconds, count: count,
             startedAt: startedAt, pausedTotal: pausedTotal, pausedAt: pausedAt,
             lastCountActive: lastCountActive, countingInSets: countingInSets,
-            dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date(), crownMode: crownMode)
+            dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date(), crownMode: crownMode,
+            postSalah: postSalah ? true : nil)
     }
 
     private func minus() {
@@ -946,11 +1018,12 @@ struct WatchCounterView: View {
             name: sessionName,
             mode: sessionMode,
             targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? config.draft?.targetMin ?? 0,
-            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0,
+            targetCount: sessionTargetCount,
             count: sessionCount,
             start: startedAt,
             seconds: seconds,
-            perCount: lastCountActive / Double(max(sessionCount, 1)))
+            perCount: lastCountActive / Double(max(sessionCount, 1)),
+            postSalah: postSalah ? true : nil)
         WatchZikrStore.shared.draft = nil
         WatchZikrStore.shared.record(record)
         runtime.stop()
@@ -973,7 +1046,7 @@ struct WatchCounterView: View {
                     .tracking(1.2)
                     .textCase(.uppercase)
                     .foregroundStyle(.tertiary)
-                Text(task?.title ?? "Freestyle")
+                Text(postSalah ? WatchPostSalah.name : task?.title ?? "Freestyle")
                     .font(.system(size: 18, weight: .light, design: .rounded))
                     .multilineTextAlignment(.center)
                 HStack(spacing: 6) {
@@ -984,6 +1057,16 @@ struct WatchCounterView: View {
                 if let task, task.memo != nil || WatchMemoButton.demo {
                     WatchMemoButton(task: task)
                 }
+                // Screen taps: on, or off while counting with the Crown.
+                Button { setCrownMode(!crownMode) } label: {
+                    Label(crownMode ? "Screen taps off · Crown" : "Screen taps on",
+                          systemImage: crownMode ? "digitalcrown.arrow.clockwise" : "hand.tap")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(crownMode ? Color.green : .secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 5)
+                        .background(Capsule().fill(crownMode ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
                 Button { togglePause() } label: {
                     Text("Resume")
                         .font(.system(size: 16, weight: .medium, design: .rounded))
@@ -1082,6 +1165,7 @@ struct WatchResultsView: View {
 
     private var line: String {
         let _ = store.revision
+        if record.postSalah == true { return "Tasbih Fatimah · sent to your iPhone" }
         guard let task else { return "sent to your iPhone's history" }
         let p = store.progress(task)
         return task.countMode ? "\(task.title) · \(p.count) of \(task.goal) today"
@@ -1238,6 +1322,7 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 
     func stop() {
         wantsStart = false
+        retried = false
         // Also one still starting (.scheduled): invalidating that cancels it.
         if let s = session, s.state == .running || s.state == .scheduled {
             s.invalidate()
@@ -1266,7 +1351,9 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
             }
         }
     }
-    func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
+    func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
+        DispatchQueue.main.async { self.retried = false }
+    }
     /// The hour a mindfulness session gets is nearly up: a buzz so a long session isn't silently
     /// dropped (the count stays on screen; finishing still saves it).
     func extendedRuntimeSessionWillExpire(_ extendedRuntimeSession: WKExtendedRuntimeSession) {
@@ -1314,6 +1401,11 @@ struct WatchSettingsPage: View {
                 Text("How each count feels on your wrist. Tap one to try it.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
+                // watchOS pairs its haptics with a soft tone unless the watch is silenced; apps can't
+                // play the tap alone.
+                Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
                 Text("counting")
                     .font(.system(size: 10, design: .rounded))
                     .tracking(1.2)
@@ -1349,15 +1441,54 @@ struct WatchCrownTapsToggle: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Toggle(isOn: $tapsWithCrown) {
-                Text("Screen taps count with the Crown").font(.system(size: 13, design: .rounded))
+                Text("Taps count while using the Crown").font(.system(size: 13, design: .rounded))
             }
             .tint(.green)
             Text(tapsWithCrown
-                 ? "Taps and the Crown both count."
-                 : "Once you turn the Crown, taps on the screen stop counting for that session.")
+                 ? "On: taps and the Crown both count."
+                 : "Off: taps pause when you use the Crown (tap the crown badge to bring them back).")
                 .font(.system(size: 10, design: .rounded))
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 4)
+    }
+}
+
+/// The phone's post-salah zikr (PostSalahTasbeeh): Subhanallah 33 · Alhamdulillah 33 ·
+/// Allahu Akbar 34, saved once under "Tasbih Fatimah".
+enum WatchPostSalah {
+    static let name = "Tasbih Fatimah"
+    static let phases: [(name: String, count: Int)] = [("Subhanallah", 33), ("Alhamdulillah", 33), ("Allahu Akbar", 34)]
+    static var total: Int { phases.reduce(0) { $0 + $1.count } }
+
+    static func phase(at count: Int) -> (index: Int, done: Int, of: Int) {
+        var start = 0
+        for (i, p) in phases.enumerated() {
+            if count < start + p.count || i == phases.count - 1 { return (i, min(count - start, p.count), p.count) }
+            start += p.count
+        }
+        return (0, 0, phases[0].count)
+    }
+}
+
+/// Above the count in Tasbih Fatimah: the phrase and "12 of 33", and three segments.
+struct WatchPostSalahStrip: View {
+    let count: Int
+
+    var body: some View {
+        let p = WatchPostSalah.phase(at: count)
+        VStack(spacing: 3) {
+            Text("\(WatchPostSalah.phases[p.index].name) · \(p.done) of \(p.of)")
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            HStack(spacing: 3) {
+                ForEach(0..<3, id: \.self) { i in
+                    Capsule()
+                        .fill(i < p.index ? Color.watchSage : i == p.index ? Color.watchSage.opacity(0.6) : Color.white.opacity(0.15))
+                        .frame(width: 18, height: 3)
+                }
+            }
+        }
     }
 }
