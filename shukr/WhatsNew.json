@@ -718,7 +718,7 @@
       "checked": "sim", "shots": ["wn-setup-fajr-startend.jpg"]
     },
     {
-      "id": "apple-watch-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "id": "apple-watch-2", "date": "2026-09-28", "commit": "56b08b0", "time": "2026-09-28T02:22:36-04:00", "topic": "apple-watch", "notes": null,
       "title": "The watch counter is now the phone's (beads, hundreds dots, the fine ring, edge to edge), marking plays the phone's completion moment, tap to mark / \"Unmark X?\", the pause screen has no empty bubbles, and Tasbih Fatimah shows the phrase above the count",
       "tryIt": ["Watch → Zikr → Freestyle, count past 100", "Watch → hold the prayer ring", "Watch → Zikr → Tasbih Fatimah: the phrase sits above the count"],
       "checked": "sim", "shots": ["wn-watch-counter.jpg"]
