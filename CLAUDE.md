@@ -1726,7 +1726,10 @@ the masjid's iqamah, and they always score 100); the detail line counts them ("p
 Jumu'ahs → no timing, "Dhuhr · avg 100". The average now divides by the rows with a score (a completed row without one
 counted as 0 — the sim's `-demoPrayerStart` leftovers read Fajr "avg 44"). The average score can still sit on a
 yellow ring: the mean score isn't the score at the mean time (a few late ones pull the time later). The rings' detail
-slot is 52 pt (two lines + one, `minimumScaleFactor` 0.85). The older write-up follows.
+slot is 60 pt (see below). **Symbols (2026-09-28, feedback 085F753D):** each ring shows `prayerSymbol` (17 pt light,
+hierarchical; primary when picked) instead of "12m in"; the time is in the detail line, which stands out while a ring is
+picked — subheadline, primary, the name in the ring's colour (`usualColor`) — in a fixed 60 pt slot. DEBUG
+`-insightsPrayer <name>` picks one. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +

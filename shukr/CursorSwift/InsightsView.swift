@@ -133,6 +133,12 @@ struct InsightsView: View {
         .onAppear { reveal() }
         #if DEBUG
         // `-insightsPage N`: open on that page (screenshots; the first layout ignores a start position).
+        // `-insightsPrayer Isha`: that ring picked (screenshots).
+        .task {
+            guard let name = UserDefaults.standard.string(forKey: "insightsPrayer") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            selectedPrayer = name
+        }
         .task {
             guard UserDefaults.standard.object(forKey: "insightsPage") != nil else { return }
             try? await Task.sleep(for: .seconds(0.8))
@@ -200,17 +206,11 @@ struct InsightsView: View {
                                 .stroke(stat.usualColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
                                 .rotationEffect(.degrees(-90))
                                 .animation(.spring(response: 0.9, dampingFraction: 0.8).delay(0.08 * Double(index)), value: revealed)
-                            VStack(spacing: -1) {
-                                Text(stat.usualElapsed.map(Self.shortIn) ?? "–")
-                                    .font(.system(size: 13, weight: .regular, design: .rounded))
-                                    .monospacedDigit()
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                                Text("in")
-                                    .font(.system(size: 9, weight: .light, design: .rounded))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 6)
+                            // The prayer's own symbol (feedback 085F753D); the time moved to the line below.
+                            Image(systemName: prayerSymbol(stat.name))
+                                .font(.system(size: 17, weight: .light))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(selected ? Color.primary : Color.secondary)
                         }
                         .frame(width: 52, height: 52)
                         .scaleEffect(selected ? 1.1 : 1)
@@ -233,9 +233,12 @@ struct InsightsView: View {
             Group {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
                     VStack(spacing: 2) {
-                        Text(Self.detailLine(name: name, stat: stat))
+                        // Stands out while a ring is picked: primary, a size up, the name in its ring's colour.
+                        (Text(name).foregroundStyle(stat.usualElapsed == nil ? Color.primary : stat.usualColor).fontWeight(.medium)
+                         + Text(Self.detailLine(stat: stat)).foregroundStyle(Color.primary))
+                            .font(.subheadline)
                             .lineLimit(2)
-                            .minimumScaleFactor(0.85)
+                            .minimumScaleFactor(0.8)
                         Text("prayed \(stat.prayed) of \(stat.recorded)" + (stat.jumuahs > 0 ? " · \(stat.jumuahs) Jumu'ah" : ""))
                             .lineLimit(1)
                             .foregroundStyle(.tertiary)
@@ -252,27 +255,23 @@ struct InsightsView: View {
             .font(.caption)
             .fontWeight(.light)
             .foregroundStyle(.secondary)
-            // A fixed slot, sized for the longest text (two lines + one), so nothing moves when one is
-            // tapped and nothing spills.
-            .frame(height: 52, alignment: .top)
+            // A fixed slot, sized for the longest text (two subheadline lines + a caption), so nothing
+            // moves when one is tapped and nothing spills.
+            .frame(height: 60, alignment: .top)
             .transition(.blurReplace)
             .id(selectedPrayer ?? "")
         }
     }
 
 
-    /// "Fajr · you usually pray 12 min in · avg 85" (only Jumu'ahs: no timing to show).
-    static func detailLine(name: String, stat: InsightsStats.PrayerStat) -> String {
+    /// The detail line after the name (only Jumu'ahs: no timing to show).
+    /// What follows the name: " · you usually pray 12 min in · avg 85".
+    static func detailLine(stat: InsightsStats.PrayerStat) -> String {
         let avg = stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–"
-        guard let elapsed = stat.usualElapsed else { return "\(name) · avg \(avg)" }
-        return "\(name) · you usually pray \(longIn(elapsed)) in · avg \(avg)"
+        guard let elapsed = stat.usualElapsed else { return " · avg \(avg)" }
+        return " · you usually pray \(longIn(elapsed)) in · avg \(avg)"
     }
 
-    /// "12m" / "1h 5m" inside a small ring.
-    static func shortIn(_ t: TimeInterval) -> String {
-        let m = Int((t / 60).rounded())
-        return m >= 60 ? "\(m / 60)h \(m % 60)m" : "\(m)m"
-    }
     /// "12 min" / "1 h 5 min" in a sentence.
     static func longIn(_ t: TimeInterval) -> String {
         let m = Int((t / 60).rounded())

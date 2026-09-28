@@ -51,7 +51,7 @@
      "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]},
     {"id": "zikr-pace", "area": "Zikr", "title": "Zikr sessions: the rate tile shows how this session compares with your usual pace (faster / slower / about your usual), tiles that flip have the ⇆ mark, and after a task you land on the next one", "link": "zikr"},
     {"id": "ayah-reveal", "area": "Daily Ayah", "title": "Daily Ayah's reveal: tap and the verse comes forward as a green light blooms behind it, then breathes softly (in light and dark mode)", "link": "ayah"},
-    {"id": "insights", "area": "Insights", "title": "Insights: how you're scoring first (average day score, and each prayer's ring as it usually is when you mark it), then how consistent you are (streaks, prayed counts, a 14-day grid with dates and a show-scores switch), then whether you're getting better", "link": "insights",
+    {"id": "insights", "area": "Insights", "title": "Insights: how you're scoring first (average day score, and each prayer's ring — its symbol inside — as it usually is when you mark it; tap one for the details), then how consistent you are (streaks, prayed counts, a 14-day grid with dates and a show-scores switch), then whether you're getting better", "link": "insights",
      "tryIt": ["☰ → Insights"]}
   ],
   "entries": [
@@ -804,6 +804,12 @@
       "title": "The reminders card closes itself when a widget or control takes you somewhere, and never pops up late if something else was open",
       "tryIt": ["With the card up, tap the Qibla widget → the card closes and the map opens"],
       "checked": "sim"
+    },
+    {
+      "id": "insights-3", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: each small ring shows its prayer's symbol; tap one and the line underneath stands out (bigger, the name in its ring's colour) with how far in you usually pray",
+      "tryIt": ["☰ → Insights → tap Isha's ring → 'Isha · you usually pray 1 h 8 min in · avg 96' in larger type"],
+      "checked": "sim", "shots": ["wn-insights-ring-symbols.jpg"], "addresses": ["085F753D-29F4-4E6D-9857-E431B308DDAE"]
     }
   ]
 }
