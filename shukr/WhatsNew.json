@@ -896,13 +896,13 @@
       "checked": "sim", "addresses": ["43D36031-A250-4AF6-B515-6440871AA9EF"]
     },
     {
-      "id": "first-run-setup-14", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-14", "date": "2026-09-28", "commit": "f984da8", "time": "2026-09-28T13:56:10-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Location back lands like the opening: the ring draws in to the opening's thin sage ring round \"location is on\", rests, then grows into the prayer's circle exactly as the welcome does",
       "tryIt": ["With shukr open: location Never → back → Settings → Always → back: the ring settles small, then grows into the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-back-welcome-grow.jpg"], "addresses": ["A4D7B736-2143-4D0C-B8A5-91C305C03033"]
     },
     {
-      "id": "insights-7", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-7", "date": "2026-09-28", "commit": "f984da8", "time": "2026-09-28T13:56:10-04:00", "topic": "insights", "notes": null,
       "title": "Insights: each prayer's ring shows your usual moment (the middle of your days, so a few late ones don't drag it) and reads 'Fajr · usually Perfect'; the average score stays on the big ring only",
       "tryIt": ["☰ → Insights → tap Isha → 'Isha · usually Late' / 'you usually pray 1 h 37 min in'"],
       "checked": "sim", "shots": ["wn-insights-usual-grade.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
