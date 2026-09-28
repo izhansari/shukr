@@ -1498,8 +1498,9 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
 - **Open problem (2026-09-27): the map hangs in the iOS 26.5 simulator** — opening it (arrow or `-demoMosques`) pins the
   main thread at 100 % in an AttributeGraph cycle ("cycle detected through attribute"), LocationMapContentView rebuilt
   ~250×/s with "@self changed". Same on 9df0676 (this morning, when it worked in the sim), on a second iOS 26.5 simulator
-  and with a fresh store — so not today's code or data. The owner's iOS 27 phone opened it fine at 9:25 PM. Unknown
-  whether real iOS 26 devices (his wife's 15 Pro, 26.6) hang: check there before assuming it's only the simulator.
+  and with a fresh store — so not today's code or data. The owner's iOS 27 phone opened it fine at 9:25 PM, and so did
+  his wife's real iPhone 15 Pro on iOS 26.6 with build 11 from TestFlight (owner's recording, 2026-09-27: qibla arrow →
+  map opens). So it's the simulator environment, not a tester bug; don't chase it in the iOS 26.5 sim.
 - **Frozen ring while moving (fixed 2026-09-27):** `MainCircleView` made its 1 s timer inline in `body`
   (`.onReceive(Timer.publish(…).autoconnect())`); it observes `CompassState`, so every heading update re-rendered it and
   replaced the timer before it fired — `currentTime` froze and a started prayer showed an empty ring (owner: Isha at 8:28 PM).
