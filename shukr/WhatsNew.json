@@ -926,7 +926,7 @@
       "checked": "sim", "shots": ["wn-upcoming-masjid-later.jpg"]
     },
     {
-      "id": "masjid-duas-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "masjid-duas", "notes": null,
+      "id": "masjid-duas-2", "date": "2026-09-28", "commit": "ef972dc", "time": "2026-09-28T14:20:08-04:00", "topic": "masjid-duas", "notes": null,
       "title": "Fixed: a masjid dua could appear when you weren't there (e.g. \"Leaving the masjid\" right after opening shukr)",
       "tryIt": ["Settings → Masjid → Duas at my masajid on → open shukr away from your masajid: no dua", "Arrive at one of your masajid → the entering dua; leave → the leaving dua"],
       "checked": "no"
