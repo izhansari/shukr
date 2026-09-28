@@ -762,13 +762,13 @@
       "checked": "sim", "shots": ["wn-location-lost.jpg"]
     },
     {
-      "id": "notifications-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-2", "date": "2026-09-28", "commit": "d94df3f", "time": "2026-09-28T03:21:39-04:00", "topic": "notifications", "notes": null,
       "title": "If your reminders can't reach you (notifications off, or held for the Scheduled Summary), a calm card says so with the fix, at most every few days; Settings → Notifications shows the status at the top",
       "tryIt": ["Turn shukr's notifications off in iOS Settings, then open shukr: the card, with Turn on", "Settings → Notifications: the status line at the top (Focus / Time Sensitive, background refresh)", "Beta: Settings → Scheduled notifications (what's pending of 64)"],
       "checked": "sim", "shots": ["wn-reminder-health.jpg", "wn-scheduled-notifications.jpg"]
     },
     {
-      "id": "ayah-reveal-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "ayah-reveal", "notes": null,
+      "id": "ayah-reveal-1", "date": "2026-09-28", "commit": "fcaf2cb", "time": "2026-09-28T03:22:14-04:00", "topic": "ayah-reveal", "notes": null,
       "title": "Daily Ayah in light mode: the green light behind the verse is clearly there now, blooming as you reveal it and breathing after (dark mode unchanged)",
       "tryIt": ["☰ → Daily Ayah in light mode: tap to reveal and watch the green bloom"],
       "checked": "sim", "shots": ["wn-ayah-glow.jpg"]
