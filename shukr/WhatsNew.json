@@ -842,7 +842,7 @@
       "checked": "sim", "shots": ["wn-upcoming-reminders-counts.jpg"], "addresses": ["BF79A0FC-A598-4C64-8D65-DB65F1F8C379"]
     },
     {
-      "id": "first-run-setup-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-11", "date": "2026-09-28", "commit": "0f79163", "time": "2026-09-28T12:53:11-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Location back: the lost-location page says so (the symbol turns on, \"Location's back\", or \"Using London\" for a city), then its ring goes back to the middle and becomes the Salah page's circle",
       "tryIt": ["iOS Settings → shukr → Location → Never → open shukr → the lost page → Turn location back on → Always → back to shukr", "Or on the lost page: Enter a city instead → pick one → \"Using <city>\" → into the app"],
       "checked": "sim", "shots": ["wn-location-back-handoff.jpg"]
