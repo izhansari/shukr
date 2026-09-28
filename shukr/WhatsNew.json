@@ -806,22 +806,28 @@
       "checked": "sim"
     },
     {
-      "id": "insights-3", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-3", "date": "2026-09-28", "commit": "3390a4c", "time": "2026-09-28T11:13:38-04:00", "topic": "insights", "notes": null,
       "title": "Insights: each small ring shows its prayer's symbol; tap one and the line underneath stands out (bigger, the name in its ring's colour) with how far in you usually pray",
       "tryIt": ["☰ → Insights → tap Isha's ring → 'Isha · you usually pray 1 h 8 min in · avg 96' in larger type"],
       "checked": "sim", "shots": ["wn-insights-ring-symbols.jpg"], "addresses": ["085F753D-29F4-4E6D-9857-E431B308DDAE"]
     },
     {
-      "id": "notifications-4", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-4", "date": "2026-09-28", "commit": "c854fdf", "time": "2026-09-28T11:18:59-04:00", "topic": "notifications", "notes": null,
       "title": "Upcoming reminders: every notification shukr has waiting, by day, with its time, prayer and kind; today's delivered ones greyed; Details at the bottom with previews of the reminders card and when it may next come",
       "tryIt": ["Settings → Notifications → Upcoming reminders → scroll through the days", "At the bottom: Details → Preview the card: off / held"],
       "checked": "sim", "shots": ["wn-upcoming-reminders.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
     },
     {
-      "id": "first-run-setup-10", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-10", "date": "2026-09-28", "commit": "d6d6f30", "time": "2026-09-28T11:23:09-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Location lost: the opening's ring starts in the middle and becomes the page's circle, the title appears over it, both rise together, then the rest fills in",
       "tryIt": ["Settings (iOS) → Privacy → Location Services → shukr → Never → open shukr from cold → watch the opening land on the circle, then rise"],
       "checked": "sim", "shots": ["wn-lost-location-opening.jpg"], "addresses": ["2396BDF1-FA6B-41EC-AD65-3D3043F3A38A"]
+    },
+    {
+      "id": "widget-next-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Prayers widget: the ring sits evenly between the top and the chevron, and between sunrise and Dhuhr it shows Dhuhr as next (not \"Sunrise\" with a moon)",
+      "tryIt": ["Look at the Prayers widget: the same space above the ring as between it and ⌃", "Mid-morning: the ring says NEXT Dhuhr with the sun, like the app's circle", "Small phones: tap ⌃, and every prayer name and time shows in full"],
+      "checked": "sim", "shots": ["wn-widget-ring-centred.jpg"], "addresses": ["99D47ABE-FF80-464D-9C85-DB4366407DFB"]
     }
   ]
 }
