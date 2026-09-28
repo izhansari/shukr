@@ -672,7 +672,7 @@
       "checked": "sim", "shots": ["wn-azkar-sort-topright.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
     },
     {
-      "id": "built-in-azkar-11", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-11", "date": "2026-09-27", "commit": "68c7343", "time": "2026-09-27T22:55:20-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Sort button's active look is softer: green icon and arrow on a light green tint (was a solid green fill)",
       "tryIt": ["Zikr tab → History & Azkar → Azkar → sort by Pace: the top-right button shows the pace icon + ↑ in green on a pale green capsule", "Try it in dark mode too"],
       "checked": "sim", "shots": ["wn-azkar-sort-tint.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
