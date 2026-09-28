@@ -9,7 +9,7 @@
     {"id": "masjid-filter", "area": "Map", "title": "Filter your prayer pins to \"Only at a masjid\"", "link": "map"},
     {"id": "masjid-duas", "area": "Mosques", "title": "Duas at my masajid: the dua for entering when you arrive at one of your masajid, and for leaving when you go — only for a real arrival or departure", "link": "settings"},
     {"id": "holy-cities", "area": "Location", "title": "A welcome in Makkah and Madinah"},
-    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring in the centre with the mark-prayed check top left, your choice of bottom corners, and a chevron between them that opens today's times (score colours on or off) and closes them again"},
+    {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring (60 / 40 between the top and the chevron) with the mark-prayed check top left, your choice of bottom corners and Style, and a chevron that opens today's times, where you can mark a prayer (and unmark one in the app)"},
     {"id": "time-editor-opens", "area": "Salah", "title": "The time editor opens on the time you saved", "link": "salah"},
     {"id": "move-prayer", "area": "Salah", "title": "Change where you prayed: drag the map under the pin, or type an address", "link": "salah",
      "tryIt": ["Long-press a done prayer → edit time → the location chip → drag the map under the pin", "Tap the address → type one → pick a suggestion; it says how far that is from where you marked it", "Set → Save"]},
@@ -948,6 +948,18 @@
       "title": "Never a silent stop: if shukr isn't opened or refreshed before its reminders run out, a last one asks you to open it",
       "tryIt": ["Your reminders → Tops itself up → 'Never a silent stop' shows its date"],
       "checked": "sim"
+    },
+    {
+      "id": "widget-next-9", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Prayers widget: a Style setting — System, Light, Dark, or Follows the sun (dark from Maghrib until sunrise, like the app)",
+      "tryIt": ["Long-press the Prayers widget → Edit Widget → Style → Dark: it stays dark even with the phone in light mode", "Style → Follows the sun: light in the day, dark from Maghrib"],
+      "checked": "sim", "shots": ["wn-widget-style.jpg"]
+    },
+    {
+      "id": "widget-next-10", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Mark a prayer right from the widget's times list; tap a marked one to unmark it in the app",
+      "tryIt": ["Widget → ⌃ → tap a prayer with an empty circle → it's marked (scored now), and the circle fills", "Tap a filled one → shukr opens → Unmark (or Cancel)", "Upcoming prayers and Sunrise can't be tapped"],
+      "checked": "sim", "shots": ["wn-widget-list-taps.jpg"]
     }
   ]
 }
