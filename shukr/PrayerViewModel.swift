@@ -335,11 +335,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         
         do {
             // Fetch prayers for the current day from the context
-            var fetchDescriptor = FetchDescriptor<PrayerModel>(
+            // Every row of the day. It had `fetchLimit = 5` (sorted by time): once a day held a sixth
+            // row (a moved / edited / imported one), Maghrib and Isha fell outside the five and a new
+            // pair was inserted on every refresh — hundreds of duplicates, and a map that couldn't
+            // draw (2026-09-27). `removeDuplicatePrayerRows` cleans up what that left.
+            let fetchDescriptor = FetchDescriptor<PrayerModel>(
                 predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
                 sortBy: [SortDescriptor(\.startTime, order: .forward)]
             )
-            fetchDescriptor.fetchLimit = 5
             let existingPrayers = try self.context.fetch(fetchDescriptor)
 
             // Define prayer names and times
@@ -351,7 +354,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 }
                 
                 let startTime = thisPrayerInDict.start; let endTime = thisPrayerInDict.end
-                if let persisted = existingPrayers.first(where: { $0.name == name }) {
+                // A completed row wins over an unmarked one with the same name.
+                if let persisted = existingPrayers.first(where: { $0.name == name && $0.isCompleted })
+                    ?? existingPrayers.first(where: { $0.name == name }) {
                     // Update existing prayer if not completed and times differ
                     if !persisted.isCompleted && ( persisted.startTime != startTime || persisted.endTime != endTime ) {
                         calculationPrinter(overwritePrayerStart: (name: name, startTime: startTime, oldStartTime: persisted.startTime))
@@ -1276,6 +1281,36 @@ extension Notification.Name {
     static let onTimeStreakContinued = Notification.Name("onTimeStreakContinued")
     /// Posted once when all five were Early today; the list celebrates it.
     static let perfectDay = Notification.Name("perfectDay")
+}
+
+extension PrayerViewModel {
+    /// Launch clean-up for the duplicates `fetchPrayerTimes` used to insert (see there): per
+    /// calendar day and prayer name, extra UNMARKED rows are deleted — kept: every completed row
+    /// (nothing marked is ever removed) and, when none is completed, the first unmarked one.
+    /// Cheap when there's nothing to do; backs the store up first when there is.
+    static func removeDuplicatePrayerRows(in container: ModelContainer) {
+        let context = ModelContext(container)
+        guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>(sortBy: [SortDescriptor(\.startTime)])) else { return }
+        let calendar = Calendar.current
+        var groups: [String: [PrayerModel]] = [:]
+        for row in rows {
+            groups["\(calendar.startOfDay(for: row.startTime).timeIntervalSince1970)|\(row.name)", default: []].append(row)
+        }
+        var doomed: [PrayerModel] = []
+        for (_, list) in groups where list.count > 1 {
+            let unmarked = list.filter { !$0.isCompleted }
+            if list.contains(where: \.isCompleted) { doomed += unmarked } else { doomed += unmarked.dropFirst() }
+        }
+        guard !doomed.isEmpty else { return }
+        PrayerScoring.backUpStore(label: "before-dedupe")
+        for row in doomed { context.delete(row) }
+        do {
+            try context.save()
+            print("✅ removed \(doomed.count) duplicate unmarked prayer rows")
+        } catch {
+            print("❌ duplicate prayer clean-up failed: \(error.localizedDescription)")
+        }
+    }
 }
 
 #if DEBUG

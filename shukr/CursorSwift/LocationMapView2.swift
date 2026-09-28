@@ -1127,6 +1127,27 @@ struct LocationMapContentView: View {
                             .animation(.easeInOut(duration: 0.2), value: compass.qibla.aligned)
                         Spacer()
                     }
+                    // Mosque mode, panned somewhere new: search there, right under the pill. It used
+                    // to sit under the whole top row, whose right column (globe / locate / ?) is tall,
+                    // so it landed mid-map over the pins (owner, 2026-09-27).
+                    .overlay(alignment: .top) {
+                        if viewModel.showMosques && viewModel.mosqueAreaStale, let mapView = viewModel.mapView {
+                            Button {
+                                viewModel.searchMosques(in: mapView.region, fit: false)
+                            } label: {
+                                Label("Search this area", systemImage: "magnifyingglass")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(Color.green)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 12)
+                                    .background(Capsule().fill(Color.white))
+                                    .shadow(radius: 3)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.top, 46 + 10)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
 
                     HStack {
                         Spacer()
@@ -1175,24 +1196,6 @@ struct LocationMapContentView: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 6)
-                // Mosque mode, panned somewhere new: search there (under the pill — the mosque sheet
-                // covers the bottom).
-                if viewModel.showMosques && viewModel.mosqueAreaStale, let mapView = viewModel.mapView {
-                    Button {
-                        viewModel.searchMosques(in: mapView.region, fit: false)
-                    } label: {
-                        Label("Search this area", systemImage: "magnifyingglass")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.green)
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 12)
-                            .background(Capsule().fill(Color.white))
-                            .shadow(radius: 3)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.top, 8)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
 
                 Spacer()
 
@@ -1311,7 +1314,8 @@ struct LocationMapContentView: View {
                                 origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
                                 nearYou: searchedNearYou,
                                 searching: viewModel.mosqueSearching,
-                                close: { setMode(prayers: false, mosques: false) }) { viewModel.focusMosque($0) }
+                                close: { setMode(prayers: false, mosques: false) },
+                                collapsed: viewModel.mosqueDetent == LocationViewModel.mosqueCollapsed) { viewModel.focusMosque($0) }
                     .toolbar(.hidden, for: .navigationBar)
                     .navigationDestination(for: MKMapItem.self) { item in
                         MosqueSheet(item: item, showsBack: true)

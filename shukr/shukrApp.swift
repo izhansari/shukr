@@ -65,6 +65,8 @@ struct shukrApp: App {
             SharedStore.runV2DataPass(in: container)
             // Rows scored by the old rule (fraction of window left) → points, once.
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
+            // Extra unmarked prayer rows from the old 5-row lookup in fetchPrayerTimes (2026-09-27).
+            PrayerViewModel.removeDuplicatePrayerRows(in: container)
             #if DEBUG
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),

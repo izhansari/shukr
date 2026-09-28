@@ -654,10 +654,16 @@
       "checked": "sim", "shots": ["wn-circle-ring-fills-while-moving.jpg"]
     },
     {
-      "id": "streaks-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "streaks", "notes": null,
+      "id": "streaks-1", "date": "2026-09-27", "commit": "b3da57a", "time": "2026-09-27T21:13:08-04:00", "topic": "streaks", "notes": null,
       "title": "Streaks count a day whose last prayer was marked late (from the watch, the widget or a notification around Fajr, or an edited time) instead of resetting to 0",
       "tryIt": ["Mark yesterday's last prayer after Fajr (widget / notification / watch): tap the city in the top bar → the streak includes yesterday", "Next day: the streak carries on instead of starting from 0"],
       "checked": "sim", "shots": ["wn-streak-counts-late-marks.jpg"]
+    },
+    {
+      "id": "mosque-sheet-5", "date": "2026-09-27", "commit": "next", "time": null, "topic": "mosque-sheet", "notes": null,
+      "title": "Mosques: \"Search this area\" sits right under the top pill again (not over the pins), and the sheet shrunk to its bar no longer scrolls its list",
+      "tryIt": ["Map → Mosques → pan away: \"Search this area\" appears just under the top pill", "Swipe the mosque sheet down to its bar and try to scroll it: it doesn't move; pull it back up and the list starts at the top"],
+      "checked": "no"
     }
   ]
 }
