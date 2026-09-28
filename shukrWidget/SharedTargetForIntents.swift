@@ -525,11 +525,12 @@ struct MarkFromListIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        if let store = UserDefaults(suiteName: SharedStore.appGroup) {
-            store.set(true, forKey: WidgetListState.openKey)
-            store.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
-        }
-        if !SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
+        let store = UserDefaults(suiteName: SharedStore.appGroup)
+        store?.set(true, forKey: WidgetListState.openKey)
+        store?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
+        if SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
+            store?.set(prayerStart.timeIntervalSince1970, forKey: WidgetListTaps.markedDayKey)   // the app rescores that day
+        } else {
             WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
         }
         return .result()

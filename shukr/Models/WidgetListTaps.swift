@@ -15,6 +15,9 @@ enum WidgetListTaps {
     static let key = "widget.listTaps"
     /// The app-group key a done row's tap leaves for the app: "Asr|<start, seconds since 1970>".
     static let unmarkKey = "widgetUnmarkPrayer"
+    /// The prayer-day start (seconds) of a prayer the list just marked, so the app rescores that
+    /// day — it can be another day than the app's (a list drawn before Fajr, tapped after).
+    static let markedDayKey = "widgetListMarkedDay"
 
     static var enabled: Bool {
         UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: key) ?? false

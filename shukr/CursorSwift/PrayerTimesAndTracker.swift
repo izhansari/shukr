@@ -70,6 +70,8 @@ struct PrayerTimesView: View {
     @State private var showNamesPage = false
     /// The Prayers widget's times list (the tap prototype): a marked row opens the app to "Unmark Asr?".
     @State private var widgetUnmark: WidgetUnmarkRequest?
+    /// Bumped per request, so an older retry loop stops.
+    @State private var widgetUnmarkToken = 0
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoWhatsNew = false
@@ -101,16 +103,19 @@ struct PrayerTimesView: View {
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
             if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
             // A marked row in the widget's times list (the tap prototype): ask here, never unmark there.
-            if let raw = store.string(forKey: WidgetListTaps.unmarkKey) {
-                store.removeObject(forKey: WidgetListTaps.unmarkKey)
+            if store.string(forKey: WidgetListTaps.unmarkKey) != nil {
                 lastDeepLinkAt = Date()
-                if let request = WidgetUnmarkRequest(raw) {
-                    clearCovers {
-                        sharedState.horizontalPage = .main
-                        // Once the page is up (a sheet was closing, or the app was just opening).
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { widgetUnmark = request }
-                    }
-                }
+                widgetUnmarkToken += 1
+                showWidgetUnmarkWhenClear(token: widgetUnmarkToken)
+            }
+            // A prayer marked from the widget's list, possibly on another prayer day than the app's
+            // (a list drawn before Fajr, tapped after): that day's score and the streaks.
+            if store.object(forKey: WidgetListTaps.markedDayKey) != nil {
+                let day = Date(timeIntervalSince1970: store.double(forKey: WidgetListTaps.markedDayKey))
+                store.removeObject(forKey: WidgetListTaps.markedDayKey)
+                viewModel.reconcileAfterWidgetWrites()
+                viewModel.calculateDayScore(for: day)
+                viewModel.recomputeStreaks()
             }
             if openAyahFromWidget {
                 clearCovers {
@@ -146,24 +151,65 @@ struct PrayerTimesView: View {
     /// every completed row of it reset, then the day and streaks are redone.
     private func unmarkFromWidget(_ request: WidgetUnmarkRequest) {
         viewModel.reconcileAfterWidgetWrites()   // a widget mark that just landed
-        if let prayer = viewModel.todaysPrayers.first(where: {
-            $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
-        }) {
-            if prayer.isCompleted { viewModel.togglePrayerCompletion(for: prayer) }
-            return
+        // Every completed row of that prayer on that day (a day can hold duplicates): the one on
+        // today's list through the app's own unmark (haptic, day score, streak, widget), the rest reset.
+        let shown = viewModel.todaysPrayers.first {
+            $0.isCompleted && $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
         }
+        let others = completedRows(request).filter { $0.persistentModelID != shown?.persistentModelID }
+        others.forEach { $0.resetPrayer() }
+        if let shown {
+            viewModel.togglePrayerCompletion(for: shown)   // rescores the day and the streak, pushes the widget
+        } else if !others.isEmpty {
+            viewModel.calculateDayScore(for: request.start)
+            viewModel.recomputeStreaks()
+            viewModel.pushCompletionsToWidget()
+        }
+    }
+
+    /// The completed rows of the request's prayer on its calendar day.
+    private func completedRows(_ request: WidgetUnmarkRequest) -> [PrayerModel] {
         let name = request.name
         let dayStart = Calendar.current.startOfDay(for: request.start)
         let dayEnd = dayStart.addingTimeInterval(86_399)
         let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate {
             $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd
         }))) ?? []
-        let done = rows.filter(\.isCompleted)
-        guard !done.isEmpty else { return }
-        done.forEach { $0.resetPrayer() }
-        viewModel.calculateDayScore(for: request.start)
-        viewModel.recomputeStreaks()
-        viewModel.pushCompletionsToWidget()
+        return rows.filter(\.isCompleted)
+    }
+
+    /// "Unmark Asr?" appears only when it can be seen: after the first-run setup and the opening,
+    /// never over a tasbeeh session, and with nothing presented (a sheet or popover the page can't
+    /// see — What's new, the ☰ menu, a row's time editor, Settings' sheets — would swallow the
+    /// alert). Until then the request stays in the app group and this retries every second for a
+    /// while; the next activation picks it up again. The map and pushed pages are closed first.
+    private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0) {
+        guard token == widgetUnmarkToken, widgetUnmark == nil,
+              let store = UserDefaults(suiteName: SharedStore.appGroup),
+              let raw = store.string(forKey: WidgetListTaps.unmarkKey) else { return }
+        guard let request = WidgetUnmarkRequest(raw) else { store.removeObject(forKey: WidgetListTaps.unmarkKey); return }
+        func later() {
+            guard attempt < 90 else { return }   // the request stays: the next activation tries again
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1) }
+        }
+        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage || scenePhase != .active
+        guard !blocked else { later(); return }
+        clearCovers {
+            sharedState.horizontalPage = .main
+            // Once the page has settled (a cover was closing, or the app was just opening).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                guard token == widgetUnmarkToken, widgetUnmark == nil else { return }
+                guard !(FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage || somethingCovers
+                        || PresentedCheck.anything) else { later(); return }
+                // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
+                store.removeObject(forKey: WidgetListTaps.unmarkKey)
+                let rows = completedRows(request)
+                guard !rows.isEmpty else { return }
+                var shown = request
+                shown.displayName = rows.contains(where: \.isJumuah) ? "Jumu'ah" : request.name
+                widgetUnmark = shown
+            }
+        }
     }
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -506,7 +552,7 @@ struct PrayerTimesView: View {
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
         // A marked row tapped in the Prayers widget's times list (the tap prototype): the app asks.
-        .alert(widgetUnmark.map { "Unmark \($0.name)?" } ?? "",
+        .alert(widgetUnmark.map { "Unmark \($0.displayName)?" } ?? "",
                isPresented: Binding(get: { widgetUnmark != nil }, set: { if !$0 { widgetUnmark = nil } }),
                presenting: widgetUnmark) { request in
             Button("Unmark", role: .destructive) { unmarkFromWidget(request) }
@@ -2029,6 +2075,8 @@ struct SettingsPage: View, Equatable {
 struct WidgetUnmarkRequest: Identifiable {
     let name: String
     let start: Date
+    /// What the alert calls it: "Jumu'ah" for a Friday Dhuhr prayed at a masjid.
+    var displayName: String
     var id: String { "\(name)|\(start.timeIntervalSince1970)" }
 
     init?(_ raw: String) {
@@ -2036,5 +2084,17 @@ struct WidgetUnmarkRequest: Identifiable {
         guard parts.count == 2, let seconds = Double(parts[1]) else { return nil }
         name = String(parts[0])
         start = Date(timeIntervalSince1970: seconds)
+        displayName = name
+    }
+}
+
+/// Is anything presented over the app's window (a sheet, a popover, an alert, a cover)? For
+/// alerts that must not fire under one (they'd never show).
+@MainActor enum PresentedCheck {
+    static var anything: Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .contains { $0.isKeyWindow && $0.rootViewController?.presentedViewController != nil }
     }
 }

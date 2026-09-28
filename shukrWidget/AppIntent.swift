@@ -91,7 +91,7 @@ struct ConfigurationAppIntent: WidgetConfigurationIntent {
     var scoreColors: Bool?
 
     /// System (follows the phone; the default) · Light · Dark · Follows the sun (Maghrib → sunrise dark).
-    @Parameter(title: "Style", default: .system)
+    @Parameter(title: "Style", description: "Home Screen only: the Lock Screen widgets follow the system.", default: .system)
     var style: WidgetStyle?
 
     /// The corners as picked — the same button on both is allowed (owner, 2026-09-27: "fine if
