@@ -380,6 +380,10 @@ struct SettingsView: View {
                             .font(.caption2)
                             .frame(maxWidth: .infinity)
                             .padding(.top, 16)
+                            // The pager ignores the bottom safe area, so the page scrolled to its end
+                            // put the build line on the home bar (owner: tapping it woke Siri). The home
+                            // bar's ~34 pt plus ~40 of air.
+                            .padding(.bottom, 76)
                     }
 
                     

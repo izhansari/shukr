@@ -230,15 +230,15 @@ struct NotificationHealthRows: View {
             }
         }()
         let fine = issues.isEmpty && health.authorization != .notDetermined
-        return HStack(spacing: 12) {
-            Image(systemName: fine ? "checkmark" : "exclamationmark")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(Circle().fill(fine ? Color.sage : Color.orange))
+        // The setup's look: a light symbol in sage (or its soft orange), rounded type, a light detail.
+        return HStack(spacing: 14) {
+            Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(fine ? Color.sage : Color.orange.opacity(0.9))
+                .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(.body, design: .rounded, weight: .medium)).foregroundStyle(.primary)
-                Text(subtitle).font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
+                Text(title).font(.system(.body, design: .rounded)).foregroundStyle(.primary)
+                Text(subtitle).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
@@ -246,7 +246,7 @@ struct NotificationHealthRows: View {
 
     private func fix(_ title: String, _ tap: @escaping () -> Void) -> some View {
         Button(action: tap) {
-            Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.sage)
+            Text(title).font(.system(.subheadline, design: .rounded, weight: .medium)).foregroundStyle(Color.sage)
         }
     }
 }
@@ -318,19 +318,29 @@ struct YourRemindersView: View {
         }
     }
 
-    // MARK: colours (the canvas's)
+    // MARK: colours — the first-run setup's look (owner, 2026-09-28, EC6B18BC): sage for what's fine,
+    // the setup's soft orange for what needs a hand, and the beads in the brand's family — sage,
+    // soft sand, soft clay, a sea-sage for zikr — rather than stock green / yellow / red / blue.
 
-    private static let startColor = Color(red: 0.435, green: 0.624, blue: 0.502)    // #6f9f80
-    private static let halfColor = Color(red: 0.878, green: 0.722, blue: 0.310)     // #e0b84f
-    private static let endColor = Color(red: 0.851, green: 0.451, blue: 0.373)      // #d9735f
-    private static let zikrColor = Color(red: 0.478, green: 0.651, blue: 0.761)     // #7aa6c2
-    private static let laterColor = Color(red: 0.663, green: 0.561, blue: 0.780)
-    private static let otherColor = Color(red: 0.62, green: 0.62, blue: 0.65)
-    private var freeColor: Color { scheme == .dark ? Color(red: 0.227, green: 0.227, blue: 0.235) : Color(red: 0.863, green: 0.863, blue: 0.882) }
-    private var okInk: Color { scheme == .dark ? Self.startColor : Color(red: 0.247, green: 0.490, blue: 0.333) }  // #3f7d55
-    private var warnInk: Color { Color(red: 0.702, green: 0.271, blue: 0.184) }                                   // #b3452f
-    private var okTint: Color { scheme == .dark ? Color(red: 0.125, green: 0.208, blue: 0.165) : Color(red: 0.906, green: 0.941, blue: 0.918) }
-    private var warnTint: Color { scheme == .dark ? Color(red: 0.227, green: 0.141, blue: 0.122) : Color(red: 0.984, green: 0.925, blue: 0.910) }
+    private static let startColor = Color.sage                                         // starts: the brand sage
+    private static let halfColor = Color(red: 0.84, green: 0.74, blue: 0.50)           // halfway: soft sand
+    private static let endColor = Color(red: 0.82, green: 0.58, blue: 0.48)            // 30 min left: soft clay
+    private static let zikrColor = Color(red: 0.43, green: 0.62, blue: 0.62)           // zikr: sea-sage
+    private static let laterColor = Color(red: 0.66, green: 0.60, blue: 0.70)          // later: soft mauve
+    private static let otherColor = Color(red: 0.64, green: 0.63, blue: 0.60)          // other: warm grey
+    private var freeColor: Color { Color(.secondarySystemFill) }
+    private var okInk: Color { Color.sage }
+    private var warnInk: Color { Color.orange.opacity(0.9) }                              // the setup's Nudge
+    private var okTint: Color { Color.sage.opacity(scheme == .dark ? 0.16 : 0.10) }
+    private var warnTint: Color { Color.orange.opacity(0.08) }
+    /// The setup's small uppercase caption ("today").
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.system(.caption, design: .rounded))
+            .tracking(2)
+            .textCase(.uppercase)
+            .foregroundStyle(.tertiary)
+    }
 
     private func color(_ kind: Kind) -> Color {
         switch kind {
@@ -353,7 +363,7 @@ struct YourRemindersView: View {
                 whyCard.id("whyCard")
                 detailsCard
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 20)
             .padding(.top, 6)
             .padding(.bottom, 40)
         }
@@ -366,9 +376,14 @@ struct YourRemindersView: View {
         }
         #endif
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())   // the setup's plain page
         .navigationTitle("Your reminders")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Your reminders").font(.system(.headline, design: .rounded, weight: .regular))
+            }
+        }
         .fontDesign(.rounded)
         .refreshable { await load() }
         .task { await load() }
@@ -379,9 +394,9 @@ struct YourRemindersView: View {
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
-            .padding(16)
+            .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemBackground)))
     }
 
     // MARK: hero — 64 beads, one per iOS slot
@@ -413,16 +428,19 @@ struct YourRemindersView: View {
                         .position(x: 132 + 118 * cos(a), y: 132 + 118 * sin(a))
                 }
                 VStack(spacing: 2) {
-                    Label(problem.text, systemImage: problem.warn ? "exclamationmark" : "checkmark")
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Label(problem.text, systemImage: problem.warn ? "exclamationmark.circle" : "checkmark.circle")
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
                         .foregroundStyle(problem.warn ? warnInk : okInk)
                     Text("\(pending.count)")
-                        .font(.system(size: 54, weight: .ultraLight, design: .rounded))
+                        .font(.system(size: 56, weight: .light, design: .rounded))
                         .monospacedDigit()
-                    Text("of 64 waiting").font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                    Text("of 64 waiting")
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
                     if let through = health.scheduledThrough ?? pending.compactMap(\.date).max() {
                         Text("through " + through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(Color.sage)
                             .padding(.top, 6)
                     }
                 }
@@ -437,7 +455,7 @@ struct YourRemindersView: View {
                     }
                 }
             }
-            .font(.system(size: 12, design: .rounded))
+            .font(.system(.caption, design: .rounded, weight: .light))
             .foregroundStyle(.secondary)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
@@ -481,11 +499,7 @@ struct YourRemindersView: View {
         let most = max(counts.max() ?? 1, 1)
         let pick = min(max(selectedDay, 0), days.count - 1)
         return VStack(alignment: .leading, spacing: 10) {
-            Text("This week")
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .tracking(0.6)
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
+            caption("This week")
                 .padding(.horizontal, 4)
             HStack(spacing: 4) {
                 ForEach(days.indices, id: \.self) { i in
@@ -494,17 +508,20 @@ struct YourRemindersView: View {
                     let selected = i == pick
                     VStack(spacing: 4) {
                         Text(days[i].formatted(.dateTime.weekday(.abbreviated)))
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .font(.system(.caption, design: .rounded, weight: selected ? .medium : .regular))
                             .foregroundStyle(selected ? okInk : .secondary)
                         ZStack {
                             Circle().fill(selected ? okTint : .clear)
-                            Circle().stroke(Color(.tertiarySystemFill), lineWidth: 4)
+                            Circle().stroke(Color(.secondarySystemFill), lineWidth: 3)
                             Circle()
                                 .trim(from: 0, to: CGFloat(counts[i]) / CGFloat(most))
                                 .stroke(nudges ? Self.startColor : Self.startColor.opacity(0.55),
-                                        style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
-                            Text("\(counts[i])").font(.system(size: 14, weight: .semibold, design: .rounded)).monospacedDigit()
+                            Text("\(counts[i])")
+                                .font(.system(.subheadline, design: .rounded, weight: selected ? .regular : .light))
+                                .foregroundStyle(selected ? okInk : .primary)
+                                .monospacedDigit()
                         }
                         .frame(width: days.count > 7 ? 34 : 40, height: days.count > 7 ? 34 : 40)
                         Circle().fill(nudges ? Self.startColor : .clear).frame(width: 5, height: 5)
@@ -543,24 +560,24 @@ struct YourRemindersView: View {
         return card {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.system(size: 16, weight: .semibold, design: .rounded))
+                    Text(title).font(.system(.body, design: .rounded))
                     Spacer(minLength: 8)
-                    Text(tag).font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
+                    Text(tag).font(.system(.caption, design: .rounded, weight: .light)).foregroundStyle(.secondary)
                         .lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if items.isEmpty {
                     Text(loaded ? "Nothing scheduled this day." : " ")
-                        .font(.system(size: 14, design: .rounded)).foregroundStyle(.secondary)
+                        .font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
                 }
                 ForEach(dayLines(items), id: \.name) { line in
-                    HStack(spacing: 10) {
+                    HStack(spacing: 12) {
                         Image(systemName: line.symbol)
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(okInk)
-                            .frame(width: 20)
-                        Text(line.name).font(.system(size: 14, design: .rounded)).lineLimit(1)
+                            .font(.system(size: 16, weight: .light))
+                            .foregroundStyle(Color.sage)
+                            .frame(width: 22)
+                        Text(line.name).font(.system(.subheadline, design: .rounded)).lineLimit(1)
                         Spacer(minLength: 8)
-                        Text(line.times).font(.system(size: 13, design: .rounded)).monospacedDigit().foregroundStyle(.secondary)
+                        Text(line.times).font(.system(.footnote, design: .rounded, weight: .light)).monospacedDigit().foregroundStyle(.secondary)
                     }
                 }
             }
@@ -612,16 +629,20 @@ struct YourRemindersView: View {
                                           ("Arrives on time", "clock")]
         return HStack(spacing: 8) {
             ForEach(tiles.indices, id: \.self) { i in
-                VStack(spacing: 6) {
-                    Image(systemName: tiles[i].1).font(.system(size: 18, weight: .medium)).foregroundStyle(okInk)
-                    Text(tiles[i].0).font(.system(size: 12, weight: .semibold, design: .rounded))
+                // The setup's option cards: a sage tint and edge on the picked one.
+                let picked = i == selectedWhy
+                VStack(spacing: 8) {
+                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .light)).foregroundStyle(Color.sage)
+                    Text(tiles[i].0).font(.system(.footnote, design: .rounded, weight: picked ? .medium : .regular))
+                        .foregroundStyle(picked ? Color.sage : .primary)
                         .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12).padding(.horizontal, 6)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                .padding(.vertical, 14).padding(.horizontal, 6)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(picked ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Self.startColor, lineWidth: i == selectedWhy ? 2 : 0))
+                    .stroke(picked ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
                 .contentShape(Rectangle())
                 .onTapGesture {
                     triggerSomeVibration(type: .light)
@@ -692,32 +713,28 @@ struct YourRemindersView: View {
         let why = why
         return card {
             VStack(alignment: .leading, spacing: 12) {
-                Text(why.head).font(.system(size: 17, weight: .semibold, design: .rounded))
+                Text(why.head).font(.system(.title3, design: .rounded, weight: .light))
                     .fixedSize(horizontal: false, vertical: true)
                 if why.explainHead != nil {
-                    Text("Your settings")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .tracking(0.5).textCase(.uppercase)
-                        .foregroundStyle(.secondary)
+                    caption("Your settings")
                 }
                 ForEach(why.points.indices, id: \.self) { i in
                     pointRow(why.points[i])
                 }
                 if selectedWhy == 2 && (lateCombination || health.authorization == .denied || health.timeSensitive == .disabled) {
+                    // The setup's primary button: sage text on a soft sage tint with a sage edge.
                     Button { SettingsLinks.notifications() } label: {
-                        Text("Fix in Settings").font(.system(size: 15, weight: .semibold, design: .rounded))
-                            .foregroundStyle(okInk)
-                            .frame(maxWidth: .infinity).padding(.vertical, 10)
-                            .background(Capsule().fill(okTint))
+                        Text("Fix in Settings").font(.system(.body, design: .rounded, weight: .medium))
+                            .foregroundStyle(Color.sage)
+                            .frame(maxWidth: .infinity).frame(minHeight: 48)
+                            .background(Capsule().fill(Color.sage.opacity(0.14)))
+                            .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
                 if let explainHead = why.explainHead {
                     Divider().padding(.vertical, 2)
-                    Text(explainHead)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .tracking(0.5).textCase(.uppercase)
-                        .foregroundStyle(.secondary)
+                    caption(explainHead)
                     ForEach(why.explain.indices, id: \.self) { i in
                         pointRow(why.explain[i])
                     }
@@ -727,17 +744,19 @@ struct YourRemindersView: View {
         .animation(.easeInOut(duration: 0.2), value: selectedWhy)
     }
 
+    /// The setup's why-row: a light symbol (sage; the setup's orange when it needs a hand; grey for
+    /// the neutral explainer), a title and a light detail.
     private func pointRow(_ p: Point) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: p.symbol)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 18, weight: .light))
                 .foregroundStyle(p.neutral ? Color.secondary : p.warn ? warnInk : okInk)
-                .frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(p.neutral ? Color(.tertiarySystemFill) : p.warn ? warnTint : okTint))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(p.big).font(.system(size: 15, weight: .semibold, design: .rounded))
-                Text(p.small).font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                .frame(width: 26)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(p.big).font(.system(.body, design: .rounded))
+                    .foregroundStyle(p.warn && !p.neutral ? warnInk : .primary)
+                Text(p.small).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -809,10 +828,10 @@ struct YourRemindersView: View {
                             .tint(Color.sage)
                     }
                 }
-                .font(.subheadline)
+                .font(.system(.subheadline, design: .rounded, weight: .light))
                 .padding(.top, 10)
             } label: {
-                Text("Details").font(.subheadline).foregroundStyle(.secondary)
+                Text("Details").font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
             }
             .tint(.secondary)
         }
@@ -848,6 +867,15 @@ struct YourRemindersView: View {
 
     private func load() async {
         await health.refresh()
+        #if DEBUG
+        // `-demoRemindersSample`: a full-looking week for screenshots (the simulator's notifications
+        // can't be switched on): starts all week, nudges for two days, a few zikr and one "later".
+        if ProcessInfo.processInfo.arguments.contains("-demoRemindersSample") {
+            pending = Self.sampleItems()
+            loaded = true
+            return
+        }
+        #endif
         let center = UNUserNotificationCenter.current()
         let requests = await center.pendingNotificationRequests()
         pending = requests.filter { Self.shown($0.identifier) }
@@ -860,6 +888,32 @@ struct YourRemindersView: View {
             .sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
         loaded = true
     }
+
+    #if DEBUG
+    private static func sampleItems() -> [Item] {
+        let times: [(String, Int, Int)] = [("Fajr", 5, 58), ("Dhuhr", 13, 7), ("Asr", 16, 28), ("Maghrib", 19, 3), ("Isha", 20, 13)]
+        var items: [Item] = []
+        for d in 0..<7 {
+            guard let day = Calendar.current.date(byAdding: .day, value: d, to: PrayerDay.date()) else { continue }
+            let key = PrayerNotificationID.dayKey(day)
+            for (name, h, m) in times {
+                let start = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
+                items.append(Item(id: "\(key).\(name)Start", date: start, dayKey: key, kind: .start, prayer: name, title: name))
+                if d < 2 {
+                    items.append(Item(id: "\(key).\(name)Mid", date: start?.addingTimeInterval(5400), dayKey: key, kind: .halfway, prayer: name, title: name))
+                    items.append(Item(id: "\(key).\(name)End", date: start?.addingTimeInterval(9000), dayKey: key, kind: .endingSoon, prayer: name, title: name))
+                }
+            }
+            if d < 5 {
+                let at = Calendar.current.date(bySettingHour: 6, minute: 10, second: 0, of: day)
+                items.append(Item(id: "zikr.sample.\(key)", date: at, dayKey: key, kind: .zikr, prayer: nil, title: "After Fajr"))
+            }
+        }
+        items.append(Item(id: "snooze-sample", date: Date().addingTimeInterval(600), dayKey: PrayerNotificationID.dayKey(PrayerDay.date()),
+                          kind: .snooze, prayer: "Asr", title: ""))
+        return items.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+    }
+    #endif
 
     /// The DEBUG scheduler test's snoozes never show outside DEBUG builds.
     private static func shown(_ id: String) -> Bool {
