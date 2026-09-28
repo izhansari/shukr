@@ -160,7 +160,8 @@ struct shukrApp: App {
             
             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
             NavigationStack{
-                if environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation {
+                if environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation
+                    || environmentLocationManager.salahLingers {
                     // Under the setup too, once there's a location: its last step lands on this
                     // page's circle.
                     PrayerTimesView()
@@ -185,8 +186,10 @@ struct shukrApp: App {
                 if !setupShowing && (environmentLocationManager.comeback != nil
                     || (environmentLocationManager.locationLost
                         && !(environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation))) {
+                    // Fades in over the Salah page blurring out (location lost while the app was open):
+                    // its ring starts exactly on the Salah circle, so there's one ring throughout.
                     LostLocationView()
-                        .transition(.opacity)
+                        .transition(.opacity.animation(.easeOut(duration: 0.3)))
                 }
             }
             .overlay {

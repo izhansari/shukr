@@ -1220,6 +1220,19 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   comeback over a Salah page); the root clears `comeback` whenever the setup opens or closes (the lost page is gated off
   under it, so a comeback inside the setup would pop up after its landing); `intro()` stops once a comeback arrives. DEBUG `-demoLostCity <name>` picks London 2 s after the page settles. Sim ✓ frame by
   frame: Settings → Always (light + dark, dashed landing), While Using, the city path (lands on Asr's live ring).
+  **Ring to ring, both ways (feedback A535F50B, owner's video: "dropping and fading … instead of ring to ring"):**
+  - Going lost with the app open: `LostLocationView.init` reads `WelcomeTarget.circleFrame` (the Salah circle, before
+    the page reports its own) → `entryY`: the ring starts exactly there, the page invisible (`pageIn`), symbol hidden,
+    title held. `EnvLocationManager.salahLingers` (set in the same update that turns location off) keeps PrayerTimesView
+    under the overlay; `warmEntry()` waits for `applicationState == .active` (the change lands while iOS still shows
+    the snapshot), fades the page in over the Salah page (one ring, the prayer fading), `endSalahLinger()`, then springs
+    the ring up (0.7) with the slash blurring in, then the title, then the reasons / buttons. Fallback: the linger ends
+    after 2.5 s anyway.
+  - Coming back: after the acknowledgement (also waits for `.active`), the words fade while the ring springs straight
+    onto the Salah circle (no stop at the centre); 0.36 s in, the symbol blurs out, the band turns dashed if
+    `trackDashed`, and the page fades so the prayer comes in round the same ring.
+  - Sim ✓ frame by frame, warm return both ways (the app survives `simctl privacy revoke`), light + dark.
+  Insights is capped at `.xxxLarge` (no accessibility sizes; owner).
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:

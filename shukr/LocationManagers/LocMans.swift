@@ -118,6 +118,13 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     @Published private(set) var comeback: Comeback?
     func clearComeback() { if comeback != nil { comeback = nil } }
 
+    /// Location lost while the app is open: the root keeps the Salah page a moment under the lost
+    /// page fading in over it (one ring; a branch swap there doesn't animate). Set in the same update
+    /// that turns location off.
+    @Published private(set) var salahLingers = false
+    /// The lost page has faded in over it (LostLocationView); a fallback ends it anyway.
+    func endSalahLinger() { if salahLingers { salahLingers = false } }
+
     /// Location was on and has been turned off: drop the picked city (the best chance of getting
     /// location back is asking for it; a picked city is offered again), and remember it was lost.
     /// Someone who denied from the start and picked a city keeps it. Also run from `init`, so the
@@ -180,6 +187,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             // Not before the first-run setup has explained why (its location step asks).
             if Self.setupDone { manager.requestWhenInUseAuthorization() }
         case .denied, .restricted:
+            if isAuthorized && !salahLingers {
+                salahLingers = true
+                // The change arrives as the app resumes, often before it's on screen; the lost page
+                // ends this once it has faded in (`endSalahLinger`). A fallback in case it never shows.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.endSalahLinger() }
+            }
             isAuthorized = false
             print("Location services are denied or restricted.")
             noteRevocationIfNeeded()

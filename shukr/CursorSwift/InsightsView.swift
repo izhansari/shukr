@@ -126,6 +126,9 @@ struct InsightsView: View {
             }
         }
         .fontDesign(.rounded)
+        // Up to the largest standard size, not the accessibility ones: the pages are fixed layouts
+        // (rings, a grid, fixed slots) that can't reflow (owner, 2026-09-28).
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
         .navigationTitle("Insights")
         .navigationBarTitleDisplayMode(.inline)
 
