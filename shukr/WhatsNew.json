@@ -50,7 +50,9 @@
     {"id": "first-run-setup", "area": "Setup", "title": "A first-run setup in the opening's look: welcome, where you pray (location, method, madhab), light / dark / auto, reminders, Fajr alarm, your masjid, a review, then Bismillah into the app", "link": "settings",
      "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]},
     {"id": "zikr-pace", "area": "Zikr", "title": "Zikr sessions: the rate tile shows how this session compares with your usual pace (faster / slower / about your usual), tiles that flip have the ⇆ mark, and after a task you land on the next one", "link": "zikr"},
-    {"id": "ayah-reveal", "area": "Daily Ayah", "title": "Daily Ayah's reveal: tap and the verse comes forward as a green light blooms behind it, then breathes softly (in light and dark mode)", "link": "ayah"}
+    {"id": "ayah-reveal", "area": "Daily Ayah", "title": "Daily Ayah's reveal: tap and the verse comes forward as a green light blooms behind it, then breathes softly (in light and dark mode)", "link": "ayah"},
+    {"id": "insights", "area": "Insights", "title": "Insights: how you're scoring first (average day score, and each prayer's ring as it usually is when you mark it), then how consistent you are (streaks, prayed counts, a 14-day grid with dates and a show-scores switch), then whether you're getting better", "link": "insights",
+     "tryIt": ["☰ → Insights"]}
   ],
   "entries": [
     {
@@ -772,6 +774,12 @@
       "title": "Daily Ayah in light mode: the green light behind the verse is clearly there now, blooming as you reveal it and breathing after (dark mode unchanged)",
       "tryIt": ["☰ → Daily Ayah in light mode: tap to reveal and watch the green bloom"],
       "checked": "sim", "shots": ["wn-ayah-glow.jpg"]
+    },
+    {
+      "id": "insights-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights reworked: scoring comes first; each prayer's small ring is the Salah page's ring at the moment you usually mark it; the consistency grid gets dates, totals and a show-scores switch",
+      "tryIt": ["☰ → Insights → the small rings: Fajr '12m in' = you usually pray it 12 minutes into its window, coloured by the score that gets; tap one for more", "Swipe to 'how consistent am I?' → show scores → every square takes its score colour; tap a square for its day"],
+      "checked": "sim", "shots": ["wn-insights-scoring.jpg", "wn-insights-consistency.jpg"]
     }
   ]
 }

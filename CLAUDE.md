@@ -1692,6 +1692,16 @@ Hold a session row to feel its pace (`PaceHoldGesture`, a 0.2 s UIKit long press
 start on a row still scroll): tick + edge glow at once, then the pill border fills over one count
 (drawn from the clock in a TimelineView), tick, repeat, until the finger lifts.
 
+**Insights, current (2026-09-28, owner via Bradley):** page order is "how am I scoring?" · "how consistent am I?" ·
+"am I getting better?". Scoring: range switch, the day-score hero (caption "your average day score · last 30 days", the
+grade legend a two-column grid, "all five prayers each day, 0–100" hint), then five small rings. **A small ring = the
+Salah page's ring frozen at the moment you usually mark that prayer**: fill = the average fraction of the window passed
+at `timeAtComplete` (prayed rows only, `PrayerStat.usualFraction`), colour = `PrayerScoring.color` for that point
+(`usualColor`), a 2.5 pt butt-cap arc on a 5 pt pale band, "12m in" inside; tap → "Fajr · you usually pray 12 min in ·
+avg 85 · prayed 4 of 10" in a fixed-height slot. Consistency: the streak line (one row, `ViewThatFits` stacks it on a
+narrow phone), "N of M prayed" / "days with all five", the 14-day grid with a "show scores" switch (all squares in
+score colour), a dates row (today bold), a fixed 52 pt detail slot. DEBUG `-insightsPage N`, `-insightsShowScores`.
+Sim ✓ light + dark. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
