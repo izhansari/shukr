@@ -1095,6 +1095,18 @@ agent builds with xcodebuild. Nothing here has CI.
    to learn from it before building a third version.
 9. Then the App Store blockers below.
 
+## First-run setup (notes #18 + #6) — mockups only (2026-09-28)
+
+DEBUG-only `CursorSwift/OnboardingMockups.swift`, not wired into the launch; reads the saved location / method for real
+times, writes nothing, asks for nothing. `-demoOnboarding location|method|madhab|review` (Continue walks through them),
+`-demoOnboardingBismillah ring|sweep`. The look follows the everyday opening: plain background, the sage `SetupRing` at the
+top as progress (a quarter per step, the step's symbol inside), light rounded type, a calm sage-tint primary button, Skip
+top right. Steps mocked: location (the why, then "Allow location" / "Enter a city instead"), method (Automatic first —
+"follows where you are · ISNA here" — then ISNA / MWL / Umm al-Qura / Egyptian / Karachi, today's times live), madhab
+(Shafi'i vs Hanafi cards with a shadow sketch and both Asr times, "only Asr changes"), review (tappable rows with the sell
+lines, orange nudges for While Using / notifications off, Bismillah in two looks: the circle drawing round بِسْمِ اللَّهِ
+and breathing, or a capsule with the welcome's light sweep). Waiting for the owner's pick before building the real flow.
+
 ## Masjid-aware prayers (owner idea 2026-09-25 — parts 1, 2 and most of 4 built 2026-09-26)
 
 **Built:**

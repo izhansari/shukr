@@ -71,6 +71,8 @@ struct PrayerTimesView: View {
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoWhatsNew = false
+    /// The first-run setup mockups (`-demoOnboarding location|method|madhab|review`, notes #18).
+    @State private var demoOnboarding: OnboardingMockStep?
     #endif
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -510,6 +512,11 @@ struct PrayerTimesView: View {
                 let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
+            if let raw = UserDefaults.standard.string(forKey: "demoOnboarding") {
+                try? await Task.sleep(for: .seconds(0.5))
+                demoOnboarding = OnboardingMockStep(rawValue: raw) ?? .location
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoWhatsNew") {
                 // The What's new page; `-demoWhatsNewTopic <id>` opens that card's detail.
                 try? await Task.sleep(for: .seconds(1))
@@ -694,6 +701,7 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
+        .fullScreenCover(item: $demoOnboarding) { OnboardingMockView(step: $0) }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
