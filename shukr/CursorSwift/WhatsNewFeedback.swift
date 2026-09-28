@@ -151,6 +151,21 @@ final class FeedbackStore {
         if let r = received[item.id] { return .received(r) }
         return .sent(item.sentAt ?? item.updated)
     }
+    /// Where a note stands, in words (the card's Feedback section, Your feedback).
+    func stateLine(_ item: FeedbackItem, _ state: FeedbackState? = nil) -> String {
+        let t = { (d: Date) in WhatsNew.whenLabel(d) }
+        switch state ?? self.state(item) {
+        case .received(let d): return "Received by Claude · \(t(d))"
+        case .sent(let d): return "Sent \(t(d))"
+        case .toCheck(let fix): return "Addressed in \(fix.buildLabel)"
+        case .closed:
+            if let c = item.closedAt { return "Looks good · \(t(c))" }
+            if item.kind == .works { return "👍 Works" }
+            return received[item.id].map { "Received by Claude · \(t($0)) · closed" } ?? "Sent · closed"
+        case .reopened: return item.reopenedAt.map { "Still off · \(t($0))" } ?? "Still off"
+        case .draft: return "Saved · Claude will pick it up"
+        }
+    }
     var toCheck: [(item: FeedbackItem, fix: WhatsNewEntry)] {
         items.compactMap { item in if case .toCheck(let fix) = state(item) { (item, fix) } else { nil } }
     }

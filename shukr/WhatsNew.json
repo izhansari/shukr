@@ -39,7 +39,7 @@
     {"id": "zikr-reminders", "area": "Zikr", "title": "Reminders for zikr tasks: at a time or around a prayer", "link": "zikr",
      "tryIt": ["Zikr → New task (or edit one) → Reminder → At a time / Around a prayer", "Pick the days → Save", "When it fires: Start now opens that task; Later nudges again in 30 min"]},
     {"id": "whats-new", "area": "Settings", "title": "What's new", "link": "settings",
-     "summary": "What's new: one state per card — To check (your notes addressed, what you asked in chat; your later 👍 or note on that card answers it), To test (newest untested changes first), With the team (your notes, saved / sent / received), Archive; each card opens on its changes, with their pictures",
+     "summary": "What's new: one state per card — To check (your notes addressed, what you asked in chat; your later 👍 or note on that card answers it), To test (newest untested changes first), With the team (your notes, saved / sent / received), Archive; each card opens on its changes, with their pictures; at the top, Your feedback (every note, whatever its state) and All changes (every change by day)",
      "tryIt": ["Tap the build line (bottom of ☰ or Settings) → one card per feature, newest change first", "Tap a card → try-it steps, screenshots, and every change with its time (dropped ones greyed)", "👍 / 👎 / 💬 on a card, add a note or a photo → Send feedback at the top → share / copy it to Claude; it's marked sent"]},
     {"id": "zikr-widget", "area": "Widget", "title": "Zikr widget",
      "summary": "The medium Zikr widget fits more tasks and always shows progress"},
@@ -1050,6 +1050,12 @@
       "title": "Arrives on time: your own settings first, then how iOS delivers",
       "tryIt": ["Settings → Notifications → tap the status row → Your reminders → Arrives on time", "Top: your Notifications, Time Sensitive and Scheduled Summary as they are now — red only when one really holds reminders back, with Fix in Settings under them", "Below, in grey: how iOS delivers notifications (Time Sensitive, Scheduled Summary, Focus, and the one setup that makes them late)"],
       "checked": "sim", "shots": ["wn-reminders-your-settings.jpg"], "addresses": ["9E5AC5BF-ADBA-4B1C-9D80-9E3225F766E0"]
+    },
+    {
+      "id": "whats-new-15", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "title": "What's new: Your feedback and All changes, linked at the top",
+      "tryIt": ["☰ → the build line → under Send feedback, tap 'Your feedback': every note you've left, newest first, with where it stands (closed ones greyed); tap one → its card's Feedback", "Back, then 'All changes': every change by day, newest first, a green dot on untested ones; tap one → its card, scrolled to that change (it lights up for a moment)"],
+      "checked": "sim", "shots": ["wn-whatsnew-feedback-changes.jpg"], "asked": "where do i go in 'what's new' to see my feedback? from what i can tell it gets hidden after i respond… also put a link at top of page i can click to see changes in chronological order, and click on one to go to its respective card to give feedback or something."
     }
   ]
 }

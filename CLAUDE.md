@@ -102,6 +102,14 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   Unsent notes (on purpose: an unsent note shouldn't vanish). Azkar: sort ties fall back to the section order (built-ins'
   curated order, yours A–Z); the filter resets on appear when you have no own zikr; the library trims its search. DEBUG `-demoWhatsNewArchive YES` opens the
   Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
+- **Your feedback / All changes (2026-09-28, owner: "where do i go … to see my feedback?"):** two quiet sage links under
+  Send feedback (`headerLink`) push `YourFeedbackView` (every note, newest by `updated`, kind icon · card · 2 lines ·
+  when · `FeedbackStore.stateLine` — the one wording the card's Feedback section uses too; closed / still-off greyed,
+  addressed in green) and `AllChangesView` (every `live` entry by day, time · card · title, a green dot when untested, a
+  44 pt thumbnail decoded off the main thread in `ShotThumb`), both in CursorSwift/WhatsNewLists.swift, both searchable
+  (pull down). A row pushes `WhatsNewRoute.cardAt(topic, focus:)`: the detail scrolls (ScrollViewReader, 0.35 s after the
+  push) to `.id("feedback")` or the change's `.id(entry.id)`, which lights sage for 2 s. DEBUG `-demoWhatsNewPage
+  feedback|changes`, `-demoWhatsNewFocus feedback|<entry id>` (with `-demoWhatsNewTopic`).
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline — each change's shots stacked, fitted to the column
   (≤ 300 pt the newest, 170 the rest); never a horizontal ScrollView there: with `scrollClipDisabled` it let the page
   move sideways (owner, BA0ECB7A); tested per topic — a new change

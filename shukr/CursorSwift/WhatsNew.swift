@@ -536,8 +536,13 @@ struct BuildLineButton: View {
 
 enum WhatsNewRoute: Hashable {
     case card(String)
+    /// A card's detail scrolled to one spot: "feedback" (its Feedback section) or a change's id.
+    case cardAt(String, focus: String)
     /// A page pushed inside the sheet ("Open in shukr" for a pushable link).
     case page(String)
+    /// Every note you've left / every change, newest first (owner, 2026-09-28).
+    case feedback
+    case changes
 }
 
 struct WhatsNewView: View {
@@ -655,7 +660,15 @@ struct WhatsNewView: View {
             }
             #if DEBUG
             .task {
-                if let id = UserDefaults.standard.string(forKey: "demoWhatsNewTopic"), path.isEmpty { path = [.card(id)] }
+                // `-demoWhatsNewPage feedback|changes`; `-demoWhatsNewFocus feedback|<entry id>` with a topic.
+                switch UserDefaults.standard.string(forKey: "demoWhatsNewPage") {
+                case "feedback": path = [.feedback]
+                case "changes": path = [.changes]
+                default: break
+                }
+                if let id = UserDefaults.standard.string(forKey: "demoWhatsNewTopic"), path.isEmpty {
+                    path = [UserDefaults.standard.string(forKey: "demoWhatsNewFocus").map { .cardAt(id, focus: $0) } ?? .card(id)]
+                }
                 if UserDefaults.standard.bool(forKey: "demoWhatsNewArchive") { archiveOpen = true }
             }
             #endif
@@ -666,8 +679,17 @@ struct WhatsNewView: View {
                         WhatsNewDetailView(card: card, tested: $tested, acks: $acks, open: opener(for: card),
                                            stillOff: stillOff)
                     }
+                case .cardAt(let id, let focus):
+                    if let card = WhatsNew.card(id: id) {
+                        WhatsNewDetailView(card: card, tested: $tested, acks: $acks, open: opener(for: card),
+                                           stillOff: stillOff, focus: focus)
+                    }
                 case .page(let link):
                     pushedPage(link)
+                case .feedback:
+                    YourFeedbackView { path.append($0) }
+                case .changes:
+                    AllChangesView(untested: Set(WhatsNew.cards.flatMap { untested($0) }.map(\.id))) { path.append($0) }
                 }
             }
         }
@@ -823,8 +845,31 @@ struct WhatsNewView: View {
             Text(BuildInfo.line)
                 .font(.footnote).foregroundStyle(.secondary)
             sendButton
+            // Everything, whatever its state (owner: "where do i go … to see my feedback?").
+            HStack(spacing: 18) {
+                headerLink("Your feedback", systemImage: "text.bubble", count: feedback.items.count, route: .feedback)
+                headerLink("All changes", systemImage: "clock.arrow.circlepath",
+                           count: WhatsNew.entries.filter(\.live).count, route: .changes)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 4)
         }
         .padding(.top, 8)
+    }
+
+    private func headerLink(_ title: String, systemImage: String, count: Int, route: WhatsNewRoute) -> some View {
+        Button { path.append(route) } label: {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                Text(title).fontWeight(.medium)
+                Text("\(count)").foregroundStyle(Color.sage.opacity(0.55))
+                Image(systemName: "chevron.right").font(.caption2.weight(.semibold)).foregroundStyle(Color.sage.opacity(0.55))
+            }
+            .font(.subheadline)
+            .foregroundStyle(Color.sage)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// Everything not yet sent, as one Markdown summary + photos through the share sheet.
@@ -1173,13 +1218,18 @@ struct WhatsNewDetailView: View {
     @Binding var acks: [String: String]
     var open: (() -> Void)? = nil
     var stillOff: (FeedbackItem) -> Void = { _ in }
+    /// Scroll here on open: "feedback" or a change's id (from Your feedback / All changes).
+    var focus: String? = nil
     @State private var feedback = FeedbackStore.shared
     @State private var viewing: UIImage?
+    /// The change you came for, lit for a moment once it's scrolled to.
+    @State private var lit: String?
 
     private var fresh: [WhatsNewEntry] { WhatsNew.untested(card, tested: tested, acks: acks) }
     private var isTested: Bool { fresh.isEmpty && WhatsNew.ackedIndex(card, tested: tested, acks: acks) >= 0 }
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
@@ -1199,9 +1249,20 @@ struct WhatsNewDetailView: View {
                         FeedbackComposer(card: card) { acks = WhatsNew.acks() }
                     }
                 }
+                .id("feedback")
             }
             .padding(16)
             .padding(.bottom, 20)
+        }
+        .task {
+            guard let focus else { return }
+            try? await Task.sleep(for: .seconds(0.35))      // after the push settles
+            withAnimation(.smooth(duration: 0.5)) { proxy.scrollTo(focus, anchor: .top) }
+            guard focus != "feedback" else { return }
+            withAnimation(.easeOut(duration: 0.3).delay(0.4)) { lit = focus }
+            try? await Task.sleep(for: .seconds(2))
+            withAnimation(.easeInOut(duration: 0.6)) { lit = nil }
+        }
         }
         .background(Color(.systemGroupedBackground))
         .fontDesign(.rounded)
@@ -1315,7 +1376,7 @@ struct WhatsNewDetailView: View {
                     Text(item.text.isEmpty ? item.kind.label : item.text)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(stateLine(item, state))
+                    Text(feedback.stateLine(item, state))
                         .font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer(minLength: 0)
@@ -1334,20 +1395,6 @@ struct WhatsNewDetailView: View {
             }
         }
         .font(.subheadline)
-    }
-
-    private func stateLine(_ item: FeedbackItem, _ state: FeedbackState) -> String {
-        let t = { (d: Date) in WhatsNew.whenLabel(d) }
-        switch state {
-        case .received(let d): return "Received by Claude · \(t(d))"
-        case .sent(let d): return "Sent \(t(d))"
-        case .toCheck(let fix): return "Addressed in \(fix.buildLabel)"
-        case .closed:
-            if let c = item.closedAt { return "Looks good · \(t(c))" }
-            return feedback.received[item.id].map { "Received by Claude · \(t($0)) · closed" } ?? "Sent · closed"
-        case .reopened: return "Still off · \(item.reopenedAt.map(t) ?? "")"
-        case .draft: return "Saved · Claude will pick it up"
-        }
     }
 
     /// Newest first: time · commit · one line; dropped / replaced greyed with the word.
@@ -1410,6 +1457,12 @@ struct WhatsNewDetailView: View {
                     }
                     .padding(.bottom, 16)
                 }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.sage.opacity(lit == entry.id ? 0.14 : 0))
+                        .padding(.horizontal, -8).padding(.top, -6).padding(.bottom, 8)
+                )
+                .id(entry.id)
             }
         }
     }
