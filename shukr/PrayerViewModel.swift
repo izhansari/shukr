@@ -1109,6 +1109,18 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
      }
      */
 
+    /// A day's rows, one per prayer name (a completed row wins, else the first), in time order.
+    /// The loaders used `fetchLimit = 5`: with a sixth row that day (an edited / imported / duplicate
+    /// one) a prayer dropped out of the list — the same bug as fetchPrayerTimes' (2026-09-27).
+    static func onePerPrayer(_ rows: [PrayerModel]) -> [PrayerModel] {
+        var picked: [String: PrayerModel] = [:]
+        for row in rows {
+            if let current = picked[row.name], current.isCompleted || !row.isCompleted { continue }
+            picked[row.name] = row
+        }
+        return picked.values.sorted { $0.startTime < $1.startTime }
+    }
+
     func loadPrayerObjects(for date: Date? = nil) -> [PrayerModel] {
         let targetDate = date ?? PrayerDay.date() // the provided calendar day, else the current prayer day
         let dayStart = Calendar.current.startOfDay(for: targetDate)
@@ -1118,10 +1130,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             predicate: #Predicate<PrayerModel> { $0.startTime >= dayStart && $0.startTime <= dayEnd },
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
-        fetchDescriptor.fetchLimit = 5
-
         do {
-            let prayers = try context.fetch(fetchDescriptor)
+            let prayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
             printPrayersOutput(prayers, for: targetDate)
             return prayers
         } catch {
@@ -1139,10 +1149,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             predicate: #Predicate<PrayerModel> { $0.startTime >= dayStart && $0.startTime <= dayEnd },
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
-        fetchDescriptor.fetchLimit = 5
-
         do {
-            var prayers = try context.fetch(fetchDescriptor)
+            var prayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
             for name in orderedPrayerNames {
                 let searchForThisName = prayers.first(where: { $0.name == name })
                 if searchForThisName == nil{
@@ -1174,14 +1182,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     func loadTodaysPrayerObjects(){
         let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
-        var fetchDescriptor = FetchDescriptor<PrayerModel>(
+        let fetchDescriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
-        fetchDescriptor.fetchLimit = 5
 
         do {
-            todaysPrayers = try context.fetch(fetchDescriptor)
+            todaysPrayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
         } catch {
             print("❌ (loadLast5Prayers) Error occured during the fetch attempt. \(error.localizedDescription)")
         }
