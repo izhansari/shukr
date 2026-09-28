@@ -11,7 +11,7 @@ topic, notes item, one-line title, try-it steps, checked, optional status "dropp
       Fill in "commit": "next" with the hash of the commit that added the entry, and every
       committed entry's "time" (commit time, from git). Run it before committing.
 
-  scripts/whatsnew.py add --topic ID --title "…" --try "…" [--try "…"] [--notes "#17"]
+  scripts/whatsnew.py add --topic ID --title "…" --headline "…" --try "…" [--try "…"] [--notes "#17"]
                           [--area Zikr --topic-title "…" --topic-summary "…"] [--topic-try "…"]…
                           [--shot wn-x.jpg]… [--checked sim|phone|no] [--status dropped|replaced|removed]
                           [--topic-link salah|zikr|settings|history|azkar|map|names|ayah|insights]
@@ -20,9 +20,14 @@ topic, notes item, one-line title, try-it steps, checked, optional status "dropp
       --topic-title is SHORT (≤ 60 chars, e.g. "Prayers widget"); the long description of the feature
       as it is now goes in --topic-summary (shown in the detail).
       Every entry needs its own --try steps for THIS change; --no-try only for invisible changes.
+      Every entry needs a --headline: what changed, in a few words (≤ 40 chars, e.g. "Only the newest
+      change shown") — the bold line on its To check / To test card; the --title is the full sentence.
       --addresses: feedback this change fixes (the app shows it under "To check").
       --asked: the owner's own request from chat (relayed by Bradley, in his words) — the app shows
       "You asked in chat: '…'" and puts the change under "To check" like addressed feedback.
+
+  scripts/whatsnew.py headline --entry <entry id> --text "<a few words>"
+      Set an existing entry's headline (backfill).
 
   scripts/whatsnew.py asked --entry <entry id> --text "<the owner's words>"
       Set an existing entry's chat request (backfill).
@@ -88,7 +93,7 @@ def save(data):
             last += f', "asked": {j(e["asked"])}'
         out += ["    {",
                 f"      {first},",
-                f'      "title": {j(e["title"])},',
+                f'      "title": {j(e["title"])},' + (f' "headline": {j(e["headline"])},' if e.get("headline") else ""),
                 f'      "tryIt": {j(e["tryIt"])},',
                 f"      {last}",
                 "    }" + ("," if i < len(data["entries"]) - 1 else "")]
@@ -118,6 +123,19 @@ def resolve():
 
 
 TITLE_MAX = 60
+HEADLINE_MAX = 40
+
+
+def with_headline(e, text):
+    """The entry with its headline right after the title (stable key order in the file)."""
+    out = {}
+    for k, v in e.items():
+        if k == "headline":
+            continue
+        out[k] = v
+        if k == "title":
+            out["headline"] = text
+    return out
 
 
 def add(a):
@@ -126,6 +144,10 @@ def add(a):
                  "and put the description in --topic-summary")
     if not a.tryit and not a.no_try:
         sys.exit("every entry needs its own --try steps for this change (or --no-try for an invisible one)")
+    if not a.headline:
+        sys.exit("every entry needs a --headline: what changed, in a few words (e.g. \"Only the newest change shown\")")
+    if len(a.headline) > HEADLINE_MAX:
+        sys.exit(f"--headline is {len(a.headline)} chars: keep it ≤ {HEADLINE_MAX}")
     data = load()
     topics = {t["id"]: t for t in data["topics"]}
     t = topics.get(a.topic)
@@ -157,7 +179,7 @@ def add(a):
     while f"{a.topic}-{n}" in used:
         n += 1
     e = {"id": f"{a.topic}-{n}", "date": datetime.date.today().isoformat(), "commit": "next", "time": None, "topic": a.topic,
-         "notes": a.notes, "title": a.title, "tryIt": a.tryit or [], "checked": a.checked}
+         "notes": a.notes, "title": a.title, "headline": a.headline, "tryIt": a.tryit or [], "checked": a.checked}
     if a.status:
         e["status"] = a.status
     if a.shot:
@@ -182,6 +204,18 @@ def address(entry_id, ids):
             have.append(i.upper())
     save(data)
     print(f"{entry_id} addresses {', '.join(have)}")
+
+
+def set_headline(entry_id, text):
+    if len(text) > HEADLINE_MAX:
+        sys.exit(f"headline is {len(text)} chars: keep it ≤ {HEADLINE_MAX}")
+    data = load()
+    i = next((n for n, x in enumerate(data["entries"]) if x["id"] == entry_id), None)
+    if i is None:
+        sys.exit(f"no entry {entry_id!r}")
+    data["entries"][i] = with_headline(data["entries"][i], text)
+    save(data)
+    print(f"{entry_id} headline: {text}")
 
 
 def set_asked(entry_id, text):
@@ -274,6 +308,7 @@ if __name__ == "__main__":
         p = argparse.ArgumentParser(prog="whatsnew.py add")
         p.add_argument("--topic", required=True)
         p.add_argument("--title", required=True)
+        p.add_argument("--headline", help="what changed, in a few words (≤ 40 chars): the card's bold line")
         p.add_argument("--try", dest="tryit", action="append")
         p.add_argument("--no-try", action="store_true", help="an invisible change: no try-it steps")
         p.add_argument("--asked", help="the owner's request from chat, in his words")
@@ -295,6 +330,12 @@ if __name__ == "__main__":
         p.add_argument("--feedback", action="append", required=True)
         a = p.parse_args(sys.argv[2:])
         address(a.entry, a.feedback)
+    elif cmd == "headline":
+        p = argparse.ArgumentParser(prog="whatsnew.py headline")
+        p.add_argument("--entry", required=True)
+        p.add_argument("--text", required=True)
+        a = p.parse_args(sys.argv[2:])
+        set_headline(a.entry, a.text)
     elif cmd == "asked":
         p = argparse.ArgumentParser(prog="whatsnew.py asked")
         p.add_argument("--entry", required=True)

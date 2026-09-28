@@ -40,6 +40,13 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
 - **Hard rule — steps per change:** every entry has its own `--try` steps for THAT change (the app's "Try it" lists
   every untested change with its own steps, then the feature's general steps folded). `whatsnew.py add` refuses an
   entry without `--try`; `--no-try` only for invisible changes.
+- **Hard rule — a headline per change (2026-09-28, owner: "a small title … what it is that got changed or what it is to
+  look for"):** every entry has `--headline "…"` — what changed in a few words, ≤ 40 chars ("Only the newest change
+  shown"); `whatsnew.py add` refuses an entry without one, and `whatsnew.py headline --entry <id> --text "…"` backfills.
+  It's the bold line of a To check card (`ScannableCheck`: the card's name + where it came from in one quiet line, ✓ the
+  headline, "Look for: <its first try step>", then Looks good / Still off; his words and the full "Done in / Addressed
+  in <build>: <title>" fold behind "your words ›") and a To test card's subtitle (newest untested change's headline,
+  "· +N more"). `WhatsNewEntry.short` = headline, else the title (older entries). The whats-new topic's area is "Beta".
 - **Short topic titles:** `--topic-title` ≤ 60 chars (a name: "Prayers widget", "Insights"); the feature as it is now,
   in full, goes in `--topic-summary` (the detail shows it under the title). The script refuses longer titles.
 - **How the page reads (2026-09-28, owner: "so everyone is on the same page"):** each card has one state. To check
@@ -65,8 +72,8 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   2. Screenshot in the sim, then `scripts/whatsnew.py shot <png> <name>` → `shukr/WhatsNewShots/wn-<name>.jpg`
      (≤ 600 px, ~20–40 KB; keep the folder modest — it ships in TestFlight builds). The folder is a
      synchronized group in the app target, so nothing else to add.
-  3. `scripts/whatsnew.py add --topic <id> --notes "#17" --title "<this change, one line>" --try "…"
-     --try "…" --shot wn-<name>.jpg`. A new feature: also `--area Zikr --topic-title "…"`.
+  3. `scripts/whatsnew.py add --topic <id> --notes "#17" --title "<this change, one line>" --headline "<≤ 40 chars>"
+     --try "…" --try "…" --shot wn-<name>.jpg`. A new feature: also `--area Zikr --topic-title "…"`.
 - **Topics are features, not commits** (one card each). Reuse the topic when a change touches an
   existing feature, and update `--topic-title` so it always describes the feature **as it is now**
   ("The map's globe toggles Standard ⇄ Satellite…"), plus `--topic-try` when the steps changed. A

@@ -38,7 +38,7 @@
     {"id": "task-names", "area": "Zikr", "title": "Give a zikr task its own name (\"After Fajr\")", "link": "zikr"},
     {"id": "zikr-reminders", "area": "Zikr", "title": "Reminders for zikr tasks: at a time or around a prayer", "link": "zikr",
      "tryIt": ["Zikr → New task (or edit one) → Reminder → At a time / Around a prayer", "Pick the days → Save", "When it fires: Start now opens that task; Later nudges again in 30 min"]},
-    {"id": "whats-new", "area": "Settings", "title": "What's new", "link": "settings",
+    {"id": "whats-new", "area": "Beta", "title": "What's new", "link": "settings",
      "summary": "What's new: one state per card — To check (your notes addressed, what you asked in chat; your later 👍 or note on that card answers it), To test (newest untested changes first), With the team (your notes, saved / sent / received), Archive; each card opens on its changes, with their pictures; at the top, Your feedback (every note, whatever its state) and All changes (every change by day)",
      "tryIt": ["Tap the build line (bottom of ☰ or Settings) → one card per feature, newest change first", "Tap a card → try-it steps, screenshots, and every change with its time (dropped ones greyed)", "👍 / 👎 / 💬 on a card, add a note or a photo → Send feedback at the top → share / copy it to Claude; it's marked sent"]},
     {"id": "zikr-widget", "area": "Widget", "title": "Zikr widget",
@@ -87,19 +87,19 @@
   "entries": [
     {
       "id": "share-card-1", "date": "2026-09-26", "commit": "5e962e3", "time": "2026-09-26T16:36:16-04:00", "topic": "share-card", "notes": null,
-      "title": "Share card says \"join the beta on TestFlight\"",
+      "title": "Share card says \"join the beta on TestFlight\"", "headline": "Share card: join the beta",
       "tryIt": ["Daily Ayah → reveal → Share → the line under the shukr mark"],
       "checked": "sim"
     },
     {
       "id": "explore-dock-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "explore-dock", "notes": null,
-      "title": "The explore button opens in place",
+      "title": "The explore button opens in place", "headline": "Explore button opens in place",
       "tryIt": ["Open the map → tap the magnifying glass → Qibla · Prayers · Mosques fan out", "Tap the map to fold it back"],
       "checked": "sim"
     },
     {
       "id": "my-masajid-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "my-masajid", "notes": null,
-      "title": "My masajid: star the mosques you pray at",
+      "title": "My masajid: star the mosques you pray at", "headline": "Star the mosques you pray at",
       "tryIt": ["Mosques → open a mosque → tap ☆", "The list shows it under MY MASAJID and its pin has a star"],
       "checked": "sim"
     },
@@ -111,7 +111,7 @@
     },
     {
       "id": "fine-ring-1", "date": "2026-09-26", "commit": "5b73f12", "time": "2026-09-26T16:51:31-04:00", "topic": "fine-ring", "notes": null,
-      "title": "The \"fine\" ring is the tasbeeh default",
+      "title": "The \"fine\" ring is the tasbeeh default", "headline": "Fine ring is the tasbeeh default",
       "tryIt": ["Start a freestyle zikr → the thin glowing ring"],
       "checked": "phone"
     },
@@ -123,7 +123,7 @@
     },
     {
       "id": "masjid-filter-1", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "masjid-filter", "notes": null,
-      "title": "Filter prayer pins to \"Only at a masjid\"",
+      "title": "Filter prayer pins to \"Only at a masjid\"", "headline": "Filter pins: only at a masjid",
       "tryIt": ["Map → Prayers → the range menu → Only at a masjid"],
       "checked": "no"
     },
@@ -135,13 +135,13 @@
     },
     {
       "id": "holy-cities-1", "date": "2026-09-26", "commit": "b3dc3d4", "time": "2026-09-26T17:03:33-04:00", "topic": "holy-cities", "notes": null,
-      "title": "Welcome to Makkah / Madinah",
+      "title": "Welcome to Makkah / Madinah", "headline": "Welcome to Makkah / Madinah",
       "tryIt": ["Only in Makkah or Madinah: open the app → a welcome notification"],
       "checked": "sim"
     },
     {
       "id": "jumuah-3", "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "jumuah", "notes": null,
-      "title": "\"Early\" is now \"Perfect\"; Jumu'ah shows no grade",
+      "title": "\"Early\" is now \"Perfect\"; Jumu'ah shows no grade", "headline": "Early is Perfect; Jumu'ah has no grade",
       "tryIt": ["Mark a prayer in its first 30 min → \"Perfect · 100\"", "Long-press a prayed prayer → the editor says Perfect"],
       "checked": "sim"
     },
@@ -153,7 +153,7 @@
     },
     {
       "id": "time-editor-opens-1", "date": "2026-09-26", "commit": "ba98814", "time": "2026-09-26T17:28:36-04:00", "topic": "time-editor-opens", "notes": null,
-      "title": "The time editor opens on the time you saved",
+      "title": "The time editor opens on the time you saved", "headline": "Time editor opens on your saved time",
       "tryIt": ["Long-press a prayed prayer → the wheel shows its saved time, not now"],
       "checked": "sim"
     },
@@ -183,7 +183,7 @@
     },
     {
       "id": "recorded-vs-edited-1", "date": "2026-09-26", "commit": "5b5f1f6", "time": "2026-09-26T18:12:51-04:00", "topic": "recorded-vs-edited", "notes": null,
-      "title": "Edits keep what the app recorded",
+      "title": "Edits keep what the app recorded", "headline": "Edits keep what the app recorded",
       "tryIt": ["Change a prayer's time → reopen the editor → \"You marked it at … · use that\""],
       "checked": "sim"
     },
@@ -225,13 +225,13 @@
     },
     {
       "id": "move-prayer-3", "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "move-prayer", "notes": null,
-      "title": "The moving pin points at the right spot",
+      "title": "The moving pin points at the right spot", "headline": "Moving pin points at the right spot",
       "tryIt": ["Edit a prayer → Change location → the pin's tip sits exactly on where you prayed"],
       "checked": "sim"
     },
     {
       "id": "prayer-page-4", "date": "2026-09-26", "commit": "17d1d07", "time": "2026-09-26T19:24:37-04:00", "topic": "prayer-page", "notes": null,
-      "title": "Smooth edit transitions, and Back to the pin",
+      "title": "Smooth edit transitions, and Back to the pin", "headline": "Smooth edits, and Back to the pin",
       "tryIt": ["Prayer page → Edit → Change location → Cancel → Cancel: the sheet glides between sizes", "Pan away from the prayer's pin → tap \"Back to Dhuhr\""],
       "checked": "sim"
     },
@@ -261,7 +261,7 @@
     },
     {
       "id": "task-names-1", "date": "2026-09-26", "commit": "dacffe2", "time": "2026-09-26T19:46:25-04:00", "topic": "task-names", "notes": "#7",
-      "title": "Give a zikr task its own name",
+      "title": "Give a zikr task its own name", "headline": "Name your zikr tasks",
       "tryIt": ["Zikr → long-press a task → tap it → type a name like \"After Fajr\" → Save", "The circle shows the name with the zikr under it"],
       "checked": "sim"
     },
@@ -285,25 +285,25 @@
     },
     {
       "id": "names-filter-2", "date": "2026-09-27", "commit": "c4a3a30", "time": "2026-09-27T01:24:03-04:00", "topic": "names-filter", "notes": "#3",
-      "title": "Counts no longer include \"Allah\"",
+      "title": "Counts no longer include \"Allah\"", "headline": "Counts leave out \"Allah\"",
       "tryIt": ["Mark Allah as known → the header, Learning and Known counts stay out of 99"],
       "checked": "sim"
     },
     {
       "id": "zikr-widget-1", "date": "2026-09-27", "commit": "a0a0901", "time": "2026-09-27T01:29:21-04:00", "topic": "zikr-widget", "notes": null,
-      "title": "The medium Zikr widget fits more tasks and always shows progress",
+      "title": "The medium Zikr widget fits more tasks and always shows progress", "headline": "Zikr widget fits more tasks",
       "tryIt": ["Add the medium Zikr widget with 5–6 tasks → it shows as many as fit", "A very long task name truncates; its 0/100 stays visible"],
       "checked": "sim"
     },
     {
       "id": "zikr-reminders-2", "date": "2026-09-27", "commit": "a247790", "time": "2026-09-27T01:34:28-04:00", "topic": "zikr-reminders", "notes": "#11",
-      "title": "Zikr reminders: fixes and no more \"Skip today\"",
+      "title": "Zikr reminders: fixes and no more \"Skip today\"", "headline": "Zikr reminder fixes",
       "tryIt": ["Give a task a reminder, then delete the task → its reminders stop", "With notifications off, open a task's Reminder → \"Notifications are off · Open Settings\"", "A reminder's actions are now just Start now and Later (30 min)"],
       "checked": "sim"
     },
     {
       "id": "welcome-1", "date": "2026-09-27", "commit": "1e22cc6", "time": "2026-09-27T01:35:56-04:00", "topic": "welcome", "notes": "#9",
-      "title": "The welcome animation plays only on a fresh start",
+      "title": "The welcome animation plays only on a fresh start", "headline": "Welcome plays only on a fresh start",
       "tryIt": ["Leave shukr for a while and come back → no welcome", "Swipe shukr away in the app switcher, open it again → the welcome plays"],
       "checked": "sim"
     },
@@ -327,7 +327,7 @@
     },
     {
       "id": "post-salah-1", "date": "2026-09-27", "commit": "342189c", "time": "2026-09-27T02:46:08-04:00", "topic": "post-salah", "notes": null,
-      "title": "Post-salah: only the bottom pill",
+      "title": "Post-salah: only the bottom pill", "headline": "Post-salah: just the bottom pill",
       "tryIt": ["Mark a prayer → after the sweep, the \"Post-salah tasbih?\" pill at the bottom (no in-circle offer, no top pill)", "Settings → My Dev Stuff no longer has a Post-salah prompt picker"],
       "checked": "sim"
     },
@@ -345,13 +345,13 @@
     },
     {
       "id": "map-style-3", "date": "2026-09-27", "commit": "332d04a", "time": "2026-09-27T04:06:58-04:00", "topic": "map-style", "notes": "#15",
-      "title": "The map follows the app's light / dark / auto setting; ? has its own button",
+      "title": "The map follows the app's light / dark / auto setting; ? has its own button", "headline": "Map follows light / dark",
       "tryIt": ["Settings → switch to dark (or auto after Maghrib) → open the map → the standard map is dark", "The ? sits on its own under the globe / locate buttons"],
       "checked": "sim"
     },
     {
       "id": "zikr-wording-1", "date": "2026-09-27", "commit": "b76d6f7", "time": "2026-09-27T04:12:53-04:00", "topic": "zikr-wording", "notes": "#17",
-      "title": "\"Mantra\" is now \"zikr\" everywhere; the library is \"Azkar\"",
+      "title": "\"Mantra\" is now \"zikr\" everywhere; the library is \"Azkar\"", "headline": "\"Mantra\" is now \"zikr\"",
       "tryIt": ["Zikr page → the books button → History | Azkar", "Open a zikr → \"Edit zikr\", \"No tasks use this zikr\"", "Pause a session → \"choose a zikr\" / \"Edit zikr\""],
       "checked": "sim"
     },
@@ -381,7 +381,7 @@
     },
     {
       "id": "qibla-up-1", "date": "2026-09-27", "commit": "c7a2260", "time": "2026-09-27T04:48:20-04:00", "topic": "qibla-up", "notes": null,
-      "title": "The green qibla-up button also brings you back to your dot",
+      "title": "The green qibla-up button also brings you back to your dot", "headline": "Qibla-up button brings you home",
       "tryIt": ["Open the map → turn it with two fingers, zoom out and drag away", "Tap the green arrow under locate → one move back to your dot, qibla-up, at the qibla zoom", "In prayer spots / mosques the red needle still only turns the map north"],
       "checked": "sim", "shots": ["wn-qibla-up.jpg"]
     },
@@ -405,7 +405,7 @@
     },
     {
       "id": "new-task-flow-3", "date": "2026-09-27", "commit": "c0cecd0", "time": "2026-09-27T06:25:31-04:00", "topic": "new-task-flow", "notes": "#17",
-      "title": "A new zikr can't be swiped away with something in it; Delete zikr while editing; no double ＋",
+      "title": "A new zikr can't be swiped away with something in it; Delete zikr while editing; no double ＋", "headline": "A new zikr can't be swiped away",
       "tryIt": ["Picker ＋ → type a name → swipe down: it stays; Cancel asks \"Discard this zikr?\"", "Save a new zikr → the card closes, then the picker, and it's picked", "Open one of your azkar → ✎ → Delete zikr at the bottom (says what happens to its tasks and sessions)", "A zikr with no tasks shows only the dashed New task circle; the ＋ appears once it has one"],
       "checked": "sim"
     },
@@ -441,7 +441,7 @@
     },
     {
       "id": "prayer-begins-8", "date": "2026-09-27", "commit": "c404e44", "time": "2026-09-27T07:00:22-04:00", "topic": "prayer-begins", "notes": null,
-      "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only",
+      "title": "NEXT is a small tag set apart above the name; dev toggle to try the dashed ring alone; Lock Screen: ring only", "headline": "NEXT as a small tag above the name",
       "tryIt": ["Mark the current prayer → a small NEXT, well above the name, not part of the stack", "Settings → My Dev Stuff → Next prayer → \"Dashed ring only\" → no NEXT anywhere (app and home-screen widget)", "Lock Screen widget: a prayer that hasn't started shows just the dashed ring"],
       "checked": "sim", "shots": ["wn-next-options.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048"]
     },
@@ -483,13 +483,13 @@
     },
     {
       "id": "zikr-history-3", "date": "2026-09-27", "commit": "d25417d", "time": "2026-09-27T13:32:33-04:00", "topic": "zikr-history", "notes": "#2b",
-      "title": "Tap a session: a small glass menu (Open zikr · Feel the pace) instead of a strip under the row",
+      "title": "Tap a session: a small glass menu (Open zikr · Feel the pace) instead of a strip under the row", "headline": "Tap a session: a small menu",
       "tryIt": ["History → tap a session → Open zikr / Feel the pace; nothing in the list moves", "While the pace plays, tap the row again → it stops", "On a zikr's page, tapping a session offers Feel the pace"],
       "checked": "sim", "shots": ["wn-session-popover.jpg"], "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "zikr-history-4", "date": "2026-09-27", "commit": "5119925", "time": "2026-09-27T13:47:29-04:00", "topic": "zikr-history", "notes": "#2",
-      "title": "History ⇄ Azkar pages smoothly (native paging); Azkar has Edit → select → Delete too, no row swipes",
+      "title": "History ⇄ Azkar pages smoothly (native paging); Azkar has Edit → select → Delete too, no row swipes", "headline": "History ⇄ Azkar: smooth native paging",
       "tryIt": ["Books → swipe between History and Azkar: smooth, the switch follows", "Azkar → Edit → tick your own azkar (built-ins can't be) → Delete N azkar (says what happens to their tasks)", "Scrub the 14-day chart sideways: it scrubs, the page doesn't turn"],
       "checked": "sim", "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
@@ -507,7 +507,7 @@
     },
     {
       "id": "zikr-history-7", "date": "2026-09-27", "commit": "04c4dab", "time": "2026-09-27T14:43:31-04:00", "topic": "zikr-history", "notes": "#2",
-      "title": "Azkar's ＋ sits beside the search field at the bottom and slides in; a long press no longer leaves a session grey",
+      "title": "Azkar's ＋ sits beside the search field at the bottom and slides in; a long press no longer leaves a session grey", "headline": "Azkar's ＋ beside the search field",
       "tryIt": ["Books → swipe to Azkar → the ＋ appears next to \"Search azkar\"", "History → hold a session to feel its pace, let go → the row goes back to normal"],
       "checked": "sim", "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
@@ -525,25 +525,25 @@
     },
     {
       "id": "zikr-history-8", "date": "2026-09-27", "commit": "3b2a6b2", "time": "2026-09-27T14:48:00-04:00", "topic": "zikr-history", "notes": "#2",
-      "title": "Edit mode looks like iOS: selection circles, a plain red Delete in the bottom bar, no grey rows; holding a session to feel its pace no longer slides the page",
+      "title": "Edit mode looks like iOS: selection circles, a plain red Delete in the bottom bar, no grey rows; holding a session to feel its pace no longer slides the page", "headline": "Edit mode looks like iOS",
       "tryIt": ["History → Edit → tick sessions → Delete (N) at the bottom → confirm", "Same on Azkar and on a zikr's page (Sessions → Edit)", "Hold a session to feel its pace and drift sideways → the page stays"],
       "checked": "sim", "shots": ["wn-edit-stock.jpg"], "addresses": ["6B34A40C-F17A-4268-B958-8223D929EE81"]
     },
     {
       "id": "prayer-begins-9", "date": "2026-09-27", "commit": "34b5f00", "time": "2026-09-27T14:50:14-04:00", "topic": "prayer-begins", "notes": null,
-      "title": "Dev builds: a NEXT label playground to tune its offset, size, opacity and spacing live",
+      "title": "Dev builds: a NEXT label playground to tune its offset, size, opacity and spacing live", "headline": "NEXT label playground (dev)",
       "tryIt": ["Settings → My Dev Stuff → NEXT label playground… → move the sliders; the Salah circle follows", "Copy values → paste them back to Claude to make them the default"],
       "checked": "sim", "addresses": ["6A490706-8873-4B9F-B0E8-353F804D7777"]
     },
     {
       "id": "whats-new-4", "date": "2026-09-27", "commit": "e104611", "time": "2026-09-27T14:56:03-04:00", "topic": "whats-new", "notes": "#19",
-      "title": "What's new: \"Open in shukr\" on each card takes you straight to that feature",
+      "title": "What's new: \"Open in shukr\" on each card takes you straight to that feature", "headline": "Open in shukr on each card",
       "tryIt": ["Open a card → Open in shukr → What's new closes and you land on that page (History, the map, Azkar, the Salah page…)", "Or tap the small arrow on a card in the list"],
       "checked": "sim", "addresses": ["AE73908E-CC17-43E0-83FC-0664B27F1091"]
     },
     {
       "id": "zikr-history-9", "date": "2026-09-27", "commit": "aa97b94", "time": "2026-09-27T15:44:15-04:00", "topic": "zikr-history", "notes": null,
-      "title": "History ⇄ Azkar pages without the lag; the Edit button stays put",
+      "title": "History ⇄ Azkar pages without the lag; the Edit button stays put", "headline": "History ⇄ Azkar without the lag",
       "tryIt": ["☰ → Zikr History → swipe to Azkar and back: smooth, and Edit doesn't redraw", "Edit still works on both pages"],
       "checked": "sim"
     },
@@ -561,7 +561,7 @@
     },
     {
       "id": "zikr-media-6", "date": "2026-09-27", "commit": "9a0ec9a", "time": "2026-09-27T15:57:36-04:00", "topic": "zikr-media", "notes": null,
-      "title": "A zikr's sessions: one Delete button in Edit mode, and a tap selects (no Feel the pace popover)",
+      "title": "A zikr's sessions: one Delete button in Edit mode, and a tap selects (no Feel the pace popover)", "headline": "One Delete for a zikr's sessions",
       "tryIt": ["A zikr's page → Sessions → Edit → tap a session: it's selected, one Delete at the bottom"],
       "checked": "sim"
     },
@@ -585,13 +585,13 @@
     },
     {
       "id": "built-in-azkar-5", "date": "2026-09-27", "commit": "1284edd", "time": "2026-09-27T16:46:28-04:00", "topic": "built-in-azkar", "notes": null,
-      "title": "Azkar: your own azkar on top, built-ins below, and a filter button that hides the built-ins (no more folding)",
+      "title": "Azkar: your own azkar on top, built-ins below, and a filter button that hides the built-ins (no more folding)", "headline": "Your azkar on top, built-ins below",
       "tryIt": ["Azkar → your azkar are first, built-ins under them", "Tap the filter button left of the search field: only yours show; tap again to bring the built-ins back", "Search always shows built-ins too"],
       "checked": "sim", "shots": ["wn-azkar-yours-first.jpg", "wn-azkar-mine-only.jpg"], "addresses": ["6B1CFEB8-4CD8-433D-AED6-C2A5BC8B6D9F"]
     },
     {
       "id": "qibla-haptic-5", "date": "2026-09-27", "commit": "1284edd", "time": "2026-09-27T16:46:28-04:00", "topic": "qibla-haptic", "notes": null,
-      "title": "The qibla map keeps buzzing (once a second) the whole time you're lined up, and stops when you turn off the line",
+      "title": "The qibla map keeps buzzing (once a second) the whole time you're lined up, and stops when you turn off the line", "headline": "Map buzzes while you're lined up",
       "tryIt": ["Map (qibla) → turn onto the green line and hold: it keeps buzzing; turn away: it stops"],
       "checked": "no", "addresses": ["6FB814B9-9F96-4045-965D-F8240F812DCC"]
     },
@@ -621,13 +621,13 @@
     },
     {
       "id": "settings-rows-1", "date": "2026-09-27", "commit": "c830b80", "time": "2026-09-27T17:25:23-04:00", "topic": "settings-rows", "notes": null,
-      "title": "Settings rows respond again on iOS 26: Calculation Method / School pickers, Refresh Location, Choose City, Sneak Peek rows",
+      "title": "Settings rows respond again on iOS 26: Calculation Method / School pickers, Refresh Location, Choose City, Sneak Peek rows", "headline": "Settings rows respond on iOS 26",
       "tryIt": ["Settings → Calculation Method → tap Method or School: the menu opens", "Settings → Sneak Peek → Masjid Map: its sheet opens"],
       "checked": "sim", "shots": ["wn-settings-picker-fixed.jpg"]
     },
     {
       "id": "built-in-azkar-6", "date": "2026-09-27", "commit": "b87d36f", "time": "2026-09-27T17:44:36-04:00", "topic": "built-in-azkar", "notes": null,
-      "title": "Azkar: the filter button is a Sort + Filter menu: Most / Least recited, Recently used, Slowest / Fastest pace, A–Z, and Show built-ins",
+      "title": "Azkar: the filter button is a Sort + Filter menu: Most / Least recited, Recently used, Slowest / Fastest pace, A–Z, and Show built-ins", "headline": "Azkar Sort + Filter menu",
       "tryIt": ["Azkar → tap the filter button left of the search → Most recited: each section re-orders", "Turn off Show built-ins: only yours show; the icon stays filled while a sort or filter is on"],
       "checked": "sim", "shots": ["wn-azkar-sort-most-recited.jpg"], "addresses": ["E164092C"]
     },
@@ -657,7 +657,7 @@
     },
     {
       "id": "built-in-azkar-8", "date": "2026-09-27", "commit": "81593de", "time": "2026-09-27T18:37:37-04:00", "topic": "built-in-azkar", "notes": null,
-      "title": "Azkar sort, simpler: pick one field (Times recited, Pace, Last used, Name) and an ↑ / ↓ direction; built-ins always show, below yours",
+      "title": "Azkar sort, simpler: pick one field (Times recited, Pace, Last used, Name) and an ↑ / ↓ direction; built-ins always show, below yours", "headline": "Azkar sort: one field + a direction",
       "tryIt": ["Azkar → the sort button left of the search → Times recited: most first; open it again → Ascending: fewest first", "The button shows ↑ or ↓ while a sort is on; Default puts it back"],
       "checked": "sim", "shots": ["wn-azkar-sort-field-direction.jpg"], "addresses": ["ADD5836A-58CE-4555-9425-E66B3AC18406"]
     },
@@ -669,19 +669,19 @@
     },
     {
       "id": "prayer-begins-11", "date": "2026-09-27", "commit": "ea6a065", "time": "2026-09-27T19:34:10-04:00", "topic": "prayer-begins", "notes": null,
-      "title": "NEXT is back to its original look (your playground tweak is undone); saved playground values are cleared once",
+      "title": "NEXT is back to its original look (your playground tweak is undone); saved playground values are cleared once", "headline": "NEXT back to its original look",
       "tryIt": ["Open the app → the circle's NEXT looks as it did before the tweak (no playground reset needed)"],
       "checked": "sim", "shots": ["wn-next-label-original.jpg"], "addresses": ["0DBBDDC7-D598-4B6E-933D-22B1BB120D61"]
     },
     {
       "id": "lockscreen-prayers-3", "date": "2026-09-27", "commit": "5abb432", "time": "2026-09-27T19:42:18-04:00", "topic": "lockscreen-prayers", "notes": null,
-      "title": "Lock Screen round Prayers widget: a smaller prayer icon, so the name and time have more room",
+      "title": "Lock Screen round Prayers widget: a smaller prayer icon, so the name and time have more room", "headline": "Smaller icon on the round widget",
       "tryIt": ["Lock Screen → the round Prayers widget: the icon is smaller above the name (and time, before a prayer starts)"],
       "checked": "sim", "shots": ["wn-lockscreen-circular-small-icon.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048", "8F6E3C4B-D226-4180-9BE3-94D2B5D31E90"]
     },
     {
       "id": "built-in-azkar-9", "date": "2026-09-27", "commit": "0b3955b", "time": "2026-09-27T19:52:47-04:00", "topic": "built-in-azkar", "notes": null,
-      "title": "Azkar sort: Name A to Z is the default (both sections alphabetical); no separate Default; direction rows are one short line (A to Z, Most first, Fastest first, Recent first…)",
+      "title": "Azkar sort: Name A to Z is the default (both sections alphabetical); no separate Default; direction rows are one short line (A to Z, Most first, Fastest first, Recent first…)", "headline": "Name A to Z is the default sort",
       "tryIt": ["Azkar → the sort button: pick a field, then the arrow row that reads how you want it", "Name, A to Z shows the plain sort icon; anything else shows ↑ or ↓"],
       "checked": "sim", "shots": ["wn-azkar-sort-name-default.jpg"], "addresses": ["F5FDC4C1-F877-4F2F-B60E-4FA53952BF60"]
     },
@@ -693,31 +693,31 @@
     },
     {
       "id": "streaks-1", "date": "2026-09-27", "commit": "b3da57a", "time": "2026-09-27T21:13:08-04:00", "topic": "streaks", "notes": null,
-      "title": "Streaks count a day whose last prayer was marked late (from the watch, the widget or a notification around Fajr, or an edited time) instead of resetting to 0",
+      "title": "Streaks count a day whose last prayer was marked late (from the watch, the widget or a notification around Fajr, or an edited time) instead of resetting to 0", "headline": "Late-marked days still count",
       "tryIt": ["Mark yesterday's last prayer after Fajr (widget / notification / watch): tap the city in the top bar → the streak includes yesterday", "Next day: the streak carries on instead of starting from 0"],
       "checked": "sim", "shots": ["wn-streak-counts-late-marks.jpg"]
     },
     {
       "id": "mosque-sheet-5", "date": "2026-09-27", "commit": "1c4a77b", "time": "2026-09-27T22:06:45-04:00", "topic": "mosque-sheet", "notes": null,
-      "title": "Mosques: \"Search this area\" sits right under the top pill again (not over the pins), and the sheet shrunk to its bar no longer scrolls its list",
+      "title": "Mosques: \"Search this area\" sits right under the top pill again (not over the pins), and the sheet shrunk to its bar no longer scrolls its list", "headline": "Search this area under the top pill",
       "tryIt": ["Map → Mosques → pan away: \"Search this area\" appears just under the top pill", "Swipe the mosque sheet down to its bar and try to scroll it: it doesn't move; pull it back up and the list starts at the top"],
       "checked": "no"
     },
     {
       "id": "built-in-azkar-10", "date": "2026-09-27", "commit": "b69f389", "time": "2026-09-27T22:49:56-04:00", "topic": "built-in-azkar", "notes": "#17",
-      "title": "Sort button moved top right (where Edit was): shows the field + ↑ / ↓ and fills green while a sort is on; no bulk Edit / Delete for azkar",
+      "title": "Sort button moved top right (where Edit was): shows the field + ↑ / ↓ and fills green while a sort is on; no bulk Edit / Delete for azkar", "headline": "Sort button moved top right",
       "tryIt": ["Zikr tab → History & Azkar → Azkar: top right is ↑↓ (Name, A to Z)", "Tap it → Pace: the button turns green with the pace icon and ↑", "No Edit on Azkar any more; delete a zikr from its own page (History keeps Edit)"],
       "checked": "sim", "shots": ["wn-azkar-sort-topright.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
     },
     {
       "id": "built-in-azkar-11", "date": "2026-09-27", "commit": "68c7343", "time": "2026-09-27T22:55:20-04:00", "topic": "built-in-azkar", "notes": "#17",
-      "title": "Sort button's active look is softer: green icon and arrow on a light green tint (was a solid green fill)",
+      "title": "Sort button's active look is softer: green icon and arrow on a light green tint (was a solid green fill)", "headline": "Softer look while a sort is on",
       "tryIt": ["Zikr tab → History & Azkar → Azkar → sort by Pace: the top-right button shows the pace icon + ↑ in green on a pale green capsule", "Try it in dark mode too"],
       "checked": "sim", "shots": ["wn-azkar-sort-tint.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
     },
     {
       "id": "completion-moment-1", "date": "2026-09-27", "commit": "0096b62", "time": "2026-09-27T23:48:54-04:00", "topic": "completion-moment", "notes": null,
-      "title": "Completion moment smooth again: the circle keeps the prayer you marked until the sweep ends (no flash of the next prayer or the day's score), and the list waits too",
+      "title": "Completion moment smooth again: the circle keeps the prayer you marked until the sweep ends (no flash of the next prayer or the day's score), and the list waits too", "headline": "Completion moment smooth again",
       "tryIt": ["Hold the circle to mark the current prayer: its arc sweeps closed, then the next prayer fades in", "Open the list and mark the last prayer of the day: the circle stays still through the moment, then 'today's score' comes in and all five rows unfold"],
       "checked": "sim", "shots": ["wn-completion-moment.jpg"]
     },
@@ -753,7 +753,7 @@
     },
     {
       "id": "apple-watch-2", "date": "2026-09-28", "commit": "56b08b0", "time": "2026-09-28T02:22:36-04:00", "topic": "apple-watch", "notes": null,
-      "title": "The watch counter is now the phone's (beads, hundreds dots, the fine ring, edge to edge), marking plays the phone's completion moment, tap to mark / \"Unmark X?\", the pause screen has no empty bubbles, and Tasbih Fatimah shows the phrase above the count",
+      "title": "The watch counter is now the phone's (beads, hundreds dots, the fine ring, edge to edge), marking plays the phone's completion moment, tap to mark / \"Unmark X?\", the pause screen has no empty bubbles, and Tasbih Fatimah shows the phrase above the count", "headline": "Watch counter matches the phone",
       "tryIt": ["Watch → Zikr → Freestyle, count past 100", "Watch → hold the prayer ring", "Watch → Zikr → Tasbih Fatimah: the phrase sits above the count"],
       "checked": "sim", "shots": ["wn-watch-counter.jpg"]
     },
@@ -783,7 +783,7 @@
     },
     {
       "id": "zikr-pace-2", "date": "2026-09-28", "commit": "f7e597e", "time": "2026-09-28T02:57:51-04:00", "topic": "zikr-pace", "notes": null,
-      "title": "After you finish a task, the Zikr page lands on the next task to do, not the finished one at the bottom",
+      "title": "After you finish a task, the Zikr page lands on the next task to do, not the finished one at the bottom", "headline": "Lands on your next task",
       "tryIt": ["Zikr → finish a task's goal → Done: the next task in your order is in the middle", "Finish the last one: it wraps to the first task still to do, or freestyle when all are done"],
       "checked": "sim", "shots": ["wn-zikr-next-task.jpg"]
     },
@@ -801,7 +801,7 @@
     },
     {
       "id": "ayah-reveal-1", "date": "2026-09-28", "commit": "fcaf2cb", "time": "2026-09-28T03:22:14-04:00", "topic": "ayah-reveal", "notes": null,
-      "title": "Daily Ayah in light mode: the green light behind the verse is clearly there now, blooming as you reveal it and breathing after (dark mode unchanged)",
+      "title": "Daily Ayah in light mode: the green light behind the verse is clearly there now, blooming as you reveal it and breathing after (dark mode unchanged)", "headline": "Clearer green light behind the verse",
       "tryIt": ["☰ → Daily Ayah in light mode: tap to reveal and watch the green bloom"],
       "checked": "sim", "shots": ["wn-ayah-glow.jpg"]
     },
@@ -813,13 +813,13 @@
     },
     {
       "id": "built-in-azkar-12", "date": "2026-09-28", "commit": "55423e2", "time": "2026-09-28T04:14:41-04:00", "topic": "built-in-azkar", "notes": "#17",
-      "title": "Azkar: History | Azkar stays exactly centred; the sort button is the same size as Edit, its green filling the button",
+      "title": "Azkar: History | Azkar stays exactly centred; the sort button is the same size as Edit, its green filling the button", "headline": "History | Azkar stays centred",
       "tryIt": ["☰ → Azkar → sort by Times recited → the switcher doesn't move; swipe to History → Edit sits in the same spot"],
       "checked": "sim", "shots": ["wn-azkar-sort-centred.jpg"], "addresses": ["1F97A704-16B5-4F68-BF4E-23FFB033F9F8"]
     },
     {
       "id": "widget-next-5", "date": "2026-09-28", "commit": "dbe6f2f", "time": "2026-09-28T04:15:11-04:00", "topic": "widget-next", "notes": "#1",
-      "title": "Prayers widget: the check moves top left, the dots are gone, and a chevron at the bottom opens today's times (and closes them from the same spot); the ring sits in the centre",
+      "title": "Prayers widget: the check moves top left, the dots are gone, and a chevron at the bottom opens today's times (and closes them from the same spot); the ring sits in the centre", "headline": "Check top left, chevron opens times",
       "tryIt": ["Home screen → the Prayers widget → tap ⌃ at the bottom → today's times; tap ⌄ in the same spot → back to the ring", "Tap the circle top left to mark the current prayer prayed", "Edit Widget → Score colours off → the list's prayed dots turn plain grey"],
       "checked": "sim", "shots": ["wn-widget-chevron.jpg"], "addresses": ["D56CB3C2-9FD7-43ED-863E-DE4DF7460D38"]
     },
@@ -837,37 +837,37 @@
     },
     {
       "id": "insights-3", "date": "2026-09-28", "commit": "3390a4c", "time": "2026-09-28T11:13:38-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: each small ring shows its prayer's symbol; tap one and the line underneath stands out (bigger, the name in its ring's colour) with how far in you usually pray",
+      "title": "Insights: each small ring shows its prayer's symbol; tap one and the line underneath stands out (bigger, the name in its ring's colour) with how far in you usually pray", "headline": "Prayer symbols inside the rings",
       "tryIt": ["☰ → Insights → tap Isha's ring → 'Isha · you usually pray 1 h 8 min in · avg 96' in larger type"],
       "checked": "sim", "shots": ["wn-insights-ring-symbols.jpg"], "addresses": ["085F753D-29F4-4E6D-9857-E431B308DDAE"]
     },
     {
       "id": "notifications-4", "date": "2026-09-28", "commit": "c854fdf", "time": "2026-09-28T11:18:59-04:00", "topic": "notifications", "notes": null,
-      "title": "Upcoming reminders: every notification shukr has waiting, by day, with its time, prayer and kind; today's delivered ones greyed; Details at the bottom with previews of the reminders card and when it may next come",
+      "title": "Upcoming reminders: every notification shukr has waiting, by day, with its time, prayer and kind; today's delivered ones greyed; Details at the bottom with previews of the reminders card and when it may next come", "headline": "Upcoming reminders page",
       "tryIt": ["Settings → Notifications → Upcoming reminders → scroll through the days", "At the bottom: Details → Preview the card: off / held"],
       "checked": "sim", "shots": ["wn-upcoming-reminders.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
     },
     {
       "id": "first-run-setup-10", "date": "2026-09-28", "commit": "d6d6f30", "time": "2026-09-28T11:23:09-04:00", "topic": "first-run-setup", "notes": null,
-      "title": "Location lost: the opening's ring starts in the middle and becomes the page's circle, the title appears over it, both rise together, then the rest fills in",
+      "title": "Location lost: the opening's ring starts in the middle and becomes the page's circle, the title appears over it, both rise together, then the rest fills in", "headline": "Lost location: the ring opens the page",
       "tryIt": ["Settings (iOS) → Privacy → Location Services → shukr → Never → open shukr from cold → watch the opening land on the circle, then rise"],
       "checked": "sim", "shots": ["wn-lost-location-opening.jpg"], "addresses": ["2396BDF1-FA6B-41EC-AD65-3D3043F3A38A"]
     },
     {
       "id": "widget-next-6", "date": "2026-09-28", "commit": "f41981c", "time": "2026-09-28T11:23:33-04:00", "topic": "widget-next", "notes": null,
-      "title": "Prayers widget: the ring sits evenly between the top and the chevron, and between sunrise and Dhuhr it shows Dhuhr as next (not \"Sunrise\" with a moon)",
+      "title": "Prayers widget: the ring sits evenly between the top and the chevron, and between sunrise and Dhuhr it shows Dhuhr as next (not \"Sunrise\" with a moon)", "headline": "Widget ring centred; Dhuhr next",
       "tryIt": ["Look at the Prayers widget: the same space above the ring as between it and ⌃", "Mid-morning: the ring says NEXT Dhuhr with the sun, like the app's circle", "Small phones: tap ⌃, and every prayer name and time shows in full"],
       "checked": "sim", "shots": ["wn-widget-ring-centred.jpg"], "addresses": ["99D47ABE-FF80-464D-9C85-DB4366407DFB"]
     },
     {
       "id": "notifications-5", "date": "2026-09-28", "commit": "7189691", "time": "2026-09-28T12:22:05-04:00", "topic": "notifications", "notes": null,
-      "title": "Upcoming reminders, simpler: the count of 64 and what they are at the top, a plain line on why to open shukr every few days, then one row per prayer (its start, with its nudges underneath) and one for the day's zikr",
+      "title": "Upcoming reminders, simpler: the count of 64 and what they are at the top, a plain line on why to open shukr every few days, then one row per prayer (its start, with its nudges underneath) and one for the day's zikr", "headline": "Upcoming reminders, simpler",
       "tryIt": ["Settings → Notifications → Upcoming reminders (the green calendar)"],
       "checked": "sim", "shots": ["wn-upcoming-reminders-simple.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
     },
     {
       "id": "notifications-6", "date": "2026-09-28", "commit": "cbc81ba", "time": "2026-09-28T12:25:49-04:00", "topic": "notifications", "notes": null,
-      "title": "Upcoming reminders: each prayer shows how many reminders it has that day (1 = the start, 2 = + halfway, 3 = + 30 min left), each day shows its total, and the other times sit quietly underneath",
+      "title": "Upcoming reminders: each prayer shows how many reminders it has that day (1 = the start, 2 = + halfway, 3 = + 30 min left), each day shows its total, and the other times sit quietly underneath", "headline": "Reminder counts per prayer",
       "tryIt": ["Settings → Notifications → Upcoming reminders → 'Today · 10', and a small 3 beside Asr"],
       "checked": "sim", "shots": ["wn-upcoming-reminders-counts.jpg"], "addresses": ["BF79A0FC-A598-4C64-8D65-DB65F1F8C379"]
     },
@@ -879,19 +879,19 @@
     },
     {
       "id": "insights-4", "date": "2026-09-28", "commit": "0087dd8", "time": "2026-09-28T13:10:43-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: a picked ring reads 'Isha · avg 96', then when you usually pray; Week / Month / All time glide to the new numbers; the consistency page says 'in-time streak' and adds how many of the 14 days were in time",
+      "title": "Insights: a picked ring reads 'Isha · avg 96', then when you usually pray; Week / Month / All time glide to the new numbers; the consistency page says 'in-time streak' and adds how many of the 14 days were in time", "headline": "Picked ring: avg and usual time",
       "tryIt": ["☰ → Insights → tap Isha → 'Isha · avg 96' / 'you usually pray 1 h 8 min in' / 'prayed 8 of 9'", "Switch Week → Month → All time → the rings and numbers move to their new values", "Swipe to 'how consistent am I?' → a third number, 'days in time'"],
       "checked": "sim", "shots": ["wn-insights-avg-first.jpg"], "addresses": ["95FF0EB7-A5BF-47C9-A656-9E307F3F9D46"]
     },
     {
       "id": "widget-next-7", "date": "2026-09-28", "commit": "175f495", "time": "2026-09-28T13:10:46-04:00", "topic": "widget-next", "notes": null,
-      "title": "Prayers widget: the ring sits a touch lower (60 % of the space above it, 40 % below); try 50 / 55 / 60 in Settings",
+      "title": "Prayers widget: the ring sits a touch lower (60 % of the space above it, 40 % below); try 50 / 55 / 60 in Settings", "headline": "Widget ring a touch lower",
       "tryIt": ["Look at the Prayers widget: the ring sits a little below the middle of the space above ⌃", "Settings → Widget ring position → 55 / 45 or 50 / 50 → the widget moves at once; pick the one that looks centred"],
       "checked": "sim", "shots": ["wn-widget-ring-position.jpg"], "addresses": ["D3DC914D-368E-42CE-9BDA-30340EA7FCDF"]
     },
     {
       "id": "first-run-setup-12", "date": "2026-09-28", "commit": "dd4740c", "time": "2026-09-28T13:27:31-04:00", "topic": "first-run-setup", "notes": null,
-      "title": "Location lost / back, ring to ring: the Salah circle's prayer fades as its ring rises into the lost page's; coming back, the ring glides down onto the Salah circle and the prayer comes in round it — one ring throughout, no pause",
+      "title": "Location lost / back, ring to ring: the Salah circle's prayer fades as its ring rises into the lost page's; coming back, the ring glides down onto the Salah circle and the prayer comes in round it — one ring throughout, no pause", "headline": "Location lost / back: ring to ring",
       "tryIt": ["With shukr open: iOS Settings → shukr → Location → Never → back to shukr → the ring rises out of the Salah circle", "Then Settings → Always → back → 'Location's back', and the ring glides down into the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-ring-to-ring.jpg"], "addresses": ["A535F50B-7EB7-430F-9113-6D491C43688F"]
     },
@@ -903,37 +903,37 @@
     },
     {
       "id": "notifications-7", "date": "2026-09-28", "commit": "e545c06", "time": "2026-09-28T13:35:06-04:00", "topic": "notifications", "notes": null,
-      "title": "Upcoming reminders as day cards: each day's total, an icon per prayer (and zikr) with how many it has — tap one to see each reminder and when it comes; later days explain that nudges are added two days ahead",
+      "title": "Upcoming reminders as day cards: each day's total, an icon per prayer (and zikr) with how many it has — tap one to see each reminder and when it comes; later days explain that nudges are added two days ahead", "headline": "Upcoming reminders as day cards",
       "tryIt": ["Settings → Notifications → Upcoming reminders → tap Maghrib on Today → starts · halfway · 30 min left with their times", "Scroll to the first day with only starts → its note, and tap a prayer → when its nudges will be added"],
       "checked": "sim", "shots": ["wn-upcoming-day-cards.jpg"], "addresses": ["C84220ED-5A63-4E5A-9DB7-1FDC9F906E41"]
     },
     {
       "id": "first-run-setup-13", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "first-run-setup", "notes": null,
-      "title": "Location back: the ring settles on the Salah circle and rests there with \"location is on\", then that gives way to the prayer — nothing moves once it has landed",
+      "title": "Location back: the ring settles on the Salah circle and rests there with \"location is on\", then that gives way to the prayer — nothing moves once it has landed", "headline": "Location back: the ring settles softly",
       "tryIt": ["With shukr open: location Never → back → Settings → Always → back: watch the ring land, pause, then become the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-back-landing.jpg"], "addresses": ["A4D7B736-2143-4D0C-B8A5-91C305C03033"]
     },
     {
       "id": "insights-6", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: the range is said once (by the Week / Month / All time switch), and the extra hint under the big ring is gone",
+      "title": "Insights: the range is said once (by the Week / Month / All time switch), and the extra hint under the big ring is gone", "headline": "Range said once; hint removed",
       "tryIt": ["☰ → Insights → 'your average day score', no 'last 30 days' repeated"],
       "checked": "sim", "shots": ["wn-insights-captions.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
     },
     {
       "id": "widget-next-8", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "widget-next", "notes": null,
-      "title": "Prayers widget: the ring stays at 60 / 40 (your pick), and the Widget ring position setting is gone",
+      "title": "Prayers widget: the ring stays at 60 / 40 (your pick), and the Widget ring position setting is gone", "headline": "Widget ring fixed at 60 / 40",
       "tryIt": ["Settings: no Widget ring position row; the widget's ring sits a little below the middle"],
       "checked": "sim", "addresses": ["43D36031-A250-4AF6-B515-6440871AA9EF"]
     },
     {
       "id": "first-run-setup-14", "date": "2026-09-28", "commit": "f984da8", "time": "2026-09-28T13:56:10-04:00", "topic": "first-run-setup", "notes": null,
-      "title": "Location back lands like the opening: the ring draws in to the opening's thin sage ring round \"location is on\", rests, then grows into the prayer's circle exactly as the welcome does",
+      "title": "Location back lands like the opening: the ring draws in to the opening's thin sage ring round \"location is on\", rests, then grows into the prayer's circle exactly as the welcome does", "headline": "Location back lands like the opening",
       "tryIt": ["With shukr open: location Never → back → Settings → Always → back: the ring settles small, then grows into the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-back-welcome-grow.jpg"], "addresses": ["A4D7B736-2143-4D0C-B8A5-91C305C03033"]
     },
     {
       "id": "insights-7", "date": "2026-09-28", "commit": "f984da8", "time": "2026-09-28T13:56:10-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: each prayer's ring shows your usual moment (the middle of your days, so a few late ones don't drag it) and reads 'Fajr · usually Perfect'; the average score stays on the big ring only",
+      "title": "Insights: each prayer's ring shows your usual moment (the middle of your days, so a few late ones don't drag it) and reads 'Fajr · usually Perfect'; the average score stays on the big ring only", "headline": "Rings show your usual moment",
       "tryIt": ["☰ → Insights → tap Isha → 'Isha · usually Late' / 'you usually pray 1 h 37 min in'"],
       "checked": "sim", "shots": ["wn-insights-usual-grade.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
     },
@@ -945,7 +945,7 @@
     },
     {
       "id": "insights-9", "date": "2026-09-28", "commit": "af2b801", "time": "2026-09-28T14:07:59-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: each prayer's usual moment is a real day's (your middle prayer), so its minutes, colour and grade always match — and one usually prayed after its time reads 'usually Qaza'",
+      "title": "Insights: each prayer's usual moment is a real day's (your middle prayer), so its minutes, colour and grade always match — and one usually prayed after its time reads 'usually Qaza'", "headline": "Usual moment is a real day's prayer",
       "tryIt": ["☰ → Insights → tap a prayer → 'usually On time' and its minutes come from the same day"],
       "checked": "sim", "shots": ["wn-insights-median-prayer.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
     },
@@ -957,13 +957,13 @@
     },
     {
       "id": "masjid-duas-2", "date": "2026-09-28", "commit": "ef972dc", "time": "2026-09-28T14:20:08-04:00", "topic": "masjid-duas", "notes": null,
-      "title": "Fixed: a masjid dua could appear when you weren't there (e.g. \"Leaving the masjid\" right after opening shukr)",
+      "title": "Fixed: a masjid dua could appear when you weren't there (e.g. \"Leaving the masjid\" right after opening shukr)", "headline": "No masjid duas when you're not there",
       "tryIt": ["Settings → Masjid → Duas at my masajid on → open shukr away from your masajid: no dua", "Arrive at one of your masajid → the entering dua; leave → the leaving dua"],
       "checked": "no"
     },
     {
       "id": "notifications-9", "date": "2026-09-28", "commit": "18c486e", "time": "2026-09-28T15:22:15-04:00", "topic": "notifications", "notes": null,
-      "title": "Your reminders: a ring of 64 beads (one per slot iOS allows), this week day by day with each prayer's times, and three cards — why only 64, how it tops itself up, how they arrive on time — from your real settings",
+      "title": "Your reminders: a ring of 64 beads (one per slot iOS allows), this week day by day with each prayer's times, and three cards — why only 64, how it tops itself up, how they arrive on time — from your real settings", "headline": "Your reminders: the 64-bead ring",
       "tryIt": ["Settings → Notifications → tap 'Reminders are on' → Your reminders", "Tap a day under This week → its prayers and times; tap a card (Why only 64? · Tops itself up · Arrives on time)"],
       "checked": "sim", "shots": ["wn-your-reminders.jpg"], "asked": "it's still not answering the question properly"
     },
@@ -987,13 +987,13 @@
     },
     {
       "id": "widget-next-10", "date": "2026-09-28", "commit": "98e021d", "time": "2026-09-28T15:26:54-04:00", "topic": "widget-next", "notes": null,
-      "title": "Mark a prayer right from the widget's times list; tap a marked one to unmark it in the app",
+      "title": "Mark a prayer right from the widget's times list; tap a marked one to unmark it in the app", "headline": "Mark prayers from the widget's list",
       "tryIt": ["Widget → ⌃ → tap a prayer with an empty circle → it's marked (scored now), and the circle fills", "Tap a filled one → shukr opens → Unmark (or Cancel)", "Upcoming prayers and Sunrise can't be tapped"],
       "checked": "sim", "shots": ["wn-widget-list-taps.jpg"]
     },
     {
       "id": "insights-10", "date": "2026-09-28", "commit": "abd8a07", "time": "2026-09-28T15:38:52-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: tapping 'with all five' or 'days in time' now fades every other day, shows those days' scores, puts their dates in pills and names them underneath",
+      "title": "Insights: tapping 'with all five' or 'days in time' now fades every other day, shows those days' scores, puts their dates in pills and names them underneath", "headline": "Picked days stand out in the grid",
       "tryIt": ["☰ → Insights → 'how consistent am I?' → tap 'with all five' → only those days stay bright, in colour; 'with all five: Fri 25 · Sat 26'"],
       "checked": "sim", "shots": ["wn-insights-day-marks-clear.jpg"], "asked": "hard to tell which of those days are being indicated"
     },
@@ -1005,7 +1005,7 @@
     },
     {
       "id": "prayer-begins-13", "date": "2026-09-28", "commit": "1d0fd1e", "time": "2026-09-28T15:49:14-04:00", "topic": "prayer-begins", "notes": null,
-      "title": "The dashed ring of a prayer that hasn't started is easier to see (still subtle) — in the app, the widget and on the watch",
+      "title": "The dashed ring of a prayer that hasn't started is easier to see (still subtle) — in the app, the widget and on the watch", "headline": "Dashed ring easier to see",
       "tryIt": ["Mark the current prayer → the circle shows the next one with a clearer dashed ring"],
       "checked": "sim", "shots": ["wn-upcoming-ring-visible.jpg"], "asked": "hard to see the dashed line rn. still subtle but not that invisible"
     },
@@ -1017,7 +1017,7 @@
     },
     {
       "id": "whats-new-11", "date": "2026-09-28", "commit": "a483f31", "time": "2026-09-28T16:14:58-04:00", "topic": "whats-new", "notes": null,
-      "title": "What's new, clearer: one state per card (To check · To test · With the team · Archive), newest changes first, feedback moves a card out of To test, a new change always reopens it, 'Try it' lists each new change with its own steps, and what you ask in chat shows under To check",
+      "title": "What's new, clearer: one state per card (To check · To test · With the team · Archive), newest changes first, feedback moves a card out of To test, a new change always reopens it, 'Try it' lists each new change with its own steps, and what you ask in chat shows under To check", "headline": "One clear state per card",
       "tryIt": ["Open What's new: To check has what you asked in chat ('You asked in chat: …') with Looks good / Still off", "Give a card 👍 → it leaves To test; a 👎 or note → With the team ('You said … · saved · Claude will pick it up')", "Tap a card → Try it lists every new change, newest first, each with its steps"],
       "checked": "sim", "shots": ["wn-whats-new-states.jpg"], "asked": "it says it lives in 'to test' even when i gave a feedback with thumbs"
     },
@@ -1029,51 +1029,57 @@
     },
     {
       "id": "insights-12", "date": "2026-09-28", "commit": "278ba95", "time": "2026-09-28T17:03:14-04:00", "topic": "insights", "notes": null,
-      "title": "Insights: picked days keep plain dates, in full; the rest fade",
+      "title": "Insights: picked days keep plain dates, in full; the rest fade", "headline": "Plain dates for picked days",
       "tryIt": ["☰ → Insights → swipe to 'how consistent am I?'", "Tap 'days in time': those days' dates stay plain and bold, no coloured pill; the other days fade"],
       "checked": "sim", "shots": ["wn-insights-plain-dates.jpg"], "addresses": ["F81CB8BE-DBFE-42E8-84BB-0B9E9597D6E1"]
     },
     {
       "id": "whats-new-13", "date": "2026-09-28", "commit": "fa95d89", "time": "2026-09-28T17:06:10-04:00", "topic": "whats-new", "notes": null,
-      "title": "What's new: screenshots stack down the page; no sideways scrolling",
+      "title": "What's new: screenshots stack down the page; no sideways scrolling", "headline": "No more sideways scrolling",
       "tryIt": ["☰ → the build line → open any card", "Scroll to Changes: each change's pictures sit one under another, and a sideways swipe doesn't move the page"],
       "checked": "sim", "shots": ["wn-whatsnew-stacked-shots.jpg"], "addresses": ["BA0ECB7A-732C-4A77-92C9-8EE6E5E9DAED"]
     },
     {
       "id": "whats-new-14", "date": "2026-09-28", "commit": "495d72c", "time": "2026-09-28T17:08:38-04:00", "topic": "whats-new", "notes": null,
-      "title": "What's new: your feedback answers a change you asked for; changes first",
+      "title": "What's new: your feedback answers a change you asked for; changes first", "headline": "Your feedback answers what you asked",
       "tryIt": ["On a card with a change you asked for in chat, tap 👍 Works (or write a note) and Save: its check leaves To check (👍 = looks good, a note = still off)", "Open any card: Changes, with their screenshots, come first, then Try it and Feedback"],
       "checked": "sim", "shots": ["wn-whatsnew-changes-first.jpg"], "addresses": ["14CEC68B-BCCC-4D85-A866-A61460AC5649"]
     },
     {
       "id": "notifications-13", "date": "2026-09-28", "commit": "5a46aec", "time": "2026-09-28T17:15:10-04:00", "topic": "notifications", "notes": null,
-      "title": "Arrives on time: your own settings first, then how iOS delivers",
+      "title": "Arrives on time: your own settings first, then how iOS delivers", "headline": "Your settings first, then how iOS works",
       "tryIt": ["Settings → Notifications → tap the status row → Your reminders → Arrives on time", "Top: your Notifications, Time Sensitive and Scheduled Summary as they are now — red only when one really holds reminders back, with Fix in Settings under them", "Below, in grey: how iOS delivers notifications (Time Sensitive, Scheduled Summary, Focus, and the one setup that makes them late)"],
       "checked": "sim", "shots": ["wn-reminders-your-settings.jpg"], "addresses": ["9E5AC5BF-ADBA-4B1C-9D80-9E3225F766E0"]
     },
     {
       "id": "whats-new-15", "date": "2026-09-28", "commit": "fd2a169", "time": "2026-09-28T17:24:09-04:00", "topic": "whats-new", "notes": null,
-      "title": "What's new: Your feedback and All changes, linked at the top",
+      "title": "What's new: Your feedback and All changes, linked at the top", "headline": "Feedback & change-history links",
       "tryIt": ["☰ → the build line → under Send feedback, tap 'Your feedback': every note you've left, newest first, with where it stands (closed ones greyed); tap one → its card's Feedback", "Back, then 'All changes': every change by day, newest first, a green dot on untested ones; tap one → its card, scrolled to that change (it lights up for a moment)"],
       "checked": "sim", "shots": ["wn-whatsnew-feedback-changes.jpg"], "asked": "where do i go in 'what's new' to see my feedback? from what i can tell it gets hidden after i respond… also put a link at top of page i can click to see changes in chronological order, and click on one to go to its respective card to give feedback or something."
     },
     {
       "id": "whats-new-16", "date": "2026-09-28", "commit": "95eaf22", "time": "2026-09-28T17:31:28-04:00", "topic": "whats-new", "notes": null,
-      "title": "What's new: a card shows its newest change; older ones fold away",
+      "title": "What's new: a card shows its newest change; older ones fold away", "headline": "Only the newest change shown",
       "tryIt": ["Open a card you've tested: Changes shows just the newest change, then 'Show N earlier changes'", "Tap it: the rest open in place ('Show fewer' folds them again); untested changes always show"],
       "checked": "sim", "shots": ["wn-whatsnew-folded-changes.jpg"], "addresses": ["4E1AD6F2-00D9-4B71-8A33-BC5D642B04D4"]
     },
     {
       "id": "notifications-14", "date": "2026-09-28", "commit": "8f36223", "time": "2026-09-28T17:39:15-04:00", "topic": "notifications", "notes": null,
-      "title": "Your reminders in the app's look: rounded light type, soft cards, sage accents, softer bead colours",
+      "title": "Your reminders in the app's look: rounded light type, soft cards, sage accents, softer bead colours", "headline": "Your reminders in the app's look",
       "tryIt": ["Settings → Notifications → the Reminders row → Your reminders", "Tap the three tiles: the picked one turns sage"],
       "checked": "sim", "shots": ["wn-reminders-on-brand.jpg"], "addresses": ["EC6B18BC-E84D-4C6C-A4D1-59936790BEE9"]
     },
     {
       "id": "build-stamp-2", "date": "2026-09-28", "commit": "8f36223", "time": "2026-09-28T17:39:15-04:00", "topic": "build-stamp", "notes": null,
-      "title": "The build line at the bottom of Settings sits clear of the home bar",
+      "title": "The build line at the bottom of Settings sits clear of the home bar", "headline": "Build line clear of the home bar",
       "tryIt": ["Settings → scroll to the end → tap the build line: What's new opens, no Siri"],
       "checked": "sim", "shots": ["wn-settings-build-line.jpg"], "asked": "pull the build number at bottom of settings up a bit or add some more space at bottom so it's easy for me to reach… it's like right on my home bar"
+    },
+    {
+      "id": "whats-new-17", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "title": "What's new: each card says in a few bold words what changed and what to look for; your words fold away", "headline": "A short headline on every card",
+      "tryIt": ["Open What's new: each To check card shows what changed in bold and 'Look for: …'; tap 'your words' to see what you said and the full change", "To test cards show the newest change's headline under the card's name"],
+      "checked": "sim", "shots": ["wn-whatsnew-headlines.jpg"], "asked": "both of these things look the same to me. it's low-key a lot of text to read on this page as soon as I first open it. can you make it so that it has a small title or something that just tells me what it is that got changed or what it is to look for."
     }
   ]
 }

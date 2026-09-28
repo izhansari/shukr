@@ -58,12 +58,16 @@ struct WhatsNewEntry: Decodable, Identifiable {
     let addresses: [String]?
     /// The owner's own request from chat (relayed by Bradley): the change lands under "To check".
     var asked: String? = nil
+    /// What changed, in a few words ("Only the newest change shown"): the bold line on a check / test card.
+    var headline: String? = nil
     var id: String { entryID ?? legacyID }
+    /// The headline, else the full title (older entries).
+    var short: String { headline ?? title }
     /// v1's id (commit | title) — old tested ticks and NEW marks were keyed by it.
     var legacyID: String { "\(commit)|\(title)" }
 
     enum CodingKeys: String, CodingKey {
-        case entryID = "id", date, commit, time, topic, notes, title, tryIt, checked, status, shots, addresses, asked
+        case entryID = "id", date, commit, time, topic, notes, title, headline, tryIt, checked, status, shots, addresses, asked
     }
 
     /// "this build" or the short hash — what "Addressed in …" names.
@@ -770,8 +774,9 @@ struct WhatsNewView: View {
     /// The card's one state, as a label: new change(s) · you said "…" · saved / sent / received ·
     /// 👍 works / tested / looked good.
     private func label(_ card: WhatsNewCard, untested fresh: [WhatsNewEntry]) -> CardLabel? {
-        if !fresh.isEmpty {
-            return CardLabel(text: fresh.count == 1 ? "new change · to test" : "\(fresh.count) new changes · to test", tone: .new)
+        if let newest = fresh.first {
+            // What changed, not just how many (owner: "a small title … what it is to look for").
+            return CardLabel(text: fresh.count == 1 ? newest.short : "\(newest.short) · +\(fresh.count - 1) more", tone: .new)
         }
         if let note = openNote(card) {
             let said = note.text.isEmpty ? note.kind.label.lowercased() : "\u{201C}\(note.text)\u{201D}"
@@ -961,7 +966,8 @@ struct WhatsNewView: View {
     }
 }
 
-/// A note a change addressed: the note, what fixed it, Looks good ✓ / Still off.
+/// A note a change addressed: what changed, what to look for, Looks good ✓ / Still off; your note and the
+/// full sentence fold behind "your words".
 struct FeedbackCheckCard: View {
     let item: FeedbackItem
     let fix: WhatsNewEntry
@@ -971,111 +977,136 @@ struct FeedbackCheckCard: View {
     let stillOff: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !compact { noteHeader }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green)
-                (Text("Addressed in \(fix.buildLabel): ").fontWeight(.semibold) + Text(fix.title))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .font(.subheadline)
-            buttons
-        }
-        .padding(compact ? 12 : 14)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
-    }
-
-    @ViewBuilder private var noteHeader: some View {
-            HStack(spacing: 6) {
-                Image(systemName: item.kind.symbol).foregroundStyle(item.kind.color.opacity(0.7))
-                Text(WhatsNew.card(id: item.topic)?.area ?? item.topic)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .tracking(1).textCase(.uppercase)
-                    .foregroundStyle(Color.sage)
-                Spacer()
-                Text("you, \(item.updated.formatted(.dateTime.month(.abbreviated).day()))")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            Text(WhatsNew.card(id: item.topic)?.title ?? item.topicTitle)   // which feature
-                .font(.footnote.weight(.medium))
-                .lineLimit(2)
-            Text(item.text.isEmpty ? item.kind.label : "“\(item.text)”")
+        if compact {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green)
+                    (Text("Addressed in \(fix.buildLabel): ").fontWeight(.semibold) + Text(fix.title))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private var buttons: some View {
-            HStack(spacing: 10) {
-                Button(action: looksGood) {
-                    Label("Looks good", systemImage: "checkmark")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.green)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(Color.green.opacity(0.14)))
-                }
-                Button(action: stillOff) {
-                    Text("Still off")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(Color.orange)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(Color.orange.opacity(0.12)))
-                }
+                CheckButtons(looksGood: looksGood, stillOff: stillOff)
+                    .sensoryFeedback(.success, trigger: item.closedAt)
             }
-            .buttonStyle(.plain)
-            .sensoryFeedback(.success, trigger: item.closedAt)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
+        } else {
+            ScannableCheck(entry: fix,
+                           icon: item.kind.symbol, iconColor: item.kind.color,
+                           source: "your note · \(item.updated.formatted(.dateTime.month(.abbreviated).day()))",
+                           words: item.text.isEmpty ? item.kind.label : item.text,
+                           doneWord: "Addressed in",
+                           looksGood: looksGood, stillOff: stillOff)
+                .sensoryFeedback(.success, trigger: item.closedAt)
+        }
     }
 }
 
-/// Something the owner asked for in chat, done: his words, what changed, Looks good ✓ / Still off.
+/// Something the owner asked for in chat, done: the same scannable card.
 struct AskedCheckCard: View {
     let entry: WhatsNewEntry
     let looksGood: () -> Void
     let stillOff: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        ScannableCheck(entry: entry, icon: "bubble.left.fill", iconColor: .sage,
+                       source: "you asked in chat", words: entry.asked ?? "", doneWord: "Done in",
+                       looksGood: looksGood, stillOff: stillOff)
+    }
+}
+
+/// A check card at a glance (owner, 2026-09-28: "low-key a lot of text … a small title … what it is to look
+/// for"): the feature and where it came from in one quiet line, what changed in bold, "Look for: …" (its
+/// first try step), then Looks good / Still off. His words and the full sentence fold behind "your words".
+private struct ScannableCheck: View {
+    let entry: WhatsNewEntry
+    let icon: String
+    let iconColor: Color
+    let source: String
+    let words: String
+    let doneWord: String
+    let looksGood: () -> Void
+    let stillOff: () -> Void
+    @State private var open = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: "bubble.left.fill").foregroundStyle(Color.sage.opacity(0.7))
-                Text(WhatsNew.card(id: entry.topic)?.area ?? entry.topic)
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .tracking(1).textCase(.uppercase)
-                    .foregroundStyle(Color.sage)
-                Spacer()
-                Text("you asked in chat").font(.caption2).foregroundStyle(.tertiary)
+                Image(systemName: icon).font(.caption2).foregroundStyle(iconColor.opacity(0.7))
+                Text(WhatsNew.card(id: entry.topic)?.title ?? entry.topic)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text(source).lineLimit(1)
             }
-            Text(WhatsNew.card(id: entry.topic)?.title ?? entry.topic)
-                .font(.footnote.weight(.medium))
-            Text("\u{201C}\(entry.asked ?? "")\u{201D}")
-                .font(.subheadline).foregroundStyle(.secondary)
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            .font(.caption)
+            .foregroundStyle(.tertiary)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green)
-                (Text("Done in \(entry.buildLabel): ").fontWeight(.semibold) + Text(entry.title))
+                Image(systemName: "checkmark.seal.fill").font(.subheadline).foregroundStyle(Color.green)
+                Text(entry.short)
+                    .font(.body.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.subheadline)
-            HStack(spacing: 10) {
-                Button(action: looksGood) {
-                    Label("Looks good", systemImage: "checkmark")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(Color.green)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(Color.green.opacity(0.14)))
+            if let look = entry.tryIt.first {
+                (Text("Look for: ").foregroundStyle(.secondary) + Text(look))
+                    .font(.subheadline)
+                    .lineLimit(open ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                withAnimation(.snappy) { open.toggle() }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("your words")
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(open ? 90 : 0))
                 }
-                Button(action: stillOff) {
-                    Text("Still off")
-                        .font(.subheadline.weight(.medium)).foregroundStyle(Color.orange)
-                        .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(Capsule().fill(Color.orange.opacity(0.12)))
-                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(Color.sage)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            if open {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\u{201C}\(words)\u{201D}")
+                        .foregroundStyle(.secondary)
+                    (Text("\(doneWord) \(entry.buildLabel): ").fontWeight(.semibold) + Text(entry.title))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.opacity)
+            }
+            CheckButtons(looksGood: looksGood, stillOff: stillOff)
+                .padding(.top, 2)
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
+    }
+}
+
+private struct CheckButtons: View {
+    let looksGood: () -> Void
+    let stillOff: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: looksGood) {
+                Label("Looks good", systemImage: "checkmark")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(Color.green)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.green.opacity(0.14)))
+            }
+            Button(action: stillOff) {
+                Text("Still off")
+                    .font(.subheadline.weight(.medium)).foregroundStyle(Color.orange)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(Color.orange.opacity(0.12)))
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 
