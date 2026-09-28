@@ -100,7 +100,8 @@ final class FeedbackStore {
     }
     private static var photos: URL? { folder?.appendingPathComponent("photos", isDirectory: true) }
 
-    private init() { load(); loadReceived() }
+    /// feedback.md is rewritten at launch too, so a pull never copies states older than the app's.
+    private init() { load(); loadReceived(); writeMarkdown() }
 
     // MARK: Reading
 
@@ -110,8 +111,16 @@ final class FeedbackStore {
     private func isDraft(_ item: FeedbackItem) -> Bool {
         !isSent(item) && item.closedAt == nil && item.reopenedAt == nil && WhatsNew.addressing(item.id) == nil
     }
-    /// The topic's draft (a received / sent note isn't edited again: a new one starts fresh).
+    /// Any draft on the topic (for "unsent" badges / sections; a received / sent note isn't edited
+    /// again — a new one starts fresh).
     func unsent(for topic: String) -> FeedbackItem? { items.last { $0.topic == topic && isDraft($0) } }
+    /// THE draft a composer edits: the topic's plain draft, or the draft following up one note
+    /// ("Still off"). One lookup for save() and the composer, so neither loads one and writes the
+    /// other (review, 2026-09-27: a follow-up duplicated a plain draft and lost its photo).
+    func draft(for topic: String, followUpOf: UUID? = nil) -> FeedbackItem? {
+        if let followUpOf { return items.last { $0.followUpOf == followUpOf && isDraft($0) } }
+        return items.last { $0.topic == topic && isDraft($0) && $0.followUpOf == nil }
+    }
     func all(for topic: String) -> [FeedbackItem] { items.filter { $0.topic == topic } }
     var unsentItems: [FeedbackItem] { items.filter(isDraft) }
 
@@ -143,13 +152,8 @@ final class FeedbackStore {
                                  commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
         // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
         // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
-        var item: FeedbackItem
-        if let followUpOf {
-            item = items.last { $0.followUpOf == followUpOf && isDraft($0) } ?? fresh
-            item.followUpOf = followUpOf
-        } else {
-            item = items.last { $0.topic == card.id && isDraft($0) && $0.followUpOf == nil } ?? fresh
-        }
+        var item = draft(for: card.id, followUpOf: followUpOf) ?? fresh
+        if let followUpOf { item.followUpOf = followUpOf }
         item.topicTitle = card.title
         item.notes = card.notes
         item.commits = card.commits
@@ -194,7 +198,7 @@ final class FeedbackStore {
     }
 
     /// Pick up a received.json the pull script wrote while the app was running.
-    func reloadReceived() { loadReceived() }
+    func reloadReceived() { loadReceived(); writeMarkdown() }
 
     func markSent(_ ids: Set<UUID>) {
         let now = Date()
@@ -305,6 +309,13 @@ final class FeedbackStore {
         if let data = try? encoder.encode(items) {
             try? data.write(to: dir.appendingPathComponent("feedback.json"), options: .atomic)
         }
+        writeMarkdown()
+    }
+
+    /// feedback.md: what the pull script copies. After every change, at launch and after reading
+    /// received.json (states depend on it).
+    private func writeMarkdown() {
+        guard let dir = Self.folder, FileManager.default.fileExists(atPath: dir.path) else { return }
         // Unsent first, then everything else (sent, received, to check, closed, reopened — each
         // with its state), newest first within each — what the pull script copies.
         let drafts = unsentItems
@@ -333,7 +344,7 @@ struct FeedbackComposer: View {
     @State private var loaded = false
     @FocusState private var typing: Bool
 
-    private var existing: FeedbackItem? { store.unsent(for: card.id) }
+    private var existing: FeedbackItem? { store.draft(for: card.id, followUpOf: followUpOf) }
     private var shownImage: UIImage? {
         if let photoData { return photoData.flatMap(UIImage.init(data:)) }
         return existing.flatMap(store.image(for:))

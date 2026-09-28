@@ -61,7 +61,13 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   Follow-ups (2026-09-27): a note an entry `addresses` is never a draft (not in unsent / Send feedback, never loaded
   into the box); "Still off" always saves a new note (its own id — a later fix lists **that** id in `addresses`);
   `addressing()` skips dropped / replaced entries; feedback.md lists every note with its state (received, to check,
-  closed, reopened); the card thumbnail skips superseded entries; Archive search covers note text. DEBUG `-demoWhatsNewArchive YES` opens the
+  closed, reopened); the card thumbnail skips superseded entries; Archive search covers note text.
+  Later the same day: one draft lookup, `FeedbackStore.draft(for:followUpOf:)`, used by save() AND the composer (the
+  composer used `unsent(for:)` — any draft — so a "Still off" loaded the plain draft and duplicated it, and the card's box
+  could overwrite a follow-up). `unsent(for:)` stays for badges / the Unsent section. feedback.md is also rewritten at
+  launch and after received.json loads. `WhatsNew.addressing` is cached per id. A hidden card's draft still lists under
+  Unsent notes (on purpose: an unsent note shouldn't vanish). Azkar: sort ties fall back to the section order (built-ins'
+  curated order, yours A–Z); the filter resets on appear when you have no own zikr; the library trims its search. DEBUG `-demoWhatsNewArchive YES` opens the
   Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
   on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's
@@ -255,6 +261,16 @@ code; in UI strings write "zikr". New UI text must follow this.
   bottom bar left of the search on iOS 26, top right on iOS 18 / the standalone page;
   `@AppStorage(AzkarFilter.key)` "azkar.hideBuiltIns", filled green while on) hides the built-ins,
   with a "9 built-in azkar hidden · Show" footer — never while searching or with none of your own.
+  **Current (2026-09-27, feedback F5FDC4C1):** no "Default" — the default is Name, A to Z, for both sections (built-ins
+  alphabetical too); `AzkarSort.migrateStoredDefault()` turns a stored "standard" into Name ↑. Direction rows are just the
+  result with the arrow icon: A to Z / Z to A · Most / Fewest first · Fastest / Slowest first · Recent / Oldest first. The
+  plain arrow.up.arrow.down icon means Name A→Z; anything else shows ↑ / ↓. The first version follows:
+  **Current (2026-09-27, feedback ADD5836A):** `AzkarSortButton` — sort by ONE field (`AzkarSort`: Default · Times recited ·
+  Pace · Last used · Name, AppStorage "azkar.sortField") plus a direction (↑ / ↓, "azkar.sortAscending"; picking a field
+  sets its natural direction: Name / Pace ascending, the others descending; the menu spells each out — "Most first",
+  "Fastest first" = fewest seconds per count, "Longest untouched first"…). Missing data sorts last either way; ties keep
+  the section order. The built-ins filter is gone (built-ins always show, below yours; the old key is cleared on appear).
+  Icon: arrow.up.arrow.down on Default, arrow.up / arrow.down while sorted. History of the earlier versions follows.
   Since 2026-09-27 (feedback E164092C) the button is a native Menu (`AzkarFilterButton`): Sort (`AzkarSort`, AppStorage
   "azkar.sort": Default · Most / Least recited · Recently used · Slowest / Fastest pace (never-counted last) · A–Z,
   applied within each section, stats computed once per list render) and "Show built-ins" (only with azkar of your
@@ -891,7 +907,8 @@ too many sheets.
   was rejected. Changing a parameter's type under the same name leaves stale saved values: rename it.
 - **Since 2026-09-27 (quick fix):** the live ring and bar fill forward (`countsDown: false`, still
   the stock timer-driven ProgressView — custom drawing goes stale on a widget); not started → a
-  thin dashed ring and a tiny NEXT (circular).
+  thin dashed ring (circular; NEXT removed there in c404e44). The circular's prayer icon is 9.5 pt medium in both states
+  (was 12; owner, 2026-09-27: room for the name and time). Keep What's new topic titles describing the current state.
 - **Zikr** (MoreWidgets.swift): circular = the overall ring (`accessoryCircularCapacity`) with
   beads or ✓ inside; rectangular = "Zikr · N left", the next task "Subhanallah · 0/10 min", and a
   bar.
@@ -993,6 +1010,7 @@ Phones:
 Install with `xcrun devicectl device install app --device <udid> build/device/Build/Products/Debug-iphoneos/shukr.app`.
 
 Uploaded: 2.0 (3) 09-24, (6) 09-25, (7) and (8) 09-26, (9) 09-27 (first with the Apple Watch app).
+(11) 09-27: watch ring / Azkar sort menu / What's new follow-ups, on the public link the same day (IN_BETA_TESTING).
 (10) 09-27: the iOS 26 Settings-rows fix (pager drag `minimumDistance: 0` → 5), on the public link the same day (IN_BETA_TESTING).
 Note: on a real iOS 26.6 phone the dead rows showed in Release / TestFlight builds and not in Debug installs; in
 the iOS 26.5 simulator Debug was dead too. Verify gesture fixes with a **Release** device install
@@ -1440,7 +1458,7 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   sheets, and re-rendering everything on each write) is gone. NEXT is a small tag (9 pt medium, tracking
   2.5) at `offset(y: -31)` in the app (~12 pt under the qibla arrow at its highest, r 80; its gap
   to the name ~3× the name–caption gap so it reads as separate), 6 pt at `-15` in the home widget;
-  never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
+  never on the Lock Screen widget (dashed ring only). The app's tag is `NextTag` (NextLabelPlayground.swift; defaults −31 / 9 / 0.3 / 2.5 — the original look. The owner's playground values, −28.76 / 8.72 / 0.263 / 2.57, were the default for one commit (81593de, feedback CC72A6E8) and he preferred the original, 2026-09-27. `NextLabelTuning.clearSavedTuningOnce()` in shukrApp.init forgets saved playground JSON once per install (flag `clearedNextTagTuningForOriginal`). Release always uses the defaults. Sim trap: `simctl spawn … defaults write` writes a second, global plist the simulator merges in, so the app can't remove that value — edit prefs through the app, not simctl), tuned live in DEBUG Settings → My Dev Stuff → NEXT label playground… (offset / size / opacity / spacing, JSON in `nextLabelTuning`; Copy values → paste the JSON into `NextLabelTuning`'s defaults; `-demoNextPlayground`). **Dev toggle** Settings → My Dev Stuff →
   "Next prayer": NEXT + dashed ring / dashed ring only (`NextLabel.key` in the app group, so the
   widget follows; reloads timelines). DEBUG `-demoNextLabel on|off`.
 - **Main circle**: progress ring coloured by the score you'd get now; a tap only buzzes when

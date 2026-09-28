@@ -35,13 +35,13 @@
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
     {"id": "zikr-wording", "area": "Zikr", "title": "The app says \"zikr\" and \"Azkar\" (never \"mantra\")", "link": "azkar"},
     {"id": "zikr-media", "area": "Zikr", "title": "A zikr can hold a voice memo and a photo beside its notes", "link": "azkar"},
-    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; a Sort + Filter menu (recited, recent, pace, A–Z; hide the built-ins)", "link": "azkar"},
+    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; sorted by Name (A to Z by default), Times recited, Pace or Last used, ↑ / ↓", "link": "azkar"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page", "link": "zikr",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
     {"id": "zikr-history", "area": "Zikr", "title": "Zikr History: day headers show the time (tap for counts); Edit → select → Delete", "link": "history"},
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
-    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring and NEXT before a prayer starts"},
+    {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring before a prayer starts"},
     {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
     {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"}
   ],
@@ -599,10 +599,52 @@
       "checked": "sim", "shots": ["wn-whatsnew-addressed-not-draft.jpg"]
     },
     {
-      "id": "apple-watch-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "id": "apple-watch-1", "date": "2026-09-27", "commit": "7fc2573", "time": "2026-09-27T17:53:01-04:00", "topic": "apple-watch", "notes": null,
       "title": "The watch ring matches the phone: it fills as the prayer's window passes, green → yellow → red by the score you'd get now; NEXT with a dashed ring before a prayer starts; tap for time left",
       "tryIt": ["Open shukr on the watch during a prayer: the ring fills and is coloured like the phone's circle", "Tap the ring: \"ends 6:45 PM\" ⇄ \"54m left\"", "Complications (circular, corner, Smart Stack): fill forward in the same colour; dashed ring + NEXT before a prayer starts"],
       "checked": "sim", "shots": ["wn-watch-ring-fills.jpg"]
+    },
+    {
+      "id": "whats-new-10", "date": "2026-09-27", "commit": "80b45fb", "time": "2026-09-27T18:11:52-04:00", "topic": "whats-new", "notes": "#23",
+      "title": "Feedback: \"Still off\" on a card that already has an unsent note no longer copies or overwrites it; each gets its own box",
+      "tryIt": ["Write a note on a card (don't send) → on its addressed note tap Still off: the box is empty; save it", "The card's own box still has your first note"],
+      "checked": "sim"
+    },
+    {
+      "id": "built-in-azkar-7", "date": "2026-09-27", "commit": "80b45fb", "time": "2026-09-27T18:11:52-04:00", "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar sorting keeps a steady order for ties (built-ins in their usual order, yours A–Z); a search of just spaces doesn't count",
+      "tryIt": ["Azkar → Sort → Least recited: the never-used ones stay in the usual order"],
+      "checked": "sim"
+    },
+    {
+      "id": "built-in-azkar-8", "date": "2026-09-27", "commit": "81593de", "time": "2026-09-27T18:37:37-04:00", "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar sort, simpler: pick one field (Times recited, Pace, Last used, Name) and an ↑ / ↓ direction; built-ins always show, below yours",
+      "tryIt": ["Azkar → the sort button left of the search → Times recited: most first; open it again → Ascending: fewest first", "The button shows ↑ or ↓ while a sort is on; Default puts it back"],
+      "checked": "sim", "shots": ["wn-azkar-sort-field-direction.jpg"], "addresses": ["ADD5836A-58CE-4555-9425-E66B3AC18406"]
+    },
+    {
+      "id": "prayer-begins-10", "date": "2026-09-27", "commit": "81593de", "time": "2026-09-27T18:37:37-04:00", "topic": "prayer-begins", "notes": null, "status": "replaced",
+      "title": "NEXT uses your playground settings by default (a touch smaller, lighter and closer to the name)",
+      "tryIt": ["Mark the current prayer → the circle shows NEXT with the new look"],
+      "checked": "sim", "shots": ["wn-next-label-owner-defaults.jpg"], "addresses": ["CC72A6E8-44D8-4745-ADCC-A2C65CDDCB96"]
+    },
+    {
+      "id": "prayer-begins-11", "date": "2026-09-27", "commit": "ea6a065", "time": "2026-09-27T19:34:10-04:00", "topic": "prayer-begins", "notes": null,
+      "title": "NEXT is back to its original look (your playground tweak is undone); saved playground values are cleared once",
+      "tryIt": ["Open the app → the circle's NEXT looks as it did before the tweak (no playground reset needed)"],
+      "checked": "sim", "shots": ["wn-next-label-original.jpg"], "addresses": ["0DBBDDC7-D598-4B6E-933D-22B1BB120D61"]
+    },
+    {
+      "id": "lockscreen-prayers-3", "date": "2026-09-27", "commit": "5abb432", "time": "2026-09-27T19:42:18-04:00", "topic": "lockscreen-prayers", "notes": null,
+      "title": "Lock Screen round Prayers widget: a smaller prayer icon, so the name and time have more room",
+      "tryIt": ["Lock Screen → the round Prayers widget: the icon is smaller above the name (and time, before a prayer starts)"],
+      "checked": "sim", "shots": ["wn-lockscreen-circular-small-icon.jpg"], "addresses": ["7C996023-E1F1-4BC0-A2ED-1E4A0C12C048", "8F6E3C4B-D226-4180-9BE3-94D2B5D31E90"]
+    },
+    {
+      "id": "built-in-azkar-9", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": null,
+      "title": "Azkar sort: Name A to Z is the default (both sections alphabetical); no separate Default; direction rows are one short line (A to Z, Most first, Fastest first, Recent first…)",
+      "tryIt": ["Azkar → the sort button: pick a field, then the arrow row that reads how you want it", "Name, A to Z shows the plain sort icon; anything else shows ↑ or ↓"],
+      "checked": "sim", "shots": ["wn-azkar-sort-name-default.jpg"], "addresses": ["F5FDC4C1-F877-4F2F-B60E-4FA53952BF60"]
     }
   ]
 }

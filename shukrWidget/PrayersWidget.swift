@@ -960,7 +960,7 @@ struct PrayerLockScreenView: View {
                 } currentValueLabel: {
                     VStack(spacing: 0) {
                         Image(systemName: prayerIcon(for: prayer.name))
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
                         Text(prayer.name)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
                             .lineLimit(1).minimumScaleFactor(0.6)
@@ -976,7 +976,7 @@ struct PrayerLockScreenView: View {
                     .opacity(0.55)
                 VStack(spacing: 1) {
                     Image(systemName: prayerIcon(for: prayer.name))
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 9.5, weight: .medium))       // same as the live state
                     Text(prayer.name)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .lineLimit(1).minimumScaleFactor(0.6)

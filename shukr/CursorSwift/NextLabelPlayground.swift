@@ -14,14 +14,26 @@ import SwiftUI
 
 struct NextLabelTuning: Codable, Equatable {
     /// Points above the name's top (negative = up).
+    /// The original look. The owner's playground values (−28.76 / 8.72 / 0.263 / 2.57) were the
+    /// default for a day (81593de) and he went back to these (2026-09-27).
     var offset: Double = -31
     var size: Double = 9
-    /// Of the primary colour (0.3 ≈ the tertiary label it used to be).
+    /// Of the tertiary label, scaled from 0.3 (see NextTag).
     var opacity: Double = 0.3
     var tracking: Double = 2.5
 
     static let key = "nextLabelTuning"
     static let defaults = NextLabelTuning()
+
+    /// Once per install: forget playground values saved before the owner went back to the
+    /// original look, so a debug install shows the defaults without a trip to the playground.
+    static func clearSavedTuningOnce() {
+        let flag = "clearedNextTagTuningForOriginal"
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: flag) else { return }
+        d.removeObject(forKey: key)
+        d.set(true, forKey: flag)
+    }
 
     static func decode(_ json: String) -> NextLabelTuning {
         (json.data(using: .utf8)).flatMap { try? JSONDecoder().decode(NextLabelTuning.self, from: $0) } ?? .defaults
