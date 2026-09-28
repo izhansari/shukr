@@ -1062,6 +1062,18 @@
       "title": "What's new: a card shows its newest change; older ones fold away",
       "tryIt": ["Open a card you've tested: Changes shows just the newest change, then 'Show N earlier changes'", "Tap it: the rest open in place ('Show fewer' folds them again); untested changes always show"],
       "checked": "sim", "shots": ["wn-whatsnew-folded-changes.jpg"], "addresses": ["4E1AD6F2-00D9-4B71-8A33-BC5D642B04D4"]
+    },
+    {
+      "id": "notifications-14", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Your reminders in the app's look: rounded light type, soft cards, sage accents, softer bead colours",
+      "tryIt": ["Settings → Notifications → the Reminders row → Your reminders", "Tap the three tiles: the picked one turns sage"],
+      "checked": "sim", "shots": ["wn-reminders-on-brand.jpg"], "addresses": ["EC6B18BC-E84D-4C6C-A4D1-59936790BEE9"]
+    },
+    {
+      "id": "build-stamp-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "build-stamp", "notes": null,
+      "title": "The build line at the bottom of Settings sits clear of the home bar",
+      "tryIt": ["Settings → scroll to the end → tap the build line: What's new opens, no Siri"],
+      "checked": "sim", "shots": ["wn-settings-build-line.jpg"], "asked": "pull the build number at bottom of settings up a bit or add some more space at bottom so it's easy for me to reach… it's like right on my home bar"
     }
   ]
 }
