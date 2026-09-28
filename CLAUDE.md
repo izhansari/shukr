@@ -1171,6 +1171,12 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   `NotificationScheduler` everywhere: Mid = halfway through the window, End = 30 min before it ends (Settings' info said
   "50% and 25% time left" — wrong). The Fajr step shows only the result under the wheels, "Alarm tomorrow 5:25 AM · Fajr
   starts 5:35 AM" (or "Fajr ends …"), not the rule again.
+- **Notification defaults (owner, 2026-09-28):** one source, `NotificationDefaults` (NotificationScheduler.swift): Fajr off
+  (the Fajr alarm covers it), Dhuhr / Asr / Maghrib nudge, Isha start. The scheduler's fallbacks and every `@AppStorage`
+  (Settings, the setup, PrayerViewModel) use it; `migrate` (from `FirstRunSetup.migrateDefaults`) writes every unset key at
+  launch, and for existing users writes what they effectively had (the scheduler read unset Notif as "not Dhuhr", Nudges as
+  on), so their reminders don't change. Sim ✓: upgrade with no keys → nudge / off / nudge / nudge / nudge; fresh install →
+  off / nudge / nudge / nudge / start.
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
   Bismillah.
@@ -2156,6 +2162,10 @@ circles also ride a big arc bulging right and turn with it like a lazy Susan see
 (owner's sketch; `WheelFalloff`). The owner is choosing between `ZikrWheelStyle`s in Settings →
 My Dev Stuff → Zikr wheel (DEBUG): Straight (original), Arc no tilt, Gentle arc half tilt, Lazy
 Susan (default: 300 pt, 0.7 rad a row, full tilt), Tight wheel — keep the winner, delete the rest.
+**After a task's session** (2026-09-28, quick fix): the wheel remembers the task it started (`sessionTaskID`); when the
+tasbeeh cover closes and that task is done, it centres the next task not done yet after it in your order (wrapping), else
+freestyle — it used to follow the finished task to the end of the wheel. DEBUG `-demoFinishTask N` (with `-demoZikrPage`).
+Sim ✓: task 2 finished → task 3 centred.
 **Continue or start over**: tapping a task that's partly done today asks (centred alert):
 "Continue from 4" starts the session with today's count on the ring (`SharedStateClass.resumeCount`
 / `resumeSeconds` → `tasbeehView.countOffset` / `timeOffset`; − can't go below it; only

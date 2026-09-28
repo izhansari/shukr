@@ -157,11 +157,11 @@ enum NotificationScheduler {
     }
 
     private static let defaults = UserDefaults.standard
-    /// Settings → Notifications (standard defaults, same keys and defaults as PrayerViewModel).
+    /// Settings → Notifications (standard defaults; unset → `NotificationDefaults`, like every view).
     private static func settings(_ prayer: String) -> (notify: Bool, nudges: Bool) {
         let key = prayer.lowercased()
-        let notify = defaults.object(forKey: "\(key)Notif") as? Bool ?? (prayer != "Dhuhr")
-        let nudges = defaults.object(forKey: "\(key)Nudges") as? Bool ?? true
+        let notify = defaults.object(forKey: "\(key)Notif") as? Bool ?? NotificationDefaults.notify(prayer)
+        let nudges = defaults.object(forKey: "\(key)Nudges") as? Bool ?? NotificationDefaults.nudges(prayer)
         return (notify, nudges)
     }
 
@@ -271,6 +271,31 @@ enum NotificationScheduler {
             #if !targetEnvironment(simulator)
             print("❌ background refresh: \(error.localizedDescription)")
             #endif
+        }
+    }
+}
+
+/// The one source of the per-prayer notification defaults (`<prayer>Notif` = at the start,
+/// `<prayer>Nudges` = also halfway + 30 min left), read by the scheduler, Settings, the first-run
+/// setup and PrayerViewModel. Owner, 2026-09-28: Fajr off (the Fajr alarm covers it), Dhuhr / Asr /
+/// Maghrib nudge, Isha start — fewer nudges also spare iOS's 64-notification budget.
+/// `migrate` writes every unset key at launch: existing users get what they effectively had before
+/// (the scheduler read unset Notif as "not Dhuhr" and Nudges as on), so nothing changes for them.
+enum NotificationDefaults {
+    static let prayers = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+    static func notify(_ prayer: String) -> Bool { prayer != "Fajr" }
+    static func nudges(_ prayer: String) -> Bool { ["Dhuhr", "Asr", "Maghrib"].contains(prayer) }
+
+    static func migrate(existingUser: Bool) {
+        let d = UserDefaults.standard
+        for prayer in prayers {
+            let key = prayer.lowercased()
+            if d.object(forKey: "\(key)Notif") == nil {
+                d.set(existingUser ? prayer != "Dhuhr" : notify(prayer), forKey: "\(key)Notif")
+            }
+            if d.object(forKey: "\(key)Nudges") == nil {
+                d.set(existingUser ? true : nudges(prayer), forKey: "\(key)Nudges")
+            }
         }
     }
 }

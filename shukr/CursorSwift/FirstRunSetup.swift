@@ -67,6 +67,7 @@ enum FirstRunSetup {
         let group = UserDefaults(suiteName: SharedStore.appGroup)
         let existing = group?.object(forKey: "lastLatitude") != nil || isDone
         AutoMethod.migrateDefault(existingUser: existing)
+        NotificationDefaults.migrate(existingUser: existing)   // their reminders don't change; new installs: the owner's defaults
         if !existing && UserDefaults.standard.object(forKey: "modeToggleNew") == nil {
             UserDefaults.standard.set(2, forKey: "modeToggleNew")
         }
@@ -977,16 +978,16 @@ private struct RemindersStep: View {
     // The same keys and the same control as Settings: one button per prayer cycling off → start →
     // nudge (`prayerCol`; owner, 2026-09-28: "it should follow the same toggling logic we have in
     // the settings" — the first version's two independent columns allowed states Settings can't).
-    @AppStorage("fajrNotif") private var fajrNotif = true
-    @AppStorage("dhuhrNotif") private var dhuhrNotif = true
-    @AppStorage("asrNotif") private var asrNotif = true
-    @AppStorage("maghribNotif") private var maghribNotif = true
-    @AppStorage("ishaNotif") private var ishaNotif = true
-    @AppStorage("fajrNudges") private var fajrNudges = true
-    @AppStorage("dhuhrNudges") private var dhuhrNudges = true
-    @AppStorage("asrNudges") private var asrNudges = true
-    @AppStorage("maghribNudges") private var maghribNudges = true
-    @AppStorage("ishaNudges") private var ishaNudges = true
+    @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
+    @AppStorage("dhuhrNotif") private var dhuhrNotif = NotificationDefaults.notify("Dhuhr")
+    @AppStorage("asrNotif") private var asrNotif = NotificationDefaults.notify("Asr")
+    @AppStorage("maghribNotif") private var maghribNotif = NotificationDefaults.notify("Maghrib")
+    @AppStorage("ishaNotif") private var ishaNotif = NotificationDefaults.notify("Isha")
+    @AppStorage("fajrNudges") private var fajrNudges = NotificationDefaults.nudges("Fajr")
+    @AppStorage("dhuhrNudges") private var dhuhrNudges = NotificationDefaults.nudges("Dhuhr")
+    @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
+    @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
+    @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
 
     var body: some View {
         StepScaffold(title: "Reminders that help",
@@ -1268,16 +1269,16 @@ private struct ReviewStep: View {
     @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmBefore = true
     @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmFajr = true
     @AppStorage(MasjidArrival.enabledKey) private var duas = false
-    @AppStorage("fajrNotif") private var fajrNotif = true
-    @AppStorage("dhuhrNotif") private var dhuhrNotif = true
-    @AppStorage("asrNotif") private var asrNotif = true
-    @AppStorage("maghribNotif") private var maghribNotif = true
-    @AppStorage("ishaNotif") private var ishaNotif = true
-    @AppStorage("fajrNudges") private var fajrNudges = true
-    @AppStorage("dhuhrNudges") private var dhuhrNudges = true
-    @AppStorage("asrNudges") private var asrNudges = true
-    @AppStorage("maghribNudges") private var maghribNudges = true
-    @AppStorage("ishaNudges") private var ishaNudges = true
+    @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
+    @AppStorage("dhuhrNotif") private var dhuhrNotif = NotificationDefaults.notify("Dhuhr")
+    @AppStorage("asrNotif") private var asrNotif = NotificationDefaults.notify("Asr")
+    @AppStorage("maghribNotif") private var maghribNotif = NotificationDefaults.notify("Maghrib")
+    @AppStorage("ishaNotif") private var ishaNotif = NotificationDefaults.notify("Isha")
+    @AppStorage("fajrNudges") private var fajrNudges = NotificationDefaults.nudges("Fajr")
+    @AppStorage("dhuhrNudges") private var dhuhrNudges = NotificationDefaults.nudges("Dhuhr")
+    @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
+    @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
+    @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
 
     var body: some View {
         VStack(spacing: 0) {

@@ -16,17 +16,17 @@ struct SettingsView: View {
     // suite here is why the stepper never changed anything.
     @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var qiblaSensitivity: Double = 3.5
     
-    @AppStorage("fajrNotif") var fajrNotif: Bool = true
-    @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = true
-    @AppStorage("asrNotif") var asrNotif: Bool = true
-    @AppStorage("maghribNotif") var maghribNotif: Bool = true
-    @AppStorage("ishaNotif") var ishaNotif: Bool = true
+    @AppStorage("fajrNotif") var fajrNotif: Bool = NotificationDefaults.notify("Fajr")
+    @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = NotificationDefaults.notify("Dhuhr")
+    @AppStorage("asrNotif") var asrNotif: Bool = NotificationDefaults.notify("Asr")
+    @AppStorage("maghribNotif") var maghribNotif: Bool = NotificationDefaults.notify("Maghrib")
+    @AppStorage("ishaNotif") var ishaNotif: Bool = NotificationDefaults.notify("Isha")
 
-    @AppStorage("fajrNudges") var fajrNudges: Bool = true
-    @AppStorage("dhuhrNudges") var dhuhrNudges: Bool = true
-    @AppStorage("asrNudges") var asrNudges: Bool = true
-    @AppStorage("maghribNudges") var maghribNudges: Bool = true
-    @AppStorage("ishaNudges") var ishaNudges: Bool = true
+    @AppStorage("fajrNudges") var fajrNudges: Bool = NotificationDefaults.nudges("Fajr")
+    @AppStorage("dhuhrNudges") var dhuhrNudges: Bool = NotificationDefaults.nudges("Dhuhr")
+    @AppStorage("asrNudges") var asrNudges: Bool = NotificationDefaults.nudges("Asr")
+    @AppStorage("maghribNudges") var maghribNudges: Bool = NotificationDefaults.nudges("Maghrib")
+    @AppStorage("ishaNudges") var ishaNudges: Bool = NotificationDefaults.nudges("Isha")
     
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmEnabled: Bool = false

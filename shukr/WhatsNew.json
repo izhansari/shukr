@@ -49,7 +49,7 @@
      "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]},
     {"id": "first-run-setup", "area": "Setup", "title": "A first-run setup in the opening's look: welcome, where you pray (location, method, madhab), light / dark / auto, reminders, Fajr alarm, your masjid, a review, then Bismillah into the app", "link": "settings",
      "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]},
-    {"id": "zikr-pace", "area": "Zikr", "title": "Pause and results screens: the rate tile shows how this session compares with your usual pace for the zikr (faster / slower / about your usual), and every tile that flips has the ⇆ mark", "link": "zikr"}
+    {"id": "zikr-pace", "area": "Zikr", "title": "Zikr sessions: the rate tile shows how this session compares with your usual pace (faster / slower / about your usual), tiles that flip have the ⇆ mark, and after a task you land on the next one", "link": "zikr"}
   ],
   "entries": [
     {
@@ -741,6 +741,18 @@
       "title": "Rate tile: the ⇆ flip mark, and \"1.1s faster\" / \"0.4s slower\" than your usual under it (per tasbeeh when flipped)",
       "tryIt": ["Count a zikr you've counted before → pause: the rate tile says faster / slower / about your usual", "Tap the rate tile: per tasbeeh, the comparison flips with it", "Finish: the results screen compares with your usual before this session"],
       "checked": "sim", "shots": ["wn-bento-pace.jpg"]
+    },
+    {
+      "id": "first-run-setup-8", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "title": "New installs start with Fajr off (the Fajr alarm covers it), Dhuhr / Asr / Maghrib with nudges and Isha at the start; if you've used shukr before, your reminders stay exactly as they were",
+      "tryIt": ["Setup → Reminders that help: the bells show what you have now", "A fresh install: off · nudge · nudge · nudge · start"],
+      "checked": "sim", "shots": ["wn-setup-notif-defaults.jpg"]
+    },
+    {
+      "id": "zikr-pace-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "zikr-pace", "notes": null,
+      "title": "After you finish a task, the Zikr page lands on the next task to do, not the finished one at the bottom",
+      "tryIt": ["Zikr → finish a task's goal → Done: the next task in your order is in the middle", "Finish the last one: it wraps to the first task still to do, or freestyle when all are done"],
+      "checked": "sim", "shots": ["wn-zikr-next-task.jpg"]
     }
   ]
 }

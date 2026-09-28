@@ -42,17 +42,17 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var calculationMethod: Int = 2
     @AppStorage("school", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var school: Int = 0
 
-    @AppStorage("fajrNotif") var fajrNotif: Bool = true
-    @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = false
-    @AppStorage("asrNotif") var asrNotif: Bool = true
-    @AppStorage("maghribNotif") var maghribNotif: Bool = true
-    @AppStorage("ishaNotif") var ishaNotif: Bool = true
+    @AppStorage("fajrNotif") var fajrNotif: Bool = NotificationDefaults.notify("Fajr")
+    @AppStorage("dhuhrNotif") var dhuhrNotif: Bool = NotificationDefaults.notify("Dhuhr")
+    @AppStorage("asrNotif") var asrNotif: Bool = NotificationDefaults.notify("Asr")
+    @AppStorage("maghribNotif") var maghribNotif: Bool = NotificationDefaults.notify("Maghrib")
+    @AppStorage("ishaNotif") var ishaNotif: Bool = NotificationDefaults.notify("Isha")
     
-    @AppStorage("fajrNudges") var fajrNudges: Bool = true
-    @AppStorage("dhuhrNudges") var dhuhrNudges: Bool = true
-    @AppStorage("asrNudges") var asrNudges: Bool = true
-    @AppStorage("maghribNudges") var maghribNudges: Bool = true
-    @AppStorage("ishaNudges") var ishaNudges: Bool = true
+    @AppStorage("fajrNudges") var fajrNudges: Bool = NotificationDefaults.nudges("Fajr")
+    @AppStorage("dhuhrNudges") var dhuhrNudges: Bool = NotificationDefaults.nudges("Dhuhr")
+    @AppStorage("asrNudges") var asrNudges: Bool = NotificationDefaults.nudges("Asr")
+    @AppStorage("maghribNudges") var maghribNudges: Bool = NotificationDefaults.nudges("Maghrib")
+    @AppStorage("ishaNudges") var ishaNudges: Bool = NotificationDefaults.nudges("Isha")
 
     @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
     @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0

@@ -159,6 +159,8 @@ struct ZikrCircleWheel: View {
     @State private var resumeAsk: TaskModel?
     /// A finger on the dots: they become a scrubber (like dragging a page's scroll bar).
     @State private var scrubbing = false
+    /// The task a session was started from here, so coming back can move past it once it's done.
+    @State private var sessionTaskID: UUID?
 
     init(showTasbeehPage: Binding<Bool>) {
         self._showTasbeehPage = showTasbeehPage
@@ -298,6 +300,37 @@ struct ZikrCircleWheel: View {
         .onChange(of: newTaskScrollTarget) { _, id in
             if let id { withAnimation { centered = id.uuidString } }
         }
+        // Back from a task's session: a task done today moves to the end of the wheel, and the
+        // wheel followed it there (owner, 2026-09-28: always scrolling back up). Land on the next
+        // task instead — after it in your order, the first not done yet (wrapping), else freestyle.
+        .onChange(of: showTasbeehPage) { _, showing in
+            guard !showing, let finished = sessionTaskID else { return }
+            sessionTaskID = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { landAfterSession(finished) }
+        }
+        #if DEBUG
+        // `-demoFinishTask N` (with -demoZikrPage): centre task N, save a session that completes it,
+        // then come back as from its session — the wheel should land on the next task (simulator).
+        .task {
+            let n = UserDefaults.standard.integer(forKey: "demoFinishTask")
+            guard n > 0 else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            guard n <= tasks.count else { return }
+            let task = tasks[n - 1]
+            withAnimation { centered = task.id.uuidString }
+            try? await Task.sleep(for: .seconds(1.5))
+            let session = SessionDataModel(title: task.displayName, sessionMode: task.isCountMode ? 2 : 1,
+                                           targetMin: task.isCountMode ? 0 : task.goal, targetCount: task.isCountMode ? task.goal : 0,
+                                           totalCount: task.isCountMode ? task.goal : 60, startTime: Date(),
+                                           secondsPassed: task.isCountMode ? Double(task.goal) : Double(task.goal * 60),
+                                           avgTimePerClick: 1, tasbeehRate: "1m 40s", task: task, mantra: task.mantra)
+            context.insert(session)
+            try? context.save()
+            try? await Task.sleep(for: .seconds(1))
+            print("🧪 demoFinishTask: finished \(task.title) (done \(isDone(task)))")
+            landAfterSession(task.id)
+        }
+        #endif
         .sheet(item: $editingTask) { task in
             AddDailyTaskView(editing: task, isPresented: Binding(get: { editingTask != nil }, set: { if !$0 { editingTask = nil } }))
         }
@@ -584,8 +617,22 @@ struct ZikrCircleWheel: View {
 
     // MARK: actions
 
+    /// Back from a session of `finished`: once it's done, centre what comes next.
+    private func landAfterSession(_ finished: UUID) {
+        guard let task = tasks.first(where: { $0.id == finished }), isDone(task) else { return }
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = nextFocus(after: task) }
+    }
+
+    /// The next task to do after `task` in the user's order (wrapping), or freestyle when all are done.
+    private func nextFocus(after task: TaskModel) -> String {
+        guard let i = tasks.firstIndex(where: { $0.id == task.id }) else { return Item.freestyle.id }
+        let rotated = tasks[(i + 1)...] + tasks[..<i]
+        return rotated.first(where: { !isDone($0) })?.id.uuidString ?? Item.freestyle.id
+    }
+
     /// `resume`: begin with today's progress on the ring (only new counts are saved).
     private func start(_ task: TaskModel, resume: Bool = false) {
+        sessionTaskID = task.id
         sharedState.selectedTask = task   // its didSet loads the mode / goal / mantra
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
