@@ -972,6 +972,12 @@
       "title": "Your reminders: the days reach as far as the reminders do (an eighth day when needed), so they add up to the count in the ring",
       "tryIt": ["Settings → Notifications → Reminders are on → This week: the day counts add up to the number in the ring"],
       "checked": "sim", "shots": ["wn-your-reminders-full-week.jpg"]
+    },
+    {
+      "id": "prayer-begins-13", "date": "2026-09-28", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "title": "The dashed ring of a prayer that hasn't started is easier to see (still subtle) — in the app, the widget and on the watch",
+      "tryIt": ["Mark the current prayer → the circle shows the next one with a clearer dashed ring"],
+      "checked": "sim", "shots": ["wn-upcoming-ring-visible.jpg"]
     }
   ]
 }

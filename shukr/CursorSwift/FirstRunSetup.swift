@@ -450,7 +450,7 @@ struct LostLocationView: View {
                         .shadow(color: Color.sage.opacity(snug ? 0.45 : 0), radius: 8)
                         .frame(width: snug ? 150 : 200, height: snug ? 150 : 200)
                     Circle()
-                        .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                         .opacity(landDashed && !snug ? 1 : 0)
                     VStack(spacing: 6) {
                         Image(systemName: acknowledged ? onSymbol : "location.slash")

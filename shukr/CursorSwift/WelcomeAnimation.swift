@@ -128,7 +128,7 @@ struct WelcomeOverlay: View {
                     .opacity(reduceMotion || portal ? 0 : 1)
                 // The dashed track, when that's what the circle is showing.
                 Circle()
-                    .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                    .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                     .frame(width: ringSize, height: ringSize)
                     .opacity(grow && dashedTarget && !portal ? 1 : 0)
                 wordmark

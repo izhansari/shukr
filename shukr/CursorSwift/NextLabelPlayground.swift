@@ -115,7 +115,7 @@ struct NextLabelPlayground: View {
     /// The main circle's layout at its real size: dashed track, NEXT, icon + name, caption.
     private var preview: some View {
         ZStack {
-            Circle().stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+            Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
             VStack(spacing: 4) {
                 HStack(spacing: 8) {
                     Image(systemName: "sunrise").font(.system(size: 22, weight: .light))

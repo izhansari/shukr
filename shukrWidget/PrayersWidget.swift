@@ -579,7 +579,7 @@ struct PrayersWidgetView: View {
                                 // Stronger than the app's (0.35 / 0.75 pt): at widget size, in dark
                                 // mode especially, the ring was hard to see (owner, 2026-09-27).
                                 Circle()
-                                    .stroke(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
+                                    .stroke(Color.secondary.opacity(0.75), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))   // a touch stronger, like the app (2026-09-28)
                             }
 
                             Circle()

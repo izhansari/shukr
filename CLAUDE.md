@@ -2125,6 +2125,9 @@ schedules nudges as fewer, later-verified notifications).
 
 **Main circle "next" → "now" (2026-09-27; redesigned the same day, owner: "all of these options
 suck").** The track (`CircleTrack`, PrayerCompletionFX.swift) *is* the state:
+- **Visibility (2026-09-28, owner: "hard to see"):** one style, `UpcomingTrack` (PrayerCompletionFX.swift: secondary 0.58,
+  1.3 pt, 3 / 5), used by the circle, the welcome and lost page landings and the NEXT playground; the Prayers widget's
+  dashed ring is secondary 0.75 at 1.25 pt, the watch app's white 0.55 at 1.25 pt. Older numbers below are history.
 - **Dashed** (1 pt, 3 / 5 dashes, secondary 0.35 — the old future-prayer line, moved out to the
   200 pt track) while the circle shows a prayer that hasn't started: an upcoming prayer, and the
   summary circle's next Fajr (sheet closed). "NEXT" (an overlay above the name, offset −13, so the

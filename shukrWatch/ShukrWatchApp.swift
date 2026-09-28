@@ -446,7 +446,7 @@ struct WatchPrayerRing: View {
             if current {
                 Circle().stroke(Color.white.opacity(0.12), lineWidth: 7 * k)
             } else {
-                Circle().stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
+                Circle().stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))   // stronger, like the app (2026-09-28)
             }
             // Holding to mark: the score arc itself swells and glows in its own colour (no green —
             // nothing may suggest a grade the prayer doesn't have; owner).

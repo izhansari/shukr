@@ -15,6 +15,14 @@
 //
 
 import SwiftUI
+
+/// The dashed track of a prayer that hasn't started — the main circle, the summary's next Fajr, the
+/// welcome / lost page landing on it, the NEXT playground. One style so they stay alike. Owner,
+/// 2026-09-28: "hard to see … still subtle, but not that invisible" (was secondary 0.35 at 1 pt).
+enum UpcomingTrack {
+    static let opacity = 0.58
+    static let style = StrokeStyle(lineWidth: 1.3, dash: [3, 5])
+}
 import CoreHaptics
 import UIKit
 
@@ -190,7 +198,7 @@ struct CircleTrack: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                 .opacity(Double(1 - solid))
             TrackBand(width: reduceMotion ? 12 : max(12 * solid, 0.001))
                 .fill(Color(.secondarySystemFill))
