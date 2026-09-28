@@ -174,6 +174,12 @@ keywords, "What's New" and screenshot captions.
 - 99 Names of Allah: each name with its meaning and explanation, and flashcards to learn
   them (with a "known" progress ring).
 
+**First run**
+- A short setup in the opening's look: where you pray (location, a calculation method picked
+  automatically for your country, the madhab explained with both Asr times), light / dark / auto,
+  reminders tuned per prayer, the Fajr alarm, your masjid and its duas — then "bismillah" into the app.
+- Prayer times that follow you when you travel (with Always location), even when the app is closed.
+
 **Privacy & feel**
 - Nothing leaves the device: no accounts, no tracking; location is used only on-device.
 - Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
@@ -1095,28 +1101,63 @@ agent builds with xcodebuild. Nothing here has CI.
    to learn from it before building a third version.
 9. Then the App Store blockers below.
 
-## First-run setup (notes #18 + #6) — mockups only (2026-09-28)
+## First-run setup (notes #18 + #6) — built 2026-09-28
 
-DEBUG-only `CursorSwift/OnboardingMockups.swift`, not wired into the launch; reads the saved location / method for real
-times, writes nothing, asks for nothing. `-demoOnboarding location|method|madhab|review` (Continue walks through them),
-`-demoOnboardingBismillah ring|sweep`. The look follows the everyday opening: plain background, the sage `SetupRing` at the
-top as progress (a quarter per step, the step's symbol inside), light rounded type, a calm sage-tint primary button, Skip
-top right. Steps mocked: location (the why, then "Allow location" / "Enter a city instead"), method (Automatic first —
-"follows where you are · ISNA here" — then ISNA / MWL / Umm al-Qura / Egyptian / Karachi, today's times live), madhab
-(Shafi'i vs Hanafi cards with a shadow sketch and both Asr times, "only Asr changes"), review (tappable rows with the sell
-lines, orange nudges for While Using / notifications off, Bismillah in two looks: the circle drawing round بِسْمِ اللَّهِ
-and breathing, or a capsule with the welcome's light sweep).
-**Round 2 (owner, 2026-09-28):** Bismillah = the capsule, filled with the old first screen's own `AnimatedWavyGradient` +
-breathing `NoiseOverlay` (as a background, so its screen-sized frame can't widen the layout), "bismillah" in that screen's
-"shukr" type (title, thin, rounded, white 0.8) — "don't reinvent the wheel". Every step's title sits at the same height
-under the ring (fixed top padding, no Spacer above it); the method list is a short fading scroller, popular ones first
-(Automatic, ISNA, MWL, Umm al-Qura, Karachi, Egyptian, then Dubai…Tehran). New **appearance** step: Light / Dark / Auto
-("Recommended", follows the sun) with swatches, applied live (`preferredColorScheme`); a row on the review; the ring fills
-a fifth per step. **Into the app:** Bismillah → the page fades, the ring glides to `WelcomeTarget.circleFrame` and becomes
-the welcome's 150 pt hairline, then `WelcomeOverlay(startDrawn: true)` plays (ring already drawn, starts on the circle),
-"shukr" writes itself and the ring grows into the circle. The mock is an overlay on PrayerTimesView (not a cover) and drops
-its own background once the welcome takes over (it left a blank beat). `-demoOnboardingAppearance`, `-demoOnboardingEnter`
-(presses Bismillah 3 s in; simulated taps don't reach it). Sim ✓ light + dark, recorded.
+`CursorSwift/FirstRunSetup.swift` replaced the old first open (`GradientAnimationLoad` — deleted from shukrApp.swift; its
+`AnimatedWavyGradient` / `NoiseOverlay` stay for the Bismillah capsule and the share card). Look from the owner's round-2
+mockups: plain background, the sage `SetupRing` at the top as progress (a fifth per group: where you pray · appearance ·
+reminders · Fajr · masjid) with the step's symbol, every title at one height, one calm sage-tint button, Skip on every step.
+- **Steps:** welcome ("Assalamu alaikum", Begin) → location → method → madhab → appearance → reminders → Fajr alarm → your
+  masjid → review → Bismillah. Every control is bound to the existing setting (no parallel keys): location =
+  `EnvLocationManager.requestAlwaysPermission()` (iOS grants While Using first; "Enter a city" = `CityPickerSheet`; refused
+  → "Enter a city" / "Open Settings"); method = `calculationMethod` (0 = Automatic); madhab = `school`; appearance =
+  `modeToggleNew` (applied live by the root); reminders = `<prayer>Notif` (at the start) + `<prayer>Nudges` (halfway +
+  30 min left), the notification prompt only on "Allow notifications"; Fajr = `alarmEnabled` / `alarmOffsetMinutes` /
+  `alarmIsBefore` / `alarmIsFajr` + "Get the Shortcut" (the alarm is a Shortcuts automation — the copy says so), and on
+  Continue it writes `alarmTimeSetFor` / `alarmDescription` like Settings' Save; masjid = `MosqueSearch.find` (12 km round
+  you, nearest 6) → star = `MosqueFavorites.setFavorite`, "Duas when I arrive and leave" = `MasjidArrival.setEnabled`.
+- **Review:** every choice as a row (tap = that step), the sell lines, and orange never-blocking `Nudge`s: no location · "Set
+  up"; a city but location refused · allow; While Using · "Turn on Always" (app Settings); reduced accuracy · precise;
+  notifications off · notification Settings; not asked · "Allow".
+- **Bismillah:** marks done, refetches times, reschedules notifications, reloads widgets, sends the watch context, then the
+  hand-off: the page fades, the ring glides to `WelcomeTarget.circleFrame` and becomes the welcome's hairline, then
+  `WelcomeOverlay(startDrawn: true)` plays and grows into the circle.
+- **When:** `FirstRunSetup.shouldShowAtLaunch()` — once per install (`firstRunSetup.v1`, standard defaults), existing users
+  included (pre-filled; granted permissions just show their state); not when a widget / control deep-link flag is set (that
+  launch goes straight there, the setup waits for a plain launch); not with `-demo…` args. The root (shukrApp) shows it as
+  an overlay over the NavigationStack (PrayerTimesView under it once there's a location, so the hand-off lands on the real
+  circle); the launch welcome skips itself while it's up (`showingAtLaunch`). No location at all after setup (refused with no
+  city, or turned off later — `locationWasAuthorized` still drops the city) → `FirstRunSetupView(mode: .locationOnly)`.
+  **The old notification gate is gone** (the first screen used to come back whenever notifications were off).
+  `EnvLocationManager` no longer auto-asks for location before setup is done (it asked in `init` via didChangeAuthorization),
+  and AppDelegate's launch notification request waits for it too. `CircleCover` "firstRunSetup" while it's up.
+- **Defaults** (`FirstRunSetup.migrateDefaults()`, first thing in the container closure): an install that never picked a
+  method gets one written — existing users (a stored lastLatitude or setup done) ISNA, what unset always meant; new installs
+  Automatic — and new installs start on Auto appearance.
+- **Automatic method** (`AutoMethod`, SharedTargetForIntents.swift — app + widget): stored 0; `effectiveMethod()` resolves
+  it from the country of the last geocoded fix (`autoMethodCountry` in the app group, set in PrayerViewModel.updateCityName,
+  only on change; a change that moves the method refetches times, reloads widgets, sends the watch), else a coordinate guess
+  (North America → ISNA, else MWL). Country table: US/CA ISNA · SA/YE Umm al-Qura · AE/OM/BH Gulf · KW · QA · Egypt, North /
+  East / West Africa, the Levant, Iraq → Egyptian · PK/IN/BD/AF/LK/NP Karachi · MY/SG/ID/BN/TH/PH Singapore · IR Tehran ·
+  TR/AZ Diyanet · else MWL. Everything reads it: `PrayerUtils.getCalculationParameters` (→ `parameters(method:school:)`),
+  `PrayerDay.fajr`'s cache key, `WatchSync` sends the resolved number (the watch only knows real methods). Settings' picker
+  has "Automatic (ISNA)". DEBUG `-autoMethodTest`: 14 cities via the table and a live reverse geocode + 2 fallbacks, all ✅.
+- **Travel update:** with Always, `EnvLocationManager` also runs `startMonitoringSignificantLocationChanges()` (stopped on
+  While Using). A fix (also after iOS relaunches the app in the background — shukrApp.init rebuilds the manager) goes the usual
+  way, `locationUpdates` → `PrayerViewModel.handleLocationChange` (coordinate, city + country, times, reminders); a move of
+  > 15 km from the saved coordinate also reloads widgets and sends the watch context. App-group writes only on change, as
+  before. Purpose strings rewritten (prayer times / reminders / widgets / Fajr alarm follow you, prayers pinned where you
+  prayed, masjid duas; on the phone). Not testable in the sim (no significant-change events there).
+- **Run setup again:** Settings (DEBUG / TestFlight, the `WhatsNewAccess` gate) posts `FirstRunSetup.rerun`.
+- DEBUG: `-setupForce`, `-setupReset`, `-setupStep <welcome|location|method|madhab|appearance|reminders|fajr|masjid|review>`,
+  `-setupEnter` (presses Bismillah 3 s into the review). Simulated taps land late (screenshot after a pause); switches need
+  a short drag, not a tap.
+- Sim ✓: upgrade from an existing store (pre-filled ISNA / Light / Always, done flag saved, relaunch goes straight in); fresh
+  install (no location / notification prompt at launch; "Allow location" → the prompt with the new string; Don't Allow →
+  "Enter a city" → London → Automatic = MWL, dark via Auto at night; notifications asked on the step; the Fajr wheels;
+  masajid near London, star; review; Bismillah → London's Fajr); Dynamic Type accessibility-medium (scrolls; times scale);
+  iPhone SE on iOS 18.5 (a simulator "Frank SE test" was created for it). Not tried: Reduce Motion, the deep-link deferral,
+  Run setup again, the travel update, a real device.
 
 ## Masjid-aware prayers (owner idea 2026-09-25 — parts 1, 2 and most of 4 built 2026-09-26)
 

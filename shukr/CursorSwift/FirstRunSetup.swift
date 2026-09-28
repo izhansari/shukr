@@ -1,0 +1,1410 @@
+//
+//  FirstRunSetup.swift
+//  shukr
+//
+//  The first-run setup (notes #18 + #6; owner-approved from the round-2 mockups, 2026-09-28). It
+//  replaced the old first open (`GradientAnimationLoad`: wavy gradient, glass cards).
+//
+//  Look: the everyday opening's (WelcomeAnimation.swift) — the plain background, a sage ring, light
+//  rounded type. The small ring at the top is the progress (where you pray · appearance · reminders
+//  · Fajr · masjid) with the step's symbol inside; every title sits at the same height under it;
+//  one calm primary button at the bottom; Skip on every step. Nothing blocks: each step shows the
+//  real setting (so existing users see theirs), prompts only for a permission that isn't decided,
+//  and the review nudges (never blocks) towards the best permissions.
+//
+//  Every control is bound to the setting it changes — no parallel keys:
+//  - location: EnvLocationManager (Always asked here, "Enter a city" = CityPickerSheet);
+//  - method: `calculationMethod` (0 = Automatic, AutoMethod) · madhab: `school` (app group);
+//  - appearance: `modeToggleNew` (0 light, 1 dark, 2 auto);
+//  - reminders: `<prayer>Notif` (at the start) + `<prayer>Nudges` (halfway and 30 min left);
+//  - Fajr alarm: `alarmEnabled` / `alarmOffsetMinutes` / `alarmIsBefore` / `alarmIsFajr`;
+//  - masjid: `MosqueFavorites` + `MasjidArrival`.
+//
+//  Bismillah (last step) hands off to the everyday opening: the page fades, the ring glides onto the
+//  Salah circle and becomes the welcome's ring (`WelcomeOverlay(startDrawn:)`), "shukr" writes
+//  itself and the ring grows into the circle.
+//
+//  Shown once per install, existing users included (`FirstRunSetup.doneKey`), never over a widget /
+//  control deep link (that launch goes straight there; the setup waits). DEBUG / TestFlight:
+//  Settings → Run setup again. DEBUG: `-setupForce`, `-setupReset`, `-setupStep <step>`,
+//  `-setupEnter` (presses Bismillah 3 s into the review).
+//
+
+import SwiftUI
+import MapKit
+import CoreLocation
+import UserNotifications
+import WidgetKit
+import SwiftData
+import Adhan
+
+// MARK: - When it shows
+
+enum FirstRunSetup {
+    static let doneKey = "firstRunSetup.v1"
+    /// Settings → Run setup again (DEBUG / TestFlight).
+    static let rerun = Notification.Name("firstRunSetup.rerun")
+    /// The app acted on a widget / control deep link (PrayerTimesView): an untouched setup steps aside.
+    static let deepLinked = Notification.Name("firstRunSetup.deepLinked")
+    /// Still on the welcome step (nothing chosen yet), so stepping aside loses nothing.
+    static var untouched = true
+    static var isDone: Bool { UserDefaults.standard.bool(forKey: doneKey) }
+    /// The setup is up this launch (the launch welcome stays out of its way: the setup ends in it).
+    static private(set) var showingAtLaunch = false
+
+    /// Once per launch, before anything computes times: an install that never picked a method gets
+    /// one written (existing users ISNA, what an unset value meant; new installs Automatic), and a
+    /// new install starts on Auto appearance (the setup's recommendation).
+    static func migrateDefaults() {
+        let group = UserDefaults(suiteName: SharedStore.appGroup)
+        let existing = group?.object(forKey: "lastLatitude") != nil || isDone
+        AutoMethod.migrateDefault(existingUser: existing)
+        if !existing && UserDefaults.standard.object(forKey: "modeToggleNew") == nil {
+            UserDefaults.standard.set(2, forKey: "modeToggleNew")
+        }
+    }
+
+    static func markDone() {
+        if !isDone { UserDefaults.standard.set(true, forKey: doneKey) }
+    }
+
+    /// Widget / control / Action-button launches set one of these before the app opens.
+    static let deepLinkFlags = ["widgetCompass", "widgetDailyAyah", "widgetNames", "widgetTasbeeh", "widgetZikrTask"]
+    static var openedFromDeepLink: Bool {
+        let group = UserDefaults(suiteName: SharedStore.appGroup)
+        return deepLinkFlags.contains { group?.bool(forKey: $0) == true }
+    }
+
+    /// Decided once, when the root view is built.
+    static func shouldShowAtLaunch() -> Bool {
+        var show = !isDone && !openedFromDeepLink
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-setupReset") { UserDefaults.standard.removeObject(forKey: doneKey); show = !openedFromDeepLink }
+        if args.contains(where: { $0.hasPrefix("-demo") }) { show = false }   // screenshots / automation
+        if args.contains("-setupForce") { show = true }
+        #endif
+        showingAtLaunch = show
+        return show
+    }
+}
+
+#if DEBUG
+/// `-autoMethodTest`: checks the Automatic table for a few cities (the country code a geocode
+/// returns, and the coordinate fallback), printed as ✅ / ❌. No test target in this project.
+enum AutoMethodSelfTest {
+    static func run() {
+        let cities: [(String, Double, Double, String, Int)] = [
+            ("New York", 40.71, -74.01, "US", 2), ("Toronto", 43.65, -79.38, "CA", 2),
+            ("London", 51.51, -0.13, "GB", 3), ("Riyadh", 24.71, 46.68, "SA", 4),
+            ("Cairo", 30.04, 31.24, "EG", 5), ("Karachi", 24.86, 67.01, "PK", 1),
+            ("Istanbul", 41.01, 28.98, "TR", 13), ("Kuala Lumpur", 3.14, 101.69, "MY", 11),
+            ("Dubai", 25.20, 55.27, "AE", 8), ("Doha", 25.29, 51.53, "QA", 10),
+            ("Kuwait City", 29.38, 47.99, "KW", 9), ("Tehran", 35.69, 51.39, "IR", 7),
+            ("Lagos", 6.52, 3.38, "NG", 5), ("Berlin", 52.52, 13.40, "DE", 3),
+        ]
+        for c in cities {
+            let byCountry = AutoMethod.method(forCountry: c.3)
+            print("\(byCountry == c.4 ? "✅" : "❌") AUTOMETHOD \(c.0) [\(c.3)] → \(AutoMethod.shortName(byCountry))")
+        }
+        let fallbackNY = AutoMethod.method(latitude: 40.71, longitude: -74.01), fallbackLondon = AutoMethod.method(latitude: 51.51, longitude: -0.13)
+        print("\(fallbackNY == 2 ? "✅" : "❌") AUTOMETHOD fallback New York → \(AutoMethod.shortName(fallbackNY))")
+        print("\(fallbackLondon == 3 ? "✅" : "❌") AUTOMETHOD fallback London → \(AutoMethod.shortName(fallbackLondon))")
+        // What a real reverse geocode says the country is (one at a time: CLGeocoder is rate-limited).
+        Task { @MainActor in
+            for c in cities {
+                let placemark = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: c.1, longitude: c.2)).first
+                let code = placemark?.isoCountryCode ?? "?"
+                print("\(code == c.3 ? "✅" : "❌") AUTOMETHOD geocode \(c.0) → \(code) → \(AutoMethod.shortName(AutoMethod.method(forCountry: code)))")
+            }
+        }
+    }
+}
+#endif
+
+enum SetupStep: String, CaseIterable, Identifiable {
+    case welcome, location, method, madhab, appearance, reminders, fajr, masjid, review
+    var id: String { rawValue }
+
+    /// The ring: a fifth per group (where you pray · appearance · reminders · Fajr · masjid).
+    var progress: Double {
+        switch self {
+        case .welcome: 0
+        case .location, .method, .madhab: 0.2
+        case .appearance: 0.4
+        case .reminders: 0.6
+        case .fajr: 0.8
+        case .masjid, .review: 1
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .welcome: "sparkle"
+        case .location, .method, .madhab: "location.fill"
+        case .appearance: "circle.lefthalf.filled"
+        case .reminders: "bell"
+        case .fajr: "alarm"
+        case .masjid: "building.columns"
+        case .review: "checkmark"
+        }
+    }
+}
+
+// MARK: - The flow
+
+struct FirstRunSetupView: View {
+    /// `.locationOnly`: shown after setup when there's no location at all (refused and no city, or
+    /// location turned off later) — just the location step; it goes away once there is one.
+    enum Mode { case full, locationOnly }
+    var mode: Mode = .full
+    var onFinish: () -> Void = {}
+
+    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(\.modelContext) private var context
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var step: SetupStep
+    /// Bismillah was tapped: the page fades, the ring glides onto the Salah circle…
+    @State private var leaving = false
+    /// …and becomes the welcome, which plays as on every launch.
+    @State private var welcome = false
+    @State private var ringCentre: CGPoint = .zero
+
+    init(mode: Mode = .full, onFinish: @escaping () -> Void = {}) {
+        self.mode = mode
+        self.onFinish = onFinish
+        var start: SetupStep = mode == .locationOnly ? .location : .welcome
+        #if DEBUG
+        if mode == .full, let raw = UserDefaults.standard.string(forKey: "setupStep"), let s = SetupStep(rawValue: raw) { start = s }
+        #endif
+        _step = State(initialValue: start)
+    }
+
+    var body: some View {
+        ZStack {
+            // Gone once the welcome takes over (it has its own background).
+            Color(.systemBackground).ignoresSafeArea()
+                .opacity(welcome ? 0 : 1)
+            VStack(spacing: 0) {
+                topBar
+                    .opacity(leaving ? 0 : 1)
+                SetupRing(progress: step.progress, symbol: step.symbol, handoff: leaving)
+                    .onGeometryChange(for: CGPoint.self) { geo in
+                        let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
+                    } action: { if !leaving { ringCentre = $0 } }
+                    .offset(leaving ? handoffShift : .zero)
+                    .padding(.top, 4)
+                    .zIndex(1)
+                Group {
+                    switch step {
+                    case .welcome: WelcomeStep(next: { go(.location) })
+                    case .location: LocationStep(locationOnly: mode == .locationOnly, next: { go(.method) })
+                    case .method: MethodStep(next: { go(.madhab) })
+                    case .madhab: MadhabStep(next: { go(.appearance) })
+                    case .appearance: AppearanceStep(next: { go(.reminders) })
+                    case .reminders: RemindersStep(next: {
+                        NotificationScheduler.reschedule(context: context, reason: "setup reminders")
+                        go(.fajr)
+                    })
+                    case .fajr: FajrStep(next: { go(.masjid) })
+                    case .masjid: MasjidStep(next: { go(.review) })
+                    case .review: ReviewStep(jump: { go($0) }, done: enterApp)
+                    }
+                }
+                .padding(.top, 26)          // every title at the same height under the ring
+                .id(step)
+                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                .opacity(leaving ? 0 : 1)
+            }
+            .fontDesign(.rounded)
+            .opacity(welcome ? 0 : 1)
+            if welcome {
+                WelcomeOverlay(startDrawn: true, onFinish: onFinish)
+                    .transition(.identity)
+            }
+        }
+        .onAppear { CircleCover.set("firstRunSetup", true) }
+        .onDisappear { CircleCover.set("firstRunSetup", false) }
+        #if DEBUG
+        .task {
+            guard step == .review, ProcessInfo.processInfo.arguments.contains("-setupEnter") else { return }
+            try? await Task.sleep(for: .seconds(3))
+            enterApp()
+        }
+        #endif
+    }
+
+    private var topBar: some View {
+        HStack {
+            if step != .welcome && mode == .full {
+                Button {
+                    if let i = SetupStep.allCases.firstIndex(of: step), i > 0 { go(SetupStep.allCases[i - 1]) }
+                } label: {
+                    Image(systemName: "chevron.left").font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Back")
+            }
+            Spacer()
+            if step != .review && mode == .full {
+                Button("Skip") { go(.review) }
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+            }
+        }
+        .tint(.primary)
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+    }
+
+    private func go(_ s: SetupStep) {
+        FirstRunSetup.untouched = false
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45)) { step = s }
+    }
+
+    /// From the ring's place to the Salah circle's centre (the screen's centre if it isn't there).
+    private var handoffShift: CGSize {
+        let screen = UIScreen.main.bounds
+        let target = WelcomeTarget.circleFrame.flatMap { $0.width > 100 ? CGPoint(x: $0.midX, y: $0.midY) : nil }
+            ?? CGPoint(x: screen.midX, y: screen.midY)
+        return CGSize(width: target.x - ringCentre.x, height: target.y - ringCentre.y)
+    }
+
+    /// Bismillah: save, bring everything up to date, then the hand-off into the everyday opening.
+    private func enterApp() {
+        guard !leaving else { return }
+        FirstRunSetup.markDone()
+        viewModel.fetchPrayerTimes(cameFrom: "first-run setup done")
+        NotificationScheduler.reschedule(context: context, reason: "first-run setup done")
+        WidgetCenter.shared.reloadAllTimelines()
+        WatchSync.shared.send()
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
+        if reduceMotion {
+            withAnimation(.easeInOut(duration: 0.35)) { leaving = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { welcome = true }
+            return
+        }
+        // The page lets go; the ring glides onto the circle and thins into the welcome's hairline.
+        withAnimation(.easeOut(duration: 0.35)) { leaving = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) { welcome = true }   // same ring, same place: only the letters appear
+        }
+    }
+}
+
+// MARK: - The ring (progress + the step's symbol)
+
+/// The opening's sage ring, small, at the top of every step: a hairline track, the sage arc filling
+/// a fifth per group, the step's symbol inside. `handoff`: it becomes the welcome's ring — 150 pt,
+/// a 1.2 pt sage hairline with its soft glow, empty inside.
+struct SetupRing: View {
+    let progress: Double
+    let symbol: String
+    var handoff = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var drawn = false
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                Circle().stroke(Color.sage.opacity(handoff ? 0 : 0.18), lineWidth: 1.2)
+                Circle()
+                    .trim(from: 0, to: handoff ? 1 : (drawn || reduceMotion ? progress : 0))
+                    .stroke(Color.sage.opacity(handoff ? 0.6 : 1),
+                            style: StrokeStyle(lineWidth: handoff ? 1.2 : 2.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .shadow(color: Color.sage.opacity(handoff ? 0.45 : 0), radius: 8)
+                Image(systemName: symbol)
+                    .font(.system(size: 22, weight: .light))
+                    .foregroundStyle(Color.sage)
+                    .contentTransition(.symbolEffect(.replace))
+                    .opacity(handoff ? 0 : 1)
+            }
+            // Grows inside a fixed frame, so it stays centred where it is.
+            .frame(width: handoff ? 150 : 76, height: handoff ? 150 : 76)
+            .opacity(handoff && reduceMotion ? 0 : 1)
+        }
+        .frame(width: 76, height: 76)
+        .animation(.spring(response: 0.8, dampingFraction: 0.9), value: handoff)
+        .onAppear { withAnimation(.easeInOut(duration: 0.9).delay(0.15)) { drawn = true } }
+        .animation(.easeInOut(duration: 0.7), value: progress)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Shared pieces
+
+/// A step: its title (same height on every step), a scrolling middle (small screens, big type),
+/// and the bottom (the primary button).
+private struct StepScaffold<Content: View, Bottom: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder var content: Content
+    @ViewBuilder var bottom: Bottom
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 0) {
+                    StepTitle(title: title, subtitle: subtitle)
+                        .padding(.bottom, 22)
+                    content
+                }
+                .padding(.bottom, 16)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            bottom
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+        }
+    }
+}
+
+private struct StepTitle: View {
+    let title: String
+    let subtitle: String?
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(title)
+                .font(.system(.largeTitle, design: .rounded, weight: .light))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(.callout, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 28)
+    }
+}
+
+/// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause
+/// screen's Resume), not a solid fill.
+private struct PrimaryButton: View {
+    let title: String
+    var enabled = true
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(.body, design: .rounded, weight: .medium))
+                .foregroundStyle(Color.sage)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 54)
+                .background(Capsule().fill(Color.sage.opacity(0.14)))
+                .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.4)
+        .disabled(!enabled)
+        .padding(.horizontal, 24)
+    }
+}
+
+/// A quiet text button under the primary one.
+private struct SecondaryButton: View {
+    let title: String
+    let action: () -> Void
+    var body: some View {
+        Button(title, action: action)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .padding(.top, 12)
+    }
+}
+
+/// The review's (and a step's) gentle, never-blocking note: a line and a link.
+private struct Nudge: View {
+    let text: String
+    let action: String
+    let tap: () -> Void
+    var body: some View {
+        Button(action: tap) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "exclamationmark.circle").font(.caption)
+                Text(text).font(.system(.footnote, design: .rounded))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Text(action).font(.system(.footnote, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.sage)
+            }
+            .foregroundStyle(Color.orange.opacity(0.9))
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.orange.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private enum SettingsLinks {
+    static func app() { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
+    static func notifications() {
+        if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
+    }
+}
+
+private func whyRow(_ symbol: String, _ title: String, _ detail: String) -> some View {
+    HStack(alignment: .top, spacing: 16) {
+        Image(systemName: symbol)
+            .font(.system(size: 20, weight: .light))
+            .foregroundStyle(Color.sage)
+            .frame(width: 28)
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(.body, design: .rounded))
+            Text(detail).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        Spacer(minLength: 0)
+    }
+}
+
+// MARK: - Welcome
+
+private struct WelcomeStep: View {
+    let next: () -> Void
+    var body: some View {
+        StepScaffold(title: "Assalamu alaikum",
+                     subtitle: "shukr helps you pray on time, keep Allah in mind through the day, and see how you're growing.") {
+            VStack(alignment: .leading, spacing: 22) {
+                whyRow("circle.dashed", "Your prayers, on time", "Accurate times, a circle that shows how long is left, and a score for each prayer.")
+                whyRow("circle.hexagonpath", "Zikr, anywhere", "A tasbeeh that counts with a tap, daily tasks, and your own library of azkar.")
+                whyRow("sparkles", "Made for you", "A few quick choices and you're in. Skip any of them.")
+            }
+            .padding(.horizontal, 32)
+        } bottom: {
+            PrimaryButton(title: "Begin", action: next)
+        }
+    }
+}
+
+// MARK: - Location
+
+private struct LocationStep: View {
+    var locationOnly = false
+    let next: () -> Void
+    @EnvironmentObject private var location: EnvLocationManager
+    @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
+    @State private var pickingCity = false
+    @State private var askedAlways = false
+
+    private var status: CLAuthorizationStatus { location.authorizationStatus }
+    private var denied: Bool { status == .denied || status == .restricted }
+    private var ready: Bool { location.isAuthorized || location.hasManualLocation }
+
+    var body: some View {
+        StepScaffold(title: "Where do you pray?",
+                     subtitle: locationOnly ? "shukr needs a location for your prayer times."
+                                            : "shukr works out your prayer times from where you are.") {
+            VStack(alignment: .leading, spacing: 22) {
+                whyRow("clock", "Accurate times, wherever you are",
+                       "With Always, they follow you when you travel. No city to update.")
+                whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed",
+                       "Even the ones you mark from the widget, a notification or your watch.")
+                whyRow("lock", "It stays on your phone", "No account, nothing sent anywhere.")
+            }
+            .padding(.horizontal, 32)
+            statusLine
+                .padding(.top, 26)
+                .padding(.horizontal, 28)
+        } bottom: {
+            VStack(spacing: 0) {
+                if status == .notDetermined && !location.hasManualLocation {
+                    Text("iOS asks “While Using” first. Choose “Always” when it offers, so your times follow you.")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 36)
+                        .padding(.bottom, 14)
+                }
+                PrimaryButton(title: primaryTitle, action: primary)
+                if !ready || denied {
+                    SecondaryButton(title: denied ? "Open Settings" : "Enter a city instead") {
+                        if denied { SettingsLinks.app() } else { pickingCity = true }
+                    }
+                } else if status == .authorizedWhenInUse && !askedAlways {
+                    SecondaryButton(title: "Allow “Always”") {
+                        askedAlways = true
+                        location.requestAlwaysPermission()
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $pickingCity) {
+            CityPickerSheet(onPicked: { pickingCity = false })
+        }
+        // Answered the prompt with a yes: on to the next step.
+        .onChange(of: location.isAuthorized) { was, now in
+            if !was && now && !locationOnly {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { next() }
+            }
+        }
+    }
+
+    private var primaryTitle: String {
+        if denied && !location.hasManualLocation { return "Enter a city" }
+        if status == .notDetermined && !location.hasManualLocation { return "Allow location" }
+        return locationOnly ? "Done" : "Continue"
+    }
+
+    private func primary() {
+        if denied && !location.hasManualLocation { pickingCity = true; return }
+        if status == .notDetermined && !location.hasManualLocation { location.requestAlwaysPermission(); return }
+        if !locationOnly { next() }
+    }
+
+    @ViewBuilder private var statusLine: some View {
+        let text: String? = {
+            switch status {
+            case .authorizedAlways: return "Location: Always\(cityName.isEmpty ? "" : " · \(cityName)")"
+            case .authorizedWhenInUse: return "Location: While Using\(cityName.isEmpty ? "" : " · \(cityName)")"
+            default: return location.hasManualLocation ? "Using \(cityName.isEmpty ? "the city you picked" : cityName)" : nil
+            }
+        }()
+        if let text {
+            Label(text, systemImage: "checkmark.circle.fill")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(Color.sage)
+                .frame(maxWidth: .infinity)
+        } else if denied {
+            Text("Location is off for shukr. Turn it on in Settings, or pick a city.")
+                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+// MARK: - Method
+
+/// The picker's rows: Automatic first, then the most used, then the rest (a scroll away).
+private let methodRows: [(tag: Int, title: String, region: String)] = [
+    (0, "Automatic", ""),
+    (2, "ISNA", "North America"),
+    (3, "Muslim World League", "Europe, the Far East"),
+    (4, "Umm al-Qura", "Saudi Arabia"),
+    (1, "Karachi", "Pakistan, India, Bangladesh"),
+    (5, "Egyptian", "Africa, the Levant"),
+    (8, "Gulf (Dubai)", "United Arab Emirates, Oman"),
+    (9, "Kuwait", "Kuwait"),
+    (10, "Qatar", "Qatar"),
+    (11, "Singapore", "Singapore, Malaysia, Indonesia"),
+    (13, "Diyanet", "Turkey"),
+    (7, "Tehran", "Iran"),
+]
+
+/// Today's times for the saved location with a given method / school (for the live strip).
+private func todaysTimes(method: Int, school: Int) -> PrayerTimes? {
+    guard let coords = try? PrayerUtils.getUserCoordinates() else { return nil }
+    let resolved = method == AutoMethod.automatic ? AutoMethod.resolved() : method
+    return try? PrayerUtils.getPrayerTimes(for: Date(), coordinates: coords,
+                                           params: PrayerUtils.parameters(method: resolved, school: school))
+}
+
+private func clockTime(_ d: Date) -> String { d.formatted(.dateTime.hour().minute()) }
+
+private struct MethodStep: View {
+    let next: () -> Void
+    @EnvironmentObject private var viewModel: PrayerViewModel
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
+    @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
+
+    var body: some View {
+        VStack(spacing: 0) {
+            StepTitle(title: "Your calculation method",
+                      subtitle: "Picked for where you are. Match your masjid if its times differ.")
+                .padding(.bottom, 16)
+            // A short scroller: the popular ones show, the rest are a scroll away (the fade says so).
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(methodRows, id: \.tag) { row in
+                        Button {
+                            withAnimation(.snappy(duration: 0.25)) { method = row.tag }
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.title).font(.system(.body, design: .rounded))
+                                    Text(row.tag == 0 ? "Follows where you are · \(AutoMethod.shortName(AutoMethod.resolved())) here" : row.region)
+                                        .font(.system(.footnote, design: .rounded, weight: .light))
+                                        .foregroundStyle(row.tag == 0 ? Color.sage : .secondary)
+                                }
+                                Spacer()
+                                Image(systemName: method == row.tag ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 20, weight: .light))
+                                    .foregroundStyle(method == row.tag ? Color.sage : Color.secondary.opacity(0.4))
+                            }
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(method == row.tag ? .isSelected : [])
+                        if row.tag != methodRows.last?.tag { Divider() }
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.bottom, 24)
+            }
+            .scrollIndicators(.hidden)
+            .mask {
+                VStack(spacing: 0) {
+                    Color.black
+                    LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: 36)
+                }
+            }
+            TodayStrip(method: method, school: school)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+            PrimaryButton(title: "Continue", action: next)
+                .padding(.bottom, 8)
+        }
+        .onChange(of: method) { _, _ in
+            viewModel.fetchPrayerTimes(cameFrom: "setup method")
+            WidgetCenter.shared.reloadAllTimelines()
+            WatchSync.shared.send()
+        }
+    }
+}
+
+/// Today's five times, updating live as the method / madhab change.
+private struct TodayStrip: View {
+    let method: Int
+    let school: Int
+    var highlightAsr = false
+
+    var body: some View {
+        if let t = todaysTimes(method: method, school: school) {
+            VStack(spacing: 8) {
+                Text("today").font(.caption).tracking(2).textCase(.uppercase).foregroundStyle(.tertiary)
+                HStack(spacing: 0) {
+                    cell("Fajr", t.fajr)
+                    cell("Dhuhr", t.dhuhr)
+                    cell("Asr", t.asr, strong: highlightAsr)
+                    cell("Maghrib", t.maghrib)
+                    cell("Isha", t.isha)
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func cell(_ name: String, _ date: Date, strong: Bool = false) -> some View {
+        VStack(spacing: 4) {
+            Text(name).font(.system(.caption, design: .rounded))
+                .foregroundStyle(strong ? Color.sage : .secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+            Text(clockTime(date))
+                .font(.system(.subheadline, design: .rounded, weight: strong ? .medium : .light))
+                .monospacedDigit()
+                .minimumScaleFactor(0.45)
+                .lineLimit(1)
+                .contentTransition(.numericText())
+                .foregroundStyle(strong ? Color.sage : .primary)
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.snappy, value: date)
+    }
+}
+
+// MARK: - Madhab
+
+private struct MadhabStep: View {
+    let next: () -> Void
+    @EnvironmentObject private var viewModel: PrayerViewModel
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
+    @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
+
+    var body: some View {
+        let shafiAsr = todaysTimes(method: method, school: 0)?.asr
+        let hanafiAsr = todaysTimes(method: method, school: 1)?.asr
+        let gap = (shafiAsr != nil && hanafiAsr != nil) ? Int(hanafiAsr!.timeIntervalSince(shafiAsr!) / 60) : nil
+        StepScaffold(title: "When does Asr begin?",
+                     subtitle: "The madhab only changes Asr. The other four prayers stay the same.") {
+            VStack(spacing: 0) {
+                HStack(spacing: 14) {
+                    card(title: "Shafi'i", note: "Maliki, Hanbali too", rule: "when a shadow is as long as the object",
+                         lengths: 1, asr: shafiAsr, selected: school != 1) { school = 0 }
+                    card(title: "Hanafi", note: nil, rule: "when a shadow is twice the object's length",
+                         lengths: 2, asr: hanafiAsr, selected: school == 1) { school = 1 }
+                }
+                .padding(.horizontal, 24)
+                if let gap {
+                    Text("Hanafi Asr is \(gap) min later today.")
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 18)
+                }
+                Text("Not sure? Go with what your masjid uses.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 6)
+                TodayStrip(method: method, school: school, highlightAsr: true)
+                    .padding(.top, 26)
+            }
+        } bottom: {
+            PrimaryButton(title: "Continue", action: next)
+        }
+        .onChange(of: school) { _, _ in
+            viewModel.fetchPrayerTimes(cameFrom: "setup school")
+            WidgetCenter.shared.reloadAllTimelines()
+            WatchSync.shared.send()
+        }
+    }
+
+    private func card(title: String, note: String?, rule: String, lengths: CGFloat, asr: Date?,
+                      selected: Bool, pick: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.3)) { pick() }
+        } label: {
+            VStack(spacing: 12) {
+                ShadowSketch(lengths: lengths)
+                    .frame(height: 64)
+                VStack(spacing: 2) {
+                    Text(title).font(.system(.title3, design: .rounded))
+                    Text(note ?? " ").font(.caption).foregroundStyle(.tertiary)
+                }
+                Text(asr.map { "Asr \(clockTime($0))" } ?? "Asr")
+                    .font(.system(.title2, design: .rounded, weight: .light))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                    .foregroundStyle(selected ? Color.sage : .primary)
+                Text(rule)
+                    .font(.system(.footnote, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.vertical, 18)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 22).fill(selected ? Color.sage.opacity(0.10) : Color(.secondarySystemBackground)))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(selected ? Color.sage.opacity(0.6) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// A post and its afternoon shadow: one length (Shafi'i) or two (Hanafi), with the sun.
+private struct ShadowSketch: View {
+    let lengths: CGFloat
+    var body: some View {
+        Canvas { ctx, size in
+            // The same scale in both cards, so the shadows compare: room for two lengths.
+            let unit = min(size.height * 0.6, (size.width - 40) / 2.2)
+            let groundY = size.height - 4
+            let postX: CGFloat = 32
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: 6, y: groundY)); p.addLine(to: CGPoint(x: size.width - 6, y: groundY)) },
+                       with: .color(.secondary.opacity(0.3)), lineWidth: 1)
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: CGPoint(x: postX + unit * lengths, y: groundY)) },
+                       with: .color(Color.sage.opacity(0.8)), style: StrokeStyle(lineWidth: 4, lineCap: .round))
+            ctx.stroke(Path { p in p.move(to: CGPoint(x: postX, y: groundY)); p.addLine(to: CGPoint(x: postX, y: groundY - unit)) },
+                       with: .color(.primary.opacity(0.7)), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            // The sun behind the post, lower when the shadow is longer (later in the afternoon).
+            let sunY = groundY - unit * (lengths == 1 ? 1.1 : 0.62)
+            ctx.fill(Path(ellipseIn: CGRect(x: 8, y: sunY - 6, width: 12, height: 12)), with: .color(.orange.opacity(0.75)))
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Appearance
+
+private struct AppearanceStep: View {
+    let next: () -> Void
+    /// 0 light, 1 dark, 2 auto (follows the sun: light from Fajr, dark after Maghrib). Applied live by
+    /// the app root's preferredColorScheme.
+    @AppStorage("modeToggleNew") private var mode = 2
+
+    var body: some View {
+        StepScaffold(title: "Light or dark?",
+                     subtitle: "Auto follows the sun: light from Fajr, dark after Maghrib.") {
+            HStack(spacing: 14) {
+                ForEach([(0, "Light"), (1, "Dark"), (2, "Auto")], id: \.0) { tag, title in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.35)) { mode = tag }
+                    } label: {
+                        VStack(spacing: 10) {
+                            AppearanceSwatch(tag: tag)
+                                .frame(height: 150)
+                                .overlay(RoundedRectangle(cornerRadius: 18)
+                                    .stroke(mode == tag ? Color.sage : Color.secondary.opacity(0.25),
+                                            lineWidth: mode == tag ? 2 : 1))
+                            Text(title).font(.system(.body, design: .rounded))
+                            Text(tag == 2 ? "Recommended" : " ")
+                                .font(.system(.caption, design: .rounded, weight: .medium))
+                                .foregroundStyle(Color.sage)
+                            Image(systemName: mode == tag ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 20, weight: .light))
+                                .foregroundStyle(mode == tag ? Color.sage : Color.secondary.opacity(0.4))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tag == 2 ? "Auto, recommended" : title)
+                    .accessibilityAddTraits(mode == tag ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, 24)
+        } bottom: {
+            PrimaryButton(title: "Continue", action: next)
+        }
+    }
+}
+
+/// A tiny Salah page: the circle on the page's colour. Auto is split light / dark with the sun and
+/// the moon.
+private struct AppearanceSwatch: View {
+    let tag: Int
+    var body: some View {
+        ZStack {
+            switch tag {
+            case 0: page(.white, ink: .black)
+            case 1: page(.black, ink: .white)
+            default:
+                ZStack {
+                    page(.white, ink: .black)
+                    page(.black, ink: .white)
+                        .mask(Rectangle().rotationEffect(.degrees(28)).offset(x: 46).scaleEffect(2))
+                }
+                VStack {
+                    HStack {
+                        Image(systemName: "sun.max").foregroundStyle(.orange)
+                        Spacer()
+                        Image(systemName: "moon").foregroundStyle(.white.opacity(0.85))
+                    }
+                    .font(.system(size: 11, weight: .medium))
+                    .padding(8)
+                    Spacer()
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .accessibilityHidden(true)
+    }
+
+    private func page(_ bg: Color, ink: Color) -> some View {
+        ZStack {
+            bg
+            Circle().stroke(ink.opacity(0.14), lineWidth: 5).frame(width: 58, height: 58)
+            Circle().trim(from: 0, to: 0.62).stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90)).frame(width: 58, height: 58)
+            Capsule().fill(ink.opacity(0.55)).frame(width: 26, height: 4)
+        }
+    }
+}
+
+// MARK: - Reminders
+
+private let prayerNames = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+
+private struct RemindersStep: View {
+    let next: () -> Void
+    @ObservedObject private var notifications = NotificationStatus.shared
+    // The same keys Settings uses: at the start (…Notif), halfway + 30 min left (…Nudges).
+    @AppStorage("fajrNotif") private var fajrNotif = true
+    @AppStorage("dhuhrNotif") private var dhuhrNotif = true
+    @AppStorage("asrNotif") private var asrNotif = true
+    @AppStorage("maghribNotif") private var maghribNotif = true
+    @AppStorage("ishaNotif") private var ishaNotif = true
+    @AppStorage("fajrNudges") private var fajrNudges = true
+    @AppStorage("dhuhrNudges") private var dhuhrNudges = true
+    @AppStorage("asrNudges") private var asrNudges = true
+    @AppStorage("maghribNudges") private var maghribNudges = true
+    @AppStorage("ishaNudges") private var ishaNudges = true
+
+    var body: some View {
+        StepScaffold(title: "Reminders that help",
+                     subtitle: "Not just at the start: a nudge halfway and with 30 min left, tuned per prayer.") {
+            VStack(spacing: 18) {
+                if notifications.isOn == false {
+                    Nudge(text: "Notifications are off for shukr, so reminders can't reach you.",
+                          action: "Turn on", tap: SettingsLinks.notifications)
+                        .padding(.horizontal, 24)
+                }
+                grid
+                    .padding(.horizontal, 24)
+                Text("Each nudge says how long is left. “I already prayed” right on it marks the prayer.")
+                    .font(.system(.footnote, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+        } bottom: {
+            if notifications.isOn == nil {
+                PrimaryButton(title: "Allow notifications") { notifications.request() }
+                SecondaryButton(title: "Not now", action: next)
+            } else {
+                PrimaryButton(title: "Continue", action: next)
+            }
+        }
+        .task { await notifications.refresh() }
+    }
+
+    private var grid: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("").frame(maxWidth: .infinity, alignment: .leading)
+                Text("At the start").frame(width: 84)
+                Text("Halfway · 30 min left").frame(width: 104)
+            }
+            .font(.system(.caption2, design: .rounded))
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.bottom, 6)
+            ForEach(prayerNames, id: \.self) { name in
+                HStack {
+                    Label(name, systemImage: prayerSymbol(name))
+                        .font(.system(.body, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    toggle(start(name), label: "\(name) at the start").frame(width: 84)
+                    toggle(nudges(name), label: "\(name) halfway and 30 minutes left").frame(width: 104)
+                }
+                .padding(.vertical, 9)
+                if name != prayerNames.last { Divider() }
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
+    }
+
+    private func toggle(_ on: Binding<Bool>, label: String) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { on.wrappedValue.toggle() }
+        } label: {
+            Image(systemName: on.wrappedValue ? "bell.fill" : "bell.slash")
+                .font(.system(size: 17, weight: .light))
+                .foregroundStyle(on.wrappedValue ? Color.sage : Color.secondary.opacity(0.45))
+                .frame(width: 44, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityValue(on.wrappedValue ? "On" : "Off")
+    }
+
+    private func start(_ name: String) -> Binding<Bool> {
+        switch name {
+        case "Fajr": $fajrNotif
+        case "Dhuhr": $dhuhrNotif
+        case "Asr": $asrNotif
+        case "Maghrib": $maghribNotif
+        default: $ishaNotif
+        }
+    }
+    private func nudges(_ name: String) -> Binding<Bool> {
+        switch name {
+        case "Fajr": $fajrNudges
+        case "Dhuhr": $dhuhrNudges
+        case "Asr": $asrNudges
+        case "Maghrib": $maghribNudges
+        default: $ishaNudges
+        }
+    }
+}
+
+// MARK: - Fajr alarm
+
+private struct FajrStep: View {
+    let next: () -> Void
+    // The Fajr alarm's own settings (Settings → Alarm Settings).
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var enabled = false
+    @AppStorage("alarmOffsetMinutes", store: UserDefaults(suiteName: SharedStore.appGroup)) private var offset = 0
+    @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: SharedStore.appGroup)) private var isBefore = true
+    @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: SharedStore.appGroup)) private var isFajr = true
+    @AppStorage("alarmTimeSetFor", store: UserDefaults(suiteName: SharedStore.appGroup)) private var timeSetFor = ""
+    @AppStorage("alarmDescription", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmDescription = ""
+    @AppStorage("didShowAlarmSetupAlert") private var didShowShortcut = false
+
+    private static let shortcutURL = URL(string: "https://www.icloud.com/shortcuts/6ebcfeb12813483992687461d027fd14")
+
+    var body: some View {
+        StepScaffold(title: "Wake up for Fajr",
+                     subtitle: "A real alarm from a rule you set once. It follows Fajr all year, so you never reset it.") {
+            VStack(spacing: 18) {
+                Toggle(isOn: $enabled.animation(.snappy)) {
+                    Label("Daily Fajr alarm", systemImage: "alarm")
+                        .font(.system(.body, design: .rounded))
+                }
+                .tint(Color.sage)
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+                if enabled {
+                    VStack(spacing: 6) {
+                        HStack(spacing: 0) {
+                            Picker("Minutes", selection: $offset) {
+                                ForEach(0...60, id: \.self) { Text("\($0) min").tag($0) }
+                            }
+                            Picker("Before or after", selection: $isBefore) {
+                                Text("before").tag(true)
+                                if isFajr { Text("after").tag(false) }
+                            }
+                            Picker("Fajr or sunrise", selection: $isFajr) {
+                                Text("Fajr").tag(true)
+                                if isBefore { Text("sunrise").tag(false) }
+                            }
+                        }
+                        .pickerStyle(.wheel)
+                        .frame(height: 120)
+                        .clipped()
+                        if let when = nextAlarm {
+                            Text("Tomorrow at \(clockTime(when))")
+                                .font(.system(.subheadline, design: .rounded))
+                                .foregroundStyle(Color.sage)
+                        }
+                    }
+                    VStack(spacing: 8) {
+                        Text("shukr sets the alarm through a Shortcut you add once.")
+                            .font(.system(.footnote, design: .rounded, weight: .light))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Button("Get the Shortcut") {
+                            didShowShortcut = true
+                            if let url = Self.shortcutURL { UIApplication.shared.open(url) }
+                        }
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.sage)
+                    }
+                }
+            }
+            .padding(.horizontal, 24)
+        } bottom: {
+            PrimaryButton(title: "Continue") {
+                saveDescription()
+                next()
+            }
+        }
+    }
+
+    /// Tomorrow's alarm from the rule (for the line under the wheels).
+    private var nextAlarm: Date? {
+        guard let coords = try? PrayerUtils.getUserCoordinates(),
+              let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()),
+              let t = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coords, params: PrayerUtils.getCalculationParameters())
+        else { return nil }
+        let ref = isFajr ? t.fajr : t.sunrise
+        return ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1))
+    }
+
+    /// What Settings' Save writes, so its row reads right.
+    private func saveDescription() {
+        guard enabled, let calc = try? PrayerUtils.calculateAlarmDescription() else { return }
+        timeSetFor = shortTimePM(calc.time)
+        alarmDescription = calc.description
+    }
+}
+
+// MARK: - Your masjid
+
+private struct MasjidStep: View {
+    let next: () -> Void
+    @EnvironmentObject private var location: EnvLocationManager
+    @AppStorage(MasjidArrival.enabledKey) private var duas = false
+    @State private var found: [MKMapItem] = []
+    @State private var searching = true
+    @State private var favourites = Set(MosqueFavorites.all.map(\.id))
+
+    var body: some View {
+        StepScaffold(title: "Your masjid",
+                     subtitle: "Star the one you pray at. shukr can show a dua when you arrive and when you leave.") {
+            VStack(spacing: 18) {
+                list
+                Toggle(isOn: Binding(get: { duas }, set: { MasjidArrival.shared.setEnabled($0) ; duas = $0 })) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Label("Duas when I arrive and leave", systemImage: "hands.and.sparkles")
+                            .font(.system(.body, design: .rounded))
+                        Text("Asks for Always location. It stays on your phone.")
+                            .font(.system(.footnote, design: .rounded, weight: .light))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(Color.sage)
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+            }
+            .padding(.horizontal, 24)
+        } bottom: {
+            PrimaryButton(title: "Continue", action: next)
+        }
+        .task { await search() }
+    }
+
+    @ViewBuilder private var list: some View {
+        if searching {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Finding masajid near you…").font(.system(.subheadline, design: .rounded, weight: .light))
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 80)
+        } else if found.isEmpty {
+            Text(MosqueSearch.lastSearchFailed ? "Couldn't search right now. You can star your masjid on the map later."
+                                               : "No masajid found nearby. You can star one on the map later.")
+                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 80)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(found.prefix(6).enumerated()), id: \.offset) { i, item in
+                    let id = MosqueHiding.id(item)
+                    Button {
+                        let on = !favourites.contains(id)
+                        MosqueFavorites.setFavorite(item, on)
+                        withAnimation(.snappy(duration: 0.2)) {
+                            if on { favourites.insert(id) } else { favourites.remove(id) }
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.name ?? "Mosque").font(.system(.body, design: .rounded)).lineLimit(2)
+                                if let d = distance(item) {
+                                    Text(d).font(.system(.footnote, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            Image(systemName: favourites.contains(id) ? "star.fill" : "star")
+                                .font(.system(size: 19, weight: .light))
+                                .foregroundStyle(favourites.contains(id) ? Color.sage : Color.secondary.opacity(0.5))
+                        }
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(favourites.contains(id) ? .isSelected : [])
+                    if i < min(found.count, 6) - 1 { Divider() }
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+        }
+    }
+
+    private func distance(_ item: MKMapItem) -> String? {
+        guard let here = location.effectiveLocation else { return nil }
+        let c = item.placemark.coordinate
+        let metres = here.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
+        return Measurement(value: metres, unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.fractionLength(0...1))))
+    }
+
+    private func search() async {
+        guard let here = location.effectiveLocation else { searching = false; return }
+        let region = MKCoordinateRegion(center: here.coordinate, latitudinalMeters: 12_000, longitudinalMeters: 12_000)
+        let results = MosqueFavorites.merged(await MosqueSearch.find(in: region), in: region)
+            .filter { !MosqueHiding.isHidden($0) }
+        let sorted = results.sorted {
+            let a = CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude)
+            let b = CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude)
+            return a.distance(from: here) < b.distance(from: here)
+        }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            found = sorted
+            searching = false
+        }
+    }
+}
+
+// MARK: - Review
+
+private struct ReviewStep: View {
+    let jump: (SetupStep) -> Void
+    let done: () -> Void
+    @EnvironmentObject private var location: EnvLocationManager
+    @ObservedObject private var notifications = NotificationStatus.shared
+    @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
+    @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
+    @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
+    @AppStorage("modeToggleNew") private var mode = 2
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmOn = false
+    @AppStorage("alarmOffsetMinutes", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmOffset = 0
+    @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmBefore = true
+    @AppStorage("alarmIsFajr", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmFajr = true
+    @AppStorage(MasjidArrival.enabledKey) private var duas = false
+    @AppStorage("fajrNotif") private var fajrNotif = true
+    @AppStorage("dhuhrNotif") private var dhuhrNotif = true
+    @AppStorage("asrNotif") private var asrNotif = true
+    @AppStorage("maghribNotif") private var maghribNotif = true
+    @AppStorage("ishaNotif") private var ishaNotif = true
+    @AppStorage("fajrNudges") private var fajrNudges = true
+    @AppStorage("dhuhrNudges") private var dhuhrNudges = true
+    @AppStorage("asrNudges") private var asrNudges = true
+    @AppStorage("maghribNudges") private var maghribNudges = true
+    @AppStorage("ishaNudges") private var ishaNudges = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            StepTitle(title: "You're all set",
+                      subtitle: "Tap anything to change it. It's all in Settings later, too.")
+                .padding(.bottom, 16)
+            ScrollView {
+                VStack(spacing: 0) {
+                    row("location.fill", "Location", locationValue, step: .location) { locationNudge }
+                    divider
+                    row("clock", "Prayer times", methodValue, step: .method)
+                    divider
+                    row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
+                    divider
+                    row("bell", "Reminders", remindersValue, step: .reminders,
+                        sell: "Not just at the start: a nudge halfway and with 30 min left, tuned per prayer.") { notificationsNudge }
+                    divider
+                    row("alarm", "Fajr alarm", alarmValue, step: .fajr,
+                        sell: "A real alarm from a rule you set once. It follows Fajr all year.")
+                    divider
+                    row("building.columns", "Your masjid", masjidValue, step: .masjid,
+                        sell: "A dua when you arrive and when you leave.")
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 16)
+            }
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            BismillahCapsule(action: done)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+        }
+        .task { await notifications.refresh() }
+    }
+
+    private var divider: some View { Divider().padding(.leading, 44) }
+
+    // MARK: values
+
+    private var locationValue: String {
+        let place = cityName.isEmpty ? "" : "\(cityName) · "
+        switch location.authorizationStatus {
+        case .authorizedAlways: return place + "Always"
+        case .authorizedWhenInUse: return place + "While Using"
+        default: return location.hasManualLocation ? "\(cityName.isEmpty ? "A city you picked" : cityName)" : "Not set"
+        }
+    }
+    private var methodValue: String {
+        let m = method == AutoMethod.automatic ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))" : AutoMethod.shortName(method)
+        return "\(m) · \(school == 1 ? "Hanafi" : "Shafi'i")"
+    }
+    private var remindersValue: String {
+        let starts = [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif].filter { $0 }.count
+        let nudges = [fajrNudges, dhuhrNudges, asrNudges, maghribNudges, ishaNudges].filter { $0 }.count
+        if starts == 0 && nudges == 0 { return "Off" }
+        if starts == 5 && nudges == 5 { return "At the start, halfway and 30 min left" }
+        return "At the start for \(starts) · nudges for \(nudges)"
+    }
+    private var alarmValue: String {
+        guard alarmOn else { return "Off" }
+        let anchor = alarmFajr ? "Fajr" : "sunrise"
+        return alarmOffset == 0 ? "At \(anchor)" : "\(alarmOffset) min \(alarmBefore ? "before" : "after") \(anchor)"
+    }
+    private var masjidValue: String {
+        let names = MosqueFavorites.all.map(\.name)
+        let place = names.isEmpty ? "None starred yet" : names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " +\(names.count - 2)" : "")
+        return place + (duas ? " · arrival duas on" : "")
+    }
+
+    // MARK: nudges (gentle, never blocking)
+
+    @ViewBuilder private var locationNudge: some View {
+        if !location.isAuthorized && !location.hasManualLocation {
+            Nudge(text: "Prayer times need a location.", action: "Set up") { jump(.location) }
+        } else if !location.isAuthorized {
+            Nudge(text: "Allow location so your times follow you when you travel.", action: "Turn on", tap: SettingsLinks.app)
+        } else if location.authorizationStatus == .authorizedWhenInUse {
+            Nudge(text: "Turn on Always so your times follow you when you travel.", action: "Turn on", tap: SettingsLinks.app)
+        } else if location.isAuthorized && location.manager.accuracyAuthorization == .reducedAccuracy {
+            Nudge(text: "Precise Location is off: times can be a few minutes out.", action: "Turn on", tap: SettingsLinks.app)
+        }
+    }
+    @ViewBuilder private var notificationsNudge: some View {
+        switch notifications.isOn {
+        case .some(false):
+            Nudge(text: "Notifications are off, so reminders can't reach you.", action: "Turn on", tap: SettingsLinks.notifications)
+        case .none:
+            Nudge(text: "Reminders need notifications.", action: "Allow") { notifications.request() }
+        default: EmptyView()
+        }
+    }
+
+    private func row<N: View>(_ symbol: String, _ title: String, _ value: String, step: SetupStep, sell: String? = nil,
+                              @ViewBuilder nudge: () -> N = { EmptyView() }) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Button { jump(step) } label: {
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(Color.sage)
+                        .frame(width: 30, height: 24)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(title).font(.system(.body, design: .rounded))
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.medium)).foregroundStyle(.tertiary)
+                        }
+                        Text(value).font(.system(.subheadline, design: .rounded, weight: .light)).foregroundStyle(.secondary)
+                        if let sell {
+                            Text(sell).font(.system(.footnote, design: .rounded, weight: .light)).italic()
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            nudge().padding(.leading, 44)
+        }
+        .padding(.vertical, 13)
+    }
+}
+
+// MARK: - Bismillah
+
+/// The owner's pick: the capsule, with the old first screen borrowed whole — its slowly moving
+/// green / black gradient and breathing grain (`AnimatedWavyGradient` + `NoiseOverlay`) — and
+/// "bismillah" in the type that screen wrote "shukr" in (title, thin, rounded, white 0.8).
+private struct BismillahCapsule: View {
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var noiseOpacity: Double = 0.2
+
+    var body: some View {
+        Button(action: action) {
+            Text("bismillah")
+                .font(.title)
+                .fontWeight(.thin)
+                .fontDesign(.rounded)
+                .foregroundStyle(.white.opacity(0.8))
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 68)
+                .background {
+                    // The screen-sized gradient seen through the capsule (it was drawn for a full
+                    // screen; its radii are in points). A background, so it can't widen the layout.
+                    ZStack {
+                        AnimatedWavyGradient()
+                            .frame(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height * 0.5)
+                        NoiseOverlay()
+                            .blendMode(.overlay)
+                            .opacity(noiseOpacity)
+                    }
+                }
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color(.secondarySystemFill).opacity(0.7), lineWidth: 1))
+                .shadow(color: .black.opacity(0.15), radius: 5)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 24)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { noiseOpacity = 0.3 }
+        }
+        .accessibilityLabel("Bismillah, begin")
+    }
+}

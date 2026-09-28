@@ -570,6 +570,95 @@ struct textToggleIntent: AppIntent {
 }
 
 
+// MARK: - Automatic calculation method
+
+/// "Automatic (follows where you are)" — the setup's default (notes #18). Stored as method 0 in
+/// `calculationMethod` (0 was never a method); everything that computes times asks
+/// `effectiveMethod()`, which resolves 0 from the country you're in: the app stores the country
+/// code when it geocodes a fix (`setCountry`, PrayerViewModel), and until it has one the
+/// coordinates give a rough guess. adhan-swift has no such helper, so this is our own table.
+/// Compiled into the app and the widget; the watch gets the resolved number (WatchSync).
+enum AutoMethod {
+    static let automatic = 0
+    static let countryKey = "autoMethodCountry"
+    private static var store: UserDefaults? { UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") }
+
+    /// The method number to compute with: the saved one, or Automatic resolved.
+    static func effectiveMethod() -> Int {
+        let saved = store?.integer(forKey: "calculationMethod") ?? 2
+        return saved == automatic ? resolved() : saved
+    }
+
+    /// What Automatic means here and now.
+    static func resolved() -> Int {
+        if let code = store?.string(forKey: countryKey), !code.isEmpty { return method(forCountry: code) }
+        let lat = store?.double(forKey: "lastLatitude") ?? 0, lon = store?.double(forKey: "lastLongitude") ?? 0
+        return method(latitude: lat, longitude: lon)
+    }
+
+    /// The country of the latest fix (ISO code). Written only on a change (every app-group write
+    /// re-renders what's bound to it). Returns true when the resolved method changed.
+    @discardableResult
+    static func setCountry(_ code: String?) -> Bool {
+        guard let code = code?.uppercased(), !code.isEmpty, store?.string(forKey: countryKey) != code else { return false }
+        let before = resolved()
+        store?.set(code, forKey: countryKey)
+        return resolved() != before
+    }
+
+    /// Country → the method its masajid mostly use. Unknown → Muslim World League.
+    static func method(forCountry code: String) -> Int {
+        switch code.uppercased() {
+        case "US", "CA": return 2                                   // ISNA
+        case "SA", "YE": return 4                                   // Umm al-Qura
+        case "AE", "OM", "BH": return 8                             // Gulf (Dubai)
+        case "KW": return 9                                         // Kuwait
+        case "QA": return 10                                        // Qatar
+        case "EG", "SD", "SS", "LY", "SY", "LB", "JO", "PS", "IQ",
+             "MA", "DZ", "TN", "NG", "SO", "ET", "KE", "TZ", "UG", "GH", "SN",
+             "ML", "NE", "TD", "CM", "ZA", "MU", "MR", "DJ", "ER", "GM": return 5   // Egyptian
+        case "PK", "IN", "BD", "AF", "LK", "NP": return 1           // Karachi
+        case "MY", "SG", "ID", "BN", "TH", "PH": return 11          // Singapore (JAKIM / MUIS family)
+        case "IR": return 7                                         // Tehran
+        case "TR", "AZ": return 13                                  // Diyanet
+        default: return 3                                           // Muslim World League
+        }
+    }
+
+    /// Before any country is known: North America → ISNA, else Muslim World League.
+    static func method(latitude: Double, longitude: Double) -> Int {
+        guard latitude != 0 || longitude != 0 else { return 2 }
+        if (15...75).contains(latitude) && (-170 ... -50).contains(longitude) { return 2 }
+        return 3
+    }
+
+    /// Short names, for "Automatic · ISNA here".
+    static func shortName(_ method: Int) -> String {
+        switch method {
+        case 1: return "Karachi"
+        case 2: return "ISNA"
+        case 3: return "Muslim World League"
+        case 4: return "Umm al-Qura"
+        case 5: return "Egyptian"
+        case 7: return "Tehran"
+        case 8: return "Gulf (Dubai)"
+        case 9: return "Kuwait"
+        case 10: return "Qatar"
+        case 11: return "Singapore"
+        case 13: return "Diyanet (Turkey)"
+        default: return "ISNA"
+        }
+    }
+
+    /// Once, at launch: an install that never picked a method gets one written, so the stored value
+    /// and every picker agree. Existing users keep ISNA (what an unset value always meant); a new
+    /// install starts on Automatic.
+    static func migrateDefault(existingUser: Bool) {
+        guard let store, store.object(forKey: "calculationMethod") == nil else { return }
+        store.set(existingUser ? 2 : automatic, forKey: "calculationMethod")
+    }
+}
+
 // MARK: - PrayerUtils
 
 
@@ -595,18 +684,17 @@ struct PrayerUtils {
         return Coordinates(latitude: latitude, longitude: longitude)
     }
     
-    /// Fetches calculation parameters based on UserDefaults
+    /// The calculation parameters for the saved method (Automatic resolved, see `AutoMethod`) and
+    /// madhab.
     static func getCalculationParameters() -> CalculationParameters {
-        
-//        var calcMethodInt = UserDefaults.standard.integer(forKey: "calculationMethod")
-//        var madhab = UserDefaults.standard.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")!
-        let calcMethodInt = store.integer(forKey: "calculationMethod")
-        let madhab = store.integer(forKey: "school") == 1 ? Madhab.hanafi : Madhab.shafi
-        
+        return parameters(method: AutoMethod.effectiveMethod(), school: store.integer(forKey: "school"))
+    }
+
+    /// Parameters for a method number (the Settings / setup picker's tags) and a school (1 Hanafi).
+    static func parameters(method: Int, school: Int) -> CalculationParameters {
         let calculationMethod: CalculationMethod = {
-            switch calcMethodInt {
+            switch method {
             case 1: return .karachi
             case 2: return .northAmerica
             case 3: return .muslimWorldLeague
@@ -622,12 +710,11 @@ struct PrayerUtils {
             default: return .northAmerica
             }
         }()
-        
         var params = calculationMethod.params
-        params.madhab = madhab
+        params.madhab = school == 1 ? .hanafi : .shafi
         return params
     }
-    
+
     /// `date` is the prayer day the times are for; `nextFajr` caps Isha (see PrayerDay).
     static func createWindowsFromTimes(_ times: PrayerTimes, on date: Date = PrayerDay.date(), nextFajr: Date? = nil) -> [String : (Date, Date, TimeInterval)] {
         let ishaEnd = PrayerDay.ishaEnd(on: date, ishaStart: times.isha, nextFajr: nextFajr)

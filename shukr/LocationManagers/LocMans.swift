@@ -75,12 +75,24 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         manager.delegate = self
         manager.desiredAccuracy = /*kCLLocationAccuracyBest*/ kCLLocationAccuracyNearestTenMeters
         manager.headingFilter = 1   // degrees; no delegate call for sub-degree jitter
+        // Known right away, so an authorized launch never shows the location-only setup for a frame.
+        authorizationStatus = manager.authorizationStatus
+        isAuthorized = authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
 //        startLocationServices()
     }
     
+    /// FirstRunSetup.isDone (this file is compiled into the widget too, which doesn't have it).
+    private static var setupDone: Bool { UserDefaults.standard.bool(forKey: "firstRunSetup.v1") }
+
     // Modify this method to be called explicitly
     func requestLocationPermission() {
         manager.requestWhenInUseAuthorization()
+    }
+
+    /// The setup's location step (owner: ask for Always). iOS grants While Using first and offers
+    /// Always itself later; from While Using this shows the upgrade prompt (once).
+    func requestAlwaysPermission() {
+        manager.requestAlwaysAuthorization()
     }
     
     // CL Location Manager Delegate method for authorization changes
@@ -115,12 +127,23 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             isAuthorized = true
-            UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "locationWasAuthorized")
+            let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+            if group?.bool(forKey: "locationWasAuthorized") != true { group?.set(true, forKey: "locationWasAuthorized") }
             manager.startUpdatingLocation()
             manager.startUpdatingHeading()
+            // Travel (notes #18): with Always, big moves wake the app — even when it isn't running
+            // (iOS relaunches it in the background; shukrApp.init builds this manager again and
+            // the fix comes through `locationUpdates` → PrayerViewModel.handleLocationChange:
+            // new times, reminders, widgets, the watch, a re-resolved Automatic method).
+            if manager.authorizationStatus == .authorizedAlways {
+                manager.startMonitoringSignificantLocationChanges()
+            } else {
+                manager.stopMonitoringSignificantLocationChanges()
+            }
         case .notDetermined:
             isAuthorized = false
-            manager.requestWhenInUseAuthorization()
+            // Not before the first-run setup has explained why (its location step asks).
+            if Self.setupDone { manager.requestWhenInUseAuthorization() }
         case .denied, .restricted:
             isAuthorized = false
             print("Location services are denied or restricted.")
@@ -142,7 +165,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     // Function to explicitly start updating location and heading
     func startUpdating() {
-        manager.requestWhenInUseAuthorization()
+        if Self.setupDone { manager.requestWhenInUseAuthorization() }
         manager.startUpdatingLocation()
         manager.startUpdatingHeading()
     }

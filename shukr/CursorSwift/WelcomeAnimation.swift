@@ -35,6 +35,8 @@ struct WelcomeGate: ViewModifier {
     @State private var showing = WelcomeGate.shouldShowOnLaunch
 
     private static var shouldShowOnLaunch: Bool {
+        // The first-run setup is up: it ends in this welcome itself (its Bismillah hand-off).
+        if FirstRunSetup.showingAtLaunch { return false }
         #if DEBUG
         // Demo launch args drive screenshots / automation — don't cover them.
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") })

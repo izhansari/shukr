@@ -63,6 +63,14 @@ struct SettingsView: View {
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
     @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
+    /// DEBUG / TestFlight only: Run setup again (the same gate as What's new).
+    @ObservedObject private var betaAccess = WhatsNewAccess.shared
+    /// What Automatic currently resolves to (re-read when the stored country changes).
+    @AppStorage(AutoMethod.countryKey, store: UserDefaults(suiteName: SharedStore.appGroup)) private var autoCountry = ""
+    private var automaticLabel: String {
+        _ = autoCountry   // re-read when the country (and so the resolved method) changes
+        return "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))"
+    }
     @AppStorage(PrayerDotStyle.key) private var prayerDotStyle = PrayerDotStyle.muted.rawValue
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
 
@@ -274,6 +282,8 @@ struct SettingsView: View {
                         #endif
                     ) {
                         Picker("Method", selection: $calculationMethod) {
+                            // Follows the country you're in (AutoMethod) — the setup's default.
+                            Text(automaticLabel).tag(AutoMethod.automatic)
                             ForEach(calculationMethods, id: \.0) { method in
                                 Text(method.1).tag(method.0)
                             }
@@ -299,14 +309,28 @@ struct SettingsView: View {
                     .onChange(of: calculationMethod) { _, new in
                         viewModel.fetchPrayerTimes(cameFrom: "onChange calculationMethod")
                         WidgetCenter.shared.reloadAllTimelines()
+                        WatchSync.shared.send()
                     }
                     .onChange(of: school) { _, new in
                         viewModel.fetchPrayerTimes(cameFrom: "onChange school")
                         WidgetCenter.shared.reloadAllTimelines()
+                        WatchSync.shared.send()
                     }
                     
                     
                     
+                    if betaAccess.available {
+                        Section {
+                            Button {
+                                NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
+                            } label: {
+                                Label("Run setup again", systemImage: "arrow.counterclockwise.circle")
+                            }
+                        } footer: {
+                            Text("Beta builds only: the first-run setup, filled in with your settings.")
+                        }
+                    }
+
                     //MARK: - Suggestions / Up and Coming
 //                    Section(header: Text("Sneak Peek...")) {
 //                        

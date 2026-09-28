@@ -30,7 +30,7 @@ enum PrayerDay {
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         let key = "\(dayStart.timeIntervalSince1970)|\(store?.double(forKey: "lastLatitude") ?? 0)|"
             + "\(store?.double(forKey: "lastLongitude") ?? 0)|"
-            + "\(store?.integer(forKey: "calculationMethod") ?? 0)|\(store?.integer(forKey: "school") ?? 0)"
+            + "\(AutoMethod.effectiveMethod())|\(store?.integer(forKey: "school") ?? 0)"
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let hit = fajrCache[key] { return hit }
         let fajr = try? PrayerUtils.getPrayerTimes(for: dayStart, coordinates: coordinates,

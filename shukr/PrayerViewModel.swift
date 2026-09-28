@@ -157,9 +157,20 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
         // If we return out of the if block, update location and proceed with geocoding
         locationPrinter("🌍 Triggering geocoding and prayer times fetch...")
+        // A real move (travel, notes #18; also a significant-change wake in the background): the
+        // widgets and the watch follow straight away. Times + reminders follow below.
+        // From the saved spot, not the last fix: after a background relaunch there's no last fix.
+        let saved = CLLocation(latitude: lastLatitude, longitude: lastLongitude)
+        let moved = (lastLatitude == 0 && lastLongitude == 0) ? 0 : saved.distance(from: location)
+        let travelled = moved > 15_000
         storeLastCoordinate(location.coordinate)
         self.lastGeocodeRequestTime = Date()
         self.lastAppLocation = location
+        if travelled {
+            print("🧳 moved \(Int(moved / 1000)) km: updating times, widgets, watch")
+            WidgetCenter.shared.reloadAllTimelines()
+            WatchSync.shared.send()
+        }
         updateCityName(for: location)
         fetchPrayerTimes(cameFrom: "updateLocation")
 
@@ -179,6 +190,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
                     self?.locationPrinter("🏙️ Geocoded City: \(newCityName)")
                     self?.cityName = newCityName
+                    // Automatic method: a new country can mean a different method (AutoMethod).
+                    if AutoMethod.setCountry(placemark.isoCountryCode) {
+                        print("🧭 Automatic method now \(AutoMethod.shortName(AutoMethod.resolved())) (\(placemark.isoCountryCode ?? "?"))")
+                        self?.fetchPrayerTimes(cameFrom: "automatic method changed")
+                        WidgetCenter.shared.reloadAllTimelines()
+                        WatchSync.shared.send()
+                    }
                 } else {
                     self?.locationPrinter("⚠️ No placemark found")
                     self?.cityName = "Unknown"

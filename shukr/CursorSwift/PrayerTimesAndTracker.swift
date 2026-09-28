@@ -71,8 +71,6 @@ struct PrayerTimesView: View {
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoWhatsNew = false
-    /// The first-run setup mockups (`-demoOnboarding location|method|madhab|review`, notes #18).
-    @State private var demoOnboarding: OnboardingMockStep?
     #endif
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -397,6 +395,11 @@ struct PrayerTimesView: View {
                     // widget's page opened behind it (owner, 2026-09-26).
                     let zikrTaskID = store.string(forKey: "widgetZikrTask")
                     if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
+                    // Opened from a widget / control: an untouched first-run setup steps aside
+                    // (it shows on the next plain launch). The flag can land after launch.
+                    if openCompassFromWidget || openTasbeehFromWidget || openAyahFromWidget || openNamesFromWidget || zikrTaskID != nil {
+                        NotificationCenter.default.post(name: FirstRunSetup.deepLinked, object: nil)
+                    }
                     if openAyahFromWidget {
                         clearCovers {
                             sharedState.horizontalPage = .main
@@ -511,11 +514,6 @@ struct PrayerTimesView: View {
                 try? await Task.sleep(for: .seconds(1))
                 let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
-            }
-            if let raw = UserDefaults.standard.string(forKey: "demoOnboarding") {
-                try? await Task.sleep(for: .seconds(0.5))
-                demoOnboarding = OnboardingMockStep(rawValue: raw) ?? .location
-                return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoWhatsNew") {
                 // The What's new page; `-demoWhatsNewTopic <id>` opens that card's detail.
@@ -708,13 +706,6 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
-        // An overlay, not a cover: its last step hands off to the welcome on this very screen.
-        .overlay {
-            if let step = demoOnboarding {
-                OnboardingMockView(step: step, onFinish: { demoOnboarding = nil })
-                    .ignoresSafeArea(.keyboard)
-            }
-        }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(

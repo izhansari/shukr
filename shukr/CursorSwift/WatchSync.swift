@@ -42,7 +42,7 @@ final class WatchSync: NSObject, WCSessionDelegate {
         var context: [String: Any] = [
             "lat": group?.double(forKey: "lastLatitude") ?? 0,
             "lon": group?.double(forKey: "lastLongitude") ?? 0,
-            "method": group?.object(forKey: "calculationMethod") as? Int ?? 2,
+            "method": AutoMethod.effectiveMethod(),   // Automatic resolved: the watch only knows real methods
             "school": group?.integer(forKey: "school") ?? 0,
             "city": group?.string(forKey: "lastCityName") ?? "",
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
