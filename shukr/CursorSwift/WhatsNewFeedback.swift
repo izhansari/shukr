@@ -120,9 +120,11 @@ final class FeedbackStore {
     /// THE draft a composer edits: the topic's plain draft, or the draft following up one note
     /// ("Still off"). One lookup for save() and the composer, so neither loads one and writes the
     /// other (review, 2026-09-27: a follow-up duplicated a plain draft and lost its photo).
-    func draft(for topic: String, followUpOf: UUID? = nil) -> FeedbackItem? {
+    func draft(for topic: String, followUpOf: UUID? = nil, followUpOfEntry: String? = nil) -> FeedbackItem? {
         if let followUpOf { return items.last { $0.followUpOf == followUpOf && isDraft($0) } }
-        return items.last { $0.topic == topic && isDraft($0) && $0.followUpOf == nil }
+        // "Still off" on a chat request: its own draft, never the topic's plain one.
+        if let followUpOfEntry { return items.last { $0.followUpOfEntry == followUpOfEntry && isDraft($0) } }
+        return items.last { $0.topic == topic && isDraft($0) && $0.followUpOf == nil && $0.followUpOfEntry == nil }
     }
     func all(for topic: String) -> [FeedbackItem] { items.filter { $0.topic == topic } }
     var unsentItems: [FeedbackItem] { items.filter(isDraft) }
@@ -156,7 +158,7 @@ final class FeedbackStore {
                                  commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
         // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
         // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
-        var item = draft(for: card.id, followUpOf: followUpOf) ?? fresh
+        var item = draft(for: card.id, followUpOf: followUpOf, followUpOfEntry: followUpOfEntry) ?? fresh
         if let followUpOf { item.followUpOf = followUpOf }
         if let followUpOfEntry { item.followUpOfEntry = followUpOfEntry }
         item.topicTitle = card.title
@@ -188,8 +190,13 @@ final class FeedbackStore {
         persist()
     }
 
-    /// "Looks good ✓".
-    func close(_ item: FeedbackItem) { update(item.id) { $0.closedAt = Date() } }
+    /// "Looks good ✓" — and the topic is acknowledged through the change that addressed it, so that
+    /// change doesn't come back under "To test".
+    func close(_ item: FeedbackItem) {
+        let fix = WhatsNew.addressing(item.id)
+        update(item.id) { $0.closedAt = Date() }
+        if let fix { WhatsNew.acknowledge(topic: item.topic, through: fix.id) }
+    }
     /// "Still off": reopened; the caller opens a follow-up note (`save(…, followUpOf:)`).
     func reopen(_ item: FeedbackItem) { update(item.id) { $0.reopenedAt = Date(); $0.closedAt = nil } }
 
@@ -361,7 +368,7 @@ struct FeedbackComposer: View {
     @State private var loaded = false
     @FocusState private var typing: Bool
 
-    private var existing: FeedbackItem? { store.draft(for: card.id, followUpOf: followUpOf) }
+    private var existing: FeedbackItem? { store.draft(for: card.id, followUpOf: followUpOf, followUpOfEntry: followUpEntry) }
     private var shownImage: UIImage? {
         if let photoData { return photoData.flatMap(UIImage.init(data:)) }
         return existing.flatMap(store.image(for:))

@@ -46,7 +46,14 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   with `followUpOfEntry`; feedback.md lists them under "Asked in chat". Those defaults-only states also go to
   `Library/Feedback/state.json` (`acked`, `askedClosed`, `askedReopened`, `tested`, `updated`; written at launch and on
   change, only when changed) — `pull-feedback.sh` copies it next to feedback.json for the plan board. "unsent" is gone from the UI ("saved · Claude
-  will pick it up").
+  will pick it up"). Review fix-ups: Looks good acknowledges the topic through the fixing change (`FeedbackStore.close` →
+  `WhatsNew.acknowledge(topic:through:)`; `closeAsked` too); older closed notes / asked closes count the same in
+  `ackedIndex`; a note whose commits snapshot ends in "next" covers every entry committed before its build (the build
+  time in its build line, else `created`); asked "Still off" drafts are their own (`draft(for:followUpOf:followUpOfEntry:)`);
+  an entry with both `asked` and `addresses` is checked once (through the note); `writeState` only where What's new is
+  available (TestFlight writes once `AppTransaction` confirms); the testflight notes use each topic's `summary`.
+  Checked on the owner's pulled feedback.json (`-whatsNewDump` logs each card's section): qibla-haptic → Archive,
+  zikr-history down to its one real new change, a Looks good tap → Archive after relaunch.
 - **Never hand-edit the entries** — use `scripts/whatsnew.py` (it keeps `shukr/WhatsNew.json`'s layout):
   1. `scripts/whatsnew.py resolve` (fills in earlier "next" hashes and every commit's time).
   2. Screenshot in the sim, then `scripts/whatsnew.py shot <png> <name>` → `shukr/WhatsNewShots/wn-<name>.jpg`

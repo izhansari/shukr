@@ -167,12 +167,23 @@ enum WhatsNew {
     /// it are untested; any feedback moves a card out of "To test" (the note's state takes over).
     private static let ackKey = "whatsNew.acked"
     static func acks() -> [String: String] { UserDefaults.standard.dictionary(forKey: ackKey) as? [String: String] ?? [:] }
-    static func acknowledge(_ card: WhatsNewCard) {
+    @MainActor static func acknowledge(_ card: WhatsNewCard) {
         var map = acks(); map[card.id] = card.latest.id
         UserDefaults.standard.set(map, forKey: ackKey)
         writeState()
     }
-    static func unacknowledge(_ card: WhatsNewCard) {
+    /// Acknowledged at least through `entryID` (Looks good on a fix / a chat request): moves the
+    /// topic's ack forward to that change, never back.
+    @MainActor static func acknowledge(topic: String, through entryID: String) {
+        guard let card = card(id: topic), let target = card.entries.firstIndex(where: { $0.id == entryID }) else { return }
+        var map = acks()
+        let current = map[topic].flatMap { id in card.entries.firstIndex { $0.id == id } } ?? -1
+        guard target > current else { return }
+        map[topic] = entryID
+        UserDefaults.standard.set(map, forKey: ackKey)
+        writeState()
+    }
+    @MainActor static func unacknowledge(_ card: WhatsNewCard) {
         var map = acks(); map[card.id] = nil
         UserDefaults.standard.set(map, forKey: ackKey)
         writeState()
@@ -182,7 +193,9 @@ enum WhatsNew {
     /// — `{"acked": {topic: entryId}, "askedClosed": […], "askedReopened": […], "tested": […], "updated": …}`,
     /// next to feedback.json so `pull-feedback.sh` copies it. Written at launch and on every change, only
     /// when the content changed.
-    static func writeState() {
+    @MainActor static func writeState() {
+        // Only where What's new exists (DEBUG / TestFlight): App Store users get no Feedback folder.
+        guard WhatsNewAccess.shared.available else { return }
         guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup)?
             .appendingPathComponent("Library/Feedback", isDirectory: true) else { return }
         let body: [String: Any] = ["acked": acks(), "askedClosed": askedClosed().sorted(),
@@ -212,10 +225,37 @@ enum WhatsNew {
         if let id = acks[card.id], let i = card.entries.firstIndex(where: { $0.id == id }) { idx = max(idx, i) }
         // Notes written before acks existed: the changes their card listed when they were saved.
         for item in FeedbackStore.shared.all(for: card.id) {
-            let seen = Set(item.commits.map { $0.components(separatedBy: " ").first ?? $0 }).subtracting(["next"])
+            let commits = item.commits.map { $0.components(separatedBy: " ").first ?? $0 }
+            let seen = Set(commits).subtracting(["next"])
             if let i = card.entries.lastIndex(where: { seen.contains($0.commit) }) { idx = max(idx, i) }
+            // "next" = changes not yet resolved in the build it was written on: every entry committed
+            // before that build (its build time, from the note's build line; else when it was written).
+            if commits.contains("next") {
+                let cutoff = buildTime(of: item) ?? item.created
+                if let i = card.entries.lastIndex(where: { $0.date_ != nil && $0.date_! <= cutoff }) { idx = max(idx, i) }
+            }
+            // Closed with Looks good (before closing acknowledged): it covers the change that fixed it.
+            if item.closedAt != nil, let fix = addressing(item.id), let i = card.entries.firstIndex(where: { $0.id == fix.id }) {
+                idx = max(idx, i)
+            }
         }
+        // Chat requests he said looked good.
+        let closed = askedClosed()
+        if let i = card.entries.lastIndex(where: { closed.contains($0.id) }) { idx = max(idx, i) }
         return idx
+    }
+
+    /// The build time in a note's build line ("2.0 (11) · Sep 28 at 4:32 AM · 5b4cdd0"), in the year
+    /// the note was written.
+    static func buildTime(of item: FeedbackItem) -> Date? {
+        let parts = item.build.components(separatedBy: " · ")
+        guard parts.count >= 2 else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "MMM d 'at' h:mm a yyyy"
+        let year = Calendar.current.component(.year, from: item.created)
+        let text = parts[1].replacingOccurrences(of: "\u{202F}", with: " ") + " \(year)"
+        return f.date(from: text)
     }
 
     /// The live changes nobody has tested or given feedback on yet, newest first.
@@ -234,16 +274,22 @@ enum WhatsNew {
     /// Waiting for Looks good / Still off.
     static func askedChecks() -> [WhatsNewEntry] {
         let closed = askedClosed(), reopened = askedReopened()
-        return entries.filter { $0.asked != nil && $0.live && !closed.contains($0.id) && !reopened.contains($0.id) }.reversed()
+        // An entry that also addresses feedback is checked through that note (one card, not two).
+        return entries.filter { $0.asked != nil && ($0.addresses ?? []).isEmpty && $0.live
+            && !closed.contains($0.id) && !reopened.contains($0.id) }.reversed()
     }
-    static func closeAsked(_ entry: WhatsNewEntry) { insert(entry.id, askedClosedKey) }
-    static func reopenAsked(_ entry: WhatsNewEntry) { insert(entry.id, askedReopenedKey) }
-    static func undoReopenAsked(_ id: String) {
+    /// Looks good: closed, and the topic acknowledged through this change (it doesn't come back to test).
+    @MainActor static func closeAsked(_ entry: WhatsNewEntry) {
+        insert(entry.id, askedClosedKey)
+        acknowledge(topic: entry.topic, through: entry.id)
+    }
+    @MainActor static func reopenAsked(_ entry: WhatsNewEntry) { insert(entry.id, askedReopenedKey) }
+    @MainActor static func undoReopenAsked(_ id: String) {
         var set = askedReopened(); set.remove(id)
         UserDefaults.standard.set(Array(set), forKey: askedReopenedKey)
         writeState()
     }
-    private static func insert(_ id: String, _ key: String) {
+    @MainActor private static func insert(_ id: String, _ key: String) {
         var set = Set(UserDefaults.standard.stringArray(forKey: key) ?? []); set.insert(id)
         UserDefaults.standard.set(Array(set), forKey: key)
         writeState()
@@ -334,7 +380,7 @@ enum WhatsNew {
     }()
 
     /// Call once at launch so a new build is noticed even before the page is opened.
-    static func noteLaunch() { _ = previousBuild; writeState() }
+    @MainActor static func noteLaunch() { _ = previousBuild; writeState() }
 
     /// Entries added after the build you last had open.
     static let newIDs: Set<String> = {
@@ -355,7 +401,7 @@ enum WhatsNew {
     static func isTested(_ card: WhatsNewCard, in set: Set<String> = tested()) -> Bool {
         set.contains(card.testedKey) || card.olderTestedKeys.contains(where: set.contains)
     }
-    static func setTested(_ card: WhatsNewCard, _ on: Bool) {
+    @MainActor static func setTested(_ card: WhatsNewCard, _ on: Bool) {
         var set = tested()
         if on { set.insert(card.testedKey) } else {
             set.remove(card.testedKey); card.olderTestedKeys.forEach { set.remove($0) }
@@ -440,6 +486,7 @@ extension View {
         Task { @MainActor in
             if case .verified(let transaction) = try? await AppTransaction.shared {
                 available = transaction.environment != .production
+                if available { WhatsNew.writeState() }      // TestFlight: the board's state file, now we know
             }
         }
         #endif
@@ -505,9 +552,11 @@ struct WhatsNewView: View {
     private var askedChecks: [WhatsNewEntry] { _ = askedTick; return WhatsNew.askedChecks() }
     private var checkTopics: Set<String> { Set(feedback.toCheck.map(\.item.topic)).union(askedChecks.map(\.topic)) }
     private var toTest: [WhatsNewCard] {
-        WhatsNew.cards
-            .filter { !WhatsNew.isHidden($0, in: hidden) && !checkTopics.contains($0.id) && !untested($0).isEmpty }
-            .sorted { (untested($0).first?.when ?? .distantPast) > (untested($1).first?.when ?? .distantPast) }
+        let checks = checkTopics
+        let fresh = Dictionary(uniqueKeysWithValues: WhatsNew.cards.map { ($0.id, untested($0)) })   // once per render
+        return WhatsNew.cards
+            .filter { !WhatsNew.isHidden($0, in: hidden) && !checks.contains($0.id) && !(fresh[$0.id] ?? []).isEmpty }
+            .sorted { (fresh[$0.id]?.first?.when ?? .distantPast) > (fresh[$1.id]?.first?.when ?? .distantPast) }
     }
     /// The card's newest note that's still with the team (saved / sent / received, not addressed).
     private func openNote(_ card: WhatsNewCard) -> FeedbackItem? {
@@ -548,14 +597,14 @@ struct WhatsNewView: View {
                         section("To check", count: checks.count + asked.count) {
                             ForEach(asked) { entry in
                                 AskedCheckCard(entry: entry,
-                                               looksGood: { WhatsNew.closeAsked(entry); withAnimation(.snappy) { askedTick += 1 } },
+                                               looksGood: { WhatsNew.closeAsked(entry); withAnimation(.snappy) { askedTick += 1; acks = WhatsNew.acks() } },
                                                stillOff: { stillOffAsked(entry) })
                                     .contentShape(Rectangle())
                                     .onTapGesture { path.append(.card(entry.topic)) }
                             }
                             ForEach(checks, id: \.item.id) { check in
                                 FeedbackCheckCard(item: check.item, fix: check.fix,
-                                                  looksGood: { withAnimation(.snappy) { feedback.close(check.item) } },
+                                                  looksGood: { withAnimation(.snappy) { feedback.close(check.item); acks = WhatsNew.acks() } },
                                                   stillOff: { stillOff(check.item) })
                                     .contentShape(Rectangle())
                                     .onTapGesture { path.append(.card(check.item.topic)) }
@@ -604,6 +653,16 @@ struct WhatsNewView: View {
             }
         }
         .onAppear {
+            #if DEBUG
+            // `-whatsNewDump`: each card's section and untested changes (checking against pulled data).
+            if ProcessInfo.processInfo.arguments.contains("-whatsNewDump") {
+                let testIDs = Set(toTest.map(\.id)), teamIDs = Set(withTeam.map(\.id)), checks = checkTopics
+                for card in WhatsNew.cards {
+                    let where_ = checks.contains(card.id) ? "CHECK" : testIDs.contains(card.id) ? "TEST" : teamIDs.contains(card.id) ? "TEAM" : "ARCHIVE"
+                    print("WNDUMP \(where_) \(card.id) untested=\(untested(card).map(\.id))")
+                }
+            }
+            #endif
             feedback.reloadReceived()
             WhatsNewReturn.shared.card = nil      // opened (any way): the "‹ What's new" pill has done its job
         }

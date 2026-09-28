@@ -218,7 +218,7 @@ EMOJI = re.compile("[\U00010000-\U0010FFFF☀-➿⬀-⯿️]")
 
 
 def clean(s):
-    return EMOJI.sub("", s).replace("☰", "the menu").strip()
+    return EMOJI.sub("", s.replace("☰", "the menu")).strip()
 
 
 def testflight(since, out):
@@ -245,7 +245,8 @@ def testflight(since, out):
         t = topics[tid]
         latest = [e for e in entries if e["topic"] == tid and not e.get("status")]
         steps = t.get("tryIt") or (latest[-1]["tryIt"] if latest else [])
-        areas.setdefault(t["area"], []).append((t["title"], steps))
+        # The feature as it is now (the short card title alone, "What's new", says nothing to testers).
+        areas.setdefault(t["area"], []).append((t.get("summary") or t["title"], steps))
     lines = ["What's new since the last build. Thank you for testing!", ""]
     for area, items in areas.items():
         lines.append(area.upper())
