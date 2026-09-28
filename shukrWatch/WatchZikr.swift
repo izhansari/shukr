@@ -610,6 +610,15 @@ struct WatchCounterView: View {
     /// while tapping faster than once a second (timed goals froze).
     @State private var ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var lastCountActive: Double = 0
+    // Digital Crown counting: each detent forward = one tap's worth; backwards does nothing (− is on
+    // screen), so the crown's value only ever moves the baseline down.
+    @State private var crown: Double = 0
+    @State private var crownBase: Double = 0
+    @FocusState private var crownFocused: Bool
+    @Environment(\.isLuminanceReduced) private var wristDown
+    /// "Pinch to count · or turn the Crown", once, on the first session.
+    @AppStorage("watch.countHintSeen", store: WatchStore.defaults) private var hintSeen = false
+    @State private var showHint = false
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
     @State private var highest: CGFloat = 0
@@ -694,6 +703,12 @@ struct WatchCounterView: View {
             count = config.startCount
             startedAt = Date()
             runtime.start()
+            crownFocused = true
+            if !hintSeen {
+                hintSeen = true
+                withAnimation(.easeOut(duration: 0.3).delay(0.6)) { showHint = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { withAnimation(.easeIn(duration: 0.4)) { showHint = false } }
+            }
             #if DEBUG
             // `-demoWatchTaps N [-demoWatchPause] [-demoWatchFinish]` (simulator checks).
             let taps = UserDefaults.standard.integer(forKey: "demoWatchTaps")
@@ -733,17 +748,54 @@ struct WatchCounterView: View {
         ZStack {
             WatchCountRing(fraction: fraction)
             // Just the number, like the phone: nothing says what's being recited (owner: privacy).
-            Text("\(count)")
-                .font(.system(size: 44, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(count)))
-                .animation(.snappy(duration: 0.15), value: count)
+            // It's also the Double Tap target (Series 9+ / Ultra 2): pinch finger and thumb and it
+            // counts like a tap. Not hit-testable: screen touches go to the tap / pump gesture.
+            Button { increment() } label: {
+                Text("\(count)")
+                    .font(.system(size: 44, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(count)))
+                    .animation(.snappy(duration: 0.15), value: count)
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(false)
+            .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil)
+            if showHint {
+                VStack(spacing: 2) {
+                    Image(systemName: "hand.pinch")
+                    Text("Pinch to count")
+                    Text("or turn the Crown")
+                }
+                .font(.system(size: 11, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .offset(y: 46)
+                .transition(.opacity)
+            }
         }
         .padding(8)
         .contentShape(Rectangle())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(countGesture)
+        // The crown counts here (nothing on this screen scrolls). Detent haptics are off: each
+        // count plays the tap's own haptic instead.
+        .focusable(!paused && finished == nil)
+        .focused($crownFocused)
+        .digitalCrownRotation($crown, from: -1_000_000, through: 1_000_000, by: 1,
+                              sensitivity: .low, isContinuous: true, isHapticFeedbackEnabled: false)
+        .onChange(of: crown) { _, value in crownTurned(to: value) }
         .opacity(paused ? 0 : 1)
+    }
+
+    /// A detent forward counts; backwards only moves the baseline. Ignored with the wrist down
+    /// (dimmed screen), so a sleeve brushing the crown doesn't count.
+    private func crownTurned(to value: Double) {
+        guard !paused, finished == nil, !wristDown else { crownBase = value; return }
+        if value < crownBase { crownBase = value; return }
+        while value - crownBase >= 1 {
+            crownBase += 1
+            increment()
+        }
     }
 
     /// One gesture for both: a touch that barely moves is a tap (+1 / +N); a drag counts on each
@@ -774,6 +826,7 @@ struct WatchCounterView: View {
     }
 
     private func increment() {
+        if showHint { withAnimation(.easeIn(duration: 0.3)) { showHint = false } }
         let before = count
         count = min(count + tapWorth, 10_000)
         lastCountAt = Date()
@@ -811,6 +864,7 @@ struct WatchCounterView: View {
                 pausedTotal += Date().timeIntervalSince(p)
                 pausedAt = nil
                 runtime.start()
+                crownFocused = true
             } else {
                 pausedAt = Date()
                 finishArmed = false
@@ -880,6 +934,7 @@ struct WatchCounterView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.watchSage)
+                .handGestureShortcut(.primaryAction)   // Double Tap resumes
                 Button { tappedFinish() } label: {
                     Text(finishArmed ? "Tap again to finish" : "Finish early")
                         .font(.system(size: 12, weight: finishArmed ? .semibold : .regular, design: .rounded))
@@ -960,6 +1015,7 @@ struct WatchResultsView: View {
             Button("Done", action: done)
                 .buttonStyle(.bordered)
                 .tint(.watchSage)
+                .handGestureShortcut(.primaryAction)   // Double Tap closes
                 .padding(.top, 4)
         }
         .padding(.horizontal, 6)
@@ -1187,6 +1243,21 @@ struct WatchSettingsPage: View {
                     .buttonStyle(.plain)
                 }
                 Text("How each count feels on your wrist. Tap one to try it.")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Text("counting")
+                    .font(.system(size: 10, design: .rounded))
+                    .tracking(1.2)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Tap anywhere, or drag down", systemImage: "hand.tap")
+                    Label("Pinch finger and thumb (Double Tap)", systemImage: "hand.pinch")
+                    Label("Turn the Digital Crown forward, a click a count", systemImage: "digitalcrown.arrow.clockwise")
+                }
+                .font(.system(size: 12, design: .rounded))
+                Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
             }
