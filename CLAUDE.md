@@ -1377,7 +1377,11 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
 - **Only real crossings (2026-09-28):** the owner saw two "Leaving the masjid" duas at once (Cary + Morrisville, 2:05 PM,
   and a pair at 10:58) without having been there. CLMonitor reports each region's state when it (re)starts — every
   launch, every install — and an initial "outside" was read as leaving. `handle` now keeps `masjidArrival.inside.<id>`:
-  entering only when not already inside, leaving only after a remembered arrival. (Found from his app's prefs via
+  entering only when not already inside, leaving only after a remembered arrival. Then (Bradley): no stored state yet →
+  record silently (first run / launching at the masjid); outside → inside posts (a background relaunch for the crossing
+  delivers it as the monitor's first report, so "first report = baseline" would swallow real arrivals); inside →
+  outside posts only within 4 h of `masjidArrival.insideSince.<id>`, else clears silently (a missed exit). Not
+  walk-tested (needs a real device at a masjid). (Found from his app's prefs via
   `devicectl … copy from --domain-type appDataContainer`: `masjidArrival.last.out.*` at 18:05:52Z, no `.in`.)
 - **Still to verify on the phone:** a real Jumu'ah at the masjid (GPS indoors); the arrival
   notification with the app killed (background relaunch); "Only at a masjid" in the map bar (not

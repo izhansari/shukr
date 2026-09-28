@@ -7,7 +7,7 @@
      "tryIt": ["Star your masjid on the map (Mosques → its sheet → ☆)", "On a Friday, mark Dhuhr there → \"✓ Jumu'ah\", no grade word, 100", "Any other prayer marked in its first 30 min reads \"Perfect\""]},
     {"id": "fine-ring", "area": "Zikr", "title": "The tasbeeh ring is the calm \"fine\" style by default", "link": "zikr"},
     {"id": "masjid-filter", "area": "Map", "title": "Filter your prayer pins to \"Only at a masjid\"", "link": "map"},
-    {"id": "masjid-duas", "area": "Settings", "title": "Duas when you arrive at / leave your masajid (opt-in)", "link": "settings"},
+    {"id": "masjid-duas", "area": "Mosques", "title": "Duas at my masajid: the dua for entering when you arrive at one of your masajid, and for leaving when you go — only for a real arrival or departure", "link": "settings"},
     {"id": "holy-cities", "area": "Location", "title": "A welcome in Makkah and Madinah"},
     {"id": "widget-next", "area": "Widget", "title": "Prayers widget: the ring in the centre with the mark-prayed check top left, your choice of bottom corners, and a chevron between them that opens today's times (score colours on or off) and closes them again"},
     {"id": "time-editor-opens", "area": "Salah", "title": "The time editor opens on the time you saved", "link": "salah"},
@@ -924,6 +924,12 @@
       "title": "Upcoming reminders names what each one is: 'Later' (from Nudge me later, with its prayer and words), 'Masjid' (the arrival / leaving duas), 'Other'; and the masjid duas only come for a real arrival or departure",
       "tryIt": ["Settings → Notifications → Upcoming reminders → today's card: tap Masjid or Later to see each one as it read"],
       "checked": "sim", "shots": ["wn-upcoming-masjid-later.jpg"]
+    },
+    {
+      "id": "masjid-duas-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "masjid-duas", "notes": null,
+      "title": "Fixed: a masjid dua could appear when you weren't there (e.g. \"Leaving the masjid\" right after opening shukr)",
+      "tryIt": ["Settings → Masjid → Duas at my masajid on → open shukr away from your masajid: no dua", "Arrive at one of your masajid → the entering dua; leave → the leaving dua"],
+      "checked": "no"
     }
   ]
 }

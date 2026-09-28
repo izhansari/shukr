@@ -101,14 +101,31 @@ final class MasjidArrival {
         case .unsatisfied: entering = false
         default: return
         }
-        // Only a real crossing: leaving needs a remembered arrival, and a repeat of the same state
-        // is ignored. The monitor reports every region's state when it (re)starts — each launch — and
-        // an "outside" there read as leaving: two "Leaving the masjid" duas at once for masajid the
-        // owner hadn't been to (2026-09-28).
+        // Only a real crossing (2026-09-28). The monitor reports every region's state when it (re)starts —
+        // each launch — and an "outside" there read as leaving: two "Leaving the masjid" duas at once for
+        // masajid the owner hadn't been to. Now:
+        // • no stored state yet (first run, the key cleared, or launching at the masjid): record, post nothing;
+        // • the same state as stored: nothing;
+        // • outside → inside: entering (also when iOS relaunches the app for the crossing — that event is
+        //   the monitor's first report in the new process, so a blanket "first report is a baseline"
+        //   would swallow real arrivals);
+        // • inside → outside: leaving only if the arrival was within 4 h; a missed exit hours ago
+        //   (phone off, monitor suspended) is cleared silently.
+        let d = UserDefaults.standard
         let insideKey = "masjidArrival.inside.\(fav.id)"
-        let wasInside = UserDefaults.standard.bool(forKey: insideKey)
-        guard entering != wasInside else { return }
-        UserDefaults.standard.set(entering, forKey: insideKey)
+        let sinceKey = "masjidArrival.insideSince.\(fav.id)"
+        let known = d.object(forKey: insideKey) != nil
+        let wasInside = d.bool(forKey: insideKey)
+        guard entering != wasInside || !known else { return }
+        d.set(entering, forKey: insideKey)
+        if entering {
+            d.set(Date(), forKey: sinceKey)
+            guard known else { return }
+        } else {
+            let since = d.object(forKey: sinceKey) as? Date
+            d.removeObject(forKey: sinceKey)
+            guard known, wasInside, let since, Date().timeIntervalSince(since) < 4 * 3600 else { return }
+        }
         // Once per masjid and direction every 3 hours (GPS wobble at the edge).
         let key = "masjidArrival.last.\(entering ? "in" : "out").\(fav.id)"
         if let last = UserDefaults.standard.object(forKey: key) as? Date, Date().timeIntervalSince(last) < 3 * 3600 { return }
