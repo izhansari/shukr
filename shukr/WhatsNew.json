@@ -980,7 +980,7 @@
       "checked": "sim", "shots": ["wn-upcoming-ring-visible.jpg"]
     },
     {
-      "id": "insights-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-11", "date": "2026-09-28", "commit": "1162e9e", "time": "2026-09-28T15:59:02-04:00", "topic": "insights", "notes": null,
       "title": "Insights always opens on 'how am I scoring?'; on 'how consistent am I?' each streak has its best centred under it",
       "tryIt": ["☰ → Insights → it opens on 'how am I scoring?'", "Swipe → '♥ 4 day streak' with 'best 18' under it, and the in-time streak beside it"],
       "checked": "sim", "shots": ["wn-insights-streak-columns.jpg"]
