@@ -854,19 +854,19 @@
       "checked": "sim", "shots": ["wn-insights-avg-first.jpg"], "addresses": ["95FF0EB7-A5BF-47C9-A656-9E307F3F9D46"]
     },
     {
-      "id": "widget-next-7", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "id": "widget-next-7", "date": "2026-09-28", "commit": "175f495", "time": "2026-09-28T13:10:46-04:00", "topic": "widget-next", "notes": null,
       "title": "Prayers widget: the ring sits a touch lower (60 % of the space above it, 40 % below); try 50 / 55 / 60 in Settings",
       "tryIt": ["Look at the Prayers widget: the ring sits a little below the middle of the space above ⌃", "Settings → Widget ring position → 55 / 45 or 50 / 50 → the widget moves at once; pick the one that looks centred"],
       "checked": "sim", "shots": ["wn-widget-ring-position.jpg"], "addresses": ["D3DC914D-368E-42CE-9BDA-30340EA7FCDF"]
     },
     {
-      "id": "first-run-setup-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-12", "date": "2026-09-28", "commit": "dd4740c", "time": "2026-09-28T13:27:31-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Location lost / back, ring to ring: the Salah circle's prayer fades as its ring rises into the lost page's; coming back, the ring glides down onto the Salah circle and the prayer comes in round it — one ring throughout, no pause",
       "tryIt": ["With shukr open: iOS Settings → shukr → Location → Never → back to shukr → the ring rises out of the Salah circle", "Then Settings → Always → back → 'Location's back', and the ring glides down into the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-ring-to-ring.jpg"], "addresses": ["A535F50B-7EB7-430F-9113-6D491C43688F"]
     },
     {
-      "id": "insights-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-5", "date": "2026-09-28", "commit": "dd4740c", "time": "2026-09-28T13:27:31-04:00", "topic": "insights", "notes": null,
       "title": "Insights stays whole at the largest text sizes (it stops growing at the biggest standard size)",
       "tryIt": ["iOS Settings → Accessibility → Larger Text → the largest → ☰ → Insights: nothing runs off the page"],
       "checked": "sim", "shots": ["wn-insights-text-cap.jpg"]
