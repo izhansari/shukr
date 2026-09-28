@@ -824,13 +824,13 @@
       "checked": "sim", "shots": ["wn-lost-location-opening.jpg"], "addresses": ["2396BDF1-FA6B-41EC-AD65-3D3043F3A38A"]
     },
     {
-      "id": "widget-next-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "id": "widget-next-6", "date": "2026-09-28", "commit": "f41981c", "time": "2026-09-28T11:23:33-04:00", "topic": "widget-next", "notes": null,
       "title": "Prayers widget: the ring sits evenly between the top and the chevron, and between sunrise and Dhuhr it shows Dhuhr as next (not \"Sunrise\" with a moon)",
       "tryIt": ["Look at the Prayers widget: the same space above the ring as between it and ⌃", "Mid-morning: the ring says NEXT Dhuhr with the sun, like the app's circle", "Small phones: tap ⌃, and every prayer name and time shows in full"],
       "checked": "sim", "shots": ["wn-widget-ring-centred.jpg"], "addresses": ["99D47ABE-FF80-464D-9C85-DB4366407DFB"]
     },
     {
-      "id": "notifications-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-5", "date": "2026-09-28", "commit": "7189691", "time": "2026-09-28T12:22:05-04:00", "topic": "notifications", "notes": null,
       "title": "Upcoming reminders, simpler: the count of 64 and what they are at the top, a plain line on why to open shukr every few days, then one row per prayer (its start, with its nudges underneath) and one for the day's zikr",
       "tryIt": ["Settings → Notifications → Upcoming reminders (the green calendar)"],
       "checked": "sim", "shots": ["wn-upcoming-reminders-simple.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
