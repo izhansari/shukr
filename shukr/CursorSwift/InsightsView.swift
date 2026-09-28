@@ -758,15 +758,14 @@ private struct PrayerTrendsGrid: View {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
                 ForEach(days.indices, id: \.self) { i in
                     let isMarked = marked.contains(i)
-                    // A marked day's date is a filled pill (Calendar's selected day); the rest fade.
+                    // A marked day's date stays plain, just full strength and semibold; the rest fade with
+                    // their columns (owner, F81CB8BE: no coloured pills).
                     Text(days[i].formatted(.dateTime.day()))
                         .font(.system(size: 9, weight: i == days.count - 1 || isMarked ? .semibold : .light, design: .rounded))
-                        .foregroundStyle(isMarked ? AnyShapeStyle(Color.white)
-                                         : i == days.count - 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
+                        .foregroundStyle(isMarked || i == days.count - 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                         .frame(width: cellSize, height: 14)
-                        .background(Capsule().fill(isMarked ? markColor(dayMark ?? .allFive) : .clear))
                         .opacity(dayMark != nil && !isMarked ? 0.25 : 1)
                 }
             }
