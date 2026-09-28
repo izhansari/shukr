@@ -337,6 +337,8 @@ struct FirstRunSetupView: View {
     private func enterApp() {
         guard !leaving else { return }
         FirstRunSetup.markDone()
+        // A "no" to notifications here: 3 days' grace before the first "reminders are off" card.
+        if NotificationStatus.shared.isOn != true { NotificationHealth.shared.markCardShown(.off) }
         viewModel.fetchPrayerTimes(cameFrom: "first-run setup done")
         NotificationScheduler.reschedule(context: context, reason: "first-run setup done")
         WidgetCenter.shared.reloadAllTimelines()

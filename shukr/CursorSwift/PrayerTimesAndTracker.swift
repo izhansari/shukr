@@ -145,12 +145,13 @@ struct PrayerTimesView: View {
                 }
                 let health = NotificationHealth.shared
                 await health.refresh()
+                // Only on the Salah page with nothing else open: sheets inside the Zikr and Settings
+                // pages (task sheets, the city picker, What's new…) aren't in `somethingCovers`.
                 guard FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
-                      CircleCover.active.isEmpty, healthCard == nil,
+                      sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil,
                       Date().timeIntervalSince(lastDeepLinkAt) > 10,
                       let issue = health.cardIssue, health.cardDue(for: issue) else { return }
-                health.markCardShown(issue)
-                healthCard = issue
+                healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
             }
         }
     }
@@ -431,6 +432,7 @@ struct PrayerTimesView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
             guard let taskID = note.object as? String, scenePhase == .active else { return }
+            lastDeepLinkAt = Date()   // no reminders card over the zikr it opened
             let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
             store?.removeObject(forKey: "widgetZikrTask")
             store?.setValue(false, forKey: "widgetTasbeeh")
@@ -442,8 +444,12 @@ struct PrayerTimesView: View {
         }
         .sheet(item: $healthCard) { issue in
             ReminderHealthCard(issue: issue) { healthCard = nil }
+                .onAppear {
+                    NotificationHealth.shared.markCardShown(issue)
+                    CircleCover.set("healthCard", true)
+                }
+                .onDisappear { CircleCover.set("healthCard", false) }
         }
-        .onChange(of: healthCard) { _, card in CircleCover.set("healthCard", card != nil) }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.

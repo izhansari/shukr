@@ -1203,6 +1203,10 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   handler — and every check). DEBUG `-healthPretend off|held|ts|bg` (skips the cadence), `-demoScheduledNotifications`,
   `-demoSettings`. The alarm's stored description is refreshed at launch in today's words (only when it changed). Sim ✓:
   both cards (light / dark, after the opening), the Settings line, the dev screen with real pending items (51 of 64).
+  Review fix-ups: only on the Salah page (`horizontalPage == .main`; sheets inside Zikr / Settings aren't in
+  `somethingCovers`); marked shown and `CircleCover` "healthCard" set only in the card's own onAppear (a dropped card used to
+  burn the 3 days and leave the cover set — no qibla haptic / prayer-start moment); a "no" in the setup = 3 days' grace
+  before the first off card; a zikr reminder's Start now sets `lastDeepLinkAt`.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
