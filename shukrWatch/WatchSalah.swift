@@ -30,6 +30,7 @@ enum WatchPrayerMarker {
         // An id per mark: the phone applies it once, however many copies arrive, and an undo names it.
         let id = UUID().uuidString
         WatchStore.addLocalMark(prayer.name, dayStart: day.prayers[0].start, score: score, at: date, id: id)
+        WatchStore.clearLocalUnmark(prayer.name)
         WKInterfaceDevice.current().play(.success)
         send(["type": "prayerMarked", "id": id, "name": prayer.name,
               "start": prayer.start.timeIntervalSince1970, "end": prayer.end.timeIntervalSince1970,
@@ -38,6 +39,23 @@ enum WatchPrayerMarker {
         WatchSession.shared.refresh()
         WatchNotifications.cancelNudges(for: prayer.name)
         WatchMoment.shared.show(prayer: prayer, score: score, markID: id, jumuahAt: masjid)
+    }
+
+    /// Unmark a done prayer from the list (marked on the watch, the phone or the widget): shown
+    /// undone at once, and the phone resets it like an in-app unmark. Its own id makes it
+    /// idempotent; a watch mark's id rides along so a late copy of that mark is ignored.
+    static func unmark(_ prayer: WatchPrayer) {
+        guard let day = WatchPrayers.day(at: prayer.start) else { return }
+        let markID = WatchStore.localMarkIDs[prayer.name]
+        WatchStore.removeLocalMark(prayer.name)
+        WatchStore.addLocalUnmark(prayer.name, dayStart: day.prayers[0].start)
+        var info: [String: Any] = ["type": "prayerUnmarked", "id": UUID().uuidString, "byName": true,
+                                   "name": prayer.name, "start": prayer.start.timeIntervalSince1970]
+        if let markID { info["markID"] = markID }
+        send(info)
+        WKInterfaceDevice.current().play(.directionDown)
+        WidgetCenter.shared.reloadAllTimelines()
+        WatchSession.shared.refresh()
     }
 
     /// Undo (within seconds): the local mark goes, and the phone takes it off again.

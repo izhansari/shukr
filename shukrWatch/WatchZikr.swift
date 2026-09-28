@@ -559,21 +559,23 @@ struct WatchZikrPage: View {
             WatchCounterView(config: config)
         }
         .onAppear { reopenDraft() }
-        .alert(resumeAsk?.title ?? "", isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
-               presenting: resumeAsk) { task in
+        // Continue or start over (owner: shorter) — the zikr's name, then the two choices; the
+        // sheet's own ✕ (top left) cancels.
+        .sheet(item: $resumeAsk) { task in
             let p = store.progress(task)
-            Button(task.countMode ? "Continue from \(p.count)" : "Continue from \(minutesText(p.seconds))") {
-                running = WatchCounterConfig(task: task, startCount: task.countMode ? p.count : 0,
-                                             startSeconds: task.countMode ? 0 : p.seconds)
-                resumeAsk = nil
+            VStack(spacing: 8) {
+                Text(task.title)
+                    .font(.system(size: 13, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Button(task.countMode ? "Continue from \(p.count)" : "Continue from \(minutesText(p.seconds))") {
+                    start(WatchCounterConfig(task: task, startCount: task.countMode ? p.count : 0,
+                                             startSeconds: task.countMode ? 0 : p.seconds))
+                }
+                .tint(.watchSage)
+                Button("Start over") { start(WatchCounterConfig(task: task)) }
             }
-            Button("Start over") { running = WatchCounterConfig(task: task); resumeAsk = nil }
-            Button("Cancel", role: .cancel) { resumeAsk = nil }
-        } message: { task in
-            let p = store.progress(task)
-            Text(task.countMode
-                 ? "You've done \(p.count) of \(task.goal) today. Pick up from there, or count a fresh \(task.goal)?"
-                 : "You've done \(minutesText(p.seconds)) of \(task.goal) min today. Pick up from there, or start a fresh \(task.goal) min?")
+            .padding(.horizontal, 4)
         }
     }
 
@@ -590,6 +592,13 @@ struct WatchZikrPage: View {
                                                                            : "\(Int(p.seconds / 60)) of \(task.goal) min"),
                           fraction: store.fraction(task, at: now), done: done)
         }
+    }
+
+    /// Closes the continue sheet, then opens the counter once it's gone (two presentations at
+    /// once can drop the second).
+    private func start(_ config: WatchCounterConfig) {
+        resumeAsk = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { running = config }
     }
 
     /// A session the app was closed on comes back, paused (or has just been saved, if stale).
@@ -662,6 +671,7 @@ struct WatchCounterView: View {
     @State private var draftToken = 0
     @State private var sessionID = UUID().uuidString
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
     @State private var highest: CGFloat = 0
@@ -702,20 +712,27 @@ struct WatchCounterView: View {
                 if let finished {
                     WatchResultsView(record: finished, task: task) { close() }
                 } else {
+                    // The phone's softer, deeper page behind the counter (subtle on an OLED watch).
+                    RadialGradient(colors: [Color(white: 0.13), .black], center: .center,
+                                   startRadius: 10, endRadius: WatchScreen.width * 0.75)
+                        .ignoresSafeArea()
+                        .opacity(paused ? 0 : 1)
                     counter
                     if paused {
                         // Solid, so nothing behind it makes it hard to read (owner).
                         pauseScreen
                             .background(Color.black.ignoresSafeArea())
-                            .transition(.opacity)
+                            .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
             }
-            // No bar while paused or on the results: watchOS would put its own ✕ there, which
-            // drops the session in one tap. Resume / Finish early / Done are on the screen.
-            .toolbar(paused || finished != nil ? .hidden : .automatic, for: .navigationBar)
+            // The bar stays; its buttons fade out while paused / on the results (Resume, Finish
+            // early and Done are on the screen). Always filled, so watchOS never puts its own ✕ in
+            // the slot (one tap would drop the session), and fading instead of hiding it keeps the
+            // pause change smooth.
             .toolbar {
-                if finished == nil && !paused {
+                let chrome = finished == nil && !paused
+                do {
                     // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
                     ToolbarItem(placement: .cancellationAction) {
                         HStack(spacing: 4) {
@@ -732,9 +749,13 @@ struct WatchCounterView: View {
                                 .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
                             }
                         }
+                        .opacity(chrome ? 1 : 0)
+                        .disabled(!chrome)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { togglePause() } label: { Image(systemName: "pause.fill") }
+                            .opacity(chrome ? 1 : 0)
+                            .disabled(!chrome)
                     }
                 }
             }
@@ -802,10 +823,12 @@ struct WatchCounterView: View {
 
     private var counter: some View {
         ZStack {
-            WatchCountRing(fraction: fraction)
+            // The phone's counter: beads round the ring (one per count, 100 a lap), the hundreds
+            // done as dots inside, and the count within the current hundred in the middle.
+            WatchTasbeehRing(count: count, fraction: fraction)
             // Just the number, like the phone: nothing says what's being recited (owner: privacy).
-            Text("\(count)")
-                .font(.system(size: WatchScreen.small ? 38 : 44, weight: .light, design: .rounded))
+            Text("\(count % 100)")
+                .font(.system(size: WatchScreen.small ? 38 : 44, weight: .thin, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(count)))
                 .animation(.snappy(duration: 0.15), value: count)
@@ -867,6 +890,7 @@ struct WatchCounterView: View {
         .contentShape(Rectangle())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(countGesture)
+        .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
         // The crown counts here (nothing on this screen scrolls). Detent haptics are off: each
         // count plays the tap's own haptic instead.
         .focusable(!paused && finished == nil)
@@ -994,7 +1018,7 @@ struct WatchCounterView: View {
 
     private func togglePause() {
         WatchHaptics.tick()
-        withAnimation(.easeInOut(duration: 0.25)) {
+        withAnimation(.easeInOut(duration: 0.32)) {
             if let p = pausedAt {
                 pausedTotal += Date().timeIntervalSince(p)
                 pausedAt = nil
@@ -1517,4 +1541,68 @@ struct WatchPostSalahStrip: View {
 enum WatchScreen {
     static let width = WKInterfaceDevice.current().screenBounds.width
     static var small: Bool { width < 180 }
+}
+
+/// The phone's active tasbeeh ring (NeuCircularProgressView + TasbeehCountView), light enough for a
+/// watch: a raised grey band with soft light / dark shadows (the phone's NeuRing colours), the
+/// progress in green with a gentle glow (the "fine" look, static — no moving grain), and outside
+/// it the beads: one per count, 100 to a lap, starting at the top and going clockwise. Hundreds
+/// done sit as grey dots inside the ring over the number, thousands as green ones. Drawn in one
+/// Canvas (100 beads as one view). Dimmer with the wrist down.
+struct WatchTasbeehRing: View {
+    let count: Int
+    let fraction: Double
+    @Environment(\.isLuminanceReduced) private var dim
+
+    var body: some View {
+        let w = WatchScreen.width
+        let ring = w * 0.64
+        let band: CGFloat = WatchScreen.small ? 5 : 6
+        ZStack {
+            Circle()
+                .stroke(Color(white: 0.149), lineWidth: band)
+                .frame(width: ring, height: ring)
+                .shadow(color: .black.opacity(0.5), radius: 3, x: 1.5, y: 1.5)
+                .shadow(color: Color(white: 0.24).opacity(0.3), radius: 4, x: -1.5, y: -1.5)
+            Circle()
+                .trim(from: 0, to: min(max(fraction, 0), 1))
+                .stroke(LinearGradient(colors: [Color.green.opacity(0.75), Color(red: 0.4, green: 0.8, blue: 0.5)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing),
+                        style: StrokeStyle(lineWidth: band, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .frame(width: ring, height: ring)
+                .shadow(color: .green.opacity(dim ? 0 : 0.45), radius: 4)
+                .animation(.easeOut(duration: 0.2), value: fraction)
+            Canvas { ctx, size in
+                let c = CGPoint(x: size.width / 2, y: size.height / 2)
+                // Beads: this hundred's counts, round the outside of the ring.
+                let beadR = w * 0.455, bead: CGFloat = WatchScreen.small ? 2.6 : 3.2
+                for i in 0..<(count % 100) {
+                    let a = -Double.pi / 2 + Double(i + 1) * 2 * .pi / 100
+                    let p = CGPoint(x: c.x + beadR * cos(a), y: c.y + beadR * sin(a))
+                    let rect = CGRect(x: p.x - bead / 2, y: p.y - bead / 2, width: bead, height: bead)
+                    ctx.fill(Path(ellipseIn: rect), with: .color(Color(white: 0.30)))
+                    // A faint highlight, for the phone's inset bead.
+                    ctx.fill(Path(ellipseIn: rect.insetBy(dx: bead * 0.3, dy: bead * 0.3).offsetBy(dx: -bead * 0.12, dy: -bead * 0.12)),
+                             with: .color(Color(white: 0.45)))
+                }
+                // Hundreds (1–9) and thousands, as dots inside the ring over the number.
+                let hundreds = (count / 100) % 10, thousands = min(count / 1000, 10)
+                let dot: CGFloat = WatchScreen.small ? 4 : 5, arcR = ring * 0.30
+                func arcDots(_ n: Int, radius: CGFloat, color: Color) {
+                    guard n > 0 else { return }
+                    for i in 0..<n {
+                        let a = -Double.pi / 2 + (Double(i) - Double(n - 1) / 2) * 0.32
+                        let p = CGPoint(x: c.x + radius * cos(a), y: c.y + radius * sin(a))
+                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - dot / 2, y: p.y - dot / 2, width: dot, height: dot)), with: .color(color))
+                    }
+                }
+                arcDots(hundreds, radius: arcR, color: Color.gray.opacity(0.5))
+                arcDots(thousands, radius: arcR + dot * 1.8, color: Color.green.opacity(0.6))
+            }
+            .frame(width: w, height: w)
+            .opacity(dim ? 0.5 : 1)
+        }
+        .allowsHitTesting(false)
+    }
 }

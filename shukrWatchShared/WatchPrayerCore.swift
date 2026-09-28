@@ -31,6 +31,9 @@ enum WatchStore {
         /// The mark id sent to the phone for each local mark (name → id), for undo / a failed save.
         static let localMarkIDs = "watch.localMarkIDs"
         static let masajid = "watch.masajid"
+        /// Prayers unmarked on the watch, shown undone until the phone stops listing them:
+        /// name → prayer-day start.
+        static let localUnmarks = "watch.localUnmarks"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -56,6 +59,10 @@ enum WatchStore {
         if let completed = context["completed"] as? [String], let day = context["completedDay"] as? Double {
             var marks = localMarks
             for name in completed where abs((marks[name]?.first ?? -1) - day) < 1 { marks[name] = nil }
+            // Unmarks the phone has applied (it no longer lists them) are done.
+            var unmarks = localUnmarks
+            for (name, when) in unmarks where abs(when - day) < 1 && !completed.contains(name) { unmarks[name] = nil }
+            if unmarks.count != localUnmarks.count { d.set(unmarks, forKey: Key.localUnmarks); changed = true }
             if marks.count != localMarks.count {
                 d.set(marks, forKey: Key.localMarks)
                 // …and their mark ids with them.
@@ -95,6 +102,23 @@ enum WatchStore {
             guard row.count == 3, let lat = Double(row[1]), let lon = Double(row[2]) else { return nil }
             return (row[0], lat, lon)
         }
+    }
+
+    static var localUnmarks: [String: Double] {
+        defaults.dictionary(forKey: Key.localUnmarks) as? [String: Double] ?? [:]
+    }
+
+    static func clearLocalUnmark(_ name: String) {
+        var unmarks = localUnmarks
+        guard unmarks[name] != nil else { return }
+        unmarks[name] = nil
+        defaults.set(unmarks, forKey: Key.localUnmarks)
+    }
+
+    static func addLocalUnmark(_ name: String, dayStart: Date) {
+        var unmarks = localUnmarks
+        unmarks[name] = Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970
+        defaults.set(unmarks, forKey: Key.localUnmarks)
     }
 
     static func removeLocalMark(_ name: String) {
@@ -185,6 +209,7 @@ enum WatchPrayers {
         let reportedDay = d.double(forKey: WatchStore.Key.completedDay)
         var done = abs(reportedDay - day) < 1 ? Set(d.stringArray(forKey: WatchStore.Key.completed) ?? []) : []
         for (name, mark) in WatchStore.localMarks where abs((mark.first ?? -1) - day) < 1 { done.insert(name) }
+        for (name, when) in WatchStore.localUnmarks where abs(when - day) < 1 { done.remove(name) }
         return done
     }
 

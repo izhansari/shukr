@@ -307,6 +307,30 @@ enum WatchZikrSync {
     private static func unmarkPrayer(_ info: [String: Any]) {
         guard let container, let markID = info["id"] as? String, let name = info["name"] as? String,
               let start = info["start"] as? Double else { return }
+        // "Unmark Asr?" from the watch's list: whoever marked it (watch, phone, widget), it comes
+        // off like an in-app unmark. Its own id makes it apply once; a watch mark's id is
+        // tombstoned too, so a late copy of that mark can't put it back.
+        if info["byName"] as? Bool == true {
+            guard receivedMarks[markID] == nil else { scheduleSend(); return }
+            receivedMarks[markID] = [-Date().timeIntervalSince1970, start]
+            if let original = info["markID"] as? String {
+                receivedMarks[original] = [-Date().timeIntervalSince1970, start]
+            }
+            let context = ModelContext(container)
+            let startDate = Date(timeIntervalSince1970: start)
+            guard let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context), prayer.isCompleted else {
+                scheduleSend(); return
+            }
+            prayer.resetPrayer()
+            rescoreDay(of: startDate, in: context)
+            do { try context.save() } catch { print("⌚️ watch unmark not saved: \(error)"); return }
+            UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+            NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
+            WidgetCenter.shared.reloadAllTimelines()
+            scheduleSend()
+            print("⌚️ \(name) unmarked from the watch")
+            return
+        }
         let known = receivedMarks[markID]
         receivedMarks[markID] = [-Date().timeIntervalSince1970, start]
         guard let known, (known.first ?? 0) > 0, known.count > 2, known[2] > 0 else { return }   // never applied
