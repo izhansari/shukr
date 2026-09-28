@@ -974,7 +974,7 @@
       "checked": "sim", "shots": ["wn-your-reminders-full-week.jpg"]
     },
     {
-      "id": "prayer-begins-13", "date": "2026-09-28", "commit": "next", "time": null, "topic": "prayer-begins", "notes": null,
+      "id": "prayer-begins-13", "date": "2026-09-28", "commit": "1d0fd1e", "time": "2026-09-28T15:49:14-04:00", "topic": "prayer-begins", "notes": null,
       "title": "The dashed ring of a prayer that hasn't started is easier to see (still subtle) — in the app, the widget and on the watch",
       "tryIt": ["Mark the current prayer → the circle shows the next one with a clearer dashed ring"],
       "checked": "sim", "shots": ["wn-upcoming-ring-visible.jpg"]
