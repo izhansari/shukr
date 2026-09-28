@@ -460,6 +460,10 @@ struct LostLocationView: View {
                         Text(acknowledged ? onCaption : "location is off")
                             .font(.system(.subheadline, design: .rounded, weight: .thin))
                             .foregroundStyle(.secondary)
+                            // Inside the snug 150 pt ring too (a long city name).
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .frame(maxWidth: 112)
                             .contentTransition(.opacity)
                     }
                     // Leaves like the welcome's word as the ring grows (scale 0.9, blur 4).

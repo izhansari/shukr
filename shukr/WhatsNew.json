@@ -906,6 +906,18 @@
       "title": "Insights: each prayer's ring shows your usual moment (the middle of your days, so a few late ones don't drag it) and reads 'Fajr · usually Perfect'; the average score stays on the big ring only",
       "tryIt": ["☰ → Insights → tap Isha → 'Isha · usually Late' / 'you usually pray 1 h 37 min in'"],
       "checked": "sim", "shots": ["wn-insights-usual-grade.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
+    },
+    {
+      "id": "insights-8", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: tap 'with all five' or 'days in time' to see which days they are, outlined in the grid; the three numbers fit, under one 'last 14 days'",
+      "tryIt": ["☰ → Insights → swipe to 'how consistent am I?' → tap 'with all five' → those days' columns are outlined; tap 'days in time' → the in-time days in green"],
+      "checked": "sim", "shots": ["wn-insights-day-marks.jpg"]
+    },
+    {
+      "id": "insights-9", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: each prayer's usual moment is a real day's (your middle prayer), so its minutes, colour and grade always match — and one usually prayed after its time reads 'usually Qaza'",
+      "tryIt": ["☰ → Insights → tap a prayer → 'usually On time' and its minutes come from the same day"],
+      "checked": "sim", "shots": ["wn-insights-median-prayer.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
     }
   ]
 }

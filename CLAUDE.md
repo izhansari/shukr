@@ -1291,6 +1291,8 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   **Counts (owner, feedback BF79A0FC):** a sage count badge beside each row's name (1 = start, 2 = + halfway, 3 = + 30 min
   left; zikr / snoozed count theirs), "Today · 10" on each day header (all kinds), and the other times are now a quiet
   caption2 tertiary line.
+  Review: "nudges are added tomorrow / later today / on Tue"; the empty state says prayer reminders are off in
+  Settings when every prayer is off; the lost page's caption fits the snug ring (one line, 112 pt max).
   **Style A, day cards (owner's pick from Bradley's canvas, feedback C84220ED):** a ScrollView of cards on the grouped
   background (22 pt corners). The summary card: ring + "Covers you through …" + the explainer (built from
   `NotificationScheduler.nudgeDaysAhead`: "…every start for the week and your nudges for the next two days. Open shukr
@@ -1819,7 +1821,14 @@ usually is when you mark it", "nothing earlier to compare with"; the "all five p
 hint is gone.) **The per-prayer rings (owner, option A):** the MEDIAN capped fraction (Qaza = 1), not the mean, drives
 fill / "N min in" / colour and the grade word (`usualScore` / `usualGrade`); the picked line is "Fajr · usually Perfect"
 (grade in its colour), "you usually pray 25 min in" ("right at the start" under 30 s), "prayed 8 of 9" — no "avg"
-(the average score is only on the big ring); a known usual moment fills at least 0.02 so its colour shows. The older write-up follows.
+(the average score is only on the big ring); a known usual moment fills at least 0.02 so its colour shows. Review:
+it's the median PRAYER itself (sorted by capped fraction, the lower middle for an even count) — its own elapsed time,
+window and score (`usualScoreValue`) — so a Qaza median reads "usually Qaza" (grey) and "you usually pray it after it
+ends", and mixed window lengths can't split the grade from the minutes. Consistency page: "last 14 days" sits above
+the three stats (equal columns, one-line captions: "of N prayed" = recorded prayers in the 14 days, "with all five",
+"days in time"); tapping either day count marks those days (`dayMark`): a 1.5 pt rounded outline round each column
+(sage / green) over the grid and their dates tinted bold; tap again or the other to switch / clear; DEBUG
+`-insightsDayMark allFive|inTime`. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +

@@ -287,6 +287,8 @@ struct UpcomingRemindersView: View {
                     card {
                         Text(health.authorization == .denied
                              ? "Notifications are off for shukr, so nothing is scheduled."
+                             : PrayerNotificationID.prayers.allSatisfy({ !NotificationScheduler.settings($0).notify })
+                             ? "Prayer reminders are off in Settings → Notifications."
                              : "Nothing is scheduled right now. Open shukr and it tops them up.")
                             .font(.subheadline).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -396,6 +398,7 @@ struct UpcomingRemindersView: View {
     private var firstStartsOnlyIndex: Int? {
         let anyNudges = PrayerNotificationID.prayers.contains { NotificationScheduler.settings($0).nudges && NotificationScheduler.settings($0).notify }
         guard anyNudges else { return nil }
+        let days = self.days      // computed: group once
         return days.indices.first { i in
             i >= 1 && !days[i].items.contains { $0.kind == .halfway || $0.kind == .endingSoon }
                 && days[i].items.contains { $0.kind == .start }
@@ -514,7 +517,7 @@ struct UpcomingRemindersView: View {
             ForEach(delivered.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }) { revealRow($0, cell: cell, delivered: true) }
             ForEach(items) { revealRow($0, cell: cell, delivered: false) }
             if startsOnly, let added = nudgesAddedOn(key) {
-                Text("Halfway and 30-min nudges are added on \(added)")
+                Text("Halfway and 30-min nudges are added \(added)")
                     .font(.system(.caption, design: .rounded))
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)
@@ -553,8 +556,11 @@ struct UpcomingRemindersView: View {
         guard let day = Self.dayKeyFormatter.date(from: key),
               let before = Calendar.current.date(byAdding: .day, value: -(NotificationScheduler.nudgeDaysAhead - 1), to: day)
         else { return nil }
-        if PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(PrayerDay.date()) { return "later today" }
-        return before.formatted(.dateTime.weekday(.abbreviated))
+        let today = PrayerDay.date()
+        if PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(today) { return "later today" }
+        if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today),
+           PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(tomorrow) { return "tomorrow" }
+        return "on " + before.formatted(.dateTime.weekday(.abbreviated))
     }
 
     private func time(_ item: Item) -> String {

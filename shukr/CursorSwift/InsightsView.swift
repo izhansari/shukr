@@ -256,7 +256,8 @@ struct InsightsView: View {
                             .lineLimit(1)
                             .contentTransition(.numericText())
                         if let elapsed = stat.usualElapsed {
-                            Text(elapsed < 30 ? "you usually pray right at the start" : "you usually pray \(Self.longIn(elapsed)) in")
+                            Text(stat.usuallyAfter ? "you usually pray it after it ends"
+                                 : elapsed < 30 ? "you usually pray right at the start" : "you usually pray \(Self.longIn(elapsed)) in")
                                 .foregroundStyle(Color.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
@@ -489,8 +490,8 @@ struct InsightsStats {
         let prayedRate: Double?  // prayed / (prayed + missed)
         var prayed = 0           // marked in the range
         var recorded = 0         // marked + missed (window over) in the range
-        /// Where in its window it's usually marked (prayed ones with a time): the median share of the
-        /// window that had passed (a Qaza counts as 1), times the average window length —
+        /// Where in its window it's usually marked (prayed ones with a time): the median prayer's share
+        /// of its window (a Qaza counts as 1 for the fill), its own time in and window length —
         /// so the ring can be drawn like the Salah page's at that moment (owner, 2026-09-28).
         var usualFraction: Double? = nil
         var usualElapsed: TimeInterval? = nil
@@ -499,12 +500,11 @@ struct InsightsStats {
         var jumuahs = 0
         var id: String { name }
 
-        /// The score the live ring would give at the usual moment.
-        var usualScore: Double? {
-            guard let elapsed = usualElapsed, let window = usualWindow, window > 0 else { return nil }
-            let start = Date(timeIntervalSinceReferenceDate: 0)
-            return PrayerScoring.score(start: start, end: start.addingTimeInterval(window), markedAt: start.addingTimeInterval(elapsed))
-        }
+        /// The median prayer's score (its own grade: Perfect / On time / Late / Qaza).
+        var usualScoreValue: Double? = nil
+        var usualScore: Double? { usualScoreValue }
+        /// The median prayer was marked after its window ended.
+        var usuallyAfter: Bool { (usualElapsed ?? 0) > (usualWindow ?? .infinity) }
         /// The colour the live ring would show at the usual moment.
         var usualColor: Color { usualScore.map { PrayerScoring.color(for: $0) } ?? .secondary }
         /// Its grade word ("Perfect", "On time", "Late", "Qaza").
@@ -552,25 +552,26 @@ struct InsightsStats {
             // A Jumu'ah follows the masjid's iqamah, not the clock (and always scores 100), so it's
             // left out of the ring's timing; the detail line counts it instead.
             stat.jumuahs = prayed.filter(\.isJumuah).count
-            let timed = prayed.filter { !$0.isJumuah }.compactMap { p -> (fraction: Double, window: TimeInterval)? in
+            let timed = prayed.filter { !$0.isJumuah }.compactMap { p -> (fraction: Double, elapsed: TimeInterval, window: TimeInterval, score: Double)? in
                 guard let at = p.timeAtComplete else { return nil }
                 let window = p.endTime.timeIntervalSince(p.startTime)
                 guard window > 0 else { return nil }
-                // Capped per prayer: a Qaza counts as the window's end, like the full ring.
-                return (min(max(at.timeIntervalSince(p.startTime), 0) / window, 1), window)
+                let elapsed = max(at.timeIntervalSince(p.startTime), 0)
+                // Capped per prayer for the fill: a Qaza counts as the window's end, like the full ring.
+                return (min(elapsed / window, 1), elapsed, window,
+                        PrayerScoring.score(start: p.startTime, end: p.endTime, markedAt: at))
             }
             if !timed.isEmpty {
-                // One value drives the fill, the "Nm in", the colour and the grade word: the MEDIAN
-                // moment (owner, feedback 8CCECB8E — a few late days dragged a mean; the average score
-                // lives only on the big ring now).
-                let n = Double(timed.count)
-                let sorted = timed.map(\.fraction).sorted()
-                let mid = sorted.count / 2
-                let fraction = sorted.count % 2 == 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-                let window = timed.map(\.window).reduce(0, +) / n
-                stat.usualFraction = fraction
-                stat.usualWindow = window
-                stat.usualElapsed = fraction * window
+                // The MEDIAN prayer itself (by how far into its window; the lower middle for an even
+                // count) drives the fill, the "N min in", the colour and the grade word — every number is
+                // a real prayer's (owner, feedback 8CCECB8E: a few late days dragged a mean; the average
+                // score lives only on the big ring). A Qaza median reads Qaza, not Late at the window's end.
+                let sorted = timed.sorted { $0.fraction < $1.fraction }
+                let median = sorted[(sorted.count - 1) / 2]
+                stat.usualFraction = median.fraction
+                stat.usualWindow = median.window
+                stat.usualElapsed = median.elapsed
+                stat.usualScoreValue = median.score
             }
             return stat
         }
@@ -625,6 +626,11 @@ private struct PrayerTrendsGrid: View {
     /// Every prayed square in its score colour at once (owner, 2026-09-28; they were hidden until
     /// tapped — "I don't want all the colors seen right away" — so it's a switch, off by default).
     @State private var showScores = ProcessInfo.processInfo.arguments.contains("-insightsShowScores")
+    /// Tap "with all five" / "days in time": those days' columns are outlined and their dates tinted
+    /// (owner, 2026-09-28). DEBUG `-insightsDayMark allFive|inTime`.
+    private enum DayMark: String { case allFive, inTime }
+    @State private var dayMark: DayMark? = UserDefaults.standard.string(forKey: "insightsDayMark").flatMap(DayMark.init)
+    private func markColor(_ mark: DayMark) -> Color { mark == .allFive ? Color.sage : Color.green }
 
     private static let labelWidth: CGFloat = 50
     private static let spacing: CGFloat = 5
@@ -676,40 +682,31 @@ private struct PrayerTrendsGrid: View {
         let outcomes = days.flatMap { d in InsightsStats.names.compactMap { rows[d]?[$0] } }
             .filter { $0.isCompleted || $0.endTime < Date() }
         let prayedCount = outcomes.filter(\.isCompleted).count
-        let fullDays = days.filter { d in InsightsStats.names.allSatisfy { rows[d]?[$0]?.isCompleted == true } }.count
+        let fullIdx = Set(days.indices.filter { i in InsightsStats.names.allSatisfy { rows[days[i]]?[$0]?.isCompleted == true } })
         // Of the days shown, those with all five inside their windows (no Qaza: ≥ 60, like in-time days).
-        let inTimeDays = days.filter { d in
+        let inTimeIdx = Set(days.indices.filter { i in
             InsightsStats.names.allSatisfy { name in
-                guard let p = rows[d]?[name], p.isCompleted, let s = p.numberScore else { return false }
+                guard let p = rows[days[i]]?[name], p.isCompleted, let s = p.numberScore else { return false }
                 return s >= PrayerScoring.inWindowFloor - 0.0001
             }
-        }.count
+        })
+        let fullDays = fullIdx.count
+        let inTimeDays = inTimeIdx.count
+        let marked: Set<Int> = dayMark == .allFive ? fullIdx : dayMark == .inTime ? inTimeIdx : []
+        let gridHeight = cellSize * CGFloat(InsightsStats.names.count) + Self.spacing * CGFloat(InsightsStats.names.count - 1)
 
         return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 18) {
-                VStack(spacing: 0) {
-                    Text("\(revealed ? prayedCount : 0)")
-                        .font(.system(size: 40, weight: .light, design: .rounded))
-                        .contentTransition(.numericText(value: Double(revealed ? prayedCount : 0)))
-                    Text("of \(outcomes.count) prayed").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
-                }
-                VStack(spacing: 0) {
-                    Text("\(revealed ? fullDays : 0)")
-                        .font(.system(size: 40, weight: .light, design: .rounded))
-                        .contentTransition(.numericText(value: Double(revealed ? fullDays : 0)))
-                    Text("days with all five").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
-                }
-                VStack(spacing: 0) {
-                    Text("\(revealed ? inTimeDays : 0)")
-                        .font(.system(size: 40, weight: .light, design: .rounded))
-                        .contentTransition(.numericText(value: Double(revealed ? inTimeDays : 0)))
-                    Text("days in time").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
-                }
+            // The counts are the grid's days: said once, above both (the "of 31" read like a month — owner).
+            Text("last 14 days").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                stat(revealed ? prayedCount : 0, "of \(outcomes.count) prayed", mark: nil)
+                stat(revealed ? fullDays : 0, "with all five", mark: .allFive)
+                stat(revealed ? inTimeDays : 0, "days in time", mark: .inTime)
             }
             .frame(maxWidth: .infinity)
             .padding(.bottom, 8)
             HStack {
-                Text("last 14 days").font(.caption).fontWeight(.light).foregroundStyle(.secondary)
                 Spacer()
                 Button {
                     triggerSomeVibration(type: .light)
@@ -741,6 +738,17 @@ private struct PrayerTrendsGrid: View {
                     }
                 }
             }
+            // The marked days' columns, outlined over the grid (no layout change).
+            .overlay(alignment: .topLeading) {
+                ForEach(Array(marked), id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(markColor(dayMark ?? .allFive), lineWidth: 1.5)
+                        .frame(width: cellSize + 5, height: gridHeight + 5)
+                        .offset(x: Self.labelWidth + Self.spacing + CGFloat(i) * (cellSize + Self.spacing) - 2.5, y: -2.5)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
             .contentShape(Rectangle())
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { gridWidth = $0 }
             .gesture(scrub)
@@ -749,9 +757,11 @@ private struct PrayerTrendsGrid: View {
             HStack(spacing: Self.spacing) {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
                 ForEach(days.indices, id: \.self) { i in
+                    let isMarked = marked.contains(i)
                     Text(days[i].formatted(.dateTime.day()))
-                        .font(.system(size: 9, weight: i == days.count - 1 ? .semibold : .light, design: .rounded))
-                        .foregroundStyle(i == days.count - 1 ? .primary : .tertiary)
+                        .font(.system(size: 9, weight: i == days.count - 1 || isMarked ? .semibold : .light, design: .rounded))
+                        .foregroundStyle(isMarked ? AnyShapeStyle(markColor(dayMark ?? .allFive))
+                                         : i == days.count - 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
                         .frame(width: cellSize)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -776,6 +786,31 @@ private struct PrayerTrendsGrid: View {
             .transition(.blurReplace)
             .id(selected)
             .padding(.top, 4)
+        }
+    }
+
+    /// A number over its caption, in an equal column; the two day counts can be tapped to mark
+    /// their days in the grid (tap again, or the other, to switch / clear).
+    @ViewBuilder private func stat(_ value: Int, _ caption: String, mark: DayMark?) -> some View {
+        let on = mark != nil && dayMark == mark
+        VStack(spacing: 0) {
+            Text("\(value)")
+                .font(.system(size: 40, weight: .light, design: .rounded))
+                .contentTransition(.numericText(value: Double(value)))
+            Text(caption)
+                .font(.caption).fontWeight(on ? .medium : .light)
+                .foregroundStyle(on ? AnyShapeStyle(markColor(mark!)) : AnyShapeStyle(.secondary))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(Capsule().fill(on ? markColor(mark!).opacity(0.14) : .clear))
+        }
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard let mark else { return }
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeInOut(duration: 0.25)) { dayMark = dayMark == mark ? nil : mark }
         }
     }
 
