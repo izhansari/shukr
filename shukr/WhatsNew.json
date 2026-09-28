@@ -35,7 +35,7 @@
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
     {"id": "zikr-wording", "area": "Zikr", "title": "The app says \"zikr\" and \"Azkar\" (never \"mantra\")", "link": "azkar"},
     {"id": "zikr-media", "area": "Zikr", "title": "A zikr can hold a voice memo and a photo beside its notes", "link": "azkar"},
-    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; the sort button top right (Name A to Z by default; Times recited, Pace or Last used, ↑ / ↓; a soft green tint while sorted); delete one zikr at a time from its page", "link": "azkar"},
+    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; the sort button top right, the same size as History's Edit (Name A to Z by default; Times recited, Pace or Last used, ↑ / ↓; a soft green tint while sorted); delete one zikr at a time from its page", "link": "azkar"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page", "link": "zikr",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
@@ -780,6 +780,12 @@
       "title": "Insights reworked: scoring comes first; each prayer's small ring is the Salah page's ring at the moment you usually mark it; the consistency grid gets dates, totals and a show-scores switch",
       "tryIt": ["☰ → Insights → the small rings: Fajr '12m in' = you usually pray it 12 minutes into its window, coloured by the score that gets; tap one for more", "Swipe to 'how consistent am I?' → show scores → every square takes its score colour; tap a square for its day"],
       "checked": "sim", "shots": ["wn-insights-scoring.jpg", "wn-insights-consistency.jpg"]
+    },
+    {
+      "id": "built-in-azkar-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "title": "Azkar: History | Azkar stays exactly centred; the sort button is the same size as Edit, its green filling the button",
+      "tryIt": ["☰ → Azkar → sort by Times recited → the switcher doesn't move; swipe to History → Edit sits in the same spot"],
+      "checked": "sim", "shots": ["wn-azkar-sort-centred.jpg"], "addresses": ["1F97A704-16B5-4F68-BF4E-23FFB033F9F8"]
     }
   ]
 }

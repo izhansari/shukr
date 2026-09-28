@@ -275,6 +275,10 @@ code; in UI strings write "zikr". New UI text must follow this.
   toolbar Menu only takes a button style with `.menuStyle(.button)`. To screenshot dark mode, launch with
   `-modeToggleNew 1` (the app's own setting overrides the system's; editing its prefs plist hit the prefs cache). iOS 26's bottom bar is just search + ＋. Simulated taps
   don't reach the Menu or the segmented switch — set `azkar.sortField` in the app's own prefs plist to screenshot. Sim ✓.
+  **Toolbar (2026-09-28, feedback 1F97A704):** the top-right item is always there and `ZikrLibraryView.trailingSlotWidth`
+  (50 pt) wide — Edit / Done on History (greyed with no sessions, never removed), the sort button on Azkar, whose green
+  capsule fills the whole slot (50 × 36; the item clips at its frame, so it can't reach the glass edge). The principal
+  switcher is centred in what the bar leaves, so any width change moved it. Sim ✓ light / dark, sorted / default / History.
   **Current (2026-09-27, feedback F5FDC4C1):** no "Default" — the default is Name, A to Z, for both sections (built-ins
   alphabetical too); `AzkarSort.migrateStoredDefault()` turns a stored "standard" into Name ↑. Direction rows are just the
   result with the arrow icon: A to Z / Z to A · Most / Fewest first · Fastest / Slowest first · Recent / Oldest first. The

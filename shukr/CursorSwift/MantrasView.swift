@@ -705,6 +705,8 @@ struct ZikrLibraryView: View {
     /// filter state and redrew both pages for nothing).
     private var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
     private var showsEdit: Bool { tab == .history && !anySession.isEmpty }
+    /// The top-right slot's fixed width: "Done" / "Edit", or the sort pill (field + arrow).
+    static let trailingSlotWidth: CGFloat = 50
 
     private static var bottomBarPlus: Bool {
         if #available(iOS 26.0, *) { return true } else { return false }
@@ -779,8 +781,11 @@ struct ZikrLibraryView: View {
             // feedback D505E0DE: no bulk edit for azkar, and the sort button gets room for its
             // field + direction icons). One toolbar item throughout: two items swapped on every page
             // turn and redrew themselves (owner).
-            if tab == .mantras || showsEdit {
-                ToolbarItem(id: "libraryTrailing", placement: .topBarTrailing) {
+            // Always there and always `trailingSlotWidth` wide (feedback 1F97A704): the switcher is
+            // centred in the space the bar leaves it, so a wider sort pill, or Edit going away with
+            // no sessions, pushed History | Azkar sideways. Edit greys out instead of vanishing.
+            ToolbarItem(id: "libraryTrailing", placement: .topBarTrailing) {
+                Group {
                     if tab == .mantras {
                         AzkarSortButton()
                     } else {
@@ -788,8 +793,10 @@ struct ZikrLibraryView: View {
                             withAnimation { editingHistory.toggle() }
                         }
                         .fontWeight(editing ? .semibold : .regular)
+                        .disabled(!showsEdit)
                     }
                 }
+                .frame(width: Self.trailingSlotWidth)
             }
             // iOS 18: the ＋ stays top right (iOS 26 puts it by the search field).
             if tab == .mantras && !Self.bottomBarPlus {
@@ -934,9 +941,11 @@ extension AzkarSortButton {
             .fontWeight(.semibold)
             .foregroundStyle(Color.green)
             // The app's tinted look (like the active chips / Save), not a solid fill — owner: the
-            // filled prominent button was too stark.
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            // filled prominent button was too stark. It fills the slot (ZikrLibraryView's
+            // `trailingSlotWidth`), never wider than Edit.
+            .frame(width: ZikrLibraryView.trailingSlotWidth, height: 36)
+            // The whole slot (the item clips at its frame, so it can't bleed out to the glass
+            // edge): a thin rim instead of the old wide dark ring round a 30 pt capsule.
             .background(Capsule().fill(Color.green.opacity(0.16)))
         }
     }
