@@ -591,15 +591,17 @@ struct PrayerTimesView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
                 // A 33-count Alhamdulillah session, paused (tasbeehView counts and pauses it).
+                // `-demoPauseZikr <name>` counts another zikr (e.g. one with a slower usual pace).
                 try? await Task.sleep(for: .seconds(1))
-                if let mantra = MantraModel.find(named: "Alhamdulillah", in: context) {
-                    if mantra.fullText.isEmpty {
+                let zikrName = UserDefaults.standard.string(forKey: "demoPauseZikr") ?? "Alhamdulillah"
+                if let mantra = MantraModel.find(named: zikrName, in: context) {
+                    if mantra.fullText.isEmpty && zikrName == "Alhamdulillah" {
                         mantra.fullText = "الْحَمْدُ لِلَّهِ\nAl-ḥamdu lillāh — all praise is for Allah"
                         mantra.notes = "Read after every salah, 33 times."
                     }
                     sharedState.mantraForSession = mantra
                 }
-                sharedState.titleForSession = "Alhamdulillah"
+                sharedState.titleForSession = zikrName
                 sharedState.selectedMode = 2
                 sharedState.targetCount = "33"
                 showTasbeehPage = true

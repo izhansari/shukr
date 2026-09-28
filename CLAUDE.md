@@ -2113,6 +2113,12 @@ DEBUG `-demoBackUpStore` makes a `debug-<time>` backup at launch.
 full mantra in the inset box, notes, count in sets) on the pause colour; Save gray until a change,
 no swipe-dismiss with edits; a rename updates the session title on dismiss. The Mantras page still
 uses the Form `MantraEditorView`.
+**Bento pace vs your usual (2026-09-28, quick fix):** every tile that flips has the ⇆ mark (finish, rate); under the rate,
+this session against your usual pace for the zikr — `ZikrBento(usualSecondsPerCount:)` = `MantraModel.secondsPerCount`
+(the results screen uses `secondsPerCount(excluding: savedSession)`, the pause screen's session isn't saved yet): "0.7s
+faster" / "0.4s slower" per count, "1m 10s slower" per tasbeeh (100 counts, like the rate) when flipped, "about your usual"
+within 5 %; faster in sage, slower in secondary, never red; no line without a usual pace (first session, freestyle, a
+zikr's lifetime page). DEBUG `-demoPauseZikr <name>` with `-demoPauseScreen`. Sim ✓ pause (both sides) and results.
 **Results screen** (`ResultsView`, same style): a sage check that pops in, "saved to your
 history", a mantra card (tap to move the saved session to another mantra; locked for a task's
 session), `ZikrBento`, Done, and a quiet "View zikr history" (HistoryPageView in a sheet).

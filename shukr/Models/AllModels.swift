@@ -581,8 +581,12 @@ extension MantraModel {
     /// (active seconds / total counts), so a long slow session weighs more than a quick one.
     /// Uses each session's `activeSeconds`, so time left running after the last count doesn't
     /// inflate it. Nil until something has been counted.
-    var secondsPerCount: TimeInterval? {
-        let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 }
+    var secondsPerCount: TimeInterval? { secondsPerCount(excluding: nil) }
+
+    /// The same, leaving one session out (the results screen compares a just-saved session with
+    /// your usual pace *before* it).
+    func secondsPerCount(excluding session: SessionDataModel?) -> TimeInterval? {
+        let counted = sessions.filter { $0.totalCount > 0 && $0.activeSeconds > 0 && $0 !== session }
         let counts = counted.reduce(0) { $0 + $1.totalCount }
         guard counts > 0 else { return nil }
         return counted.reduce(0.0) { $0 + $1.activeSeconds } / Double(counts)

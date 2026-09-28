@@ -810,7 +810,8 @@ struct tasbeehView: View {
                         mantraCard
                         ZikrBento(count: savedSession.totalCount, seconds: savedSession.secondsPassed,
                                   secondsPerCount: savedSession.avgTimePerClick,
-                                  perTasbeeh: savedSession.tasbeehRate)
+                                  perTasbeeh: savedSession.tasbeehRate,
+                                  usualSecondsPerCount: savedSession.mantra?.secondsPerCount(excluding: savedSession))
                     }
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 20)
@@ -1028,7 +1029,8 @@ struct tasbeehView: View {
                         }
                         ZikrBento(count: tasbeeh, seconds: secsToReport, secondsPerCount: newAvrgTPC,
                                   perTasbeeh: tasbeehRate,
-                                  finish: showsFinishEstimate ? (timeLeft, finishTime) : nil)
+                                  finish: showsFinishEstimate ? (timeLeft, finishTime) : nil,
+                                  usualSecondsPerCount: mantra?.secondsPerCount)
                     }
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 20)
@@ -1713,6 +1715,10 @@ struct ZikrBento: View {
     var countCaption = "count"
     var timeCaption = "time"
     var grouped = false
+    /// Your usual pace for this zikr (`MantraModel.secondsPerCount`, this session left out): the
+    /// rate tile says how this session compares — faster in sage, slower in secondary, never red.
+    /// Nil = no line (first session, freestyle with no zikr, a mantra's lifetime page).
+    var usualSecondsPerCount: Double? = nil
 
     @State private var showingPerCount = true
     @State private var showingFinishTime = false
@@ -1741,7 +1747,17 @@ struct ZikrBento: View {
                         flip(showingPerCount,
                              String(format: "%.2fs", secondsPerCount), "per count",
                              perTasbeeh, "per tasbeeh", size: 30)
+                        if let line = paceComparison(perCount: true), let line2 = paceComparison(perCount: false) {
+                            ZStack {
+                                comparisonText(line).opacity(showingPerCount ? 1 : 0)
+                                comparisonText(line2).opacity(showingPerCount ? 0 : 1)
+                            }
+                            .padding(.top, 6)
+                        }
                     }
+                    // It flips: the same ⇆ as the finish tile (owner, 2026-09-28).
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .topTrailing) { flipMark.padding(12) }
                 }
                 .frame(height: tileHeight * 2 + gap)
                 .onTapGesture {
@@ -1766,9 +1782,7 @@ struct ZikrBento: View {
                                 .offset(y: showingFinishTime ? 0 : 16)
                         }
                         Spacer(minLength: 0)
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.tertiary)
+                        flipMark
                     }
                     .padding(.horizontal, 16)
                     .frame(height: tileHeight)
@@ -1781,6 +1795,40 @@ struct ZikrBento: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)   // tiles keep their height outside a ScrollView
+    }
+
+    /// The mark on every tile that flips on a tap (finish, rate).
+    private var flipMark: some View {
+        Image(systemName: "arrow.left.arrow.right")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+    }
+
+    /// This session against your usual pace, per count or per tasbeeh (100 counts, like the rate):
+    /// "0.7s faster", "1m 10s slower", "about your usual" within 5 %. Nil without a usual pace.
+    private func paceComparison(perCount: Bool) -> (text: String, faster: Bool?)? {
+        guard let usual = usualSecondsPerCount, usual > 0, secondsPerCount > 0 else { return nil }
+        let diff = secondsPerCount - usual
+        if abs(diff) / usual < 0.05 { return ("about your usual", nil) }
+        let amount = abs(diff) * (perCount ? 1 : 100)
+        let text: String
+        if perCount {
+            text = amount < 0.1 ? String(format: "%.2fs", amount) : String(format: "%.1fs", amount)
+        } else {
+            let whole = Int(amount.rounded())
+            text = whole >= 60 ? "\(whole / 60)m \(whole % 60)s" : "\(whole)s"
+        }
+        return ("\(text) \(diff < 0 ? "faster" : "slower")", diff < 0)
+    }
+
+    private func comparisonText(_ line: (text: String, faster: Bool?)) -> some View {
+        Text(line.text)
+            .font(.system(size: 13, weight: line.faster == true ? .medium : .regular, design: .rounded))
+            .foregroundStyle(line.faster == true ? Color.sage : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 8)
     }
 
     /// "1m 37s left until you finish" as one line: the number first in the tiles' type, the
