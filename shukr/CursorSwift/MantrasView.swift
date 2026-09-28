@@ -878,8 +878,9 @@ enum AzkarSort: String, CaseIterable, Identifiable {
 }
 
 /// The sort menu: pick a field, then ↑ / ↓. On the default (Name, A to Z) the icon is the plain
-/// sort glyph; otherwise the field's symbol with an arrow for the direction, on a green tint so
-/// an active sort shows (owner, 2026-09-27, feedback D505E0DE).
+/// sort glyph; otherwise the field's symbol with an arrow for the direction, green on a soft green
+/// tint so an active sort shows (owner, 2026-09-27, feedback D505E0DE; a solid green fill was too
+/// stark).
 struct AzkarSortButton: View {
     @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.name.rawValue
     @AppStorage(AzkarSort.ascendingKey) private var ascending = true
@@ -909,7 +910,6 @@ struct AzkarSortButton: View {
             label
         }
         .tint(isDefault ? Color.primary : Color.green)
-        .modifier(ActiveSortTint(active: !isDefault))
         .onAppear { AzkarSort.migrateStoredDefault() }
         .accessibilityLabel("Sorted by \(sort.title), \(sort.meaning(ascending: ascending))")
         .sensoryFeedback(.selection, trigger: sortRaw)
@@ -932,22 +932,12 @@ extension AzkarSortButton {
                     .contentTransition(.symbolEffect(.replace))
             }
             .fontWeight(.semibold)
-            .foregroundStyle(.white)        // on the green fill (the tint would draw them green on green)
-        }
-    }
-}
-
-/// An active sort fills the button with the green tint (prominent glass on iOS 26, bordered
-/// prominent before). A toolbar Menu ignores a button style unless it's `.menuStyle(.button)`.
-private struct ActiveSortTint: ViewModifier {
-    let active: Bool
-    func body(content: Content) -> some View {
-        if !active {
-            content
-        } else if #available(iOS 26.0, *) {
-            content.menuStyle(.button).buttonStyle(.glassProminent)
-        } else {
-            content.menuStyle(.button).buttonStyle(.borderedProminent)
+            .foregroundStyle(Color.green)
+            // The app's tinted look (like the active chips / Save), not a solid fill — owner: the
+            // filled prominent button was too stark.
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(Color.green.opacity(0.16)))
         }
     }
 }

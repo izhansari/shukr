@@ -35,7 +35,7 @@
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
     {"id": "zikr-wording", "area": "Zikr", "title": "The app says \"zikr\" and \"Azkar\" (never \"mantra\")", "link": "azkar"},
     {"id": "zikr-media", "area": "Zikr", "title": "A zikr can hold a voice memo and a photo beside its notes", "link": "azkar"},
-    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; the sort button top right (Name A to Z by default; Times recited, Pace or Last used, ↑ / ↓; green while sorted); delete one zikr at a time from its page", "link": "azkar"},
+    {"id": "built-in-azkar", "area": "Zikr", "title": "Azkar: yours first, built-ins below; the sort button top right (Name A to Z by default; Times recited, Pace or Last used, ↑ / ↓; a soft green tint while sorted); delete one zikr at a time from its page", "link": "azkar"},
     {"id": "new-task-flow", "area": "Zikr", "title": "New task: the goal is focused; pick a zikr from an Azkar-style list, make one, or start from a zikr's page", "link": "zikr",
      "tryIt": ["Zikr page → New task → the number pad is already up", "Tap Zikr → the Azkar-style list (search at the bottom); ＋ → the whole new-zikr card → Save → it's picked", "Books → Azkar → a zikr → ＋ beside \"N tasks\" → the task sheet with that zikr locked"]},
     {"id": "qibla-up", "area": "Map", "title": "The green qibla-up button turns the map back and brings you back to your dot", "link": "map"},
@@ -670,6 +670,12 @@
       "title": "Sort button moved top right (where Edit was): shows the field + ↑ / ↓ and fills green while a sort is on; no bulk Edit / Delete for azkar",
       "tryIt": ["Zikr tab → History & Azkar → Azkar: top right is ↑↓ (Name, A to Z)", "Tap it → Pace: the button turns green with the pace icon and ↑", "No Edit on Azkar any more; delete a zikr from its own page (History keeps Edit)"],
       "checked": "sim", "shots": ["wn-azkar-sort-topright.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
+    },
+    {
+      "id": "built-in-azkar-11", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "title": "Sort button's active look is softer: green icon and arrow on a light green tint (was a solid green fill)",
+      "tryIt": ["Zikr tab → History & Azkar → Azkar → sort by Pace: the top-right button shows the pace icon + ↑ in green on a pale green capsule", "Try it in dark mode too"],
+      "checked": "sim", "shots": ["wn-azkar-sort-tint.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
     }
   ]
 }

@@ -264,8 +264,10 @@ code; in UI strings write "zikr". New UI text must follow this.
   **Current (2026-09-27, feedback D505E0DE):** the sort button sits top right on the Azkar tab, in Edit's old spot (one
   toolbar item, `libraryTrailing`: History's Edit or Azkar's sort). **Azkar has no bulk Edit / Delete** (owner: too quick a
   destructive choice) — a zikr is deleted from its own page. Icon: plain arrow.up.arrow.down on Name A→Z; otherwise the
-  field's symbol + a small ↑ / ↓ in white on a green prominent fill (`ActiveSortTint`: a toolbar Menu only takes a button
-  style with `.menuStyle(.button)`; `.glassProminent` on iOS 26). iOS 26's bottom bar is just search + ＋. Simulated taps
+  field's symbol + a small ↑ / ↓ in green on a soft green capsule (`Color.green.opacity(0.16)`, the app's tinted look;
+  sim ✓ light + dark). A solid `.glassProminent` fill with white icons was too stark (owner). Trap if a fill comes back: a
+  toolbar Menu only takes a button style with `.menuStyle(.button)`. To screenshot dark mode, launch with
+  `-modeToggleNew 1` (the app's own setting overrides the system's; editing its prefs plist hit the prefs cache). iOS 26's bottom bar is just search + ＋. Simulated taps
   don't reach the Menu or the segmented switch — set `azkar.sortField` in the app's own prefs plist to screenshot. Sim ✓.
   **Current (2026-09-27, feedback F5FDC4C1):** no "Default" — the default is Name, A to Z, for both sections (built-ins
   alphabetical too); `AzkarSort.migrateStoredDefault()` turns a stored "standard" into Name ↑. Direction rows are just the
