@@ -1432,7 +1432,11 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
 - **Streaks from history (2026-09-27, owner-approved fix):** `checkToResetStreak()` (app activation + the start of every
   `calculatePrayerStreak`) now calls `refreshStreaksFromHistory()`: the days BEFORE today are recounted from the prayer rows
   (consecutive days ending yesterday with all five qualifying — day streak by `gradingCriteria`, in-time days by score ≥ 60;
-  last 1000 days fetched); today stays with the incremental code, which adds it once and posts its celebration. Idempotent
+  walked back from yesterday a week at a time, stopping at the first day that breaks both runs — separate cut-offs for
+  the day streak and in-time days, ≤ ~1000 days); today stays with the incremental code, which adds it once and posts its
+  celebration. Only changed values are written (each write re-renders what's bound to those keys); a new max's date is
+  the day that ended the run. The first recount on an install logs old → new (streak, in-time, both maxes) and keeps the
+  line in the app group key `streakRecount.firstRun`. Idempotent
   and silent (no celebration for a past day). Fixes: a prayer of an earlier prayer day marked late (watch mark delivered after
   Fajr, widget / "I already prayed" around Fajr, a time edit on an old prayer) never counted, and the next day's gap check
   reset the streak to 0. **Entry point for marks made elsewhere: `PrayerViewModel.recomputeStreaks()`** (saves, then
