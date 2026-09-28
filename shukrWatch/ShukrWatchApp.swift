@@ -178,11 +178,16 @@ struct WatchHomeView: View {
                         Spacer(minLength: 0)
                         ZStack {
                             if let r = WatchPrayers.relevant(at: context.date) {
+                                // Hidden (blurred away) while the flourish plays, like the phone's
+                                // circle content; the next prayer crossfades in after it.
                                 WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
+                                    .opacity(moments.flourish == nil ? 1 : 0)
+                                    .blur(radius: moments.flourish == nil ? 0 : 6)
                             }
-                            // Just marked: the phone's completion moment over the ring.
-                            if let m = moments.moment {
-                                WatchCompletionMoment(moment: m).transition(.opacity)
+                            // Just marked: the phone's completion flourish over the ring.
+                            if let m = moments.flourish {
+                                WatchCompletionMoment(moment: m, diameter: min(138, WatchScreen.width * 0.72))
+                                    .transition(.opacity)
                             }
                         }
                         // 138 pt on 45 / 46 mm, scaled down on smaller faces so it clears the clock.
@@ -435,11 +440,14 @@ struct WatchPrayerRing: View {
             } else {
                 Circle().stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
             }
+            // Holding to mark: the score arc itself swells and glows in its own colour (no green —
+            // nothing may suggest a grade the prayer doesn't have; owner).
+            let scoreColor = WatchScoring.color(start: prayer.start, end: prayer.end, at: now)
             Circle()
                 .trim(from: 0, to: elapsed)
-                .stroke(WatchScoring.color(start: prayer.start, end: prayer.end, at: now),
-                        style: StrokeStyle(lineWidth: 2.5 * k, lineCap: .butt))
+                .stroke(scoreColor, style: StrokeStyle(lineWidth: (2.5 + 3.5 * holdFill) * k, lineCap: .butt))
                 .rotationEffect(.degrees(-90))
+                .shadow(color: scoreColor.opacity(0.7 * holdFill), radius: 8 * holdFill)
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
                     Image(systemName: WatchPrayers.symbol(prayer.name))
@@ -471,16 +479,17 @@ struct WatchPrayerRing: View {
                 .contentTransition(.opacity)
             }
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
-            if holdFill > 0 {
-                Circle()
-                    .trim(from: 0, to: holdFill)
-                    .stroke(Color.green.opacity(0.8), style: StrokeStyle(lineWidth: 5 * k, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
         }
         .contentShape(Circle())
         // A new prayer on the ring starts on "ends …" again.
         .onChange(of: prayer.name) { _, _ in showLeft = false }
+        #if DEBUG
+        // `-demoWatchHold`: the hold's look, without marking (simulator screenshots).
+        .onAppear {
+            guard showsQibla, current, ProcessInfo.processInfo.arguments.contains("-demoWatchHold") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { withAnimation(.linear(duration: 0.6)) { holdFill = 1 } }
+        }
+        #endif
         .onTapGesture {
             if let onTap { onTap(); return }
             guard current, !compact else { return }

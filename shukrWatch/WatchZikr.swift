@@ -712,9 +712,10 @@ struct WatchCounterView: View {
                 if let finished {
                     WatchResultsView(record: finished, task: task) { close() }
                 } else {
-                    // The phone's softer, deeper page behind the counter (subtle on an OLED watch).
-                    RadialGradient(colors: [Color(white: 0.13), .black], center: .center,
-                                   startRadius: 10, endRadius: WatchScreen.width * 0.75)
+                    // The phone's tasbeeh page colour (bgColor, dark), edge to edge — the neumorphic
+                    // band and inset beads only read on it (owner: no fade at the edges). Black with
+                    // the wrist down, like the rest of watchOS's always-on screens.
+                    (wristDown ? Color.black : WatchNeu.bg)
                         .ignoresSafeArea()
                         .opacity(paused ? 0 : 1)
                     counter
@@ -730,6 +731,10 @@ struct WatchCounterView: View {
             // early and Done are on the screen). Always filled, so watchOS never puts its own ✕ in
             // the slot (one tap would drop the session), and fading instead of hiding it keeps the
             // pause change smooth.
+            // watchOS 26 draws a glass circle behind each item that doesn't fade with it, so while
+            // paused / on the results the bar goes (it left two empty bubbles — owner). The system ✕
+            // lives in the same bar, so it can't come back while the bar is hidden.
+            .toolbarVisibility(finished == nil && !paused ? .automatic : .hidden, for: .navigationBar)
             .toolbar {
                 let chrome = finished == nil && !paused
                 do {
@@ -785,6 +790,10 @@ struct WatchCounterView: View {
             // `-demoWatchTaps N [-demoWatchPause] [-demoWatchFinish]` (simulator checks).
             let taps = UserDefaults.standard.integer(forKey: "demoWatchTaps")
             let args = ProcessInfo.processInfo.arguments
+            // `-demoWatchPreset N`: start the count at N (e.g. 198, then 2 taps to see 199 → 200).
+            if UserDefaults.standard.object(forKey: "demoWatchPreset") != nil {
+                count = UserDefaults.standard.integer(forKey: "demoWatchPreset")
+            }
             for i in 0..<taps {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1 + Double(i) * 0.15) { increment() }
             }
@@ -823,15 +832,13 @@ struct WatchCounterView: View {
 
     private var counter: some View {
         ZStack {
-            // The phone's counter: beads round the ring (one per count, 100 a lap), the hundreds
-            // done as dots inside, and the count within the current hundred in the middle.
-            WatchTasbeehRing(count: count, fraction: fraction)
-            // Just the number, like the phone: nothing says what's being recited (owner: privacy).
-            Text("\(count % 100)")
-                .font(.system(size: WatchScreen.small ? 38 : 44, weight: .thin, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText(value: Double(count)))
-                .animation(.snappy(duration: 0.15), value: count)
+            // The phone's counter, ported (WatchTasbeehPort.swift): TasbeehCountView — the count
+            // within the hundred, beads round the outside, the hundreds as dots below the number —
+            // under NeuCircularProgressView's "fine" ring. Just the number: nothing says what's
+            // being recited (owner: privacy).
+            WatchTasbeehCountView(tasbeeh: count)
+            WatchNeuProgressRing(progress: fraction, animating: !paused)
+                .allowsHitTesting(false)
             // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap —
             // in crown mode too. Its own real, hit-testable button (a disabled one may not get
             // Double Tap), too small to be hit by a finger on the screen.
@@ -870,7 +877,11 @@ struct WatchCounterView: View {
                     .offset(y: 34)
             }
             if postSalah {
-                WatchPostSalahStrip(count: count).offset(y: WatchScreen.small ? 33 : 40)
+                // One up, one down (owner): the phrase above the centred count, "7 of 33" and the
+                // three bars below it, evenly inside the ring (scaled with it).
+                let k = WatchNeu.scale / 0.665
+                WatchPostSalahPhrase(count: count).offset(y: -34 * k)
+                WatchPostSalahStrip(count: count).offset(y: 31 * k)
             }
             if showHint {
                 VStack(spacing: 2) {
@@ -1145,21 +1156,6 @@ struct WatchCounterView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                 if token == finishArmToken { withAnimation(.easeInOut(duration: 0.3)) { finishArmed = false } }
             }
-        }
-    }
-}
-
-/// The counter's ring: the pale track and the green arc filling toward the goal.
-struct WatchCountRing: View {
-    let fraction: Double
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.14), lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: CGFloat(min(max(fraction, 0), 1)))
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                .rotationEffect(.degrees(-90))
         }
     }
 }
@@ -1509,18 +1505,29 @@ enum WatchPostSalah {
 }
 
 /// Above the count in Tasbih Fatimah: the phrase and "12 of 33", and three segments.
+/// The Tasbih Fatimah phrase in Arabic, above the count.
+struct WatchPostSalahPhrase: View {
+    let count: Int
+
+    var body: some View {
+        Text(WatchPostSalah.phases[WatchPostSalah.phase(at: count).index].arabic)
+            .font(.system(size: WatchScreen.small ? 13 : 14))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: WatchNeu.scale * 150)
+            .contentTransition(.opacity)
+            .animation(.easeInOut(duration: 0.3), value: WatchPostSalah.phase(at: count).index)
+    }
+}
+
+/// Under the count: "7 of 33" (within the current phrase) and the three phrase bars.
 struct WatchPostSalahStrip: View {
     let count: Int
 
     var body: some View {
         let p = WatchPostSalah.phase(at: count)
-        // Two lines (owner: one line ran off the edge): the Arabic phrase, then "7 of 33".
         VStack(spacing: 1) {
-            Text(WatchPostSalah.phases[p.index].arabic)
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
             Text("\(p.done) of \(p.of)")
                 .font(.system(size: 10, weight: .light, design: .rounded))
                 .monospacedDigit()
@@ -1543,66 +1550,3 @@ enum WatchScreen {
     static var small: Bool { width < 180 }
 }
 
-/// The phone's active tasbeeh ring (NeuCircularProgressView + TasbeehCountView), light enough for a
-/// watch: a raised grey band with soft light / dark shadows (the phone's NeuRing colours), the
-/// progress in green with a gentle glow (the "fine" look, static — no moving grain), and outside
-/// it the beads: one per count, 100 to a lap, starting at the top and going clockwise. Hundreds
-/// done sit as grey dots inside the ring over the number, thousands as green ones. Drawn in one
-/// Canvas (100 beads as one view). Dimmer with the wrist down.
-struct WatchTasbeehRing: View {
-    let count: Int
-    let fraction: Double
-    @Environment(\.isLuminanceReduced) private var dim
-
-    var body: some View {
-        let w = WatchScreen.width
-        let ring = w * 0.64
-        let band: CGFloat = WatchScreen.small ? 5 : 6
-        ZStack {
-            Circle()
-                .stroke(Color(white: 0.149), lineWidth: band)
-                .frame(width: ring, height: ring)
-                .shadow(color: .black.opacity(0.5), radius: 3, x: 1.5, y: 1.5)
-                .shadow(color: Color(white: 0.24).opacity(0.3), radius: 4, x: -1.5, y: -1.5)
-            Circle()
-                .trim(from: 0, to: min(max(fraction, 0), 1))
-                .stroke(LinearGradient(colors: [Color.green.opacity(0.75), Color(red: 0.4, green: 0.8, blue: 0.5)],
-                                       startPoint: .topLeading, endPoint: .bottomTrailing),
-                        style: StrokeStyle(lineWidth: band, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: ring, height: ring)
-                .shadow(color: .green.opacity(dim ? 0 : 0.45), radius: 4)
-                .animation(.easeOut(duration: 0.2), value: fraction)
-            Canvas { ctx, size in
-                let c = CGPoint(x: size.width / 2, y: size.height / 2)
-                // Beads: this hundred's counts, round the outside of the ring.
-                let beadR = w * 0.455, bead: CGFloat = WatchScreen.small ? 2.6 : 3.2
-                for i in 0..<(count % 100) {
-                    let a = -Double.pi / 2 + Double(i + 1) * 2 * .pi / 100
-                    let p = CGPoint(x: c.x + beadR * cos(a), y: c.y + beadR * sin(a))
-                    let rect = CGRect(x: p.x - bead / 2, y: p.y - bead / 2, width: bead, height: bead)
-                    ctx.fill(Path(ellipseIn: rect), with: .color(Color(white: 0.30)))
-                    // A faint highlight, for the phone's inset bead.
-                    ctx.fill(Path(ellipseIn: rect.insetBy(dx: bead * 0.3, dy: bead * 0.3).offsetBy(dx: -bead * 0.12, dy: -bead * 0.12)),
-                             with: .color(Color(white: 0.45)))
-                }
-                // Hundreds (1–9) and thousands, as dots inside the ring over the number.
-                let hundreds = (count / 100) % 10, thousands = min(count / 1000, 10)
-                let dot: CGFloat = WatchScreen.small ? 4 : 5, arcR = ring * 0.30
-                func arcDots(_ n: Int, radius: CGFloat, color: Color) {
-                    guard n > 0 else { return }
-                    for i in 0..<n {
-                        let a = -Double.pi / 2 + (Double(i) - Double(n - 1) / 2) * 0.32
-                        let p = CGPoint(x: c.x + radius * cos(a), y: c.y + radius * sin(a))
-                        ctx.fill(Path(ellipseIn: CGRect(x: p.x - dot / 2, y: p.y - dot / 2, width: dot, height: dot)), with: .color(color))
-                    }
-                }
-                arcDots(hundreds, radius: arcR, color: Color.gray.opacity(0.5))
-                arcDots(thousands, radius: arcR + dot * 1.8, color: Color.green.opacity(0.6))
-            }
-            .frame(width: w, height: w)
-            .opacity(dim ? 0.5 : 1)
-        }
-        .allowsHitTesting(false)
-    }
-}

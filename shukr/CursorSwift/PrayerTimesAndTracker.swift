@@ -363,6 +363,7 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
             if let day = note.object as? Date { viewModel.calculateDayScore(for: day) }   // a late mark's own day
+            viewModel.recomputeStreaks()   // a mark or unmark on any day (from the watch) redoes the counts
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
@@ -569,6 +570,13 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoPostSalah") {
                 try? await Task.sleep(for: .seconds(1))
                 sharedState.isDoingPostNamazZikr = true
+                showTasbeehPage = true
+                return
+            }
+            if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
+                // A freestyle session for `-demoTasbeehCount` (tasbeehView counts it).
+                try? await Task.sleep(for: .seconds(1))
+                sharedState.selectedMode = 0
                 showTasbeehPage = true
                 return
             }
