@@ -166,10 +166,9 @@ struct shukrApp: App {
                     PrayerTimesView()
                         .transition(.blurReplace())
                 } else if !setupShowing && environmentLocationManager.locationLost {
-                    // Location was on and has been turned off, no city: "shukr lost your location",
-                    // with a circle the opening lands on — not the whole setup again.
-                    LostLocationView()
-                        .transition(.opacity)
+                    // Location was on and has been turned off, no city: "shukr lost your location"
+                    // (drawn in the overlay below, so it outlives location coming back).
+                    Color(.systemBackground).ignoresSafeArea()
                 } else if !setupShowing {
                     // No location at all (refused with no city): just the setup's location step.
                     FirstRunSetupView(mode: .locationOnly)
@@ -179,6 +178,17 @@ struct shukrApp: App {
                 }
             }
             .environmentObject(prayerViewModel)
+            .overlay {
+                // "shukr lost your location", with a circle the opening lands on — not the whole setup
+                // again. An overlay over the root, so when location (or a city) comes back it stays up,
+                // the same view, to acknowledge it and hand off to the Salah page appearing under it.
+                if !setupShowing && (environmentLocationManager.comeback != nil
+                    || (environmentLocationManager.locationLost
+                        && !(environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation))) {
+                    LostLocationView()
+                        .transition(.opacity)
+                }
+            }
             .overlay {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {

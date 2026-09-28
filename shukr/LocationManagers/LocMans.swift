@@ -79,6 +79,9 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         authorizationStatus = manager.authorizationStatus
         isAuthorized = authorizationStatus == .authorizedAlways || authorizationStatus == .authorizedWhenInUse
         if authorizationStatus == .denied || authorizationStatus == .restricted { noteRevocationIfNeeded() }
+        // Allowed again while the app wasn't running: the Salah page shows straight away, so
+        // there's no lost page to acknowledge it on (a `comeback` later would pop one up over it).
+        if isAuthorized && locationLost { locationLost = false }
 //        startLocationServices()
     }
     
@@ -108,6 +111,13 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         didSet { if locationLost != oldValue { UserDefaults.standard.set(locationLost, forKey: "locationLost") } }
     }
 
+    /// How location came back while "shukr lost your location" was up (Settings, or a picked
+    /// city). Set in the same update that clears `locationLost`, so the root keeps that page up
+    /// to acknowledge it and hand off to the Salah circle (LostLocationView); it clears this.
+    enum Comeback: Equatable { case always, whileUsing, city(String) }
+    @Published private(set) var comeback: Comeback?
+    func clearComeback() { if comeback != nil { comeback = nil } }
+
     /// Location was on and has been turned off: drop the picked city (the best chance of getting
     /// location back is asking for it; a picked city is offered again), and remember it was lost.
     /// Someone who denied from the start and picked a city keeps it. Also run from `init`, so the
@@ -123,6 +133,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
 
     /// Use a picked city for prayer times and the qibla (see `hasManualLocation`).
     func setManualLocation(_ coordinate: CLLocationCoordinate2D, name: String) {
+        if locationLost { comeback = .city(name) }
         locationLost = false
         let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         group?.set(coordinate.latitude, forKey: "lastLatitude")
@@ -148,6 +159,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         authorizationStatus = manager.authorizationStatus
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
+            if locationLost { comeback = manager.authorizationStatus == .authorizedAlways ? .always : .whileUsing }
             isAuthorized = true
             let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
             if group?.bool(forKey: "locationWasAuthorized") != true { group?.set(true, forKey: "locationWasAuthorized") }

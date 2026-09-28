@@ -840,6 +840,12 @@
       "title": "Upcoming reminders: each prayer shows how many reminders it has that day (1 = the start, 2 = + halfway, 3 = + 30 min left), each day shows its total, and the other times sit quietly underneath",
       "tryIt": ["Settings → Notifications → Upcoming reminders → 'Today · 10', and a small 3 beside Asr"],
       "checked": "sim", "shots": ["wn-upcoming-reminders-counts.jpg"], "addresses": ["BF79A0FC-A598-4C64-8D65-DB65F1F8C379"]
+    },
+    {
+      "id": "first-run-setup-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "title": "Location back: the lost-location page says so (the symbol turns on, \"Location's back\", or \"Using London\" for a city), then its ring goes back to the middle and becomes the Salah page's circle",
+      "tryIt": ["iOS Settings → shukr → Location → Never → open shukr → the lost page → Turn location back on → Always → back to shukr", "Or on the lost page: Enter a city instead → pick one → \"Using <city>\" → into the app"],
+      "checked": "sim", "shots": ["wn-location-back-handoff.jpg"]
     }
   ]
 }

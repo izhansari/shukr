@@ -377,39 +377,61 @@ struct LostLocationView: View {
     /// The title + circle group's frame in the finished layout (the offset below doesn't move it).
     @State private var groupFrame: CGRect?
 
-    /// How far the group is pushed down so the circle sits at the screen's centre (0 once risen).
+    // Location coming back (Settings or a city, `EnvLocationManager.comeback`): acknowledge it, then
+    // hand off to the Salah page appearing underneath (owner, 2026-09-28).
+    /// The symbol turns on and the title says so.
+    @State private var acknowledged = false
+    /// The title, reasons and buttons have gone; the ring goes back to the screen's centre.
+    @State private var clearing = false
+    /// The Salah circle's centre (y) the ring settles on, like the welcome's landing.
+    @State private var landingY: CGFloat?
+    /// The page fades, leaving the real Salah page round the same ring.
+    @State private var handedOff = false
+    /// The Salah circle is the dashed "hasn't started" track: the ring turns into it as it lands.
+    @State private var landDashed = false
+
+    private var comeback: EnvLocationManager.Comeback? { location.comeback }
+
+    /// How far the group is pushed down: to the screen's centre during the opening and while
+    /// clearing, onto the Salah circle for the hand-off, 0 in its place.
     private var lift: CGFloat {
-        guard stage < 2, let g = groupFrame else { return 0 }
-        return UIScreen.main.bounds.midY - (g.maxY - 100)
+        guard let g = groupFrame else { return 0 }
+        let circleMid = g.maxY - 100
+        if let landingY { return landingY - circleMid }
+        if clearing || stage < 2 { return UIScreen.main.bounds.midY - circleMid }
+        return 0
     }
+
+    private var textShown: Bool { stage >= 3 && !clearing }
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 12)
             VStack(spacing: 0) {
-                VStack(spacing: 6) {
-                    Text("Uh oh,")
-                        .font(.system(.title3, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                    Text("shukr lost your location")
-                        .font(.system(.title, design: .rounded, weight: .light))
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 28)
-                .opacity(stage >= 1 ? 1 : 0)
-                .blur(radius: stage >= 1 ? 0 : 6)
+                title
+                    .padding(.horizontal, 28)
+                    .padding(.bottom, 28)
+                    .opacity(stage >= 1 && !clearing ? 1 : 0)
+                    .blur(radius: stage >= 1 && !clearing ? 0 : 6)
                 ZStack {
-                    // The Salah circle's track (mainCircle.swift): the welcome lands on this.
+                    // The Salah circle's track (mainCircle.swift): the welcome lands on this, and the
+                    // hand-off leaves it where the Salah page's own track is.
                     Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
+                        .opacity(landDashed ? 0 : 1)
+                    Circle()
+                        .stroke(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
+                        .opacity(landDashed ? 1 : 0)
                     VStack(spacing: 6) {
-                        Image(systemName: "location.slash")
+                        Image(systemName: acknowledged ? onSymbol : "location.slash")
                             .font(.system(size: 26, weight: .light))
-                            .foregroundStyle(.secondary)
-                        Text("location is off")
+                            .foregroundStyle(acknowledged ? Color.sage : Color.secondary)
+                            .contentTransition(.symbolEffect(.replace))
+                        Text(acknowledged ? onCaption : "location is off")
                             .font(.system(.subheadline, design: .rounded, weight: .thin))
                             .foregroundStyle(.secondary)
+                            .contentTransition(.opacity)
                     }
+                    .opacity(landingY == nil ? 1 : 0)
                 }
                 .frame(width: 200, height: 200)
             }
@@ -424,8 +446,8 @@ struct LostLocationView: View {
             }
             .padding(.horizontal, 32)
             .padding(.top, 28)
-            .opacity(stage >= 3 ? 1 : 0)
-            .offset(y: stage >= 3 ? 0 : 14)
+            .opacity(textShown ? 1 : 0)
+            .offset(y: textShown ? 0 : 14)
             Spacer(minLength: 16)
             VStack(spacing: 0) {
                 PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
@@ -438,28 +460,77 @@ struct LostLocationView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 8)
             }
-            .opacity(stage >= 3 ? 1 : 0)
-            .offset(y: stage >= 3 ? 0 : 14)
+            .opacity(textShown ? 1 : 0)
+            .offset(y: textShown ? 0 : 14)
+            .allowsHitTesting(comeback == nil)
         }
         .fontDesign(.rounded)
         .background(Color(.systemBackground).ignoresSafeArea())
+        .opacity(handedOff ? 0 : 1)
         .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
         // Where the circle is drawn right now (centred during the opening, then in its place).
         .onChange(of: groupFrame, initial: true) { _, _ in reportCircle() }
         .onChange(of: stage) { _, _ in reportCircle() }
         .task { await intro() }
+        .task(id: comeback) { if comeback != nil { await acknowledge() } }
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
     }
 
+    @ViewBuilder private var title: some View {
+        if acknowledged {
+            VStack(spacing: 6) {
+                Text(ackTitle)
+                    .font(.system(.title, design: .rounded, weight: .light))
+                    .multilineTextAlignment(.center)
+                Text(ackLine)
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .transition(.blurReplace)
+        } else {
+            VStack(spacing: 6) {
+                Text("Uh oh,")
+                    .font(.system(.title3, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                Text("shukr lost your location")
+                    .font(.system(.title, design: .rounded, weight: .light))
+                    .multilineTextAlignment(.center)
+            }
+            .transition(.blurReplace)
+        }
+    }
+
+    private var onSymbol: String {
+        if case .city = comeback { return "mappin.and.ellipse" }
+        return "location.fill"
+    }
+    private var onCaption: String {
+        if case .city(let name) = comeback { return name.isEmpty ? "your city" : name }
+        return "location is on"
+    }
+    private var ackTitle: String {
+        if case .city(let name) = comeback { return name.isEmpty ? "Using your city" : "Using \(name)" }
+        return "Location's back"
+    }
+    private var ackLine: String {
+        switch comeback {
+        case .city: return "Prayer times for there, until you turn location on"
+        case .whileUsing: return "Choose Always in Settings so your times follow you when you travel"
+        default: return "Your times follow you again"
+        }
+    }
+
     private func reportCircle() {
-        guard let g = groupFrame else { return }
+        // After a comeback the Salah page's own circle reports itself (the hand-off lands on it).
+        guard comeback == nil, let g = groupFrame else { return }
         WelcomeTarget.circleFrame = CGRect(x: g.midX - 100, y: g.maxY - 200 + lift, width: 200, height: 200)
     }
 
     private func intro() async {
-        if reduceMotion { stage = 3; return }
+        if reduceMotion || comeback != nil { stage = 3; return }
         // The welcome (a cold launch) grows into the centred circle first; wait for it to finish.
         try? await Task.sleep(for: .milliseconds(300))
         while WelcomeTarget.playing {
@@ -472,6 +543,46 @@ struct LostLocationView: View {
         withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage = 2 }
         try? await Task.sleep(for: .milliseconds(450))
         withAnimation(.easeOut(duration: 0.5)) { stage = 3 }
+        #if DEBUG
+        // `-demoLostCity London`: pick that city 2 s after the page settles (the city sheet's path).
+        if let city = UserDefaults.standard.string(forKey: "demoLostCity") {
+            try? await Task.sleep(for: .seconds(2))
+            location.setManualLocation(CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278), name: city)
+        }
+        #endif
+    }
+
+    /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then
+    /// the words go, the ring returns to the centre and settles onto the Salah circle, and the page
+    /// fades from round it — the welcome's own landing. Reduce Motion: the acknowledgement, a fade.
+    private func acknowledge() async {
+        CircleCover.set("lostHandoff", true)       // no reminders card / qibla buzz under it
+        defer { CircleCover.set("lostHandoff", false) }
+        pickingCity = false
+        if stage < 3 { withAnimation(.easeOut(duration: 0.3)) { stage = 3 } }
+        try? await Task.sleep(for: .milliseconds(450))   // back in the app / the city sheet gone
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.snappy(duration: 0.45)) { acknowledged = true }
+        try? await Task.sleep(for: .milliseconds(comeback == .whileUsing ? 2000 : 1500))
+        if reduceMotion {
+            withAnimation(.easeInOut(duration: 0.5)) { handedOff = true }
+            try? await Task.sleep(for: .milliseconds(520))
+            location.clearComeback()
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.35)) { clearing = true }        // words go, ring to the centre
+        try? await Task.sleep(for: .milliseconds(750))
+        // Onto the Salah page's circle, underneath by now (a few points from the centre).
+        if let f = WelcomeTarget.circleFrame, f.width > 100,
+           UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) {
+            withAnimation(.easeInOut(duration: 0.45)) { landingY = f.midY; landDashed = WelcomeTarget.trackDashed }
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) { landingY = UIScreen.main.bounds.midY }
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+        withAnimation(.easeInOut(duration: 0.45)) { handedOff = true }       // the page appears round it
+        try? await Task.sleep(for: .milliseconds(470))
+        location.clearComeback()
     }
 }
 

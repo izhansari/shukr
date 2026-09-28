@@ -1206,6 +1206,19 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   `WelcomeTarget.playing` is false: the title fades in over the circle (0.5 s), both rise to their place (one spring,
   0.75), then the reasons and buttons fade up. Reduce Motion: straight to the page. Sim ✓ frame by frame, light + dark
   (grant → launch → `simctl privacy revoke location` → record a cold launch).
+  **Location coming back (2026-09-28, owner):** the lost page is an **overlay on the root** now (shukrApp; the root's
+  own branch is a blank background), shown while location is lost OR `EnvLocationManager.comeback` is set.
+  `comeback` (.always / .whileUsing / .city(name)) is set in the same update that clears `locationLost`
+  (`startLocationServices`, `setManualLocation`), so the same view stays up while PrayerTimesView appears under it.
+  `LostLocationView.acknowledge()`: `CircleCover` "lostHandoff"; 0.45 s, a success haptic, the symbol replaces
+  (location.fill / mappin.and.ellipse), the title blur-replaces ("Location's back · Your times follow you again";
+  While Using: "…Choose Always in Settings…", held 2 s; "Using <city> · Prayer times for there…"); then the words go
+  and the ring returns to the screen's centre (`clearing`), settles on `WelcomeTarget.circleFrame` (the Salah circle
+  reports itself; the lost page stops reporting once `comeback` is set), turning dashed when `WelcomeTarget.trackDashed`
+  (like the welcome), and the page fades from round it; `clearComeback()` removes the overlay. Reduce Motion: the
+  acknowledgement, then a fade. A launch that's already authorized clears a stale `locationLost` in `init` (no
+  comeback over a Salah page). DEBUG `-demoLostCity <name>` picks London 2 s after the page settles. Sim ✓ frame by
+  frame: Settings → Always (light + dark, dashed landing), While Using, the city path (lands on Asr's live ring).
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
