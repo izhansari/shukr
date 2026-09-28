@@ -49,7 +49,8 @@
      "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]},
     {"id": "first-run-setup", "area": "Setup", "title": "A first-run setup in the opening's look: welcome, where you pray (location, method, madhab), light / dark / auto, reminders, Fajr alarm, your masjid, a review, then Bismillah into the app", "link": "settings",
      "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]},
-    {"id": "zikr-pace", "area": "Zikr", "title": "Zikr sessions: the rate tile shows how this session compares with your usual pace (faster / slower / about your usual), tiles that flip have the ⇆ mark, and after a task you land on the next one", "link": "zikr"}
+    {"id": "zikr-pace", "area": "Zikr", "title": "Zikr sessions: the rate tile shows how this session compares with your usual pace (faster / slower / about your usual), tiles that flip have the ⇆ mark, and after a task you land on the next one", "link": "zikr"},
+    {"id": "ayah-reveal", "area": "Daily Ayah", "title": "Daily Ayah's reveal: tap and the verse comes forward as a green light blooms behind it, then breathes softly (in light and dark mode)", "link": "ayah"}
   ],
   "entries": [
     {
@@ -765,6 +766,12 @@
       "title": "If your reminders can't reach you (notifications off, or held for the Scheduled Summary), a calm card says so with the fix, at most every few days; Settings → Notifications shows the status at the top",
       "tryIt": ["Turn shukr's notifications off in iOS Settings, then open shukr: the card, with Turn on", "Settings → Notifications: the status line at the top (Focus / Time Sensitive, background refresh)", "Beta: Settings → Scheduled notifications (what's pending of 64)"],
       "checked": "sim", "shots": ["wn-reminder-health.jpg", "wn-scheduled-notifications.jpg"]
+    },
+    {
+      "id": "ayah-reveal-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "ayah-reveal", "notes": null,
+      "title": "Daily Ayah in light mode: the green light behind the verse is clearly there now, blooming as you reveal it and breathing after (dark mode unchanged)",
+      "tryIt": ["☰ → Daily Ayah in light mode: tap to reveal and watch the green bloom"],
+      "checked": "sim", "shots": ["wn-ayah-glow.jpg"]
     }
   ]
 }

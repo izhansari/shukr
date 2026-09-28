@@ -400,6 +400,15 @@ struct DailyAyahView: View {
         if payload.save() { WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.ayah) }
     }
 
+    #if DEBUG
+    /// `-demoAyahReveal`: reveal 2.5 s after the page opens (the simulator's taps land late).
+    func demoRevealIfAsked() async {
+        guard ProcessInfo.processInfo.arguments.contains("-demoAyahReveal") else { return }
+        try? await Task.sleep(for: .seconds(2.5))
+        handleUnlock()
+    }
+    #endif
+
     func handleUnlock(){
         guard !isUnlocked, blurRadius > 0 else { return }
         UserDefaults.standard.set(Date(), forKey: Self.revealedDayKey)
@@ -494,10 +503,14 @@ struct DailyAyahView: View {
             // A blurred circle, not a RadialGradient: the gradient reached past the view's own
             // rectangle and was cut off there, so the glow had a visible box around it (owner).
             // A blurred shape fades to nothing by itself.
+            // Light mode: a greener, stronger light (owner, 2026-09-28: sage at 0.2 under a 90 pt
+            // blur all but vanished on white — "it almost doesn't look like anything happens").
+            // Dark mode stays as it was (owner: perfect).
             Ellipse()
-                .fill(Color.sage.opacity(colorScheme == .dark ? 0.30 : 0.20))
+                .fill(colorScheme == .dark ? Color.sage.opacity(0.30)
+                                           : Color(red: 0.30, green: 0.66, blue: 0.42).opacity(0.46))
                 .frame(width: 300, height: 420)
-                .blur(radius: 90)
+                .blur(radius: colorScheme == .dark ? 90 : 72)
                 .scaleEffect(bloom ? 1.15 : 0.35)
                 .opacity(bloom ? 1 : 0)
                 .phaseAnimator([false, true]) { glow, breathing in
@@ -593,6 +606,9 @@ struct DailyAyahView: View {
                                       reference: "\(surahName) · \(ayah.surah):\(ayah.ayah)")
             }
         }
+        #if DEBUG
+        .task { await demoRevealIfAsked() }
+        #endif
         .onAppear {
             if revealedToday {   // already revealed today: open straight to it
                 blurRadius = 0
