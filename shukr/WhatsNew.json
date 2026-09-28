@@ -755,7 +755,7 @@
       "checked": "sim", "shots": ["wn-zikr-next-task.jpg"]
     },
     {
-      "id": "first-run-setup-9", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "id": "first-run-setup-9", "date": "2026-09-28", "commit": "37c46e2", "time": "2026-09-28T03:01:15-04:00", "topic": "first-run-setup", "notes": "#18",
       "title": "Turned location off after setup? A friendly \"shukr lost your location\" page (the opening lands on its circle) with Turn location back on or Enter a city instead, not the whole setup again",
       "tryIt": ["iOS Settings → shukr → Location → Never, then open shukr", "Enter a city instead → pick one: straight into the app"],
       "checked": "sim", "shots": ["wn-location-lost.jpg"]
