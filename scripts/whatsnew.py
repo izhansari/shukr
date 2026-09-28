@@ -12,13 +12,20 @@ topic, notes item, one-line title, try-it steps, checked, optional status "dropp
       committed entry's "time" (commit time, from git). Run it before committing.
 
   scripts/whatsnew.py add --topic ID --title "…" --try "…" [--try "…"] [--notes "#17"]
-                          [--area Zikr --topic-title "…"] [--topic-try "…"]… [--shot wn-x.jpg]…
-                          [--checked sim|phone|no] [--status dropped|replaced|removed]
+                          [--area Zikr --topic-title "…" --topic-summary "…"] [--topic-try "…"]…
+                          [--shot wn-x.jpg]… [--checked sim|phone|no] [--status dropped|replaced|removed]
                           [--topic-link salah|zikr|settings|history|azkar|map|names|ayah|insights]
-      Append an entry ("commit": "next"). A new topic needs --area and --topic-title;
-      --topic-title on an existing topic rewrites its title (keep it the current state).
+                          [--addresses <feedback id>]… [--asked "<the owner's words>"] [--no-try]
+      Append an entry ("commit": "next"). A new topic needs --area and --topic-title.
+      --topic-title is SHORT (≤ 60 chars, e.g. "Prayers widget"); the long description of the feature
+      as it is now goes in --topic-summary (shown in the detail).
+      Every entry needs its own --try steps for THIS change; --no-try only for invisible changes.
+      --addresses: feedback this change fixes (the app shows it under "To check").
+      --asked: the owner's own request from chat (relayed by Bradley, in his words) — the app shows
+      "You asked in chat: '…'" and puts the change under "To check" like addressed feedback.
 
-      [--addresses <feedback id>]…   (feedback this change fixes — the app shows it "Addressed")
+  scripts/whatsnew.py asked --entry <entry id> --text "<the owner's words>"
+      Set an existing entry's chat request (backfill).
 
   scripts/whatsnew.py address --entry <entry id> --feedback <id> [--feedback <id>]…
       Add feedback ids to an existing entry's "addresses" (e.g. a fix committed earlier).
@@ -61,6 +68,8 @@ def save(data):
         head = f'    {{"id": {j(t["id"])}, "area": {j(t["area"])}, "title": {j(t["title"])}'
         if t.get("link"):
             head += f', "link": {j(t["link"])}'
+        if t.get("summary"):
+            head += f',\n     "summary": {j(t["summary"])}'
         if t.get("tryIt"):
             head += f',\n     "tryIt": {j(t["tryIt"])}'
         out.append(head + "}" + ("," if i < len(data["topics"]) - 1 else ""))
@@ -75,6 +84,8 @@ def save(data):
             last += f', "shots": {j(e["shots"])}'
         if e.get("addresses"):
             last += f', "addresses": {j(e["addresses"])}'
+        if e.get("asked"):
+            last += f', "asked": {j(e["asked"])}'
         out += ["    {",
                 f"      {first},",
                 f'      "title": {j(e["title"])},',
@@ -106,7 +117,15 @@ def resolve():
     print(f"resolved {hashes_filled} commit(s), {times_filled} time(s)")
 
 
+TITLE_MAX = 60
+
+
 def add(a):
+    if a.topic_title and len(a.topic_title) > TITLE_MAX:
+        sys.exit(f"--topic-title is {len(a.topic_title)} chars: keep it short (≤ {TITLE_MAX}, e.g. \"Prayers widget\") "
+                 "and put the description in --topic-summary")
+    if not a.tryit and not a.no_try:
+        sys.exit("every entry needs its own --try steps for this change (or --no-try for an invisible one)")
     data = load()
     topics = {t["id"]: t for t in data["topics"]}
     t = topics.get(a.topic)
@@ -120,12 +139,14 @@ def add(a):
             t["title"] = a.topic_title
         if a.area:
             t["area"] = a.area
+    if a.topic_summary:
+        t["summary"] = a.topic_summary
     if a.topic_try:
         t["tryIt"] = a.topic_try
     if a.topic_link:
         t["link"] = a.topic_link
     # Keep key order stable in the file.
-    for k in ("tryIt",):
+    for k in ("summary", "tryIt"):
         if k in t:
             t[k] = t.pop(k)
     for s in a.shot or []:
@@ -136,13 +157,15 @@ def add(a):
     while f"{a.topic}-{n}" in used:
         n += 1
     e = {"id": f"{a.topic}-{n}", "date": datetime.date.today().isoformat(), "commit": "next", "time": None, "topic": a.topic,
-         "notes": a.notes, "title": a.title, "tryIt": a.tryit, "checked": a.checked}
+         "notes": a.notes, "title": a.title, "tryIt": a.tryit or [], "checked": a.checked}
     if a.status:
         e["status"] = a.status
     if a.shot:
         e["shots"] = a.shot
     if a.addresses:
         e["addresses"] = [x.upper() for x in a.addresses]
+    if a.asked:
+        e["asked"] = a.asked
     data["entries"].append(e)
     save(data)
     print(f"added to {a.topic}: {a.title}")
@@ -159,6 +182,16 @@ def address(entry_id, ids):
             have.append(i.upper())
     save(data)
     print(f"{entry_id} addresses {', '.join(have)}")
+
+
+def set_asked(entry_id, text):
+    data = load()
+    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
+    if e is None:
+        sys.exit(f"no entry {entry_id!r}")
+    e["asked"] = text
+    save(data)
+    print(f"{entry_id} asked: {text}")
 
 
 def set_status(entry_id, status):
@@ -240,7 +273,10 @@ if __name__ == "__main__":
         p = argparse.ArgumentParser(prog="whatsnew.py add")
         p.add_argument("--topic", required=True)
         p.add_argument("--title", required=True)
-        p.add_argument("--try", dest="tryit", action="append", required=True)
+        p.add_argument("--try", dest="tryit", action="append")
+        p.add_argument("--no-try", action="store_true", help="an invisible change: no try-it steps")
+        p.add_argument("--asked", help="the owner's request from chat, in his words")
+        p.add_argument("--topic-summary", help="the feature as it is now, long form (the detail)")
         p.add_argument("--notes")
         p.add_argument("--area")
         p.add_argument("--topic-title")
@@ -258,6 +294,12 @@ if __name__ == "__main__":
         p.add_argument("--feedback", action="append", required=True)
         a = p.parse_args(sys.argv[2:])
         address(a.entry, a.feedback)
+    elif cmd == "asked":
+        p = argparse.ArgumentParser(prog="whatsnew.py asked")
+        p.add_argument("--entry", required=True)
+        p.add_argument("--text", required=True)
+        a = p.parse_args(sys.argv[2:])
+        set_asked(a.entry, a.text)
     elif cmd == "status":
         p = argparse.ArgumentParser(prog="whatsnew.py status")
         p.add_argument("--entry", required=True)

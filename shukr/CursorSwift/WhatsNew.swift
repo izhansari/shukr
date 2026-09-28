@@ -31,7 +31,10 @@ import StoreKit
 struct WhatsNewTopic: Decodable {
     let id: String
     let area: String
+    /// Short (≤ 60 chars, "Prayers widget"): the card's title.
     let title: String
+    /// The feature as it is now, in full — shown in the detail under the title.
+    var summary: String? = nil
     let tryIt: [String]?
     /// Where "Open in shukr" goes: salah / zikr / settings / history / azkar / map / names /
     /// ayah / insights (PrayerTimesView handles `WhatsNew.go`). Nil = nothing to open (widgets…).
@@ -53,12 +56,14 @@ struct WhatsNewEntry: Decodable, Identifiable {
     let shots: [String]?
     /// Feedback ids (UUIDs, or an 8+ character prefix) this change fixes.
     let addresses: [String]?
+    /// The owner's own request from chat (relayed by Bradley): the change lands under "To check".
+    var asked: String? = nil
     var id: String { entryID ?? legacyID }
     /// v1's id (commit | title) — old tested ticks and NEW marks were keyed by it.
     var legacyID: String { "\(commit)|\(title)" }
 
     enum CodingKeys: String, CodingKey {
-        case entryID = "id", date, commit, time, topic, notes, title, tryIt, checked, status, shots, addresses
+        case entryID = "id", date, commit, time, topic, notes, title, tryIt, checked, status, shots, addresses, asked
     }
 
     /// "this build" or the short hash — what "Addressed in …" names.
@@ -69,6 +74,14 @@ struct WhatsNewEntry: Decodable, Identifiable {
     /// Replaced / dropped: shown greyed in the timeline, never the card's current state.
     var superseded: Bool { status == "dropped" || status == "replaced" }
     var date_: Date? { time.flatMap { WhatsNew.iso.date(from: $0) } }
+    /// For ordering: the commit time, this build's build time for "next", else the day.
+    var when: Date {
+        if let d = date_ { return d }
+        if inThisBuild { return BuildInfo.builtAt ?? Date() }
+        return WhatsNew.dayFormatter.date(from: date) ?? .distantPast
+    }
+    /// A change that's still part of the feature (not dropped / replaced / removed).
+    var live: Bool { !superseded && status != "removed" }
 }
 
 /// One card: a topic and all its changes (oldest first).
@@ -97,7 +110,9 @@ struct WhatsNewCard: Identifiable {
     /// The newest live change's picture (a dropped / replaced change's screenshot shows the old look).
     var thumbnail: String? { entries.reversed().first { !$0.superseded && !($0.shots ?? []).isEmpty }?.shots?.first }
     var inThisBuild: Bool { entries.contains(where: \.inThisBuild) }
-    var isNew: Bool { entries.contains { WhatsNew.newIDs.contains($0.id) } }
+    /// The newest change hasn't been seen yet (added after the build last opened): the "new" dot.
+    var isNew: Bool { WhatsNew.newIDs.contains(latest.id) }
+    var summary: String? { topic.summary }
     /// A new change on a tested topic makes it untested again. Keyed by the latest change's
     /// stable id, so resolving "next" → its hash doesn't untick it.
     var testedKey: String { "topic:\(topic.id)@\(latest.id)" }
@@ -135,12 +150,80 @@ enum WhatsNew {
         var topics = Dictionary(file.topics.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         // An entry whose topic is missing still shows: a stand-in topic from its latest entry.
         for (id, list) in byTopic where topics[id] == nil {
-            topics[id] = WhatsNewTopic(id: id, area: "Other", title: list.last?.title ?? id, tryIt: nil, link: nil)
+            topics[id] = WhatsNewTopic(id: id, area: "Other", title: String((list.last?.title ?? id).prefix(60)), tryIt: nil, link: nil)
         }
         return byTopic.compactMap { id, list in topics[id].map { WhatsNewCard(topic: $0, entries: list) } }
             .sorted { ($0.latestDate ?? .distantPast) > ($1.latestDate ?? .distantPast) }
     }()
     static func card(id: String) -> WhatsNewCard? { cards.first { $0.id == id } }
+
+    static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
+
+    // MARK: Acknowledged — tested or given feedback (2026-09-28, owner: "everyone on the same page")
+
+    /// Topic → the latest change's id when it was last ticked tested or given feedback. Changes after
+    /// it are untested; any feedback moves a card out of "To test" (the note's state takes over).
+    private static let ackKey = "whatsNew.acked"
+    static func acks() -> [String: String] { UserDefaults.standard.dictionary(forKey: ackKey) as? [String: String] ?? [:] }
+    static func acknowledge(_ card: WhatsNewCard) {
+        var map = acks(); map[card.id] = card.latest.id
+        UserDefaults.standard.set(map, forKey: ackKey)
+    }
+    static func unacknowledge(_ card: WhatsNewCard) {
+        var map = acks(); map[card.id] = nil
+        UserDefaults.standard.set(map, forKey: ackKey)
+    }
+
+    /// The last change covered by a tick, an ack or (older builds) a note's commits snapshot; -1 = none.
+    @MainActor static func ackedIndex(_ card: WhatsNewCard, tested: Set<String>, acks: [String: String]) -> Int {
+        var idx = -1
+        for (i, e) in card.entries.enumerated()
+        where tested.contains("topic:\(card.id)@\(e.id)") || tested.contains("topic:\(card.id)@\(e.commit)") || tested.contains(e.legacyID) {
+            idx = max(idx, i)
+        }
+        if let id = acks[card.id], let i = card.entries.firstIndex(where: { $0.id == id }) { idx = max(idx, i) }
+        // Notes written before acks existed: the changes their card listed when they were saved.
+        for item in FeedbackStore.shared.all(for: card.id) {
+            let seen = Set(item.commits.map { $0.components(separatedBy: " ").first ?? $0 }).subtracting(["next"])
+            if let i = card.entries.lastIndex(where: { seen.contains($0.commit) }) { idx = max(idx, i) }
+        }
+        return idx
+    }
+
+    /// The live changes nobody has tested or given feedback on yet, newest first.
+    @MainActor static func untested(_ card: WhatsNewCard, tested: Set<String>, acks: [String: String]) -> [WhatsNewEntry] {
+        let from = ackedIndex(card, tested: tested, acks: acks) + 1
+        guard from < card.entries.count else { return [] }
+        return card.entries[from...].filter(\.live).reversed()
+    }
+
+    // MARK: Asked in chat — changes the owner requested, to check like addressed feedback
+
+    private static let askedClosedKey = "whatsNew.asked.closed"
+    private static let askedReopenedKey = "whatsNew.asked.reopened"
+    static func askedClosed() -> Set<String> { Set(UserDefaults.standard.stringArray(forKey: askedClosedKey) ?? []) }
+    static func askedReopened() -> Set<String> { Set(UserDefaults.standard.stringArray(forKey: askedReopenedKey) ?? []) }
+    /// Waiting for Looks good / Still off.
+    static func askedChecks() -> [WhatsNewEntry] {
+        let closed = askedClosed(), reopened = askedReopened()
+        return entries.filter { $0.asked != nil && $0.live && !closed.contains($0.id) && !reopened.contains($0.id) }.reversed()
+    }
+    static func closeAsked(_ entry: WhatsNewEntry) { insert(entry.id, askedClosedKey) }
+    static func reopenAsked(_ entry: WhatsNewEntry) { insert(entry.id, askedReopenedKey) }
+    static func undoReopenAsked(_ id: String) {
+        var set = askedReopened(); set.remove(id)
+        UserDefaults.standard.set(Array(set), forKey: askedReopenedKey)
+    }
+    private static func insert(_ id: String, _ key: String) {
+        var set = Set(UserDefaults.standard.stringArray(forKey: key) ?? []); set.insert(id)
+        UserDefaults.standard.set(Array(set), forKey: key)
+    }
+    /// For feedback.md: "looks good" / "still off" / "to check".
+    static func askedState(_ entry: WhatsNewEntry) -> String {
+        askedClosed().contains(entry.id) ? "looks good" : askedReopened().contains(entry.id) ? "still off" : "to check"
+    }
 
     /// The newest change that lists this feedback id in `addresses`.
     /// Cached per id: the entries are fixed for the build, and every note's state asks this.
@@ -246,8 +329,12 @@ enum WhatsNew {
     }
     static func setTested(_ card: WhatsNewCard, _ on: Bool) {
         var set = tested()
-        if on { set.insert(card.testedKey) } else { set.remove(card.testedKey); card.olderTestedKeys.forEach { set.remove($0) } }
+        if on { set.insert(card.testedKey) } else {
+            set.remove(card.testedKey); card.olderTestedKeys.forEach { set.remove($0) }
+            for e in card.entries { set.remove("topic:\(card.id)@\(e.id)") }
+        }
         UserDefaults.standard.set(Array(set), forKey: testedKey)
+        if on { acknowledge(card) } else { unacknowledge(card) }
     }
 }
 
@@ -362,10 +449,13 @@ enum WhatsNewRoute: Hashable {
 struct WhatsNewView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tested = WhatsNew.tested()
+    @State private var acks = WhatsNew.acks()
+    /// Bumped when a chat request is checked (its state lives in UserDefaults).
+    @State private var askedTick = 0
     @State private var hidden = WhatsNew.hidden()
     @State private var feedback = FeedbackStore.shared
     @State private var path: [WhatsNewRoute]
-    @State private var composing: (card: WhatsNewCard, kind: FeedbackItem.Kind, followUp: UUID?)?
+    @State private var composing: (card: WhatsNewCard, kind: FeedbackItem.Kind, followUp: UUID?, followUpEntry: String?)?
     @State private var sharing: [FeedbackItem]?
     /// Copied rather than sent somewhere: ask before marking them sent.
     @State private var askMarkSent: [FeedbackItem]?
@@ -377,28 +467,35 @@ struct WhatsNewView: View {
         _path = State(initialValue: startCard.map { [.card($0)] } ?? [])
     }
 
-    // MARK: What needs you
+    // MARK: What needs you (2026-09-28: one clear state per card)
+    //  To check: a change addressed your note, or did what you asked in chat → Looks good / Still off.
+    //  To test: changes nobody has tested or given feedback on — newest first.
+    //  With the team: you left a 👎 / note; it's saved / sent / received.
+    //  Archive: tested, 👍, looked good — until a new change reopens it.
 
-    /// A card is done once it's ticked tested, or a note on it was closed after its latest change.
-    private func isDone(_ card: WhatsNewCard) -> Bool {
-        if WhatsNew.isTested(card, in: tested) { return true }
-        let since = card.latestDate ?? .distantPast
-        return feedback.all(for: card.id).contains { item in
-            guard case .closed = feedback.state(item) else { return false }
-            return (item.closedAt ?? item.updated) >= since
+    private func untested(_ card: WhatsNewCard) -> [WhatsNewEntry] { WhatsNew.untested(card, tested: tested, acks: acks) }
+    private var askedChecks: [WhatsNewEntry] { _ = askedTick; return WhatsNew.askedChecks() }
+    private var checkTopics: Set<String> { Set(feedback.toCheck.map(\.item.topic)).union(askedChecks.map(\.topic)) }
+    private var toTest: [WhatsNewCard] {
+        WhatsNew.cards
+            .filter { !WhatsNew.isHidden($0, in: hidden) && !checkTopics.contains($0.id) && !untested($0).isEmpty }
+            .sorted { (untested($0).first?.when ?? .distantPast) > (untested($1).first?.when ?? .distantPast) }
+    }
+    /// The card's newest note that's still with the team (saved / sent / received, not addressed).
+    private func openNote(_ card: WhatsNewCard) -> FeedbackItem? {
+        feedback.all(for: card.id).last { item in
+            switch feedback.state(item) {
+            case .draft, .sent, .received: return true
+            default: return false
+            }
         }
     }
-    private var checkTopics: Set<String> { Set(feedback.toCheck.map(\.item.topic)) }
-    private var toTest: [WhatsNewCard] {
-        WhatsNew.cards.filter { !isDone($0) && !WhatsNew.isHidden($0, in: hidden) && !checkTopics.contains($0.id) }
-    }
-    private var unsentCards: [WhatsNewCard] {
+    private var withTeam: [WhatsNewCard] {
         let shown = Set(toTest.map(\.id)).union(checkTopics)
-        return WhatsNew.cards.filter { feedback.unsent(for: $0.id) != nil && !shown.contains($0.id) }
+        return WhatsNew.cards.filter { !shown.contains($0.id) && openNote($0) != nil }
     }
-    /// Tested, closed or hidden — everything not shown above (a topic waiting in "To check" is up there).
     private var archivedCards: [WhatsNewCard] {
-        let shown = Set(toTest.map(\.id)).union(unsentCards.map(\.id)).union(checkTopics)
+        let shown = Set(toTest.map(\.id)).union(withTeam.map(\.id)).union(checkTopics)
         return WhatsNew.cards.filter { !shown.contains($0.id) }
     }
     private var archive: [WhatsNewCard] {
@@ -406,6 +503,7 @@ struct WhatsNewView: View {
         return archivedCards.filter { card in
             guard !q.isEmpty else { return true }
             return card.title.localizedCaseInsensitiveContains(q) || card.area.localizedCaseInsensitiveContains(q)
+                || (card.summary ?? "").localizedCaseInsensitiveContains(q)
                 || card.entries.contains { $0.title.localizedCaseInsensitiveContains(q) }
                 || feedback.all(for: card.id).contains { $0.text.localizedCaseInsensitiveContains(q) }
         }
@@ -417,8 +515,16 @@ struct WhatsNewView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     header
                     let checks = feedback.toCheck
-                    if !checks.isEmpty {
-                        section("To check", count: checks.count) {
+                    let asked = askedChecks
+                    if !checks.isEmpty || !asked.isEmpty {
+                        section("To check", count: checks.count + asked.count) {
+                            ForEach(asked) { entry in
+                                AskedCheckCard(entry: entry,
+                                               looksGood: { WhatsNew.closeAsked(entry); withAnimation(.snappy) { askedTick += 1 } },
+                                               stillOff: { stillOffAsked(entry) })
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { path.append(.card(entry.topic)) }
+                            }
                             ForEach(checks, id: \.item.id) { check in
                                 FeedbackCheckCard(item: check.item, fix: check.fix,
                                                   looksGood: { withAnimation(.snappy) { feedback.close(check.item) } },
@@ -431,10 +537,10 @@ struct WhatsNewView: View {
                     if !toTest.isEmpty {
                         section("To test", count: toTest.count) { ForEach(toTest) { cardView($0) } }
                     }
-                    if !unsentCards.isEmpty {
-                        section("Unsent notes", count: unsentCards.count) { ForEach(unsentCards) { cardView($0) } }
+                    if !withTeam.isEmpty {
+                        section("With the team", count: withTeam.count) { ForEach(withTeam) { cardView($0) } }
                     }
-                    if checks.isEmpty && toTest.isEmpty && unsentCards.isEmpty {
+                    if checks.isEmpty && asked.isEmpty && toTest.isEmpty && withTeam.isEmpty {
                         Text("Nothing needs you. Everything's tested or closed.")
                             .font(.subheadline).fontWeight(.light).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 30)
@@ -461,7 +567,7 @@ struct WhatsNewView: View {
                 switch route {
                 case .card(let id):
                     if let card = WhatsNew.card(id: id) {
-                        WhatsNewDetailView(card: card, tested: $tested, open: opener(for: card),
+                        WhatsNewDetailView(card: card, tested: $tested, acks: $acks, open: opener(for: card),
                                            stillOff: stillOff)
                     }
                 case .page(let link):
@@ -477,10 +583,13 @@ struct WhatsNewView: View {
             if let c = composing {
                 NavigationStack {
                     ScrollView {
-                        FeedbackComposer(card: c.card, startKind: c.kind, followUpOf: c.followUp) { composing = nil }
+                        FeedbackComposer(card: c.card, startKind: c.kind, followUpOf: c.followUp, followUpEntry: c.followUpEntry) {
+                            composing = nil
+                            acks = WhatsNew.acks()
+                        }
                             .padding(16)
                     }
-                    .navigationTitle(c.followUp == nil ? c.card.title : "Still off: what's wrong?")
+                    .navigationTitle(c.followUp == nil && c.followUpEntry == nil ? c.card.title : "Still off: what's wrong?")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { closeComposer() } } }
                 }
@@ -512,11 +621,12 @@ struct WhatsNewView: View {
 
     private func cardView(_ card: WhatsNewCard, archived: Bool = false) -> some View {
         let isHidden = WhatsNew.isHidden(card, in: hidden)
-        return WhatsNewCardView(card: card, tested: WhatsNew.isTested(card, in: tested),
-                                status: statusText(card), hidden: isHidden,
+        let fresh = untested(card)
+        return WhatsNewCardView(card: card, tested: covered(card, untested: fresh),
+                                label: label(card, untested: fresh), hidden: isHidden,
                                 unsent: feedback.unsent(for: card.id),
                                 toggleTested: { toggle(card) },
-                                giveFeedback: { composing = (card, $0, nil) },
+                                giveFeedback: { composing = (card, $0, nil, nil) },
                                 open: opener(for: card))
             .opacity(archived ? 0.75 : 1)
             .contentShape(Rectangle())
@@ -529,18 +639,28 @@ struct WhatsNewView: View {
             }
     }
 
-    /// The card's newest note, as a word: received / sent / addressed / closed.
-    private func statusText(_ card: WhatsNewCard) -> String? {
-        guard let item = feedback.all(for: card.id).last(where: { if case .draft = feedback.state($0) { false } else { true } }) else { return nil }
-        switch feedback.state(item) {
-        case .received(let d):
-            return "received " + (Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : WhatsNew.whenLabel(d))
-        case .sent: return "sent"
-        case .toCheck: return "addressed · check it"
-        case .closed: return item.kind == .works ? "👍 works" : "closed"
-        case .reopened: return "still off"
-        case .draft: return nil
+    /// The card's one state, as a label: new change(s) · you said "…" · saved / sent / received ·
+    /// 👍 works / tested / looked good.
+    private func label(_ card: WhatsNewCard, untested fresh: [WhatsNewEntry]) -> CardLabel? {
+        if !fresh.isEmpty {
+            return CardLabel(text: fresh.count == 1 ? "new change · to test" : "\(fresh.count) new changes · to test", tone: .new)
         }
+        if let note = openNote(card) {
+            let said = note.text.isEmpty ? note.kind.label.lowercased() : "\u{201C}\(note.text)\u{201D}"
+            let where_: String = {
+                switch feedback.state(note) {
+                case .received(let d): return "received " + (Calendar.current.isDateInToday(d) ? d.formatted(date: .omitted, time: .shortened) : WhatsNew.whenLabel(d))
+                case .sent: return "sent"
+                default: return "saved · Claude will pick it up"
+                }
+            }()
+            return CardLabel(text: "You said \(said) · \(where_)", tone: .team)
+        }
+        if let item = feedback.all(for: card.id).last(where: { if case .closed = feedback.state($0) { true } else { false } }) {
+            return CardLabel(text: item.kind == .works ? "👍 works" : "looked good", tone: .done)
+        }
+        return WhatsNew.isTested(card, in: tested) || WhatsNew.ackedIndex(card, tested: tested, acks: acks) >= 0
+            ? CardLabel(text: "tested", tone: .done) : nil
     }
 
     private var archiveSection: some View {
@@ -613,7 +733,7 @@ struct WhatsNewView: View {
                     .fontWeight(.semibold)
                 Spacer()
                 if !unsent.isEmpty {
-                    Text("\(unsent.count) unsent")
+                    Text("\(unsent.count) saved")
                         .font(.subheadline)
                         .foregroundStyle(Color.green.opacity(0.8))
                 }
@@ -630,13 +750,24 @@ struct WhatsNewView: View {
     /// Cancel / swipe away: a "Still off" with nothing written goes back to "to check".
     private func closeComposer() {
         if let id = composing?.followUp { feedback.undoReopen(id) }
+        if let entry = composing?.followUpEntry, !feedback.items.contains(where: { $0.followUpOfEntry == entry }) {
+            WhatsNew.undoReopenAsked(entry)
+            askedTick += 1
+        }
         composing = nil
     }
 
     /// "Still off": the note reopens and a follow-up note starts on its topic.
     private func stillOff(_ item: FeedbackItem) {
         feedback.reopen(item)
-        if let card = WhatsNew.card(id: item.topic) { composing = (card, .issue, item.id) }
+        if let card = WhatsNew.card(id: item.topic) { composing = (card, .issue, item.id, nil) }
+    }
+
+    /// "Still off" on something asked in chat: a note on that change goes to the team.
+    private func stillOffAsked(_ entry: WhatsNewEntry) {
+        WhatsNew.reopenAsked(entry)
+        askedTick += 1
+        if let card = WhatsNew.card(id: entry.topic) { composing = (card, .issue, nil, entry.id) }
     }
 
     // MARK: Open in shukr
@@ -667,10 +798,15 @@ struct WhatsNewView: View {
         }
     }
 
+    /// Nothing left to test: ticked, or feedback left on its latest change.
+    private func covered(_ card: WhatsNewCard, untested fresh: [WhatsNewEntry]? = nil) -> Bool {
+        (fresh ?? untested(card)).isEmpty && WhatsNew.ackedIndex(card, tested: tested, acks: acks) >= 0
+    }
+
     private func toggle(_ card: WhatsNewCard) {
-        let now = !WhatsNew.isTested(card, in: tested)
+        let now = !covered(card)
         WhatsNew.setTested(card, now)
-        withAnimation(.snappy) { tested = WhatsNew.tested() }
+        withAnimation(.snappy) { tested = WhatsNew.tested(); acks = WhatsNew.acks() }
     }
 }
 
@@ -742,14 +878,78 @@ struct FeedbackCheckCard: View {
     }
 }
 
+/// Something the owner asked for in chat, done: his words, what changed, Looks good ✓ / Still off.
+struct AskedCheckCard: View {
+    let entry: WhatsNewEntry
+    let looksGood: () -> Void
+    let stillOff: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "bubble.left.fill").foregroundStyle(Color.sage.opacity(0.7))
+                Text(WhatsNew.card(id: entry.topic)?.area ?? entry.topic)
+                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                    .tracking(1).textCase(.uppercase)
+                    .foregroundStyle(Color.sage)
+                Spacer()
+                Text("you asked in chat").font(.caption2).foregroundStyle(.tertiary)
+            }
+            Text(WhatsNew.card(id: entry.topic)?.title ?? entry.topic)
+                .font(.footnote.weight(.medium))
+            Text("\u{201C}\(entry.asked ?? "")\u{201D}")
+                .font(.subheadline).foregroundStyle(.secondary)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.green)
+                (Text("Done in \(entry.buildLabel): ").fontWeight(.semibold) + Text(entry.title))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.subheadline)
+            HStack(spacing: 10) {
+                Button(action: looksGood) {
+                    Label("Looks good", systemImage: "checkmark")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(Color.green)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.green.opacity(0.14)))
+                }
+                Button(action: stillOff) {
+                    Text("Still off")
+                        .font(.subheadline.weight(.medium)).foregroundStyle(Color.orange)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Capsule().fill(Color.orange.opacity(0.12)))
+                }
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.green.opacity(0.35), lineWidth: 1))
+    }
+}
+
+/// A card's one state, as a small label under its title.
+struct CardLabel {
+    enum Tone { case new, team, done }
+    let text: String
+    let tone: Tone
+    var color: Color {
+        switch tone {
+        case .new: Color.green
+        case .team: Color.sage
+        case .done: Color(.tertiaryLabel)
+        }
+    }
+}
+
 // MARK: - A card
 
 /// At a glance: area · title · latest change · N changes · thumbnail · tested; feedback buttons.
 struct WhatsNewCardView: View {
     let card: WhatsNewCard
     let tested: Bool
-    /// The newest sent note's state ("received 4:36 PM", "addressed · check it", …).
-    var status: String? = nil
+    /// Its one state: "new change · to test", "You said “…” · received 4:05 PM", "👍 works"…
+    var label: CardLabel? = nil
     var hidden = false
     let unsent: FeedbackItem?
     let toggleTested: () -> Void
@@ -780,19 +980,26 @@ struct WhatsNewCardView: View {
                     if hidden {
                         Image(systemName: "eye.slash").font(.system(size: 10)).foregroundStyle(.tertiary)
                     }
-                    if card.isNew {
-                        Text("NEW")
-                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5).padding(.vertical, 2)
-                            .background(Capsule().fill(Color.green))
-                    }
                 }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    // Its newest change hasn't been seen yet.
+                    if card.isNew && !tested {
+                        Circle().fill(Color.green).frame(width: 7, height: 7)
+                            .accessibilityLabel("new")
+                    }
                 Text(card.title)
                     .font(.body.weight(.medium))
                     .foregroundStyle(tested ? .secondary : .primary)
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
+                }
+                if let label {
+                    Text(label.text)
+                        .font(.caption.weight(label.tone == .done ? .regular : .medium))
+                        .foregroundStyle(label.color)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack(spacing: 4) {
                     Text(WhatsNew.whenLabel(card.latestDate))
                     if card.entries.count > 1 { Text("· \(card.entries.count) changes") }
@@ -847,17 +1054,7 @@ struct WhatsNewCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open in shukr")
             }
-            if unsent != nil {
-                Text(unsent?.photo != nil ? "unsent · photo" : "unsent")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Color.orange)
-            } else if let status {
-                Text(status)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+
         }
     }
 }
@@ -867,28 +1064,20 @@ struct WhatsNewCardView: View {
 struct WhatsNewDetailView: View {
     let card: WhatsNewCard
     @Binding var tested: Set<String>
+    @Binding var acks: [String: String]
     var open: (() -> Void)? = nil
     var stillOff: (FeedbackItem) -> Void = { _ in }
     @State private var feedback = FeedbackStore.shared
     @State private var viewing: UIImage?
 
-    private var isTested: Bool { WhatsNew.isTested(card, in: tested) }
+    private var fresh: [WhatsNewEntry] { WhatsNew.untested(card, tested: tested, acks: acks) }
+    private var isTested: Bool { fresh.isEmpty && WhatsNew.ackedIndex(card, tested: tested, acks: acks) >= 0 }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
-                section("Try it") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(card.tryIt.enumerated()), id: \.offset) { n, step in
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Text("\(n + 1).").monospacedDigit().foregroundStyle(.tertiary)
-                                Text(step)
-                            }
-                            .font(.subheadline)
-                        }
-                    }
-                }
+                section("Try it") { tryIt }
                 section("Feedback") {
                     VStack(alignment: .leading, spacing: 14) {
                         // Earlier notes, greyed with where they stand; the box under them is for
@@ -898,7 +1087,7 @@ struct WhatsNewDetailView: View {
                         let past = feedback.all(for: card.id).filter { feedback.draft(for: card.id)?.id != $0.id }
                         ForEach(past) { item in pastNote(item) }
                         if !past.isEmpty { Divider() }
-                        FeedbackComposer(card: card)
+                        FeedbackComposer(card: card) { acks = WhatsNew.acks() }
                     }
                 }
                 section("Changes") { timeline }
@@ -931,11 +1120,16 @@ struct WhatsNewDetailView: View {
             Text(card.title)
                 .font(.title3.weight(.medium))
                 .fixedSize(horizontal: false, vertical: true)
+            if let summary = card.summary {
+                Text(summary)
+                    .font(.subheadline).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text("\(WhatsNew.whenLabel(card.latestDate)) · \(card.entries.count == 1 ? "1 change" : "\(card.entries.count) changes")")
                 .font(.subheadline).foregroundStyle(.secondary)
             Button {
                 WhatsNew.setTested(card, !isTested)
-                withAnimation(.snappy) { tested = WhatsNew.tested() }
+                withAnimation(.snappy) { tested = WhatsNew.tested(); acks = WhatsNew.acks() }
             } label: {
                 Label(isTested ? "Tested" : "Mark tested", systemImage: isTested ? "checkmark.circle.fill" : "circle")
                     .font(.subheadline.weight(.medium))
@@ -955,6 +1149,51 @@ struct WhatsNewDetailView: View {
                         .background(Capsule().fill(Color.sage.opacity(0.14)))
                 }
                 .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Every untested change, newest first, each with its own steps; then the feature's general steps,
+    /// folded. Nothing untested: the latest change's steps.
+    @ViewBuilder private var tryIt: some View {
+        let changes = fresh.isEmpty ? Array(card.entries.reversed().filter(\.live).prefix(1)) : fresh
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(changes) { entry in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if !fresh.isEmpty { Circle().fill(Color.green).frame(width: 6, height: 6) }
+                        Text(entry.title).font(.subheadline.weight(.medium))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let asked = entry.asked {
+                        Text("You asked in chat: \u{201C}\(asked)\u{201D}")
+                            .font(.caption).foregroundStyle(Color.sage)
+                    }
+                    ForEach(Array(entry.tryIt.enumerated()), id: \.offset) { n, step in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(n + 1).").monospacedDigit().foregroundStyle(.tertiary)
+                            Text(step).fixedSize(horizontal: false, vertical: true)
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+            if let general = card.topic.tryIt, !general.isEmpty {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(general.enumerated()), id: \.offset) { n, step in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("\(n + 1).").monospacedDigit().foregroundStyle(.tertiary)
+                                Text(step).fixedSize(horizontal: false, vertical: true)
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Text("The whole feature").font(.subheadline).foregroundStyle(.secondary)
+                }
+                .tint(.secondary)
             }
         }
     }
@@ -999,7 +1238,7 @@ struct WhatsNewDetailView: View {
             if let c = item.closedAt { return "Looks good · \(t(c))" }
             return feedback.received[item.id].map { "Received by Claude · \(t($0)) · closed" } ?? "Sent · closed"
         case .reopened: return "Still off · \(item.reopenedAt.map(t) ?? "")"
-        case .draft: return "Not sent yet"
+        case .draft: return "Saved · Claude will pick it up"
         }
     }
 
@@ -1032,6 +1271,10 @@ struct WhatsNewDetailView: View {
                             .font(.subheadline)
                             .foregroundStyle(entry.superseded ? .tertiary : .primary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let asked = entry.asked {
+                            Text("You asked in chat: \u{201C}\(asked)\u{201D}")
+                                .font(.caption).foregroundStyle(Color.sage)
+                        }
                         // Each change with its own pictures (per change, not per topic).
                         if let shots = entry.shots, !shots.isEmpty {
                             ScrollView(.horizontal, showsIndicators: false) {

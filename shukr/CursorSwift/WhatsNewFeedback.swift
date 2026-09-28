@@ -46,6 +46,8 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     /// "Still off": the fix didn't do it; a follow-up note carries on (`followUpOf` = this id).
     var reopenedAt: Date?
     var followUpOf: UUID?
+    /// "Still off" on a change asked for in chat: that entry's id.
+    var followUpOfEntry: String?
 
     init(topic: String, topicTitle: String, notes: [String], commits: [String], kind: Kind, text: String, build: String) {
         self.topic = topic; self.topicTitle = topicTitle; self.notes = notes; self.commits = commits
@@ -71,6 +73,7 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         closedAt = try? c.decodeIfPresent(Date.self, forKey: .closedAt)
         reopenedAt = try? c.decodeIfPresent(Date.self, forKey: .reopenedAt)
         followUpOf = try? c.decodeIfPresent(UUID.self, forKey: .followUpOf)
+        followUpOfEntry = try? c.decodeIfPresent(String.self, forKey: .followUpOfEntry)
     }
 }
 
@@ -147,13 +150,15 @@ final class FeedbackStore {
     // MARK: Writing
 
     /// Create or update the topic's unsent item. `photo`: nil = leave, .some(nil) = remove.
-    func save(card: WhatsNewCard, kind: FeedbackItem.Kind, text: String, photo: Data??, followUpOf: UUID? = nil) {
+    func save(card: WhatsNewCard, kind: FeedbackItem.Kind, text: String, photo: Data??, followUpOf: UUID? = nil,
+              followUpOfEntry: String? = nil) {
         let fresh = FeedbackItem(topic: card.id, topicTitle: card.title, notes: card.notes,
                                  commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
         // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
         // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
         var item = draft(for: card.id, followUpOf: followUpOf) ?? fresh
         if let followUpOf { item.followUpOf = followUpOf }
+        if let followUpOfEntry { item.followUpOfEntry = followUpOfEntry }
         item.topicTitle = card.title
         item.notes = card.notes
         item.commits = card.commits
@@ -171,6 +176,9 @@ final class FeedbackStore {
             }
         }
         if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
+        // Any feedback on a card covers the changes it has (it leaves "To test"; the note's state
+        // takes over — owner, 2026-09-28).
+        WhatsNew.acknowledge(card)
         persist()
     }
 
@@ -224,6 +232,7 @@ final class FeedbackStore {
             lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.topicTitle)\(notes)")
             lines.append("- Topic: `\(item.topic)` · Id: `\(item.id.uuidString)`")
             if let f = item.followUpOf { lines.append("- Follow-up of: `\(f.uuidString)` (still off after its fix)") }
+            if let e = item.followUpOfEntry { lines.append("- Still off after the change asked for in chat: `\(e)`") }
             if !item.commits.isEmpty { lines.append("- Commits: \(item.commits.joined(separator: ", "))") }
             let tested = WhatsNew.card(id: item.topic).map { WhatsNew.isTested($0) } ?? false
             lines.append("- Status: \(statusLine(item)) · \(tested ? "tested ✓" : "not ticked tested")")
@@ -239,7 +248,7 @@ final class FeedbackStore {
     private func statusLine(_ item: FeedbackItem) -> String {
         let t = { (d: Date) in d.formatted(date: .abbreviated, time: .shortened) }
         switch state(item) {
-        case .draft: return "unsent"
+        case .draft: return "saved (not yet picked up)"
         case .toCheck(let fix): return "addressed by \(fix.commit) — to check"
         case .received(let d): return "received \(t(d))"
         case .sent(let d): return "sent \(t(d))"
@@ -322,7 +331,13 @@ final class FeedbackStore {
         let draftIDs = Set(drafts.map(\.id))
         let ordered = drafts.sorted { $0.updated > $1.updated }
             + items.filter { !draftIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
-        try? markdown(for: ordered).write(to: dir.appendingPathComponent("feedback.md"), atomically: true, encoding: .utf8)
+        var md = markdown(for: ordered)
+        // Changes asked for in chat, and whether he's checked them.
+        let asked = WhatsNew.entries.filter { $0.asked != nil && $0.live }
+        if !asked.isEmpty {
+            md += "\n## Asked in chat\n\n" + asked.map { "- `\($0.id)` \($0.title) — \(WhatsNew.askedState($0)) (asked: “\($0.asked ?? "")”)" }.joined(separator: "\n") + "\n"
+        }
+        try? md.write(to: dir.appendingPathComponent("feedback.md"), atomically: true, encoding: .utf8)
     }
 }
 
@@ -334,6 +349,8 @@ struct FeedbackComposer: View {
     var startKind: FeedbackItem.Kind? = nil
     /// "Still off": the note this one follows up.
     var followUpOf: UUID? = nil
+    /// "Still off" on a change asked for in chat.
+    var followUpEntry: String? = nil
     var onSaved: () -> Void = {}
 
     @State private var store = FeedbackStore.shared
@@ -396,7 +413,7 @@ struct FeedbackComposer: View {
                 Spacer()
                 Button {
                     typing = false
-                    store.save(card: card, kind: kind, text: text, photo: photoData, followUpOf: followUpOf)
+                    store.save(card: card, kind: kind, text: text, photo: photoData, followUpOf: followUpOf, followUpOfEntry: followUpEntry)
                     photoData = nil
                     triggerSomeVibration(type: .success)
                     onSaved()
@@ -408,7 +425,7 @@ struct FeedbackComposer: View {
                 .disabled(!changed)
             }
             if let e = existing {
-                Text("Not sent yet · saved \(e.updated.formatted(date: .omitted, time: .shortened))")
+                Text("Saved \(e.updated.formatted(date: .omitted, time: .shortened)) · Claude will pick it up")
                     .font(.caption).foregroundStyle(.tertiary)
             }
         }

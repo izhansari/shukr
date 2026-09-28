@@ -27,6 +27,24 @@ steps**, **its own screenshot** and **the feedback ids it fixes**.
   <build>: <entry title>" with Looks good ✓ / Still off. Internal-only changes (refactors, logging,
 scripts, notes) don't need one. The owner reads these in the app (tap the build line at the bottom
 of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them and sends feedback back.
+- **Hard rule — chat requests too (2026-09-28):** when Bradley relays the owner's request from chat (his exact words
+  are in the brief), the entry gets `--asked "<his words>"`: the app shows "You asked in chat: '…'" and puts the change
+  under **To check** (Looks good / Still off) exactly like addressed feedback. Backfill: `whatsnew.py asked --entry <id>
+  --text "…"`. Don't add `--asked` to an entry that already `--addresses` the same request (two check cards).
+- **Hard rule — steps per change:** every entry has its own `--try` steps for THAT change (the app's "Try it" lists
+  every untested change with its own steps, then the feature's general steps folded). `whatsnew.py add` refuses an
+  entry without `--try`; `--no-try` only for invisible changes.
+- **Short topic titles:** `--topic-title` ≤ 60 chars (a name: "Prayers widget", "Insights"); the feature as it is now,
+  in full, goes in `--topic-summary` (the detail shows it under the title). The script refuses longer titles.
+- **How the page reads (2026-09-28, owner: "so everyone is on the same page"):** each card has one state. To check
+  (your note addressed, or something you asked in chat done) → To test (changes nobody has tested or given feedback
+  on, newest untested first, a green dot when the newest is unseen) → With the team (you left a 👎 / note: "You said
+  '…' · saved · Claude will pick it up / sent / received") → Archive (tested, 👍, looked good). Any feedback, or the
+  tick, acknowledges the card up to its latest change (`WhatsNew.acknowledge`, `whatsNew.acked`: topic → entry id); a
+  newer change always reopens it (`WhatsNew.untested`). Older ticks / notes still count (tested keys per entry; a
+  note's `commits` snapshot). Chat-request checks live in `whatsNew.asked.closed / .reopened`; Still off opens a note
+  with `followUpOfEntry`; feedback.md lists them under "Asked in chat". "unsent" is gone from the UI ("saved · Claude
+  will pick it up").
 - **Never hand-edit the entries** — use `scripts/whatsnew.py` (it keeps `shukr/WhatsNew.json`'s layout):
   1. `scripts/whatsnew.py resolve` (fills in earlier "next" hashes and every commit's time).
   2. Screenshot in the sim, then `scripts/whatsnew.py shot <png> <name>` → `shukr/WhatsNewShots/wn-<name>.jpg`
