@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Pull "What's new" feedback from the phones (notes #19) into shukrGit/feedback/.
-# The app keeps it in the app group's Library/Feedback: feedback.json, feedback.md (unsent first)
+# The app keeps it in the app group's Library/Feedback: feedback.json, feedback.md (unsent first), state.json
 # and photos/. Each phone that's connected and has feedback gives:
 #   shukrGit/feedback/<date>-<phone>.md          the summary, photo links fixed up
 #   shukrGit/feedback/<date>-<phone>/            feedback.json + photos/
@@ -48,6 +48,8 @@ for name in "${PICK[@]}"; do
   fi
   mkdir -p "$OUT/$base"
   cp "$tmp/Feedback/feedback.json" "$OUT/$base/" 2>/dev/null
+  # state.json: acknowledged topics, chat-request checks, tested ticks (states kept in the app's defaults).
+  cp "$tmp/Feedback/state.json" "$OUT/$base/" 2>/dev/null
   [[ -d "$tmp/Feedback/photos" ]] && cp -R "$tmp/Feedback/photos" "$OUT/$base/"
   # "Photo: photos/x.jpg" → a Markdown image pointing into the folder next to the file.
   sed -E "s#^- Photo: photos/(.*)\$#- Photo: ![](${base}/photos/\\1)#" "$tmp/Feedback/feedback.md" > "$OUT/$base.md"

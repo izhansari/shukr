@@ -170,10 +170,36 @@ enum WhatsNew {
     static func acknowledge(_ card: WhatsNewCard) {
         var map = acks(); map[card.id] = card.latest.id
         UserDefaults.standard.set(map, forKey: ackKey)
+        writeState()
     }
     static func unacknowledge(_ card: WhatsNewCard) {
         var map = acks(); map[card.id] = nil
         UserDefaults.standard.set(map, forKey: ackKey)
+        writeState()
+    }
+
+    /// The states that live only in defaults, for the plan board (Bradley): Library/Feedback/state.json
+    /// — `{"acked": {topic: entryId}, "askedClosed": […], "askedReopened": […], "tested": […], "updated": …}`,
+    /// next to feedback.json so `pull-feedback.sh` copies it. Written at launch and on every change, only
+    /// when the content changed.
+    static func writeState() {
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup)?
+            .appendingPathComponent("Library/Feedback", isDirectory: true) else { return }
+        let body: [String: Any] = ["acked": acks(), "askedClosed": askedClosed().sorted(),
+                                   "askedReopened": askedReopened().sorted(), "tested": tested().sorted()]
+        guard let content = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
+        let url = dir.appendingPathComponent("state.json")
+        // Unchanged (ignoring "updated"): leave the file alone.
+        if let old = try? Data(contentsOf: url),
+           var oldObj = try? JSONSerialization.jsonObject(with: old) as? [String: Any] {
+            oldObj["updated"] = nil
+            if let oldContent = try? JSONSerialization.data(withJSONObject: oldObj, options: [.sortedKeys]), oldContent == content { return }
+        }
+        var withTime = body
+        withTime["updated"] = iso.string(from: Date())
+        guard let data = try? JSONSerialization.data(withJSONObject: withTime, options: [.sortedKeys, .prettyPrinted]) else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
     }
 
     /// The last change covered by a tick, an ack or (older builds) a note's commits snapshot; -1 = none.
@@ -215,10 +241,12 @@ enum WhatsNew {
     static func undoReopenAsked(_ id: String) {
         var set = askedReopened(); set.remove(id)
         UserDefaults.standard.set(Array(set), forKey: askedReopenedKey)
+        writeState()
     }
     private static func insert(_ id: String, _ key: String) {
         var set = Set(UserDefaults.standard.stringArray(forKey: key) ?? []); set.insert(id)
         UserDefaults.standard.set(Array(set), forKey: key)
+        writeState()
     }
     /// For feedback.md: "looks good" / "still off" / "to check".
     static func askedState(_ entry: WhatsNewEntry) -> String {
@@ -306,7 +334,7 @@ enum WhatsNew {
     }()
 
     /// Call once at launch so a new build is noticed even before the page is opened.
-    static func noteLaunch() { _ = previousBuild }
+    static func noteLaunch() { _ = previousBuild; writeState() }
 
     /// Entries added after the build you last had open.
     static let newIDs: Set<String> = {

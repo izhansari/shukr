@@ -43,7 +43,9 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   tick, acknowledges the card up to its latest change (`WhatsNew.acknowledge`, `whatsNew.acked`: topic → entry id); a
   newer change always reopens it (`WhatsNew.untested`). Older ticks / notes still count (tested keys per entry; a
   note's `commits` snapshot). Chat-request checks live in `whatsNew.asked.closed / .reopened`; Still off opens a note
-  with `followUpOfEntry`; feedback.md lists them under "Asked in chat". "unsent" is gone from the UI ("saved · Claude
+  with `followUpOfEntry`; feedback.md lists them under "Asked in chat". Those defaults-only states also go to
+  `Library/Feedback/state.json` (`acked`, `askedClosed`, `askedReopened`, `tested`, `updated`; written at launch and on
+  change, only when changed) — `pull-feedback.sh` copies it next to feedback.json for the plan board. "unsent" is gone from the UI ("saved · Claude
   will pick it up").
 - **Never hand-edit the entries** — use `scripts/whatsnew.py` (it keeps `shukr/WhatsNew.json`'s layout):
   1. `scripts/whatsnew.py resolve` (fills in earlier "next" hashes and every commit's time).
