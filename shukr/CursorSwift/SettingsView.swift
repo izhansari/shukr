@@ -229,7 +229,11 @@ struct SettingsView: View {
                             NavigationLink {
                                 UpcomingRemindersView()
                             } label: {
-                                Label("Upcoming reminders", systemImage: "calendar.badge.clock")
+                                Label {
+                                    Text("Upcoming reminders").foregroundStyle(.primary)
+                                } icon: {
+                                    Image(systemName: "calendar.badge.clock").symbolRenderingMode(.monochrome).foregroundStyle(Color.sage)
+                                }
                             }
                         }
                     }

@@ -277,14 +277,14 @@ struct UpcomingRemindersView: View {
             }
             ForEach(days, id: \.key) { day in
                 Section {
-                    ForEach(day.items) { row($0, faded: false) }
+                    ForEach(Self.groups(day.items)) { groupRow($0, faded: false) }
                 } header: {
                     Text(dayTitle(day.key))
                 }
             }
             if !deliveredToday.isEmpty {
                 Section {
-                    ForEach(deliveredToday) { row($0, faded: true) }
+                    ForEach(Self.groups(deliveredToday)) { groupRow($0, faded: true) }
                 } header: {
                     Text("Already delivered today")
                 }
@@ -303,31 +303,66 @@ struct UpcomingRemindersView: View {
 
     // MARK: pieces
 
-    /// "51 of 64 · through Sat, Oct 4" in the app's ring look.
+    /// The ring (how many of iOS's 64 are waiting), how far they reach, what they're made of, and
+    /// the one thing to know: open shukr every few days (owner: educate, be transparent, keep it simple).
     private var summary: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle().stroke(Color(.secondarySystemFill), lineWidth: 6)
-                Circle()
-                    .trim(from: 0, to: min(Double(pending.count) / 64, 1))
-                    .stroke(Color.sage, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: -2) {
-                    Text("\(pending.count)").font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
-                    Text("of 64").font(.system(size: 10, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle().stroke(Color(.secondarySystemFill), lineWidth: 6)
+                    Circle()
+                        .trim(from: 0, to: min(Double(pending.count) / 64, 1))
+                        .stroke(Color.sage, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                        .rotationEffect(.degrees(-90))
+                    VStack(spacing: -2) {
+                        Text("\(pending.count)").font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
+                        Text("of 64").font(.system(size: 10, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 70, height: 70)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(coverText)
+                        .font(.system(.headline, design: .rounded, weight: .regular))
+                    Text("waiting with iOS right now")
+                        .font(.system(.caption, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 70, height: 70)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(coverText)
-                    .font(.system(.headline, design: .rounded, weight: .regular))
-                Text("iOS keeps up to 64 waiting at once. shukr fills them a week ahead: every prayer's start, and your nudges for the next two days.")
-                    .font(.system(.caption, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            // What they are.
+            HStack(spacing: 0) {
+                ForEach(breakdown, id: \.label) { part in
+                    VStack(spacing: 1) {
+                        Text("\(part.count)")
+                            .font(.system(.title3, design: .rounded, weight: .light))
+                            .monospacedDigit()
+                        Text(part.label)
+                            .font(.system(.caption2, design: .rounded, weight: .light))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             }
+            .padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            Text("iOS lets an app keep 64 reminders waiting at once. shukr fills them about a week ahead. Open shukr every few days and they stay topped up.")
+                .font(.system(.footnote, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 4)
+    }
+
+    /// Starts · Halfway · 30 min left · Zikr, and the snoozes / later ones only when there are some.
+    private var breakdown: [(label: String, count: Int)] {
+        let all = pending.map(\.kind)
+        func n(_ kinds: Kind...) -> Int { all.filter { kinds.contains($0) }.count }
+        var parts: [(label: String, count: Int)] = [("Starts", n(.start)), ("Halfway", n(.halfway)),
+                                                     ("30 min left", n(.endingSoon)), ("Zikr", n(.zikr, .zikrLater))]
+        let snoozed = n(.snooze, .other)
+        if snoozed > 0 { parts.append(("Snoozed", snoozed)) }
+        return parts
     }
 
     private var coverText: String {
@@ -335,39 +370,79 @@ struct UpcomingRemindersView: View {
         return "Covers you through \(last.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
     }
 
-    private func row(_ item: Item, faded: Bool) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: symbol(for: item))
+    /// One row per prayer in a day (its start, then its nudges), one for the day's zikr reminders,
+    /// one for snoozed nudges.
+    struct Group: Identifiable {
+        let id: String
+        let title: String
+        let symbol: String
+        let isPrayer: Bool
+        let items: [Item]      // by time
+    }
+
+    static func groups(_ items: [Item]) -> [Group] {
+        var byKey: [String: [Item]] = [:]
+        for item in items {
+            let key: String
+            switch item.kind {
+            case .start, .halfway, .endingSoon: key = item.prayer ?? "Prayer"
+            case .zikr, .zikrLater: key = "Zikr"
+            case .snooze, .other: key = "Snoozed"
+            }
+            byKey[key, default: []].append(item)
+        }
+        return byKey.map { key, list in
+            let sorted = list.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+            let isPrayer = PrayerNotificationID.prayers.contains(key)
+            let symbol = isPrayer ? prayerSymbol(key) : key == "Zikr" ? "circle.hexagonpath" : "clock.arrow.circlepath"
+            return Group(id: key, title: key == "Snoozed" ? "Nudges you snoozed" : key, symbol: symbol, isPrayer: isPrayer, items: sorted)
+        }
+        .sorted { ($0.items.first?.date ?? .distantFuture) < ($1.items.first?.date ?? .distantFuture) }
+    }
+
+    private func groupRow(_ group: Group, faded: Bool) -> some View {
+        let start = group.isPrayer ? group.items.first { $0.kind == .start } : nil
+        let rest = group.items.filter { $0.id != start?.id }
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: group.symbol)
                 .font(.system(size: 15, weight: .light))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(item.kind == .start ? Color.sage : Color.secondary)
+                .foregroundStyle(group.isPrayer ? Color.sage : Color.secondary)
                 .frame(width: 24)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(item.title.isEmpty ? (item.prayer ?? "Reminder") : item.title)
-                    .font(.system(.subheadline, design: .rounded, weight: .regular))
-                    .lineLimit(1)
-                Text([item.prayer, item.kind.label].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(.caption, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.title)
+                    .font(.system(.body, design: .rounded, weight: .regular))
+                if !rest.isEmpty {
+                    // Each item stays whole on a line ("30 min left 11:29 PM"): wraps only between items.
+                    Text(rest.map { detail($0, prayer: group.isPrayer).replacingOccurrences(of: " ", with: "\u{00A0}") }
+                        .joined(separator: " · "))
+                        .font(.system(.caption, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
-            Text(item.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–")
-                .font(.system(.subheadline, design: .rounded, weight: .light))
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            if let start {
+                Text(time(start))
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
         }
         .opacity(faded ? 0.45 : 1)
     }
 
-    private func symbol(for item: Item) -> String {
+    /// "halfway 3:13 PM" for a prayer's nudge, "After Fajr 6:10 AM" for a zikr reminder.
+    private func detail(_ item: Item, prayer: Bool) -> String {
+        if prayer { return "\(item.kind == .start ? "starts" : item.kind.label) \(time(item))" }
         switch item.kind {
-        case .start: return item.prayer.map(prayerSymbol) ?? "bell"
-        case .halfway: return "circle.lefthalf.filled"
-        case .endingSoon: return "hourglass"
-        case .zikr, .zikrLater: return "circle.hexagonpath"
-        case .snooze: return "clock.arrow.circlepath"
-        case .other: return "bell"
+        case .zikr, .zikrLater: return "\(item.title.isEmpty ? "Zikr" : item.title) \(time(item))"
+        default: return time(item)
         }
+    }
+
+    private func time(_ item: Item) -> String {
+        item.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–"
     }
 
     /// Background refresh, the raw checks and (beta) the card previews: collapsed, at the bottom.

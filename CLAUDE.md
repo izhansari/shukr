@@ -1240,6 +1240,13 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   (NotificationHealth.swift) — false = beta only (the `WhatsNewAccess` gate in SettingsView); the card previews stay
   beta-only either way. DEBUG `-demoScheduledNotifications`, `-upcomingDetails` (Details open). Sim ✓ light / dark,
   Details, the off preview.
+  **Simpler (same day, owner: "just not impressed" — its job: teach the iOS limit, be transparent, keep it simple):**
+  the top is the ring + "Covers you through …", a breakdown strip (Starts · Halfway · 30 min left · Zikr, + Snoozed
+  when any) and one plain line ("iOS lets an app keep 64 reminders waiting at once. shukr fills them about a week
+  ahead. Open shukr every few days and they stay topped up."). The list is `groups(_:)`: per day, one row per prayer
+  (symbol, name, start time on the right, "halfway 5:44 PM · 30 min left 6:32 PM" under it; items kept whole with
+  non-breaking spaces), one "Zikr" row ("Subhanallah 7:54 PM · …"), one "Nudges you snoozed"; no notification titles
+  (their emoji dots). Delivered today: the same rows, greyed. The Settings row's icon is sage, monochrome.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
