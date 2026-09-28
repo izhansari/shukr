@@ -630,7 +630,15 @@ struct PrayerTimesView: View {
                 // `-demoPrayerStartThenMark`: mark it 4 s after it starts → the circle moves on to the
                 // next (not started) prayer and the track shrinks back to dashed after the sweep.
                 if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartThenMark") {
-                    try? await Task.sleep(for: .seconds(10))
+                    // `-demoPrayerStartSheetOpen`: with the prayer list up (the list's path; marking
+                    // Isha then completes the day).
+                    if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartSheetOpen") {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                        try? await Task.sleep(for: .seconds(8))
+                    } else {
+                        try? await Task.sleep(for: .seconds(10))
+                    }
                     if let now = viewModel.relevantPrayer, now.status() == .current {
                         viewModel.togglePrayerCompletion(for: now)
                     }
@@ -1191,8 +1199,9 @@ struct TodaysPrayerListView: View {
     /// for the DEBUG "Test Perfect Day" row even when today isn't one.
     @State private var perfectPulse = 0
     @State private var demoPerfect = false
-    /// When the perfect-day cascade starts after the notification (rows are back by then).
-    static let perfectDayCascadeStart: Double = 1.5
+    /// When the perfect-day cascade starts after the notification: after the circle's flourish,
+    /// once all five rows have come back (they wait for it).
+    static let perfectDayCascadeStart: Double = CompletionFlourish.duration + 0.3
 
     var body: some View {
         // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
@@ -1234,7 +1243,9 @@ struct TodaysPrayerListView: View {
                 // The folded ones, as a footer row: a divider like the rows', then "✓ 3 done ⌄"
                 // centred with the same air above and below as a row (2026-09-25 — the old line
                 // hung under the list with a bare 10 pt gap and no divider, which read off).
-                if (foldedCount > 0 || showDone) && !allDone {
+                // Kept while the last prayer's row lingers (the circle's flourish): hiding it at the
+                // mark shortened the list and dropped the circle ~19 pt mid-moment (2026-09-27).
+                if (foldedCount > 0 || showDone) && (!allDone || !lingering.isEmpty) {
                     VStack(spacing: 0) {
                         if !visible.isEmpty {
                             Divider()
@@ -1309,10 +1320,13 @@ struct TodaysPrayerListView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }
-            lingering.insert(event.name)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            // The row stays (and a completed day's other rows stay folded) until the circle's
+            // flourish is done: the list changing height moved the circle mid-sweep (owner, 2026-09-27).
+            let name = event.prayerName ?? event.name   // the row's name ("Dhuhr" for a Jumu'ah)
+            lingering.insert(name)
+            DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
-                    _ = lingering.remove(event.name)
+                    _ = lingering.remove(name)
                 }
             }
         }

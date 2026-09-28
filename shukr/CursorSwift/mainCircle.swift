@@ -31,6 +31,13 @@ struct MainCircleView: View {
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
     @State private var flourishID = 0
+    /// The prayer just marked, still drawn under the flourish until it ends. Marking updates the row
+    /// at once, so without this the circle swapped to the next prayer / the day summary in the
+    /// frame the flourish began, and the swap showed through its fade (owner, 2026-09-27: "not the
+    /// same quality as it was").
+    @State private var heldPrayer: PrayerModel?
+    /// What the circle draws: the held prayer during a completion, else the relevant one.
+    private var shownPrayer: PrayerModel? { heldPrayer ?? viewModel.relevantPrayer }
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
     @State private var trackSolid: CGFloat = 1
@@ -88,7 +95,7 @@ struct MainCircleView: View {
                         .shadow(color: Color.green.opacity(0.2), radius: 15)
                         .background(Color.clear) // Ensures the inside remains transparent
                 }
-                else if let prayer = viewModel.relevantPrayer, preview != nil || !(prayer.status() == .upcoming && prayer.name == "Fajr") {
+                else if let prayer = shownPrayer, preview != nil || !(prayer.status() == .upcoming && prayer.name == "Fajr") {
                     // The real state, or the dev preview's.
                     let status = preview ?? prayer.status()
                     var progress: Double {
@@ -207,14 +214,17 @@ struct MainCircleView: View {
             // The day summary ↔ a prayer crossfades (e.g. at Fajr the summary circle — the day's
             // score / next Fajr — becomes Fajr's ring as the prayer begins, 2026-09-27).
             .animation(.easeInOut(duration: 0.7), value: showsPrayer)
+            // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
+            // blinks), back in as it fades.
             .opacity(flourish == nil ? 1 : 0)
-            .blur(radius: flourish == nil ? 0 : 8)
-            .animation(.easeInOut(duration: 0.45), value: flourish == nil)
+            .blur(radius: flourish == nil ? 0 : 4)
+            .animation(flourish == nil ? .easeInOut(duration: 0.45) : .easeOut(duration: 0.25), value: flourish == nil)
 
             if let flourish {
                 CompletionFlourish(event: flourish)
                     .id(flourishID)
-                    .transition(.opacity)
+                    // In at once (its arc takes over from the prayer's in place), out with a fade.
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
 
             
@@ -292,10 +302,19 @@ struct MainCircleView: View {
             guard let event = note.object as? PrayerCompletionEvent else { return }
             flourishID += 1
             let id = flourishID
-            withAnimation(.easeInOut(duration: 0.3)) { flourish = event }
+            // Keep drawing the prayer just marked until the flourish is done (a replay — Jumu'ah
+            // found after the mark — keeps the hold it has).
+            let name = event.prayerName ?? event.name
+            heldPrayer = viewModel.todaysPrayers.first { $0.name == name } ?? heldPrayer
+            withAnimation(.easeOut(duration: 0.25)) { flourish = event }
             DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
                 guard flourishID == id else { return }   // a newer completion took over
                 flourishEndedAt = Date()
+                // The next prayer / the summary goes in while the content is still hidden, with no
+                // animation (the name and icon morphed Maghrib → Isha as they faded in), then fades in.
+                var swap = Transaction()
+                swap.disablesAnimations = true
+                withTransaction(swap) { heldPrayer = nil }
                 withAnimation(.easeInOut(duration: 0.45)) {
                     flourish = nil
                     live?.postSalahNudge = event.name   // the post-salah pill at the bottom
@@ -412,7 +431,7 @@ struct MainCircleView: View {
     private var showsPrayer: Bool {
         _ = currentTime
         if preview != nil { return true }
-        guard let p = viewModel.relevantPrayer else { return false }
+        guard let p = shownPrayer else { return false }
         return !(p.status() == .upcoming && p.name == "Fajr")
     }
 

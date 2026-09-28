@@ -1461,6 +1461,18 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   the streak → in-time days → max. Once the day's done (the circle's summary condition) the streak
   stays up instead of the city (owner: keep the city otherwise). Celebrations: heart goes green,
   number rolls up, hearts float; the on-time beat follows ~2.4 s later with sparkles.
+- **Completion moment, smooth again (2026-09-27, owner: "not the same quality as it was"):** marking updates the row
+  at once, so the circle swapped to the next prayer / the day summary (the new 0.7 s crossfade, the dashed NEXT look)
+  in the frame the flourish began, and it showed through the flourish's fade-in; the list hid its "N done" footer
+  (the day complete) and dropped the circle ~19 pt, then unfolded all five mid-sweep. Now `MainCircleView.heldPrayer`
+  (set from `PrayerCompletionEvent.prayerName`) keeps the marked prayer drawn until the flourish ends; the flourish
+  goes in at once (its arc sits on the prayer's own) while the content fades out in 0.25 s; at the end the held
+  prayer is dropped with animations off (no Maghrib → Isha morph) and the content fades in. The list keeps the row
+  (`lingering`, keyed by the row's name — "Dhuhr" for a Jumu'ah) and the footer for `CompletionFlourish.duration`;
+  the perfect-day cascade starts after it. Unmarking is unchanged. DEBUG `-demoPrayerStartSheetOpen` (with
+  `-demoPrayerStart…ThenMark`) marks from the open list; `-demoPrayerStartPrayer Isha` completes the day. Sim ✓
+  frame by frame (simctl recordVideo — variable frame rate, so pick frames by index: `fps=10,select=between(n,…)`),
+  all three paths; Release builds.
 - **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
   the circle's `CompletionFlourish` (arc sweeps closed in the score colour, glow, "✓ Asr ·
   On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a footer row, "✓ N done ⌄" (tap to show

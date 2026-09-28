@@ -496,7 +496,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 let progress = window > 0 ? Date().timeIntervalSince(prayer.startTime) / window : 1
                 NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
                     name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
-                    summary: prayer.scoreSummary))
+                    summary: prayer.scoreSummary, prayerName: prayer.name))
             } else {
                 triggerSomeVibration(type: .medium)
                 prayer.resetPrayer()
@@ -516,7 +516,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                         // It turned out to be Jumu'ah: replay the moment with the right name and score.
                         NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
                             name: prayer.displayName, score: prayer.numberScore ?? 1, progress: 0,
-                            summary: prayer.scoreSummary))
+                            summary: prayer.scoreSummary, prayerName: prayer.name))
                     }
                 }
             }

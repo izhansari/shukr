@@ -25,6 +25,8 @@ struct PrayerCompletionEvent {
     let progress: Double
     /// The line under the name; nil = "On time · 88" from the score. A Jumu'ah says "Jumu'ah at …".
     var summary: String? = nil
+    /// The row's own name ("Dhuhr" for a Jumu'ah): the circle holds that prayer while the flourish plays.
+    var prayerName: String? = nil
 }
 
 extension Notification.Name {
@@ -76,8 +78,10 @@ enum PrayerCompletionHaptics {
 
 // MARK: - Main circle flourish
 
-/// Drawn over the main circle for ~1.8 s after a completion. The circle's own content (already
-/// showing the next prayer underneath) is hidden meanwhile by `MainCircleView`.
+/// Drawn over the main circle for ~1.8 s after a completion. Underneath, `MainCircleView` keeps
+/// showing the prayer just marked (`heldPrayer`) and fades it out as this comes in — the arcs are
+/// the same size and colour, so the sweep carries on from where the prayer's arc was. The next
+/// prayer / the day summary only comes in as this fades.
 struct CompletionFlourish: View {
     let event: PrayerCompletionEvent
     static let duration: Double = 1.8

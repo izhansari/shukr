@@ -44,7 +44,9 @@
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring before a prayer starts"},
     {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
     {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"},
-    {"id": "streaks", "area": "Salah", "title": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late", "link": "salah"}
+    {"id": "streaks", "area": "Salah", "title": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late", "link": "salah"},
+    {"id": "completion-moment", "area": "Salah", "title": "Marking a prayer: the ring sweeps closed from where it was, a glow and \"✓ Asr · On time · 88\"; the circle and the list stay put until it's done, then the next prayer (or the day's score) fades in", "link": "salah",
+     "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]}
   ],
   "entries": [
     {
@@ -676,6 +678,12 @@
       "title": "Sort button's active look is softer: green icon and arrow on a light green tint (was a solid green fill)",
       "tryIt": ["Zikr tab → History & Azkar → Azkar → sort by Pace: the top-right button shows the pace icon + ↑ in green on a pale green capsule", "Try it in dark mode too"],
       "checked": "sim", "shots": ["wn-azkar-sort-tint.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
+    },
+    {
+      "id": "completion-moment-1", "date": "2026-09-27", "commit": "next", "time": null, "topic": "completion-moment", "notes": null,
+      "title": "Completion moment smooth again: the circle keeps the prayer you marked until the sweep ends (no flash of the next prayer or the day's score), and the list waits too",
+      "tryIt": ["Hold the circle to mark the current prayer: its arc sweeps closed, then the next prayer fades in", "Open the list and mark the last prayer of the day: the circle stays still through the moment, then 'today's score' comes in and all five rows unfold"],
+      "checked": "sim", "shots": ["wn-completion-moment.jpg"]
     }
   ]
 }
