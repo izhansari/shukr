@@ -397,8 +397,7 @@ final class LocationViewModel: ObservableObject {
     private func showPickPin() {
         guard let mapView else { return }
         pickPin?.removeFromSuperview()
-        let name = movingPrayer?.name ?? ""
-        let pin = PickPinView(tip: pick.pinPoint, symbol: prayerSymbol(name) == "circle" ? "mappin" : prayerSymbol(name))
+        let pin = PickPinView(tip: pick.pinPoint)
         mapView.addSubview(pin)
         pickPin = pin
         pin.alpha = 0
@@ -2037,19 +2036,18 @@ struct MapPickOverlay: View {
 }
 
 /// The picking pin, a subview of the map, so its tip is exactly the point the spot is read from:
-/// the shared `PickPin` (a proper map pin — feedback 723D0745), hosted here. Lifts while the map moves.
+/// the shared `PickPin` (the stick — D5818BB9), hosted here. Lifts while the map moves.
 final class PickPinView: UIView {
     private final class State: ObservableObject { @Published var lifted = false }
     private struct Host: View {
         @ObservedObject var state: State
-        let symbol: String
-        var body: some View { PickPin(symbol: symbol, lifted: state.lifted) }
+        var body: some View { PickPin(lifted: state.lifted) }
     }
     private let state = State()
     private let host: UIHostingController<Host>
 
-    init(tip: CGPoint, symbol: String = "mappin") {
-        host = UIHostingController(rootView: Host(state: state, symbol: symbol))
+    init(tip: CGPoint) {
+        host = UIHostingController(rootView: Host(state: state))
         let size = PickPin.size, t = PickPin.tip
         super.init(frame: CGRect(x: tip.x - t.x, y: tip.y - t.y, width: size.width, height: size.height))
         isUserInteractionEnabled = false

@@ -1082,7 +1082,7 @@
       "checked": "sim", "shots": ["wn-whatsnew-headlines.jpg"], "asked": "both of these things look the same to me. it's low-key a lot of text to read on this page as soon as I first open it. can you make it so that it has a small title or something that just tells me what it is that got changed or what it is to look for."
     },
     {
-      "id": "move-prayer-4", "date": "2026-09-28", "commit": "eb2bbb0", "time": "2026-09-28T19:16:46-04:00", "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-4", "date": "2026-09-28", "commit": "eb2bbb0", "time": "2026-09-28T19:16:46-04:00", "topic": "move-prayer", "notes": null, "status": "replaced",
       "title": "Moving a prayer's pin: a clear green pin with the prayer's symbol that lifts while you drag the map", "headline": "A clear pin when you move a prayer",
       "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; a green pin with the prayer's symbol lifts, then drops where you stop", "Or the time editor (long-press a marked prayer) → the location chip: the same pin"],
       "checked": "sim", "shots": ["wn-pick-pin.jpg"], "addresses": ["723D0745-D06C-4924-85A9-FD320377D08A", "7D8E8B67-2969-44B6-BB2E-4864CC68642A"]
@@ -1092,6 +1092,12 @@
       "title": "Your reminders: a headline on the 64 limit, iOS colours, readable text, clearer symbols, smooth card switches", "headline": "Your reminders: clearer and smoother",
       "tryIt": ["Settings → Notifications → the Reminders row → Your reminders: the top says iOS keeps up to 64 notifications and how shukr budgets them", "Tap the three tiles and the days: the card stays put, its content swaps without flicker and its height glides"],
       "checked": "sim", "shots": ["wn-reminders-polish.jpg"], "addresses": ["49171DB2-A9BD-442D-8C05-A78812B07007"]
+    },
+    {
+      "id": "move-prayer-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "move-prayer", "notes": null,
+      "title": "The stick pin is back for moving a prayer: a green head with a white edge on a thin needle, in both pickers", "headline": "The stick pin is back",
+      "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; the green stick lifts, then drops where you stop", "Long-press a marked prayer → the location chip: the same stick (no more thin grey outline)"],
+      "checked": "sim", "shots": ["wn-stick-pin.jpg"], "addresses": ["D5818BB9"]
     }
   ]
 }
