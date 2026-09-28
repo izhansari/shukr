@@ -1022,7 +1022,7 @@
       "checked": "sim", "shots": ["wn-whats-new-states.jpg"], "asked": "it says it lives in 'to test' even when i gave a feedback with thumbs"
     },
     {
-      "id": "whats-new-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "id": "whats-new-12", "date": "2026-09-28", "commit": "98cbe46", "time": "2026-09-28T16:40:24-04:00", "topic": "whats-new", "notes": null,
       "title": "What's new: Looks good keeps a card out of To test, and changes you'd already given feedback on stay done",
       "tryIt": ["Tap Looks good on a To check card → it goes to the Archive and doesn't come back under To test"],
       "checked": "sim"
