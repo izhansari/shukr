@@ -43,7 +43,7 @@
     {"id": "qibla-haptic", "area": "Map", "title": "The qibla buzz: on the Salah circle when it's on screen, and on the qibla map the whole time you're lined up", "link": "salah"},
     {"id": "lockscreen-prayers", "area": "Widget", "title": "Lock Screen Prayers widget: the ring and bar fill as the window passes; a dashed ring before a prayer starts"},
     {"id": "settings-rows", "area": "Settings", "title": "Settings rows (pickers, button rows, navigation rows) respond to taps on every iOS version", "link": "settings"},
-    {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"},
+    {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers with the phone's ring, mark and unmark prayers, the qibla, zikr with the phone's counter (Double Tap / Crown), Tasbih Fatimah, and complications"},
     {"id": "streaks", "area": "Salah", "title": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late", "link": "salah"},
     {"id": "completion-moment", "area": "Salah", "title": "Marking a prayer: the ring sweeps closed from where it was, a glow and \"✓ Asr · On time · 88\"; the circle and the list stay put until it's done, then the next prayer (or the day's score) fades in", "link": "salah",
      "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]},
@@ -716,6 +716,12 @@
       "title": "Fajr alarm reads \"Start\" / \"End\" of Fajr (was Fajr / Sunrise) in the setup, Settings and the Shortcut; an untouched rule now really means before the start",
       "tryIt": ["Setup → Wake up for Fajr → turn it on: \"10 min before Start of Fajr · tomorrow 5:25 AM\"", "Settings → Alarm Settings → the wheels say Start / End"],
       "checked": "sim", "shots": ["wn-setup-fajr-startend.jpg"]
+    },
+    {
+      "id": "apple-watch-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "title": "The watch counter is now the phone's (beads, hundreds dots, the fine ring, edge to edge), marking plays the phone's completion moment, tap to mark / \"Unmark X?\", the pause screen has no empty bubbles, and Tasbih Fatimah shows the phrase above the count",
+      "tryIt": ["Watch → Zikr → Freestyle, count past 100", "Watch → hold the prayer ring", "Watch → Zikr → Tasbih Fatimah: the phrase sits above the count"],
+      "checked": "sim", "shots": ["wn-watch-counter.jpg"]
     }
   ]
 }
