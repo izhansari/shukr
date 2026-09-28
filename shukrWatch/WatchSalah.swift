@@ -25,7 +25,7 @@ enum WatchPrayerMarker {
         // The prayer's own day (its Fajr), not whatever day it is at the tap.
         guard let day = WatchPrayers.day(at: prayer.start) else { return }
         // A Friday Dhuhr at one of your masajid is Jumu'ah (full marks), as the phone will score it.
-        let masjid = WatchPrayers.jumuahMasjid(for: prayer)
+        let masjid = WatchPrayers.jumuahMasjid(for: prayer, near: WatchCompass.shared.recentLocation)
         let score = masjid != nil ? 1 : WatchScoring.score(start: prayer.start, end: prayer.end, at: date)
         // An id per mark: the phone applies it once, however many copies arrive, and an undo names it.
         let id = UUID().uuidString
@@ -71,11 +71,19 @@ enum WatchPrayerMarker {
         }
     }
 
-    /// The phone has handled these ids (its context's "markIDs"): they leave the outbox.
-    static func confirm(_ ids: [String]) {
-        let done = Set(ids)
+    /// The phone has handled these (its context's "markIDs" / "unmarkIDs"). A mark leaves the
+    /// outbox once the phone has it or its undo; an undo only once the phone has the undo.
+    static func confirm(marks: [String], undos: [String]) {
+        let marked = Set(marks), undone = Set(undos)
         let box = outbox
-        let kept = box.filter { !done.contains($0.value["id"] as? String ?? "") }
+        let kept = box.filter { entry in
+            let id = entry.value["id"] as? String ?? ""
+            switch entry.value["type"] as? String {
+            case "prayerMarked": return !marked.contains(id) && !undone.contains(id)
+            case "prayerUnmarked": return !undone.contains(id)
+            default: return true
+            }
+        }
         if kept.count != box.count { outbox = kept }
     }
 
@@ -193,6 +201,8 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
         super.init()
         manager.delegate = self
         manager.headingFilter = 1
+        // Seeded now, so someone who already allowed location never sees the "qibla" button flash.
+        status = manager.authorizationStatus
         #if DEBUG
         // `-demoWatchHeading 40`: the simulator has no compass.
         if UserDefaults.standard.object(forKey: "demoWatchHeading") != nil {
@@ -202,9 +212,14 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
 
     var available: Bool { heading != nil || CLLocationManager.headingAvailable() }
-    /// Location not asked for yet (without it the arrow uses magnetic north).
-    var needsPermission: Bool { CLLocationManager.headingAvailable() && manager.authorizationStatus == .notDetermined }
     func requestPermission() { manager.requestWhenInUseAuthorization() }
+
+    /// Where the watch itself is, if location is allowed and it knows (within half an hour).
+    var recentLocation: (lat: Double, lon: Double)? {
+        guard status == .authorizedWhenInUse || status == .authorizedAlways,
+              let l = manager.location, Date().timeIntervalSince(l.timestamp) < 1800 else { return nil }
+        return (l.coordinate.latitude, l.coordinate.longitude)
+    }
 
     func start() {
         users += 1

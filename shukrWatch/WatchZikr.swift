@@ -82,6 +82,8 @@ struct WatchDraft: Codable {
     /// Counting with the Crown (screen taps off) — kept so a reopened session stays that way.
     var crownMode: Bool? = nil
     var postSalah: Bool? = nil
+    /// Which counter session wrote it (a reopened one keeps it).
+    var sessionID: String? = nil
 
     /// Paused since (a draft saved mid-count counts as paused from its last save).
     var pausedSince: Date { pausedAt ?? savedAt }
@@ -658,6 +660,7 @@ struct WatchCounterView: View {
     @State private var crownNote = false
     @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
     @State private var draftToken = 0
+    @State private var sessionID = UUID().uuidString
     @Environment(\.scenePhase) private var scenePhase
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
@@ -738,6 +741,7 @@ struct WatchCounterView: View {
         }
         .onAppear {
             if let draft = config.draft {
+                if let id = draft.sessionID { sessionID = id }
                 count = config.restoredCount
                 crownMode = draft.crownMode ?? false
                 startedAt = draft.startedAt
@@ -801,7 +805,7 @@ struct WatchCounterView: View {
             WatchCountRing(fraction: fraction)
             // Just the number, like the phone: nothing says what's being recited (owner: privacy).
             Text("\(count)")
-                .font(.system(size: 44, weight: .light, design: .rounded))
+                .font(.system(size: WatchScreen.small ? 38 : 44, weight: .light, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: Double(count)))
                 .animation(.snappy(duration: 0.15), value: count)
@@ -843,7 +847,7 @@ struct WatchCounterView: View {
                     .offset(y: 34)
             }
             if postSalah {
-                WatchPostSalahStrip(count: count).offset(y: 40)
+                WatchPostSalahStrip(count: count).offset(y: WatchScreen.small ? 33 : 40)
             }
             if showHint {
                 VStack(spacing: 2) {
@@ -966,7 +970,7 @@ struct WatchCounterView: View {
         }
         guard finished == nil, sessionCount > 0 else {
             // Only this session's own draft is cleared, never a newer one's.
-            if WatchZikrStore.shared.draft?.startedAt == startedAt { WatchZikrStore.shared.draft = nil }
+            if WatchZikrStore.shared.draft?.sessionID == sessionID { WatchZikrStore.shared.draft = nil }
             return
         }
         WatchZikrStore.shared.draft = WatchDraft(
@@ -978,7 +982,7 @@ struct WatchCounterView: View {
             startedAt: startedAt, pausedTotal: pausedTotal, pausedAt: pausedAt,
             lastCountActive: lastCountActive, countingInSets: countingInSets,
             dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date(), crownMode: crownMode,
-            postSalah: postSalah ? true : nil)
+            postSalah: postSalah ? true : nil, sessionID: sessionID)
     }
 
     private func minus() {
@@ -1032,7 +1036,7 @@ struct WatchCounterView: View {
     }
 
     private func clearOwnDraft() {
-        if WatchZikrStore.shared.draft?.startedAt == startedAt { WatchZikrStore.shared.draft = nil }
+        if WatchZikrStore.shared.draft?.sessionID == sessionID { WatchZikrStore.shared.draft = nil }
     }
 
     private func close() {
@@ -1507,4 +1511,10 @@ struct WatchPostSalahStrip: View {
             .padding(.top, 2)
         }
     }
+}
+
+/// 40 / 41 mm faces (under ~180 pt wide): a touch smaller, so everything clears the ring.
+enum WatchScreen {
+    static let width = WKInterfaceDevice.current().screenBounds.width
+    static var small: Bool { width < 180 }
 }

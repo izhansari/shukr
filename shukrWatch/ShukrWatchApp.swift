@@ -64,7 +64,8 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         }
         DispatchQueue.main.async {
             WatchZikrStore.shared.take(context)   // today's zikr tasks and progress
-            if let ids = context["markIDs"] as? [String] { WatchPrayerMarker.confirm(ids) }
+            WatchPrayerMarker.confirm(marks: context["markIDs"] as? [String] ?? [],
+                                      undos: context["unmarkIDs"] as? [String] ?? [])
             for name in context["completed"] as? [String] ?? [] { WatchNotifications.cancelNudges(for: name) }
         }
         DispatchQueue.main.async { self.revision += 1 }
@@ -184,7 +185,8 @@ struct WatchHomeView: View {
                                 WatchCompletionMoment(moment: m).transition(.opacity)
                             }
                         }
-                        .frame(width: 138, height: 138)
+                        // 138 pt on 45 / 46 mm, scaled down on smaller faces so it clears the clock.
+                        .frame(width: min(138, WatchScreen.width * 0.72), height: min(138, WatchScreen.width * 0.72))
                         Spacer(minLength: 0)
                         if moments.moment != nil {
                             Button("Undo") { moments.undo() }
@@ -358,7 +360,7 @@ struct WatchPrayerList: View {
             Button("Cancel", role: .cancel) { marking = nil }
         } message: { p in
             let score = WatchScoring.score(start: p.start, end: p.end, at: Date())
-            if let masjid = WatchPrayers.jumuahMasjid(for: p) {
+            if let masjid = WatchPrayers.jumuahMasjid(for: p, near: WatchCompass.shared.recentLocation) {
                 Text("Jumu'ah at \(masjid)")
             } else {
                 Text(Date() > p.end ? "Qaza — after its window." : "Right now: \(WatchScoring.summary(forScore: score))")
@@ -549,6 +551,8 @@ final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
     /// A follow-up nudge on the watch, named after its prayer so marking it cancels it.
     private static func nudge(after seconds: TimeInterval, title: String, body: String, info: [AnyHashable: Any],
                               category: String, prayer: String?, then done: @escaping () -> Void) {
+        // Without its prayer a nudge couldn't be cancelled by marking it: skip it.
+        guard let prayer else { done(); return }
         let center = UNUserNotificationCenter.current()
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { done(); return }
@@ -559,7 +563,7 @@ final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
             content.sound = .default
             content.interruptionLevel = .timeSensitive
             content.categoryIdentifier = category
-            let request = UNNotificationRequest(identifier: "watch-snooze-\(prayer ?? "prayer")-\(UUID().uuidString)",
+            let request = UNNotificationRequest(identifier: "watch-snooze-\(prayer)-\(UUID().uuidString)",
                                                 content: content,
                                                 trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(seconds, 1), repeats: false))
             center.add(request) { _ in done() }

@@ -202,18 +202,25 @@ enum WatchPrayers {
 
     /// The phone's Jumu'ah rule: a Friday Dhuhr marked at one of your masajid (within 100 m of
     /// where the phone last was, which is where the phone records a watch mark). Its masjid's name.
-    static func jumuahMasjid(for prayer: WatchPrayer) -> String? {
-        guard prayer.name == "Dhuhr", Calendar.current.component(.weekday, from: prayer.start) == 6,
-              WatchStore.hasLocation else { return nil }
+    /// `near`: the watch's own location when it has one; else the phone's last saved spot. The
+    /// nearest masjid within 100 m wins, like MasjidDetector (and the phone's recheck has the last
+    /// word).
+    static func jumuahMasjid(for prayer: WatchPrayer, near here: (lat: Double, lon: Double)? = nil) -> String? {
+        guard prayer.name == "Dhuhr", Calendar.current.component(.weekday, from: prayer.start) == 6 else { return nil }
         let d = WatchStore.defaults
-        let lat = d.double(forKey: WatchStore.Key.latitude), lon = d.double(forKey: WatchStore.Key.longitude)
+        guard here != nil || WatchStore.hasLocation else { return nil }
+        let lat = here?.lat ?? d.double(forKey: WatchStore.Key.latitude)
+        let lon = here?.lon ?? d.double(forKey: WatchStore.Key.longitude)
         func metres(_ a: Double, _ b: Double, _ c: Double, _ e: Double) -> Double {
             let r = 6_371_000.0, p1 = a * .pi / 180, p2 = c * .pi / 180
             let dp = (c - a) * .pi / 180, dl = (e - b) * .pi / 180
             let h = sin(dp / 2) * sin(dp / 2) + cos(p1) * cos(p2) * sin(dl / 2) * sin(dl / 2)
             return 2 * r * asin(min(1, sqrt(h)))
         }
-        return WatchStore.masajid.first { metres(lat, lon, $0.lat, $0.lon) < 100 }?.name
+        return WatchStore.masajid
+            .map { ($0.name, metres(lat, lon, $0.lat, $0.lon)) }
+            .filter { $0.1 < 100 }
+            .min { $0.1 < $1.1 }?.0
     }
 
     /// What the watch shows: the prayer that's on (not yet prayed), else the next one; after Isha,
