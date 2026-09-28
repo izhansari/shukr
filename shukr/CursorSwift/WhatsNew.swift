@@ -1224,6 +1224,8 @@ struct WhatsNewDetailView: View {
     @State private var viewing: UIImage?
     /// The change you came for, lit for a moment once it's scrolled to.
     @State private var lit: String?
+    /// Every change, not just the newest + untested ones.
+    @State private var showAllChanges = false
 
     private var fresh: [WhatsNewEntry] { WhatsNew.untested(card, tested: tested, acks: acks) }
     private var isTested: Bool { fresh.isEmpty && WhatsNew.ackedIndex(card, tested: tested, acks: acks) >= 0 }
@@ -1397,10 +1399,16 @@ struct WhatsNewDetailView: View {
         .font(.subheadline)
     }
 
-    /// Newest first: time · commit · one line; dropped / replaced greyed with the word.
+    /// Newest first: time · commit · one line; dropped / replaced greyed with the word. Only the newest
+    /// change and any untested ones show; the older, tested ones fold behind "Show N earlier changes"
+    /// (owner, 4E1AD6F2: "too long when I may not want to see all of it right away").
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
-            let list = Array(card.entries.reversed())
+            let all = Array(card.entries.reversed())
+            let freshIDs = Set(fresh.map(\.id))
+            let list = showAllChanges ? all
+                : all.enumerated().filter { $0.offset == 0 || freshIDs.contains($0.element.id) || $0.element.id == focus }.map(\.element)
+            let folded = all.count - list.count
             ForEach(Array(list.enumerated()), id: \.element.id) { i, entry in
                 HStack(alignment: .top, spacing: 12) {
                     VStack(spacing: 0) {
@@ -1463,6 +1471,22 @@ struct WhatsNewDetailView: View {
                         .padding(.horizontal, -8).padding(.top, -6).padding(.bottom, 8)
                 )
                 .id(entry.id)
+            }
+            if folded > 0 || (showAllChanges && all.count > 1) {
+                Button {
+                    withAnimation(.snappy) { showAllChanges.toggle() }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.down")
+                            .rotationEffect(.degrees(showAllChanges ? 180 : 0))
+                        Text(showAllChanges ? "Show fewer" : folded == 1 ? "Show 1 earlier change" : "Show \(folded) earlier changes")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.sage)
+                    .padding(.leading, 21)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
