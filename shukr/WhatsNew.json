@@ -1052,7 +1052,7 @@
       "checked": "sim", "shots": ["wn-reminders-your-settings.jpg"], "addresses": ["9E5AC5BF-ADBA-4B1C-9D80-9E3225F766E0"]
     },
     {
-      "id": "whats-new-15", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "id": "whats-new-15", "date": "2026-09-28", "commit": "fd2a169", "time": "2026-09-28T17:24:09-04:00", "topic": "whats-new", "notes": null,
       "title": "What's new: Your feedback and All changes, linked at the top",
       "tryIt": ["☰ → the build line → under Send feedback, tap 'Your feedback': every note you've left, newest first, with where it stands (closed ones greyed); tap one → its card's Feedback", "Back, then 'All changes': every change by day, newest first, a green dot on untested ones; tap one → its card, scrolled to that change (it lights up for a moment)"],
       "checked": "sim", "shots": ["wn-whatsnew-feedback-changes.jpg"], "asked": "where do i go in 'what's new' to see my feedback? from what i can tell it gets hidden after i respond… also put a link at top of page i can click to see changes in chronological order, and click on one to go to its respective card to give feedback or something."
