@@ -110,6 +110,8 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   (pull down). A row pushes `WhatsNewRoute.cardAt(topic, focus:)`: the detail scrolls (ScrollViewReader, 0.35 s after the
   push) to `.id("feedback")` or the change's `.id(entry.id)`, which lights sage for 2 s. DEBUG `-demoWhatsNewPage
   feedback|changes`, `-demoWhatsNewFocus feedback|<entry id>` (with `-demoWhatsNewTopic`).
+  **Changes fold (owner, 4E1AD6F2):** a card's Changes shows the newest change, every untested one and a focused one;
+  the older tested ones sit behind "Show N earlier changes" (`showAllChanges`, expands in place; "Show fewer").
 - The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline — each change's shots stacked, fitted to the column
   (≤ 300 pt the newest, 170 the rest); never a horizontal ScrollView there: with `scrollClipDisabled` it let the page
   move sideways (owner, BA0ECB7A); tested per topic — a new change
