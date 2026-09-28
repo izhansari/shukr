@@ -724,13 +724,13 @@
       "checked": "sim", "shots": ["wn-watch-counter.jpg"]
     },
     {
-      "id": "first-run-setup-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "id": "first-run-setup-6", "date": "2026-09-28", "commit": "968a935", "time": "2026-09-28T02:35:52-04:00", "topic": "first-run-setup", "notes": "#18",
       "title": "Setup reminders use the same bell as Settings: one per prayer, tap to cycle off → start → nudge (a nudge = halfway through and with 30 min left, if it isn't marked); Settings' info now says the same",
       "tryIt": ["Setup → Reminders that help → tap a bell: off → start → nudge", "Settings → Notifications → ⓘ: the nudge line matches"],
       "checked": "sim", "shots": ["wn-setup-reminders-cycle.jpg"]
     },
     {
-      "id": "first-run-setup-7", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "id": "first-run-setup-7", "date": "2026-09-28", "commit": "968a935", "time": "2026-09-28T02:35:52-04:00", "topic": "first-run-setup", "notes": "#18",
       "title": "Setup's Fajr alarm shows just the result under the wheels: \"Alarm tomorrow 5:25 AM · Fajr starts 5:35 AM\"",
       "tryIt": ["Setup → Wake up for Fajr → turn it on and turn the wheels"],
       "checked": "sim", "shots": ["wn-setup-fajr-result.jpg"]
