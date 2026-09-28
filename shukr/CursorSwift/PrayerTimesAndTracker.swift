@@ -130,6 +130,9 @@ struct PrayerTimesView: View {
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
     /// The reminders card (NotificationHealth): notifications off, or held for the Scheduled Summary.
     @State private var healthCard: NotificationHealth.Issue?
+    /// Set by the card's onAppear; bumped per attempt so an older check can't clear a newer card.
+    @State private var healthCardAppeared = false
+    @State private var healthCardToken = 0
     @State private var lastDeepLinkAt = Date.distantPast
 
     /// A moment after the app comes forward: the card, if one's due (at most every few days per
@@ -152,6 +155,14 @@ struct PrayerTimesView: View {
                       Date().timeIntervalSince(lastDeepLinkAt) > 10,
                       let issue = health.cardIssue, health.cardDue(for: issue) else { return }
                 healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
+                healthCardAppeared = false
+                healthCardToken += 1
+                let token = healthCardToken
+                // Something the guards can't see (a prayer row's unmark alert…) can keep the sheet
+                // from presenting. Don't leave it pending — it would block every later card and
+                // could pop up at a random moment: drop it if it isn't up within a second.
+                try? await Task.sleep(for: .seconds(1.2))
+                if token == healthCardToken, !healthCardAppeared, healthCard == issue { healthCard = nil }
             }
         }
     }
@@ -160,6 +171,7 @@ struct PrayerTimesView: View {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
             || showNamesPage || showMantraSheetFromHomePage || settingsViewNavBool
+            || healthCard != nil     // the reminders card: a widget's deep link closes it first
     }
 
     private func dismissCovers() {
@@ -167,6 +179,7 @@ struct PrayerTimesView: View {
         showSalahHistoryV1 = false; showSalahHistoryV2 = false; showZikrHistory = false
         showInsightsPage = false; showOldInsights = false; showNamesPage = false
         showMantraSheetFromHomePage = false; settingsViewNavBool = false
+        healthCard = nil
     }
 
     /// A widget / control is taking the user somewhere: close what's covering the page first, then
@@ -445,6 +458,7 @@ struct PrayerTimesView: View {
         .sheet(item: $healthCard) { issue in
             ReminderHealthCard(issue: issue) { healthCard = nil }
                 .onAppear {
+                    healthCardAppeared = true
                     NotificationHealth.shared.markCardShown(issue)
                     CircleCover.set("healthCard", true)
                 }
@@ -577,6 +591,18 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoMantraPage") {
                 try? await Task.sleep(for: .seconds(1))
                 showMantrasPage = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoHealthThenCompass") {
+                // With `-healthPretend off`: once the reminders card is up, a Qibla widget tap
+                // arrives (the flag + the activation path) — the card must close and the map open.
+                for _ in 0..<40 where !healthCardAppeared { try? await Task.sleep(for: .milliseconds(250)) }
+                print("HEALTHTEST card up=\(healthCardAppeared)")
+                try? await Task.sleep(for: .seconds(1))
+                UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetCompass")
+                openFromWidgetFlags()
+                try? await Task.sleep(for: .seconds(2.5))
+                print("HEALTHTEST after: card=\(healthCard != nil) map=\(showQiblaMap) canLand=\(WelcomeTarget.canLand)")
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrHistory") {

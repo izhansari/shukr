@@ -793,9 +793,14 @@ struct ZikrLibraryView: View {
                             withAnimation { editingHistory.toggle() }
                         }
                         .fontWeight(editing ? .semibold : .regular)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .disabled(!showsEdit)
                     }
                 }
+                // A fixed slot can't grow with Dynamic Type: capped at the default size so the
+                // icons / "Done" never clip, and the switcher stays centred.
+                .dynamicTypeSize(...DynamicTypeSize.large)
                 .frame(width: Self.trailingSlotWidth)
             }
             // iOS 18: the ＋ stays top right (iOS 26 puts it by the search field).

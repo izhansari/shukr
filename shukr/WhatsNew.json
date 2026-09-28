@@ -792,6 +792,18 @@
       "title": "Prayers widget: the check moves top left, the dots are gone, and a chevron at the bottom opens today's times (and closes them from the same spot); the ring sits in the centre",
       "tryIt": ["Home screen → the Prayers widget → tap ⌃ at the bottom → today's times; tap ⌄ in the same spot → back to the ring", "Tap the circle top left to mark the current prayer prayed", "Edit Widget → Score colours off → the list's prayed dots turn plain grey"],
       "checked": "sim", "shots": ["wn-widget-chevron.jpg"], "addresses": ["D56CB3C2-9FD7-43ED-863E-DE4DF7460D38"]
+    },
+    {
+      "id": "insights-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: each small ring's fill, time and colour now agree (a late Qaza counts as the window's end); Jumu'ahs are left out of the timing and counted underneath; averages skip rows without a score",
+      "tryIt": ["☰ → Insights → tap Isha → the ring, '1h 8m in' and the line underneath tell the same story", "Swipe to 'how consistent am I?' → tap a square → its three lines fit under the grid without moving it"],
+      "checked": "sim", "shots": ["wn-insights-rings-agree.jpg"]
+    },
+    {
+      "id": "notifications-3", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "The reminders card closes itself when a widget or control takes you somewhere, and never pops up late if something else was open",
+      "tryIt": ["With the card up, tap the Qibla widget → the card closes and the map opens"],
+      "checked": "sim"
     }
   ]
 }

@@ -233,25 +233,40 @@ struct InsightsView: View {
             Group {
                 if let name = selectedPrayer, let stat = stats.perPrayer.first(where: { $0.name == name }) {
                     VStack(spacing: 2) {
-                        Text("\(name) · you usually pray \(stat.usualElapsed.map(Self.longIn) ?? "–") in · avg \(stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–")")
-                        Text("prayed \(stat.prayed) of \(stat.recorded)")
+                        Text(Self.detailLine(name: name, stat: stat))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                        Text("prayed \(stat.prayed) of \(stat.recorded)" + (stat.jumuahs > 0 ? " · \(stat.jumuahs) Jumu'ah" : ""))
+                            .lineLimit(1)
                             .foregroundStyle(.tertiary)
                     }
+                    .multilineTextAlignment(.center)
                 } else {
                     Text("like the Salah page's ring at the moment you usually mark it · tap one for more")
                         .foregroundStyle(.tertiary)
                         .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
                 }
             }
             .font(.caption)
             .fontWeight(.light)
             .foregroundStyle(.secondary)
-            .frame(height: 34, alignment: .top)   // a fixed slot: nothing moves when one is tapped
+            // A fixed slot, sized for the longest text (two lines + one), so nothing moves when one is
+            // tapped and nothing spills.
+            .frame(height: 52, alignment: .top)
             .transition(.blurReplace)
             .id(selectedPrayer ?? "")
         }
     }
 
+
+    /// "Fajr · you usually pray 12 min in · avg 85" (only Jumu'ahs: no timing to show).
+    static func detailLine(name: String, stat: InsightsStats.PrayerStat) -> String {
+        let avg = stat.average.map { "\(Int(($0 * 100).rounded()))" } ?? "–"
+        guard let elapsed = stat.usualElapsed else { return "\(name) · avg \(avg)" }
+        return "\(name) · you usually pray \(longIn(elapsed)) in · avg \(avg)"
+    }
 
     /// "12m" / "1h 5m" inside a small ring.
     static func shortIn(_ t: TimeInterval) -> String {
@@ -466,6 +481,8 @@ struct InsightsStats {
         var usualFraction: Double? = nil
         var usualElapsed: TimeInterval? = nil
         var usualWindow: TimeInterval? = nil
+        /// Friday Dhuhrs at a masjid (not in the timing above).
+        var jumuahs = 0
         var id: String { name }
 
         /// The colour the live ring would show at the usual moment.
@@ -510,20 +527,29 @@ struct InsightsStats {
         perPrayer = Self.names.map { name in
             let rows = inRange.filter { $0.name == name }
             let prayed = rows.filter(\.isCompleted)
-            let avg = prayed.isEmpty ? nil : prayed.compactMap(\.numberScore).reduce(0, +) / Double(prayed.count)
+            // Over the rows that have a score (a completed row without one used to count as 0).
+            let scores = prayed.compactMap(\.numberScore)
+            let avg = scores.isEmpty ? nil : scores.reduce(0, +) / Double(scores.count)
             var stat = PrayerStat(name: name, average: avg, prayedRate: rows.isEmpty ? nil : Double(prayed.count) / Double(rows.count),
                                   prayed: prayed.count, recorded: rows.count)
-            let timed = prayed.compactMap { p -> (elapsed: TimeInterval, window: TimeInterval)? in
+            // A Jumu'ah follows the masjid's iqamah, not the clock (and always scores 100), so it's
+            // left out of the ring's timing; the detail line counts it instead.
+            stat.jumuahs = prayed.filter(\.isJumuah).count
+            let timed = prayed.filter { !$0.isJumuah }.compactMap { p -> (fraction: Double, window: TimeInterval)? in
                 guard let at = p.timeAtComplete else { return nil }
                 let window = p.endTime.timeIntervalSince(p.startTime)
                 guard window > 0 else { return nil }
-                return (max(at.timeIntervalSince(p.startTime), 0), window)
+                // Capped per prayer: a Qaza counts as the window's end, like the full ring.
+                return (min(max(at.timeIntervalSince(p.startTime), 0) / window, 1), window)
             }
             if !timed.isEmpty {
+                // One value drives the fill, the "Nm in" and the colour, so they always agree.
                 let n = Double(timed.count)
-                stat.usualFraction = timed.map { min($0.elapsed / $0.window, 1) }.reduce(0, +) / n
-                stat.usualElapsed = timed.map(\.elapsed).reduce(0, +) / n
-                stat.usualWindow = timed.map(\.window).reduce(0, +) / n
+                let fraction = timed.map(\.fraction).reduce(0, +) / n
+                let window = timed.map(\.window).reduce(0, +) / n
+                stat.usualFraction = fraction
+                stat.usualWindow = window
+                stat.usualElapsed = fraction * window
             }
             return stat
         }
@@ -709,7 +735,9 @@ private struct PrayerTrendsGrid: View {
             .font(.caption)
             .fontWeight(.light)
             .frame(maxWidth: .infinity)
-            .frame(height: 52, alignment: .top)   // a fixed slot: a tap never moves the page (owner)
+            // A fixed slot: a tap never moves the page (owner). Three one-line rows (each shrinks a
+            // little rather than wrap — "Jumu'ah at <masjid> · prayed 1:32 PM"), so 56 pt holds them.
+            .frame(height: 56, alignment: .top)
             .multilineTextAlignment(.center)
             .transition(.blurReplace)
             .id(selected)
@@ -737,15 +765,19 @@ private struct PrayerTrendsGrid: View {
     }
 
     private func detail(name: String, day: Date, prayer: PrayerModel?) -> some View {
-        VStack(spacing: 3) {
+        VStack(spacing: 2) {
             Text("\(name) · \(day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))")
                 .fontWeight(.medium)
                 .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
             if let prayer {
                 if prayer.isCompleted, let score = prayer.numberScore {
                     let prayedAt = prayer.timeAtComplete.map { " · prayed \(shortTimePM($0))" } ?? ""
                     Text("\(prayer.scoreSummary ?? PrayerScoring.summary(for: score))\(prayedAt)")
                         .foregroundStyle(PrayerScoring.color(for: score))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 } else if prayer.endTime < Date() {
                     Text("Missed").foregroundStyle(.secondary)
                 } else {
@@ -753,6 +785,8 @@ private struct PrayerTrendsGrid: View {
                 }
                 Text("window \(shortTime(prayer.startTime)) – \(shortTimePM(prayer.endTime))")
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             } else {
                 Text("no data for this day").foregroundStyle(.secondary)
             }

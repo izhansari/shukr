@@ -278,7 +278,8 @@ code; in UI strings write "zikr". New UI text must follow this.
   **Toolbar (2026-09-28, feedback 1F97A704):** the top-right item is always there and `ZikrLibraryView.trailingSlotWidth`
   (50 pt) wide — Edit / Done on History (greyed with no sessions, never removed), the sort button on Azkar, whose green
   capsule fills the whole slot (50 × 36; the item clips at its frame, so it can't reach the glass edge). The principal
-  switcher is centred in what the bar leaves, so any width change moved it. Sim ✓ light / dark, sorted / default / History.
+  switcher is centred in what the bar leaves, so any width change moved it. The slot is capped at `.large` Dynamic Type
+  (it can't grow). Sim ✓ light / dark, sorted / default / History, accessibility-large.
   **Current (2026-09-27, feedback F5FDC4C1):** no "Default" — the default is Name, A to Z, for both sections (built-ins
   alphabetical too); `AzkarSort.migrateStoredDefault()` turns a stored "standard" into Name ↑. Direction rows are just the
   result with the arrow icon: A to Z / Z to A · Most / Fewest first · Fastest / Slowest first · Recent / Oldest first. The
@@ -1216,7 +1217,13 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   Review fix-ups: only on the Salah page (`horizontalPage == .main`; sheets inside Zikr / Settings aren't in
   `somethingCovers`); marked shown and `CircleCover` "healthCard" set only in the card's own onAppear (a dropped card used to
   burn the 3 days and leave the cover set — no qibla haptic / prayer-start moment); a "no" in the setup = 3 days' grace
-  before the first off card; a zikr reminder's Start now sets `lastDeepLinkAt`.
+  before the first off card; a zikr reminder's Start now sets `lastDeepLinkAt`. Round 2: a card that isn't up 1.2 s
+  after it was set (something the guards can't see, e.g. a prayer row's unmark alert, blocked the sheet) is dropped
+  (`healthCardAppeared` / `healthCardToken`) — it blocked every later card and could pop up late; the card is in
+  `somethingCovers` / `dismissCovers`, so a widget's deep link closes it first (it used to set `showQiblaMap` under the
+  sheet: the map never came, the flag stayed true, `canLand` stayed false and later compass taps were ignored). DEBUG
+  `-demoHealthThenCompass` (with `-healthPretend off`): card up → the compass flag + `openFromWidgetFlags` → sim ✓ card
+  closed, map open, then ⌄ and the circle's arrow reopened it.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
@@ -1710,8 +1717,16 @@ at `timeAtComplete` (prayed rows only, `PrayerStat.usualFraction`), colour = `Pr
 (`usualColor`), a 2.5 pt butt-cap arc on a 5 pt pale band, "12m in" inside; tap → "Fajr · you usually pray 12 min in ·
 avg 85 · prayed 4 of 10" in a fixed-height slot. Consistency: the streak line (one row, `ViewThatFits` stacks it on a
 narrow phone), "N of M prayed" / "days with all five", the 14-day grid with a "show scores" switch (all squares in
-score colour), a dates row (today bold), a fixed 52 pt detail slot. DEBUG `-insightsPage N`, `-insightsShowScores`.
-Sim ✓ light + dark. The older write-up follows.
+score colour), a dates row (today bold), a fixed 56 pt detail slot (three one-line rows that shrink rather than wrap).
+DEBUG `-insightsPage N`, `-insightsShowScores`. Sim ✓ light + dark.
+**Review fix-ups (Bradley, 2026-09-28):** the ring's fill, "Nm in" and colour come from ONE value — each prayer's
+fraction capped at 1 (a Qaza = the window's end), averaged; minutes = that × the average window (the time used to be
+uncapped, so one 1 AM Qaza read "84m in" on a 0.31 fill). **Jumu'ahs are left out of the ring's timing** (their time is
+the masjid's iqamah, and they always score 100); the detail line counts them ("prayed 4 of 5 · 1 Jumu'ah"); only
+Jumu'ahs → no timing, "Dhuhr · avg 100". The average now divides by the rows with a score (a completed row without one
+counted as 0 — the sim's `-demoPrayerStart` leftovers read Fajr "avg 44"). The average score can still sit on a
+yellow ring: the mean score isn't the score at the mean time (a few late ones pull the time later). The rings' detail
+slot is 52 pt (two lines + one, `minimumScaleFactor` 0.85). The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
