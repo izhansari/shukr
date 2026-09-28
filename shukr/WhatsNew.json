@@ -1058,7 +1058,7 @@
       "checked": "sim", "shots": ["wn-whatsnew-feedback-changes.jpg"], "asked": "where do i go in 'what's new' to see my feedback? from what i can tell it gets hidden after i respond… also put a link at top of page i can click to see changes in chronological order, and click on one to go to its respective card to give feedback or something."
     },
     {
-      "id": "whats-new-16", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "id": "whats-new-16", "date": "2026-09-28", "commit": "95eaf22", "time": "2026-09-28T17:31:28-04:00", "topic": "whats-new", "notes": null,
       "title": "What's new: a card shows its newest change; older ones fold away",
       "tryIt": ["Open a card you've tested: Changes shows just the newest change, then 'Show N earlier changes'", "Tap it: the rest open in place ('Show fewer' folds them again); untested changes always show"],
       "checked": "sim", "shots": ["wn-whatsnew-folded-changes.jpg"], "addresses": ["4E1AD6F2-00D9-4B71-8A33-BC5D642B04D4"]
