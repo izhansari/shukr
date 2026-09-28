@@ -462,7 +462,10 @@ struct LostLocationView: View {
         if reduceMotion { stage = 3; return }
         // The welcome (a cold launch) grows into the centred circle first; wait for it to finish.
         try? await Task.sleep(for: .milliseconds(300))
-        while WelcomeTarget.playing { try? await Task.sleep(for: .milliseconds(100)) }
+        while WelcomeTarget.playing {
+            if Task.isCancelled { return }      // the page went away mid-welcome
+            try? await Task.sleep(for: .milliseconds(100))
+        }
         try? await Task.sleep(for: .milliseconds(150))
         withAnimation(.easeOut(duration: 0.5)) { stage = 1 }
         try? await Task.sleep(for: .milliseconds(750))

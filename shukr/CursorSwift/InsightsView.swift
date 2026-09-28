@@ -257,6 +257,8 @@ struct InsightsView: View {
             .foregroundStyle(.secondary)
             // A fixed slot, sized for the longest text (two subheadline lines + a caption), so nothing
             // moves when one is tapped and nothing spills.
+            // A fixed slot can't grow with the text: capped so the largest sizes don't spill.
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
             .frame(height: 60, alignment: .top)
             .transition(.blurReplace)
             .id(selectedPrayer ?? "")

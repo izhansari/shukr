@@ -424,9 +424,12 @@ struct UpcomingRemindersView: View {
         let tomorrow = PrayerNotificationID.dayKey(Calendar.current.date(byAdding: .day, value: 1, to: PrayerDay.date()) ?? Date())
         if key == today { return "Today" }
         if key == tomorrow { return "Tomorrow" }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
-        return f.date(from: key).map { $0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) } ?? key
+        return Self.dayKeyFormatter.date(from: key).map { $0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) } ?? key
     }
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f
+    }()
 
     private var kindCounts: String {
         let all = pending.map(\.kind)
@@ -454,9 +457,12 @@ struct UpcomingRemindersView: View {
             let kind: Kind = p.kind == "Start" ? .start : p.kind == "Mid" ? .halfway : .endingSoon
             return Item(id: id, date: date, dayKey: p.dayKey ?? fallbackDay, kind: kind, prayer: p.prayer, title: title)
         }
-        let kind: Kind = id.hasPrefix("zikrlater.") ? .zikrLater : id.hasPrefix("zikr.") ? .zikr
+        let kind: Kind = id.hasPrefix("zikrlater.") ? .zikrLater : id.hasPrefix(ZikrReminders.prefix) ? .zikr
             : id.hasPrefix("snooze") ? .snooze : .other
-        return Item(id: id, date: date, dayKey: fallbackDay, kind: kind, prayer: nil, title: title)
+        // A zikr reminder's id ends in its prayer day ("zikr.<task>.2026-09-28"): group by that.
+        let zikrDay = kind == .zikr ? String(id.suffix(10)) : nil
+        let day = zikrDay.flatMap { Self.dayKeyFormatter.date(from: $0) != nil ? $0 : nil } ?? fallbackDay
+        return Item(id: id, date: date, dayKey: day, kind: kind, prayer: nil, title: title)
     }
 
     private static func nextDate(_ r: UNNotificationRequest) -> Date? {
