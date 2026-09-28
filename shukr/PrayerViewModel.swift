@@ -190,8 +190,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
                     self?.locationPrinter("🏙️ Geocoded City: \(newCityName)")
                     self?.cityName = newCityName
-                    // Automatic method: a new country can mean a different method (AutoMethod).
-                    if AutoMethod.setCountry(placemark.isoCountryCode) {
+                    // Automatic method: a new country can mean a different method (AutoMethod). The
+                    // country is stored either way; only an Automatic user's times change.
+                    if AutoMethod.setCountry(placemark.isoCountryCode) && AutoMethod.isAutomatic {
                         print("🧭 Automatic method now \(AutoMethod.shortName(AutoMethod.resolved())) (\(placemark.isoCountryCode ?? "?"))")
                         self?.fetchPrayerTimes(cameFrom: "automatic method changed")
                         WidgetCenter.shared.reloadAllTimelines()

@@ -921,7 +921,8 @@ struct AlarmSettingsView: View {
     private var fajrTimeRangeText: String {
 //        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
 //        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
-        return alarmIsFajr ? "(Fajr is \(shortTimePM(nextFajrTime)))" : "(Sunrise is \(shortTimePM(nextSunriseTime)))"
+        // "Start" / "End" of Fajr (owner, 2026-09-28), not "Fajr" / "Sunrise".
+        return alarmIsFajr ? "(Fajr starts \(shortTimePM(nextFajrTime)))" : "(Fajr ends \(shortTimePM(nextSunriseTime)))"
     }
     
     // ------------------------------------------
@@ -1003,12 +1004,12 @@ struct AlarmSettingsView: View {
                             }
                             .pickerStyle(.wheel)
                             
-                            // Picker for "Fajr"/"Sunrise"
+                            // Picker for the start / end of Fajr (stored as alarmIsFajr true / false)
                             Picker("", selection: $alarmIsFajr) {
-                                Text("Fajr").tag(true)
-                                // Only show "Sunrise" if user picked "Before"
+                                Text("Start").tag(true)
+                                // Only show "End" if user picked "Before"
                                 if alarmIsBefore {
-                                    Text("Sunrise").tag(false)
+                                    Text("End").tag(false)
                                 }
                             }
                             .pickerStyle(.wheel)

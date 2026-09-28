@@ -585,8 +585,17 @@ enum AutoMethod {
 
     /// The method number to compute with: the saved one, or Automatic resolved.
     static func effectiveMethod() -> Int {
-        let saved = store?.integer(forKey: "calculationMethod") ?? 2
+        // No key yet (e.g. the widget running before the updated app's first launch wrote one):
+        // ISNA, what an unset method always meant. Only an explicit 0 is Automatic.
+        guard let store, store.object(forKey: "calculationMethod") != nil else { return 2 }
+        let saved = store.integer(forKey: "calculationMethod")
         return saved == automatic ? resolved() : saved
+    }
+
+    /// The saved choice is Automatic (an explicit 0).
+    static var isAutomatic: Bool {
+        guard let store, store.object(forKey: "calculationMethod") != nil else { return false }
+        return store.integer(forKey: "calculationMethod") == automatic
     }
 
     /// What Automatic means here and now.
@@ -645,7 +654,9 @@ enum AutoMethod {
         case 9: return "Kuwait"
         case 10: return "Qatar"
         case 11: return "Singapore"
+        case 12: return "UOIF (France)"
         case 13: return "Diyanet (Turkey)"
+        case 14: return "Muslims of Russia"
         default: return "ISNA"
         }
     }
@@ -711,6 +722,9 @@ struct PrayerUtils {
             }
         }()
         var params = calculationMethod.params
+        // adhan-swift's .other has no angles (0 / 0): give France's and Russia's methods theirs.
+        if method == 12 { params.fajrAngle = 12; params.ishaAngle = 12 }          // UOIF
+        if method == 14 { params.fajrAngle = 16; params.ishaAngle = 15 }          // Spiritual Administration of Muslims of Russia
         params.madhab = school == 1 ? .hanafi : .shafi
         return params
     }
@@ -794,8 +808,10 @@ struct PrayerUtils {
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")!
         let alarmEnabled = store.bool(forKey: "alarmEnabled")
         let alarmOffsetMinutes = store.integer(forKey: "alarmOffsetMinutes")
-        let alarmIsBefore = store.bool(forKey: "alarmIsBefore")
-        let alarmIsFajr = store.bool(forKey: "alarmIsFajr")
+        // Unset = true (before / the start), the defaults Settings and the setup show; `bool(forKey:)`
+        // read them as false, so an untouched rule came out "at sunrise".
+        let alarmIsBefore = store.object(forKey: "alarmIsBefore") as? Bool ?? true
+        let alarmIsFajr = store.object(forKey: "alarmIsFajr") as? Bool ?? true
         print("Alarm Enabled: \(alarmEnabled)")
         print("Alarm Offset Minutes: \(alarmOffsetMinutes)")
         print("Alarm Is Before: \(alarmIsBefore)")
@@ -830,16 +846,18 @@ struct PrayerUtils {
         let offset = TimeInterval(alarmOffsetMinutes * 60)
         let resultTime = nextFajrSunrise.addingTimeInterval(alarmIsBefore ? -offset : offset)
         
-        let offsetMinutesText = "\(alarmOffsetMinutes) minute\(alarmOffsetMinutes == 1 ? "" : "s")"
-        let beforeAfterText = alarmIsBefore ? "before" : "after"
-        let fajrSunriseText = alarmIsFajr ? "Fajr" : "Sunrise"
-        let resultTimeText = "(\(shortTimePM(resultTime)))"
-        let firstPartText = alarmOffsetMinutes != 0 ? "\(offsetMinutesText) \(beforeAfterText)" : "Alarm at"
-        let description = "\(firstPartText) \(fajrSunriseText) \(resultTimeText)"
+        let description = "\(alarmRuleText(offset: alarmOffsetMinutes, isBefore: alarmIsBefore, isStart: alarmIsFajr)) (\(shortTimePM(resultTime)))"
 
         return (description, resultTime)
     }
 
+    /// The Fajr alarm's rule in words (owner, 2026-09-28: "Start" / "End" of Fajr, not "Fajr" /
+    /// "Sunrise"): "10 min before Start of Fajr", "At End of Fajr". Settings, the setup and the
+    /// Shortcut's description all use it. (The keys stay: `alarmIsFajr` true = start, false = end.)
+    static func alarmRuleText(offset: Int, isBefore: Bool, isStart: Bool) -> String {
+        let anchor = isStart ? "Start of Fajr" : "End of Fajr"
+        return offset == 0 ? "At \(anchor)" : "\(offset) min \(isBefore ? "before" : "after") \(anchor)"
+    }
 
     struct AlarmDisabledError: Error, CustomLocalizedStringResourceConvertible {
         var localizedStringResource: LocalizedStringResource {

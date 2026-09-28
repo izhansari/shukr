@@ -121,6 +121,9 @@ struct shukrApp: App {
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
+        if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AlarmSelfTest.run() }   // after migrateDefaults
+        }
         #endif
         WhatsNew.noteLaunch()      // a new build moves the last one to "previous" (NEW badges)
         // 1a) Create EnvLocationManager in a local var
@@ -173,19 +176,23 @@ struct shukrApp: App {
             .environmentObject(prayerViewModel)
             .overlay {
                 if setupShowing {
-                    FirstRunSetupView(onFinish: { setupShowing = false })
-                        .environmentObject(prayerViewModel)
-                        .transition(.opacity)
+                    FirstRunSetupView(onFinish: {
+                        setupShowing = false
+                        // Any widget / control deep link that came in meanwhile, now (PrayerTimesView).
+                        NotificationCenter.default.post(name: FirstRunSetup.finished, object: nil)
+                    })
+                    .environmentObject(prayerViewModel)
+                    .transition(.opacity)
                 }
             }
             .welcomeOnLaunch()   // "shukr" + a ring + two soft taps; cold launch (not under the setup: it ends in it)
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
+                // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.
+                sharedState.horizontalPage = .main
+                sharedState.navPosition = .main
                 withAnimation(.easeInOut(duration: 0.35)) { setupShowing = true }
             }
-            .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.deepLinked)) { _ in
-                guard setupShowing, FirstRunSetup.untouched, !FirstRunSetup.isDone else { return }
-                withAnimation(.easeInOut(duration: 0.3)) { setupShowing = false }
-            }
+            .onChange(of: setupShowing, initial: true) { _, showing in FirstRunSetup.isShowing = showing }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task { await notificationStatus.refresh() }
             }

@@ -1148,7 +1148,26 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   > 15 km from the saved coordinate also reloads widgets and sends the watch context. App-group writes only on change, as
   before. Purpose strings rewritten (prayer times / reminders / widgets / Fajr alarm follow you, prayers pinned where you
   prayed, masjid duas; on the phone). Not testable in the sim (no significant-change events there).
-- **Run setup again:** Settings (DEBUG / TestFlight, the `WhatsNewAccess` gate) posts `FirstRunSetup.rerun`.
+- **Run setup again:** Settings (DEBUG / TestFlight, the `WhatsNewAccess` gate) posts `FirstRunSetup.rerun`; the root pages
+  back to Salah (sheet closed) first, and the hand-off only lands on a circle that's on screen + `canLand` (else the centre,
+  and the welcome opens out).
+- **Review fix-ups (Bradley, 2026-09-28):** a missing `calculationMethod` key = ISNA everywhere (`effectiveMethod`; only an
+  explicit 0 is Automatic — the widget can run before the updated app writes the key); `AutoMethod.isAutomatic` gates the
+  refetch on a country change. Methods 12 (UOIF, France) and 14 (Muslims of Russia) are in the setup and have names — and real
+  angles (12° / 12°, 16° / 15°): adhan-swift's `.other` had none. The Fajr alarm's `alarmIsBefore` / `alarmIsFajr` are written
+  `true` at launch when unset (`migrateDefaults`) and `calculateAlarmDescription` reads unset as true — an untouched rule came
+  out "at sunrise" in the Shortcut. Wording (owner): "Start" / "End" of Fajr, not Fajr / Sunrise, via
+  `PrayerUtils.alarmRuleText` (setup, review, Settings' wheels + "(Fajr starts / ends …)", the intent's description); keys
+  unchanged. The setup's appearance shows the stored value (default 0, like everywhere). Location: When In Use on the step,
+  then the one-time Always upgrade right after it's granted (`LocationUpgrade.askForAlways`, `locationAlwaysAsked`); after
+  that "Turn on Always" opens Settings. Deep links: a new install opened from a widget still gets the setup (the launch
+  check only defers with a stored location); while the setup is up, `openFromWidgetFlags` (PrayerTimesView) leaves the
+  flags alone and runs on `FirstRunSetup.finished`. DEBUG `-alarmCheck` prints what the intent would return. Sim ✓: an
+  upgrade with no appearance key → Light; unset alarm keys + 10 min → intent "10 min before Start of Fajr (5:24 AM)" (Fajr
+  5:34); Paris / Moscow times sane; a fresh install with `widgetTasbeeh` set → the full setup.
+- **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
+  travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
+  Bismillah.
 - DEBUG: `-setupForce`, `-setupReset`, `-setupStep <welcome|location|method|madhab|appearance|reminders|fajr|masjid|review>`,
   `-setupEnter` (presses Bismillah 3 s into the review). Simulated taps land late (screenshot after a pause); switches need
   a short drag, not a tap.

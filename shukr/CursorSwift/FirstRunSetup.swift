@@ -44,10 +44,18 @@ enum FirstRunSetup {
     static let doneKey = "firstRunSetup.v1"
     /// Settings → Run setup again (DEBUG / TestFlight).
     static let rerun = Notification.Name("firstRunSetup.rerun")
-    /// The app acted on a widget / control deep link (PrayerTimesView): an untouched setup steps aside.
-    static let deepLinked = Notification.Name("firstRunSetup.deepLinked")
-    /// Still on the welcome step (nothing chosen yet), so stepping aside loses nothing.
-    static var untouched = true
+    /// Bismillah's hand-off is over: PrayerTimesView acts on any widget / control deep link that
+    /// arrived during the setup (it holds them while the setup is up, so the hand-off lands on the
+    /// real circle).
+    static let finished = Notification.Name("firstRunSetup.finished")
+    /// The setup is on screen (the root sets it). PrayerTimesView leaves deep-link flags alone meanwhile.
+    static var isShowing = false
+    /// The Always upgrade prompt has been asked for (iOS shows it once; after that, only Settings).
+    static let alwaysAskedKey = "locationAlwaysAsked"
+    static var alwaysAsked: Bool {
+        get { UserDefaults.standard.bool(forKey: alwaysAskedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: alwaysAskedKey) }
+    }
     static var isDone: Bool { UserDefaults.standard.bool(forKey: doneKey) }
     /// The setup is up this launch (the launch welcome stays out of its way: the setup ends in it).
     static private(set) var showingAtLaunch = false
@@ -62,6 +70,12 @@ enum FirstRunSetup {
         if !existing && UserDefaults.standard.object(forKey: "modeToggleNew") == nil {
             UserDefaults.standard.set(2, forKey: "modeToggleNew")
         }
+        // The Fajr alarm's rule shows "before" / "the start" when unset, but `bool(forKey:)` read an
+        // unset key as false ("after" / "the end") in the Shortcut's intent — write the real defaults
+        // once, so the setup, Settings and the intent agree.
+        for key in ["alarmIsBefore", "alarmIsFajr"] where group?.object(forKey: key) == nil {
+            group?.set(true, forKey: key)
+        }
     }
 
     static func markDone() {
@@ -75,12 +89,23 @@ enum FirstRunSetup {
         return deepLinkFlags.contains { group?.bool(forKey: $0) == true }
     }
 
+    /// There's a location to open a deep link onto (a stored coordinate). Without one the widget
+    /// can't be acted on anyway (no Salah page), so a new install opened from a widget still gets
+    /// the setup — and a flag left behind never keeps it away.
+    private static var hasStoredLocation: Bool {
+        UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: "lastLatitude") != nil
+    }
+
     /// Decided once, when the root view is built.
     static func shouldShowAtLaunch() -> Bool {
-        var show = !isDone && !openedFromDeepLink
+        var show = !isDone && !(openedFromDeepLink && hasStoredLocation)
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
-        if args.contains("-setupReset") { UserDefaults.standard.removeObject(forKey: doneKey); show = !openedFromDeepLink }
+        if args.contains("-setupReset") {
+            UserDefaults.standard.removeObject(forKey: doneKey)
+            UserDefaults.standard.removeObject(forKey: alwaysAskedKey)
+            show = !(openedFromDeepLink && hasStoredLocation)
+        }
         if args.contains(where: { $0.hasPrefix("-demo") }) { show = false }   // screenshots / automation
         if args.contains("-setupForce") { show = true }
         #endif
@@ -110,6 +135,14 @@ enum AutoMethodSelfTest {
         let fallbackNY = AutoMethod.method(latitude: 40.71, longitude: -74.01), fallbackLondon = AutoMethod.method(latitude: 51.51, longitude: -0.13)
         print("\(fallbackNY == 2 ? "✅" : "❌") AUTOMETHOD fallback New York → \(AutoMethod.shortName(fallbackNY))")
         print("\(fallbackLondon == 3 ? "✅" : "❌") AUTOMETHOD fallback London → \(AutoMethod.shortName(fallbackLondon))")
+        // France / Russia: real angles now (adhan-swift's .other had none), and their names.
+        for (m, lat, lon, city) in [(12, 48.86, 2.35, "Paris"), (14, 55.76, 37.62, "Moscow")] {
+            if let t = try? PrayerUtils.getPrayerTimes(for: Date(), coordinates: Coordinates(latitude: lat, longitude: lon),
+                                                       params: PrayerUtils.parameters(method: m, school: 0)) {
+                let ok = t.fajr < t.sunrise && t.isha > t.maghrib
+                print("\(ok ? "✅" : "❌") AUTOMETHOD \(AutoMethod.shortName(m)) in \(city): Fajr \(t.fajr) · Isha \(t.isha)")
+            }
+        }
         // What a real reverse geocode says the country is (one at a time: CLGeocoder is rate-limited).
         Task { @MainActor in
             for c in cities {
@@ -118,6 +151,22 @@ enum AutoMethodSelfTest {
                 print("\(code == c.3 ? "✅" : "❌") AUTOMETHOD geocode \(c.0) → \(code) → \(AutoMethod.shortName(AutoMethod.method(forCountry: code)))")
             }
         }
+    }
+}
+#endif
+
+#if DEBUG
+/// `-alarmCheck`: what the Fajr alarm's Shortcut intent would return now (the keys as stored).
+enum AlarmSelfTest {
+    static func run() {
+        let g = UserDefaults(suiteName: SharedStore.appGroup)
+        let keys = ["alarmEnabled", "alarmOffsetMinutes", "alarmIsBefore", "alarmIsFajr"]
+        print("⏰ ALARMCHECK stored: " + keys.map { "\($0)=\(g?.object(forKey: $0).map { "\($0)" } ?? "unset")" }.joined(separator: " "))
+        if let fajr = try? PrayerUtils.getNextTime(for: .fajr) { print("⏰ ALARMCHECK next Fajr: \(shortTimePM(fajr))") }
+        do {
+            let r = try PrayerUtils.calculateAlarmDescription()
+            print("⏰ ALARMCHECK intent: \(r.description) → \(shortTimePM(r.time))")
+        } catch { print("⏰ ALARMCHECK intent: \(error)") }
     }
 }
 #endif
@@ -259,15 +308,19 @@ struct FirstRunSetupView: View {
     }
 
     private func go(_ s: SetupStep) {
-        FirstRunSetup.untouched = false
         withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45)) { step = s }
     }
 
     /// From the ring's place to the Salah circle's centre (the screen's centre if it isn't there).
     private var handoffShift: CGSize {
         let screen = UIScreen.main.bounds
-        let target = WelcomeTarget.circleFrame.flatMap { $0.width > 100 ? CGPoint(x: $0.midX, y: $0.midY) : nil }
-            ?? CGPoint(x: screen.midX, y: screen.midY)
+        // The Salah circle when it's on screen and can be landed on (Run setup again from Settings:
+        // the root pages back to Salah first); else the screen's centre, and the welcome opens out.
+        let onScreen = WelcomeTarget.circleFrame.flatMap { f -> CGPoint? in
+            guard WelcomeTarget.canLand, f.width > 100, screen.insetBy(dx: -1, dy: -1).contains(f) else { return nil }
+            return CGPoint(x: f.midX, y: f.midY)
+        }
+        let target = onScreen ?? CGPoint(x: screen.midX, y: screen.midY)
         return CGSize(width: target.x - ringCentre.x, height: target.y - ringCentre.y)
     }
 
@@ -492,7 +545,6 @@ private struct LocationStep: View {
     @EnvironmentObject private var location: EnvLocationManager
     @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
     @State private var pickingCity = false
-    @State private var askedAlways = false
 
     private var status: CLAuthorizationStatus { location.authorizationStatus }
     private var denied: Bool { status == .denied || status == .restricted }
@@ -528,10 +580,9 @@ private struct LocationStep: View {
                     SecondaryButton(title: denied ? "Open Settings" : "Enter a city instead") {
                         if denied { SettingsLinks.app() } else { pickingCity = true }
                     }
-                } else if status == .authorizedWhenInUse && !askedAlways {
-                    SecondaryButton(title: "Allow “Always”") {
-                        askedAlways = true
-                        location.requestAlwaysPermission()
+                } else if status == .authorizedWhenInUse {
+                    SecondaryButton(title: FirstRunSetup.alwaysAsked ? "Turn on “Always” in Settings" : "Allow “Always”") {
+                        LocationUpgrade.askForAlways(location)
                     }
                 }
             }
@@ -539,10 +590,12 @@ private struct LocationStep: View {
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
-        // Answered the prompt with a yes: on to the next step.
-        .onChange(of: location.isAuthorized) { was, now in
-            if !was && now && !locationOnly {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { next() }
+        // Apple's way to Always (owner: ask for it here): When In Use first, then — right after it's
+        // granted — the one-time upgrade prompt. (Asking Always straight away from "not decided" only
+        // gives a provisional While Using, and the upgrade offer may never come.)
+        .onChange(of: location.authorizationStatus) { old, new in
+            if old == .notDetermined && new == .authorizedWhenInUse && !FirstRunSetup.alwaysAsked {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { LocationUpgrade.askForAlways(location) }
             }
         }
     }
@@ -555,7 +608,7 @@ private struct LocationStep: View {
 
     private func primary() {
         if denied && !location.hasManualLocation { pickingCity = true; return }
-        if status == .notDetermined && !location.hasManualLocation { location.requestAlwaysPermission(); return }
+        if status == .notDetermined && !location.hasManualLocation { location.requestLocationPermission(); return }
         if !locationOnly { next() }
     }
 
@@ -582,6 +635,18 @@ private struct LocationStep: View {
     }
 }
 
+/// The Always upgrade: iOS shows its prompt once (from While Using); after that only Settings can.
+enum LocationUpgrade {
+    @MainActor static func askForAlways(_ location: EnvLocationManager) {
+        if FirstRunSetup.alwaysAsked {
+            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        } else {
+            FirstRunSetup.alwaysAsked = true
+            location.requestAlwaysPermission()
+        }
+    }
+}
+
 // MARK: - Method
 
 /// The picker's rows: Automatic first, then the most used, then the rest (a scroll away).
@@ -598,6 +663,8 @@ private let methodRows: [(tag: Int, title: String, region: String)] = [
     (11, "Singapore", "Singapore, Malaysia, Indonesia"),
     (13, "Diyanet", "Turkey"),
     (7, "Tehran", "Iran"),
+    (12, "UOIF", "France"),
+    (14, "Muslims of Russia", "Russia"),
 ]
 
 /// Today's times for the saved location with a given method / school (for the live strip).
@@ -822,7 +889,7 @@ private struct AppearanceStep: View {
     let next: () -> Void
     /// 0 light, 1 dark, 2 auto (follows the sun: light from Fajr, dark after Maghrib). Applied live by
     /// the app root's preferredColorScheme.
-    @AppStorage("modeToggleNew") private var mode = 2
+    @AppStorage("modeToggleNew") private var mode = 0
 
     var body: some View {
         StepScaffold(title: "Light or dark?",
@@ -1048,19 +1115,19 @@ private struct FajrStep: View {
                                 Text("before").tag(true)
                                 if isFajr { Text("after").tag(false) }
                             }
-                            Picker("Fajr or sunrise", selection: $isFajr) {
-                                Text("Fajr").tag(true)
-                                if isBefore { Text("sunrise").tag(false) }
+                            // The start / end of Fajr (owner, 2026-09-28; stored as alarmIsFajr true / false).
+                            Picker("Start or end of Fajr", selection: $isFajr) {
+                                Text("Start").tag(true)
+                                if isBefore { Text("End").tag(false) }
                             }
                         }
                         .pickerStyle(.wheel)
                         .frame(height: 120)
                         .clipped()
-                        if let when = nextAlarm {
-                            Text("Tomorrow at \(clockTime(when))")
-                                .font(.system(.subheadline, design: .rounded))
-                                .foregroundStyle(Color.sage)
-                        }
+                        Text(PrayerUtils.alarmRuleText(offset: offset, isBefore: isBefore, isStart: isFajr)
+                             + (nextAlarm.map { " · tomorrow \(clockTime($0))" } ?? ""))
+                            .font(.system(.subheadline, design: .rounded))
+                            .foregroundStyle(Color.sage)
                     }
                     VStack(spacing: 8) {
                         Text("shukr sets the alarm through a Shortcut you add once.")
@@ -1224,7 +1291,7 @@ private struct ReviewStep: View {
     @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
-    @AppStorage("modeToggleNew") private var mode = 2
+    @AppStorage("modeToggleNew") private var mode = 0
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmOn = false
     @AppStorage("alarmOffsetMinutes", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmOffset = 0
     @AppStorage("alarmIsBefore", store: UserDefaults(suiteName: SharedStore.appGroup)) private var alarmBefore = true
@@ -1300,8 +1367,7 @@ private struct ReviewStep: View {
     }
     private var alarmValue: String {
         guard alarmOn else { return "Off" }
-        let anchor = alarmFajr ? "Fajr" : "sunrise"
-        return alarmOffset == 0 ? "At \(anchor)" : "\(alarmOffset) min \(alarmBefore ? "before" : "after") \(anchor)"
+        return PrayerUtils.alarmRuleText(offset: alarmOffset, isBefore: alarmBefore, isStart: alarmFajr)
     }
     private var masjidValue: String {
         let names = MosqueFavorites.all.map(\.name)
@@ -1317,7 +1383,9 @@ private struct ReviewStep: View {
         } else if !location.isAuthorized {
             Nudge(text: "Allow location so your times follow you when you travel.", action: "Turn on", tap: SettingsLinks.app)
         } else if location.authorizationStatus == .authorizedWhenInUse {
-            Nudge(text: "Turn on Always so your times follow you when you travel.", action: "Turn on", tap: SettingsLinks.app)
+            Nudge(text: "Turn on Always so your times follow you when you travel.", action: "Turn on") {
+                LocationUpgrade.askForAlways(location)
+            }
         } else if location.isAuthorized && location.manager.accuracyAuthorization == .reducedAccuracy {
             Nudge(text: "Precise Location is off: times can be a few minutes out.", action: "Turn on", tap: SettingsLinks.app)
         }

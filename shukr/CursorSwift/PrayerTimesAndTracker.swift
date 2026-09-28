@@ -73,6 +73,55 @@ struct PrayerTimesView: View {
     @State private var demoWhatsNew = false
     #endif
 
+    /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
+    /// first-run setup is up — the flags stay set and this runs again once it's done
+    /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
+    private func openFromWidgetFlags() {
+        guard !FirstRunSetup.isShowing else { return }
+        if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
+            let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
+            let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
+            // Clear only when set: every write to the group suite invalidates every
+            // @AppStorage bound to it and re-renders Settings.
+            if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
+            if openTasbeehFromWidget { store.setValue(false, forKey: "widgetTasbeeh") }
+            let openAyahFromWidget  = store.bool(forKey: "widgetDailyAyah")
+            let openNamesFromWidget = store.bool(forKey: "widgetNames")
+            if openAyahFromWidget { store.setValue(false, forKey: "widgetDailyAyah") }
+            if openNamesFromWidget { store.setValue(false, forKey: "widgetNames") }
+            // Whatever is covering the page (the map, a pushed page) goes first, or the
+            // widget's page opened behind it (owner, 2026-09-26).
+            let zikrTaskID = store.string(forKey: "widgetZikrTask")
+            if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
+            if openAyahFromWidget {
+                clearCovers {
+                    sharedState.horizontalPage = .main
+                    showDailyAyahPage = true
+                }
+            } else if openNamesFromWidget {
+                clearCovers {
+                    sharedState.horizontalPage = .main
+                    showNamesPage = true
+                }
+            }
+
+            if openCompassFromWidget, !showQiblaMap {
+                clearCovers {
+                    sharedState.navPosition = .main
+                    showQiblaMap = true
+                }
+            }
+            
+            else if openTasbeehFromWidget{
+                clearCovers {
+                    sharedState.horizontalPage = .zikr
+                    // A task row in the Zikr widget: bring that task's circle to the middle.
+                    if let zikrTaskID { ZikrFocus.request(zikrTaskID) }
+                }
+            }
+        }
+    }
+
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
@@ -359,6 +408,8 @@ struct PrayerTimesView: View {
                 ZikrFocus.request(taskID)
             }
         }
+        // The first-run setup is done: a widget open that arrived during it, now.
+        .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
@@ -380,53 +431,7 @@ struct PrayerTimesView: View {
                 viewModel.reconcileAfterWidgetWrites() // prayers completed from the widget while we were closed
                 viewModel.catchUpMasjidChecks()        // …and which prayers were at a masjid
                 
-                if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
-                    let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
-                    let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
-                    // Clear only when set: every write to the group suite invalidates every
-                    // @AppStorage bound to it and re-renders Settings.
-                    if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
-                    if openTasbeehFromWidget { store.setValue(false, forKey: "widgetTasbeeh") }
-                    let openAyahFromWidget  = store.bool(forKey: "widgetDailyAyah")
-                    let openNamesFromWidget = store.bool(forKey: "widgetNames")
-                    if openAyahFromWidget { store.setValue(false, forKey: "widgetDailyAyah") }
-                    if openNamesFromWidget { store.setValue(false, forKey: "widgetNames") }
-                    // Whatever is covering the page (the map, a pushed page) goes first, or the
-                    // widget's page opened behind it (owner, 2026-09-26).
-                    let zikrTaskID = store.string(forKey: "widgetZikrTask")
-                    if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
-                    // Opened from a widget / control: an untouched first-run setup steps aside
-                    // (it shows on the next plain launch). The flag can land after launch.
-                    if openCompassFromWidget || openTasbeehFromWidget || openAyahFromWidget || openNamesFromWidget || zikrTaskID != nil {
-                        NotificationCenter.default.post(name: FirstRunSetup.deepLinked, object: nil)
-                    }
-                    if openAyahFromWidget {
-                        clearCovers {
-                            sharedState.horizontalPage = .main
-                            showDailyAyahPage = true
-                        }
-                    } else if openNamesFromWidget {
-                        clearCovers {
-                            sharedState.horizontalPage = .main
-                            showNamesPage = true
-                        }
-                    }
-
-                    if openCompassFromWidget, !showQiblaMap {
-                        clearCovers {
-                            sharedState.navPosition = .main
-                            showQiblaMap = true
-                        }
-                    }
-                    
-                    else if openTasbeehFromWidget{
-                        clearCovers {
-                            sharedState.horizontalPage = .zikr
-                            // A task row in the Zikr widget: bring that task's circle to the middle.
-                            if let zikrTaskID { ZikrFocus.request(zikrTaskID) }
-                        }
-                    }
-                }
+                openFromWidgetFlags()
                 
 
             }
