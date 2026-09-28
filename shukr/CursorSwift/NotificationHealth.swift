@@ -279,7 +279,8 @@ struct UpcomingRemindersView: View {
                 Section {
                     ForEach(Self.groups(day.items)) { groupRow($0, faded: false) }
                 } header: {
-                    Text(dayTitle(day.key))
+                    // The day's total (zikr and snoozes included) — owner: the counts carry it.
+                    Text("\(dayTitle(day.key)) · \(day.items.count)")
                 }
             }
             if !deliveredToday.isEmpty {
@@ -410,14 +411,23 @@ struct UpcomingRemindersView: View {
                 .foregroundStyle(group.isPrayer ? Color.sage : Color.secondary)
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.title)
-                    .font(.system(.body, design: .rounded, weight: .regular))
+                HStack(spacing: 8) {
+                    Text(group.title)
+                        .font(.system(.body, design: .rounded, weight: .regular))
+                    // How many it has that day: 1 = the start, 2 = + halfway, 3 = + 30 min left.
+                    Text("\(group.items.count)")
+                        .font(.system(.caption, design: .rounded, weight: .medium))
+                        .monospacedDigit()
+                        .foregroundStyle(Color.sage)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(Circle().fill(Color.sage.opacity(0.14)))
+                }
                 if !rest.isEmpty {
-                    // Each item stays whole on a line ("30 min left 11:29 PM"): wraps only between items.
+                    // The other times, quiet (the count says what they are); each stays whole on a line.
                     Text(rest.map { detail($0, prayer: group.isPrayer).replacingOccurrences(of: " ", with: "\u{00A0}") }
                         .joined(separator: " · "))
-                        .font(.system(.caption, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
+                        .font(.system(.caption2, design: .rounded, weight: .light))
+                        .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

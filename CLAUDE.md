@@ -1247,6 +1247,9 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   (symbol, name, start time on the right, "halfway 5:44 PM · 30 min left 6:32 PM" under it; items kept whole with
   non-breaking spaces), one "Zikr" row ("Subhanallah 7:54 PM · …"), one "Nudges you snoozed"; no notification titles
   (their emoji dots). Delivered today: the same rows, greyed. The Settings row's icon is sage, monochrome.
+  **Counts (owner, feedback BF79A0FC):** a sage count badge beside each row's name (1 = start, 2 = + halfway, 3 = + 30 min
+  left; zikr / snoozed count theirs), "Today · 10" on each day header (all kinds), and the other times are now a quiet
+  caption2 tertiary line.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
