@@ -47,7 +47,22 @@ enum NotificationScheduler {
     }
 
     /// Does the scheduler own this id (so a reschedule may replace / remove it)?
-    static func owns(_ id: String) -> Bool { PrayerNotificationID.parse(id) != nil || ZikrReminders.owns(id) }
+    static func owns(_ id: String) -> Bool {
+        PrayerNotificationID.parse(id) != nil || ZikrReminders.owns(id) || id.hasPrefix(keepAlivePrefix)
+    }
+
+    /// The last-resort reminder (owner, 2026-09-28): one notification just after the last start that
+    /// fits, "Open shukr to keep your prayer reminders coming". Every re-plan moves it later (a new id,
+    /// the old one removed), so it only ever fires if shukr wasn't opened or refreshed in time.
+    static let keepAlivePrefix = "keepalive."
+    static func keepAliveItem(after last: Date) -> Item {
+        let date = last.addingTimeInterval(20 * 60)
+        let content = UNMutableNotificationContent()
+        content.title = "Open shukr to keep your prayer reminders coming"
+        content.body = "Your scheduled reminders end here. Opening shukr lines up the next week."
+        content.sound = .default
+        return Item(id: keepAlivePrefix + PrayerNotificationID.dayKey(date), date: date, priority: -1, content: content)
+    }
 
     // MARK: Rescheduling
 
@@ -82,7 +97,10 @@ enum NotificationScheduler {
         let ownedPending = pending.filter { owns($0.identifier) }
         let others = pending.count - ownedPending.count
         let budget = max(limit - others - spare, 0)
-        let chosen = Array(items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }.prefix(budget))
+        // One slot is the last-resort reminder's, after the last start that made it in.
+        var chosen = Array(items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }.prefix(max(budget - 1, 0)))
+        let lastStart = chosen.filter { $0.id.hasSuffix("Start") }.map(\.date).max() ?? chosen.map(\.date).max()
+        if let lastStart, budget > 0 { chosen.append(keepAliveItem(after: lastStart)) }
 
         // Only what changed (2026-09-27 review): while moving, the app re-plans every 500 m / 30 s,
         // and removing + re-adding ~55 requests each time was wasted work. A request is "the same"
@@ -118,7 +136,7 @@ enum NotificationScheduler {
 
         scheduleBackgroundRefresh()
         if !stalePending.isEmpty || !toAdd.isEmpty || !stale.isEmpty {
-            print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")
+            print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned (+ the last-resort reminder) — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-logPendingNotifs") {

@@ -236,7 +236,7 @@ struct PrayerTimesView: View {
                 // Only on the Salah page with nothing else open: sheets inside the Zikr and Settings
                 // pages (task sheets, the city picker, What's new…) aren't in `somethingCovers`.
                 guard FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
-                      sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil,
+                      sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil, !demoSheetUp,
                       Date().timeIntervalSince(lastDeepLinkAt) > 10,
                       let issue = health.cardIssue, health.cardDue(for: issue) else { return }
                 healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
@@ -250,6 +250,15 @@ struct PrayerTimesView: View {
                 if token == healthCardToken, !healthCardAppeared, healthCard == issue { healthCard = nil }
             }
         }
+    }
+
+    /// DEBUG screenshot sheets the card mustn't cover.
+    private var demoSheetUp: Bool {
+        #if DEBUG
+        return demoScheduled
+        #else
+        return false
+        #endif
     }
 
     private var somethingCovers: Bool {
@@ -893,7 +902,7 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
-        .sheet(isPresented: $demoScheduled) { NavigationStack { UpcomingRemindersView() } }
+        .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(
