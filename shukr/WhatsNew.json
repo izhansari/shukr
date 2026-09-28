@@ -737,7 +737,7 @@
       "checked": "sim", "shots": ["wn-setup-fajr-result.jpg"]
     },
     {
-      "id": "zikr-pace-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "zikr-pace", "notes": null,
+      "id": "zikr-pace-1", "date": "2026-09-28", "commit": "2db4254", "time": "2026-09-28T02:39:47-04:00", "topic": "zikr-pace", "notes": null,
       "title": "Rate tile: the ⇆ flip mark, and \"1.1s faster\" / \"0.4s slower\" than your usual under it (per tasbeeh when flipped)",
       "tryIt": ["Count a zikr you've counted before → pause: the rate tile says faster / slower / about your usual", "Tap the rate tile: per tasbeeh, the comparison flips with it", "Finish: the results screen compares with your usual before this session"],
       "checked": "sim", "shots": ["wn-bento-pace.jpg"]
