@@ -91,6 +91,7 @@ struct shukrApp: App {
                     } else { group?.removeObject(forKey: "demoWidget.corners") }
                 }
                 group?.set(args.contains("-demoWidgetPlain"), forKey: "demoWidget.plain")   // score colours off
+                if args.contains("-demoWidgetShots") { group?.set(true, forKey: "demoWidget.renderShots") }   // exact-size renders
                 if args.contains("-demoWidgetList") {
                     group?.set(true, forKey: WidgetListState.openKey)
                     group?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)

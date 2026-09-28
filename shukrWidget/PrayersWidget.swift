@@ -111,6 +111,15 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
 
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<PrayersWidgetEntry> {
         let entry = await makeEntry(configuration)
+        #if DEBUG
+        // `-demoWidgetShots` (the app sets the flag): the small widget drawn at exact sizes, for
+        // checking the layout on phones the simulator doesn't have at hand.
+        let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
+        if group?.bool(forKey: "demoWidget.renderShots") == true {
+            group?.set(false, forKey: "demoWidget.renderShots")
+            await MainActor.run { Self.renderDebugShots(entry) }
+        }
+        #endif
         var entries = [entry]
         // The times list doesn't stick: the ring again `openFor` after it was opened (one entry).
         var base = entry
@@ -132,6 +141,35 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         let nextRefresh = Date().addingTimeInterval(60)
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
     }
+
+    #if DEBUG
+    /// Ring and list, light and dark, score colours on and off (the list), at 158 pt (6.1" phones)
+    /// and 170 pt, into the app group's Library/Caches/widget-shots.
+    @MainActor static func renderDebugShots(_ entry: PrayersWidgetEntry) {
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
+            .appendingPathComponent("Library/Caches/widget-shots", isDirectory: true) else { return }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        for size in [158.0, 170.0] {
+            for list in [false, true] {
+                for dark in [false, true] {
+                    for colors in [true, false] where list || colors {
+                        var shown = entry.at(entry.date, list: list)
+                        shown.scoreColors = colors
+                        let view = PrayersWidgetView(entry: shown)
+                            .frame(width: size, height: size)
+                            .background(Color("widgetBgColor"))
+                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .environment(\.colorScheme, dark ? .dark : .light)
+                        let renderer = ImageRenderer(content: view)
+                        renderer.scale = 3
+                        let name = "w\(Int(size))-\(list ? "list" : "ring")-\(dark ? "dark" : "light")\(colors ? "" : "-plain").png"
+                        if let data = renderer.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent(name)) }
+                    }
+                }
+            }
+        }
+    }
+    #endif
 
     /// Helper function that calculates the data you want in the widget entry.
     private func makeEntry(_ configuration: ConfigurationAppIntent? = nil) async -> PrayersWidgetEntry {
@@ -237,10 +275,12 @@ struct PrayersWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Today's times in the app's look (2026-09-27, notes #1): a back button and the city as a tiny
-    /// caption; the five prayers + Sunrise (dimmed); the current prayer in sage, done ones with
-    /// their score dot, the next one tagged. Rounded light type like the ring. It goes back to the
-    /// ring by itself after `WidgetListState.openFor` (the timeline's next entry).
+    /// Today's times in the app's look (2026-09-27, notes #1): the city as a tiny caption; the five
+    /// prayers + Sunrise (dimmed); the current prayer in sage, done ones with their score dot (Score
+    /// colours applies), the next one tagged. Rounded light type like the ring. A down chevron at the
+    /// bottom centre — the spot where the ring's up chevron opened it — goes back to the ring
+    /// (owner, 2026-09-28, feedback D56CB3C2); it also goes back by itself after
+    /// `WidgetListState.openFor` (the timeline's next entry).
     struct TimesListView: View {
         let entry: PrayersWidgetEntry
         private let order = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
@@ -251,42 +291,35 @@ struct PrayersWidgetView: View {
         }
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 6) {
-                    Button(intent: showListToggleIntent()) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 22, height: 22)
-                            .background(Circle().fill(Color.primary.opacity(0.08)))
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Back to the ring")
+            ZStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(entry.locationName.lowercased())
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .tracking(1)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .padding(.leading, 5)
+                        .padding(.bottom, 2)
+
+                    // The rows share what's left above the chevron, so Isha fits on the smallest
+                    // widget (~158 pt on a 6.1" phone).
+                    ForEach(order, id: \.self) { name in
+                        if let p = entry.prayerDict[name] {
+                            row(name, p.start, p.end)
+                                .frame(maxHeight: 22)
+                        }
+                    }
                     Spacer(minLength: 0)
                 }
-                .padding(.bottom, 3)
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, WidgetChevronButton.reserved)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-                // The rows share what's left, so Isha fits on the smallest widget (~158 pt on a
-                // 6.1" phone; the fixed layout needed ~168 — review, 2026-09-27).
-                ForEach(order, id: \.self) { name in
-                    if let p = entry.prayerDict[name] {
-                        row(name, p.start, p.end)
-                            .frame(maxHeight: 22)
-                    }
-                }
-                Spacer(minLength: 0)
+                WidgetChevronButton(up: false)
+                    .padding(.bottom, 6)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 9)
-            .padding(.bottom, 6)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
 
         private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
@@ -311,7 +344,7 @@ struct PrayersWidgetView: View {
                     .monospacedDigit()
             }
             .foregroundStyle(current ? Brand.sage : (sunrise ? Color.secondary.opacity(0.7) : Color.primary))
-            .padding(.vertical, 1.5)
+            .padding(.vertical, 1)
             .padding(.horizontal, 5)
             .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(current ? Brand.sage.opacity(0.14) : Color.clear))
@@ -341,25 +374,6 @@ struct PrayersWidgetView: View {
                 }
             }
             .frame(width: size, height: size)
-        }
-    }
-
-    /// The day's five prayers as dots (no Sunrise), same prayer day as the app.
-    struct PrayerDotsRow: View {
-        let entry: PrayersWidgetEntry
-        var spacing: CGFloat = 5
-        var body: some View {
-            HStack(spacing: spacing) {
-                ForEach(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"], id: \.self) { name in
-                    let p = entry.prayerDict[name]
-                    PrayerDot(score: entry.completedScores[name],
-                              started: (p?.start ?? .distantFuture) <= entry.date,
-                              current: p.map { $0.start <= entry.date && entry.date < $0.end } ?? false,
-                              colored: entry.scoreColors)
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(entry.completedScores.count) of 5 prayers done")
         }
     }
 
@@ -507,26 +521,22 @@ struct PrayersWidgetView: View {
                     
                     Spacer()
                 }
-                // Centred between the widget's top edge and the dots, not in the whole widget: the
-                // full-width dots row weighs the bottom down, so the true centre read low (owner,
-                // 2026-09-27). The full row height (36) put it too close to the top; 24 splits the
-                // gaps evenly (checked in the simulator).
-                .padding(.bottom, Self.ringLift)
 
-                // A button in each corner (2026-09-25): today's times · mark prayed on top; the
-                // bottom two are chosen in Edit Widget (Qibla / Tasbeeh by default, or Daily Ayah,
-                // 99 Names, None). The day's five prayers sit between them as dots (display only).
+                // The mark-prayed check top left (it was top right, beside a list button — owner,
+                // 2026-09-28, feedback D56CB3C2), the top right empty; along the bottom the two
+                // corners chosen in Edit Widget (Qibla / Tasbeeh by default, or Daily Ayah, 99 Names,
+                // None) with an up chevron between them that opens today's times. The ring sits in
+                // the true centre: the top and bottom rows are the same height.
                 VStack {
                     HStack {
-                        CornerButton(intent: showListToggleIntent(), systemImage: "list.bullet")
-                        Spacer()
                         checkButton
+                        Spacer()
                     }
                     Spacer()
                     HStack(spacing: 0) {
                         corner(entry.leftCorner)
                         Spacer(minLength: 2)
-                        PrayerDotsRow(entry: entry, spacing: bothCornersEmpty ? 9 : 5)
+                        WidgetChevronButton(up: true)
                         Spacer(minLength: 2)
                         corner(entry.rightCorner)
                     }
@@ -535,16 +545,12 @@ struct PrayersWidgetView: View {
             }
         }
 
-        static let ringLift: CGFloat = 24
-
-        private var bothCornersEmpty: Bool { entry.leftCorner == .none && entry.rightCorner == .none }
-
-        /// A chosen corner, or an empty 30 pt slot for None (so the dots stay centred).
+        /// A chosen corner, or an empty 30 pt slot for None (so the chevron stays centred).
         @ViewBuilder private func corner(_ action: WidgetCornerAction) -> some View {
             if let intent = action.intent, let symbol = action.symbol {
                 CornerButton(intent: intent, systemImage: symbol)
             } else {
-                Color.clear.frame(width: bothCornersEmpty ? 0 : 30, height: 30)
+                Color.clear.frame(width: 30, height: 30)
             }
         }
 
@@ -572,6 +578,29 @@ struct PrayersWidgetView: View {
             }
         }
         
+    }
+
+    /// Ring ⇄ today's times, from the same spot at the bottom centre: an up chevron in a faint
+    /// circle on the ring, a down chevron on the list (owner, 2026-09-28, feedback D56CB3C2).
+    struct WidgetChevronButton: View {
+        let up: Bool
+        /// Height the list keeps free above the bottom edge for it (6 pt inset + its 30 pt target,
+        /// less the target's slack round the 22 pt circle).
+        static let reserved: CGFloat = 30
+
+        var body: some View {
+            Button(intent: showListToggleIntent()) {
+                Image(systemName: up ? "chevron.up" : "chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(up ? "Today's prayer times" : "Back to the ring")
+        }
     }
 
     struct CornerButton: View {
