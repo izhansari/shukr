@@ -23,6 +23,14 @@ enum WatchStore {
         static let method = "watch.method", school = "watch.school"
         static let city = "watch.city"
         static let completed = "watch.completed", completedDay = "watch.completedDay"
+        static let scores = "watch.scores"
+        static let qiblaSensitivity = "watch.qiblaSensitivity"
+        /// Prayers marked on this watch, shown at once until the phone reports them:
+        /// name → [prayer-day start, score, tapped at].
+        static let localMarks = "watch.localMarks"
+        /// The mark id sent to the phone for each local mark (name → id), for undo / a failed save.
+        static let localMarkIDs = "watch.localMarkIDs"
+        static let masajid = "watch.masajid"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -41,7 +49,61 @@ enum WatchStore {
         set(context["city"], Key.city)
         set(context["completed"], Key.completed)
         set(context["completedDay"], Key.completedDay)
+        set(context["scores"], Key.scores)
+        set(context["qiblaSensitivity"], Key.qiblaSensitivity)
+        set(context["masajid"], Key.masajid)
+        // Marks the phone now reports (for that day) no longer need the watch's own copy.
+        if let completed = context["completed"] as? [String], let day = context["completedDay"] as? Double {
+            var marks = localMarks
+            for name in completed where abs((marks[name]?.first ?? -1) - day) < 1 { marks[name] = nil }
+            if marks.count != localMarks.count {
+                d.set(marks, forKey: Key.localMarks)
+                // …and their mark ids with them.
+                d.set(localMarkIDs.filter { marks[$0.key] != nil }, forKey: Key.localMarkIDs)
+                changed = true
+            }
+        }
         return changed
+    }
+
+    static var localMarks: [String: [Double]] {
+        defaults.dictionary(forKey: Key.localMarks) as? [String: [Double]] ?? [:]
+    }
+
+    /// Records a prayer marked on the watch (until the phone confirms it).
+    static func addLocalMark(_ name: String, dayStart: Date, score: Double, at: Date, id: String) {
+        var marks = localMarks
+        marks[name] = [Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970, score, at.timeIntervalSince1970]
+        defaults.set(marks, forKey: Key.localMarks)
+        var ids = localMarkIDs
+        ids[name] = id
+        defaults.set(ids, forKey: Key.localMarkIDs)
+    }
+
+    static var localMarkIDs: [String: String] {
+        defaults.dictionary(forKey: Key.localMarkIDs) as? [String: String] ?? [:]
+    }
+
+    /// The prayer a mark id belongs to, while its local mark is still here.
+    static func localMarkName(forID id: String) -> String? {
+        localMarkIDs.first { $0.value == id }?.key
+    }
+
+    /// The phone's "My masajid": name, lat, lon.
+    static var masajid: [(name: String, lat: Double, lon: Double)] {
+        (defaults.array(forKey: Key.masajid) as? [[String]] ?? []).compactMap { row in
+            guard row.count == 3, let lat = Double(row[1]), let lon = Double(row[2]) else { return nil }
+            return (row[0], lat, lon)
+        }
+    }
+
+    static func removeLocalMark(_ name: String) {
+        var marks = localMarks
+        marks[name] = nil
+        defaults.set(marks, forKey: Key.localMarks)
+        var ids = localMarkIDs
+        ids[name] = nil
+        defaults.set(ids, forKey: Key.localMarkIDs)
     }
 
     static var hasLocation: Bool {
@@ -119,9 +181,46 @@ enum WatchPrayers {
     /// Prayers marked today, as the phone last reported (only if it was about this prayer day).
     static func completed(dayStart: Date) -> Set<String> {
         let d = WatchStore.defaults
+        let day = Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970
         let reportedDay = d.double(forKey: WatchStore.Key.completedDay)
-        guard abs(reportedDay - Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970) < 1 else { return [] }
-        return Set(d.stringArray(forKey: WatchStore.Key.completed) ?? [])
+        var done = abs(reportedDay - day) < 1 ? Set(d.stringArray(forKey: WatchStore.Key.completed) ?? []) : []
+        for (name, mark) in WatchStore.localMarks where abs((mark.first ?? -1) - day) < 1 { done.insert(name) }
+        return done
+    }
+
+    /// Scores of today's marked prayers (0…1), as the phone last reported.
+    static func scores(dayStart: Date) -> [String: Double] {
+        let day = Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970
+        let reportedDay = WatchStore.defaults.double(forKey: WatchStore.Key.completedDay)
+        var scores = abs(reportedDay - day) < 1
+            ? WatchStore.defaults.dictionary(forKey: WatchStore.Key.scores) as? [String: Double] ?? [:] : [:]
+        for (name, mark) in WatchStore.localMarks where abs((mark.first ?? -1) - day) < 1 && mark.count > 1 {
+            scores[name] = mark[1]
+        }
+        return scores
+    }
+
+    /// The phone's Jumu'ah rule: a Friday Dhuhr marked at one of your masajid (within 100 m of
+    /// where the phone last was, which is where the phone records a watch mark). Its masjid's name.
+    /// `near`: the watch's own location when it has one; else the phone's last saved spot. The
+    /// nearest masjid within 100 m wins, like MasjidDetector (and the phone's recheck has the last
+    /// word).
+    static func jumuahMasjid(for prayer: WatchPrayer, near here: (lat: Double, lon: Double)? = nil) -> String? {
+        guard prayer.name == "Dhuhr", Calendar.current.component(.weekday, from: prayer.start) == 6 else { return nil }
+        let d = WatchStore.defaults
+        guard here != nil || WatchStore.hasLocation else { return nil }
+        let lat = here?.lat ?? d.double(forKey: WatchStore.Key.latitude)
+        let lon = here?.lon ?? d.double(forKey: WatchStore.Key.longitude)
+        func metres(_ a: Double, _ b: Double, _ c: Double, _ e: Double) -> Double {
+            let r = 6_371_000.0, p1 = a * .pi / 180, p2 = c * .pi / 180
+            let dp = (c - a) * .pi / 180, dl = (e - b) * .pi / 180
+            let h = sin(dp / 2) * sin(dp / 2) + cos(p1) * cos(p2) * sin(dl / 2) * sin(dl / 2)
+            return 2 * r * asin(min(1, sqrt(h)))
+        }
+        return WatchStore.masajid
+            .map { ($0.name, metres(lat, lon, $0.lat, $0.lon)) }
+            .filter { $0.1 < 100 }
+            .min { $0.1 < $1.1 }?.0
     }
 
     /// What the watch shows: the prayer that's on (not yet prayed), else the next one; after Isha,
@@ -140,10 +239,19 @@ enum WatchPrayers {
     /// Moments the complications should redraw: every prayer start and end from now on, plus the
     /// grade boundaries inside each window (Perfect → On time at +30 min, On time → Late halfway
     /// through the rest), so the stock timer ring changes colour on time (it can't within an entry).
+    /// Also the next prayer day's (at least its Fajr window: +30 min, On time → Late, sunrise), so
+    /// after Isha the timeline doesn't stop at Fajr and lean on the reload hint (a watch treats it
+    /// as a hint only; Fajr could stay green, or still show after sunrise).
     static func boundaries(after now: Date = Date()) -> [Date] {
         guard let day = day(at: now) else { return [] }
-        var dates = day.prayers.flatMap { [$0.start, $0.end] + WatchScoring.gradeChanges(start: $0.start, end: $0.end) }
-        if let f = day.nextFajr { dates.append(f) }
+        func marks(_ prayers: [WatchPrayer]) -> [Date] {
+            prayers.flatMap { [$0.start, $0.end] + WatchScoring.gradeChanges(start: $0.start, end: $0.end) }
+        }
+        var dates = marks(day.prayers)
+        if let f = day.nextFajr {
+            dates.append(f)
+            if let next = self.day(at: f.addingTimeInterval(1)) { dates += marks(Array(next.prayers.prefix(2))) }
+        }
         return Array(Set(dates.filter { $0 > now })).sorted()
     }
 
@@ -177,6 +285,28 @@ enum WatchScoring {
         return inWindowFloor + (1 - inWindowFloor) * left
     }
 
+    /// The phone's grade word for a score (PrayerScoring): Perfect · On time · Late · Qaza.
+    static func word(forScore s: Double) -> String {
+        if s >= 0.9999 { return "Perfect" }
+        if s >= 0.8 { return "On time" }
+        if s >= inWindowFloor - 0.0001 { return "Late" }
+        return "Qaza"
+    }
+
+    /// "On time · 88", "Qaza" — the completion moment's line, as on the phone.
+    static func summary(forScore s: Double) -> String {
+        let word = word(forScore: s)
+        return word == "Qaza" ? word : "\(word) · \(Int((s * 100).rounded()))"
+    }
+
+    /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).
+    static func color(forScore s: Double) -> Color {
+        if s >= 0.9999 { return .green }
+        if s >= 0.8 { return .yellow }
+        if s >= inWindowFloor - 0.0001 { return .red }
+        return .gray
+    }
+
     /// Green Perfect, yellow On time, red Late — the phone's circle colours.
     static func color(start: Date, end: Date, at: Date) -> Color {
         let s = score(start: start, end: end, at: at)
@@ -193,5 +323,27 @@ enum WatchScoring {
         guard rest > 0 else { return [] }
         let perfectEnds = start.addingTimeInterval(earlyWindow)
         return [perfectEnds, perfectEnds.addingTimeInterval(rest / 2)]
+    }
+}
+
+/// The qibla from where the phone last was (the watch has no GPS fix of its own here): the
+/// great-circle bearing to the Kaaba, in degrees from true north — the phone's rule.
+enum WatchQibla {
+    static let kaaba = (lat: 21.4225, lon: 39.8262)
+
+    static var bearing: Double? {
+        guard WatchStore.hasLocation else { return nil }
+        let d = WatchStore.defaults
+        let lat = d.double(forKey: WatchStore.Key.latitude) * .pi / 180
+        let lon = d.double(forKey: WatchStore.Key.longitude) * .pi / 180
+        let kLat = kaaba.lat * .pi / 180, kLon = kaaba.lon * .pi / 180
+        let y = sin(kLon - lon) * cos(kLat)
+        let x = cos(lat) * sin(kLat) - sin(lat) * cos(kLat) * cos(kLon - lon)
+        return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    /// The phone's Settings → qibla accuracy (± degrees counted as facing it).
+    static var sensitivity: Double {
+        WatchStore.defaults.object(forKey: WatchStore.Key.qiblaSensitivity) as? Double ?? 3.5
     }
 }

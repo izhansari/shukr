@@ -112,24 +112,25 @@ struct PrayerComplicationView: View {
                 }
                 .progressViewStyle(.circular)
                 .tint(entry.tint)
+                .widgetAccentable()   // the content, not the background
             } else {
                 // Not started: the phone's "next" look — a thin dashed ring, a tiny NEXT, dimmed name.
                 Circle()
                     .stroke(style: StrokeStyle(lineWidth: 1, dash: [2, 3]))
                     .opacity(0.6)
                     .padding(2)
+                    .widgetAccentable()
                 VStack(spacing: 0) {
                     Text("NEXT").font(.system(size: 6, weight: .medium, design: .rounded)).tracking(1).opacity(0.7)
                     Image(systemName: WatchPrayers.symbol(p.name)).font(.system(size: 10, weight: .medium))
                     Text(p.name).font(.system(size: 10, weight: .semibold, design: .rounded))
                         .lineLimit(1).minimumScaleFactor(0.6)
-                    Text(Self.clock.string(from: p.start))
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                    // No time line: four lines didn't fit a 41 mm circular slot.
                 }
                 .opacity(0.8)
+                .widgetAccentable()
             }
         }
-        .widgetAccentable()
     }
 
     @ViewBuilder private func corner(_ p: WatchPrayer) -> some View {
