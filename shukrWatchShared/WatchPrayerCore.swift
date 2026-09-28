@@ -23,6 +23,7 @@ enum WatchStore {
         static let method = "watch.method", school = "watch.school"
         static let city = "watch.city"
         static let completed = "watch.completed", completedDay = "watch.completedDay"
+        static let scores = "watch.scores"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -41,6 +42,7 @@ enum WatchStore {
         set(context["city"], Key.city)
         set(context["completed"], Key.completed)
         set(context["completedDay"], Key.completedDay)
+        set(context["scores"], Key.scores)
         return changed
     }
 
@@ -124,6 +126,12 @@ enum WatchPrayers {
         return Set(d.stringArray(forKey: WatchStore.Key.completed) ?? [])
     }
 
+    /// Scores of today's marked prayers (0…1), as the phone last reported.
+    static func scores(dayStart: Date) -> [String: Double] {
+        guard !completed(dayStart: dayStart).isEmpty else { return [:] }
+        return WatchStore.defaults.dictionary(forKey: WatchStore.Key.scores) as? [String: Double] ?? [:]
+    }
+
     /// What the watch shows: the prayer that's on (not yet prayed), else the next one; after Isha,
     /// tomorrow's Fajr. `current` = its window is open now.
     static func relevant(at now: Date = Date()) -> (prayer: WatchPrayer, current: Bool)? {
@@ -184,6 +192,14 @@ enum WatchScoring {
         guard rest > 0 else { return 1 }
         let left = min(max(end.timeIntervalSince(at) / rest, 0), 1)
         return inWindowFloor + (1 - inWindowFloor) * left
+    }
+
+    /// A marked prayer's colour from its stored score (the phone's PrayerScoring.color(for:)).
+    static func color(forScore s: Double) -> Color {
+        if s >= 0.9999 { return .green }
+        if s >= 0.8 { return .yellow }
+        if s >= inWindowFloor - 0.0001 { return .red }
+        return .gray
     }
 
     /// Green Perfect, yellow On time, red Late — the phone's circle colours.

@@ -80,7 +80,14 @@ enum WatchZikrSync {
             }
             return row
         }
+        // Today's marked prayers with their scores, for the watch list's dots (score colour, faded).
+        let (rowStart, rowEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
+        let marked = (try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: #Predicate { $0.isCompleted && $0.startTime >= rowStart && $0.startTime <= rowEnd }))) ?? []
+        var scores: [String: Double] = [:]
+        for prayer in marked { scores[prayer.name] = prayer.numberScore ?? 0 }
         return [
+            "scores": scores,
             "zikrDay": dayStart.timeIntervalSince1970,
             "zikrTasks": rows,
             "zikrSessions": sessions.map(\.id.uuidString),

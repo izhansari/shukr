@@ -133,6 +133,9 @@ final class WatchZikrStore: ObservableObject {
 
     /// Today's progress: the phone's, plus this watch's sessions it hasn't confirmed yet.
     func progress(_ task: WatchTask, at now: Date = Date()) -> (count: Int, seconds: Double) {
+        // The phone's latest numbers for it, not a copy taken when a session started (once the
+        // phone confirmed a session, that old copy read 0).
+        let task = tasks.first { $0.id == task.id } ?? task
         let start = dayStart(at: now)
         let confirmed = Set(d.stringArray(forKey: Key.sessions) ?? [])
         let mine = pending.filter { $0.taskID == task.id && $0.start >= start && !confirmed.contains($0.id) }
@@ -520,7 +523,13 @@ struct WatchCounterView: View {
 
     private var task: WatchTask? { config.task }
     private var paused: Bool { pausedAt != nil }
-    private var step: Int { task?.step ?? WatchZikrStore.shared.freestyleStep }
+    private var step: Int {
+        #if DEBUG
+        let demo = UserDefaults.standard.integer(forKey: "demoWatchStep")   // `-demoWatchStep 3`
+        if demo > 1 { return demo }
+        #endif
+        return task?.step ?? WatchZikrStore.shared.freestyleStep
+    }
     private var tapWorth: Int { countingInSets && step > 1 ? step : 1 }
     private var sessionCount: Int { count - config.startCount }
     /// Time spent counting, pauses excluded.
@@ -540,9 +549,17 @@ struct WatchCounterView: View {
                     WatchResultsView(record: finished, task: task) { close() }
                 } else {
                     counter
-                    if paused { pauseScreen.transition(.opacity) }
+                    if paused {
+                        // Solid, so nothing behind it makes it hard to read (owner).
+                        pauseScreen
+                            .background(Color.black.ignoresSafeArea())
+                            .transition(.opacity)
+                    }
                 }
             }
+            // No bar while paused or on the results: watchOS would put its own ✕ there, which
+            // drops the session in one tap. Resume / Finish early / Done are on the screen.
+            .toolbar(paused || finished != nil ? .hidden : .automatic, for: .navigationBar)
             .toolbar {
                 if finished == nil && !paused {
                     // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
@@ -601,31 +618,18 @@ struct WatchCounterView: View {
     private var counter: some View {
         ZStack {
             WatchCountRing(fraction: fraction)
-            VStack(spacing: 0) {
-                Text("\(count)")
-                    .font(.system(size: 44, weight: .light, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(count)))
-                    .animation(.snappy(duration: 0.15), value: count)
-                Text(caption)
-                    .font(.system(size: 11, weight: .thin, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 100)
-            }
+            // Just the number, like the phone: nothing says what's being recited (owner: privacy).
+            Text("\(count)")
+                .font(.system(size: 44, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(count)))
+                .animation(.snappy(duration: 0.15), value: count)
         }
         .padding(8)
         .contentShape(Rectangle())
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(countGesture)
-        .opacity(paused ? 0.15 : 1)
-    }
-
-    private var caption: String {
-        guard let task else { return "zikr" }
-        if task.countMode { return "of \(task.goal) · \(task.title)" }
-        let left = max(0, Double(task.goal * 60) - config.startSeconds - activeSeconds(at: now))
-        return "\(minutesText(left)) left · \(task.title)"
+        .opacity(paused ? 0 : 1)
     }
 
     /// One gesture for both: a touch that barely moves is a tap (+1 / +N); a drag counts on each
@@ -924,6 +928,11 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 
     func start() {
         guard session == nil else { return }
+        #if DEBUG
+        // Scripted simulator runs kill the app between launches; a session left behind ends
+        // later and takes the next run's app down with it.
+        if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demoWatch") }) { return }
+        #endif
         let s = WKExtendedRuntimeSession()
         s.delegate = self
         s.start()

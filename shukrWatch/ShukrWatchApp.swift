@@ -114,25 +114,7 @@ struct WatchHomeView: View {
                             WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date)
                                 .frame(width: 118, height: 118)
                         }
-                        let done = WatchPrayers.completed(dayStart: day.prayers[0].start)
-                        VStack(spacing: 0) {
-                            ForEach(day.prayers, id: \.name) { p in
-                                let on = p.start <= context.date && context.date < p.end
-                                HStack(spacing: 6) {
-                                    Image(systemName: done.contains(p.name) ? "checkmark.circle.fill" : WatchPrayers.symbol(p.name))
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(done.contains(p.name) ? Color.green : .secondary)
-                                        .frame(width: 18)
-                                    Text(p.name)
-                                        .font(.system(size: 15, weight: on ? .semibold : .regular, design: .rounded))
-                                    Spacer()
-                                    Text(p.start, style: .time)
-                                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                                        .foregroundStyle(on ? .primary : .secondary)
-                                }
-                                .padding(.vertical, 5)
-                            }
-                        }
+                        WatchPrayerList(prayers: day.prayers, now: context.date)
                         if !WatchStore.city.isEmpty {
                             Label(WatchStore.city, systemImage: "location.fill")
                                 .font(.system(size: 11, design: .rounded))
@@ -152,6 +134,73 @@ struct WatchHomeView: View {
                 .padding()
             }
         }
+    }
+}
+
+/// The phone's prayer list (TodaysPrayerListView), small: only the prayers still to pray, each with
+/// the phone's status dot, name and time; the prayed ones fold into "✓ 3 done ⌄" (tap to show
+/// them, dots in their score colour, faded); all five come back once the day is done.
+struct WatchPrayerList: View {
+    let prayers: [WatchPrayer]
+    let now: Date
+    @State private var showDone = false
+
+    var body: some View {
+        let dayStart = prayers[0].start
+        let done = WatchPrayers.completed(dayStart: dayStart)
+        let scores = WatchPrayers.scores(dayStart: dayStart)
+        let allDone = done.count >= prayers.count
+        let visible = prayers.filter { !done.contains($0.name) || showDone || allDone }
+        VStack(spacing: 0) {
+            ForEach(Array(visible.enumerated()), id: \.element.name) { index, p in
+                if index > 0 { Divider().padding(.horizontal, 10) }
+                row(p, done: done.contains(p.name), score: scores[p.name])
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            if !done.isEmpty && !allDone {
+                if !visible.isEmpty { Divider().padding(.horizontal, 10) }
+                Button {
+                    WKInterfaceDevice.current().play(.click)
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle")
+                        Text("\(done.count) done")
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showDone ? 180 : 0))
+                    }
+                    .font(.system(size: 12, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func row(_ p: WatchPrayer, done: Bool, score: Double?) -> some View {
+        let future = now < p.start
+        let edge = Color.secondary.opacity(future ? 0.2 : 0.5)
+        return HStack(spacing: 8) {
+            ZStack {
+                Circle().strokeBorder(edge, lineWidth: 1)
+                if done {
+                    Circle().fill(WatchScoring.color(forScore: score ?? 0).opacity(0.35)).padding(1)
+                }
+            }
+            .frame(width: 12, height: 12)
+            Text(p.name)
+                .font(.system(size: 15, weight: .light, design: .rounded))
+            Spacer()
+            Text(p.start, style: .time)
+                .font(.system(size: 14, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 7)
     }
 }
 
