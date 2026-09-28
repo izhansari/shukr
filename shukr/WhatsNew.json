@@ -666,7 +666,7 @@
       "checked": "no"
     },
     {
-      "id": "built-in-azkar-10", "date": "2026-09-27", "commit": "next", "time": null, "topic": "built-in-azkar", "notes": "#17",
+      "id": "built-in-azkar-10", "date": "2026-09-27", "commit": "b69f389", "time": "2026-09-27T22:49:56-04:00", "topic": "built-in-azkar", "notes": "#17",
       "title": "Sort button moved top right (where Edit was): shows the field + ↑ / ↓ and fills green while a sort is on; no bulk Edit / Delete for azkar",
       "tryIt": ["Zikr tab → History & Azkar → Azkar: top right is ↑↓ (Name, A to Z)", "Tap it → Pace: the button turns green with the pace icon and ↑", "No Edit on Azkar any more; delete a zikr from its own page (History keeps Edit)"],
       "checked": "sim", "shots": ["wn-azkar-sort-topright.jpg"], "addresses": ["D505E0DE-28F0-4298-B583-EC5BC14B36A6"]
