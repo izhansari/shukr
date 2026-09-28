@@ -708,7 +708,13 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
-        .fullScreenCover(item: $demoOnboarding) { OnboardingMockView(step: $0) }
+        // An overlay, not a cover: its last step hands off to the welcome on this very screen.
+        .overlay {
+            if let step = demoOnboarding {
+                OnboardingMockView(step: step, onFinish: { demoOnboarding = nil })
+                    .ignoresSafeArea(.keyboard)
+            }
+        }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(

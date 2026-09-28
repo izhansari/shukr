@@ -70,6 +70,9 @@ private struct WelcomeRing: Shape {
 /// draws round them, a light sweeps the word, it holds — then the ring thickens into the Salah
 /// circle's track and dissolves onto it as the rest lifts away.
 struct WelcomeOverlay: View {
+    /// Handed off from a ring already on screen in the same place (the first-run setup's ring,
+    /// OnboardingMockups): the ring is there from the first frame, only the letters write in.
+    var startDrawn = false
     let onFinish: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -81,7 +84,7 @@ struct WelcomeOverlay: View {
     /// Opening onto a page with no Salah circle (Daily Ayah, 99 Names, the map from a widget): the
     /// ring opens out past the edges like a doorway instead of landing on a circle.
     @State private var portal = false
-    @State private var target: CGPoint?
+    @State private var target: CGPoint? = WelcomeOverlay.handoffTarget
     /// Landing on a dashed track (a prayer that hasn't started): grow to it and become the dashes.
     @State private var dashedTarget = false
 
@@ -107,11 +110,11 @@ struct WelcomeOverlay: View {
                     .fill(grow ? (dashedTarget ? Color.clear : Color(.secondarySystemFill)) : Color.sage.opacity(0.6))
                     .mask {
                         Circle()
-                            .trim(from: 0, to: ringDrawn || reduceMotion ? 1 : 0)
+                            .trim(from: 0, to: ringDrawn || reduceMotion || startDrawn ? 1 : 0)
                             .stroke(style: StrokeStyle(lineWidth: 16, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                     }
-                    .shadow(color: Color.sage.opacity(ringDrawn && !grow ? 0.45 : 0), radius: 8)
+                    .shadow(color: Color.sage.opacity((ringDrawn || startDrawn) && !grow ? 0.45 : 0), radius: 8)
                     // Starts snug round the word, grows to the circle (frame, not scale, so the
                     // line keeps its own width).
                     .frame(width: portal ? portalSize : (grow ? ringSize : startSize),
@@ -165,6 +168,13 @@ struct WelcomeOverlay: View {
         }
     }
 
+    /// Where a hand-off ring already sits: the Salah circle's centre (so the first frame isn't at
+    /// the screen's centre). Only read as the initial `target`; `play()` sets it again.
+    private static var handoffTarget: CGPoint? {
+        guard let f = WelcomeTarget.circleFrame, f.width > 100 else { return nil }
+        return CGPoint(x: f.midX, y: f.midY)
+    }
+
     /// The real circle's centre, if the welcome may land there and it's on screen.
     private func circleCentre() -> CGPoint? {
         guard WelcomeTarget.canLand, let f = WelcomeTarget.circleFrame,
@@ -182,6 +192,7 @@ struct WelcomeOverlay: View {
             try? await Task.sleep(for: .milliseconds(50))
         }
         target = circleCentre()
+        if startDrawn { ringDrawn = true }
         lettersIn = true
         withAnimation(.easeInOut(duration: 0.9).delay(0.1)) { ringDrawn = true }
 

@@ -1105,7 +1105,18 @@ top right. Steps mocked: location (the why, then "Allow location" / "Enter a cit
 "follows where you are · ISNA here" — then ISNA / MWL / Umm al-Qura / Egyptian / Karachi, today's times live), madhab
 (Shafi'i vs Hanafi cards with a shadow sketch and both Asr times, "only Asr changes"), review (tappable rows with the sell
 lines, orange nudges for While Using / notifications off, Bismillah in two looks: the circle drawing round بِسْمِ اللَّهِ
-and breathing, or a capsule with the welcome's light sweep). Waiting for the owner's pick before building the real flow.
+and breathing, or a capsule with the welcome's light sweep).
+**Round 2 (owner, 2026-09-28):** Bismillah = the capsule, filled with the old first screen's own `AnimatedWavyGradient` +
+breathing `NoiseOverlay` (as a background, so its screen-sized frame can't widen the layout), "bismillah" in that screen's
+"shukr" type (title, thin, rounded, white 0.8) — "don't reinvent the wheel". Every step's title sits at the same height
+under the ring (fixed top padding, no Spacer above it); the method list is a short fading scroller, popular ones first
+(Automatic, ISNA, MWL, Umm al-Qura, Karachi, Egyptian, then Dubai…Tehran). New **appearance** step: Light / Dark / Auto
+("Recommended", follows the sun) with swatches, applied live (`preferredColorScheme`); a row on the review; the ring fills
+a fifth per step. **Into the app:** Bismillah → the page fades, the ring glides to `WelcomeTarget.circleFrame` and becomes
+the welcome's 150 pt hairline, then `WelcomeOverlay(startDrawn: true)` plays (ring already drawn, starts on the circle),
+"shukr" writes itself and the ring grows into the circle. The mock is an overlay on PrayerTimesView (not a cover) and drops
+its own background once the welcome takes over (it left a blank beat). `-demoOnboardingAppearance`, `-demoOnboardingEnter`
+(presses Bismillah 3 s in; simulated taps don't reach it). Sim ✓ light + dark, recorded.
 
 ## Masjid-aware prayers (owner idea 2026-09-25 — parts 1, 2 and most of 4 built 2026-09-26)
 
