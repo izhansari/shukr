@@ -56,6 +56,8 @@ struct PrayersWidgetEntry: TimelineEntry {
     var rightCorner: WidgetCornerAction = .tasbeeh
     /// Prayed dots in their score colours (Edit Widget); off = one plain colour.
     var scoreColors = true
+    /// The share of the free space above the ring (WidgetRingPosition, a beta setting in the app).
+    var ringAbove = WidgetRingPosition.default.above
 
     /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
     /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
@@ -64,7 +66,8 @@ struct PrayersWidgetEntry: TimelineEntry {
                            toggleShowAllTImes: list ?? toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
                            completedScores: completedScores, nextFajr: nextFajr,
-                           leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors)
+                           leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
+                           ringAbove: ringAbove)
     }
 }
 
@@ -167,6 +170,23 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     }
                 }
             }
+            // Each ring position (the beta setting), light and dark.
+            for position in WidgetRingPosition.allCases {
+                for dark in [false, true] {
+                    var shown = entry.at(entry.date, list: false)
+                    shown.ringAbove = position.above
+                    let view = PrayersWidgetView(entry: shown)
+                        .frame(width: size, height: size)
+                        .background(Color("widgetBgColor"))
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .environment(\.colorScheme, dark ? .dark : .light)
+                    let renderer = ImageRenderer(content: view)
+                    renderer.scale = 3
+                    if let data = renderer.uiImage?.pngData() {
+                        try? data.write(to: dir.appendingPathComponent("w\(Int(size))-pos\(position.rawValue)-\(dark ? "dark" : "light").png"))
+                    }
+                }
+            }
             // Between sunrise and Dhuhr (the ring shows Dhuhr as NEXT).
             if let sunrise = entry.prayerDict["Sunrise"]?.start {
                 for dark in [false, true] {
@@ -239,7 +259,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             nextFajr: nextFajr,
             leftCorner: configuration?.corners.left ?? .qibla,
             rightCorner: configuration?.corners.right ?? .tasbeeh,
-            scoreColors: configuration?.scoreColors ?? true
+            scoreColors: configuration?.scoreColors ?? true,
+            ringAbove: WidgetRingPosition.current.above
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
@@ -256,7 +277,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                                       completedScores: scores, nextFajr: nextFajr,
                                       leftCorner: corners.first ?? entry.leftCorner,
                                       rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner,
-                                      scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors)
+                                      scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors,
+                                      ringAbove: entry.ringAbove)
         }
         #endif
         return entry
@@ -480,9 +502,15 @@ struct PrayersWidgetView: View {
 //                Color.black
 //                    .ignoresSafeArea()
                 
-                VStack{
-                    Spacer()
-                    
+                // Between the widget's top edge and the chevron's circle, the free space splits
+                // `entry.ringAbove` above the ring (60 % by default): dead centre read a touch high
+                // (owner, 2026-09-28, feedback D3DC914D; before that, centred in the whole widget it
+                // nearly touched the chevron — 99D47ABE).
+                GeometryReader { geo in
+                let free = max(0, geo.size.height - WidgetChevronButton.clearance - 90)
+                VStack(spacing: 0) {
+                    Color.clear.frame(height: free * entry.ringAbove)
+
                     // Circular Timer with Text Button
                     Button(intent: textToggleIntent()){
                         ZStack {
@@ -550,13 +578,10 @@ struct PrayersWidgetView: View {
                     }
                     .buttonStyle(.plain)
                     
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
-                // Centred between the widget's top edge and the chevron's circle, not in the whole
-                // widget: the bottom row weighs the bottom down, and centred in the widget the ring
-                // nearly touched the chevron with a wide gap above (owner, 2026-09-28, feedback
-                // 99D47ABE). Equal space above the ring and between it and the chevron.
-                .padding(.bottom, WidgetChevronButton.clearance)
+                .frame(width: geo.size.width, height: geo.size.height)
+                }
 
                 // The mark-prayed check top left (it was top right, beside a list button — owner,
                 // 2026-09-28, feedback D56CB3C2), the top right empty; along the bottom the two
