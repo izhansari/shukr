@@ -743,13 +743,13 @@
       "checked": "sim", "shots": ["wn-bento-pace.jpg"]
     },
     {
-      "id": "first-run-setup-8", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "id": "first-run-setup-8", "date": "2026-09-28", "commit": "f7e597e", "time": "2026-09-28T02:57:51-04:00", "topic": "first-run-setup", "notes": "#18",
       "title": "New installs start with Fajr off (the Fajr alarm covers it), Dhuhr / Asr / Maghrib with nudges and Isha at the start; if you've used shukr before, your reminders stay exactly as they were",
       "tryIt": ["Setup → Reminders that help: the bells show what you have now", "A fresh install: off · nudge · nudge · nudge · start"],
       "checked": "sim", "shots": ["wn-setup-notif-defaults.jpg"]
     },
     {
-      "id": "zikr-pace-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "zikr-pace", "notes": null,
+      "id": "zikr-pace-2", "date": "2026-09-28", "commit": "f7e597e", "time": "2026-09-28T02:57:51-04:00", "topic": "zikr-pace", "notes": null,
       "title": "After you finish a task, the Zikr page lands on the next task to do, not the finished one at the bottom",
       "tryIt": ["Zikr → finish a task's goal → Done: the next task in your order is in the middle", "Finish the last one: it wraps to the first task still to do, or freestyle when all are done"],
       "checked": "sim", "shots": ["wn-zikr-next-task.jpg"]
