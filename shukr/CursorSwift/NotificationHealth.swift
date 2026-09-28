@@ -269,12 +269,27 @@ struct YourRemindersView: View {
     @State private var pending: [Item] = []
     @State private var deliveredToday: [Item] = []
     @State private var loaded = false
-    @State private var showDetails = ProcessInfo.processInfo.arguments.contains("-upcomingDetails")   // DEBUG screenshots
+    @State private var showDetails = Self.debugFlag("-upcomingDetails")
     @State private var previewCard: NotificationHealth.Issue?
     /// The picked day of "This week" (0 = today) and the open "why" tile. DEBUG `-remindersDay N`,
     /// `-remindersWhy N`.
-    @State private var selectedDay = UserDefaults.standard.integer(forKey: "remindersDay")
-    @State private var selectedWhy = UserDefaults.standard.integer(forKey: "remindersWhy")
+    @State private var selectedDay = Self.debugInt("remindersDay")
+    @State private var selectedWhy = Self.debugInt("remindersWhy")
+
+    private static func debugFlag(_ arg: String) -> Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains(arg)
+        #else
+        return false
+        #endif
+    }
+    private static func debugInt(_ key: String) -> Int {
+        #if DEBUG
+        return UserDefaults.standard.integer(forKey: key)
+        #else
+        return 0
+        #endif
+    }
 
     /// One notification, read once from its request.
     struct Item: Identifiable {
@@ -383,6 +398,7 @@ struct YourRemindersView: View {
         let kinds = beadKinds
         let problem: (text: String, warn: Bool) = {
             if health.authorization == .denied { return ("reminders off", true) }
+            if health.authorization == .notDetermined { return ("not set up yet", true) }
             if health.issues.contains(.held) { return ("may be late", true) }
             return ("on time", false)
         }()
@@ -444,8 +460,14 @@ struct YourRemindersView: View {
 
     // MARK: this week
 
+    /// Today through the last day anything is scheduled for (the plan can reach an eighth prayer day
+    /// after Fajr), at least a week — so the rings add up to the hero's count.
     private var weekDays: [Date] {
-        (0..<7).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: PrayerDay.date()) }
+        let today = PrayerDay.date()
+        let lastKey = pending.map(\.dayKey).max()
+        let last = lastKey.flatMap { Self.dayKeyFormatter.date(from: $0) }
+        let span = last.map { Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: today), to: $0).day ?? 6 } ?? 6
+        return (0...max(6, min(span, 9))).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
     }
 
     private func items(on day: Date) -> [Item] {
@@ -484,7 +506,7 @@ struct YourRemindersView: View {
                                 .rotationEffect(.degrees(-90))
                             Text("\(counts[i])").font(.system(size: 14, weight: .semibold, design: .rounded)).monospacedDigit()
                         }
-                        .frame(width: 40, height: 40)
+                        .frame(width: days.count > 7 ? 34 : 40, height: days.count > 7 ? 34 : 40)
                         Circle().fill(nudges ? Self.startColor : .clear).frame(width: 5, height: 5)
                     }
                     .frame(maxWidth: .infinity)

@@ -656,7 +656,7 @@ private struct PrayerTrendsGrid: View {
                 guard let hit = cell(at: value.location), hit != selected else { return }
                 movedToOther = true
                 triggerSomeVibration(type: .light)
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { selected = hit }
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) { selected = hit; dayMark = nil }
             }
             .onEnded { value in
                 // Tapped the square that was already showing: hide it.
@@ -693,7 +693,6 @@ private struct PrayerTrendsGrid: View {
         let fullDays = fullIdx.count
         let inTimeDays = inTimeIdx.count
         let marked: Set<Int> = dayMark == .allFive ? fullIdx : dayMark == .inTime ? inTimeIdx : []
-        let gridHeight = cellSize * CGFloat(InsightsStats.names.count) + Self.spacing * CGFloat(InsightsStats.names.count - 1)
 
         return VStack(alignment: .leading, spacing: 10) {
             // The counts are the grid's days: said once, above both (the "of 31" read like a month — owner).
@@ -731,22 +730,12 @@ private struct PrayerTrendsGrid: View {
                             .frame(width: Self.labelWidth, alignment: .trailing)
                         ForEach(days.indices, id: \.self) { i in
                             let cell = Cell(name: name, day: i)
-                            square(for: rows[days[i]]?[name], selected: selected == cell)
-                                .opacity(revealed ? 1 : 0)
+                            // A marked day shows its scores (why it counts); the others fade (owner, 2026-09-28).
+                            square(for: rows[days[i]]?[name], selected: selected == cell, showScore: marked.contains(i))
+                                .opacity(revealed ? (dayMark != nil && !marked.contains(i) ? 0.25 : 1) : 0)
                                 .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.015 * Double(i) + 0.1), value: revealed)
                         }
                     }
-                }
-            }
-            // The marked days' columns, outlined over the grid (no layout change).
-            .overlay(alignment: .topLeading) {
-                ForEach(Array(marked), id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(markColor(dayMark ?? .allFive), lineWidth: 1.5)
-                        .frame(width: cellSize + 5, height: gridHeight + 5)
-                        .offset(x: Self.labelWidth + Self.spacing + CGFloat(i) * (cellSize + Self.spacing) - 2.5, y: -2.5)
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
                 }
             }
             .contentShape(Rectangle())
@@ -758,19 +747,29 @@ private struct PrayerTrendsGrid: View {
                 Color.clear.frame(width: Self.labelWidth, height: 1)
                 ForEach(days.indices, id: \.self) { i in
                     let isMarked = marked.contains(i)
+                    // A marked day's date is a filled pill (Calendar's selected day); the rest fade.
                     Text(days[i].formatted(.dateTime.day()))
                         .font(.system(size: 9, weight: i == days.count - 1 || isMarked ? .semibold : .light, design: .rounded))
-                        .foregroundStyle(isMarked ? AnyShapeStyle(markColor(dayMark ?? .allFive))
+                        .foregroundStyle(isMarked ? AnyShapeStyle(Color.white)
                                          : i == days.count - 1 ? AnyShapeStyle(.primary) : AnyShapeStyle(.tertiary))
-                        .frame(width: cellSize)
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
+                        .frame(width: cellSize, height: 14)
+                        .background(Capsule().fill(isMarked ? markColor(dayMark ?? .allFive) : .clear))
+                        .opacity(dayMark != nil && !isMarked ? 0.25 : 1)
                 }
             }
 
             Group {
                 if let cell = selected {
                     detail(name: cell.name, day: days[cell.day], prayer: selectedPrayer)
+                } else if let mark = dayMark {
+                    // The chosen days in words: "with all five: Thu 24 · Fri 25".
+                    let names = marked.sorted().map { days[$0].formatted(.dateTime.weekday(.abbreviated).day()) }
+                    (Text(mark == .allFive ? "with all five: " : "days in time: ").foregroundStyle(markColor(mark)).fontWeight(.medium)
+                     + Text(names.isEmpty ? "none in these 14 days" : names.joined(separator: " · ")).foregroundStyle(Color.primary))
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.8)
                 } else {
                     Text("tap a square for its details")
                         .foregroundStyle(.tertiary)
@@ -784,7 +783,7 @@ private struct PrayerTrendsGrid: View {
             .frame(height: 56, alignment: .top)
             .multilineTextAlignment(.center)
             .transition(.blurReplace)
-            .id(selected)
+            .id("\(String(describing: selected))|\(dayMark?.rawValue ?? "")")
             .padding(.top, 4)
         }
     }
@@ -810,15 +809,15 @@ private struct PrayerTrendsGrid: View {
         .onTapGesture {
             guard let mark else { return }
             triggerSomeVibration(type: .light)
-            withAnimation(.easeInOut(duration: 0.25)) { dayMark = dayMark == mark ? nil : mark }
+            withAnimation(.easeInOut(duration: 0.25)) { dayMark = dayMark == mark ? nil : mark; selected = nil }
         }
     }
 
-    private func square(for prayer: PrayerModel?, selected: Bool) -> some View {
+    private func square(for prayer: PrayerModel?, selected: Bool, showScore: Bool = false) -> some View {
         let prayed = prayer?.isCompleted == true
         let over = prayer.map { $0.isCompleted || $0.endTime < Date() } ?? false
         return RoundedRectangle(cornerRadius: 4, style: .continuous)
-            .fill((selected || showScores) && prayed ? PrayerScoring.color(for: prayer?.numberScore)
+            .fill((selected || showScores || showScore) && prayed ? PrayerScoring.color(for: prayer?.numberScore)
                   : prayed ? Color.primary.opacity(0.28)
                   : .clear)
             .overlay {

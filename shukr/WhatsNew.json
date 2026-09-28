@@ -960,6 +960,18 @@
       "title": "Mark a prayer right from the widget's times list; tap a marked one to unmark it in the app",
       "tryIt": ["Widget → ⌃ → tap a prayer with an empty circle → it's marked (scored now), and the circle fills", "Tap a filled one → shukr opens → Unmark (or Cancel)", "Upcoming prayers and Sunrise can't be tapped"],
       "checked": "sim", "shots": ["wn-widget-list-taps.jpg"]
+    },
+    {
+      "id": "insights-10", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "title": "Insights: tapping 'with all five' or 'days in time' now fades every other day, shows those days' scores, puts their dates in pills and names them underneath",
+      "tryIt": ["☰ → Insights → 'how consistent am I?' → tap 'with all five' → only those days stay bright, in colour; 'with all five: Fri 25 · Sat 26'"],
+      "checked": "sim", "shots": ["wn-insights-day-marks-clear.jpg"]
+    },
+    {
+      "id": "notifications-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Your reminders: the days reach as far as the reminders do (an eighth day when needed), so they add up to the count in the ring",
+      "tryIt": ["Settings → Notifications → Reminders are on → This week: the day counts add up to the number in the ring"],
+      "checked": "sim", "shots": ["wn-your-reminders-full-week.jpg"]
     }
   ]
 }

@@ -319,6 +319,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         #if DEBUG
         // Scheduler test: queue a snooze like "Nudge in 10 minutes" does, then relaunch without
         // the flag — it must still be pending (NotificationScheduler never removes it).
+        // `-debugDeliverKeepAlive`: a last-resort reminder delivered now (the next re-plan must clear it).
+        if ProcessInfo.processInfo.arguments.contains("-debugDeliverKeepAlive") {
+            let content = UNMutableNotificationContent()
+            content.title = "Open shukr to keep your prayer reminders coming"
+            UNUserNotificationCenter.current().add(UNNotificationRequest(
+                identifier: NotificationScheduler.keepAlivePrefix + "2026-09-20", content: content,
+                trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+        }
         // `-demoMasjidDua`: a delivered "Leaving the masjid" dua (Upcoming reminders' Masjid cell).
         if ProcessInfo.processInfo.arguments.contains("-demoMasjidDua") {
             Task { @MainActor in MasjidArrival.notify(masjid: "Islamic Center of Cary", entering: false) }

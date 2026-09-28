@@ -61,7 +61,7 @@ enum NotificationScheduler {
         content.title = "Open shukr to keep your prayer reminders coming"
         content.body = "Your scheduled reminders end here. Opening shukr lines up the next week."
         content.sound = .default
-        return Item(id: keepAlivePrefix + PrayerNotificationID.dayKey(date), date: date, priority: -1, content: content)
+        return Item(id: keepAlivePrefix + PrayerNotificationID.dayKey(date), date: date, priority: 0, content: content)
     }
 
     // MARK: Rescheduling
@@ -97,10 +97,14 @@ enum NotificationScheduler {
         let ownedPending = pending.filter { owns($0.identifier) }
         let others = pending.count - ownedPending.count
         let budget = max(limit - others - spare, 0)
-        // One slot is the last-resort reminder's, after the last start that made it in.
-        var chosen = Array(items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }.prefix(max(budget - 1, 0)))
-        let lastStart = chosen.filter { $0.id.hasSuffix("Start") }.map(\.date).max() ?? chosen.map(\.date).max()
-        if let lastStart, budget > 0 { chosen.append(keepAliveItem(after: lastStart)) }
+        // One slot is the last-resort reminder's, after the last prayer start that made it in — only
+        // with room for at least one start besides it, and only when prayer starts are scheduled at all
+        // (zikr reminders alone get no "keep your prayer reminders coming").
+        let sorted = items.sorted { ($0.priority, $0.date) < ($1.priority, $1.date) }
+        let reserve = budget >= 2 ? 1 : 0
+        var chosen = Array(sorted.prefix(max(budget - reserve, 0)))
+        let lastStart = chosen.filter { PrayerNotificationID.parse($0.id)?.kind == "Start" }.map(\.date).max()
+        if reserve == 1, let lastStart { chosen.append(keepAliveItem(after: lastStart)) }
 
         // Only what changed (2026-09-27 review): while moving, the app re-plans every 500 m / 30 s,
         // and removing + re-adding ~55 requests each time was wasted work. A request is "the same"
@@ -127,6 +131,8 @@ enum NotificationScheduler {
         let delivered = await center.deliveredNotifications()
         let dayStart = PrayerDay.start()
         let stale = delivered.map(\.request.identifier).filter { id in
+            // A delivered last-resort reminder has done its job: this plan has just replaced it.
+            if id.hasPrefix(keepAlivePrefix) { return true }
             // Zikr reminders (and their "later" ones) from earlier days too (2026-09-27 review).
             if ZikrReminders.isStaleDelivered(id, todayKey: todayKey, dayStart: dayStart) { return true }
             guard let parsed = PrayerNotificationID.parse(id) else { return false }
@@ -135,11 +141,16 @@ enum NotificationScheduler {
         if !stale.isEmpty { center.removeDeliveredNotifications(withIdentifiers: stale) }
 
         scheduleBackgroundRefresh()
+        // Settings' status row and Your reminders read what's scheduled: tell them it just changed
+        // (a refresh on activation can run before this re-plan finishes).
+        await NotificationHealth.shared.refresh()
         if !stalePending.isEmpty || !toAdd.isEmpty || !stale.isEmpty {
-            print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned (+ the last-resort reminder) — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")
+            print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned\(chosen.contains { $0.id.hasPrefix(keepAlivePrefix) } ? " (incl. the last-resort reminder)" : "") — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")
         }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-logPendingNotifs") {
+            let deliveredKeepAlives = await center.deliveredNotifications().filter { $0.request.identifier.hasPrefix(keepAlivePrefix) }.count
+            print("🔔 last-resort reminders: cleared \(stale.filter { $0.hasPrefix(keepAlivePrefix) }.count) delivered this run, \(deliveredKeepAlives) left")
             let now = await center.pendingNotificationRequests()
             let lines = now.compactMap { r -> (Date, String)? in
                 if let d = (r.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate() { return (d, r.identifier) }

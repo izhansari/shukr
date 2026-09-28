@@ -1311,6 +1311,12 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   **Last-resort reminder:** `NotificationScheduler.keepAliveItem` — one slot kept back from the budget; 20 min after the
   last start that made it in, "Open shukr to keep your prayer reminders coming"; id `keepalive.<day>` (owned, so each
   re-plan moves it). Sim ✓ `keepalive.2026-10-05` 6:23 AM.
+  Review fix-ups: the keep-alive needs a prayer Start among the chosen (zikr-only → none) and a budget of ≥ 2 (with 1,
+  the next start keeps the slot); a delivered keep-alive is cleared on every run; the log names it only when it's
+  there; `run` ends with `NotificationHealth.refresh()` (the status row / page never read a half-finished plan). The
+  page's week reaches the last scheduled day (8 rings after Fajr, 34 pt when > 7) so the rings add up to the hero;
+  "not set up yet" for notDetermined; its DEBUG args are `#if DEBUG`. Sim ✓: zikr-only (-<prayer>Notif "<false/>")
+  → 7 planned, no keep-alive; `-debugDeliverKeepAlive` → "cleared 1 delivered"; 10+13+5+5+5+5+5+2 = 50.
   Kinds (2026-09-28): `.snooze` ("Later" cell, the reveal headed "From “Nudge me later”", rows "Dhuhr · “It's been 5
   minutes”" from userInfo["prayerName"] + the title), `.masjid` (`masjidArrival.*`: "Masjid" cell, "Islamic Center of
   Cary · Leaving the masjid"), `.other` ("Other", its title) — they all used to show as "Snoozed · nudge". Rows wrap to
@@ -1862,7 +1868,10 @@ ends", and mixed window lengths can't split the grade from the minutes. Consiste
 the three stats (equal columns, one-line captions: "of N prayed" = recorded prayers in the 14 days, "with all five",
 "days in time"); tapping either day count marks those days (`dayMark`): a 1.5 pt rounded outline round each column
 (sage / green) over the grid and their dates tinted bold; tap again or the other to switch / clear; DEBUG
-`-insightsDayMark allFive|inTime`. The older write-up follows.
+`-insightsDayMark allFive|inTime`. Redone (owner: too subtle): no outlines — while a stat is picked every other day fades
+to 25 % (squares and dates), the picked days show their score colours (whatever the switch says), their dates are
+filled pills (white on sage / green), and the detail slot names them ("with all five: Fri 25 · Sat 26"); a square tap
+clears the stat, a stat tap clears the square. The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
