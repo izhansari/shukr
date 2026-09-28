@@ -670,11 +670,14 @@ struct headerWithInfoButton: View {
 //}
 
 
+/// One prayer's notifications: a single button that cycles off → start → nudge (nudge includes the
+/// start). Also used by the first-run setup's Reminders step (with its sage `accent`).
 struct prayerCol: View {
     @EnvironmentObject var viewModel: PrayerViewModel
     let prayerName: String
     @Binding var notifIsOn: Bool
     @Binding var nudgeIsOn: Bool
+    var accent: Color = .primary
 
     var body: some View {
             // Unified Bell Button
@@ -699,7 +702,7 @@ struct prayerCol: View {
                     Spacer()
                     
                     Image(systemName: notifIsOn ?  (nudgeIsOn ? "bell.badge.fill" : "bell.fill") : "bell.slash.fill" )
-                        .foregroundColor(notifIsOn ? .primary : .gray)
+                        .foregroundColor(notifIsOn ? accent : .gray)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(maxWidth: .infinity, alignment: .center)
                     
@@ -755,14 +758,15 @@ struct NotificationDropdownInfo: View {
             
             HStack{
                 Image(systemName: "bell.fill")
-                Text("Start: You will only receive a notification when the prayer starts.")
+                Text("Start: One notification when the prayer starts.")
                     .font(.caption)
             }
             .foregroundColor(.gray)
             
             HStack{
                 Image(systemName: "bell.badge.fill")
-                Text("Nudge: If a prayer is not marked complete, you will get extra notifications at 50% and 25% time left.")
+                // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
+                Text("Nudge: If you haven't marked the prayer yet, you also get a notification halfway through its time and with 30 minutes left.")
                     .font(.caption)
             }
             .foregroundColor(.gray)

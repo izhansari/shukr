@@ -1165,6 +1165,12 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   flags alone and runs on `FirstRunSetup.finished`. DEBUG `-alarmCheck` prints what the intent would return. Sim ✓: an
   upgrade with no appearance key → Light; unset alarm keys + 10 min → intent "10 min before Start of Fajr (5:24 AM)" (Fajr
   5:34); Paris / Moscow times sane; a fresh install with `widgetTasbeeh` set → the full setup.
+- **Owner's feedback on the phone (2026-09-28, "the feel is really nice"):** the Reminders step now uses Settings' own
+  `prayerCol` (one bell per prayer cycling off → start → nudge; `accent: .sage` in the setup) plus a three-line legend — the
+  first version's two columns allowed start-off-nudges-on, which Settings can't show. Nudge wording now matches
+  `NotificationScheduler` everywhere: Mid = halfway through the window, End = 30 min before it ends (Settings' info said
+  "50% and 25% time left" — wrong). The Fajr step shows only the result under the wheels, "Alarm tomorrow 5:25 AM · Fajr
+  starts 5:35 AM" (or "Fajr ends …"), not the rule again.
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
   Bismillah.

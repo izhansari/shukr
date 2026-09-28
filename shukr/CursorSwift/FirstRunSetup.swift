@@ -970,12 +970,13 @@ private struct AppearanceSwatch: View {
 
 // MARK: - Reminders
 
-private let prayerNames = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
 private struct RemindersStep: View {
     let next: () -> Void
     @ObservedObject private var notifications = NotificationStatus.shared
-    // The same keys Settings uses: at the start (…Notif), halfway + 30 min left (…Nudges).
+    // The same keys and the same control as Settings: one button per prayer cycling off → start →
+    // nudge (`prayerCol`; owner, 2026-09-28: "it should follow the same toggling logic we have in
+    // the settings" — the first version's two independent columns allowed states Settings can't).
     @AppStorage("fajrNotif") private var fajrNotif = true
     @AppStorage("dhuhrNotif") private var dhuhrNotif = true
     @AppStorage("asrNotif") private var asrNotif = true
@@ -989,18 +990,35 @@ private struct RemindersStep: View {
 
     var body: some View {
         StepScaffold(title: "Reminders that help",
-                     subtitle: "Not just at the start: a nudge halfway and with 30 min left, tuned per prayer.") {
+                     subtitle: "Not just at the start: if you haven't marked it yet, a nudge halfway through and with 30 min left.") {
             VStack(spacing: 18) {
                 if notifications.isOn == false {
                     Nudge(text: "Notifications are off for shukr, so reminders can't reach you.",
                           action: "Turn on", tap: SettingsLinks.notifications)
                         .padding(.horizontal, 24)
                 }
-                grid
-                    .padding(.horizontal, 24)
-                Text("Each nudge says how long is left. “I already prayed” right on it marks the prayer.")
+                HStack(spacing: 4) {
+                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges, accent: .sage)
+                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges, accent: .sage)
+                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges, accent: .sage)
+                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges, accent: .sage)
+                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges, accent: .sage)
+                }
+                .frame(height: 76)
+                .padding(.vertical, 14)
+                .padding(.horizontal, 8)
+                .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
+                .padding(.horizontal, 24)
+                // The legend, one line each: what the three states send.
+                VStack(alignment: .leading, spacing: 6) {
+                    legend("bell.slash.fill", "off", "no notification")
+                    legend("bell.fill", "start", "when the prayer begins")
+                    legend("bell.badge.fill", "nudge", "also halfway through and with 30 min left, if it isn't marked")
+                }
+                .padding(.horizontal, 32)
+                Text("Tap a bell to change it. “I already prayed” on a notification marks the prayer.")
                     .font(.system(.footnote, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
             }
@@ -1015,68 +1033,18 @@ private struct RemindersStep: View {
         .task { await notifications.refresh() }
     }
 
-    private var grid: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("").frame(maxWidth: .infinity, alignment: .leading)
-                Text("At the start").frame(width: 84)
-                Text("Halfway · 30 min left").frame(width: 104)
-            }
-            .font(.system(.caption2, design: .rounded))
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.bottom, 6)
-            ForEach(prayerNames, id: \.self) { name in
-                HStack {
-                    Label(name, systemImage: prayerSymbol(name))
-                        .font(.system(.body, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    toggle(start(name), label: "\(name) at the start").frame(width: 84)
-                    toggle(nudges(name), label: "\(name) halfway and 30 minutes left").frame(width: 104)
-                }
-                .padding(.vertical, 9)
-                if name != prayerNames.last { Divider() }
-            }
+    private func legend(_ symbol: String, _ name: String, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Image(systemName: symbol).font(.caption).foregroundStyle(Color.sage).frame(width: 18)
+            (Text(name).fontWeight(.medium) + Text("  \(text)").foregroundStyle(.secondary))
+                .font(.system(.footnote, design: .rounded))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 22).fill(Color(.secondarySystemBackground)))
     }
+}
 
-    private func toggle(_ on: Binding<Bool>, label: String) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) { on.wrappedValue.toggle() }
-        } label: {
-            Image(systemName: on.wrappedValue ? "bell.fill" : "bell.slash")
-                .font(.system(size: 17, weight: .light))
-                .foregroundStyle(on.wrappedValue ? Color.sage : Color.secondary.opacity(0.45))
-                .frame(width: 44, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
-        .accessibilityValue(on.wrappedValue ? "On" : "Off")
-    }
-
-    private func start(_ name: String) -> Binding<Bool> {
-        switch name {
-        case "Fajr": $fajrNotif
-        case "Dhuhr": $dhuhrNotif
-        case "Asr": $asrNotif
-        case "Maghrib": $maghribNotif
-        default: $ishaNotif
-        }
-    }
-    private func nudges(_ name: String) -> Binding<Bool> {
-        switch name {
-        case "Fajr": $fajrNudges
-        case "Dhuhr": $dhuhrNudges
-        case "Asr": $asrNudges
-        case "Maghrib": $maghribNudges
-        default: $ishaNudges
-        }
-    }
+private extension String {
+    var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
 
 // MARK: - Fajr alarm
@@ -1124,10 +1092,13 @@ private struct FajrStep: View {
                         .pickerStyle(.wheel)
                         .frame(height: 120)
                         .clipped()
-                        Text(PrayerUtils.alarmRuleText(offset: offset, isBefore: isBefore, isStart: isFajr)
-                             + (nextAlarm.map { " · tomorrow \(clockTime($0))" } ?? ""))
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color.sage)
+                        // Just the result, backed by the time it's worked from (owner: the wheels already
+                        // say the rule) — like Settings' "is 5:24 AM (Fajr starts 5:34 AM)".
+                        if let next = nextAlarm {
+                            Text("Alarm tomorrow \(clockTime(next.alarm)) · Fajr \(isFajr ? "starts" : "ends") \(clockTime(next.reference))")
+                                .font(.system(.subheadline, design: .rounded))
+                                .foregroundStyle(Color.sage)
+                        }
                     }
                     VStack(spacing: 8) {
                         Text("shukr sets the alarm through a Shortcut you add once.")
@@ -1152,14 +1123,14 @@ private struct FajrStep: View {
         }
     }
 
-    /// Tomorrow's alarm from the rule (for the line under the wheels).
-    private var nextAlarm: Date? {
+    /// Tomorrow's alarm from the rule, and the start / end of Fajr it's worked from.
+    private var nextAlarm: (alarm: Date, reference: Date)? {
         guard let coords = try? PrayerUtils.getUserCoordinates(),
               let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()),
               let t = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coords, params: PrayerUtils.getCalculationParameters())
         else { return nil }
         let ref = isFajr ? t.fajr : t.sunrise
-        return ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1))
+        return (ref.addingTimeInterval(Double(offset * 60) * (isBefore ? -1 : 1)), ref)
     }
 
     /// What Settings' Save writes, so its row reads right.
@@ -1322,7 +1293,7 @@ private struct ReviewStep: View {
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
                     row("bell", "Reminders", remindersValue, step: .reminders,
-                        sell: "Not just at the start: a nudge halfway and with 30 min left, tuned per prayer.") { notificationsNudge }
+                        sell: "Not just at the start: if it isn't marked yet, a nudge halfway through and with 30 min left.") { notificationsNudge }
                     divider
                     row("alarm", "Fajr alarm", alarmValue, step: .fajr,
                         sell: "A real alarm from a rule you set once. It follows Fajr all year.")
@@ -1358,12 +1329,16 @@ private struct ReviewStep: View {
         let m = method == AutoMethod.automatic ? "Automatic (\(AutoMethod.shortName(AutoMethod.resolved())))" : AutoMethod.shortName(method)
         return "\(m) · \(school == 1 ? "Hanafi" : "Shafi'i")"
     }
+    /// Settings' three states per prayer: off, start, nudge (nudge = start + the two nudges).
     private var remindersValue: String {
-        let starts = [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif].filter { $0 }.count
-        let nudges = [fajrNudges, dhuhrNudges, asrNudges, maghribNudges, ishaNudges].filter { $0 }.count
-        if starts == 0 && nudges == 0 { return "Off" }
-        if starts == 5 && nudges == 5 { return "At the start, halfway and 30 min left" }
-        return "At the start for \(starts) · nudges for \(nudges)"
+        let states = zip([fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif],
+                         [fajrNudges, dhuhrNudges, asrNudges, maghribNudges, ishaNudges]).map { $0 ? ($1 ? 2 : 1) : 0 }
+        let nudge = states.filter { $0 == 2 }.count, start = states.filter { $0 == 1 }.count, off = states.filter { $0 == 0 }.count
+        if off == 5 { return "Off" }
+        if nudge == 5 { return "All five, with nudges" }
+        if start == 5 { return "All five, at the start" }
+        return [nudge > 0 ? "nudges for \(nudge)" : nil, start > 0 ? "start for \(start)" : nil, off > 0 ? "off for \(off)" : nil]
+            .compactMap { $0 }.joined(separator: " · ").capitalizedFirst
     }
     private var alarmValue: String {
         guard alarmOn else { return "Off" }
