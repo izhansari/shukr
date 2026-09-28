@@ -30,6 +30,7 @@ enum WatchStore {
         static let localMarks = "watch.localMarks"
         /// The mark id sent to the phone for each local mark (name → id), for undo / a failed save.
         static let localMarkIDs = "watch.localMarkIDs"
+        static let masajid = "watch.masajid"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -50,11 +51,17 @@ enum WatchStore {
         set(context["completedDay"], Key.completedDay)
         set(context["scores"], Key.scores)
         set(context["qiblaSensitivity"], Key.qiblaSensitivity)
+        set(context["masajid"], Key.masajid)
         // Marks the phone now reports (for that day) no longer need the watch's own copy.
         if let completed = context["completed"] as? [String], let day = context["completedDay"] as? Double {
             var marks = localMarks
             for name in completed where abs((marks[name]?.first ?? -1) - day) < 1 { marks[name] = nil }
-            if marks.count != localMarks.count { d.set(marks, forKey: Key.localMarks); changed = true }
+            if marks.count != localMarks.count {
+                d.set(marks, forKey: Key.localMarks)
+                // …and their mark ids with them.
+                d.set(localMarkIDs.filter { marks[$0.key] != nil }, forKey: Key.localMarkIDs)
+                changed = true
+            }
         }
         return changed
     }
@@ -80,6 +87,14 @@ enum WatchStore {
     /// The prayer a mark id belongs to, while its local mark is still here.
     static func localMarkName(forID id: String) -> String? {
         localMarkIDs.first { $0.value == id }?.key
+    }
+
+    /// The phone's "My masajid": name, lat, lon.
+    static var masajid: [(name: String, lat: Double, lon: Double)] {
+        (defaults.array(forKey: Key.masajid) as? [[String]] ?? []).compactMap { row in
+            guard row.count == 3, let lat = Double(row[1]), let lon = Double(row[2]) else { return nil }
+            return (row[0], lat, lon)
+        }
     }
 
     static func removeLocalMark(_ name: String) {
@@ -183,6 +198,22 @@ enum WatchPrayers {
             scores[name] = mark[1]
         }
         return scores
+    }
+
+    /// The phone's Jumu'ah rule: a Friday Dhuhr marked at one of your masajid (within 100 m of
+    /// where the phone last was, which is where the phone records a watch mark). Its masjid's name.
+    static func jumuahMasjid(for prayer: WatchPrayer) -> String? {
+        guard prayer.name == "Dhuhr", Calendar.current.component(.weekday, from: prayer.start) == 6,
+              WatchStore.hasLocation else { return nil }
+        let d = WatchStore.defaults
+        let lat = d.double(forKey: WatchStore.Key.latitude), lon = d.double(forKey: WatchStore.Key.longitude)
+        func metres(_ a: Double, _ b: Double, _ c: Double, _ e: Double) -> Double {
+            let r = 6_371_000.0, p1 = a * .pi / 180, p2 = c * .pi / 180
+            let dp = (c - a) * .pi / 180, dl = (e - b) * .pi / 180
+            let h = sin(dp / 2) * sin(dp / 2) + cos(p1) * cos(p2) * sin(dl / 2) * sin(dl / 2)
+            return 2 * r * asin(min(1, sqrt(h)))
+        }
+        return WatchStore.masajid.first { metres(lat, lon, $0.lat, $0.lon) < 100 }?.name
     }
 
     /// What the watch shows: the prayer that's on (not yet prayed), else the next one; after Isha,

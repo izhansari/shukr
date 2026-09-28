@@ -18,6 +18,11 @@ import UserNotifications
 struct ShukrWatchApp: App {
     @StateObject private var session = WatchSession.shared
 
+    init() {
+        // Before anything else: a background launch from a notification action may arrive first.
+        WatchNotifications.register()
+    }
+
     var body: some Scene {
         WindowGroup {
             WatchRootView()
@@ -44,7 +49,6 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
             WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
-        WatchNotifications.register()
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
@@ -58,13 +62,20 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         if WatchStore.save(context) {
             WidgetCenter.shared.reloadAllTimelines()
         }
-        DispatchQueue.main.async { WatchZikrStore.shared.take(context) }   // today's zikr tasks and progress
+        DispatchQueue.main.async {
+            WatchZikrStore.shared.take(context)   // today's zikr tasks and progress
+            if let ids = context["markIDs"] as? [String] { WatchPrayerMarker.confirm(ids) }
+            for name in context["completed"] as? [String] ?? [] { WatchNotifications.cancelNudges(for: name) }
+        }
         DispatchQueue.main.async { self.revision += 1 }
     }
 
     func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
         take(session.receivedApplicationContext)
-        DispatchQueue.main.async { WatchZikrStore.shared.resendUnconfirmed() }
+        DispatchQueue.main.async {
+            WatchZikrStore.shared.resendUnconfirmed()
+            WatchPrayerMarker.flushOutbox()
+        }
     }
 
     /// Replies from the phone (a mark it couldn't save).
@@ -81,6 +92,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         DispatchQueue.main.async {
             guard !self.handledFailures.contains(id), let name = WatchStore.localMarkName(forID: id) else { return }
             self.handledFailures.insert(id)
+            WatchPrayerMarker.drop(markID: id)
             let start = (info["start"] as? Double).map(Date.init(timeIntervalSince1970:)) ?? Date()
             WatchStore.removeLocalMark(name)
             WidgetCenter.shared.reloadAllTimelines()
@@ -346,7 +358,11 @@ struct WatchPrayerList: View {
             Button("Cancel", role: .cancel) { marking = nil }
         } message: { p in
             let score = WatchScoring.score(start: p.start, end: p.end, at: Date())
-            Text(Date() > p.end ? "Qaza — after its window." : "Right now: \(WatchScoring.summary(forScore: score))")
+            if let masjid = WatchPrayers.jumuahMasjid(for: p) {
+                Text("Jumu'ah at \(masjid)")
+            } else {
+                Text(Date() > p.end ? "Qaza — after its window." : "Right now: \(WatchScoring.summary(forScore: score))")
+            }
         }
     }
 
@@ -502,29 +518,60 @@ final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
-        let info = response.notification.request.content.userInfo
+        let original = response.notification.request.content
+        let info = original.userInfo
+        let subject = original.subtitle.isEmpty ? original.title : original.subtitle
         let prayer: WatchPrayer? = {
             guard let name = info["prayerName"] as? String, let start = info["prayerStart"] as? Double,
                   let end = info["prayerEnd"] as? Double else { return nil }
             return WatchPrayer(name: name, start: Date(timeIntervalSince1970: start), end: Date(timeIntervalSince1970: end))
         }()
+        // The phone's flow (shukrApp's NotificationDelegate), same words and timings.
         switch response.actionIdentifier {
         case "MARK_PRAYED_ACTION":
             if let prayer { DispatchQueue.main.async { WatchPrayerMarker.mark(prayer) } }
             completionHandler()
-        case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION", "ROUND2_SNOOZE_5_ACTION", "ROUND2_CONFIRM_ACTION":
-            let minutes = response.actionIdentifier == "SNOOZE_10_ACTION" ? 10 : 5
-            let content = UNMutableNotificationContent()
-            content.title = "It's been \(minutes) minutes"
-            if let prayer { content.body = "\(prayer.name) · pray by \(prayer.end.formatted(date: .omitted, time: .shortened))" }
-            content.sound = .default
-            content.categoryIdentifier = "Round2_Snooze"
-            content.userInfo = info
-            let request = UNNotificationRequest(identifier: "watch-snooze-\(UUID().uuidString)", content: content,
-                                                trigger: UNTimeIntervalNotificationTrigger(timeInterval: Double(minutes * 60), repeats: false))
-            center.add(request) { _ in completionHandler() }
+        case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION":
+            let minutes = response.actionIdentifier == "SNOOZE_5_ACTION" ? 5 : 10
+            Self.nudge(after: Double(minutes * 60), title: "It's been \(minutes) minutes", body: subject,
+                       info: info, category: "Round2_Snooze", prayer: prayer?.name, then: completionHandler)
+        case "ROUND2_SNOOZE_5_ACTION":
+            Self.nudge(after: 1, title: "😑 Are you being serious? Another 5 minutes?", body: subject,
+                       info: info, category: "Round2_Confirm", prayer: prayer?.name, then: completionHandler)
+        case "ROUND2_CONFIRM_ACTION":
+            Self.nudge(after: 5 * 60, title: "5 more minutes have passed!", body: subject,
+                       info: info, category: "Round1_Snooze", prayer: prayer?.name, then: completionHandler)
         default:
             completionHandler()
+        }
+    }
+
+    /// A follow-up nudge on the watch, named after its prayer so marking it cancels it.
+    private static func nudge(after seconds: TimeInterval, title: String, body: String, info: [AnyHashable: Any],
+                              category: String, prayer: String?, then done: @escaping () -> Void) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { done(); return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.userInfo = info
+            content.sound = .default
+            content.interruptionLevel = .timeSensitive
+            content.categoryIdentifier = category
+            let request = UNNotificationRequest(identifier: "watch-snooze-\(prayer ?? "prayer")-\(UUID().uuidString)",
+                                                content: content,
+                                                trigger: UNTimeIntervalNotificationTrigger(timeInterval: max(seconds, 1), repeats: false))
+            center.add(request) { _ in done() }
+        }
+    }
+
+    /// Marked (here, or the phone reports it done): no "It's been 5 minutes" after praying.
+    static func cancelNudges(for prayer: String) {
+        let center = UNUserNotificationCenter.current()
+        center.getPendingNotificationRequests { requests in
+            let ids = requests.map(\.identifier).filter { $0.hasPrefix("watch-snooze-\(prayer)-") }
+            if !ids.isEmpty { center.removePendingNotificationRequests(withIdentifiers: ids) }
         }
     }
 

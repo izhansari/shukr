@@ -24,7 +24,9 @@ enum WatchPrayerMarker {
     static func mark(_ prayer: WatchPrayer, at date: Date = Date()) {
         // The prayer's own day (its Fajr), not whatever day it is at the tap.
         guard let day = WatchPrayers.day(at: prayer.start) else { return }
-        let score = WatchScoring.score(start: prayer.start, end: prayer.end, at: date)
+        // A Friday Dhuhr at one of your masajid is Jumu'ah (full marks), as the phone will score it.
+        let masjid = WatchPrayers.jumuahMasjid(for: prayer)
+        let score = masjid != nil ? 1 : WatchScoring.score(start: prayer.start, end: prayer.end, at: date)
         // An id per mark: the phone applies it once, however many copies arrive, and an undo names it.
         let id = UUID().uuidString
         WatchStore.addLocalMark(prayer.name, dayStart: day.prayers[0].start, score: score, at: date, id: id)
@@ -34,7 +36,8 @@ enum WatchPrayerMarker {
               "at": date.timeIntervalSince1970])
         WidgetCenter.shared.reloadAllTimelines()
         WatchSession.shared.refresh()
-        WatchMoment.shared.show(prayer: prayer, score: score, markID: id)
+        WatchNotifications.cancelNudges(for: prayer.name)
+        WatchMoment.shared.show(prayer: prayer, score: score, markID: id, jumuahAt: masjid)
     }
 
     /// Undo (within seconds): the local mark goes, and the phone takes it off again.
@@ -68,14 +71,27 @@ enum WatchPrayerMarker {
         }
     }
 
+    /// The phone has handled these ids (its context's "markIDs"): they leave the outbox.
+    static func confirm(_ ids: [String]) {
+        let done = Set(ids)
+        let box = outbox
+        let kept = box.filter { !done.contains($0.value["id"] as? String ?? "") }
+        if kept.count != box.count { outbox = kept }
+    }
+
+    /// A mark the phone couldn't save isn't retried behind the user's back.
+    static func drop(markID: String) {
+        outbox = outbox.filter { ($0.value["id"] as? String) != markID }
+    }
+
     /// The phone is in reach: everything in the outbox from the last day, directly.
     static func flushOutbox() {
         let cutoff = Date().addingTimeInterval(-86_400).timeIntervalSince1970
         let kept = outbox.filter { ($0.value["queuedAt"] as? Double ?? 0) > cutoff }
         outbox = kept
         guard WCSession.isSupported(), WCSession.default.isReachable else { return }
-        // Marks before undos, so a flush never lands an undo ahead of its mark needlessly.
-        for info in kept.values.sorted(by: { ($0["type"] as? String ?? "") < ($1["type"] as? String ?? "") }) {
+        // In the order they were made (mark A, undo A, mark B must stay in that order).
+        for info in kept.values.sorted(by: { ($0["queuedAt"] as? Double ?? 0) < ($1["queuedAt"] as? Double ?? 0) }) {
             WCSession.default.sendMessage(info, replyHandler: nil, errorHandler: nil)
         }
     }
@@ -94,16 +110,21 @@ final class WatchMoment: ObservableObject {
         let score: Double
         let markID: String
         let at: Date
+        /// Jumu'ah at this masjid (the moment says "Jumu'ah", not a clock grade, like the phone).
+        var jumuahAt: String? = nil
     }
     @Published private(set) var moment: Moment?
     /// The prayer the tasbih offer is for, and when it goes (the next prayer's start).
     @Published private(set) var offer: (name: String, until: Date)?
     private var token = 0
 
-    func show(prayer: WatchPrayer, score: Double, markID: String) {
+    func show(prayer: WatchPrayer, score: Double, markID: String, jumuahAt: String? = nil) {
         token += 1
         let t = token
-        withAnimation(.easeOut(duration: 0.3)) { moment = Moment(prayer: prayer, score: score, markID: markID, at: Date()); offer = nil }
+        withAnimation(.easeOut(duration: 0.3)) {
+            moment = Moment(prayer: prayer, score: score, markID: markID, at: Date(), jumuahAt: jumuahAt)
+            offer = nil
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             guard t == self.token else { return }
             withAnimation(.easeInOut(duration: 0.4)) {
@@ -145,10 +166,11 @@ struct WatchCompletionMoment: View {
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
-                    Text(moment.prayer.name)
+                    Text(moment.jumuahAt != nil ? "Jumu'ah" : moment.prayer.name)
                 }
                 .font(.system(size: 20, weight: .light, design: .rounded))
-                Text(WatchScoring.summary(forScore: moment.score))
+                Text(moment.jumuahAt.map { "at \($0)" } ?? WatchScoring.summary(forScore: moment.score))
+                    .lineLimit(1).minimumScaleFactor(0.7)
                     .font(.system(size: 12, weight: .light, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -162,6 +184,8 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
     static let shared = WatchCompass()
     /// Degrees from true north (magnetic if the watch can't tell true north yet); nil = none.
     @Published private(set) var heading: Double?
+    /// Location for true north: .notDetermined / .denied / allowed.
+    @Published private(set) var status: CLAuthorizationStatus = .notDetermined
     private let manager = CLLocationManager()
     private var users = 0
 
@@ -209,6 +233,7 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        DispatchQueue.main.async { self.status = manager.authorizationStatus }
         if users > 0 { startLocationIfAllowed() }
     }
 
@@ -224,13 +249,6 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
 }
 
-extension WatchQiblaArrow {
-    private func setRunning(_ on: Bool) {
-        guard on != running else { return }
-        running = on
-        on ? compass.start() : compass.stop()
-    }
-}
 
 /// The phone's qibla arrow on the circle: a chevron that points at the Kaaba, turned by the
 /// compass; green, upright, with a dot on the ring and a tap once you're facing it.
@@ -242,7 +260,7 @@ struct WatchQiblaArrow: View {
     @State private var lastBuzz = Date.distantPast
     @State private var running = false
     @State private var askWhy = false
-    @AppStorage("watch.qiblaAsked") private var asked = false
+    @State private var showDenied = false
 
     private var relative: Double? {
         guard let bearing = WatchQibla.bearing, let heading = compass.heading else { return nil }
@@ -252,42 +270,66 @@ struct WatchQiblaArrow: View {
         return d
     }
 
+    /// Location allowed (or a DEBUG heading): the arrow. Otherwise a quiet prompt in its place —
+    /// asked only when tapped, never on its own at launch; denied says so instead of pointing by
+    /// magnetic north without telling anyone.
+    private var allowed: Bool {
+        #if DEBUG
+        if UserDefaults.standard.object(forKey: "demoWatchHeading") != nil { return true }
+        #endif
+        return compass.status == .authorizedWhenInUse || compass.status == .authorizedAlways
+    }
+
     var body: some View {
         ZStack {
-            if let relative {
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(aligned ? Color.green : Color.primary)
-                    .opacity(0.55)
-                    .offset(y: -ringDiameter * 0.4)
-                    .rotationEffect(.degrees(aligned ? 0 : relative))
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: aligned)
-                Circle()
-                    .fill(Color.green)
-                    .frame(width: 5, height: 5)
-                    .offset(y: -ringDiameter / 2)
-                    .opacity(aligned ? 1 : 0)
+            if allowed {
+                if let relative {
+                    Image(systemName: "chevron.up")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(aligned ? Color.green : Color.primary)
+                        .opacity(0.55)
+                        .offset(y: -ringDiameter * 0.4)
+                        .rotationEffect(.degrees(aligned ? 0 : relative))
+                        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: aligned)
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 5, height: 5)
+                        .offset(y: -ringDiameter / 2)
+                        .opacity(aligned ? 1 : 0)
+                }
+            } else if compass.available {
+                Button {
+                    if compass.status == .notDetermined { askWhy = true } else { showDenied = true }
+                } label: {
+                    Label(compass.status == .notDetermined ? "qibla" : "No location · tap",
+                          systemImage: compass.status == .notDetermined ? "location.north" : "location.slash")
+                        .font(.system(size: 9, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .offset(y: -ringDiameter * 0.38)
             }
         }
-        .allowsHitTesting(false)
-        // The compass (and the location for true north) only while the arrow can be seen.
-        .onAppear {
-            setRunning(!wristDown)
-            // The first time the qibla is shown: why the watch wants location, then the system ask.
-            if compass.needsPermission && !asked { asked = true; askWhy = true }
-        }
+        .onAppear { setRunning(!wristDown) }
+        .onDisappear { setRunning(false) }
+        .onChange(of: wristDown) { _, down in setRunning(!down) }
         .alert("Point to the qibla?", isPresented: $askWhy) {
             Button("Allow location") { compass.requestPermission() }
             Button("Not now", role: .cancel) {}
         } message: {
             Text("shukr uses your location with the compass to point you to the qibla accurately.")
         }
-        .onDisappear { setRunning(false) }
-        .onChange(of: wristDown) { _, down in setRunning(!down) }
+        .alert("Location is off for shukr", isPresented: $showDenied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("To point to the qibla, allow it in the Watch app on your iPhone: Privacy › Location Services › shukr.")
+        }
         .onChange(of: relative, initial: true) { _, r in
             // Lined up within the accuracy; it only lets go 2° past it, so wobbling on the edge
             // doesn't flicker. One buzz per line-up, re-armed after a second (as on the phone).
-            guard let r else { aligned = false; return }
+            guard let r, allowed else { aligned = false; return }
             let s = WatchQibla.sensitivity
             let now = aligned ? abs(r) <= s + 2 : abs(r) <= s
             if now != aligned {
@@ -298,5 +340,11 @@ struct WatchQiblaArrow: View {
                 }
             }
         }
+    }
+
+    private func setRunning(_ on: Bool) {
+        guard on != running else { return }
+        running = on
+        on ? compass.start() : compass.stop()
     }
 }

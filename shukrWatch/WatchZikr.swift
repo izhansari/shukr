@@ -254,7 +254,7 @@ final class WatchZikrStore: ObservableObject {
         if UserDefaults.standard.data(forKey: Key.draft) == nil, let old = WatchStore.defaults.data(forKey: Key.draft) {
             UserDefaults.standard.set(old, forKey: Key.draft)
         }
-        WatchStore.defaults.removeObject(forKey: Key.draft)
+        if WatchStore.defaults.object(forKey: Key.draft) != nil { WatchStore.defaults.removeObject(forKey: Key.draft) }
     }
 
     /// In the standard defaults: written often, and every app-group write would redraw anything
@@ -281,7 +281,8 @@ final class WatchZikrStore: ObservableObject {
             record(WatchZikrRecord(id: UUID().uuidString, taskID: draft.taskID, name: draft.name, mode: draft.mode,
                                    targetMin: draft.targetMin, targetCount: draft.targetCount,
                                    count: draft.sessionCount, start: draft.startedAt, seconds: seconds,
-                                   perCount: draft.lastCountActive / Double(draft.sessionCount)))
+                                   perCount: draft.lastCountActive / Double(draft.sessionCount),
+                                   postSalah: draft.postSalah))
             print("⌚️ saved a paused session (\(draft.sessionCount))")
         }
         return nil
@@ -1024,14 +1025,18 @@ struct WatchCounterView: View {
             seconds: seconds,
             perCount: lastCountActive / Double(max(sessionCount, 1)),
             postSalah: postSalah ? true : nil)
-        WatchZikrStore.shared.draft = nil
+        clearOwnDraft()
         WatchZikrStore.shared.record(record)
         runtime.stop()
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
     }
 
+    private func clearOwnDraft() {
+        if WatchZikrStore.shared.draft?.startedAt == startedAt { WatchZikrStore.shared.draft = nil }
+    }
+
     private func close() {
-        WatchZikrStore.shared.draft = nil
+        clearOwnDraft()
         runtime.stop()
         dismiss()
     }
@@ -1458,7 +1463,11 @@ struct WatchCrownTapsToggle: View {
 /// Allahu Akbar 34, saved once under "Tasbih Fatimah".
 enum WatchPostSalah {
     static let name = "Tasbih Fatimah"
-    static let phases: [(name: String, count: Int)] = [("Subhanallah", 33), ("Alhamdulillah", 33), ("Allahu Akbar", 34)]
+    static let phases: [(name: String, arabic: String, count: Int)] = [
+        ("Subhanallah", "سُبْحَانَ ٱللَّٰهِ", 33),
+        ("Alhamdulillah", "ٱلْحَمْدُ لِلَّٰهِ", 33),
+        ("Allahu Akbar", "ٱللَّٰهُ أَكْبَرُ", 34),
+    ]
     static var total: Int { phases.reduce(0) { $0 + $1.count } }
 
     static func phase(at count: Int) -> (index: Int, done: Int, of: Int) {
@@ -1477,11 +1486,17 @@ struct WatchPostSalahStrip: View {
 
     var body: some View {
         let p = WatchPostSalah.phase(at: count)
-        VStack(spacing: 3) {
-            Text("\(WatchPostSalah.phases[p.index].name) · \(p.done) of \(p.of)")
-                .font(.system(size: 11, weight: .light, design: .rounded))
-                .monospacedDigit()
+        // Two lines (owner: one line ran off the edge): the Arabic phrase, then "7 of 33".
+        VStack(spacing: 1) {
+            Text(WatchPostSalah.phases[p.index].arabic)
+                .font(.system(size: 14))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text("\(p.done) of \(p.of)")
+                .font(.system(size: 10, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.tertiary)
             HStack(spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
                     Capsule()
@@ -1489,6 +1504,7 @@ struct WatchPostSalahStrip: View {
                         .frame(width: 18, height: 3)
                 }
             }
+            .padding(.top, 2)
         }
     }
 }

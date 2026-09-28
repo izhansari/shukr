@@ -124,6 +124,10 @@ enum WatchZikrSync {
             // Sorted: an unchanged set must compare equal, or every save resends the context.
             "zikrSessions": Set(sessions.map(\.id.uuidString)).union(recentReceived()).sorted(),
             "qiblaSensitivity": UserDefaults(suiteName: SharedStore.appGroup)?.object(forKey: "qibla_sensitivity") as? Double ?? 3.5,
+            // Marks / undos the phone has handled: the watch clears them from its outbox.
+            "markIDs": receivedMarks.keys.sorted(),
+            // Your masajid, so a Friday Dhuhr marked on the watch at one is Jumu'ah there too.
+            "masajid": MosqueFavorites.all.map { [$0.name, String($0.latitude), String($0.longitude)] },
             "freestyleStep": QuickAddSteps.step(for: nil),
         ]
     }
