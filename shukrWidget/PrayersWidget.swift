@@ -61,8 +61,6 @@ struct PrayersWidgetEntry: TimelineEntry {
     var ringAbove = 0.6
     /// Edit Widget → Style (the home-screen widget only).
     var style: WidgetStyle = .system
-    /// The times list's rows can be tapped (the prototype, a beta setting in the app).
-    var listTaps = false
 
     /// "Follows the sun" (`auto`) night: from Maghrib until the next sunrise (the app's auto rule — `isDaytime` is
     /// after Fajr's window, before Maghrib), and before this prayer day's sunrise.
@@ -96,7 +94,7 @@ struct PrayersWidgetEntry: TimelineEntry {
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
                            completedScores: completedScores, nextFajr: nextFajr,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
-                           ringAbove: ringAbove, style: style, listTaps: listTaps)
+                           ringAbove: ringAbove, style: style)
     }
 }
 
@@ -209,17 +207,12 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     shown.style = style
                     render(shown, size: size, phoneDark: phoneDark, "\(px)-style-\(style.rawValue)-\(phone)")
                 }
-                // The times list, read-only and with the tap prototype on; and with the tap prototype
-                // with only the first prayer marked (the others that started show as empty circles).
-                for taps in [false, true] {
-                    var shown = entry.at(entry.date, list: true)
-                    shown.listTaps = taps
-                    render(shown, size: size, phoneDark: phoneDark, "\(px)-list-\(taps ? "taps" : "plain")-\(phone)")
-                }
+                // The times list, and with only the first prayer marked (the others that started
+                // show as empty circles to tap).
+                render(entry.at(entry.date, list: true), size: size, phoneDark: phoneDark, "\(px)-list-\(phone)")
                 var open = entry.at(entry.date, list: true)
-                open.listTaps = true
                 open.completedScores = entry.completedScores.filter { $0.key == "Fajr" }
-                render(open, size: size, phoneDark: phoneDark, "\(px)-list-tapsOpen-\(phone)")
+                render(open, size: size, phoneDark: phoneDark, "\(px)-list-open-\(phone)")
             }
             // "Follows the sun" either side of Maghrib and of sunrise (the phone in light mode).
             if let maghrib = entry.prayerDict["Maghrib"]?.start, let sunrise = entry.prayerDict["Sunrise"]?.start {
@@ -289,8 +282,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             rightCorner: configuration?.corners.right ?? .tasbeeh,
             scoreColors: configuration?.scoreColors ?? true,
             ringAbove: 0.6,
-            style: configuration?.style ?? .system,
-            listTaps: WidgetListTaps.enabled
+            style: configuration?.style ?? .system
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.
@@ -308,7 +300,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                                       leftCorner: corners.first ?? entry.leftCorner,
                                       rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner,
                                       scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors,
-                                      ringAbove: entry.ringAbove, style: entry.style, listTaps: entry.listTaps)
+                                      ringAbove: entry.ringAbove, style: entry.style)
         }
         #endif
         return entry
@@ -404,13 +396,12 @@ struct PrayersWidgetView: View {
                 .fixedSize()
         }
 
-        /// A row. With the prototype on (`entry.listTaps`), a prayer that has started is a button over
-        /// the whole row: not marked → marked here, scored at the tap like the corner check (an earlier
+        /// A row. A prayer that has started is a button over the whole row: not marked → marked here, scored at the tap like the corner check (an earlier
         /// prayer may come out Late / Qaza); marked → the app opens to "Unmark Asr?" (the widget never
         /// unmarks). Upcoming prayers and Sunrise never are.
         @ViewBuilder private func row(_ name: String, _ start: Date, _ end: Date) -> some View {
             let content = rowContent(name, start, end)
-            if entry.listTaps, name != "Sunrise", start <= entry.date {
+            if name != "Sunrise", start <= entry.date {
                 if entry.completedScores[name] != nil {
                     Button(intent: AskUnmarkPrayerIntent(prayerName: name, prayerStart: start)) { content }
                         .buttonStyle(.plain)
@@ -428,12 +419,12 @@ struct PrayersWidgetView: View {
             let current = !sunrise && start <= entry.date && entry.date < end
             let score = entry.completedScores[name]
             return HStack(spacing: 6) {
-                // With taps on, a tappable row's dot grows into a circle to tap: empty = not marked
+                // A tappable row's dot is a bigger circle to tap: empty = not marked
                 // yet, filled = marked. Upcoming prayers keep the small dot (nothing to tap).
-                let tappable = entry.listTaps && !sunrise && start <= entry.date
+                let tappable = !sunrise && start <= entry.date
                 PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors,
                           size: tappable ? 11 : 7)
-                    .frame(width: entry.listTaps ? 11 : 7)
+                    .frame(width: 11)
                     .opacity(sunrise ? 0 : 1)
                 // The NEXT tag gives way on a narrow widget: at 158 pt "Dhuhr NEXT" truncated both
                 // the name and its time (feedback 99D47ABE follow-up check).

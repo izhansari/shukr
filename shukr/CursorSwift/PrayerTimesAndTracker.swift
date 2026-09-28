@@ -68,7 +68,7 @@ struct PrayerTimesView: View {
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State private var showNamesPage = false
-    /// The Prayers widget's times list (the tap prototype): a marked row opens the app to "Unmark Asr?".
+    /// The Prayers widget's times list: a marked row opens the app to "Unmark Asr?".
     @State private var widgetUnmark: WidgetUnmarkRequest?
     /// Bumped per request, so an older retry loop stops.
     @State private var widgetUnmarkToken = 0
@@ -102,17 +102,17 @@ struct PrayerTimesView: View {
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
             if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
-            // A marked row in the widget's times list (the tap prototype): ask here, never unmark there.
-            if store.string(forKey: WidgetListTaps.unmarkKey) != nil {
+            // A marked row in the widget's times list: ask here, never unmark there.
+            if store.string(forKey: WidgetListMarks.unmarkKey) != nil {
                 lastDeepLinkAt = Date()
                 widgetUnmarkToken += 1
                 showWidgetUnmarkWhenClear(token: widgetUnmarkToken)
             }
             // A prayer marked from the widget's list, possibly on another prayer day than the app's
             // (a list drawn before Fajr, tapped after): that day's score and the streaks.
-            if store.object(forKey: WidgetListTaps.markedDayKey) != nil {
-                let day = Date(timeIntervalSince1970: store.double(forKey: WidgetListTaps.markedDayKey))
-                store.removeObject(forKey: WidgetListTaps.markedDayKey)
+            if store.object(forKey: WidgetListMarks.markedDayKey) != nil {
+                let day = Date(timeIntervalSince1970: store.double(forKey: WidgetListMarks.markedDayKey))
+                store.removeObject(forKey: WidgetListMarks.markedDayKey)
                 viewModel.reconcileAfterWidgetWrites()
                 viewModel.calculateDayScore(for: day)
                 viewModel.recomputeStreaks()
@@ -186,8 +186,8 @@ struct PrayerTimesView: View {
     private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0) {
         guard token == widgetUnmarkToken, widgetUnmark == nil,
               let store = UserDefaults(suiteName: SharedStore.appGroup),
-              let raw = store.string(forKey: WidgetListTaps.unmarkKey) else { return }
-        guard let request = WidgetUnmarkRequest(raw) else { store.removeObject(forKey: WidgetListTaps.unmarkKey); return }
+              let raw = store.string(forKey: WidgetListMarks.unmarkKey) else { return }
+        guard let request = WidgetUnmarkRequest(raw) else { store.removeObject(forKey: WidgetListMarks.unmarkKey); return }
         func later() {
             guard attempt < 90 else { return }   // the request stays: the next activation tries again
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1) }
@@ -202,7 +202,7 @@ struct PrayerTimesView: View {
                 guard !(FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage || somethingCovers
                         || PresentedCheck.anything) else { later(); return }
                 // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
-                store.removeObject(forKey: WidgetListTaps.unmarkKey)
+                store.removeObject(forKey: WidgetListMarks.unmarkKey)
                 let rows = completedRows(request)
                 guard !rows.isEmpty else { return }
                 var shown = request
@@ -560,7 +560,7 @@ struct PrayerTimesView: View {
         }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
-        // A marked row tapped in the Prayers widget's times list (the tap prototype): the app asks.
+        // A marked row tapped in the Prayers widget's times list: the app asks.
         .alert(widgetUnmark.map { "Unmark \($0.displayName)?" } ?? "",
                isPresented: Binding(get: { widgetUnmark != nil }, set: { if !$0 { widgetUnmark = nil } }),
                presenting: widgetUnmark) { request in
@@ -2080,7 +2080,7 @@ struct SettingsPage: View, Equatable {
 }
 
 /// A marked row tapped in the Prayers widget's times list: which prayer, on which day
-/// (`WidgetListTaps.unmarkKey`, "Asr|<start, seconds since 1970>").
+/// (`WidgetListMarks.unmarkKey`, "Asr|<start, seconds since 1970>").
 struct WidgetUnmarkRequest: Identifiable {
     let name: String
     let start: Date

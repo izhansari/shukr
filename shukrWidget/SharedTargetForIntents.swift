@@ -505,7 +505,7 @@ struct OpenDailyAyahIntent: AppIntent {
     }
 }
 
-/// Widget times list (the tap-to-mark prototype, `WidgetListTaps`): a started row marks its prayer,
+/// Widget times list (`WidgetListMarks`): a started row marks its prayer,
 /// scored at the tap like the corner check, and the list stays up another `openFor` so the filled
 /// circle is seen (the mark reloads the timeline).
 struct MarkFromListIntent: AppIntent {
@@ -529,7 +529,7 @@ struct MarkFromListIntent: AppIntent {
         store?.set(true, forKey: WidgetListState.openKey)
         store?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
         if SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
-            store?.set(prayerStart.timeIntervalSince1970, forKey: WidgetListTaps.markedDayKey)   // the app rescores that day
+            store?.set(prayerStart.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)   // the app rescores that day
         } else {
             WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
         }
@@ -537,7 +537,7 @@ struct MarkFromListIntent: AppIntent {
     }
 }
 
-/// Widget times list (the tap-to-mark prototype, `WidgetListTaps`): a done row opens the app to
+/// Widget times list (`WidgetListMarks`): a done row opens the app to
 /// "Unmark Asr?" — the widget never unmarks by itself.
 struct AskUnmarkPrayerIntent: AppIntent {
     static var title: LocalizedStringResource = "Unmark a Prayer"
@@ -555,7 +555,7 @@ struct AskUnmarkPrayerIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?
-            .set("\(prayerName)|\(prayerStart.timeIntervalSince1970)", forKey: WidgetListTaps.unmarkKey)
+            .set("\(prayerName)|\(prayerStart.timeIntervalSince1970)", forKey: WidgetListMarks.unmarkKey)
         return .result()
     }
 }
