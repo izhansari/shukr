@@ -848,10 +848,16 @@
       "checked": "sim", "shots": ["wn-location-back-handoff.jpg"]
     },
     {
-      "id": "insights-4", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-4", "date": "2026-09-28", "commit": "0087dd8", "time": "2026-09-28T13:10:43-04:00", "topic": "insights", "notes": null,
       "title": "Insights: a picked ring reads 'Isha · avg 96', then when you usually pray; Week / Month / All time glide to the new numbers; the consistency page says 'in-time streak' and adds how many of the 14 days were in time",
       "tryIt": ["☰ → Insights → tap Isha → 'Isha · avg 96' / 'you usually pray 1 h 8 min in' / 'prayed 8 of 9'", "Switch Week → Month → All time → the rings and numbers move to their new values", "Swipe to 'how consistent am I?' → a third number, 'days in time'"],
       "checked": "sim", "shots": ["wn-insights-avg-first.jpg"], "addresses": ["95FF0EB7-A5BF-47C9-A656-9E307F3F9D46"]
+    },
+    {
+      "id": "widget-next-7", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Prayers widget: the ring sits a touch lower (60 % of the space above it, 40 % below); try 50 / 55 / 60 in Settings",
+      "tryIt": ["Look at the Prayers widget: the ring sits a little below the middle of the space above ⌃", "Settings → Widget ring position → 55 / 45 or 50 / 50 → the widget moves at once; pick the one that looks centred"],
+      "checked": "sim", "shots": ["wn-widget-ring-position.jpg"], "addresses": ["D3DC914D-368E-42CE-9BDA-30340EA7FCDF"]
     }
   ]
 }
