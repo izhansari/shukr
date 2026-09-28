@@ -77,6 +77,13 @@ enum FirstRunSetup {
         for key in ["alarmIsBefore", "alarmIsFajr"] where group?.object(forKey: key) == nil {
             group?.set(true, forKey: key)
         }
+        // The alarm's stored description (Settings' row) in today's words: it was written by older
+        // builds ("Alarm at Sunrise …") and otherwise only changes when the rule is edited.
+        if group?.bool(forKey: "alarmEnabled") == true, let calc = try? PrayerUtils.calculateAlarmDescription() {
+            if group?.string(forKey: "alarmDescription") != calc.description { group?.set(calc.description, forKey: "alarmDescription") }
+            let time = shortTimePM(calc.time)
+            if group?.string(forKey: "alarmTimeSetFor") != time { group?.set(time, forKey: "alarmTimeSetFor") }
+        }
     }
 
     static func markDone() {
@@ -269,8 +276,9 @@ struct FirstRunSetupView: View {
             .fontDesign(.rounded)
             .opacity(welcome ? 0 : 1)
             if welcome {
-                WelcomeOverlay(startDrawn: true, onFinish: onFinish)
+                WelcomeOverlay(startDrawn: true, onFinish: { WelcomeTarget.playing = false; onFinish() })
                     .transition(.identity)
+                    .onAppear { WelcomeTarget.playing = true }
             }
         }
         .onAppear { CircleCover.set("firstRunSetup", true) }
@@ -506,7 +514,7 @@ private struct StepTitle: View {
 
 /// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause
 /// screen's Resume), not a solid fill.
-private struct PrimaryButton: View {
+struct PrimaryButton: View {
     let title: String
     var enabled = true
     let action: () -> Void
@@ -528,7 +536,7 @@ private struct PrimaryButton: View {
 }
 
 /// A quiet text button under the primary one.
-private struct SecondaryButton: View {
+struct SecondaryButton: View {
     let title: String
     let action: () -> Void
     var body: some View {
@@ -540,7 +548,7 @@ private struct SecondaryButton: View {
 }
 
 /// The review's (and a step's) gentle, never-blocking note: a line and a link.
-private struct Nudge: View {
+struct Nudge: View {
     let text: String
     let action: String
     let tap: () -> Void
@@ -563,7 +571,7 @@ private struct Nudge: View {
     }
 }
 
-private enum SettingsLinks {
+enum SettingsLinks {
     static func app() { if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) } }
     static func notifications() {
         if let url = URL(string: UIApplication.openNotificationSettingsURLString) { UIApplication.shared.open(url) }
@@ -1326,6 +1334,7 @@ private struct ReviewStep: View {
     let done: () -> Void
     @EnvironmentObject private var location: EnvLocationManager
     @ObservedObject private var notifications = NotificationStatus.shared
+    @ObservedObject private var health = NotificationHealth.shared
     @AppStorage("lastCityName", store: UserDefaults(suiteName: SharedStore.appGroup)) private var cityName = ""
     @AppStorage("calculationMethod", store: UserDefaults(suiteName: SharedStore.appGroup)) private var method = AutoMethod.automatic
     @AppStorage("school", store: UserDefaults(suiteName: SharedStore.appGroup)) private var school = 0
@@ -1377,7 +1386,10 @@ private struct ReviewStep: View {
                 .padding(.top, 8)
                 .padding(.bottom, 10)
         }
-        .task { await notifications.refresh() }
+        .task {
+            await notifications.refresh()
+            await health.refresh()
+        }
     }
 
     private var divider: some View { Divider().padding(.leading, 44) }
@@ -1432,13 +1444,21 @@ private struct ReviewStep: View {
             Nudge(text: "Precise Location is off: times can be a few minutes out.", action: "Turn on", tap: SettingsLinks.app)
         }
     }
+    /// The same checks as Settings' status (NotificationHealth): off, not asked, held for the
+    /// Scheduled Summary, Time Sensitive off.
     @ViewBuilder private var notificationsNudge: some View {
+        let issues = health.issues
         switch notifications.isOn {
         case .some(false):
             Nudge(text: "Notifications are off, so reminders can't reach you.", action: "Turn on", tap: SettingsLinks.notifications)
         case .none:
             Nudge(text: "Reminders need notifications.", action: "Allow") { notifications.request() }
-        default: EmptyView()
+        default:
+            if issues.contains(.held) {
+                Nudge(text: "They're held for the Scheduled Summary and may arrive late. Turn on Time Sensitive.", action: "Fix", tap: SettingsLinks.notifications)
+            } else if issues.contains(.timeSensitiveOff) {
+                Nudge(text: "Time Sensitive is off, so Focus modes may hold them back.", action: "Settings", tap: SettingsLinks.notifications)
+            }
         }
     }
 

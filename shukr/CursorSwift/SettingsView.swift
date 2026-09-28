@@ -205,6 +205,9 @@ struct SettingsView: View {
                     
                     //MARK: - Notifications
                     Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
+                        // Will they actually arrive? (NotificationHealth: off / held for the Scheduled
+                        // Summary / Time Sensitive / Background App Refresh.)
+                        NotificationHealthRows()
                         HStack {
                             prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
                             Divider()
@@ -326,8 +329,13 @@ struct SettingsView: View {
                             } label: {
                                 Label("Run setup again", systemImage: "arrow.counterclockwise.circle")
                             }
+                            NavigationLink {
+                                ScheduledNotificationsView()
+                            } label: {
+                                Label("Scheduled notifications", systemImage: "list.bullet.rectangle")
+                            }
                         } footer: {
-                            Text("Beta builds only: the first-run setup, filled in with your settings.")
+                            Text("Beta builds only: the first-run setup, filled in with your settings; what's scheduled.")
                         }
                     }
 

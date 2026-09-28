@@ -198,7 +198,10 @@ struct shukrApp: App {
             }
             .onChange(of: setupShowing, initial: true) { _, showing in FirstRunSetup.isShowing = showing }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                Task { await notificationStatus.refresh() }
+                Task {
+                    await notificationStatus.refresh()
+                    await NotificationHealth.shared.refresh()   // will the reminders arrive? (off / summary / …)
+                }
             }
             .preferredColorScheme(
                 colorModeToggleNew == 0 ? .light :
@@ -211,6 +214,7 @@ struct shukrApp: App {
         .modelContainer(sharedModelContainer)
         // Tops the prayer notifications up while the app isn't opened (NotificationScheduler).
         .backgroundTask(.appRefresh(NotificationScheduler.refreshTaskID)) {
+            NotificationHealth.noteBackgroundRefreshRan()   // for Settings → Scheduled notifications (beta)
             await NotificationScheduler.rescheduleNow(context: sharedModelContainer.mainContext, reason: "background refresh")
         }
         .environmentObject(environmentLocationManager)

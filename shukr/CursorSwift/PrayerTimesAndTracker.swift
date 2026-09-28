@@ -71,6 +71,7 @@ struct PrayerTimesView: View {
     #if DEBUG
     @State private var demoMantra: MantraModel?
     @State private var demoWhatsNew = false
+    @State private var demoScheduled = false
     #endif
 
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
@@ -81,6 +82,10 @@ struct PrayerTimesView: View {
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
             let openCompassFromWidget   = store.bool(forKey: "widgetCompass")
             let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
+            if FirstRunSetup.deepLinkFlags.contains(where: { store.object(forKey: $0) != nil && store.bool(forKey: $0) })
+                || store.string(forKey: "widgetZikrTask") != nil {
+                lastDeepLinkAt = Date()   // no reminders card over where a widget just sent you
+            }
             // Clear only when set: every write to the group suite invalidates every
             // @AppStorage bound to it and re-renders Settings.
             if openCompassFromWidget { store.setValue(false, forKey: "widgetCompass") }
@@ -123,6 +128,33 @@ struct PrayerTimesView: View {
     }
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
+    /// The reminders card (NotificationHealth): notifications off, or held for the Scheduled Summary.
+    @State private var healthCard: NotificationHealth.Issue?
+    @State private var lastDeepLinkAt = Date.distantPast
+
+    /// A moment after the app comes forward: the card, if one's due (at most every few days per
+    /// kind) and nothing else is going on — not over a tasbeeh session, a cover, the setup, or a
+    /// widget's destination.
+    private func maybeShowHealthCard(attempt: Int = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            Task { @MainActor in
+                // Not while the opening plays (a sheet over it left the page blank): try again.
+                if WelcomeTarget.playing {
+                    if attempt < 5 { maybeShowHealthCard(attempt: attempt + 1) }
+                    return
+                }
+                let health = NotificationHealth.shared
+                await health.refresh()
+                guard FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
+                      CircleCover.active.isEmpty, healthCard == nil,
+                      Date().timeIntervalSince(lastDeepLinkAt) > 10,
+                      let issue = health.cardIssue, health.cardDue(for: issue) else { return }
+                health.markCardShown(issue)
+                healthCard = issue
+            }
+        }
+    }
+
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
@@ -408,6 +440,10 @@ struct PrayerTimesView: View {
                 ZikrFocus.request(taskID)
             }
         }
+        .sheet(item: $healthCard) { issue in
+            ReminderHealthCard(issue: issue) { healthCard = nil }
+        }
+        .onChange(of: healthCard) { _, card in CircleCover.set("healthCard", card != nil) }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
@@ -432,6 +468,7 @@ struct PrayerTimesView: View {
                 viewModel.catchUpMasjidChecks()        // …and which prayers were at a masjid
                 
                 openFromWidgetFlags()
+                maybeShowHealthCard()
                 
 
             }
@@ -520,6 +557,11 @@ struct PrayerTimesView: View {
                 let name = UserDefaults.standard.string(forKey: "demoZikrName") ?? "Astaghfirullah"
                 if let m = MantraModel.find(named: name, in: context) { demoMantra = m; return }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoScheduledNotifications") {
+                try? await Task.sleep(for: .seconds(1.5))
+                demoScheduled = true
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoWhatsNew") {
                 // The What's new page; `-demoWhatsNewTopic <id>` opens that card's detail.
                 try? await Task.sleep(for: .seconds(1))
@@ -534,6 +576,17 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoZikrHistory") {
                 try? await Task.sleep(for: .seconds(1))
                 showZikrHistory = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoDailyAyah") {
+                // The Daily Ayah page (+ `-demoAyahUnrevealed`, `-demoAyahReveal`; screenshots).
+                try? await Task.sleep(for: .seconds(1))
+                showDailyAyahPage = true
+                return
+            }
+            if ProcessInfo.processInfo.arguments.contains("-demoSettings") {
+                try? await Task.sleep(for: .seconds(1.5))   // once the pager is up
+                sharedState.horizontalPage = .settings   // the Settings page (screenshots)
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartPreview") {
@@ -713,6 +766,7 @@ struct PrayerTimesView: View {
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
+        .sheet(isPresented: $demoScheduled) { NavigationStack { ScheduledNotificationsView() } }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {
             MantraPickerView(

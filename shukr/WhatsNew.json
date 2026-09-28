@@ -759,6 +759,12 @@
       "title": "Turned location off after setup? A friendly \"shukr lost your location\" page (the opening lands on its circle) with Turn location back on or Enter a city instead, not the whole setup again",
       "tryIt": ["iOS Settings → shukr → Location → Never, then open shukr", "Enter a city instead → pick one: straight into the app"],
       "checked": "sim", "shots": ["wn-location-lost.jpg"]
+    },
+    {
+      "id": "notifications-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "If your reminders can't reach you (notifications off, or held for the Scheduled Summary), a calm card says so with the fix, at most every few days; Settings → Notifications shows the status at the top",
+      "tryIt": ["Turn shukr's notifications off in iOS Settings, then open shukr: the card, with Turn on", "Settings → Notifications: the status line at the top (Focus / Time Sensitive, background refresh)", "Beta: Settings → Scheduled notifications (what's pending of 64)"],
+      "checked": "sim", "shots": ["wn-reminder-health.jpg", "wn-scheduled-notifications.jpg"]
     }
   ]
 }

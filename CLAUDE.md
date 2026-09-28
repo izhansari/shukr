@@ -567,6 +567,9 @@ Arabic lines too far apart, and the widgets' mint too subtle in light mode):
   - `.scrollBounceBehavior(.basedOnSize)`: a verse that fits doesn't scroll or bounce.
   - The page scrolls for long verses. The timer and share stay at the top.
 - DEBUG `-demoAyahUnrevealed` shows the page unrevealed even if today's was revealed.
+- **Light-mode glow (2026-09-28, quick fix):** sage at 0.2 under a 90 pt blur all but vanished on white; light mode now uses a
+  greener light (0.30 / 0.66 / 0.42 at 0.46, 72 pt blur) for the bloom and the breathing glow. Dark mode unchanged. DEBUG
+  `-demoDailyAyah` (opens the page) + `-demoAyahReveal` (reveals 2.5 s in).
 - **Widgets:** `BrandBackground` light mode is a stronger mint (0.86/0.945/0.875 → 0.66/0.84/0.71)
   with a soft white light in the top-left corner.
 - Sim ✓: unrevealed → tap in empty space → revealed; long verse (4:46) scrolls; the Name widget
@@ -1186,6 +1189,21 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   (`noteRevocationIfNeeded`, also run in `init` so the first frame knows) and cleared on authorization / a picked city;
   revoking still drops the city. A new user who refuses still gets the location step. Sim ✓: grant → revoke → relaunch:
   the welcome lands on the ring; a city → straight into the app.
+- **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
+  `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
+  `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
+  off (denied) and held (Scheduled Summary on + Time Sensitive not on — prayer notifications are `.timeSensitive`, so with
+  it on the summary lets them through) → `ReminderHealthCard`, a half sheet on the Salah page ("Turn on" / "Open
+  Settings", "Not now"), at most every 3 days per kind (`reminderHealthCard.<issue>.lastShown`), not over a tasbeeh
+  session, a cover, the setup, a widget's destination (10 s) or the opening (`WelcomeTarget.playing` — a sheet over it left
+  the page blank; it retries). Time Sensitive off alone / Background App Refresh off → only a line in Settings →
+  Notifications (`NotificationHealthRows`, the overall status at the top). The setup's review uses the same checks. Beta:
+  Settings → Scheduled notifications (`ScheduledNotificationsView`: pending of 64 by kind, delivered, the prayer days with a
+  start, the next ten, background refresh status + when it last ran — `bgRefresh.lastRun`, written in the BGAppRefresh
+  handler — and every check). DEBUG `-healthPretend off|held|ts|bg` (skips the cadence), `-demoScheduledNotifications`,
+  `-demoSettings`. The alarm's stored description is refreshed at launch in today's words (only when it changed). Sim ✓:
+  both cards (light / dark, after the opening), the Settings line, the dev screen with real pending items (51 of 64).
+  Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
   Bismillah.

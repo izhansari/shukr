@@ -29,6 +29,8 @@ enum WelcomeTarget {
     /// The circle's track is the dashed "hasn't started" ring right now (MainCircleView): the
     /// welcome lands as that instead of the solid band.
     static var trackDashed = false
+    /// The welcome is on screen (sheets — e.g. the reminders card — wait for it to finish).
+    static var playing = false
 }
 
 struct WelcomeGate: ViewModifier {
@@ -49,8 +51,9 @@ struct WelcomeGate: ViewModifier {
         content
             .overlay {
                 if showing {
-                    WelcomeOverlay { showing = false }
+                    WelcomeOverlay { showing = false; WelcomeTarget.playing = false }
                         .transition(.identity)
+                        .onAppear { WelcomeTarget.playing = true }
                 }
             }
     }
