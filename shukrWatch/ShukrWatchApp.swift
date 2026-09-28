@@ -21,6 +21,9 @@ struct ShukrWatchApp: App {
     init() {
         // Before anything else: a background launch from a notification action may arrive first.
         WatchNotifications.register()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") { WatchStore.settleSelfTest() }
+        #endif
     }
 
     var body: some Scene {
@@ -183,10 +186,13 @@ struct WatchHomeView: View {
                                 WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
                                     .opacity(moments.flourish == nil ? 1 : 0)
                                     .blur(radius: moments.flourish == nil ? 0 : 6)
+                                    // No hold / tap on the ring while the flourish plays over it.
+                                    .allowsHitTesting(moments.flourish == nil)
                             }
                             // Just marked: the phone's completion flourish over the ring.
                             if let m = moments.flourish {
                                 WatchCompletionMoment(moment: m, diameter: min(138, WatchScreen.width * 0.72))
+                                    .id(m.markID)   // a second mark within 1.8 s replays the sweep
                                     .transition(.opacity)
                             }
                         }

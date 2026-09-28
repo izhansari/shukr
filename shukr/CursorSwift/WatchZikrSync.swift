@@ -56,6 +56,11 @@ enum WatchZikrSync {
     static func start(container: ModelContainer) {
         self.container = container
         pruneMemoFiles()
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchSyncTest") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { runSyncSelfTest() }
+        }
+        #endif
         guard saveObserver == nil else { return }
         // Any save (a session, a task edit or delete, a zikr's memo) may change what the watch
         // shows. WatchSync.send() only sends when the context actually changed.
@@ -253,12 +258,14 @@ enum WatchZikrSync {
         let context = ModelContext(container)
         let startDate = Date(timeIntervalSince1970: start), endDate = Date(timeIntervalSince1970: end)
         let tapped = Date(timeIntervalSince1970: at)
-        let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context) ?? {
+        let rows = prayerRows(named: name, on: startDate, in: context)
+        let prayer = rows.first ?? {
             let made = PrayerModel(name: name, startTime: startDate, endTime: endDate, dateAtMake: startDate)
             context.insert(made)
             return made
         }()
-        guard !prayer.isCompleted else {
+        // Already prayed (on any of the day's rows for it): nothing to add.
+        guard !rows.contains(where: \.isCompleted) else {
             if let markID { receivedMarks[markID] = [Date().timeIntervalSince1970, start, -1] }   // not applied
             scheduleSend(); return
         }
@@ -304,51 +311,193 @@ enum WatchZikrSync {
 
     /// Undo on the watch, within seconds of a mark: that mark (by id) comes off again, and its day
     /// is rescored. An undo that arrives before its mark leaves a tombstone, so the mark is ignored.
+    /// "Unmark Asr?" from the watch's list (`byName`): whoever marked it (watch, phone, widget), it
+    /// comes off like an in-app unmark — unless the prayer was marked again after the watch's tap
+    /// (a late retry never wipes a newer mark). Either way the unmark's id is then reported as
+    /// handled, and the watch drops its own pending copy and shows what the phone has.
+    /// A tombstone is written only once the outcome is saved: a failed save leaves nothing, so the
+    /// watch's retry is applied.
     private static func unmarkPrayer(_ info: [String: Any]) {
         guard let container, let markID = info["id"] as? String, let name = info["name"] as? String,
               let start = info["start"] as? Double else { return }
-        // "Unmark Asr?" from the watch's list: whoever marked it (watch, phone, widget), it comes
-        // off like an in-app unmark. Its own id makes it apply once; a watch mark's id is
-        // tombstoned too, so a late copy of that mark can't put it back.
+        let startDate = Date(timeIntervalSince1970: start)
+        func tombstone(_ ids: [String?]) {
+            for case let id? in ids { receivedMarks[id] = [-Date().timeIntervalSince1970, start] }
+        }
         if info["byName"] as? Bool == true {
             guard receivedMarks[markID] == nil else { scheduleSend(); return }
-            receivedMarks[markID] = [-Date().timeIntervalSince1970, start]
-            if let original = info["markID"] as? String {
-                receivedMarks[original] = [-Date().timeIntervalSince1970, start]
-            }
+            let original = info["markID"] as? String
             let context = ModelContext(container)
-            let startDate = Date(timeIntervalSince1970: start)
-            guard let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context), prayer.isCompleted else {
-                scheduleSend(); return
+            let done = prayerRows(named: name, on: startDate, in: context).filter(\.isCompleted)
+            // Marked again since the watch's tap (on the phone, the widget, or a newer watch mark):
+            // that mark stands.
+            if let at = info["at"] as? Double,
+               let latest = done.compactMap({ $0.timeAtComplete?.timeIntervalSince1970 }).max(), latest > at {
+                tombstone([markID, original])
+                scheduleSend()
+                print("⌚️ \(name) unmark ignored: marked again since")
+                return
             }
-            prayer.resetPrayer()
+            guard !done.isEmpty else { tombstone([markID, original]); scheduleSend(); return }
+            // Every completed row of that prayer on that day (a day can hold two).
+            done.forEach { $0.resetPrayer() }
             rescoreDay(of: startDate, in: context)
-            do { try context.save() } catch { print("⌚️ watch unmark not saved: \(error)"); return }
-            UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-            NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
-            WidgetCenter.shared.reloadAllTimelines()
-            scheduleSend()
+            do { try saveUnmark(context) } catch {
+                print("⌚️ watch unmark not saved: \(error)")
+                context.rollback()
+                return
+            }
+            tombstone([markID, original])
+            unmarkApplied(name, day: startDate)
             print("⌚️ \(name) unmarked from the watch")
             return
         }
         let known = receivedMarks[markID]
-        receivedMarks[markID] = [-Date().timeIntervalSince1970, start]
-        guard let known, (known.first ?? 0) > 0, known.count > 2, known[2] > 0 else { return }   // never applied
+        // Its mark hasn't arrived, or wasn't applied: the tombstone keeps a late copy out.
+        guard let known, (known.first ?? 0) > 0, known.count > 2, known[2] > 0 else {
+            tombstone([markID]); return
+        }
         let context = ModelContext(container)
-        let startDate = Date(timeIntervalSince1970: start)
-        // Only while the prayer still carries *this* mark (its tap time): a newer mark, or one made
-        // on the phone since, is never undone by an old undo.
-        guard let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context), prayer.isCompleted,
-              let marked = prayer.timeAtComplete, abs(marked.timeIntervalSince1970 - known[2]) < 1 else { return }
-        prayer.resetPrayer()
+        // Only the row still carrying *this* mark (its tap time): a newer mark, or one made on the
+        // phone since, is never undone by an old undo.
+        let carrying = prayerRows(named: name, on: startDate, in: context).filter {
+            $0.isCompleted && abs(($0.timeAtComplete?.timeIntervalSince1970 ?? 0) - known[2]) < 1
+        }
+        guard !carrying.isEmpty else { tombstone([markID]); scheduleSend(); return }
+        carrying.forEach { $0.resetPrayer() }
         rescoreDay(of: startDate, in: context)
-        do { try context.save() } catch { print("⌚️ watch undo not saved: \(error)"); return }
-        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
-        WidgetCenter.shared.reloadAllTimelines()
-        scheduleSend()
+        do { try saveUnmark(context) } catch {
+            print("⌚️ watch undo not saved: \(error)")
+            context.rollback()
+            return
+        }
+        tombstone([markID])
+        unmarkApplied(name, day: startDate)
         print("⌚️ \(name) unmarked from the watch (undo)")
     }
+
+    /// Saves an unmark's changes (DEBUG: `failNextSave` makes one save fail, for the self-test).
+    private static func saveUnmark(_ context: ModelContext) throws {
+        #if DEBUG
+        if failNextSave { failNextSave = false; throw CocoaError(.fileWriteUnknown) }
+        #endif
+        try context.save()
+    }
+
+    /// After an unmark is saved: the app reconciles (day score, streaks), widgets and the watch update.
+    private static func unmarkApplied(_ name: String, day: Date) {
+        UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: day)
+        WidgetCenter.shared.reloadAllTimelines()
+        scheduleSend()
+    }
+
+    /// Every row of a prayer on that calendar day. A day can hold more than one, and a completed
+    /// row must never hide behind an unmarked one (`fetchPrayer` returns the first it finds).
+    private static func prayerRows(named name: String, on day: Date, in context: ModelContext) -> [PrayerModel] {
+        let dayStart = Calendar.current.startOfDay(for: day)
+        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? day
+        return (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate<PrayerModel> {
+            $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd
+        }))) ?? []
+    }
+
+    #if DEBUG
+    static var failNextSave = false
+
+    /// `-demoWatchSyncTest` (simulator): the phone's side of watch marks / unmarks against rows on
+    /// 2020-01-06 (made and removed here), logged as "⌚️ SYNCTEST".
+    static func runSyncSelfTest() {
+        guard let container else { return }
+        let start = DateComponents(calendar: .current, year: 2020, month: 1, day: 6, hour: 15).date!
+        let end = start.addingTimeInterval(3 * 3600)
+        let s0 = start.timeIntervalSince1970, e0 = end.timeIntervalSince1970
+        var ids: [String] = []
+        func id(_ label: String) -> String { let v = "synctest-\(label)-\(UUID().uuidString)"; ids.append(v); return v }
+        func setRows(_ times: [Double?]) {
+            let c = ModelContext(container)
+            prayerRows(named: "Asr", on: start, in: c).forEach { c.delete($0) }
+            for t in times {
+                let p = PrayerModel(name: "Asr", startTime: start, endTime: end, dateAtMake: start)
+                if let t { p.isCompleted = true; p.setPrayerScore(atDate: Date(timeIntervalSince1970: t)) }
+                c.insert(p)
+            }
+            try? c.save()
+        }
+        func state() -> String {
+            prayerRows(named: "Asr", on: start, in: ModelContext(container))
+                .map { $0.isCompleted ? "✓\(Int(($0.timeAtComplete?.timeIntervalSince1970 ?? 0) - s0))" : "·" }
+                .sorted().joined(separator: ",")
+        }
+        func handled(_ id: String) -> String {
+            receivedMarks[id].map { ($0.first ?? 0) < 0 ? "tombstone" : "applied" } ?? "none"
+        }
+        func unmark(_ id: String, at: Double, markID: String? = nil) {
+            var info: [String: Any] = ["id": id, "byName": true, "name": "Asr", "start": s0, "at": at]
+            if let markID { info["markID"] = markID }
+            unmarkPrayer(info)
+        }
+        func mark(_ id: String, at: Double) {
+            markPrayer(["id": id, "name": "Asr", "start": s0, "end": e0, "at": at])
+        }
+        var lines: [String] = []
+        func check(_ name: String, _ ok: Bool, _ detail: String) { lines.append("\(ok ? "✅" : "❌") \(name) — \(detail)") }
+
+        setRows([s0 + 60])
+        let u1 = id("u1"); unmark(u1, at: s0 + 120)
+        check("unmark applies", state() == "·" && handled(u1) == "tombstone", "\(state()) \(handled(u1))")
+
+        setRows([s0 + 300])
+        let u2 = id("u2"); unmark(u2, at: s0 + 120)
+        check("stale unmark (marked again after the tap) ignored, reported handled",
+              state() == "✓300" && handled(u2) == "tombstone", "\(state()) \(handled(u2))")
+
+        setRows([s0 + 60, s0 + 90])
+        let u3 = id("u3"); unmark(u3, at: s0 + 200)
+        check("both completed rows reset", state() == "·,·", state())
+
+        setRows([s0 + 60])
+        failNextSave = true
+        let u4 = id("u4"); unmark(u4, at: s0 + 200)
+        let afterFail = "\(state()) \(handled(u4))"
+        unmark(u4, at: s0 + 200)
+        check("failed save leaves no tombstone; the retry applies",
+              afterFail == "✓60 none" && state() == "·" && handled(u4) == "tombstone", "\(afterFail) → \(state()) \(handled(u4))")
+
+        setRows([nil])
+        let m1 = id("m1"), m2 = id("m2"), u5 = id("u5")
+        mark(m2, at: s0 + 200)          // mark 2 arrives first…
+        unmark(u5, at: s0 + 100, markID: m1)   // …then the unmark of mark 1…
+        mark(m1, at: s0 + 50)           // …then mark 1 itself
+        check("out of order (M2, U1, M1) ends marked by M2",
+              state() == "✓200" && handled(m2) == "applied" && handled(u5) == "tombstone" && handled(m1) == "tombstone",
+              "\(state()) m2 \(handled(m2)) u5 \(handled(u5)) m1 \(handled(m1))")
+
+        setRows([nil])
+        let m6 = id("m6"); mark(m6, at: s0 + 70)
+        unmarkPrayer(["id": m6, "name": "Asr", "start": s0])
+        check("undo takes its own mark off", state() == "·" && handled(m6) == "tombstone", "\(state()) \(handled(m6))")
+
+        setRows([nil])
+        let m7 = id("m7"); mark(m7, at: s0 + 70)
+        setRows([s0 + 500])             // marked again on the phone since
+        unmarkPrayer(["id": m7, "name": "Asr", "start": s0])
+        check("old undo never removes a newer mark", state() == "✓500", state())
+
+        // Clean up: the test rows, their day score and ids.
+        let c = ModelContext(container)
+        prayerRows(named: "Asr", on: start, in: c).forEach { c.delete($0) }
+        let dayStart = Calendar.current.startOfDay(for: start)
+        (try? c.fetch(FetchDescriptor<DailyPrayerScore>(predicate: #Predicate { $0.date == dayStart })))?.forEach { c.delete($0) }
+        try? c.save()
+        var marks = receivedMarks
+        ids.forEach { marks[$0] = nil }
+        receivedMarks = marks
+        let report = "⌚️ SYNCTEST\n" + lines.joined(separator: "\n")
+        print(report)
+        try? report.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("synctest.txt"), atomically: true, encoding: .utf8)
+    }
+    #endif
 
     /// A day's DailyPrayerScore from its rows (a late mark or an undo belongs to its own day).
     private static func rescoreDay(of startDate: Date, in context: ModelContext) {

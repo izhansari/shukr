@@ -47,10 +47,13 @@ enum WatchPrayerMarker {
     static func unmark(_ prayer: WatchPrayer) {
         guard let day = WatchPrayers.day(at: prayer.start) else { return }
         let markID = WatchStore.localMarkIDs[prayer.name]
+        let id = UUID().uuidString
         WatchStore.removeLocalMark(prayer.name)
-        WatchStore.addLocalUnmark(prayer.name, dayStart: day.prayers[0].start)
-        var info: [String: Any] = ["type": "prayerUnmarked", "id": UUID().uuidString, "byName": true,
-                                   "name": prayer.name, "start": prayer.start.timeIntervalSince1970]
+        WatchStore.addLocalUnmark(prayer.name, dayStart: day.prayers[0].start, id: id)
+        // "at": the tap, so the phone ignores this if the prayer was marked again after it.
+        var info: [String: Any] = ["type": "prayerUnmarked", "id": id, "byName": true,
+                                   "name": prayer.name, "start": prayer.start.timeIntervalSince1970,
+                                   "at": Date().timeIntervalSince1970]
         if let markID { info["markID"] = markID }
         send(info)
         WKInterfaceDevice.current().play(.directionDown)
@@ -199,6 +202,8 @@ struct WatchCompletionMoment: View {
     @State private var sweep: Double = 0
     @State private var glow: Double = 0
     @State private var showText = false
+    /// This run of the flourish: a stale timer from an earlier run never hides the text.
+    @State private var run = UUID()
 
     private var color: Color { WatchScoring.color(forScore: moment.score) }
     private var s: CGFloat { diameter / 200 }
@@ -239,12 +244,15 @@ struct WatchCompletionMoment: View {
             }
         }
         .onAppear {
+            let thisRun = UUID()
+            run = thisRun
             sweep = min(max(progress, 0.02), 1)
             withAnimation(.easeInOut(duration: 0.55)) { sweep = 1 }
             withAnimation(.easeOut(duration: 0.35).delay(0.1)) { showText = true }
             withAnimation(.easeOut(duration: 0.3).delay(0.5)) { glow = 1 }
             withAnimation(.easeInOut(duration: 0.8).delay(0.85)) { glow = 0 }
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration - 0.45) {
+                guard run == thisRun else { return }
                 withAnimation(.easeIn(duration: 0.4)) { showText = false }
             }
         }

@@ -363,7 +363,6 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
             if let day = note.object as? Date { viewModel.calculateDayScore(for: day) }   // a late mark's own day
-            viewModel.recomputeStreaks()   // a mark or unmark on any day (from the watch) redoes the counts
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {

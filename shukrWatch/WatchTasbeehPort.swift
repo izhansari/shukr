@@ -12,8 +12,10 @@
 //    BELOW the number, clock positions from 6 o'clock, turning 18° per hundred with the phone's
 //    animation — and green dots for the thousands.
 //  Same geometry as the phone's 200 pt ring, times `scale`. The phone's colours are its asset
-//  catalogue's dark-mode values (the watch is always dark). Watch economy: the fill animates at
-//  15 fps (the phone: 30), its grain is scaled to the smaller area, and it stops with the wrist down.
+//  catalogue's dark-mode values (the watch is always dark). Watch economy (owner, 2026-09-27): no
+//  grain (its ~600 specks were the costly part of every frame); the gradient turn and the drifting
+//  light / shade redraw at 10 fps (the phone: 30), which still reads smooth for a soft gradient
+//  turning 23°/s; it stops with the wrist down and while paused. The 100 beads are one Canvas.
 //
 
 import SwiftUI
@@ -37,10 +39,9 @@ struct WatchNeuProgressRing: View {
     var animating = true
     @Environment(\.isLuminanceReduced) private var dim
 
-    // AliveRingTuning.fine
+    // AliveRingTuning.fine (its grain left out on the watch)
     private let band: CGFloat = 6, sweepSpeed = 23.0, lightStrength = 0.03, lightSpeed = 0.63
-    private let shadeStrength = 0.32, grainCount = 1350.0, grainSize = 1.34, grainOpacity = 0.32
-    private let grainFade = 0.29, grainFadeSpeed = 0.24, glow = 0.45
+    private let shadeStrength = 0.32, glow = 0.45
 
     var body: some View {
         let s = WatchNeu.scale
@@ -66,12 +67,11 @@ struct WatchNeuProgressRing: View {
         }
     }
 
-    /// AliveRingFill: a slow colour sweep turning round the ring, a pool of light and one of
-    /// shade drifting through it, and fixed grain that breathes.
+    /// AliveRingFill without its grain: a slow colour sweep turning round the ring, and a pool of
+    /// light and one of shade drifting through it.
     private var fill: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 15, paused: dim || !animating)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 10, paused: dim || !animating)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let area = WatchNeu.scale * WatchNeu.scale
             ZStack {
                 AngularGradient(colors: [Color(red: 0.12, green: 0.62, blue: 0.32),
                                          Color(red: 0.45, green: 0.85, blue: 0.55),
@@ -86,24 +86,6 @@ struct WatchNeuProgressRing: View {
                 RadialGradient(colors: [Color.black.opacity(shadeStrength), .clear],
                                center: UnitPoint(x: 0.5 + 0.38 * cos(t * lightSpeed * 0.65 + 2), y: 0.5 + 0.38 * sin(t * lightSpeed * 0.8 + 1)),
                                startRadius: 0, endRadius: 90 * WatchNeu.scale)
-                Canvas { canvas, size in
-                    var seed: UInt64 = 0x5EED_A11E
-                    func next() -> Double {
-                        seed = seed &* 6364136223846793005 &+ 1442695040888963407
-                        return Double(seed >> 33) / Double(1 << 31)
-                    }
-                    let count = Int(grainCount * Double(area))
-                    for _ in 0..<count {
-                        let x = next() * size.width, y = next() * size.height
-                        let phase = next(), pace = 0.6 + 0.8 * next(), bright = 0.5 + 0.5 * next()
-                        let wave = 0.5 + 0.5 * sin(2 * .pi * (t * grainFadeSpeed * pace + phase))
-                        let opacity = grainOpacity * bright * (1 - grainFade + grainFade * wave)
-                        guard opacity > 0.01 else { continue }
-                        canvas.fill(Path(ellipseIn: CGRect(x: x, y: y, width: grainSize, height: grainSize)),
-                                    with: .color(.white.opacity(opacity)))
-                    }
-                }
-                .blendMode(.overlay)
             }
         }
     }
@@ -129,19 +111,28 @@ struct WatchTasbeehCountView: View {
                 .font(.system(size: 34 * s / 0.75, weight: .thin, design: .rounded))
                 .monospacedDigit()
 
+            // The phone's 100 NeumorphicBeads (its page colour, pressed in by two inner shadows),
+            // drawn in one Canvas big enough for the bead circle (radius 140). The phone turns the
+            // bead group 183.6°, which also turns each bead's shadows; `beadShadow` does the same.
+            Canvas { ctx, size in
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let bead = 7 * s
+                let turn = Angle.degrees(180 + 360 / 100).radians
+                let dark = beadShadow(-1, -1, turn), light = beadShadow(1, 1, turn)
+                let shading = GraphicsContext.Shading.style(WatchNeu.bg
+                    .shadow(.inner(color: WatchNeu.darkShadow, radius: 1, x: dark.x, y: dark.y))
+                    .shadow(.inner(color: WatchNeu.lightShadow, radius: 1, x: light.x, y: light.y)))
+                for index in 0..<(tasbeeh % 100) {
+                    let p = beadPosition(for: index, center: center, turn: turn)
+                    ctx.fill(Path(ellipseIn: CGRect(x: p.x - bead / 2, y: p.y - bead / 2, width: bead, height: bead)), with: shading)
+                }
+            }
+            .frame(width: 300 * s, height: 300 * s)
+            .allowsHitTesting(false)
+
             GeometryReader { geometry in
-                let beadCount = tasbeeh % 100
                 let circlesCount = tasbeeh / 100
                 let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-
-                ZStack {
-                    ForEach(0..<100, id: \.self) { index in
-                        NeumorphicBead(size: 7 * s)
-                            .opacity(index < beadCount ? 1 : 0)
-                            .position(beadPosition(for: index, center: center))
-                    }
-                }
-                .rotationEffect(.degrees(180 + (360 / 100)))
 
                 ZStack {
                     ForEach(0..<min(circlesCount / 10, 10), id: \.self) { index in
@@ -198,11 +189,17 @@ struct WatchTasbeehCountView: View {
         }
     }
 
-    func beadPosition(for index: Int, center: CGPoint) -> CGPoint {
+    /// The phone's bead position, plus the group's turn (its `.rotationEffect` about the centre).
+    func beadPosition(for index: Int, center: CGPoint, turn: Double) -> CGPoint {
         let stepAngle: CGFloat = 2 * .pi / 100
         let startAngle: CGFloat = .pi / 2
-        let angle = startAngle + stepAngle * CGFloat(index)
+        let angle = startAngle + stepAngle * CGFloat(index) + turn
         return CGPoint(x: center.x + 140 * s * cos(angle), y: center.y + 140 * s * sin(angle))
+    }
+
+    /// A bead's shadow offset, turned with the group as on the phone.
+    private func beadShadow(_ x: CGFloat, _ y: CGFloat, _ turn: Double) -> CGPoint {
+        CGPoint(x: x * cos(turn) - y * sin(turn), y: x * sin(turn) + y * cos(turn))
     }
 
     func clockPosition(for index: Int, center: CGPoint) -> CGPoint {
@@ -220,17 +217,5 @@ struct WatchTasbeehCountView: View {
         let stepAngle: CGFloat = 2 * .pi / 10
         let startAngle: CGFloat = .pi / 2
         return startAngle - stepAngle * CGFloat(index)
-    }
-
-    /// The phone's NeumorphicBead: the page colour, pressed in by two inner shadows.
-    struct NeumorphicBead: View {
-        let size: CGFloat
-        var body: some View {
-            Circle()
-                .fill(WatchNeu.bg
-                    .shadow(.inner(color: WatchNeu.darkShadow, radius: 1, x: -1, y: -1))
-                    .shadow(.inner(color: WatchNeu.lightShadow, radius: 1, x: 1, y: 1)))
-                .frame(width: size, height: size)
-        }
     }
 }

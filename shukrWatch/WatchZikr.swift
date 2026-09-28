@@ -727,41 +727,33 @@ struct WatchCounterView: View {
                     }
                 }
             }
-            // The bar stays; its buttons fade out while paused / on the results (Resume, Finish
-            // early and Done are on the screen). Always filled, so watchOS never puts its own ✕ in
-            // the slot (one tap would drop the session), and fading instead of hiding it keeps the
-            // pause change smooth.
-            // watchOS 26 draws a glass circle behind each item that doesn't fade with it, so while
-            // paused / on the results the bar goes (it left two empty bubbles — owner). The system ✕
-            // lives in the same bar, so it can't come back while the bar is hidden.
+            // The − / +N and pause buttons live in the bar, which is always filled so watchOS never
+            // puts its own ✕ in the slot (one tap would drop the session). While paused / on the
+            // results (Resume, Finish early and Done are on the screen) the whole bar is hidden:
+            // watchOS 26 draws a glass circle behind each item that stayed as an empty bubble when
+            // only the buttons faded (owner). The system ✕ lives in the same bar, so it can't
+            // appear while the bar is hidden.
             .toolbarVisibility(finished == nil && !paused ? .automatic : .hidden, for: .navigationBar)
             .toolbar {
-                let chrome = finished == nil && !paused
-                do {
-                    // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
-                    ToolbarItem(placement: .cancellationAction) {
-                        HStack(spacing: 4) {
-                            Button { minus() } label: { Image(systemName: "minus") }
-                            if step > 1 {
-                                Button {
-                                    WatchHaptics.tick()
-                                    withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
-                                } label: {
-                                    Text("+\(step)")
-                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(countingInSets ? Color.green : .primary)
-                                }
-                                .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
+                // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
+                ToolbarItem(placement: .cancellationAction) {
+                    HStack(spacing: 4) {
+                        Button { minus() } label: { Image(systemName: "minus") }
+                        if step > 1 {
+                            Button {
+                                WatchHaptics.tick()
+                                withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
+                            } label: {
+                                Text("+\(step)")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(countingInSets ? Color.green : .primary)
                             }
+                            .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
                         }
-                        .opacity(chrome ? 1 : 0)
-                        .disabled(!chrome)
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { togglePause() } label: { Image(systemName: "pause.fill") }
-                            .opacity(chrome ? 1 : 0)
-                            .disabled(!chrome)
-                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { togglePause() } label: { Image(systemName: "pause.fill") }
                 }
             }
         }
@@ -1504,7 +1496,6 @@ enum WatchPostSalah {
     }
 }
 
-/// Above the count in Tasbih Fatimah: the phrase and "12 of 33", and three segments.
 /// The Tasbih Fatimah phrase in Arabic, above the count.
 struct WatchPostSalahPhrase: View {
     let count: Int

@@ -34,6 +34,8 @@ enum WatchStore {
         /// Prayers unmarked on the watch, shown undone until the phone stops listing them:
         /// name → prayer-day start.
         static let localUnmarks = "watch.localUnmarks"
+        /// The id sent to the phone for each local unmark (name → id).
+        static let localUnmarkIDs = "watch.localUnmarkIDs"
     }
 
     /// Saves what the phone sent. Returns true if anything changed.
@@ -55,6 +57,28 @@ enum WatchStore {
         set(context["scores"], Key.scores)
         set(context["qiblaSensitivity"], Key.qiblaSensitivity)
         set(context["masajid"], Key.masajid)
+        // Marks / unmarks the phone has handled (by id) are settled: whatever it decided — applied,
+        // or ignored because it arrived out of order — is what it now reports, so the watch drops
+        // its own pending copy and both show the same thing.
+        let handled = Set((context["markIDs"] as? [String] ?? []) + (context["unmarkIDs"] as? [String] ?? []))
+        if !handled.isEmpty {
+            let settledMarks = localMarkIDs.filter { handled.contains($0.value) }.map(\.key)
+            if !settledMarks.isEmpty {
+                var marks = localMarks
+                settledMarks.forEach { marks[$0] = nil }
+                d.set(marks, forKey: Key.localMarks)
+                d.set(localMarkIDs.filter { !settledMarks.contains($0.key) }, forKey: Key.localMarkIDs)
+                changed = true
+            }
+            let settledUnmarks = localUnmarkIDs.filter { handled.contains($0.value) }.map(\.key)
+            if !settledUnmarks.isEmpty {
+                var unmarks = localUnmarks
+                settledUnmarks.forEach { unmarks[$0] = nil }
+                d.set(unmarks, forKey: Key.localUnmarks)
+                d.set(localUnmarkIDs.filter { !settledUnmarks.contains($0.key) }, forKey: Key.localUnmarkIDs)
+                changed = true
+            }
+        }
         // Marks the phone now reports (for that day) no longer need the watch's own copy.
         if let completed = context["completed"] as? [String], let day = context["completedDay"] as? Double {
             var marks = localMarks
@@ -62,7 +86,11 @@ enum WatchStore {
             // Unmarks the phone has applied (it no longer lists them) are done.
             var unmarks = localUnmarks
             for (name, when) in unmarks where abs(when - day) < 1 && !completed.contains(name) { unmarks[name] = nil }
-            if unmarks.count != localUnmarks.count { d.set(unmarks, forKey: Key.localUnmarks); changed = true }
+            if unmarks.count != localUnmarks.count {
+                d.set(unmarks, forKey: Key.localUnmarks)
+                d.set(localUnmarkIDs.filter { unmarks[$0.key] != nil }, forKey: Key.localUnmarkIDs)
+                changed = true
+            }
             if marks.count != localMarks.count {
                 d.set(marks, forKey: Key.localMarks)
                 // …and their mark ids with them.
@@ -108,17 +136,27 @@ enum WatchStore {
         defaults.dictionary(forKey: Key.localUnmarks) as? [String: Double] ?? [:]
     }
 
+    static var localUnmarkIDs: [String: String] {
+        defaults.dictionary(forKey: Key.localUnmarkIDs) as? [String: String] ?? [:]
+    }
+
     static func clearLocalUnmark(_ name: String) {
         var unmarks = localUnmarks
         guard unmarks[name] != nil else { return }
         unmarks[name] = nil
         defaults.set(unmarks, forKey: Key.localUnmarks)
+        var ids = localUnmarkIDs
+        ids[name] = nil
+        defaults.set(ids, forKey: Key.localUnmarkIDs)
     }
 
-    static func addLocalUnmark(_ name: String, dayStart: Date) {
+    static func addLocalUnmark(_ name: String, dayStart: Date, id: String) {
         var unmarks = localUnmarks
         unmarks[name] = Calendar.current.startOfDay(for: dayStart).timeIntervalSince1970
         defaults.set(unmarks, forKey: Key.localUnmarks)
+        var ids = localUnmarkIDs
+        ids[name] = id
+        defaults.set(ids, forKey: Key.localUnmarkIDs)
     }
 
     static func removeLocalMark(_ name: String) {
@@ -129,6 +167,35 @@ enum WatchStore {
         ids[name] = nil
         defaults.set(ids, forKey: Key.localMarkIDs)
     }
+
+    #if DEBUG
+    /// `-demoWatchSettleTest` (simulator): pending local marks / unmarks settle once the phone
+    /// reports their id handled, whatever it decided. Uses made-up prayer names; cleans up.
+    static func settleSelfTest() {
+        let day = Date()
+        var lines: [String] = []
+        func check(_ name: String, _ ok: Bool) { lines.append("\(ok ? "✅" : "❌") \(name)") }
+        addLocalMark("TestA", dayStart: day, score: 0.9, at: day, id: "st-m1")
+        addLocalMark("TestB", dayStart: day, score: 0.9, at: day, id: "st-m2")
+        addLocalUnmark("TestC", dayStart: day, id: "st-u1")
+        addLocalUnmark("TestD", dayStart: day, id: "st-u2")
+        // The phone applied m1 (or tombstoned it), and u1; it hasn't seen m2 / u2 yet.
+        save(["markIDs": ["st-m1", "other"], "unmarkIDs": ["st-u1"]])
+        check("handled mark dropped", localMarks["TestA"] == nil && localMarkIDs["TestA"] == nil)
+        check("pending mark kept", localMarks["TestB"] != nil && localMarkIDs["TestB"] == "st-m2")
+        check("handled unmark dropped (the phone's state shows)", localUnmarks["TestC"] == nil && localUnmarkIDs["TestC"] == nil)
+        check("pending unmark kept", localUnmarks["TestD"] != nil)
+        // A mark tombstoned by an earlier unmark (reported under unmarkIDs) settles too.
+        save(["unmarkIDs": ["st-m2", "st-u2"]])
+        check("tombstoned mark dropped", localMarks["TestB"] == nil)
+        check("second unmark dropped", localUnmarks["TestD"] == nil)
+        ["TestA", "TestB"].forEach(removeLocalMark)
+        ["TestC", "TestD"].forEach(clearLocalUnmark)
+        let report = "⌚️ SETTLETEST\n" + lines.joined(separator: "\n")
+        print(report)
+        try? report.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("settletest.txt"), atomically: true, encoding: .utf8)
+    }
+    #endif
 
     static var hasLocation: Bool {
         defaults.double(forKey: Key.latitude) != 0 || defaults.double(forKey: Key.longitude) != 0
