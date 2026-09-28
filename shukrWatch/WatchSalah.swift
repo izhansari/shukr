@@ -61,9 +61,14 @@ enum WatchPrayerMarker {
         WatchSession.shared.refresh()
     }
 
-    /// Undo (within seconds): the local mark goes, and the phone takes it off again.
+    /// Undo (within seconds): the local mark goes, and the phone takes it off again. Until the
+    /// phone reports the undo handled (its id — the mark's own — under unmarkIDs), a pending local
+    /// unmark keeps it shown undone, even if the phone had already confirmed the mark or is out of
+    /// reach.
     static func undo(_ prayer: WatchPrayer, markID: String) {
+        let dayStart = WatchPrayers.day(at: prayer.start)?.prayers[0].start ?? prayer.start
         WatchStore.removeLocalMark(prayer.name)
+        WatchStore.addLocalUnmark(prayer.name, dayStart: dayStart, id: markID)
         send(["type": "prayerUnmarked", "id": markID, "name": prayer.name, "start": prayer.start.timeIntervalSince1970])
         WKInterfaceDevice.current().play(.directionDown)
         WidgetCenter.shared.reloadAllTimelines()
@@ -83,6 +88,9 @@ enum WatchPrayerMarker {
         var box = outbox
         box["\(info["type"] ?? "")-\(info["id"] ?? "")"] = info.merging(["queuedAt": Date().timeIntervalSince1970]) { a, _ in a }
         outbox = box
+        #if DEBUG
+        if offline { return }   // the self-test: queued only, as when the phone is out of reach
+        #endif
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
         WCSession.default.transferUserInfo(info)
         if WCSession.default.isReachable {
@@ -107,6 +115,42 @@ enum WatchPrayerMarker {
         }
         if kept.count != box.count { outbox = kept }
     }
+
+    #if DEBUG
+    static var offline = false
+
+    /// `-demoWatchSettleTest` (simulator): Undo after the phone confirmed the mark, with the phone
+    /// out of reach, then back. Made-up prayer name; nothing is sent; cleans up.
+    static func undoSelfTest() -> [String] {
+        offline = true
+        defer { offline = false }
+        var lines: [String] = []
+        func check(_ name: String, _ ok: Bool) { lines.append("\(ok ? "✅" : "❌") \(name)") }
+        let prayer = WatchPrayer(name: "TestUndo", start: Date(), end: Date().addingTimeInterval(3600))
+        let id = "st-undo-\(UUID().uuidString)"
+        let key = "prayerUnmarked-\(id)"
+        WatchStore.addLocalMark(prayer.name, dayStart: prayer.start, score: 0.9, at: Date(), id: id)
+        WatchStore.save(["markIDs": [id]])                      // the phone confirmed the mark
+        check("confirmed mark settled", WatchStore.localMarks[prayer.name] == nil)
+        undo(prayer, markID: id)                                // Undo, phone out of reach
+        check("undo leaves a pending unmark (shown undone)",
+              WatchStore.localUnmarks[prayer.name] != nil && WatchStore.localUnmarkIDs[prayer.name] == id)
+        check("undo waits in the outbox", outbox[key] != nil)
+        // A context sent before the undo reached the phone still lists the mark as applied.
+        WatchStore.save(["markIDs": [id]])
+        confirm(marks: [id], undos: [])
+        check("stale context: still undone, still queued",
+              WatchStore.localUnmarks[prayer.name] != nil && outbox[key] != nil)
+        // Back in reach: the phone handled the undo (tombstone → unmarkIDs).
+        WatchStore.save(["unmarkIDs": [id]])
+        confirm(marks: [], undos: [id])
+        check("reconnect: pending unmark settled, outbox cleared",
+              WatchStore.localUnmarks[prayer.name] == nil && WatchStore.localUnmarkIDs[prayer.name] == nil && outbox[key] == nil)
+        WatchStore.clearLocalUnmark(prayer.name)
+        outbox = outbox.filter { $0.key != key }
+        return lines
+    }
+    #endif
 
     /// A mark the phone couldn't save isn't retried behind the user's back.
     static func drop(markID: String) {

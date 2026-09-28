@@ -78,6 +78,9 @@ enum WatchZikrSync {
     }
 
     static func scheduleSend() {
+        #if DEBUG
+        scheduledSends += 1
+        #endif
         pendingSend?.cancel()
         pendingSend = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(400))
@@ -355,7 +358,7 @@ enum WatchZikrSync {
         let known = receivedMarks[markID]
         // Its mark hasn't arrived, or wasn't applied: the tombstone keeps a late copy out.
         guard let known, (known.first ?? 0) > 0, known.count > 2, known[2] > 0 else {
-            tombstone([markID]); return
+            tombstone([markID]); scheduleSend(); return   // the watch hears it's handled
         }
         let context = ModelContext(container)
         // Only the row still carrying *this* mark (its tap time): a newer mark, or one made on the
@@ -404,6 +407,8 @@ enum WatchZikrSync {
 
     #if DEBUG
     static var failNextSave = false
+    /// Replies scheduled to the watch (the self-test checks an undo gets one).
+    static var scheduledSends = 0
 
     /// `-demoWatchSyncTest` (simulator): the phone's side of watch marks / unmarks against rows on
     /// 2020-01-06 (made and removed here), logged as "⌚️ SYNCTEST".
@@ -477,6 +482,23 @@ enum WatchZikrSync {
         let m6 = id("m6"); mark(m6, at: s0 + 70)
         unmarkPrayer(["id": m6, "name": "Asr", "start": s0])
         check("undo takes its own mark off", state() == "·" && handled(m6) == "tombstone", "\(state()) \(handled(m6))")
+
+        // An undo whose mark never arrived (or wasn't applied): tombstoned, and the watch is told.
+        let m8 = id("m8"), sendsBefore = scheduledSends
+        unmarkPrayer(["id": m8, "name": "Asr", "start": s0])
+        check("undo of a mark that never arrived: tombstoned, reply scheduled",
+              handled(m8) == "tombstone" && scheduledSends > sendsBefore, "\(handled(m8)) sends +\(scheduledSends - sendsBefore)")
+
+        // Undo after the phone confirmed the mark, delivered late (out of reach, then reconnected):
+        // the mark is on the row until the undo lands, then comes off, and the reply goes out.
+        setRows([nil])
+        let m9 = id("m9"); mark(m9, at: s0 + 80)
+        let confirmed = "\(state()) \(handled(m9))"
+        let sendsBeforeUndo = scheduledSends
+        unmarkPrayer(["id": m9, "name": "Asr", "start": s0])
+        check("undo after the phone confirmed, delivered on reconnect",
+              confirmed == "✓80 applied" && state() == "·" && handled(m9) == "tombstone" && scheduledSends > sendsBeforeUndo,
+              "\(confirmed) → \(state()) \(handled(m9))")
 
         setRows([nil])
         let m7 = id("m7"); mark(m7, at: s0 + 70)

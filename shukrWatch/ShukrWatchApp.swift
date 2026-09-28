@@ -22,7 +22,9 @@ struct ShukrWatchApp: App {
         // Before anything else: a background launch from a notification action may arrive first.
         WatchNotifications.register()
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") { WatchStore.settleSelfTest() }
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") {
+            WatchStore.settleSelfTest(extraLines: WatchPrayerMarker.undoSelfTest)
+        }
         #endif
     }
 

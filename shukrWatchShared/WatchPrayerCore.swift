@@ -59,8 +59,11 @@ enum WatchStore {
         set(context["masajid"], Key.masajid)
         // Marks / unmarks the phone has handled (by id) are settled: whatever it decided — applied,
         // or ignored because it arrived out of order — is what it now reports, so the watch drops
-        // its own pending copy and both show the same thing.
-        let handled = Set((context["markIDs"] as? [String] ?? []) + (context["unmarkIDs"] as? [String] ?? []))
+        // its own pending copy and both show the same thing. A mark is handled once it's under
+        // either list (applied, or tombstoned by an unmark); an unmark only under unmarkIDs — an
+        // Undo's id is its mark's, which the phone lists under markIDs until the undo lands.
+        let undone = Set(context["unmarkIDs"] as? [String] ?? [])
+        let handled = undone.union(context["markIDs"] as? [String] ?? [])
         if !handled.isEmpty {
             let settledMarks = localMarkIDs.filter { handled.contains($0.value) }.map(\.key)
             if !settledMarks.isEmpty {
@@ -70,7 +73,7 @@ enum WatchStore {
                 d.set(localMarkIDs.filter { !settledMarks.contains($0.key) }, forKey: Key.localMarkIDs)
                 changed = true
             }
-            let settledUnmarks = localUnmarkIDs.filter { handled.contains($0.value) }.map(\.key)
+            let settledUnmarks = localUnmarkIDs.filter { undone.contains($0.value) }.map(\.key)
             if !settledUnmarks.isEmpty {
                 var unmarks = localUnmarks
                 settledUnmarks.forEach { unmarks[$0] = nil }
@@ -171,7 +174,7 @@ enum WatchStore {
     #if DEBUG
     /// `-demoWatchSettleTest` (simulator): pending local marks / unmarks settle once the phone
     /// reports their id handled, whatever it decided. Uses made-up prayer names; cleans up.
-    static func settleSelfTest() {
+    static func settleSelfTest(extraLines: () -> [String] = { [] }) {
         let day = Date()
         var lines: [String] = []
         func check(_ name: String, _ ok: Bool) { lines.append("\(ok ? "✅" : "❌") \(name)") }
@@ -191,6 +194,7 @@ enum WatchStore {
         check("second unmark dropped", localUnmarks["TestD"] == nil)
         ["TestA", "TestB"].forEach(removeLocalMark)
         ["TestC", "TestD"].forEach(clearLocalUnmark)
+        lines += extraLines()
         let report = "⌚️ SETTLETEST\n" + lines.joined(separator: "\n")
         print(report)
         try? report.write(to: FileManager.default.temporaryDirectory.appendingPathComponent("settletest.txt"), atomically: true, encoding: .utf8)
