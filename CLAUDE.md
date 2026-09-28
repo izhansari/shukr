@@ -1217,7 +1217,8 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   reports itself; the lost page stops reporting once `comeback` is set), turning dashed when `WelcomeTarget.trackDashed`
   (like the welcome), and the page fades from round it; `clearComeback()` removes the overlay. Reduce Motion: the
   acknowledgement, then a fade. A launch that's already authorized clears a stale `locationLost` in `init` (no
-  comeback over a Salah page). DEBUG `-demoLostCity <name>` picks London 2 s after the page settles. Sim ✓ frame by
+  comeback over a Salah page); the root clears `comeback` whenever the setup opens or closes (the lost page is gated off
+  under it, so a comeback inside the setup would pop up after its landing); `intro()` stops once a comeback arrives. DEBUG `-demoLostCity <name>` picks London 2 s after the page settles. Sim ✓ frame by
   frame: Settings → Always (light + dark, dashed landing), While Using, the city path (lands on Asr's live ring).
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and

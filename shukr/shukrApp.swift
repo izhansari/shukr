@@ -207,7 +207,13 @@ struct shukrApp: App {
                 sharedState.navPosition = .main
                 withAnimation(.easeInOut(duration: 0.35)) { setupShowing = true }
             }
-            .onChange(of: setupShowing, initial: true) { _, showing in FirstRunSetup.isShowing = showing }
+            .onChange(of: setupShowing, initial: true) { _, showing in
+                FirstRunSetup.isShowing = showing
+                // Location that came back inside the setup has nothing to acknowledge it (the lost
+                // page is gated off under the setup): drop it, or "Location's back" would pop up after
+                // the setup's own landing.
+                environmentLocationManager.clearComeback()
+            }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
                 Task {
                     await notificationStatus.refresh()

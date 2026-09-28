@@ -537,11 +537,15 @@ struct LostLocationView: View {
             if Task.isCancelled { return }      // the page went away mid-welcome
             try? await Task.sleep(for: .milliseconds(100))
         }
+        // Each step only while nothing has come back (acknowledge() takes the page from there).
         try? await Task.sleep(for: .milliseconds(150))
+        guard comeback == nil else { return }
         withAnimation(.easeOut(duration: 0.5)) { stage = 1 }
         try? await Task.sleep(for: .milliseconds(750))
+        guard comeback == nil else { return }
         withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage = 2 }
         try? await Task.sleep(for: .milliseconds(450))
+        guard comeback == nil else { return }
         withAnimation(.easeOut(duration: 0.5)) { stage = 3 }
         #if DEBUG
         // `-demoLostCity London`: pick that city 2 s after the page settles (the city sheet's path).
