@@ -46,7 +46,9 @@
     {"id": "apple-watch", "area": "Watch", "title": "Apple Watch: today's prayers, a ring like the phone's (fills as the window passes, in the score colour), and complications"},
     {"id": "streaks", "area": "Salah", "title": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late", "link": "salah"},
     {"id": "completion-moment", "area": "Salah", "title": "Marking a prayer: the ring sweeps closed from where it was, a glow and \"✓ Asr · On time · 88\"; the circle and the list stay put until it's done, then the next prayer (or the day's score) fades in", "link": "salah",
-     "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]}
+     "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and mark a prayer there — with the day's last prayer the score comes in after the moment"]},
+    {"id": "first-run-setup", "area": "Setup", "title": "A first-run setup in the opening's look: welcome, where you pray (location, method, madhab), light / dark / auto, reminders, Fajr alarm, your masjid, a review, then Bismillah into the app", "link": "settings",
+     "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]}
   ],
   "entries": [
     {
@@ -684,6 +686,30 @@
       "title": "Completion moment smooth again: the circle keeps the prayer you marked until the sweep ends (no flash of the next prayer or the day's score), and the list waits too",
       "tryIt": ["Hold the circle to mark the current prayer: its arc sweeps closed, then the next prayer fades in", "Open the list and mark the last prayer of the day: the circle stays still through the moment, then 'today's score' comes in and all five rows unfold"],
       "checked": "sim", "shots": ["wn-completion-moment.jpg"]
+    },
+    {
+      "id": "first-run-setup-1", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "title": "New first-run setup: one calm question per screen with a ring for progress, every step skippable and filled in with your settings; the review nudges towards the best permissions; Bismillah hands off into the everyday opening",
+      "tryIt": ["Open the app after updating: walk through, or tap Skip", "On the review, tap a row to change it; bismillah takes you in", "Beta builds: Settings → Run setup again"],
+      "checked": "sim", "shots": ["wn-setup-review.jpg"]
+    },
+    {
+      "id": "first-run-setup-2", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "title": "Automatic calculation method (the new default): it follows the country you're in, so travelling changes it for you; Settings shows what it resolved to",
+      "tryIt": ["Setup → Your calculation method → Automatic says which method it uses here", "Settings → Method → Automatic (ISNA)"],
+      "checked": "sim", "shots": ["wn-setup-method.jpg"]
+    },
+    {
+      "id": "first-run-setup-3", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "title": "Madhab explained: only Asr changes, with both Asr times side by side and a little shadow sketch",
+      "tryIt": ["Setup → When does Asr begin? → tap Shafi'i / Hanafi and watch Asr change"],
+      "checked": "sim", "shots": ["wn-setup-madhab.jpg"]
+    },
+    {
+      "id": "first-run-setup-4", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "title": "With Always location, prayer times, reminders, widgets, the Fajr alarm and the watch follow you when you travel (even when shukr isn't open)",
+      "tryIt": ["Allow Always, then travel: the city and times update by themselves"],
+      "checked": "no"
     }
   ]
 }
