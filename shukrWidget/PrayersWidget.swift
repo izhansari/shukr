@@ -56,8 +56,9 @@ struct PrayersWidgetEntry: TimelineEntry {
     var rightCorner: WidgetCornerAction = .tasbeeh
     /// Prayed dots in their score colours (Edit Widget); off = one plain colour.
     var scoreColors = true
-    /// The share of the free space above the ring (WidgetRingPosition, a beta setting in the app).
-    var ringAbove = WidgetRingPosition.default.above
+    /// The share of the free space above the ring: 60 / 40 reads centred (owner picked it from 50 /
+    /// 55 / 60, feedback D3DC914D / 43D36031; the setting is gone, its stored key ignored).
+    var ringAbove = 0.6
 
     /// The same data, shown from `date` on (a later timeline entry); `list` overrides whether the
     /// times list shows (the ring comes back `WidgetListState.openFor` after it opened).
@@ -170,23 +171,6 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     }
                 }
             }
-            // Each ring position (the beta setting), light and dark.
-            for position in WidgetRingPosition.allCases {
-                for dark in [false, true] {
-                    var shown = entry.at(entry.date, list: false)
-                    shown.ringAbove = position.above
-                    let view = PrayersWidgetView(entry: shown)
-                        .frame(width: size, height: size)
-                        .background(Color("widgetBgColor"))
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .environment(\.colorScheme, dark ? .dark : .light)
-                    let renderer = ImageRenderer(content: view)
-                    renderer.scale = 3
-                    if let data = renderer.uiImage?.pngData() {
-                        try? data.write(to: dir.appendingPathComponent("w\(Int(size))-pos\(position.rawValue)-\(dark ? "dark" : "light").png"))
-                    }
-                }
-            }
             // Between sunrise and Dhuhr (the ring shows Dhuhr as NEXT).
             if let sunrise = entry.prayerDict["Sunrise"]?.start {
                 for dark in [false, true] {
@@ -260,7 +244,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             leftCorner: configuration?.corners.left ?? .qibla,
             rightCorner: configuration?.corners.right ?? .tasbeeh,
             scoreColors: configuration?.scoreColors ?? true,
-            ringAbove: WidgetRingPosition.current.above
+            ringAbove: 0.6
         )
         #if DEBUG
         // Screenshots (`-demoWidget` in the app): fixed scores / corners instead of the store's.

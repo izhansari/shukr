@@ -653,14 +653,16 @@ struct LostLocationView: View {
         if let f = WelcomeTarget.circleFrame, f.width > 100,
            UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) { target = f.midY }
         withAnimation(.easeOut(duration: 0.3)) { clearing = true }
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) { landingY = target }
-        try? await Task.sleep(for: .milliseconds(360))
-        withAnimation(.easeInOut(duration: 0.4)) {
-            landDashed = WelcomeTarget.trackDashed
-            symbolIn = false
-            handedOff = true
-        }
-        try? await Task.sleep(for: .milliseconds(450))
+        // No overshoot: once it's there nothing moves again (feedback A4D7B736: "ever so slightly jolts").
+        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { landingY = target }
+        try? await Task.sleep(for: .milliseconds(750))      // landed
+        try? await Task.sleep(for: .milliseconds(450))      // …and sits there, "location is on" inside
+        // The symbol lets go first, then the page comes in round the ring with the prayer's own content,
+        // so the two never overlap.
+        withAnimation(.easeOut(duration: 0.28)) { symbolIn = false; landDashed = WelcomeTarget.trackDashed }
+        try? await Task.sleep(for: .milliseconds(120))
+        withAnimation(.easeInOut(duration: 0.4)) { handedOff = true }
+        try? await Task.sleep(for: .milliseconds(430))
         location.clearComeback()
     }
 }

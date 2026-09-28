@@ -199,7 +199,7 @@ struct InsightsView: View {
     private func prayerRings(_ stats: InsightsStats) -> some View {
         VStack(spacing: 12) {
             // Say what the small rings are (owner: he guessed; make it explicit).
-            Text("where each prayer's ring usually is when you mark it · \(range.phrase)")
+            Text("where each prayer's ring usually is when you mark it")
                 .font(.caption)
                 .fontWeight(.light)
                 .foregroundStyle(.secondary)
@@ -309,7 +309,8 @@ struct InsightsView: View {
         let number = showSplit ? Int((prayedShare * 100).rounded()) : (revealed ? Int((avg * 100).rounded()) : 0)
         return VStack(spacing: 10) {
             // What the big ring is, in plain words (owner, 2026-09-28).
-            Text(showSplit ? "how your prayers went · \(range.phrase)" : "your average day score · \(range.phrase)")
+            // The picker above already says the range (feedback 8CCECB8E: "last 30 days" three times).
+            Text(showSplit ? "how your prayers went" : "your average day score")
                 .font(.caption)
                 .fontWeight(.light)
                 .foregroundStyle(.secondary)
@@ -376,7 +377,7 @@ struct InsightsView: View {
                     Text("since \(first.formatted(.dateTime.month(.abbreviated).day().year())) · \(stats.dayScores.count) days")
                 } else {
                     // No data for the period before (days the app wasn't used have no rows).
-                    Text("\(range.phrase) · nothing before to compare")
+                    Text("nothing earlier to compare with")
                 }
             }
             .font(.caption)
@@ -385,10 +386,6 @@ struct InsightsView: View {
             .minimumScaleFactor(0.8)
             .transition(.blurReplace)
             .id(showSplit)
-            Text(showSplit ? "tap the ring for your score" : "all five prayers each day, 0–100 · tap the ring for how they split")
-                .font(.caption2)
-                .fontWeight(.light)
-                .foregroundStyle(.tertiary)
         }
     }
 

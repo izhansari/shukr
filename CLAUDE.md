@@ -924,6 +924,8 @@ too many sheets.
   families share the intent, so their Edit Widget also lists the two (unused) corner settings.
   DEBUG `-demoWidget "Fajr=1.0,Dhuhr=0.72" [-demoWidgetCorners dailyAyah,names] [-demoWidgetList]`
   (`off` clears) feeds the widget fixed scores for screenshots.
+- **Widget ring position (2026-09-28):** fixed at 60 / 40 (`ringAbove = 0.6` in PrayersWidget.swift; owner, 43D36031); the
+  beta "Widget ring position" setting and `WidgetRingPosition` are gone (the stored `widget.ringPosition` key is ignored).
 - **Score colours + centring (2026-09-27, notes #40):** Edit Widget has "Score colours" (`scoreColors`,
   default on); off, a prayed dot is `Brand.sage` whatever the score (`PrayerDot(colored:)`, list and
   row). DEBUG `-demoWidgetPlain` with `-demoWidget`. The ring is lifted 24 pt (`ringLift`) so it sits
@@ -1236,6 +1238,9 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   Review fix-ups: `acknowledge()` restores `pageIn` / `titleHeld` / `symbolIn` / `entryY` (a comeback can cut a warm
   entry short); the warm entry needs `WelcomeTarget.canLand` (not from under the map / a pushed page); `CircleCover`
   "lostWarmEntry" while it plays; if the linger's fallback ends before the page came in, it comes in at once.
+  Landing (feedback A4D7B736, "ever so slightly jolts"): the glide is a critically damped spring (no overshoot), then the
+  ring rests 0.45 s on the Salah circle with "location is on"; the symbol blurs out (0.28 s), 0.12 s later the page
+  fades (0.4 s) with the prayer's own content — nothing moves after landing, the two contents never overlap.
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
@@ -1803,7 +1808,9 @@ switch animates from the old values (the picker's binding sets `range` inside a 
 `revealed` and drained everything to 0); the streak line says "in-time streak" (so it now stacks on two lines via its
 ViewThatFits); the grid's summary has a third number, "days in time" = the 14 shown days with all five ≥ 60
 (`PrayerScoring.inWindowFloor`). DEBUG `-insightsRangeCycle` (Week → Month → All time → Week, 2.5 s apart). The older
-write-up follows.
+(Captions, feedback 8CCECB8E: the range is said once, by the picker — "your average day score", "where each prayer's ring
+usually is when you mark it", "nothing earlier to compare with"; the "all five prayers each day, 0–100 · tap the ring…"
+hint is gone.) The older write-up follows.
 **Insights** (`CursorSwift/InsightsView.swift`, `InsightsProgress.swift`): three swipeable pages
 (a paging horizontal `ScrollView` with a `scrollTransition` "drum": pages rotate 65° about Y
 and shrink / fade as they leave — owner asked for it exaggerated), each a question — "am I getting better?" (`PrayerProgressList`: verdict +
