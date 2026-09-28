@@ -712,7 +712,7 @@
       "checked": "no"
     },
     {
-      "id": "first-run-setup-5", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": "#18",
+      "id": "first-run-setup-5", "date": "2026-09-28", "commit": "a5abd22", "time": "2026-09-28T02:13:36-04:00", "topic": "first-run-setup", "notes": "#18",
       "title": "Fajr alarm reads \"Start\" / \"End\" of Fajr (was Fajr / Sunrise) in the setup, Settings and the Shortcut; an untouched rule now really means before the start",
       "tryIt": ["Setup → Wake up for Fajr → turn it on: \"10 min before Start of Fajr · tomorrow 5:25 AM\"", "Settings → Alarm Settings → the wheels say Start / End"],
       "checked": "sim", "shots": ["wn-setup-fajr-startend.jpg"]
