@@ -239,9 +239,11 @@ enum WhatsNew {
                 idx = max(idx, i)
             }
         }
-        // Chat requests he said looked good.
+        // Chat requests he said looked good (or answered with a 👍).
         let closed = askedClosed()
-        if let i = card.entries.lastIndex(where: { closed.contains($0.id) }) { idx = max(idx, i) }
+        if let i = card.entries.lastIndex(where: { closed.contains($0.id) || ($0.asked != nil && answer(to: $0)?.kind == .works) }) {
+            idx = max(idx, i)
+        }
         return idx
     }
 
@@ -271,12 +273,26 @@ enum WhatsNew {
     private static let askedReopenedKey = "whatsNew.asked.reopened"
     static func askedClosed() -> Set<String> { Set(UserDefaults.standard.stringArray(forKey: askedClosedKey) ?? []) }
     static func askedReopened() -> Set<String> { Set(UserDefaults.standard.stringArray(forKey: askedReopenedKey) ?? []) }
-    /// Waiting for Looks good / Still off.
-    static func askedChecks() -> [WhatsNewEntry] {
+    /// Waiting for Looks good / Still off — unless a note written on a build that has the change
+    /// already answered it (owner, 14CEC68B: "I clearly just categorized my last feedback as issue").
+    @MainActor static func askedChecks() -> [WhatsNewEntry] {
         let closed = askedClosed(), reopened = askedReopened()
         // An entry that also addresses feedback is checked through that note (one card, not two).
         return entries.filter { $0.asked != nil && ($0.addresses ?? []).isEmpty && $0.live
-            && !closed.contains($0.id) && !reopened.contains($0.id) }.reversed()
+            && !closed.contains($0.id) && !reopened.contains($0.id) && answer(to: $0) == nil }.reversed()
+    }
+
+    /// The newest note on the entry's topic written on a build that had the entry (or following it up).
+    @MainActor static func answer(to entry: WhatsNewEntry, excluding: UUID? = nil) -> FeedbackItem? {
+        FeedbackStore.shared.all(for: entry.topic).last { item in
+            item.id != excluding && (item.followUpOfEntry == entry.id || saw(entry, item))
+        }
+    }
+    /// Was the note written on a build that contained this change? (Its build time, from the build line,
+    /// is after the change's commit; a minute's slack for the build line's rounding.)
+    static func saw(_ entry: WhatsNewEntry, _ item: FeedbackItem) -> Bool {
+        let built = buildTime(of: item) ?? item.created
+        return built.addingTimeInterval(60) >= entry.when && item.created >= entry.when
     }
     /// Looks good: closed, and the topic acknowledged through this change (it doesn't come back to test).
     @MainActor static func closeAsked(_ entry: WhatsNewEntry) {
@@ -295,8 +311,11 @@ enum WhatsNew {
         writeState()
     }
     /// For feedback.md: "looks good" / "still off" / "to check".
-    static func askedState(_ entry: WhatsNewEntry) -> String {
-        askedClosed().contains(entry.id) ? "looks good" : askedReopened().contains(entry.id) ? "still off" : "to check"
+    @MainActor static func askedState(_ entry: WhatsNewEntry) -> String {
+        if askedClosed().contains(entry.id) { return "looks good" }
+        if askedReopened().contains(entry.id) { return "still off" }
+        if let note = answer(to: entry) { return note.kind == .works ? "looks good (👍)" : "still off (his \(note.kind.label.lowercased()))" }
+        return "to check"
     }
 
     /// The newest change that lists this feedback id in `addresses`.
@@ -1164,6 +1183,9 @@ struct WhatsNewDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                // The changes (with their screenshots) first: what this card is about at a glance
+                // (owner, 14CEC68B).
+                section("Changes") { timeline }
                 section("Try it") { tryIt }
                 section("Feedback") {
                     VStack(alignment: .leading, spacing: 14) {
@@ -1177,7 +1199,6 @@ struct WhatsNewDetailView: View {
                         FeedbackComposer(card: card) { acks = WhatsNew.acks() }
                     }
                 }
-                section("Changes") { timeline }
             }
             .padding(16)
             .padding(.bottom, 20)
@@ -1347,10 +1368,14 @@ struct WhatsNewDetailView: View {
                     .frame(width: 9)
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
-                            Text(entry.date_.map { $0.formatted(.dateTime.month(.abbreviated).day().hour().minute()) } ?? "this build")
-                            Text(entry.commit == "next" ? (BuildInfo.commit ?? "next") : entry.commit)
-                                .font(.system(size: 11, design: .monospaced))
-                            if entry.inThisBuild { Text("this build").foregroundStyle(Color.green) }
+                            if entry.commit == "next" {
+                                // Not resolved yet (committed after this build's resolve): just "this build".
+                                Text("this build").foregroundStyle(Color.green)
+                            } else {
+                                if let d = entry.date_ { Text(d.formatted(.dateTime.month(.abbreviated).day().hour().minute())) }
+                                Text(entry.commit).font(.system(size: 11, design: .monospaced))
+                                if entry.inThisBuild { Text("this build").foregroundStyle(Color.green) }
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)

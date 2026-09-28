@@ -31,6 +31,12 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   are in the brief), the entry gets `--asked "<his words>"`: the app shows "You asked in chat: '…'" and puts the change
   under **To check** (Looks good / Still off) exactly like addressed feedback. Backfill: `whatsnew.py asked --entry <id>
   --text "…"`. Don't add `--asked` to an entry that already `--addresses` the same request (two check cards).
+  **His feedback answers it (owner, 14CEC68B):** a note on that topic written on a build that has the change
+  (`WhatsNew.answer(to:)` / `saw`: the note's build time ≥ the change's commit, or `followUpOfEntry` = its id) takes the
+  check off To check — 👍 Works = looks good (the topic acknowledged through it), Issue / Note = still off (saving one
+  also links `followUpOfEntry` and reopens). feedback.md's "Asked in chat" says which. **Trap:** anything that reads
+  `FeedbackStore.shared` must not run inside `FeedbackStore.init` — its feedback.md write is deferred a turn for that
+  (writing asks `askedState` → `answer` → `.shared`: a recursive dispatch_once crashed opening What's new; never shipped).
 - **Hard rule — steps per change:** every entry has its own `--try` steps for THAT change (the app's "Try it" lists
   every untested change with its own steps, then the feature's general steps folded). `whatsnew.py add` refuses an
   entry without `--try`; `--no-try` only for invisible changes.

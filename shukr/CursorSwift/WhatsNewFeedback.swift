@@ -104,7 +104,12 @@ final class FeedbackStore {
     private static var photos: URL? { folder?.appendingPathComponent("photos", isDirectory: true) }
 
     /// feedback.md is rewritten at launch too, so a pull never copies states older than the app's.
-    private init() { load(); loadReceived(); writeMarkdown() }
+    /// Written on the next turn, not in init: writing asks WhatsNew for states, which read
+    /// `FeedbackStore.shared` — from inside its own initialiser that's a recursive dispatch_once (crash).
+    private init() {
+        load(); loadReceived()
+        Task { @MainActor [weak self] in self?.writeMarkdown() }
+    }
 
     // MARK: Reading
 
@@ -132,7 +137,15 @@ final class FeedbackStore {
     func state(_ item: FeedbackItem) -> FeedbackState {
         if item.reopenedAt != nil { return .reopened }
         if item.closedAt != nil { return .closed }
-        if let fix = WhatsNew.addressing(item.id) { return .toCheck(fix) }
+        if let fix = WhatsNew.addressing(item.id) {
+            // A newer note on the topic, written on a build with the fix, answers it (owner, 14CEC68B):
+            // 👍 = looks good, 👎 / a note = still off.
+            if let later = items.last(where: { $0.topic == item.topic && $0.id != item.id && $0.created > item.created
+                                                && WhatsNew.saw(fix, $0) }) {
+                return later.kind == .works ? .closed : .reopened
+            }
+            return .toCheck(fix)
+        }
         if !isSent(item) { return .draft }
         if item.kind == .works { return .closed }        // nothing to follow up
         if let r = received[item.id] { return .received(r) }
@@ -158,9 +171,17 @@ final class FeedbackStore {
                                  commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
         // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
         // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
+        // A chat request still waiting on this topic: this note answers it (👍 closes it, 👎 / a note is
+        // its "still off", linked as the follow-up).
+        let pendingAsked = followUpOf == nil && followUpOfEntry == nil
+            ? WhatsNew.askedChecks().filter { $0.topic == card.id } : []
         var item = draft(for: card.id, followUpOf: followUpOf, followUpOfEntry: followUpOfEntry) ?? fresh
         if let followUpOf { item.followUpOf = followUpOf }
         if let followUpOfEntry { item.followUpOfEntry = followUpOfEntry }
+        if let newest = pendingAsked.first {
+            if kind == .works { pendingAsked.forEach { WhatsNew.closeAsked($0) } }
+            else { item.followUpOfEntry = item.followUpOfEntry ?? newest.id; pendingAsked.forEach { WhatsNew.reopenAsked($0) } }
+        }
         item.topicTitle = card.title
         item.notes = card.notes
         item.commits = card.commits

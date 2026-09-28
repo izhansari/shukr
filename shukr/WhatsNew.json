@@ -39,7 +39,7 @@
     {"id": "zikr-reminders", "area": "Zikr", "title": "Reminders for zikr tasks: at a time or around a prayer", "link": "zikr",
      "tryIt": ["Zikr → New task (or edit one) → Reminder → At a time / Around a prayer", "Pick the days → Save", "When it fires: Start now opens that task; Later nudges again in 30 min"]},
     {"id": "whats-new", "area": "Settings", "title": "What's new", "link": "settings",
-     "summary": "What's new: one state per card — To check (your notes addressed, what you asked in chat), To test (newest untested changes first), With the team (your notes, saved / sent / received), Archive — with each change's own steps",
+     "summary": "What's new: one state per card — To check (your notes addressed, what you asked in chat; your later 👍 or note on that card answers it), To test (newest untested changes first), With the team (your notes, saved / sent / received), Archive; each card opens on its changes, with their pictures",
      "tryIt": ["Tap the build line (bottom of ☰ or Settings) → one card per feature, newest change first", "Tap a card → try-it steps, screenshots, and every change with its time (dropped ones greyed)", "👍 / 👎 / 💬 on a card, add a note or a photo → Send feedback at the top → share / copy it to Claude; it's marked sent"]},
     {"id": "zikr-widget", "area": "Widget", "title": "Zikr widget",
      "summary": "The medium Zikr widget fits more tasks and always shows progress"},
@@ -1038,6 +1038,12 @@
       "title": "What's new: screenshots stack down the page; no sideways scrolling",
       "tryIt": ["☰ → the build line → open any card", "Scroll to Changes: each change's pictures sit one under another, and a sideways swipe doesn't move the page"],
       "checked": "sim", "shots": ["wn-whatsnew-stacked-shots.jpg"], "addresses": ["BA0ECB7A-732C-4A77-92C9-8EE6E5E9DAED"]
+    },
+    {
+      "id": "whats-new-14", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "title": "What's new: your feedback answers a change you asked for; changes first",
+      "tryIt": ["On a card with a change you asked for in chat, tap 👍 Works (or write a note) and Save: its check leaves To check (👍 = looks good, a note = still off)", "Open any card: Changes, with their screenshots, come first, then Try it and Feedback"],
+      "checked": "sim", "shots": ["wn-whatsnew-changes-first.jpg"], "addresses": ["14CEC68B-BCCC-4D85-A866-A61460AC5649"]
     }
   ]
 }
