@@ -7,7 +7,8 @@
 //  voice memo. Built-ins (`builtInID`) are locked: name and text fixed, never deleted. Tasks and
 //  sessions point at the row, so a rename shows everywhere. Deleting a zikr deletes its tasks too
 //  (and their reminders); its sessions stay in history under their saved title
-//  (`MantraModel.delete` / `deleteMany`).
+//  (`MantraModel.delete`). No bulk delete: one zikr at a time, from its own page (owner,
+//  2026-09-27, feedback D505E0DE — a bulk Edit made a destructive choice too quick).
 //
 
 import SwiftUI
@@ -21,17 +22,11 @@ struct MantrasView: View {
     @State private var editingMantra: MantraModel? = nil
     @State private var showingNewMantra = false
     @State private var search = ""
-    /// Inside `ZikrLibraryView`: the library owns the search field, the + and Edit (both pages
-    /// stay mounted side by side, so a page's own toolbar / search would show on the other page).
+    /// Inside `ZikrLibraryView`: the library owns the search field, the + and the sort button
+    /// (both pages stay mounted side by side, so a page's own toolbar / search would show on the
+    /// other page).
     var embedded = false
     var externalSearch = ""
-    /// Edit → select your own azkar → Delete (built-ins can't be selected). No row swipes
-    /// (owner, 2026-09-27). The library passes its binding; on its own the page has its own Edit.
-    var editing: Binding<Bool>? = nil
-    @State private var ownEditing = false
-    @State private var selection = Set<PersistentIdentifier>()
-    @State private var confirmDelete = false
-    private var isEditing: Bool { editing?.wrappedValue ?? ownEditing }
 
     /// Matches the name, the full wording or the notes.
     private var query: String { (embedded ? externalSearch : search).trimmingCharacters(in: .whitespaces) }
@@ -53,12 +48,7 @@ struct MantrasView: View {
                 .navigationTitle("Azkar")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    if !ownEditing {
-                        ToolbarItem(placement: .topBarTrailing) { AzkarSortButton() }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
-                    }
+                    ToolbarItem(placement: .topBarTrailing) { AzkarSortButton() }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showingNewMantra = true
@@ -75,10 +65,7 @@ struct MantrasView: View {
     }
 
     private var list: some View {
-        // Selection only in Edit mode: outside it a long press (Feel the pace) selected the row
-        // and left it grey until another row was touched (owner, 2026-09-27).
-        List(selection: Binding(get: { isEditing ? selection : [] },
-                                set: { if isEditing { selection = $0 } })) {
+        List {
             if mantras.isEmpty {
                 Text("No azkar yet. Tap + to add one.")
                     .foregroundStyle(.secondary)
@@ -90,14 +77,14 @@ struct MantrasView: View {
                 let builtIns = sorted(shown.filter(\.isBuiltIn), builtIn: true)
                 let own = sorted(shown.filter { !$0.isBuiltIn }, builtIn: false)
                 // Yours first, built-ins below (owner, 2026-09-27, feedback 6B1CFEB8 — it replaced
-                // a folding Built-in header). The filter button can hide the built-ins.
+                // a folding Built-in header).
                 Section {
                     if own.isEmpty {
                         Text(query.isEmpty ? "Your own azkar go here. Tap + to add one." : "None of yours match.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(own) { row($0).tag($0.persistentModelID) }
+                    ForEach(own) { row($0) }
                 } header: {
                     Text("Your azkar")
                 }
@@ -105,27 +92,12 @@ struct MantrasView: View {
                 // "Show built-ins" switch is gone).
                 if !builtIns.isEmpty {
                     Section("Built-in") {
-                        ForEach(builtIns) { row($0).selectionDisabled() }
+                        ForEach(builtIns) { row($0) }
                     }
                 }
             }
         }
-        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .fontDesign(.rounded)
-        .toolbar {
-            if isEditing {
-                ToolbarItem(placement: .bottomBar) {
-                    Button(role: .destructive) { confirmDelete = true } label: {
-                        Text(selection.isEmpty ? "Delete" : "Delete (\(selection.count))")
-                    }
-                    .tint(.red)
-                    .disabled(selection.isEmpty)
-                }
-            }
-        }
-        .onChange(of: isEditing) { _, on in if !on { selection.removeAll() } }
-        .onChange(of: query) { _, _ in selection.removeAll() }
-        // The last zikr of your own deleted: the "only mine" filter would come back on by itself later.
         // The old "only mine" filter's setting (2026-09-27, removed): don't leave it behind.
         .onAppear {
             UserDefaults.standard.removeObject(forKey: "azkar.hideBuiltIns")
@@ -133,12 +105,6 @@ struct MantrasView: View {
         }
         .sheet(item: $editingMantra) { mantra in
             MantraEditorView(mantra: mantra)
-        }
-        .alert(selection.count == 1 ? "Delete 1 zikr?" : "Delete \(selection.count) azkar?", isPresented: $confirmDelete) {
-            Button("Delete", role: .destructive) { deleteSelected() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(deleteSummary)
         }
     }
 
@@ -187,41 +153,12 @@ struct MantrasView: View {
 
     private func row(_ mantra: MantraModel) -> some View {
         Button {
-            // A List row fires its Button on a tap even with hit testing off, so the action
-            // checks too: in Edit mode a tap only selects (built-ins: nothing — owner, 2026-09-27).
-            guard !isEditing else { return }
             editingMantra = mantra
         } label: {
             ZikrListRow(mantra: mantra)
         }
         .tint(.primary) // rows, not links
-        .allowsHitTesting(!isEditing)                    // in Edit mode a tap selects
-        .opacity(isEditing && mantra.isBuiltIn ? 0.45 : 1) // built-ins can't be selected
-        .listRowBackground(Color(.secondarySystemGroupedBackground))   // no grey selected fill
-    }
-
-    private var selectedMantras: [MantraModel] {
-        let visible = Set(shown.map(\.persistentModelID))
-        return mantras.filter { selection.contains($0.persistentModelID) && visible.contains($0.persistentModelID) && !$0.isBuiltIn }
-    }
-
-    /// What deleting the selection does: their tasks go too, sessions stay (MantraModel.delete).
-    private var deleteSummary: String {
-        let list = selectedMantras
-        let tasks = list.reduce(0) { $0 + $1.tasks.count }, sessions = list.reduce(0) { $0 + $1.sessions.count }
-        var parts: [String] = []
-        if tasks > 0 { parts.append(tasks == 1 ? "Their 1 task is deleted too." : "Their \(tasks) tasks are deleted too.") }
-        if sessions > 0 { parts.append(sessions == 1 ? "Their 1 session stays in your history." : "Their \(sessions) sessions stay in your history.") }
-        parts.append("This can't be undone.")
-        return parts.joined(separator: " ")
-    }
-
-    private func deleteSelected() {
-        let doomed = selectedMantras
-        selection.removeAll()
-        if let editing { editing.wrappedValue = false } else { ownEditing = false }
-        withAnimation { MantraModel.deleteMany(doomed, in: context) }
-        triggerSomeVibration(type: .medium)
+        .listRowBackground(Color(.secondarySystemGroupedBackground))
     }
 }
 
@@ -238,22 +175,6 @@ extension MantraModel {
         try? context.save()
         if !tasks.isEmpty {
             NotificationScheduler.reschedule(context: context, reason: "zikr deleted")
-            WidgetCenter.shared.reloadAllTimelines()
-            TaskModel.deleted(taskIDs, models: taskModels)
-        }
-    }
-
-    /// Several at once: one save, one reschedule, one widget reload.
-    @MainActor static func deleteMany(_ mantras: [MantraModel], in context: ModelContext) {
-        let doomed = mantras.filter { !$0.isBuiltIn }
-        guard !doomed.isEmpty else { return }
-        let tasks = doomed.flatMap { Array($0.tasks) }
-        let taskIDs = Set(tasks.map(\.id)), taskModels = Set(tasks.map(\.persistentModelID))
-        for task in tasks { context.delete(task) }
-        for m in doomed { context.delete(m) }
-        try? context.save()
-        if !tasks.isEmpty {
-            NotificationScheduler.reschedule(context: context, reason: "azkar deleted")
             WidgetCenter.shared.reloadAllTimelines()
             TaskModel.deleted(taskIDs, models: taskModels)
         }
@@ -747,8 +668,8 @@ struct SaveButton: View {
 /// **A native paging ScrollView** since 2026-09-27 (owner: paging was laggy). The hand-made pager
 /// changed `@State dragX` every frame, re-rendering both big lists each time. Now the scrolling is
 /// UIKit's, with no SwiftUI state per frame; the switch follows `scrollPosition`. It only
-/// existed so rows could keep sideways swipes, and neither page has any now (both delete via
-/// Edit → select → Delete).
+/// existed so rows could keep sideways swipes, and neither page has any now (History deletes via
+/// Edit → select → Delete; Azkar has no bulk delete — its top-right slot is the sort button).
 struct ZikrLibraryView: View {
     enum Tab: String, CaseIterable, Hashable { case history = "History", mantras = "Azkar" }
     /// The page, bound to the pager's scroll position (nil while between pages).
@@ -757,18 +678,15 @@ struct ZikrLibraryView: View {
     @State private var tab: Tab
     @State private var search = ""
     @State private var showingNewMantra = false
-    /// Edit modes (select → Delete); their buttons live in this bar.
+    /// History's Edit mode (select → Delete); its button lives in this bar.
     @State private var editingHistory = false
-    @State private var editingAzkar = false
     /// Held while the history chart is being scrubbed (and while editing): no paging.
     @State private var lock = LibraryPagerLock()
 
-    /// Just whether there's any session / any own zikr (the Edit buttons hide without). The azkar
-    /// are few, so all are fetched and checked here: a `#Predicate { $0.builtInID == nil }` query
-    /// looped SwiftUI's layout at 100 % CPU (the library never appeared).
+    /// Just whether there's any session (History's Edit hides without). Trap from an earlier
+    /// version: a `#Predicate { $0.builtInID == nil }` query here looped SwiftUI's layout at
+    /// 100 % CPU (the library never appeared).
     @Query private var anySession: [SessionDataModel]
-    @Query private var allZikr: [MantraModel]
-    private var hasOwnZikr: Bool { allZikr.contains { !$0.isBuiltIn } }
 
     private let start: Tab
 
@@ -782,13 +700,11 @@ struct ZikrLibraryView: View {
 
     }
 
-    private var editing: Bool { editingHistory || editingAzkar }
+    private var editing: Bool { editingHistory }
     /// What the pages filter by: a stray space doesn't count as a search (it hid the built-ins'
     /// filter state and redrew both pages for nothing).
     private var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
-    private var showsEdit: Bool {
-        tab == .history ? !anySession.isEmpty : (hasOwnZikr || editingAzkar)
-    }
+    private var showsEdit: Bool { tab == .history && !anySession.isEmpty }
 
     private static var bottomBarPlus: Bool {
         if #available(iOS 26.0, *) { return true } else { return false }
@@ -819,8 +735,8 @@ struct ZikrLibraryView: View {
                 .scrollDisabled(false)          // the lists keep scrolling while paging is off
                 .containerRelativeFrame(.horizontal)
                 .id(Tab.history)
-                LibraryPage(search: trimmedSearch, editing: $editingAzkar) { search, editing in
-                    MantrasView(embedded: true, externalSearch: search, editing: editing)
+                LibraryPage(search: trimmedSearch, editing: .constant(false)) { search, _ in
+                    MantrasView(embedded: true, externalSearch: search)
                 }
                 .equatable()
                 .scrollDisabled(false)
@@ -859,37 +775,33 @@ struct ZikrLibraryView: View {
                 .frame(width: 210)
                 .disabled(editing)
             }
-            // One Edit button for both pages, the same toolbar item throughout: two items (one per
-            // page) swapped on every page turn and the button redrew itself (owner).
-            if showsEdit {
-                ToolbarItem(id: "libraryEdit", placement: .topBarTrailing) {
-                    Button(editing ? "Done" : "Edit") {
-                        withAnimation {
-                            if tab == .history { editingHistory.toggle() } else { editingAzkar.toggle() }
+            // Top right: History's Edit, or Azkar's sort button in the same spot (owner, 2026-09-27,
+            // feedback D505E0DE: no bulk edit for azkar, and the sort button gets room for its
+            // field + direction icons). One toolbar item throughout: two items swapped on every page
+            // turn and redrew themselves (owner).
+            if tab == .mantras || showsEdit {
+                ToolbarItem(id: "libraryTrailing", placement: .topBarTrailing) {
+                    if tab == .mantras {
+                        AzkarSortButton()
+                    } else {
+                        Button(editing ? "Done" : "Edit") {
+                            withAnimation { editingHistory.toggle() }
                         }
+                        .fontWeight(editing ? .semibold : .regular)
                     }
-                    .fontWeight(editing ? .semibold : .regular)
                 }
             }
-            if tab == .mantras {
-                // iOS 18: the ＋ and the filter stay top right (iOS 26 puts them by the search field).
-                if !editingAzkar && !Self.bottomBarPlus {
-                    ToolbarItem(placement: .topBarTrailing) { AzkarSortButton() }
-                    ToolbarItem(placement: .topBarTrailing) { newZikrButton }
-                }
+            // iOS 18: the ＋ stays top right (iOS 26 puts it by the search field).
+            if tab == .mantras && !Self.bottomBarPlus {
+                ToolbarItem(placement: .topBarTrailing) { newZikrButton }
             }
             // iOS 26: the search field in the bottom bar, with the ＋ beside it on Azkar — it
             // animates in as the page turns (owner, 2026-09-27).
             if #available(iOS 26.0, *) {
-                // Azkar: the built-ins filter, left of the search field (only with azkar of your own).
-                if tab == .mantras && !editingAzkar {
-                    ToolbarItem(placement: .bottomBar) { AzkarSortButton() }
-                    ToolbarSpacer(.fixed, placement: .bottomBar)
-                }
                 if !editing {
                     DefaultToolbarItem(kind: .search, placement: .bottomBar)
                 }
-                if tab == .mantras && !editingAzkar {
+                if tab == .mantras {
                     ToolbarSpacer(.fixed, placement: .bottomBar)
                     ToolbarItem(placement: .bottomBar) { newZikrButton }
                 }
@@ -898,7 +810,7 @@ struct ZikrLibraryView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tab)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.selection, trigger: tab)
-        .onChange(of: tab) { _, _ in editingHistory = false; editingAzkar = false }
+        .onChange(of: tab) { _, _ in editingHistory = false }
         .sheet(isPresented: $showingNewMantra) {
             MantraEditorView(mantra: nil)
         }
@@ -965,8 +877,9 @@ enum AzkarSort: String, CaseIterable, Identifiable {
     }
 }
 
-/// The sort menu: pick a field, then ↑ / ↓. The icon is the plain sort glyph on the default
-/// (Name, A to Z) and an arrow showing the direction otherwise.
+/// The sort menu: pick a field, then ↑ / ↓. On the default (Name, A to Z) the icon is the plain
+/// sort glyph; otherwise the field's symbol with an arrow for the direction, on a green tint so
+/// an active sort shows (owner, 2026-09-27, feedback D505E0DE).
 struct AzkarSortButton: View {
     @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.name.rawValue
     @AppStorage(AzkarSort.ascendingKey) private var ascending = true
@@ -993,15 +906,49 @@ struct AzkarSortButton: View {
             }
             .pickerStyle(.inline)
         } label: {
-            Image(systemName: isDefault ? "arrow.up.arrow.down" : (ascending ? "arrow.up" : "arrow.down"))
-                .fontWeight(isDefault ? .regular : .semibold)
-                .foregroundStyle(Color.primary)
-                .contentTransition(.symbolEffect(.replace))
+            label
         }
+        .tint(isDefault ? Color.primary : Color.green)
+        .modifier(ActiveSortTint(active: !isDefault))
         .onAppear { AzkarSort.migrateStoredDefault() }
         .accessibilityLabel("Sorted by \(sort.title), \(sort.meaning(ascending: ascending))")
         .sensoryFeedback(.selection, trigger: sortRaw)
         .sensoryFeedback(.selection, trigger: ascending)
+    }
+}
+
+extension AzkarSortButton {
+    /// The field's symbol + ↑ / ↓ when sorted; the plain glyph on the default.
+    @ViewBuilder fileprivate var label: some View {
+        if isDefault {
+            Image(systemName: "arrow.up.arrow.down")
+                .foregroundStyle(Color.primary)
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: sort.symbol)
+                    .contentTransition(.symbolEffect(.replace))
+                Image(systemName: ascending ? "arrow.up" : "arrow.down")
+                    .font(.caption.weight(.bold))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .fontWeight(.semibold)
+            .foregroundStyle(.white)        // on the green fill (the tint would draw them green on green)
+        }
+    }
+}
+
+/// An active sort fills the button with the green tint (prominent glass on iOS 26, bordered
+/// prominent before). A toolbar Menu ignores a button style unless it's `.menuStyle(.button)`.
+private struct ActiveSortTint: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        if !active {
+            content
+        } else if #available(iOS 26.0, *) {
+            content.menuStyle(.button).buttonStyle(.glassProminent)
+        } else {
+            content.menuStyle(.button).buttonStyle(.borderedProminent)
+        }
     }
 }
 
