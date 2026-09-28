@@ -1016,7 +1016,7 @@
       "checked": "sim", "shots": ["wn-insights-streak-columns.jpg"]
     },
     {
-      "id": "whats-new-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "whats-new", "notes": null,
+      "id": "whats-new-11", "date": "2026-09-28", "commit": "a483f31", "time": "2026-09-28T16:14:58-04:00", "topic": "whats-new", "notes": null,
       "title": "What's new, clearer: one state per card (To check · To test · With the team · Archive), newest changes first, feedback moves a card out of To test, a new change always reopens it, 'Try it' lists each new change with its own steps, and what you ask in chat shows under To check",
       "tryIt": ["Open What's new: To check has what you asked in chat ('You asked in chat: …') with Looks good / Still off", "Give a card 👍 → it leaves To test; a 👎 or note → With the team ('You said … · saved · Claude will pick it up')", "Tap a card → Try it lists every new change, newest first, each with its steps"],
       "checked": "sim", "shots": ["wn-whats-new-states.jpg"], "asked": "it says it lives in 'to test' even when i gave a feedback with thumbs"
