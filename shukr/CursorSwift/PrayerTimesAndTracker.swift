@@ -359,6 +359,10 @@ struct PrayerTimesView: View {
                 ZikrFocus.request(taskID)
             }
         }
+        // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
+        .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { _ in
+            viewModel.loadTodaysPrayerObjects(); viewModel.reconcileAfterWidgetWrites()
+        }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {
                 WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s

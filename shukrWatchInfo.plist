@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>shukr uses your location with the watch's compass to point you to the qibla. It stays on your watch.</string>
 	<key>WKBackgroundModes</key>
 	<array>
 		<string>mindfulness</string>

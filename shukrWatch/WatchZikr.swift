@@ -60,6 +60,31 @@ struct WatchTask: Identifiable, Equatable {
     }
 }
 
+/// A session in progress, kept on the watch so the count is never lost: reopened paused if the
+/// app is closed, saved as a finished session once it's been paused an hour or the prayer day
+/// has turned at Fajr (so the task's "Continue from N" picks it up).
+struct WatchDraft: Codable {
+    let taskID: String?
+    let name: String
+    let mode: Int
+    let targetMin: Int
+    let targetCount: Int
+    let startCount: Int
+    let startSeconds: Double
+    let count: Int
+    let startedAt: Date
+    let pausedTotal: Double
+    let pausedAt: Date?
+    let lastCountActive: Double
+    let countingInSets: Bool
+    let dayStart: Date
+    let savedAt: Date
+
+    /// Paused since (a draft saved mid-count counts as paused from its last save).
+    var pausedSince: Date { pausedAt ?? savedAt }
+    var sessionCount: Int { count - startCount }
+}
+
 /// A session finished on the watch, kept until the phone lists its id among today's sessions.
 struct WatchZikrRecord: Codable, Equatable {
     let id: String
@@ -94,6 +119,7 @@ final class WatchZikrStore: ObservableObject {
         static let day = "watch.zikr.day", tasks = "watch.zikr.tasks", sessions = "watch.zikr.sessions"
         static let freestyleStep = "watch.zikr.freestyleStep", pending = "watch.zikr.pending"
         static let memos = "watch.zikr.memos", hasData = "watch.zikr.hasData"
+        static let draft = "watch.zikr.draft"
     }
     private var d: UserDefaults { WatchStore.defaults }
 
@@ -215,6 +241,36 @@ final class WatchZikrStore: ObservableObject {
         pending = pending.filter { !confirmed.contains($0.id) && $0.start > cutoff }
     }
 
+    // MARK: Draft (a session in progress)
+
+    var draft: WatchDraft? {
+        get { d.data(forKey: Key.draft).flatMap { try? JSONDecoder().decode(WatchDraft.self, from: $0) } }
+        set { d.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Key.draft) }
+    }
+
+    /// The draft to reopen, if any. One paused over an hour, or from before today's Fajr, is saved
+    /// as a finished session instead (nothing counted is ever dropped).
+    func settleDraft(now: Date = Date()) -> WatchDraft? {
+        guard let draft else { return nil }
+        #if DEBUG
+        // `-demoWatchDraftAge 7200`: pretend the draft is that many seconds older (simulator check).
+        let now = now.addingTimeInterval(UserDefaults.standard.double(forKey: "demoWatchDraftAge"))
+        #endif
+        let stale = now.timeIntervalSince(draft.pausedSince) > 3600
+            || abs(dayStart(at: now).timeIntervalSince(draft.dayStart)) > 60
+        guard stale else { return draft }
+        self.draft = nil
+        if draft.sessionCount > 0 {
+            let seconds = max(0, draft.pausedSince.timeIntervalSince(draft.startedAt) - draft.pausedTotal)
+            record(WatchZikrRecord(id: UUID().uuidString, taskID: draft.taskID, name: draft.name, mode: draft.mode,
+                                   targetMin: draft.targetMin, targetCount: draft.targetCount,
+                                   count: draft.sessionCount, start: draft.startedAt, seconds: seconds,
+                                   perCount: draft.lastCountActive / Double(draft.sessionCount)))
+            print("⌚️ saved a paused session (\(draft.sessionCount))")
+        }
+        return nil
+    }
+
     // MARK: Voice memos
 
     private var memoFolder: URL {
@@ -242,7 +298,9 @@ final class WatchZikrStore: ObservableObject {
               !requested.contains(id + memo),
               WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
         requested.insert(id + memo)
-        WCSession.default.transferUserInfo(["type": "memoRequest", "mantraID": id])
+        let info: [String: Any] = ["type": "memoRequest", "mantraID": id]
+        WCSession.default.transferUserInfo(info)
+        if WCSession.default.isReachable { WCSession.default.sendMessage(info, replyHandler: nil, errorHandler: nil) }
     }
 
     /// A memo arrived (WCSession file transfer). The file is only valid during the delegate
@@ -378,6 +436,21 @@ struct WatchCounterConfig: Identifiable {
     /// Today's progress to continue from (0 = a fresh goal).
     var startCount = 0
     var startSeconds: Double = 0
+    /// Reopening a session the app was closed on (it comes back paused).
+    var draft: WatchDraft? = nil
+
+    init(task: WatchTask?, startCount: Int = 0, startSeconds: Double = 0) {
+        self.task = task
+        self.startCount = startCount
+        self.startSeconds = startSeconds
+    }
+
+    init(restoring draft: WatchDraft, task: WatchTask?) {
+        self.task = task
+        self.startCount = draft.startCount
+        self.startSeconds = draft.startSeconds
+        self.draft = draft
+    }
 }
 
 struct WatchZikrPage: View {
@@ -439,7 +512,10 @@ struct WatchZikrPage: View {
                 if n == 0 || tasks.isEmpty { running = WatchCounterConfig(task: nil); return }
                 let task = tasks[min(n - 1, tasks.count - 1)]
                 let p = store.progress(task)
-                if p.count > 0 || p.seconds >= 1 { centered = task.id; resumeAsk = task }
+                if ProcessInfo.processInfo.arguments.contains("-demoWatchContinue") {
+                    running = WatchCounterConfig(task: task, startCount: task.countMode ? p.count : 0,
+                                                 startSeconds: task.countMode ? 0 : p.seconds)
+                } else if p.count > 0 || p.seconds >= 1 { centered = task.id; resumeAsk = task }
                 else { running = WatchCounterConfig(task: task) }
             }
         }
@@ -447,6 +523,7 @@ struct WatchZikrPage: View {
         .fullScreenCover(item: $running) { config in
             WatchCounterView(config: config)
         }
+        .onAppear { reopenDraft() }
         .alert(resumeAsk?.title ?? "", isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
                presenting: resumeAsk) { task in
             let p = store.progress(task)
@@ -478,6 +555,13 @@ struct WatchZikrPage: View {
                                                                            : "\(Int(p.seconds / 60)) of \(task.goal) min"),
                           fraction: store.fraction(task, at: now), done: done)
         }
+    }
+
+    /// A session the app was closed on comes back, paused (or has just been saved, if stale).
+    private func reopenDraft() {
+        guard running == nil, let draft = store.settleDraft() else { return }
+        let task = draft.taskID.flatMap { id in store.tasks.first { $0.id == id } }
+        running = WatchCounterConfig(restoring: draft, task: task)
     }
 
     private func tapped(_ item: Item, now: Date) {
@@ -598,6 +682,15 @@ struct WatchCounterView: View {
             }
         }
         .onAppear {
+            if let draft = config.draft {
+                count = draft.count
+                startedAt = draft.startedAt
+                pausedTotal = draft.pausedTotal
+                pausedAt = draft.pausedSince
+                lastCountActive = draft.lastCountActive
+                countingInSets = draft.countingInSets
+                return
+            }
             count = config.startCount
             startedAt = Date()
             runtime.start()
@@ -620,7 +713,16 @@ struct WatchCounterView: View {
         }
         .onDisappear { runtime.stop() }
         .onReceive(ticker) { date in
-            guard finished == nil, !paused else { return }
+            guard finished == nil else { return }
+            if let p = pausedAt {
+                // Paused over an hour, or the prayer day turned at Fajr: save it, like the store
+                // does for a closed app.
+                let store = WatchZikrStore.shared
+                if date.timeIntervalSince(p) > 3600 || abs(store.dayStart(at: date).timeIntervalSince(store.dayStart(at: startedAt))) > 60 {
+                    finish()
+                }
+                return
+            }
             now = date
             // A timed goal stops itself, like the phone.
             if let task, !task.countMode, fraction >= 1 { reachedGoal() }
@@ -678,13 +780,28 @@ struct WatchCounterView: View {
         lastCountActive = activeSeconds(at: Date())
         tapWorth > 1 ? WatchHaptics.set() : WatchHaptics.count()
         if count / 100 > before / 100 { WatchHaptics.hundred() }
-        if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() }
+        if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
+    }
+
+    /// The session so far, so closing the app never loses it.
+    private func saveDraft() {
+        guard finished == nil, sessionCount > 0 else { WatchZikrStore.shared.draft = nil; return }
+        WatchZikrStore.shared.draft = WatchDraft(
+            taskID: task?.id, name: task?.name ?? "",
+            mode: task == nil ? 0 : (task!.countMode ? 2 : 1),
+            targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? 0,
+            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? 0,
+            startCount: config.startCount, startSeconds: config.startSeconds, count: count,
+            startedAt: startedAt, pausedTotal: pausedTotal, pausedAt: pausedAt,
+            lastCountActive: lastCountActive, countingInSets: countingInSets,
+            dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date())
     }
 
     private func minus() {
         guard count > config.startCount else { return }
         count = max(count - tapWorth, config.startCount)
         WatchHaptics.minus()
+        saveDraft()
     }
 
     private func togglePause() {
@@ -700,6 +817,7 @@ struct WatchCounterView: View {
                 runtime.stop()      // a paused session doesn't need to outlive a lowered wrist
             }
         }
+        saveDraft()
     }
 
     private func reachedGoal() {
@@ -721,12 +839,14 @@ struct WatchCounterView: View {
             start: startedAt,
             seconds: seconds,
             perCount: lastCountActive / Double(max(sessionCount, 1)))
+        WatchZikrStore.shared.draft = nil
         WatchZikrStore.shared.record(record)
         runtime.stop()
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
     }
 
     private func close() {
+        WatchZikrStore.shared.draft = nil
         runtime.stop()
         dismiss()
     }
@@ -749,7 +869,7 @@ struct WatchCounterView: View {
                     stat(minutesText(activeSeconds(at: Date())), "time")
                     stat(sessionCount > 0 ? String(format: "%.1fs", lastCountActive / Double(sessionCount)) : "–", "pace")
                 }
-                if let task, task.memo != nil {
+                if let task, task.memo != nil || WatchMemoButton.demo {
                     WatchMemoButton(task: task)
                 }
                 Button { togglePause() } label: {
@@ -865,7 +985,7 @@ struct WatchMemoButton: View {
 
     var body: some View {
         let _ = store.revision
-        let url = store.memoURL(for: task)
+        let url = store.memoURL(for: task) ?? Self.demoURL
         Button {
             guard let url else { return }
             player.toggle(url)
@@ -890,6 +1010,38 @@ struct WatchMemoButton: View {
         .padding(.vertical, 4)
         .onAppear { store.requestMemoIfNeeded(for: task) }
         .onDisappear { player.stop() }
+    }
+
+    /// DEBUG `-demoWatchMemo`: a short sample tone as the memo (the simulators can't transfer
+    /// files between the phone and the watch).
+    static var demo: Bool {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-demoWatchMemo")
+        #else
+        return false
+        #endif
+    }
+
+    static var demoURL: URL? {
+        guard demo else { return nil }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("demo-memo.wav")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            let rate = 16_000, samples = rate * 2
+            var pcm = Data(capacity: samples * 2)
+            for i in 0..<samples {
+                let v = Int16(sin(Double(i) * 2 * .pi * 330 / Double(rate)) * 6000 * min(1, Double(samples - i) / 4000))
+                withUnsafeBytes(of: v.littleEndian) { pcm.append(contentsOf: $0) }
+            }
+            var wav = Data()
+            func put(_ s: String) { wav.append(s.data(using: .ascii)!) }
+            func put32(_ v: UInt32) { withUnsafeBytes(of: v.littleEndian) { wav.append(contentsOf: $0) } }
+            func put16(_ v: UInt16) { withUnsafeBytes(of: v.littleEndian) { wav.append(contentsOf: $0) } }
+            put("RIFF"); put32(UInt32(36 + pcm.count)); put("WAVE"); put("fmt ")
+            put32(16); put16(1); put16(1); put32(UInt32(rate)); put32(UInt32(rate * 2)); put16(2); put16(16)
+            put("data"); put32(UInt32(pcm.count)); wav.append(pcm)
+            try? wav.write(to: url)
+        }
+        return url
     }
 }
 
@@ -941,6 +1093,10 @@ final class WatchMemoPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 /// (Info.plist WKBackgroundModes: mindfulness).
 final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
     private var session: WKExtendedRuntimeSession?
+    /// One being invalidated (after a pause): a new one can't start until it has ended.
+    private var ending: WKExtendedRuntimeSession?
+    private var wantsStart = false
+    private var retried = false
 
     func start() {
         guard session == nil else { return }
@@ -949,6 +1105,7 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
         // later and takes the next run's app down with it.
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demoWatch") }) { return }
         #endif
+        if ending != nil { wantsStart = true; return }     // a quick pause → resume
         let s = WKExtendedRuntimeSession()
         s.delegate = self
         s.start()
@@ -956,15 +1113,34 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
     }
 
     func stop() {
+        wantsStart = false
         // Also one still starting (.scheduled): invalidating that cancels it.
-        if let state = session?.state, state == .running || state == .scheduled { session?.invalidate() }
+        if let s = session, s.state == .running || s.state == .scheduled {
+            s.invalidate()
+            ending = s
+        }
         session = nil
     }
 
     func extendedRuntimeSession(_ extendedRuntimeSession: WKExtendedRuntimeSession,
                                 didInvalidateWith reason: WKExtendedRuntimeSessionInvalidationReason, error: Error?) {
-        if let error { print("⌚️ runtime session ended: \(reason.rawValue) \(error)") }
-        if extendedRuntimeSession === session { session = nil }
+        DispatchQueue.main.async {
+            if extendedRuntimeSession === self.ending {
+                self.ending = nil
+                if self.wantsStart { self.wantsStart = false; self.start() }
+                return
+            }
+            guard extendedRuntimeSession === self.session else { return }
+            self.session = nil
+            if let error {
+                print("⌚️ runtime session ended: \(reason.rawValue) \(error)")
+                // It didn't start (e.g. the last one was still ending): once more, a moment later.
+                if !self.retried {
+                    self.retried = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.start() }
+                }
+            }
+        }
     }
     func extendedRuntimeSessionDidStart(_ extendedRuntimeSession: WKExtendedRuntimeSession) {}
     /// The hour a mindfulness session gets is nearly up: a buzz so a long session isn't silently

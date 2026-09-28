@@ -48,6 +48,9 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         WCSession.default.activate()
     }
 
+    /// Redraw now (a prayer was marked on the watch).
+    func refresh() { DispatchQueue.main.async { self.revision += 1 } }
+
     private func take(_ context: [String: Any]) {
         guard !context.isEmpty else { return }
         if WatchStore.save(context) {
@@ -98,31 +101,74 @@ struct WatchRootView: View {
             WatchSettingsPage().tag(2)
         }
         .tabViewStyle(.page)
+        // A session the app was closed on: open on Zikr, where it comes back paused.
+        .onAppear { if WatchZikrStore.shared.draft != nil { page = 0 } }
     }
 }
 
+/// The Salah page, like the phone's: the ring on its own, and the prayer list brought into view
+/// the way the phone's sheet pops up — here as two vertical pages (swipe up or turn the Digital
+/// Crown for the list, swipe down or tap the small ring to go back). A vertical page is watchOS's
+/// own gesture, so it never fights the sideways page swipes or the system's edge swipes.
 struct WatchHomeView: View {
     @EnvironmentObject var session: WatchSession
+    @State private var showList: Int = {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "watchSalahList") { return 1 }   // `-watchSalahList YES`
+        #endif
+        return 0
+    }()
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             let _ = session.revision
             if let day = WatchPrayers.day(at: context.date) {
-                ScrollView {
-                    VStack(spacing: 10) {
+                let left = day.prayers.count - WatchPrayers.completed(dayStart: day.prayers[0].start).count
+                TabView(selection: $showList) {
+                    // The ring alone, the chevron hinting the list below (the phone's chevron).
+                    VStack(spacing: 4) {
+                        Spacer(minLength: 0)
                         if let r = WatchPrayers.relevant(at: context.date) {
-                            WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date)
-                                .frame(width: 118, height: 118)
+                            WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
+                                .frame(width: 138, height: 138)
                         }
-                        WatchPrayerList(prayers: day.prayers, now: context.date)
-                        if !WatchStore.city.isEmpty {
-                            Label(WatchStore.city, systemImage: "location.fill")
-                                .font(.system(size: 11, design: .rounded))
-                                .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 1 }
+                        } label: {
+                            VStack(spacing: 0) {
+                                Image(systemName: "chevron.up").font(.system(size: 11, weight: .semibold))
+                                Text(left > 0 ? "\(left) left today" : "all prayed today")
+                                    .font(.system(size: 10, weight: .light, design: .rounded))
+                            }
+                            .foregroundStyle(.tertiary)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 6)
+                    .tag(0)
+
+                    // The list, under a small ring (tap it to go back up).
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            if let r = WatchPrayers.relevant(at: context.date) {
+                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, compact: true)
+                                    .frame(width: 64, height: 64)
+                                    .onTapGesture {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 }
+                                    }
+                            }
+                            WatchPrayerList(prayers: day.prayers, now: context.date)
+                            if !WatchStore.city.isEmpty {
+                                Label(WatchStore.city, systemImage: "location.fill")
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 6)
+                    }
+                    .tag(1)
                 }
+                .tabViewStyle(.verticalPage)
             } else {
                 VStack(spacing: 8) {
                     Text("shukr").font(.system(size: 24, weight: .thin, design: .rounded))
@@ -143,9 +189,14 @@ struct WatchHomeView: View {
 struct WatchPrayerList: View {
     let prayers: [WatchPrayer]
     let now: Date
+    /// Watched directly: what's done comes from the stored marks, not from `prayers` / `now`,
+    /// so without it SwiftUI kept the old list after a mark (its inputs hadn't changed).
+    @EnvironmentObject private var session: WatchSession
     @State private var showDone = false
+    @State private var marking: WatchPrayer?
 
     var body: some View {
+        let _ = session.revision
         let dayStart = prayers[0].start
         let done = WatchPrayers.completed(dayStart: dayStart)
         let scores = WatchPrayers.scores(dayStart: dayStart)
@@ -154,7 +205,16 @@ struct WatchPrayerList: View {
         VStack(spacing: 0) {
             ForEach(Array(visible.enumerated()), id: \.element.name) { index, p in
                 if index > 0 { Divider().padding(.horizontal, 10) }
-                row(p, done: done.contains(p.name), score: scores[p.name])
+                let isDone = done.contains(p.name)
+                row(p, done: isDone, score: scores[p.name])
+                    .contentShape(Rectangle())
+                    // Tap an outstanding prayer that has started → "I prayed". Unmarking stays on
+                    // the phone.
+                    .onTapGesture {
+                        guard !isDone, p.start <= now else { return }
+                        WKInterfaceDevice.current().play(.click)
+                        marking = p
+                    }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if !done.isEmpty && !allDone {
@@ -179,6 +239,27 @@ struct WatchPrayerList: View {
                 }
                 .buttonStyle(.plain)
             }
+        }
+        #if DEBUG
+        // `-demoWatchAsk YES`: open "Prayed …?" on the first outstanding prayer; `-demoWatchMark
+        // Asr`: mark one (simulator checks).
+        .onAppear {
+            let done = WatchPrayers.completed(dayStart: prayers[0].start)
+            if UserDefaults.standard.bool(forKey: "demoWatchAsk") {
+                marking = prayers.first { !done.contains($0.name) && $0.start <= now }
+            }
+            if let name = UserDefaults.standard.string(forKey: "demoWatchMark"), !done.contains(name),
+               let p = prayers.first(where: { $0.name == name }) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { WatchPrayerMarker.mark(p) }
+            }
+        }
+        #endif
+        .alert(marking.map { "Prayed \($0.name)?" } ?? "", isPresented: Binding(get: { marking != nil }, set: { if !$0 { marking = nil } }),
+               presenting: marking) { p in
+            Button("I prayed") { WatchPrayerMarker.mark(p); marking = nil }
+            Button("Cancel", role: .cancel) { marking = nil }
+        } message: { p in
+            Text(now > p.end ? "Marked as Qaza, after its window." : "Scored at this moment, like on your iPhone.")
         }
     }
 
@@ -213,7 +294,12 @@ struct WatchPrayerRing: View {
     let prayer: WatchPrayer
     let current: Bool
     let now: Date
+    /// The phone's qibla arrow on the ring (the big ring only).
+    var showsQibla = false
+    /// The small ring over the list: everything at half size.
+    var compact = false
     @State private var showLeft = false
+    private var k: CGFloat { compact ? 0.55 : 1.1 }
 
     private var elapsed: Double {
         guard current, prayer.end > prayer.start else { return 0 }
@@ -231,32 +317,32 @@ struct WatchPrayerRing: View {
         ZStack {
             // The phone's 200 pt circle has a 12 pt band and a 4 pt arc; scaled to ~118 pt.
             if current {
-                Circle().stroke(Color.white.opacity(0.12), lineWidth: 7)
+                Circle().stroke(Color.white.opacity(0.12), lineWidth: 7 * k)
             } else {
                 Circle().stroke(Color.white.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [2, 3.5]))
             }
             Circle()
                 .trim(from: 0, to: elapsed)
                 .stroke(WatchScoring.color(start: prayer.start, end: prayer.end, at: now),
-                        style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                        style: StrokeStyle(lineWidth: 2.5 * k, lineCap: .butt))
                 .rotationEffect(.degrees(-90))
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
                     Image(systemName: WatchPrayers.symbol(prayer.name))
-                        .font(.system(size: 13, weight: .light))
+                        .font(.system(size: 13 * k, weight: .light))
                     Text(prayer.name)
-                        .font(.system(size: 19, weight: .light, design: .rounded))
+                        .font(.system(size: 19 * k, weight: .light, design: .rounded))
                 }
                 .foregroundStyle(current ? Color.primary : Color.primary.opacity(0.55))
                 .overlay(alignment: .top) {
                     if !current {
                         Text("next")
-                            .font(.system(size: 7, weight: .medium, design: .rounded))
+                            .font(.system(size: 7 * max(k, 0.8), weight: .medium, design: .rounded))
                             .tracking(1.5)
                             .textCase(.uppercase)
                             .foregroundStyle(.tertiary)
                             .fixedSize()
-                            .offset(y: -14)
+                            .offset(y: -14 * k)
                     }
                 }
                 Group {
@@ -266,18 +352,24 @@ struct WatchPrayerRing: View {
                         Text("at ") + Text(prayer.start, style: .time)
                     }
                 }
-                .font(.system(size: 11, weight: .light, design: .rounded))
+                .font(.system(size: 11 * max(k, 0.8), weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
                 .contentTransition(.opacity)
             }
+            if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
         }
         .contentShape(Circle())
         // A new prayer on the ring starts on "ends …" again.
         .onChange(of: prayer.name) { _, _ in showLeft = false }
         .onTapGesture {
-            guard current else { return }
+            guard current, !compact else { return }
             WKInterfaceDevice.current().play(.click)
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
+        }
+        // Hold to mark it prayed, like the phone's circle.
+        .onLongPressGesture(minimumDuration: 0.6) {
+            guard current, !compact else { return }
+            WatchPrayerMarker.mark(prayer)
         }
     }
 }
