@@ -634,6 +634,7 @@ struct PrayerTimesView: View {
             // Simulator check of the completion moment: launch with -demoPrayerCompletion. Uses
             // the dev "test prayer times" (minutes around now), opens the salah sheet, then
             // marks the current prayer and a missed one.
+            if ProcessInfo.processInfo.arguments.contains("-demoPinRender") { await PickPinRender.run() }
             if ProcessInfo.processInfo.arguments.contains("-demoTasbeehRing") {
                 // Writes the tasbeeh progress ring at 65 % to <app data>/tmp/tasbeeh-ring.png.
                 let renderer = ImageRenderer(content: NeuCircularProgressView(progress: 0.65).padding(40).background(Color(.systemBackground)))

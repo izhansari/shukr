@@ -697,6 +697,13 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   coordinates (~35 pt apart). The pin is now `PickPinView`, a UIView added to the MKMapView at
   exactly `pick.pinPoint` (head + needle, lifts while the map moves). Sim ✓: a prayer marked at the
   user's dot → the needle's tip lands on the dot.
+- **The pin itself (2026-09-28, feedback 723D0745 / 7D8E8B67: "super small … no real visible pin. It's just a
+  shadow"):** one shared `PickPin` (PrayerLocationPicker.swift) — a 34 pt green head, 3 pt white edge, the prayer's
+  symbol in white, a tail and a 16 pt needle whose tip is the spot, a shadow at the tip; lifts 14 pt while the map
+  moves (the frame keeps 18 pt headroom for it). The map's `PickPinView` hosts it (UIHostingController view, tip at
+  `pick.pinPoint`); the time editor's `CenterPin` offsets it so the tip sits on the map centre (it drew the thin SF
+  `mappin`). The simulators won't open the map, so DEBUG `-demoPinRender` draws it (resting + lifted) over
+  MKMapSnapshotter tiles — standard / satellite, light / dark — into <app data>/tmp/pin-*.png.
 - **Transitions** (owner, again: "still not smooth"): the two-step timers are gone. The prayer page
   is one self-sizing column (`fixedSize` + `onGeometryChange` → `setPageHeight`); the sheet's
   detent is always `pageDetent` = that height, animated with `LocationViewModel.sheetSpring`

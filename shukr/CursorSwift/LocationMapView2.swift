@@ -397,7 +397,8 @@ final class LocationViewModel: ObservableObject {
     private func showPickPin() {
         guard let mapView else { return }
         pickPin?.removeFromSuperview()
-        let pin = PickPinView(tip: pick.pinPoint)
+        let name = movingPrayer?.name ?? ""
+        let pin = PickPinView(tip: pick.pinPoint, symbol: prayerSymbol(name) == "circle" ? "mappin" : prayerSymbol(name))
         mapView.addSubview(pin)
         pickPin = pin
         pin.alpha = 0
@@ -2035,53 +2036,30 @@ struct MapPickOverlay: View {
     }
 }
 
-/// The picking pin, a subview of the map: a green head on a needle whose tip is the spot, and a
-/// shadow at the tip. The head and needle lift while the map moves and drop when it stops.
+/// The picking pin, a subview of the map, so its tip is exactly the point the spot is read from:
+/// the shared `PickPin` (a proper map pin — feedback 723D0745), hosted here. Lifts while the map moves.
 final class PickPinView: UIView {
-    private let body_ = UIView()
-    private let shadow = UIView()
-    init(tip: CGPoint) {
-        super.init(frame: CGRect(x: tip.x - 20, y: tip.y - 60, width: 40, height: 64))
+    private final class State: ObservableObject { @Published var lifted = false }
+    private struct Host: View {
+        @ObservedObject var state: State
+        let symbol: String
+        var body: some View { PickPin(symbol: symbol, lifted: state.lifted) }
+    }
+    private let state = State()
+    private let host: UIHostingController<Host>
+
+    init(tip: CGPoint, symbol: String = "mappin") {
+        host = UIHostingController(rootView: Host(state: state, symbol: symbol))
+        let size = PickPin.size, t = PickPin.tip
+        super.init(frame: CGRect(x: tip.x - t.x, y: tip.y - t.y, width: size.width, height: size.height))
         isUserInteractionEnabled = false
-        let tipInView = CGPoint(x: 20, y: 60)
-        shadow.frame = CGRect(x: tipInView.x - 7, y: tipInView.y - 3, width: 14, height: 6)
-        shadow.backgroundColor = UIColor.black.withAlphaComponent(0.28)
-        shadow.layer.cornerRadius = 3
-        addSubview(shadow)
-        body_.frame = CGRect(x: 0, y: 0, width: 40, height: 60)
-        let needle = UIView(frame: CGRect(x: 19, y: 30, width: 2, height: 30))
-        needle.backgroundColor = UIColor.systemGreen.darker()
-        needle.layer.cornerRadius = 1
-        let head = UIView(frame: CGRect(x: 8, y: 8, width: 24, height: 24))
-        head.backgroundColor = .systemGreen
-        head.layer.cornerRadius = 12
-        head.layer.borderColor = UIColor.white.cgColor
-        head.layer.borderWidth = 3
-        head.layer.shadowColor = UIColor.black.cgColor
-        head.layer.shadowOpacity = 0.25
-        head.layer.shadowRadius = 3
-        head.layer.shadowOffset = CGSize(width: 0, height: 1)
-        body_.addSubview(needle)
-        body_.addSubview(head)
-        addSubview(body_)
+        host.view.backgroundColor = .clear
+        host.view.frame = bounds
+        host.view.isUserInteractionEnabled = false
+        addSubview(host.view)
     }
     required init?(coder: NSCoder) { fatalError() }
-    func setLifted(_ lifted: Bool) {
-        UIView.animate(withDuration: lifted ? 0.15 : 0.35, delay: 0,
-                       usingSpringWithDamping: lifted ? 1 : 0.55, initialSpringVelocity: 0) {
-            self.body_.transform = lifted ? CGAffineTransform(translationX: 0, y: -12) : .identity
-            self.shadow.transform = lifted ? CGAffineTransform(scaleX: 0.6, y: 0.6) : .identity
-            self.shadow.alpha = lifted ? 0.5 : 1
-        }
-    }
-}
-
-private extension UIColor {
-    func darker() -> UIColor {
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        return UIColor(hue: h, saturation: s, brightness: b * 0.7, alpha: a)
-    }
+    func setLifted(_ lifted: Bool) { state.lifted = lifted }
 }
 
 extension AnyTransition {

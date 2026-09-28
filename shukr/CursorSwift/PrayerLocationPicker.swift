@@ -28,22 +28,76 @@ import MapKit
     var pinPoint: CGPoint = .zero
 }
 
+/// The picking pin (owner, feedback 723D0745: the old one was "super small … just a shadow"): a 34 pt
+/// green head with a white edge and the prayer's symbol, a short tail and needle whose tip is the spot,
+/// and a soft shadow at the tip. Lifts while the map moves, drops when it stops. Drawn in a fixed
+/// `size` frame with the tip at `tip` (the map's `PickPinView` hosts it at its point; `CenterPin` centres it).
+struct PickPin: View {
+    let symbol: String
+    let lifted: Bool
+    static let size = CGSize(width: 48, height: 78)
+    /// Where the needle's tip sits in that frame (the shadow's centre).
+    static let tip = CGPoint(x: 24, y: 74)
+    /// Room above the head for the 14 pt lift (the needle is what's left: 16 pt).
+    static let headroom: CGFloat = 18
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            Ellipse()
+                .fill(.black.opacity(lifted ? 0.16 : 0.3))
+                .frame(width: lifted ? 10 : 16, height: lifted ? 4 : 6)
+                .blur(radius: lifted ? 1.5 : 0.6)
+                .position(x: Self.tip.x, y: Self.tip.y)
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle().fill(Color.green)
+                    Circle().strokeBorder(.white, lineWidth: 3)
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .symbolRenderingMode(.monochrome)
+                }
+                .frame(width: 34, height: 34)
+                .shadow(color: .black.opacity(0.3), radius: lifted ? 6 : 2.5, y: lifted ? 5 : 1.5)
+                PinTail()
+                    .fill(Color.green)
+                    .frame(width: 12, height: 7)
+                    .offset(y: -1)
+                Capsule()
+                    .fill(Color(red: 0.12, green: 0.5, blue: 0.22))
+                    .frame(width: 3, height: Self.tip.y - Self.headroom - 34 - 6)
+                    .offset(y: -1)
+            }
+            .frame(width: Self.size.width)
+            .padding(.top, Self.headroom)
+            .offset(y: lifted ? -14 : 0)
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .animation(lifted ? .easeOut(duration: 0.15) : .spring(duration: 0.35, bounce: 0.45), value: lifted)
+        .allowsHitTesting(false)
+    }
+}
+
+/// The small point under the pin's head.
+private struct PinTail: Shape {
+    func path(in r: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: r.minX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.maxX, y: r.minY))
+        p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
 /// The pin in the middle of the map; its tip is the spot. Lifts while the map moves.
 struct CenterPin: View {
     let moving: Bool
+    var prayerName: String = ""
     var body: some View {
-        ZStack {
-            Ellipse()
-                .fill(.black.opacity(moving ? 0.12 : 0.25))
-                .frame(width: moving ? 8 : 12, height: moving ? 3 : 5)
-            Image(systemName: "mappin")
-                .font(.system(size: 38, weight: .regular))
-                .foregroundStyle(Color.green)
-                .shadow(color: .black.opacity(0.25), radius: moving ? 6 : 2, y: moving ? 6 : 1)
-                .offset(y: moving ? -30 : -20)
-        }
-        .animation(.spring(duration: 0.3, bounce: 0.45), value: moving)
-        .allowsHitTesting(false)
+        // The tip sits on the view's centre (the map's centre, where the spot is read).
+        PickPin(symbol: prayerSymbol(prayerName) == "circle" ? "mappin" : prayerSymbol(prayerName), lifted: moving)
+            .offset(y: PickPin.size.height / 2 - PickPin.tip.y)
     }
 }
 
@@ -393,7 +447,7 @@ struct PrayerLocationPicker: View {
                 moving = false
             }
 
-            CenterPin(moving: moving)
+            CenterPin(moving: moving, prayerName: prayerName)
         }
         .ignoresSafeArea(edges: .bottom)
         .safeAreaInset(edge: .top) {
@@ -431,3 +485,39 @@ enum PrayerSpotAddress {
         return place
     }
 }
+
+#if DEBUG
+/// `-demoPinRender`: the picking pin (resting and lifted) over real map tiles — standard and satellite, light and
+/// dark — written to <app data>/tmp/pin-<look>.png (the simulators won't open the map; feedback 723D0745).
+enum PickPinRender {
+    @MainActor static func run() async {
+        let centre = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
+        for (name, satellite, dark) in [("standard-light", false, false), ("standard-dark", false, true),
+                                        ("satellite-light", true, false), ("satellite-dark", true, true)] {
+            let o = MKMapSnapshotter.Options()
+            o.region = MKCoordinateRegion(center: centre, latitudinalMeters: 350, longitudinalMeters: 350)
+            o.size = CGSize(width: 240, height: 200)
+            o.scale = 3
+            o.mapType = satellite ? .hybrid : .standard
+            o.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+            guard let snap = try? await MKMapSnapshotter(options: o).start() else { continue }
+            let pins = HStack(spacing: 40) {
+                PickPin(symbol: "sun.haze.fill", lifted: false)
+                PickPin(symbol: "sun.haze.fill", lifted: true)
+            }
+            let renderer = ImageRenderer(content: pins)
+            renderer.scale = 3
+            guard let pinImage = renderer.uiImage else { continue }
+            let out = UIGraphicsImageRenderer(size: o.size, format: {
+                let f = UIGraphicsImageRendererFormat(); f.scale = 3; return f
+            }()).image { _ in
+                snap.image.draw(at: .zero)
+                let s = pinImage.size
+                pinImage.draw(at: CGPoint(x: (o.size.width - s.width) / 2, y: o.size.height / 2 - PickPin.tip.y))
+            }
+            try? out.pngData()?.write(to: FileManager.default.temporaryDirectory.appending(path: "pin-\(name).png"))
+        }
+        print("PINRENDER done")
+    }
+}
+#endif
