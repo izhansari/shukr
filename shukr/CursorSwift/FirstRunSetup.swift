@@ -368,36 +368,55 @@ struct FirstRunSetupView: View {
 /// location is back or a city is picked, the root goes straight into the app.
 struct LostLocationView: View {
     @EnvironmentObject private var location: EnvLocationManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pickingCity = false
+    /// The opening into this page (feedback 2396BDF1): 0 = only the circle, at the screen's centre
+    /// (where the welcome's ring starts and lands, as on the Salah page); 1 = the title appears above
+    /// it; 2 = circle and title rise together to their place; 3 = the reasons and buttons fill in.
+    @State private var stage = 0
+    /// The title + circle group's frame in the finished layout (the offset below doesn't move it).
+    @State private var groupFrame: CGRect?
+
+    /// How far the group is pushed down so the circle sits at the screen's centre (0 once risen).
+    private var lift: CGFloat {
+        guard stage < 2, let g = groupFrame else { return 0 }
+        return UIScreen.main.bounds.midY - (g.maxY - 100)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 12)
-            VStack(spacing: 6) {
-                Text("Uh oh,")
-                    .font(.system(.title3, design: .rounded, weight: .light))
-                    .foregroundStyle(.secondary)
-                Text("shukr lost your location")
-                    .font(.system(.title, design: .rounded, weight: .light))
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 28)
-            ZStack {
-                // The Salah circle's track (mainCircle.swift): the welcome lands on this.
-                Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
+            VStack(spacing: 0) {
                 VStack(spacing: 6) {
-                    Image(systemName: "location.slash")
-                        .font(.system(size: 26, weight: .light))
+                    Text("Uh oh,")
+                        .font(.system(.title3, design: .rounded, weight: .light))
                         .foregroundStyle(.secondary)
-                    Text("location is off")
-                        .font(.system(.subheadline, design: .rounded, weight: .thin))
-                        .foregroundStyle(.secondary)
+                    Text("shukr lost your location")
+                        .font(.system(.title, design: .rounded, weight: .light))
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 28)
+                .padding(.bottom, 28)
+                .opacity(stage >= 1 ? 1 : 0)
+                .blur(radius: stage >= 1 ? 0 : 6)
+                ZStack {
+                    // The Salah circle's track (mainCircle.swift): the welcome lands on this.
+                    Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
+                    VStack(spacing: 6) {
+                        Image(systemName: "location.slash")
+                            .font(.system(size: 26, weight: .light))
+                            .foregroundStyle(.secondary)
+                        Text("location is off")
+                            .font(.system(.subheadline, design: .rounded, weight: .thin))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(width: 200, height: 200)
             }
-            .frame(width: 200, height: 200)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
-            .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
+            .offset(y: lift)
+            // Outside the offset: the finished layout's frame, measured once it's laid out.
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { groupFrame = $0 }
+            .opacity(groupFrame == nil ? 0 : 1)
             VStack(alignment: .leading, spacing: 14) {
                 whyRow("clock", "Prayer times that follow you", "They update by themselves when you travel.")
                 whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed", "On the map, with where you were.")
@@ -405,22 +424,51 @@ struct LostLocationView: View {
             }
             .padding(.horizontal, 32)
             .padding(.top, 28)
+            .opacity(stage >= 3 ? 1 : 0)
+            .offset(y: stage >= 3 ? 0 : 14)
             Spacer(minLength: 16)
-            PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
-            SecondaryButton(title: "Enter a city instead") { pickingCity = true }
-            Text("A fixed city keeps prayer times, but not the travel updates, the pins or the masjid duas.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 36)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+            VStack(spacing: 0) {
+                PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
+                SecondaryButton(title: "Enter a city instead") { pickingCity = true }
+                Text("A fixed city keeps prayer times, but not the travel updates, the pins or the masjid duas.")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 36)
+                    .padding(.top, 8)
+                    .padding(.bottom, 8)
+            }
+            .opacity(stage >= 3 ? 1 : 0)
+            .offset(y: stage >= 3 ? 0 : 14)
         }
         .fontDesign(.rounded)
         .background(Color(.systemBackground).ignoresSafeArea())
+        .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
+        // Where the circle is drawn right now (centred during the opening, then in its place).
+        .onChange(of: groupFrame, initial: true) { _, _ in reportCircle() }
+        .onChange(of: stage) { _, _ in reportCircle() }
+        .task { await intro() }
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
+    }
+
+    private func reportCircle() {
+        guard let g = groupFrame else { return }
+        WelcomeTarget.circleFrame = CGRect(x: g.midX - 100, y: g.maxY - 200 + lift, width: 200, height: 200)
+    }
+
+    private func intro() async {
+        if reduceMotion { stage = 3; return }
+        // The welcome (a cold launch) grows into the centred circle first; wait for it to finish.
+        try? await Task.sleep(for: .milliseconds(300))
+        while WelcomeTarget.playing { try? await Task.sleep(for: .milliseconds(100)) }
+        try? await Task.sleep(for: .milliseconds(150))
+        withAnimation(.easeOut(duration: 0.5)) { stage = 1 }
+        try? await Task.sleep(for: .milliseconds(750))
+        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage = 2 }
+        try? await Task.sleep(for: .milliseconds(450))
+        withAnimation(.easeOut(duration: 0.5)) { stage = 3 }
     }
 }
 

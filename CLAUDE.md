@@ -1200,6 +1200,12 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   (`noteRevocationIfNeeded`, also run in `init` so the first frame knows) and cleared on authorization / a picked city;
   revoking still drops the city. A new user who refuses still gets the location step. Sim ✓: grant → revoke → relaunch:
   the welcome lands on the ring; a city → straight into the app.
+  **Opening into it (2026-09-28, feedback 2396BDF1):** `LostLocationView.stage` 0 → 3. The title + circle group is
+  offset (`lift`) so the circle sits at `UIScreen.main.bounds.midY` — where the welcome's ring starts — and that drawn
+  frame is what goes to `WelcomeTarget.circleFrame` (the group's layout frame is measured outside the offset). Once
+  `WelcomeTarget.playing` is false: the title fades in over the circle (0.5 s), both rise to their place (one spring,
+  0.75), then the reasons and buttons fade up. Reduce Motion: straight to the page. Sim ✓ frame by frame, light + dark
+  (grant → launch → `simctl privacy revoke location` → record a cold launch).
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
