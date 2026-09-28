@@ -96,7 +96,9 @@ of the ☰ menu or Settings, DEBUG / TestFlight builds only), tests from them an
   Unsent notes (on purpose: an unsent note shouldn't vanish). Azkar: sort ties fall back to the section order (built-ins'
   curated order, yours A–Z); the filter resets on appear when you have no own zikr; the library trims its search. DEBUG `-demoWhatsNewArchive YES` opens the
   Archive. `whatsnew.py status --entry <id> --set replaced` greys an undone change.
-- The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline; tested per topic — a new change
+- The page: `CursorSwift/WhatsNew.swift` (cards, detail, timeline — each change's shots stacked, fitted to the column
+  (≤ 300 pt the newest, 170 the rest); never a horizontal ScrollView there: with `scrollClipDisabled` it let the page
+  move sideways (owner, BA0ECB7A); tested per topic — a new change
   on a topic unticks it) and `CursorSwift/WhatsNewFeedback.swift` (store in the app group's
   `Library/Feedback/`: feedback.json, feedback.md, photos/). Gated by `WhatsNewAccess` (DEBUG, or
   `AppTransaction.environment != .production`). DEBUG `-demoWhatsNew [-demoWhatsNewTopic <id>]`.

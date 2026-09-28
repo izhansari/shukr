@@ -1364,22 +1364,22 @@ struct WhatsNewDetailView: View {
                         }
                         // Each change with its own pictures (per change, not per topic).
                         if let shots = entry.shots, !shots.isEmpty {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 8) {
-                                    ForEach(shots, id: \.self) { name in
-                                        if let ui = WhatsNew.image(name) {
-                                            Image(uiImage: ui)
-                                                .resizable().scaledToFit()
-                                                .frame(height: i == 0 ? 300 : 170)
-                                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
-                                                .opacity(entry.superseded ? 0.5 : 1)
-                                                .onTapGesture { viewing = ui }
-                                        }
+                            // Fitted to the column and stacked: no sideways scrolling (owner, BA0ECB7A — a row of
+                            // wide composites let the page move sideways). Tap for full screen.
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(shots, id: \.self) { name in
+                                    if let ui = WhatsNew.image(name) {
+                                        Image(uiImage: ui)
+                                            .resizable().scaledToFit()
+                                            .frame(maxHeight: i == 0 ? 300 : 170)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+                                            .opacity(entry.superseded ? 0.5 : 1)
+                                            .onTapGesture { viewing = ui }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                 }
                             }
-                            .scrollClipDisabled()
                             .padding(.top, 4)
                         }
                     }
