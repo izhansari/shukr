@@ -79,6 +79,8 @@ struct WatchDraft: Codable {
     let countingInSets: Bool
     let dayStart: Date
     let savedAt: Date
+    /// Counting with the Crown (screen taps off) — kept so a reopened session stays that way.
+    var crownMode: Bool? = nil
 
     /// Paused since (a draft saved mid-count counts as paused from its last save).
     var pausedSince: Date { pausedAt ?? savedAt }
@@ -243,9 +245,11 @@ final class WatchZikrStore: ObservableObject {
 
     // MARK: Draft (a session in progress)
 
+    /// In the standard defaults: written often, and every app-group write would redraw anything
+    /// bound to that suite (the Settings page's @AppStorage).
     var draft: WatchDraft? {
-        get { d.data(forKey: Key.draft).flatMap { try? JSONDecoder().decode(WatchDraft.self, from: $0) } }
-        set { d.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Key.draft) }
+        get { UserDefaults.standard.data(forKey: Key.draft).flatMap { try? JSONDecoder().decode(WatchDraft.self, from: $0) } }
+        set { UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: Key.draft) }
     }
 
     /// The draft to reopen, if any. One paused over an hour, or from before today's Fajr, is saved
@@ -447,10 +451,17 @@ struct WatchCounterConfig: Identifiable {
 
     init(restoring draft: WatchDraft, task: WatchTask?) {
         self.task = task
-        self.startCount = draft.startCount
-        self.startSeconds = draft.startSeconds
+        // The task was deleted meanwhile: no offset from its progress (it saves as an unlinked
+        // session under the draft's name).
+        let orphan = task == nil && draft.taskID != nil
+        self.startCount = orphan ? 0 : draft.startCount
+        self.startSeconds = orphan ? 0 : draft.startSeconds
         self.draft = draft
+        self.restoredCount = orphan ? draft.sessionCount : draft.count
     }
+
+    /// The ring's count when reopening a draft.
+    var restoredCount = 0
 }
 
 struct WatchZikrPage: View {
@@ -619,6 +630,13 @@ struct WatchCounterView: View {
     /// "Pinch to count · or turn the Crown", once, on the first session.
     @AppStorage("watch.countHintSeen", store: WatchStore.defaults) private var hintSeen = false
     @State private var showHint = false
+    /// Counting with the Crown: screen taps / drags stop counting (a hand holding the watch taps
+    /// it by accident). The first crown count turns it on, unless Settings keeps taps on.
+    @State private var crownMode = false
+    @State private var crownNote = false
+    @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
+    @State private var draftToken = 0
+    @Environment(\.scenePhase) private var scenePhase
     // The phone's drag "pump": down past the threshold counts, back up half as far re-arms.
     @State private var dragArmed = true
     @State private var highest: CGFloat = 0
@@ -692,7 +710,8 @@ struct WatchCounterView: View {
         }
         .onAppear {
             if let draft = config.draft {
-                count = draft.count
+                count = config.restoredCount
+                crownMode = draft.crownMode ?? false
                 startedAt = draft.startedAt
                 pausedTotal = draft.pausedTotal
                 pausedAt = draft.pausedSince
@@ -717,6 +736,10 @@ struct WatchCounterView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1 + Double(i) * 0.15) { increment() }
             }
             let after = 1.5 + Double(taps) * 0.15
+            if args.contains("-demoWatchCrown") {   // crown mode, then a screen tap (the note)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { withAnimation { crownMode = true } }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2 + Double(taps) * 0.15) { screenCount() }
+            }
             if args.contains("-demoWatchPause") || args.contains("-demoWatchFinish") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + after) { togglePause() }
             }
@@ -727,6 +750,7 @@ struct WatchCounterView: View {
             #endif
         }
         .onDisappear { runtime.stop() }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { saveDraft(now: true) } }
         .onReceive(ticker) { date in
             guard finished == nil else { return }
             if let p = pausedAt {
@@ -748,18 +772,33 @@ struct WatchCounterView: View {
         ZStack {
             WatchCountRing(fraction: fraction)
             // Just the number, like the phone: nothing says what's being recited (owner: privacy).
-            // It's also the Double Tap target (Series 9+ / Ultra 2): pinch finger and thumb and it
-            // counts like a tap. Not hit-testable: screen touches go to the tap / pump gesture.
-            Button { increment() } label: {
-                Text("\(count)")
-                    .font(.system(size: 44, weight: .light, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(value: Double(count)))
-                    .animation(.snappy(duration: 0.15), value: count)
+            Text("\(count)")
+                .font(.system(size: 44, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(count)))
+                .animation(.snappy(duration: 0.15), value: count)
+            // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap —
+            // in crown mode too. Its own real, hit-testable button (a disabled one may not get
+            // Double Tap), too small to be hit by a finger on the screen.
+            Button { increment() } label: { Color.white.opacity(0.001).frame(width: 2, height: 2) }
+                .buttonStyle(.plain)
+                .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil)
+                .offset(y: 60)
+                .accessibilityLabel("Count")
+            if crownMode {
+                VStack(spacing: 2) {
+                    Image(systemName: "digitalcrown.horizontal.arrow.clockwise")
+                        .font(.system(size: 12, weight: .light))
+                    if crownNote {
+                        Text("Counting with the Crown")
+                            .font(.system(size: 11, weight: .light, design: .rounded))
+                            .transition(.opacity)
+                    }
+                }
+                .foregroundStyle(.secondary)
+                .offset(y: crownNote ? 44 : 36)
+                .transition(.opacity)
             }
-            .buttonStyle(.plain)
-            .allowsHitTesting(false)
-            .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil)
             if showHint {
                 VStack(spacing: 2) {
                     Image(systemName: "hand.pinch")
@@ -787,6 +826,14 @@ struct WatchCounterView: View {
         .opacity(paused ? 0 : 1)
     }
 
+    /// A tap / pump on the screen: a count, unless counting with the Crown.
+    private func screenCount() {
+        guard crownMode && !tapsWithCrown else { increment(); return }
+        WKInterfaceDevice.current().play(.click)
+        withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
+    }
+
     /// A detent forward counts; backwards only moves the baseline. Ignored with the wrist down
     /// (dimmed screen), so a sleeve brushing the crown doesn't count.
     private func crownTurned(to value: Double) {
@@ -794,6 +841,7 @@ struct WatchCounterView: View {
         if value < crownBase { crownBase = value; return }
         while value - crownBase >= 1 {
             crownBase += 1
+            if !crownMode && !tapsWithCrown { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
             increment()
         }
     }
@@ -810,7 +858,7 @@ struct WatchCounterView: View {
                 if dragArmed && y - highest > threshold {
                     dragArmed = false
                     dragCounted = true
-                    increment()
+                    screenCount()
                     lowest = y
                 } else if !dragArmed && lowest - y > threshold / 2 {
                     dragArmed = true
@@ -821,7 +869,7 @@ struct WatchCounterView: View {
                 defer { dragArmed = true; highest = 0; lowest = 0; dragCounted = false }
                 guard !paused, finished == nil else { return }
                 let moved = hypot(value.translation.width, value.translation.height)
-                if !dragCounted && moved < 12 { increment() }
+                if !dragCounted && moved < 12 { screenCount() }
             }
     }
 
@@ -836,18 +884,28 @@ struct WatchCounterView: View {
         if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
     }
 
-    /// The session so far, so closing the app never loses it.
-    private func saveDraft() {
+    private var sessionName: String { task?.name ?? config.draft?.name ?? "" }
+    private var sessionMode: Int { task.map { $0.countMode ? 2 : 1 } ?? config.draft?.mode ?? 0 }
+
+    /// The session so far, so closing the app never loses it. Taps save at most every 2 s; a
+    /// pause, leaving the app and finishing save at once.
+    private func saveDraft(now force: Bool = false) {
+        guard force else {
+            draftToken += 1
+            let token = draftToken
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if token == draftToken { saveDraft(now: true) } }
+            return
+        }
         guard finished == nil, sessionCount > 0 else { WatchZikrStore.shared.draft = nil; return }
         WatchZikrStore.shared.draft = WatchDraft(
-            taskID: task?.id, name: task?.name ?? "",
-            mode: task == nil ? 0 : (task!.countMode ? 2 : 1),
-            targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? 0,
-            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? 0,
+            taskID: task?.id ?? config.draft?.taskID, name: sessionName,
+            mode: sessionMode,
+            targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? config.draft?.targetMin ?? 0,
+            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0,
             startCount: config.startCount, startSeconds: config.startSeconds, count: count,
             startedAt: startedAt, pausedTotal: pausedTotal, pausedAt: pausedAt,
             lastCountActive: lastCountActive, countingInSets: countingInSets,
-            dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date())
+            dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date(), crownMode: crownMode)
     }
 
     private func minus() {
@@ -871,7 +929,7 @@ struct WatchCounterView: View {
                 runtime.stop()      // a paused session doesn't need to outlive a lowered wrist
             }
         }
-        saveDraft()
+        saveDraft(now: true)
     }
 
     private func reachedGoal() {
@@ -885,10 +943,10 @@ struct WatchCounterView: View {
         let record = WatchZikrRecord(
             id: UUID().uuidString,
             taskID: task?.id,
-            name: task?.name ?? "",
-            mode: task == nil ? 0 : (task!.countMode ? 2 : 1),
-            targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? 0,
-            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? 0,
+            name: sessionName,
+            mode: sessionMode,
+            targetMin: task.map { $0.countMode ? 0 : $0.goal } ?? config.draft?.targetMin ?? 0,
+            targetCount: task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0,
             count: sessionCount,
             start: startedAt,
             seconds: seconds,
@@ -1161,7 +1219,17 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
         // later and takes the next run's app down with it.
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demoWatch") }) { return }
         #endif
-        if ending != nil { wantsStart = true; return }     // a quick pause → resume
+        if ending != nil {                                  // a quick pause → resume
+            wantsStart = true
+            // If the old one never reports its end, start anyway after a second.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                guard self.wantsStart, self.ending != nil else { return }
+                self.ending = nil
+                self.wantsStart = false
+                self.start()
+            }
+            return
+        }
         let s = WKExtendedRuntimeSession()
         s.delegate = self
         s.start()
@@ -1213,6 +1281,7 @@ struct WatchSettingsPage: View {
     private let names = ["Light", "Medium", "Strong"]
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Settings")
@@ -1257,11 +1326,38 @@ struct WatchSettingsPage: View {
                     Label("Turn the Digital Crown forward, a click a count", systemImage: "digitalcrown.arrow.clockwise")
                 }
                 .font(.system(size: 12, design: .rounded))
+                WatchCrownTapsToggle()
                 Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
+                    .id("bottom")
             }
             .padding(.horizontal, 4)
         }
+        #if DEBUG
+        .onAppear { if ProcessInfo.processInfo.arguments.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) } }
+        #endif
+        }
+    }
+}
+
+/// Settings: whether screen taps still count once you count with the Crown (off: turning the
+/// Crown switches that session to the Crown alone — a hand holding the watch taps it by accident).
+struct WatchCrownTapsToggle: View {
+    @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(isOn: $tapsWithCrown) {
+                Text("Screen taps count with the Crown").font(.system(size: 13, design: .rounded))
+            }
+            .tint(.green)
+            Text(tapsWithCrown
+                 ? "Taps and the Crown both count."
+                 : "Once you turn the Crown, taps on the screen stop counting for that session.")
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
     }
 }

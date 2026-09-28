@@ -65,6 +65,18 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         DispatchQueue.main.async { WatchZikrStore.shared.resendUnconfirmed() }
     }
 
+    /// Replies from the phone (a mark it couldn't save).
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) { reply(userInfo) }
+    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { reply(message) }
+
+    private func reply(_ info: [String: Any]) {
+        guard info["type"] as? String == "markFailed", let name = info["name"] as? String else { return }
+        WatchStore.removeLocalMark(name)
+        WidgetCenter.shared.reloadAllTimelines()
+        refresh()
+        DispatchQueue.main.async { WKInterfaceDevice.current().play(.failure) }
+    }
+
     func sessionReachabilityDidChange(_ session: WCSession) {
         if session.isReachable { DispatchQueue.main.async { WatchZikrStore.shared.sendUnconfirmedNow() } }
     }
@@ -102,7 +114,7 @@ struct WatchRootView: View {
         }
         .tabViewStyle(.page)
         // A session the app was closed on: open on Zikr, where it comes back paused.
-        .onAppear { if WatchZikrStore.shared.draft != nil { page = 0 } }
+        .onAppear { if WatchZikrStore.shared.settleDraft() != nil { page = 0 } }
     }
 }
 
@@ -151,11 +163,9 @@ struct WatchHomeView: View {
                     ScrollView {
                         VStack(spacing: 6) {
                             if let r = WatchPrayers.relevant(at: context.date) {
-                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, compact: true)
+                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, compact: true,
+                                                onTap: { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 } })
                                     .frame(width: 64, height: 64)
-                                    .onTapGesture {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 }
-                                    }
                             }
                             WatchPrayerList(prayers: day.prayers, now: context.date)
                             if !WatchStore.city.isEmpty {
@@ -298,6 +308,8 @@ struct WatchPrayerRing: View {
     var showsQibla = false
     /// The small ring over the list: everything at half size.
     var compact = false
+    /// Replaces the tap's own action (the small ring over the list: back up to the ring).
+    var onTap: (() -> Void)? = nil
     @State private var showLeft = false
     private var k: CGFloat { compact ? 0.55 : 1.1 }
 
@@ -362,6 +374,7 @@ struct WatchPrayerRing: View {
         // A new prayer on the ring starts on "ends …" again.
         .onChange(of: prayer.name) { _, _ in showLeft = false }
         .onTapGesture {
+            if let onTap { onTap(); return }
             guard current, !compact else { return }
             WKInterfaceDevice.current().play(.click)
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }

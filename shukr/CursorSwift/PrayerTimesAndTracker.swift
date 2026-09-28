@@ -360,8 +360,9 @@ struct PrayerTimesView: View {
             }
         }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
-        .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { _ in
-            viewModel.loadTodaysPrayerObjects(); viewModel.reconcileAfterWidgetWrites()
+        .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
+            viewModel.reconcileAfterWidgetWrites()
+            if let day = note.object as? Date { viewModel.calculateDayScore(for: day) }   // a late mark's own day
         }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .background || newScenePhase == .active {

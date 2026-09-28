@@ -68,6 +68,12 @@ enum WatchStore {
         defaults.set(marks, forKey: Key.localMarks)
     }
 
+    static func removeLocalMark(_ name: String) {
+        var marks = localMarks
+        marks[name] = nil
+        defaults.set(marks, forKey: Key.localMarks)
+    }
+
     static var hasLocation: Bool {
         defaults.double(forKey: Key.latitude) != 0 || defaults.double(forKey: Key.longitude) != 0
     }

@@ -23,6 +23,8 @@ import SwiftData
 import WatchConnectivity
 import WidgetKit
 import CryptoKit
+import CoreLocation
+import UIKit
 
 @MainActor
 enum WatchZikrSync {
@@ -225,21 +227,67 @@ enum WatchZikrSync {
         guard let container, let name = info["name"] as? String,
               let start = info["start"] as? Double, let end = info["end"] as? Double,
               let at = info["at"] as? Double else { return }
+        // The same mark arrives twice (direct + queued), and must never re-mark a prayer unmarked
+        // here since: each mark has its own id.
+        let markID = info["id"] as? String
+        if let markID, received[markID] != nil { scheduleSend(); return }
         let context = ModelContext(container)
         let startDate = Date(timeIntervalSince1970: start), endDate = Date(timeIntervalSince1970: end)
+        let tapped = Date(timeIntervalSince1970: at)
         let prayer = SharedStore.fetchPrayer(named: name, on: startDate, in: context) ?? {
             let made = PrayerModel(name: name, startTime: startDate, endTime: endDate, dateAtMake: startDate)
             context.insert(made)
             return made
         }()
-        guard !prayer.isCompleted else { scheduleSend(); return }
+        guard !prayer.isCompleted else {
+            if let markID { received[markID] = Date().timeIntervalSince1970 }
+            scheduleSend(); return
+        }
         prayer.isCompleted = true
-        prayer.setPrayerScore(atDate: Date(timeIntervalSince1970: at))
         prayer.setPrayerLocation(with: SharedStore.lastKnownLocation())
+        // At one of your own masajid: a Friday Dhuhr is Jumu'ah at once, as when marked in the app.
+        if let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
+            prayer.mosqueName = MasjidDetector.favoriteMasjid(near: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        }
+        prayer.setPrayerScore(atDate: tapped)
         prayer.cancelUpcomingNudges()
-        do { try context.save() } catch { print("⌚️ watch mark not saved: \(error)"); return }
+        // Its own day's score (a mark delivered after Fajr belongs to yesterday).
+        let dayStart = Calendar.current.startOfDay(for: startDate)
+        let (rowStart, rowEnd) = PrayerDay.rowRange(forDayStarting: dayStart)
+        let dayPrayers = (try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: #Predicate { $0.startTime >= rowStart && $0.startTime <= rowEnd }))) ?? []
+        let score = PrayerScoring.dayScore(for: dayPrayers)
+        if let row = try? context.fetch(FetchDescriptor<DailyPrayerScore>(
+            predicate: #Predicate { $0.date >= dayStart && $0.date <= dayStart })).first {
+            row.averageScore = score
+        } else {
+            let row = DailyPrayerScore(date: dayStart)
+            row.averageScore = score
+            context.insert(row)
+        }
+        do {
+            try context.save()
+        } catch {
+            print("⌚️ watch mark not saved: \(error)")
+            // Tell the watch, so it stops showing it marked.
+            let reply: [String: Any] = ["type": "markFailed", "name": name, "id": markID ?? ""]
+            if WCSession.default.activationState == .activated {
+                WCSession.default.transferUserInfo(reply)
+                if WCSession.default.isReachable { WCSession.default.sendMessage(reply, replyHandler: nil, errorHandler: nil) }
+            }
+            return
+        }
+        if let markID { received[markID] = Date().timeIntervalSince1970 }
         UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
-        NotificationCenter.default.post(name: .watchMarkedPrayer, object: nil)
+        // On screen: the app's own completion moment, as for a mark made here.
+        if UIApplication.shared.applicationState == .active {
+            let window = endDate.timeIntervalSince(startDate)
+            let progress = window > 0 ? tapped.timeIntervalSince(startDate) / window : 1
+            NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
+                name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
+                summary: prayer.scoreSummary))
+        }
+        NotificationCenter.default.post(name: .watchMarkedPrayer, object: startDate)
         WidgetCenter.shared.reloadAllTimelines()
         scheduleSend()
         print("⌚️ \(name) marked from the watch")
