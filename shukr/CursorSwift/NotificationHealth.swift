@@ -235,6 +235,15 @@ struct UpcomingRemindersView: View {
     @State private var loaded = false
     @State private var showDetails = ProcessInfo.processInfo.arguments.contains("-upcomingDetails")   // DEBUG screenshots
     @State private var previewCard: NotificationHealth.Issue?
+    /// The open cell per day card (day key → "Fajr" … "Zikr" / "Snoozed"); one at a time per card.
+    @State private var open: [String: String] = {
+        // DEBUG `-upcomingOpen Maghrib`: today's card opens on it (screenshots).
+        // `-upcomingOpenDay N`: N days after today instead.
+        guard let cell = UserDefaults.standard.string(forKey: "upcomingOpen") else { return [:] }
+        let offset = UserDefaults.standard.integer(forKey: "upcomingOpenDay")
+        let day = Calendar.current.date(byAdding: .day, value: offset, to: PrayerDay.date()) ?? PrayerDay.date()
+        return [PrayerNotificationID.dayKey(day): cell]
+    }()
 
     /// One notification, read once from its request.
     struct Item: Identifiable {
@@ -260,38 +269,39 @@ struct UpcomingRemindersView: View {
         }
     }
 
-    var body: some View {
-        List {
-            Section {
-                summary
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 4, trailing: 0))
-            }
-            if loaded && pending.isEmpty {
-                Section {
-                    Text(health.authorization == .denied
-                         ? "Notifications are off for shukr, so nothing is scheduled."
-                         : "Nothing is scheduled right now. Open shukr and it tops them up.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
-            }
-            ForEach(days, id: \.key) { day in
-                Section {
-                    ForEach(Self.groups(day.items)) { groupRow($0, faded: false) }
-                } header: {
-                    // The day's total (zikr and snoozes included) — owner: the counts carry it.
-                    Text("\(dayTitle(day.key)) · \(day.items.count)")
-                }
-            }
-            if !deliveredToday.isEmpty {
-                Section {
-                    ForEach(Self.groups(deliveredToday)) { groupRow($0, faded: true) }
-                } header: {
-                    Text("Already delivered today")
-                }
-            }
-            details
+    /// The icon cells of a day card: the five prayers, Zikr, and Snoozed when there are any.
+    private static let cellNames = PrayerNotificationID.prayers + ["Zikr"]
+    private static func cell(of item: Item) -> String {
+        switch item.kind {
+        case .start, .halfway, .endingSoon: item.prayer ?? "Snoozed"
+        case .zikr, .zikrLater: "Zikr"
+        case .snooze, .other: "Snoozed"
         }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                summaryCard
+                if loaded && pending.isEmpty && deliveredToday.isEmpty {
+                    card {
+                        Text(health.authorization == .denied
+                             ? "Notifications are off for shukr, so nothing is scheduled."
+                             : "Nothing is scheduled right now. Open shukr and it tops them up.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                ForEach(Array(days.enumerated()), id: \.element.key) { index, day in
+                    dayCard(day.key, items: day.items, note: index == firstStartsOnlyIndex ? startsOnlyNote : nil)
+                }
+                detailsCard
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 40)
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Upcoming reminders")
         .navigationBarTitleDisplayMode(.inline)
         .fontDesign(.rounded)
@@ -304,58 +314,68 @@ struct UpcomingRemindersView: View {
 
     // MARK: pieces
 
-    /// The ring (how many of iOS's 64 are waiting), how far they reach, what they're made of, and
-    /// the one thing to know: open shukr every few days (owner: educate, be transparent, keep it simple).
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle().stroke(Color(.secondarySystemFill), lineWidth: 6)
-                    Circle()
-                        .trim(from: 0, to: min(Double(pending.count) / 64, 1))
-                        .stroke(Color.sage, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
-                        .rotationEffect(.degrees(-90))
-                    VStack(spacing: -2) {
-                        Text("\(pending.count)").font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
-                        Text("of 64").font(.system(size: 10, weight: .light, design: .rounded)).foregroundStyle(.secondary)
-                    }
-                }
-                .frame(width: 70, height: 70)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(coverText)
-                        .font(.system(.headline, design: .rounded, weight: .regular))
-                    Text("waiting with iOS right now")
-                        .font(.system(.caption, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            // What they are.
-            HStack(spacing: 0) {
-                ForEach(breakdown, id: \.label) { part in
-                    VStack(spacing: 1) {
-                        Text("\(part.count)")
-                            .font(.system(.title3, design: .rounded, weight: .light))
-                            .monospacedDigit()
-                        Text(part.label)
-                            .font(.system(.caption2, design: .rounded, weight: .light))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-            .padding(.vertical, 10)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-            Text("iOS lets an app keep 64 reminders waiting at once. shukr fills them about a week ahead. Open shukr every few days and they stay topped up.")
-                .font(.system(.footnote, design: .rounded, weight: .light))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, 4)
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
     }
 
-    /// Starts · Halfway · 30 min left · Zikr, and the snoozes / later ones only when there are some.
+    /// The ring (how many of iOS's 64 are waiting), how far they reach, the one thing to know, and
+    /// what they're made of (owner: educate, be transparent, keep it simple).
+    private var summaryCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 16) {
+                    ZStack {
+                        Circle().stroke(Color(.secondarySystemFill), lineWidth: 5)
+                        Circle()
+                            .trim(from: 0, to: min(Double(pending.count) / 64, 1))
+                            .stroke(Color.sage, style: StrokeStyle(lineWidth: 5, lineCap: .butt))
+                            .rotationEffect(.degrees(-90))
+                        VStack(spacing: -2) {
+                            Text("\(pending.count)").font(.system(size: 22, weight: .light, design: .rounded)).monospacedDigit()
+                            Text("of 64").font(.system(size: 10, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(width: 72, height: 72)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(coverText)
+                            .font(.system(.headline, design: .rounded, weight: .medium))
+                        Text(explainer)
+                            .font(.system(.footnote, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                HStack(spacing: 8) {
+                    ForEach(breakdown, id: \.label) { part in
+                        VStack(spacing: 1) {
+                            Text("\(part.count)")
+                                .font(.system(.title3, design: .rounded, weight: .medium))
+                                .monospacedDigit()
+                            Text(part.label)
+                                .font(.system(.caption2, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.systemGroupedBackground)))
+                    }
+                }
+            }
+        }
+    }
+
+    /// iOS's limit, what shukr does with it (from the scheduler's own rule) and what to do.
+    private var explainer: String {
+        let n = NotificationScheduler.nudgeDaysAhead
+        let days = n == 2 ? "two" : "\(n)"
+        return "iOS keeps 64 reminders at a time, so shukr schedules every start for the week and your nudges for the next \(days) days. Open shukr every few days to roll them forward."
+    }
+
+    /// Starts · Halfway · 30 min left · Zikr, and Snoozed only when there are some.
     private var breakdown: [(label: String, count: Int)] {
         let all = pending.map(\.kind)
         func n(_ kinds: Kind...) -> Int { all.filter { kinds.contains($0) }.count }
@@ -371,104 +391,199 @@ struct UpcomingRemindersView: View {
         return "Covers you through \(last.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
     }
 
-    /// One row per prayer in a day (its start, then its nudges), one for the day's zikr reminders,
-    /// one for snoozed nudges.
-    struct Group: Identifiable {
-        let id: String
-        let title: String
-        let symbol: String
-        let isPrayer: Bool
-        let items: [Item]      // by time
+    /// The first day (after today) that only has starts though some prayer is set to nudge: the
+    /// scheduler's rule, seen on the page.
+    private var firstStartsOnlyIndex: Int? {
+        let anyNudges = PrayerNotificationID.prayers.contains { NotificationScheduler.settings($0).nudges && NotificationScheduler.settings($0).notify }
+        guard anyNudges else { return nil }
+        return days.indices.first { i in
+            i >= 1 && !days[i].items.contains { $0.kind == .halfway || $0.kind == .endingSoon }
+                && days[i].items.contains { $0.kind == .start }
+        }
+    }
+    private var startsOnlyNote: String {
+        let n = NotificationScheduler.nudgeDaysAhead
+        return "Starts only from here · nudges are added \(n == 2 ? "two" : "\(n)") days ahead"
     }
 
-    static func groups(_ items: [Item]) -> [Group] {
-        var byKey: [String: [Item]] = [:]
-        for item in items {
-            let key: String
-            switch item.kind {
-            case .start, .halfway, .endingSoon: key = item.prayer ?? "Prayer"
-            case .zikr, .zikrLater: key = "Zikr"
-            case .snooze, .other: key = "Snoozed"
-            }
-            byKey[key, default: []].append(item)
-        }
-        return byKey.map { key, list in
-            let sorted = list.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
-            let isPrayer = PrayerNotificationID.prayers.contains(key)
-            let symbol = isPrayer ? prayerSymbol(key) : key == "Zikr" ? "circle.hexagonpath" : "clock.arrow.circlepath"
-            return Group(id: key, title: key == "Snoozed" ? "Nudges you snoozed" : key, symbol: symbol, isPrayer: isPrayer, items: sorted)
-        }
-        .sorted { ($0.items.first?.date ?? .distantFuture) < ($1.items.first?.date ?? .distantFuture) }
-    }
-
-    private func groupRow(_ group: Group, faded: Bool) -> some View {
-        let start = group.isPrayer ? group.items.first { $0.kind == .start } : nil
-        let rest = group.items.filter { $0.id != start?.id }
-        return HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Image(systemName: group.symbol)
-                .font(.system(size: 15, weight: .light))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(group.isPrayer ? Color.sage : Color.secondary)
-                .frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 8) {
-                    Text(group.title)
-                        .font(.system(.body, design: .rounded, weight: .regular))
-                    // How many it has that day: 1 = the start, 2 = + halfway, 3 = + 30 min left.
-                    Text("\(group.items.count)")
-                        .font(.system(.caption, design: .rounded, weight: .medium))
+    /// A day: title, date, its total; the icon cells with counts; tap one to see what's in it.
+    private func dayCard(_ key: String, items: [Item], note: String?) -> some View {
+        let isToday = key == PrayerNotificationID.dayKey(PrayerDay.date())
+        let delivered = isToday ? deliveredToday : []
+        let hasSnoozed = items.contains { Self.cell(of: $0) == "Snoozed" } || delivered.contains { Self.cell(of: $0) == "Snoozed" }
+        let names = Self.cellNames + (hasSnoozed ? ["Snoozed"] : [])
+        let selected = open[key]
+        return card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(dayTitle(key)).font(.system(.headline, design: .rounded, weight: .semibold))
+                    Spacer()
+                    Text(daySub(key)).font(.system(.footnote, design: .rounded)).foregroundStyle(.secondary)
+                    Text("\(items.count)")
+                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
                         .monospacedDigit()
                         .foregroundStyle(Color.sage)
-                        .frame(minWidth: 20, minHeight: 20)
-                        .background(Circle().fill(Color.sage.opacity(0.14)))
+                        .padding(.horizontal, 8)
+                        .frame(minWidth: 28, minHeight: 24)
+                        .background(Capsule().fill(Color.sage.opacity(0.15)))
                 }
-                if !rest.isEmpty {
-                    // The other times, quiet (the count says what they are); each stays whole on a line.
-                    Text(rest.map { detail($0, prayer: group.isPrayer).replacingOccurrences(of: " ", with: "\u{00A0}") }
-                        .joined(separator: " · "))
-                        .font(.system(.caption2, design: .rounded, weight: .light))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+                if let note {
+                    Text(note)
+                        .font(.system(.caption, design: .rounded))
+                        .foregroundStyle(.secondary)
                 }
-            }
-            Spacer(minLength: 8)
-            if let start {
-                Text(time(start))
-                    .font(.system(.subheadline, design: .rounded, weight: .light))
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    ForEach(names, id: \.self) { name in
+                        let count = items.filter { Self.cell(of: $0) == name }.count
+                        let any = count > 0 || delivered.contains { Self.cell(of: $0) == name }
+                        iconCell(name, count: count, dimmed: !any, selected: selected == name)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard any else { return }
+                                triggerSomeVibration(type: .light)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                                    open[key] = selected == name ? nil : name
+                                }
+                            }
+                    }
+                }
+                if let selected {
+                    reveal(selected, key: key, items: items.filter { Self.cell(of: $0) == selected },
+                           delivered: delivered.filter { Self.cell(of: $0) == selected })
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                if isToday, let next = items.first(where: { ($0.date ?? .distantPast) > Date() }) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Divider()
+                        (Text("Next: ").foregroundStyle(.secondary)
+                         + Text("\(Self.cell(of: next) == "Zikr" ? (next.title.isEmpty ? "Zikr" : next.title) : (next.prayer ?? "Reminder")) \(next.kind == .start ? "starts" : next.kind.label) \(time(next))").fontWeight(.medium))
+                            .font(.system(.footnote, design: .rounded))
+                    }
+                }
             }
         }
-        .opacity(faded ? 0.45 : 1)
     }
 
-    /// "halfway 3:13 PM" for a prayer's nudge, "After Fajr 6:10 AM" for a zikr reminder.
-    private func detail(_ item: Item, prayer: Bool) -> String {
-        if prayer { return "\(item.kind == .start ? "starts" : item.kind.label) \(time(item))" }
-        switch item.kind {
-        case .zikr, .zikrLater: return "\(item.title.isEmpty ? "Zikr" : item.title) \(time(item))"
-        default: return time(item)
+    private func iconCell(_ name: String, count: Int, dimmed: Bool, selected: Bool) -> some View {
+        VStack(spacing: 5) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: cellSymbol(name))
+                    .font(.system(size: 17, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(dimmed ? Color.secondary : Color.sage)
+                    .frame(width: 42, height: 42)
+                    .background(Circle().fill(dimmed ? Color(.systemGroupedBackground) : Color.sage.opacity(selected ? 0.26 : 0.12)))
+                    .overlay(Circle().strokeBorder(Color.sage, lineWidth: selected ? 1.5 : 0))
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white)
+                        .frame(minWidth: 18, minHeight: 18)
+                        .background(Circle().fill(Color.sage))
+                        .overlay(Circle().strokeBorder(Color(.secondarySystemGroupedBackground), lineWidth: 2))
+                        .offset(x: 5, y: -4)
+                }
+            }
+            Text(name)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
+        .opacity(dimmed ? 0.4 : 1)
+    }
+
+    private func cellSymbol(_ name: String) -> String {
+        switch name {
+        case "Zikr": return "circle.hexagonpath"
+        case "Snoozed": return "clock.arrow.circlepath"
+        default: return prayerSymbol(name)
+        }
+    }
+
+    /// What one cell holds: each notification with what it is and when; delivered ones greyed; on a
+    /// starts-only day, when the nudges will be added.
+    private func reveal(_ cell: String, key: String, items: [Item], delivered: [Item]) -> some View {
+        let settings = PrayerNotificationID.prayers.contains(cell) ? NotificationScheduler.settings(cell) : nil
+        let startsOnly = settings?.nudges == true && settings?.notify == true
+            && !items.isEmpty && !items.contains { $0.kind == .halfway || $0.kind == .endingSoon }
+            && key != PrayerNotificationID.dayKey(PrayerDay.date())
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(delivered.sorted { ($0.date ?? .distantPast) < ($1.date ?? .distantPast) }) { revealRow($0, cell: cell, delivered: true) }
+            ForEach(items) { revealRow($0, cell: cell, delivered: false) }
+            if startsOnly, let added = nudgesAddedOn(key) {
+                Text("Halfway and 30-min nudges are added on \(added)")
+                    .font(.system(.caption, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 6)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.systemGroupedBackground)))
+    }
+
+    private func revealRow(_ item: Item, cell: String, delivered: Bool) -> some View {
+        let what: String = {
+            switch item.kind {
+            case .zikr, .zikrLater: item.title.isEmpty ? "reminder" : item.title
+            case .start, .halfway, .endingSoon: item.kind.label
+            default: "nudge"
+            }
+        }()
+        return HStack {
+            Text("\(cell) · \(what)")
+                .font(.system(.subheadline, design: .rounded))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Text(delivered ? "delivered \(time(item))" : time(item))
+                .font(.system(.subheadline, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 6)
+        .opacity(delivered ? 0.45 : 1)
+    }
+
+    /// A starts-only day's nudges are planned once it's within `nudgeDaysAhead` prayer days — i.e.
+    /// the day before it, when shukr re-plans (opening it, or iOS's background refresh).
+    private func nudgesAddedOn(_ key: String) -> String? {
+        guard let day = Self.dayKeyFormatter.date(from: key),
+              let before = Calendar.current.date(byAdding: .day, value: -(NotificationScheduler.nudgeDaysAhead - 1), to: day)
+        else { return nil }
+        if PrayerNotificationID.dayKey(before) == PrayerNotificationID.dayKey(PrayerDay.date()) { return "later today" }
+        return before.formatted(.dateTime.weekday(.abbreviated))
     }
 
     private func time(_ item: Item) -> String {
         item.date.map { $0.formatted(date: .omitted, time: .shortened) } ?? "–"
     }
 
+    private func daySub(_ key: String) -> String {
+        guard let d = Self.dayKeyFormatter.date(from: key) else { return "" }
+        let title = dayTitle(key)
+        return title == "Today" || title == "Tomorrow"
+            ? d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+            : d.formatted(.dateTime.month(.abbreviated).day())
+    }
+
     /// Background refresh, the raw checks and (beta) the card previews: collapsed, at the bottom.
-    private var details: some View {
-        Section {
+    private var detailsCard: some View {
+        card {
             DisclosureGroup(isExpanded: $showDetails) {
-                LabeledContent("Background refresh", value: refreshStatus)
-                LabeledContent("Last ran in the background", value: lastRefresh)
-                LabeledContent("Notifications", value: authText)
-                LabeledContent("Scheduled Summary", value: health.summaryOn ? "on" : "off")
-                LabeledContent("Time Sensitive", value: settingText(health.timeSensitive))
-                LabeledContent("Waiting, by kind", value: kindCounts)
-                if betaAccess.available {
-                    // Testing the reminders card (feedback E37CE0F0): it follows rules, so it
-                    // doesn't come every time — these show it now, whatever the rules say.
-                    VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 10) {
+                    LabeledContent("Background refresh", value: refreshStatus)
+                    LabeledContent("Last ran in the background", value: lastRefresh)
+                    LabeledContent("Notifications", value: authText)
+                    LabeledContent("Scheduled Summary", value: health.summaryOn ? "on" : "off")
+                    LabeledContent("Time Sensitive", value: settingText(health.timeSensitive))
+                    LabeledContent("Waiting, by kind", value: kindCounts)
+                    if betaAccess.available {
+                        // Testing the reminders card (feedback E37CE0F0): it follows rules, so it
+                        // doesn't come every time — these show it now, whatever the rules say.
+                        Divider()
                         Text("The reminders card")
                             .font(.subheadline.weight(.medium))
                         Text("Shows on the Salah page with nothing else open, not during the opening or within 10 s of a widget, at most every 3 days per kind, and not for 3 days after a \"no\" in the setup.")
@@ -476,16 +591,18 @@ struct UpcomingRemindersView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Text("Off card: \(nextCardText(.off))\nHeld card: \(nextCardText(.held))")
                             .font(.caption).foregroundStyle(.secondary)
+                        Button("Preview the card: off") { previewCard = .off }
+                            .tint(Color.sage)
+                        Button("Preview the card: held") { previewCard = .held }
+                            .tint(Color.sage)
                     }
-                    .padding(.vertical, 2)
-                    Button("Preview the card: off") { previewCard = .off }
-                        .tint(Color.sage)
-                    Button("Preview the card: held") { previewCard = .held }
-                        .tint(Color.sage)
                 }
+                .font(.subheadline)
+                .padding(.top, 10)
             } label: {
                 Text("Details").font(.subheadline).foregroundStyle(.secondary)
             }
+            .tint(.secondary)
         }
     }
 
@@ -499,9 +616,10 @@ struct UpcomingRemindersView: View {
     // MARK: data
 
     private var days: [(key: String, items: [Item])] {
-        Dictionary(grouping: pending, by: \.dayKey)
-            .map { (key: $0.key, items: $0.value) }
-            .sorted { $0.key < $1.key }
+        var byDay = Dictionary(grouping: pending, by: \.dayKey)
+        // Today stays as a card while it has delivered ones, even with nothing left to come.
+        if !deliveredToday.isEmpty { byDay[PrayerNotificationID.dayKey(PrayerDay.date()), default: []] += [] }
+        return byDay.map { (key: $0.key, items: $0.value) }.sorted { $0.key < $1.key }
     }
 
     private func dayTitle(_ key: String) -> String {
@@ -509,7 +627,8 @@ struct UpcomingRemindersView: View {
         let tomorrow = PrayerNotificationID.dayKey(Calendar.current.date(byAdding: .day, value: 1, to: PrayerDay.date()) ?? Date())
         if key == today { return "Today" }
         if key == tomorrow { return "Tomorrow" }
-        return Self.dayKeyFormatter.date(from: key).map { $0.formatted(.dateTime.weekday(.wide).month(.abbreviated).day()) } ?? key
+        // The weekday alone: the card's date sits beside it.
+        return Self.dayKeyFormatter.date(from: key).map { $0.formatted(.dateTime.weekday(.wide)) } ?? key
     }
 
     private static let dayKeyFormatter: DateFormatter = {

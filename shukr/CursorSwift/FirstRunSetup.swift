@@ -381,7 +381,7 @@ struct LostLocationView: View {
     // hand off to the Salah page appearing underneath (owner, 2026-09-28).
     /// The symbol turns on and the title says so.
     @State private var acknowledged = false
-    /// The title, reasons and buttons have gone; the ring goes back to the screen's centre.
+    /// The title, reasons and buttons have gone (the ring glides onto the Salah circle meanwhile).
     @State private var clearing = false
     /// The Salah circle's centre (y) the ring settles on, like the welcome's landing.
     @State private var landingY: CGFloat?
@@ -403,7 +403,8 @@ struct LostLocationView: View {
     init() {
         // Read before this page reports its own circle: where the Salah circle is right now, if it's on
         // screen — then this is a warm entry and the ring starts exactly on it (one ring, never two).
-        if let f = WelcomeTarget.circleFrame, f.width > 100,
+        // (`canLand`: nothing covers the Salah page — not the map or a pushed page — else the centred entry.)
+        if WelcomeTarget.canLand, let f = WelcomeTarget.circleFrame, f.width > 100,
            UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) {
             _entryY = State(initialValue: f.midY)
             _symbolIn = State(initialValue: false)
@@ -497,6 +498,11 @@ struct LostLocationView: View {
         .onChange(of: stage) { _, _ in reportCircle() }
         .task { await intro() }
         .task(id: comeback) { if comeback != nil { await acknowledge() } }
+        // The linger's fallback ended before the page came in (the app stayed inactive): show it now
+        // rather than leave a blank frame.
+        .onChange(of: location.salahLingers) { _, lingers in
+            if !lingers && !pageIn { withAnimation(.easeOut(duration: 0.3)) { pageIn = true } }
+        }
         .sheet(isPresented: $pickingCity) {
             CityPickerSheet(onPicked: { pickingCity = false })
         }
@@ -591,6 +597,8 @@ struct LostLocationView: View {
     /// exactly on the Salah circle; the ring springs up to its place as the crossed-out symbol blurs in,
     /// then the title, then the reasons and buttons.
     private func warmEntry() async {
+        CircleCover.set("lostWarmEntry", true)      // no qibla buzz under the page fading in
+        defer { CircleCover.set("lostWarmEntry", false) }
         for _ in 0..<25 where groupFrame == nil { try? await Task.sleep(for: .milliseconds(20)) }
         // Only once the app is really on screen (not under iOS's snapshot as it comes back).
         for _ in 0..<60 where UIApplication.shared.applicationState != .active {
@@ -613,11 +621,15 @@ struct LostLocationView: View {
     }
 
     /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then
-    /// the words go, the ring returns to the centre and settles onto the Salah circle, and the page
+    /// the words go while the ring glides straight onto the Salah circle, and as it lands the page
     /// fades from round it — the welcome's own landing. Reduce Motion: the acknowledgement, a fade.
     private func acknowledge() async {
         CircleCover.set("lostHandoff", true)       // no reminders card / qibla buzz under it
         defer { CircleCover.set("lostHandoff", false) }
+        // A comeback can cut a warm entry short: make sure the page, its title and symbol are there.
+        if !pageIn || titleHeld || !symbolIn || entryY != nil {
+            withAnimation(.easeOut(duration: 0.3)) { pageIn = true; titleHeld = false; symbolIn = true; entryY = nil }
+        }
         pickingCity = false
         if stage < 3 { withAnimation(.easeOut(duration: 0.3)) { stage = 3 } }
         // On screen first (Settings → back: the change lands while iOS still shows the snapshot).

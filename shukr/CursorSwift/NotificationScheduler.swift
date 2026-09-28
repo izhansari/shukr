@@ -157,8 +157,11 @@ enum NotificationScheduler {
     }
 
     private static let defaults = UserDefaults.standard
+    /// How many prayer days still ahead get their nudges (halfway, 30 min left); later days get only
+    /// the start until they come this close (Upcoming reminders explains it from this).
+    static let nudgeDaysAhead = 2
     /// Settings → Notifications (standard defaults; unset → `NotificationDefaults`, like every view).
-    private static func settings(_ prayer: String) -> (notify: Bool, nudges: Bool) {
+    static func settings(_ prayer: String) -> (notify: Bool, nudges: Bool) {
         let key = prayer.lowercased()
         let notify = defaults.object(forKey: "\(key)Notif") as? Bool ?? NotificationDefaults.notify(prayer)
         let nudges = defaults.object(forKey: "\(key)Nudges") as? Bool ?? NotificationDefaults.nudges(prayer)
@@ -201,7 +204,7 @@ enum NotificationScheduler {
             guard let dayWindows, let fajr = dayWindows["Fajr"]?.start, fajr < horizon else { continue }
             let stillAhead = dayWindows.values.contains { $0.end > now }
             guard stillAhead else { continue }
-            let withNudges = fullDays < 2
+            let withNudges = fullDays < nudgeDaysAhead
             fullDays += 1
             for name in PrayerNotificationID.prayers {
                 guard let window = dayWindows[name], !done.contains(PrayerNotificationID.dayKey(day) + name) else { continue }

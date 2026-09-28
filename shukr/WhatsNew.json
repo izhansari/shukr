@@ -870,6 +870,12 @@
       "title": "Insights stays whole at the largest text sizes (it stops growing at the biggest standard size)",
       "tryIt": ["iOS Settings → Accessibility → Larger Text → the largest → ☰ → Insights: nothing runs off the page"],
       "checked": "sim", "shots": ["wn-insights-text-cap.jpg"]
+    },
+    {
+      "id": "notifications-7", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "title": "Upcoming reminders as day cards: each day's total, an icon per prayer (and zikr) with how many it has — tap one to see each reminder and when it comes; later days explain that nudges are added two days ahead",
+      "tryIt": ["Settings → Notifications → Upcoming reminders → tap Maghrib on Today → starts · halfway · 30 min left with their times", "Scroll to the first day with only starts → its note, and tap a prayer → when its nudges will be added"],
+      "checked": "sim", "shots": ["wn-upcoming-day-cards.jpg"], "addresses": ["C84220ED-5A63-4E5A-9DB7-1FDC9F906E41"]
     }
   ]
 }

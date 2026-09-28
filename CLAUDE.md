@@ -1233,6 +1233,9 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
     `trackDashed`, and the page fades so the prayer comes in round the same ring.
   - Sim ✓ frame by frame, warm return both ways (the app survives `simctl privacy revoke`), light + dark.
   Insights is capped at `.xxxLarge` (no accessibility sizes; owner).
+  Review fix-ups: `acknowledge()` restores `pageIn` / `titleHeld` / `symbolIn` / `entryY` (a comeback can cut a warm
+  entry short); the warm entry needs `WelcomeTarget.canLand` (not from under the map / a pushed page); `CircleCover`
+  "lostWarmEntry" while it plays; if the linger's fallback ends before the page came in, it comes in at once.
 - **Notification health (owner, 2026-09-28; `CursorSwift/NotificationHealth.swift`):** `NotificationHealth.shared` reads
   `notificationSettings()` (authorization, `scheduledDeliverySetting`, `timeSensitiveSetting`) and
   `backgroundRefreshStatus` on launch and every activation, publishing only changes (nothing in the app group). Issues:
@@ -1277,6 +1280,18 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   **Counts (owner, feedback BF79A0FC):** a sage count badge beside each row's name (1 = start, 2 = + halfway, 3 = + 30 min
   left; zikr / snoozed count theirs), "Today · 10" on each day header (all kinds), and the other times are now a quiet
   caption2 tertiary line.
+  **Style A, day cards (owner's pick from Bradley's canvas, feedback C84220ED):** a ScrollView of cards on the grouped
+  background (22 pt corners). The summary card: ring + "Covers you through …" + the explainer (built from
+  `NotificationScheduler.nudgeDaysAhead`: "…every start for the week and your nudges for the next two days. Open shukr
+  every few days to roll them forward.") + the breakdown tiles. One card per day: title (Today / Tomorrow / weekday),
+  date, the day's total in a sage pill; six icon cells (five prayers + Zikr, + Snoozed when any) with sage count
+  badges, dimmed when empty; tap one → the reveal under the row (one open per card, `open[dayKey]`): "Maghrib · starts
+  · 1:45 PM"…, zikr by task name, today's delivered ones greyed "delivered 5:34 AM". Today's card ends "Next: Maghrib
+  starts 1:45 PM". The first day after today with starts only (some prayer set to nudge) carries "Starts only from
+  here · nudges are added two days ahead"; a starts-only prayer's reveal says "Halfway and 30-min nudges are added on
+  Tue" (the day before it, `nudgesAddedOn`). `NotificationScheduler.settings(_:)` is internal now; the rule is
+  `fullDays < nudgeDaysAhead`. DEBUG `-upcomingOpen <cell> [-upcomingOpenDay N]`. Sim ✓ light / dark, collapsed and
+  open.
   Needs a device: real Summary / Time Sensitive / Background App Refresh settings, a real "denied".
 - **Needs a real device:** the Always upgrade prompt after While Using (and that it only comes once); significant-change
   travel updates, including a background relaunch; the Shortcut alarm with the new description; the deep-link hold after
