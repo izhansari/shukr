@@ -878,19 +878,19 @@
       "checked": "sim", "shots": ["wn-upcoming-day-cards.jpg"], "addresses": ["C84220ED-5A63-4E5A-9DB7-1FDC9F906E41"]
     },
     {
-      "id": "first-run-setup-13", "date": "2026-09-28", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-13", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Location back: the ring settles on the Salah circle and rests there with \"location is on\", then that gives way to the prayer — nothing moves once it has landed",
       "tryIt": ["With shukr open: location Never → back → Settings → Always → back: watch the ring land, pause, then become the prayer's ring"],
       "checked": "sim", "shots": ["wn-location-back-landing.jpg"], "addresses": ["A4D7B736-2143-4D0C-B8A5-91C305C03033"]
     },
     {
-      "id": "insights-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "insights", "notes": null,
+      "id": "insights-6", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "insights", "notes": null,
       "title": "Insights: the range is said once (by the Week / Month / All time switch), and the extra hint under the big ring is gone",
       "tryIt": ["☰ → Insights → 'your average day score', no 'last 30 days' repeated"],
       "checked": "sim", "shots": ["wn-insights-captions.jpg"], "addresses": ["8CCECB8E-B685-48DA-A15B-DA7E53EBE45D"]
     },
     {
-      "id": "widget-next-8", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "id": "widget-next-8", "date": "2026-09-28", "commit": "c4cc44c", "time": "2026-09-28T13:44:37-04:00", "topic": "widget-next", "notes": null,
       "title": "Prayers widget: the ring stays at 60 / 40 (your pick), and the Widget ring position setting is gone",
       "tryIt": ["Settings: no Widget ring position row; the widget's ring sits a little below the middle"],
       "checked": "sim", "addresses": ["43D36031-A250-4AF6-B515-6440871AA9EF"]
