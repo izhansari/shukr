@@ -836,7 +836,7 @@
       "checked": "sim", "shots": ["wn-upcoming-reminders-simple.jpg"], "addresses": ["E37CE0F0-3F12-450D-A025-70B62AA8789A"]
     },
     {
-      "id": "notifications-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "notifications", "notes": null,
+      "id": "notifications-6", "date": "2026-09-28", "commit": "cbc81ba", "time": "2026-09-28T12:25:49-04:00", "topic": "notifications", "notes": null,
       "title": "Upcoming reminders: each prayer shows how many reminders it has that day (1 = the start, 2 = + halfway, 3 = + 30 min left), each day shows its total, and the other times sit quietly underneath",
       "tryIt": ["Settings → Notifications → Upcoming reminders → 'Today · 10', and a small 3 beside Asr"],
       "checked": "sim", "shots": ["wn-upcoming-reminders-counts.jpg"], "addresses": ["BF79A0FC-A598-4C64-8D65-DB65F1F8C379"]
