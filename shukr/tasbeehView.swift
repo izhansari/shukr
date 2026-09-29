@@ -1329,7 +1329,7 @@ struct tasbeehView: View {
 
         private var hapticLabel: String {
             switch currentVibrationMode {
-            case .off: return "taps off"
+            case .off: return "silent"
             case .light: return "light taps"
             case .heavy: return "strong taps"
             default: return "medium taps"

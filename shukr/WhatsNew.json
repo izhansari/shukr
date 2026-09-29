@@ -84,8 +84,8 @@
      "summary": "Insights: how you're scoring first (average day score, and each prayer's ring — its symbol inside — as it usually is when you mark it; tap one for the details), then how consistent you are (streaks, prayed counts, a 14-day grid with dates and a show-scores switch), then whether you're getting better",
      "tryIt": ["☰ → Insights"]},
     {"id": "tasbeeh-haptics", "area": "Zikr", "title": "Tasbeeh haptics", "link": "zikr",
-     "summary": "The counter's haptics: the pause screen's phone chip cycles light → medium → strong → taps off. Off silences every counting haptic (each tap, the count-in-sets ticks, every hundred, −, a Tasbih Fatimah phrase ending, the buzz at the goal); buttons keep theirs",
-     "tryIt": ["Start a tasbeeh → tap to pause → tap the phone chip until it says \"taps off\" → resume and count"]}
+     "summary": "The counter's haptics: the pause screen's phone chip cycles light → medium → strong → silent. Silent turns off every counting haptic (each tap, the count-in-sets ticks, every hundred, −, a Tasbih Fatimah phrase ending, the buzz at the goal); buttons keep theirs",
+     "tryIt": ["Start a tasbeeh → tap to pause → tap the phone chip until it says \"silent\" → resume and count"]}
   ],
   "entries": [
     {
@@ -1161,6 +1161,12 @@
       "title": "The post-salah tasbih pill goes by itself after 15 s: a ring round the beads empties as it counts down, then the pill fades", "headline": "Goes after 15 s, a ring counts down",
       "tryIt": ["Mark a prayer: when the pill comes up, watch the ring round the beads empty; at 0 the pill fades away", "Flick it partway and hold, or go to another app: the ring waits, and you come back to at least 5 s", "Tap it before the ring runs out: the 33 · 33 · 34 starts as before; ✕ still closes it"],
       "checked": "sim", "shots": ["wn-post-salah-timer.jpg"], "asked": "post tasbih Fatima on both the iOS app and the watch app, it persists for way too long. I think we should put like a 15 second timer or something like that and have like a little bar on it or some sort of indicator that shows that timer like depleting. And then after that timer ends, dismiss that prompt. — then: ring is great. make sure its depleting the ring tho, not progressing the ring forward so we know its an expiring countdown..."
+    },
+    {
+      "id": "tasbeeh-haptics-2", "date": "2026-09-29", "commit": "next", "time": null, "topic": "tasbeeh-haptics", "notes": null,
+      "title": "The haptics chip's off state is called \"silent\"", "headline": "Haptics off is now \"silent\"",
+      "tryIt": ["Zikr → start → pause → tap the phone chip to its last state: it says \"silent\""],
+      "checked": "sim", "shots": ["wn-tasbeeh-haptics-silent.jpg"], "asked": "silent"
     }
   ]
 }
