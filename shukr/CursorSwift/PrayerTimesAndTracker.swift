@@ -1197,9 +1197,14 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
-                        // Arranging the Zikr wheel: Reorder (a plain list with drag handles) in the
-                        // free top-right slot (owner, 2026-09-29).
-                        if live.holdForArranging {
+                        // Zikr page, top right: the reminders bell (owner, #27); while the wheel is
+                        // arranging, Reorder (a plain list with drag handles) takes the slot.
+                        if !live.holdForArranging {
+                            ZikrRemindersButton()
+                                .opacity(Double(zikrness))
+                                .allowsHitTesting(zikrness > 0.5)
+                                .transition(.opacity)
+                        } else {
                             Button {
                                 triggerSomeVibration(type: .light)
                                 live.arrangeReorderRequest += 1

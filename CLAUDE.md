@@ -2374,6 +2374,15 @@ edit task sheet's "Name (optional), e.g. After Fajr" field. Widget not looked at
   saved location is logged.
 - Sim ✓: 10 min after Fajr, Saturday off → six pending (Sun–Fri at Fajr + 10); a clock-time
   reminder fired as "Subhanallah · 10 min". Actions not tappable in the sim — untested.
+- **Reminders page (2026-09-29, owner #27):** a bell in the Zikr page's top-right slot (`ZikrRemindersButton`, the History &
+  Azkar button's style, no count — owner; Reorder takes the slot while arranging) opens `ZikrRemindersView`
+  (CursorSwift/ZikrRemindersPage.swift, a sheet): each task with a reminder — the prayer's symbol or a clock on a sage disc,
+  "Astaghfirullah · 33 count", when ("Weekdays at 9:30 PM" / "Every day · 10 min after Fajr"), and the next time
+  ("TOMORROW / 5:47 AM"), soonest first; tap → `TaskReminderSheet`, swipe → "Remove reminder" (the task stays); both save
+  and `NotificationScheduler.reschedule`. Tasks without one are listed quietly below ("+ Add"). The next time comes from
+  `ZikrReminders.fires` — the scheduler's own rule (days, prayer ± offset, not today once done), shared with `items()`.
+  DEBUG `-demoZikrReminders` (opens it, with -demoZikrPage), `-demoZikrRemindersSeed` (three sample reminders). Sim ✓
+  light + dark, edit → Off, swipe → remove.
 
 **Prayer notification scheduling — `NotificationScheduler`** (CursorSwift/NotificationScheduler.swift,
 2026-09-27, notes #10). Everything scheduled goes through it; it owns iOS's 64-pending budget.

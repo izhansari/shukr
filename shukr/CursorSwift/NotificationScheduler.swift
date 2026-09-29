@@ -198,7 +198,8 @@ enum NotificationScheduler {
     }
 
     /// Prayer windows for the prayer day starting on `day`'s calendar date.
-    private static func windows(for day: Date) -> [String: (start: Date, end: Date, window: TimeInterval)]? {
+    /// A day's prayer windows from the saved location (also the reminders page's "next" times).
+    static func windows(for day: Date) -> [String: (start: Date, end: Date, window: TimeInterval)]? {
         guard let coordinates = try? PrayerUtils.getUserCoordinates() else { return nil }
         let params = PrayerUtils.getCalculationParameters()
         guard let times = try? PrayerUtils.getPrayerTimes(for: day, coordinates: coordinates, params: params) else { return nil }
