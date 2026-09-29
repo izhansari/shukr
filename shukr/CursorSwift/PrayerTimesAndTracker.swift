@@ -1077,7 +1077,9 @@ struct PrayerTimesView: View {
                         // The menu is a popover (a native Menu can't show the wordmark):
                         // "shukr" on top like the old sidebar, then the destinations.
                         ZStack {
-                        // Zikr page: History & Mantras (one page) instead of the hamburger.
+                        // Zikr page: History & Mantras (one page) instead of the hamburger. While
+                        // the wheel is arranging, Done takes its place (owner, 2026-09-29: in the
+                        // chrome, so nothing on the page moves when jiggling starts or ends).
                         Button {
                             triggerSomeVibration(type: .light)
                             showZikrHistory = true
@@ -1090,9 +1092,33 @@ struct PrayerTimesView: View {
                                 .padding()
                                 .contentShape(Rectangle())
                         }
-                        .opacity(Double(zikrness))
-                        .allowsHitTesting(zikrness > 0.5)
+                        .opacity(live.holdForArranging ? 0 : Double(zikrness))
+                        .allowsHitTesting(zikrness > 0.5 && !live.holdForArranging)
                         .accessibilityLabel("Zikr history and azkar")
+                        .overlay(alignment: .leading) {
+                            if live.holdForArranging {
+                                Button {
+                                    triggerSomeVibration(type: .light)
+                                    live.arrangeDoneRequest += 1
+                                } label: {
+                                    Text("Done")
+                                        .font(.subheadline.weight(.semibold))
+                                        .fontDesign(.rounded)
+                                        .foregroundStyle(Color.sage)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 7)
+                                        .background(Capsule().fill(Color.sage.opacity(0.16)))
+                                        .fixedSize()
+                                        .padding(.leading, 12)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .opacity(Double(zikrness))
+                                .allowsHitTesting(zikrness > 0.5)
+                                .transition(.opacity)
+                            }
+                        }
+                        .animation(.easeInOut(duration: 0.2), value: live.holdForArranging)
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
@@ -2020,6 +2046,9 @@ struct ChevronTap2: View {
     /// The Zikr page is arranging its task circles (home-screen jiggle): the pager stays put so
     /// sideways drags move circles. Separate from `pagerLocked`, which releases on every lift.
     var holdForArranging = false
+    /// Bumped by the chrome's Done (in the History & Azkar button's place while arranging): the
+    /// Zikr wheel stops arranging.
+    var arrangeDoneRequest = 0
     /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
     var scrollProgress: CGFloat = 1
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it

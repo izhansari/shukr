@@ -989,6 +989,13 @@ memo requests in). **No schema change** in any round — the watch keeps its own
 - The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
   the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
   (WidgetKit can render future entries ahead of time).
+- **Widget ring track (2026-09-29, feedback BB277A98):** the live arc is the app's thin arc masked by the stock
+  `ProgressView(timerInterval:)`, whose unfilled track is ~30 % alpha — so the score colour showed round the whole track
+  (at ~9 % with fa63e22's double mask, ~30 % once 8a6f160 went to one mask). `LiveArc.liveRing` now thresholds the mask:
+  white on black, `compositingGroup` → brightness −0.35 → contrast ×3 → `luminanceToAlpha`, so the track passes nothing
+  and the fill everything. Sim ✓ on a real home-screen widget (London location + `-demoWidget "Fajr=1.0,Dhuhr=0.8"` for a
+  live Asr): plain track light / dark, the fill still advances, a tap's reload dips about as before. The DEBUG widget
+  shots draw a static arc (`snapshotAt`), so they can't show the live mask — check it on a placed widget.
 - **Prayers widget, current (2026-09-28, Sami, ee0da02, feedback D56CB3C2):** no dots row (`PrayerDotsRow` deleted); the
   mark-prayed check top left, top right empty; `WidgetChevronButton` (chevron.up in a faint 22 pt circle, 30 pt target)
   between the Edit Widget bottom corners opens today's times, and chevron.down in the same spot goes back (the list's top
@@ -1225,6 +1232,19 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
 - **Review:** every choice as a row (tap = that step), the sell lines, and orange never-blocking `Nudge`s: no location · "Set
   up"; a city but location refused · allow; While Using · "Turn on Always" (app Settings); reduced accuracy · precise;
   notifications off · notification Settings; not asked · "Allow".
+- **The opening page (2026-09-29, owner: "I like the old style for its gradient and the soft movement … one new page at
+  the start of onboarding, and nowhere else"):** `SetupOpening` (FirstRunSetup.swift), before the welcome step on a new
+  install and Run setup again (`FirstRunSetupView.opening`; not `.locationOnly`, not the lost page, not the everyday
+  launch). The old GradientAnimationLoad's look (removed in 9fce309; last built at f63737c): `AnimatedWavyGradient` + a
+  pulsing `NoiseOverlay` and the glass circle, one piece at a time — 0.6 s blank, gradient in (1.4 s), circle, "welcome
+  to shukr", "tap to continue". A tap: circle / words out (0.45 s), then the gradient drains over 1.4 s still moving, then
+  `finishOpening` mounts the steps and brings them in 0.35 s apart via `\.setupReveal` (ring 1 · title 2 · rows 3 ·
+  button 4; `StepScaffold` reads it, default 4 = all). The ring / Skip aren't mounted during the opening. Readability:
+  white text one weight up from the original's thin, with dark shadows ("tap to continue" medium + a two-layer halo —
+  plain white vanished on light mode's mint); owner OK'd as is. Reduce Motion: `AnimatedWavyGradient(still: true)`,
+  plain fades (not tried in the sim). DEBUG `-setupStep opening`, `-setupOpeningTap <s>` (taps by itself). The old
+  notification / location gate is NOT back. The white frame before a dark-mode launch is the generated launch screen
+  following the system appearance (queued separately).
 - **Editing from the review (2026-09-29, owner: "we shouldn't have to go through the whole flow again"):** a review row
   sets `FirstRunSetupView.editing` and opens its step; `advance(to:)` goes back to the review after `lastEditedStep` (the
   step itself; "Prayer times" = method, then madhab — the row covers both). Location returns straight away (an Automatic
@@ -2271,6 +2291,10 @@ suck").** The track (`CircleTrack`, PrayerCompletionFX.swift) *is* the state:
   at full width. The start also gives one soft haptic (`playStartMoment`, on "Asr|next" →
   "Asr|now" with the same on-screen guards). The fade / draw / glow looks and their picker are gone.
 - The welcome lands as the dashed ring when `WelcomeTarget.trackDashed` (set by `settleTrack`).
+  Fixed 2026-09-29 (feedback 6F3BCE52, "didn't extend to the edges properly"): the dashes used to appear at full size the
+  moment the ring started to grow, while the ring faded out inside them (two rings, no landing). Now the ring grows to
+  200 pt as a thin line in the dashed track's grey and width, then breaks into the dashes (`dashesIn`, 0.3 s) before the
+  page fades in. Solid-track landings unchanged. Same `WelcomeOverlay` for the setup's Bismillah and the everyday launch.
 - Prayers widget: the dashed track (no inner ring) for a prayer that hasn't started, no animation.
 - An upcoming prayer's progress is 0 (it was 1 in a clear colour and sprang from full to empty).
 - **Preview** (DEBUG, Settings → My Dev Stuff → Preview prayer begins): `PrayerStartPreview.request`
@@ -2419,7 +2443,7 @@ the top-right play button are hidden while paused; tapping the dimmed background
 `tasbeehView.sessionMantra` = `mantraForSession`, else `MantraModel.find(named:)` on the title.
 **Haptics off (2026-09-29, owner: "a setting to turn haptics off … counter only"):** the pause screen's phone chip
 (`currentVibrationMode`, standard defaults, raw values "Light" / "Medium" / "Heavy" / "" = off — unchanged) cycles light →
-medium → strong → "silent" (the phone alone, waves hidden; "taps off" for one build — owner picked "silent"). `tasbeehView.countingHapticsOff` gates every counting haptic:
+medium → strong → "silent" (the phone alone, waves hidden; "taps off" for one build — owner picked "silent"); a change only steps the lit waves (no `.variableColor` ripple — A1399C45). `tasbeehView.countingHapticsOff` gates every counting haptic:
 each tap (already), the count-in-sets triple tick, every hundred, −, Tasbih Fatimah's phrase switch, the stop buzz (goal /
 auto-stop / Finish's second buzz). Buttons keep theirs (pause, Finish's own tap, +N, chips, tiles) and so does the
 session-start buzz; nothing outside the tasbeeh reads the key. No Settings picker (`VibrationModeToggleButton` in Utils is
@@ -2485,19 +2509,22 @@ sample text if it has none — simulator only).
 tasks were squeezed into a 260 pt strip): a vertical `ScrollView` of 250 pt rows, `.viewAligned`
 one at a time, `scrollPosition(id:)` on string ids ("freestyle", task uuid, "add"), content
 margins that centre the current one; `scrollTransition` shrinks (×0.78) and fades (×0.45) the
-others — the strip's effect on its side. Freestyle circle first, then tasks (user order, done
-today moved to the end) with today's progress as the glowing ring and "12 of 33" / "done
+others — the strip's effect on its side. Freestyle circle first, then tasks (user order — a task done
+today keeps its place since 2026-09-29, owner) with today's progress as the glowing ring and "12 of 33" / "done
 today", then a dashed "New task". Tap = bring to centre, tap the centre one = start; long-press
-a task → **arranging** (home-screen style, owner): the wheel fades out for a 3-column grid of
-small jiggling circles (`phaseAnimator` wobble) with − badges (delete, alert); hold one 0.2 s and
-drag — it lifts and follows the finger, the others move aside (a custom LongPress→Drag in the
-grid's "arrange" coordinate space, slot = 3 columns × 134 pt rows; `onDrag`/`onDrop` was tried
-first but simulated touches never start a system drag, so it couldn't be tested); order saved
-as it changes; tap a circle → Edit goal; Done or a tap between circles leaves. While arranging
-the pager is held (`PagerLiveState.holdForArranging`, separate from `pagerLocked`, which the
-pager gesture clears on every lift); leaving the page (the bottom bar still works) ends
-arranging — it used to leave the pager held and the Salah page frozen. The top-right chrome
-slot is free again. The focused
+a task → **arranging, in place** (2026-09-29, owner #26 — the old 3-column grid lost his place and is gone): the
+wheel's own task circles wobble (`Wobble`, `phaseAnimator`; Reduce Motion: a sage outline) with − badges (delete, alert);
+freestyle / New task don't. Hold one 0.2 s and drag (LongPress→Drag in the ScrollView's "wheel" space; the scroll is
+disabled while a task is lifted): it follows the finger on the arc (`liftedCircle`, `wheelLook` = WheelFalloff's maths),
+the circles between where it was and where it'd land shift a slot (`roomShift` → `WheelFalloff(shift:)`, so they take the
+slot's size / arc / tilt — an `.offset` before the falloff isn't seen by its `visualEffect`), near the top / bottom edge
+the wheel moves a slot every 0.45 s, and a **second finger** moves it too (`SecondFingerPan`, a never-recognising
+`UIGestureRecognizerRepresentable`: the finger that touched first is the drag, else whichever moves first; a slot per
+~200 pt). On drop the order moves with animations off and `centered` = the same slot, so the wheel doesn't jump; sortOrder
+saved. Tap a circle → edit the task; a tap beside the circles or **Done** leaves. Done is in the chrome, in the History &
+Azkar button's place (`PagerLiveState.holdForArranging` shows it, `arrangeDoneRequest` asks the wheel to stop), and the
+summary line crossfades to "drag to reorder · tap to edit" — nothing on the page moves (owner: the focused circle stays put
+like the Salah ring). While arranging the pager is held (`holdForArranging`); leaving the page ends arranging. The focused
 circle sits at the screen's centre, not the page's (the whole wheel is offset up by the
 difference, `screenCentreShift` — asymmetric content margins don't move scroll snapping). Dots down the **left** edge (owner), sage for done tasks, double as a scrubber: a
 finger on them drags through the circles (14 pt per dot) with a pill naming the current one —
@@ -2590,7 +2617,8 @@ DEBUG `-demoPostSalahOffer` shows the pill.
 `PostSalahNudge.lifetime` 15 s, shown as a sage ring round the beads that starts full and empties toward 12 o'clock (the
 owner picked it over a line along the pill's bottom: "depleting the ring … not progressing the ring forward"). A `.task`
 loop (30 Hz, the pill's own state only) counts only while it can be seen and isn't held: `shown` from the chrome
-(zikrness / settingsness < 0.5), the scene active, `WelcomeTarget.canLand`, `CircleCover.active` empty, and not mid-flick
+(zikrness / settingsness < 0.5), the scene active, `WelcomeTarget.canLand`, `CircleCover.active` empty except
+`PostSalahNudge.seeThroughCovers` (the ☰ popover — the pill stays in sight; owner, 71800F94), and not mid-flick
 (`FlickAway(onHold:)`). Coming back after it was hidden: at least `comebackMinimum` (5 s) left. At 0 it fades in place
 (0.4 s) and `onDismiss` runs without animation, like a flick. The loop mirrors `shown` / the scene phase into @State (a
 task holds a copy of self). DEBUG `-postSalahTimerFreeze <seconds>` holds it at that point. Sim ✓: drains and fades at

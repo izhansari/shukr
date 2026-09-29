@@ -320,7 +320,8 @@ enum WhatsNew {
         let d = UserDefaults.standard
         let closed = Set(d.stringArray(forKey: "whatsNew.asked.closed") ?? [])
         let reopened = Set(d.stringArray(forKey: "whatsNew.asked.reopened") ?? [])
-        let items = FeedbackStore.shared.items
+        // v3's notes only (a v4 answer names its change and is counted by `status(of:)` itself).
+        let items = FeedbackStore.shared.items.filter { $0.onEntry == nil }
         // A phone that never used What's new (a fresh install): everything asked so far is history, not
         // a to-do list — only asks built after this launch come up.
         let fresh = items.isEmpty && closed.isEmpty && reopened.isEmpty && d.object(forKey: "whatsNew.acked") == nil

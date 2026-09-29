@@ -383,6 +383,10 @@ struct PostSalahNudge: View {
 
     static let lifetime: Double = 15
     static let comebackMinimum: Double = 5
+    /// `CircleCover` keys that leave the pill in plain sight, so the clock keeps going and there's no
+    /// comeback top-up: the ☰ popover (owner, 71800F94: "ignore 5second rule when clicking on the
+    /// hamburger … the pill is still in users sight"). Sheets, alerts and full-screen pages still pause it.
+    static let seeThroughCovers: Set<String> = ["menu"]
 
     @State private var pressed = false
     @State private var elapsed: Double = 0
@@ -474,7 +478,8 @@ struct PostSalahNudge: View {
             // one tick and skip the comeback minimum.
             let dt = min(now.timeIntervalSince(last), 0.1)
             last = now
-            let visible = hostShown && appActive && WelcomeTarget.canLand && CircleCover.active.isEmpty
+            let visible = hostShown && appActive && WelcomeTarget.canLand
+                && CircleCover.active.subtracting(Self.seeThroughCovers).isEmpty
             if visible && !wasVisible {
                 elapsed = min(elapsed, Self.lifetime - Self.comebackMinimum)   // back: a moment to see it
             }
