@@ -37,6 +37,50 @@ struct AboveSheet<Content: View>: View {
     }
 }
 
+#if DEBUG
+/// DEBUG `-logMapFrames YES`: the latest on-screen frame of the sheet and its header parts, printed
+/// once things have settled ("MAPFRAME <name> …"), to measure the sheet's alignment.
+enum MapFrameLog {
+    static var frames: [String: CGRect] = [:]
+    static func dump() {
+        for (name, r) in frames.sorted(by: { $0.key < $1.key }) {
+            print(String(format: "MAPFRAME %@ minY=%.1f maxY=%.1f midY=%.1f minX=%.1f maxX=%.1f", name, r.minY, r.maxY, r.midY, r.minX, r.maxX))
+        }
+    }
+}
+#endif
+
+extension View {
+    @ViewBuilder func debugMapFrame(_ name: String) -> some View {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "logMapFrames") {
+            // In the sheet's own space: global frames go stale while UIKit moves the sheet.
+            self.onGeometryChange(for: CGRect.self) { $0.frame(in: .named("mapSheet")) } action: { MapFrameLog.frames[name] = $0 }
+        } else { self }
+        #else
+        self
+        #endif
+    }
+}
+
+/// The sheet is at its small height (set by the map on the whole sheet).
+extension EnvironmentValues {
+    @Entry var mapSheetCollapsed = false
+}
+
+/// The small sheet, for every page in it (owner, map-one-sheet: the prayer bar sat off-centre
+/// while the mosques' looked right): the page's own header, alone, centred in the sheet — never
+/// the list scrolled to its top. One view for every layer and page, so they can't drift apart.
+struct MapSheetCollapsed<Header: View>: View {
+    @ViewBuilder var header: Header
+    var body: some View {
+        header
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .debugMapFrame("collapsed")
+    }
+}
+
 /// One header for every page in the map's sheet (prayer spots, a cluster, a prayer, mosques, a
 /// mosque — owner: "ideally all sheets share the same header look"): an optional ‹ on the left,
 /// the title in the app's light rounded type with one quiet line under it, the page's own
@@ -68,9 +112,12 @@ struct MapSheetHeader<Leading: View, Trailing: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .debugMapFrame("text")
             trailing
+                .debugMapFrame("trailing")
             if let close {
                 MapSheetCircleButton(symbol: "xmark", label: "Back to the qibla", action: close)
+                    .debugMapFrame("close")
             }
         }
     }
@@ -267,7 +314,21 @@ struct PrayerSpotsHome: View {
         .buttonStyle(.plain)
     }
 
+    private var header: some View {
+        MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close) {
+            PrayerFilterMenu(viewModel: viewModel, custom: custom)
+        }
+    }
+
     var body: some View {
+        if collapsed {
+            MapSheetCollapsed { header }
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 // The scroll-to-top target sits above the padding: scrolling the header itself to the
@@ -275,9 +336,7 @@ struct PrayerSpotsHome: View {
                 // empty band under it (owner, map-one-sheet — the mosques' bar was fine).
                 Color.clear.frame(height: 0).id("top")
                 VStack(alignment: .leading, spacing: 14) {
-                    MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close) {
-                        PrayerFilterMenu(viewModel: viewModel, custom: custom)
-                    }
+                    header
                     Group {
                     if days.isEmpty {
                         Text(viewModel.prayers.isEmpty
@@ -293,18 +352,10 @@ struct PrayerSpotsHome: View {
                         daySection(day.date, day.prayers)
                     }
                     }
-                    // Small is the header alone, nothing peeking under it (owner, map-one-sheet).
-                    .opacity(collapsed ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: collapsed)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
                 .padding(.bottom, 30)
-            }
-            // Small: just the header, never rows sliding under it (as the mosques' sheet).
-            .scrollDisabled(collapsed)
-            .onChange(of: collapsed) { _, small in
-                if small { withAnimation { proxy.scrollTo("top", anchor: .top) } }
             }
         }
         .fontDesign(.rounded)

@@ -223,7 +223,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 **Map & qibla** (LocationMapView2.swift, MapModes.swift)
 - Opens qibla-up (`pointQiblaUp`), free rotation, the compass ring on the dot (`MapAnchor`), a heavy buzz each second while aligned, `MapNorthButton` home.
 - **One sheet (map-one-sheet, 2026-09-29, `MapLayerSheet.swift`):** up while prayer spots or mosques are on
-  (`interactiveDismissDisabled`), detents small 84 (the header alone — nothing peeks under it) / medium / large on `sheetDetent`, the user's height kept; content by
+  (`interactiveDismissDisabled`), detents small 84 / medium / large; small = every page's header alone in the one shared
+  `MapSheetCollapsed` (centred; env `mapSheetCollapsed`) — never the list scrolled to its top (it drifted off-centre) on `sheetDetent`, the user's height kept; content by
   state — mosques: list or `mosquePath.last`'s page; prayers: `PrayerSpotsHome` (the prayers in view; the filter is `PrayerFilterMenu` on the header's right, like drive / walk) or
   `selection`'s page (a cluster's list ⇄ a prayer, in place). A pin tap cross-fades (`pageSwap`, `.layerPage`); ‹ back
   to the list. Every page wears `MapSheetHeader` (‹ · title / subtitle · accessories · ✕ = back to the qibla; a prayer's own page
@@ -233,7 +234,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Explore (Prayers · Mosques — no Qibla: it's home; the lit layer again or ✕ goes back) sits under the globe / locate
   capsule and opens downwards (DEBUG `-demoExploreOpen YES`); the ? is bottom right. DEBUG `-demoPrayerPins`, `-demoMapLayer prayers|mosques [-demoMapDetent small]
   [-demoMapTour YES]` (pin → pin → back), `-demoMapEdit YES` (with prayers: Edit → time → Change location → Done → Save
-  → Undo ×2, logs "MAPEDIT" with the sheet's height). Test the map on an iOS 27 sim.
+  → Undo ×2, logs "MAPEDIT" with the sheet's height), `-logMapFrames YES` (with `-demoMapDetent`: the header parts' frames in
+  the sheet's own space — global frames go stale while UIKit moves a sheet). Test the map on an iOS 27 sim.
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
 - Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).

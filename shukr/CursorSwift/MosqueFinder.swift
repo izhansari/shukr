@@ -312,6 +312,14 @@ struct MosqueListSheet: View {
     }
 
     var body: some View {
+        if collapsed {
+            MapSheetCollapsed { header }
+        } else {
+            listBody
+        }
+    }
+
+    @ViewBuilder private var listBody: some View {
         let list = others
         let mine = favorites
         let muted = hidden
@@ -396,9 +404,6 @@ struct MosqueListSheet: View {
                         .padding(.leading, 4)
                 }
                 }
-                // Small is the header alone, nothing peeking under it (as the prayer spots').
-                .opacity(collapsed ? 0 : 1)
-                .animation(.easeInOut(duration: 0.2), value: collapsed)
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)
@@ -406,10 +411,6 @@ struct MosqueListSheet: View {
             .scrollTargetLayout()
         }
         .scrollPosition(id: $scrollTop, anchor: .top)
-        .scrollDisabled(collapsed)
-        .onChange(of: collapsed) { _, now in
-            if now { withAnimation(.snappy) { scrollTop = "top" } }
-        }
         .task(id: "\(travelRaw)|\(hiddenRevision)|\(items.count)") { await loadETAs(list) }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in hiddenRevision += 1 }
     }
@@ -614,21 +615,49 @@ struct MosqueSheet: View {
         return parts.isEmpty ? nil : parts.joined(separator: ", ")
     }
 
+    @Environment(\.mapSheetCollapsed) private var collapsed
+
+    /// The map sheet's shared header: ‹, name, address, ☆ (My masajid), ✕.
+    private var header: some View {
+        MapSheetHeader(back: back, title: item.name ?? "Mosque", subtitle: address, close: close) {
+            MapSheetCircleButton(symbol: favorite ? "star.fill" : "star",
+                                 label: favorite ? "Remove from My masajid" : "Add to My masajid",
+                                 tint: favorite ? Color.green : Color.secondary,
+                                 fill: favorite ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)) {
+                triggerSomeVibration(type: favorite ? .light : .success)
+                favorite.toggle()
+                MosqueFavorites.setFavorite(item, favorite)
+                if favorite { hiddenHere = false }
+            }
+        }
+    }
+
     var body: some View {
+        ZStack {
+            if collapsed {
+                MapSheetCollapsed { header }
+            } else {
+                page
+            }
+        }
+        .fontDesign(.rounded)
+        .task(id: mode) { await loadDrive() }
+        .task { await loadScene() }
+        .onAppear {
+            hiddenHere = MosqueHiding.isHidden(item)
+            favorite = MosqueFavorites.isFavorite(item)
+        }
+        .mapItemDetailSheet(item: $placeCard)
+        .sheet(item: Binding(get: { website.map { IdentifiedURL(url: $0) } }, set: { website = $0?.url })) {
+            SafariView(url: $0.url).ignoresSafeArea()
+        }
+    }
+
+    /// The full page (medium / large): the header, then travel, Look Around, actions.
+    private var page: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // The map sheet's shared header: ‹, name, address, ☆ (My masajid), ✕.
-                MapSheetHeader(back: back, title: item.name ?? "Mosque", subtitle: address, close: close) {
-                    MapSheetCircleButton(symbol: favorite ? "star.fill" : "star",
-                                         label: favorite ? "Remove from My masajid" : "Add to My masajid",
-                                         tint: favorite ? Color.green : Color.secondary,
-                                         fill: favorite ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)) {
-                        triggerSomeVibration(type: favorite ? .light : .success)
-                        favorite.toggle()
-                        MosqueFavorites.setFavorite(item, favorite)
-                        if favorite { hiddenHere = false }
-                    }
-                }
+                header
 
                 // How far — by car or on foot; tap to switch.
                 Button {
@@ -725,17 +754,6 @@ struct MosqueSheet: View {
                 .buttonStyle(.plain)
             }
             .padding(20)
-        }
-        .fontDesign(.rounded)
-        .task(id: mode) { await loadDrive() }
-        .task { await loadScene() }
-        .onAppear {
-            hiddenHere = MosqueHiding.isHidden(item)
-            favorite = MosqueFavorites.isFavorite(item)
-        }
-        .mapItemDetailSheet(item: $placeCard)
-        .sheet(item: Binding(get: { website.map { IdentifiedURL(url: $0) } }, set: { website = $0?.url })) {
-            SafariView(url: $0.url).ignoresSafeArea()
         }
     }
 

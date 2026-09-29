@@ -1320,7 +1320,10 @@ struct LocationMapContentView: View {
         // (small is its header), its pages swapping in place.
         .sheet(isPresented: Binding(get: { layerSheetUp }, set: { _ in })) {
             layerSheet
+                .environment(\.mapSheetCollapsed, sheetSmall && viewModel.spotMode == .browse)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.sheet.height = $0 }
+                .debugMapFrame("sheet")
+                .coordinateSpace(.named("mapSheet"))
                 .onDisappear { viewModel.sheet.height = 0 }
                 .presentationDetents(viewModel.spotDetents, selection: $viewModel.sheetDetent)
                 .presentationDragIndicator(viewModel.spotMode == .browse ? .visible : .hidden)
@@ -1391,6 +1394,11 @@ struct LocationMapContentView: View {
                 if let d = UserDefaults.standard.string(forKey: "demoMapDetent") {
                     try? await Task.sleep(for: .seconds(1))
                     viewModel.sheetDetent = d == "small" ? LocationViewModel.sheetSmall : d == "large" ? .large : .medium
+                    if UserDefaults.standard.bool(forKey: "logMapFrames") {
+                        try? await Task.sleep(for: .seconds(4))
+                        print("MAPFRAME safe bottom=\(viewModel.mapView?.safeAreaInsets.bottom ?? -1) screen=\(UIScreen.main.bounds.height)")
+                        MapFrameLog.dump()
+                    }
                 }
                 // `-demoMapTour YES`: a pin, another pin, back to the list, 3 s apart (a recording
                 // of the one sheet — simulated taps can't reach map pins everywhere).
@@ -2108,6 +2116,8 @@ struct PrayerSpotSheet: View {
                 PrayerSpotDetail(prayer: opened, selection: selection, viewModel: viewModel,
                                  back: { withAnimation(LocationViewModel.pageSwap) { self.opened = nil } }, close: close)
                     .transition(.layerPage)
+            } else if collapsed {
+                MapSheetCollapsed { clusterHeader }
             } else {
                 clusterList
                     .transition(.layerPage)
@@ -2117,12 +2127,17 @@ struct PrayerSpotSheet: View {
         .task(id: selection.id) { await loadAddress() }
     }
 
+    @Environment(\.mapSheetCollapsed) private var collapsed
+    private var clusterHeader: some View {
+        MapSheetHeader(back: { viewModel.closeSpot() }, title: "\(prayers.count) prayers here",
+                       subtitle: address ?? "Locating…", close: close)
+    }
+
     private var clusterList: some View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    MapSheetHeader(back: { viewModel.closeSpot() }, title: "\(prayers.count) prayers here",
-                                   subtitle: address ?? "Locating…", close: close)
+                    clusterHeader
                         .padding(.bottom, 4)
                     Text(countsLine)
                         .font(.subheadline)
@@ -2224,10 +2239,46 @@ struct PrayerSpotDetail: View {
             .formatted(.measurement(width: .abbreviated, usage: .road, numberFormatStyle: .number.precision(.significantDigits(1...2))))
     }
 
+    @Environment(\.mapSheetCollapsed) private var collapsed
+
     var body: some View {
-        // One column at its natural height; the sheet is always exactly that tall
-        // (`setPageHeight`), so whatever unfolds in it — the wheel, the address card — grows the
-        // sheet with it in the same spring.
+        ZStack {
+            if collapsed && !editing {
+                MapSheetCollapsed { header }
+            } else {
+                column
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .fontDesign(.rounded)
+        // The page keeps the user's height (the one sheet); its pin is lifted out and centred above it.
+        .onAppear {
+            viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
+        }
+        // Back from picking: the prayer's own pin returns, centred again.
+        .onChange(of: viewModel.spotMode) { old, mode in
+            if old == .pickSpot, mode != .pickSpot { viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction) }
+        }
+        .onDisappear {
+            viewModel.clearFocus(prayer)
+            if editing { viewModel.setSpotMode(.browse) }
+        }
+        .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
+            if let spot { address = await PrayerSpotAddress.lookUp(spot) }
+        }
+        .task(id: draftSpot.map { "\($0.latitude),\($0.longitude)" }) {
+            draftAddress = nil
+            if let draftSpot { draftAddress = await PrayerSpotAddress.lookUp(draftSpot) }
+        }
+        #if DEBUG
+        .task { await demoEdit() }
+        #endif
+    }
+
+    /// One column at its natural height; while editing the sheet is exactly that tall
+    /// (`setPageHeight`), so whatever unfolds in it — the wheel, the address card — grows the
+    /// sheet with it in the same spring.
+    private var column: some View {
         VStack(alignment: .leading, spacing: 0) {
             if picking {
                 // Picking a spot: the card; the map above is the picker.
@@ -2275,30 +2326,6 @@ struct PrayerSpotDetail: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.setPageHeight($0) }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .fontDesign(.rounded)
-        // The page keeps the user's height (the one sheet); its pin is lifted out and centred above it.
-        .onAppear {
-            viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
-        }
-        // Back from picking: the prayer's own pin returns, centred again.
-        .onChange(of: viewModel.spotMode) { old, mode in
-            if old == .pickSpot, mode != .pickSpot { viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction) }
-        }
-        .onDisappear {
-            viewModel.clearFocus(prayer)
-            if editing { viewModel.setSpotMode(.browse) }
-        }
-        .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
-            if let spot { address = await PrayerSpotAddress.lookUp(spot) }
-        }
-        .task(id: draftSpot.map { "\($0.latitude),\($0.longitude)" }) {
-            draftAddress = nil
-            if let draftSpot { draftAddress = await PrayerSpotAddress.lookUp(draftSpot) }
-        }
-        #if DEBUG
-        .task { await demoEdit() }
-        #endif
     }
 
     #if DEBUG
