@@ -69,6 +69,7 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                          "count": 0, "seconds": 0.0, "step": 0],
                     ],
                     "zikrSessions": [String](), "freestyleStep": 0, "postSalahPace": 0.7,
+                    "azkar": ["Bismillah", "Alhamdulillah", "Allahu Akbar", "Astaghfirullah", "Subhanallah"],
                 ])
             } }
         }

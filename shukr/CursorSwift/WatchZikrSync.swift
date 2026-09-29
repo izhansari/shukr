@@ -141,9 +141,19 @@ enum WatchZikrSync {
             // Your masajid, so a Friday Dhuhr marked on the watch at one is Jumu'ah there too.
             "masajid": MosqueFavorites.all.map { [$0.name, String($0.latitude), String($0.longitude)] },
             "freestyleStep": QuickAddSteps.step(for: nil),
+            // Your azkar for the watch's Freestyle picker: yours A–Z, then the built-ins (the phone's order).
+            "azkar": azkarNames(context),
             // Tasbih Fatimah's usual pace (the post-salah session has no task).
             "postSalahPace": MantraModel.find(named: PostSalahTasbeeh.mantraName, in: context).flatMap(usualPace) ?? 0,
         ]
+    }
+
+    /// The zikr names the watch can pick for Freestyle (a session there saves under the name).
+    private static func azkarNames(_ context: ModelContext) -> [String] {
+        let all = (try? context.fetch(FetchDescriptor<MantraModel>())) ?? []
+        let own = all.filter { !$0.isBuiltIn }.map(\.name).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let builtIn = all.filter(\.isBuiltIn).map(\.name).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        return Array((own + builtIn).filter { !$0.isEmpty && $0 != PostSalahTasbeeh.mantraName }.prefix(80))
     }
 
     /// `MantraModel.secondsPerCount`, rounded to 0.01 s so the context only changes when it really does.

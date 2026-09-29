@@ -131,6 +131,7 @@ final class WatchZikrStore: ObservableObject {
         static let freestyleStep = "watch.zikr.freestyleStep", pending = "watch.zikr.pending"
         static let memos = "watch.zikr.memos", hasData = "watch.zikr.hasData"
         static let draft = "watch.zikr.draft", postSalahPace = "watch.zikr.postSalahPace"
+        static let azkar = "watch.zikr.azkar", freestylePick = "watch.zikr.freestylePick"
     }
     private var d: UserDefaults { WatchStore.defaults }
 
@@ -146,6 +147,7 @@ final class WatchZikrStore: ObservableObject {
         d.set(context["zikrSessions"] as? [String] ?? [], forKey: Key.sessions)
         d.set(context["freestyleStep"] as? Int ?? 0, forKey: Key.freestyleStep)
         d.set(context["postSalahPace"] as? Double ?? 0, forKey: Key.postSalahPace)
+        if let azkar = context["azkar"] as? [String] { d.set(azkar, forKey: Key.azkar) }
         dropConfirmed()
         bump()
         return true
@@ -154,6 +156,13 @@ final class WatchZikrStore: ObservableObject {
     /// Has the phone ever sent its tasks?
     var hasData: Bool { d.bool(forKey: Key.hasData) }
     var freestyleStep: Int { d.integer(forKey: Key.freestyleStep) }
+    /// Your azkar from the phone, for the Freestyle picker.
+    var azkar: [String] { d.stringArray(forKey: Key.azkar) ?? [] }
+    /// The zikr Freestyle counts under (the last pick; nil = just count).
+    var freestylePick: String? {
+        get { d.string(forKey: Key.freestylePick).flatMap { $0.isEmpty ? nil : $0 } }
+        set { d.set(newValue ?? "", forKey: Key.freestylePick); bump() }
+    }
     /// Tasbih Fatimah's usual seconds per count (nil until the phone has one).
     var postSalahPace: Double? { let v = d.double(forKey: Key.postSalahPace); return v > 0 ? v : nil }
 
@@ -444,6 +453,9 @@ struct WatchZikrFace: View {
     let subtitle: String
     let fraction: Double
     var done = false
+    /// Freestyle: the zikr it counts under, as a small chip inside the circle (tap → pick one);
+    /// the rest of the circle still starts counting in one tap.
+    var pick: (label: String, chosen: Bool, action: () -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -478,6 +490,22 @@ struct WatchZikrFace: View {
                 }
                 .font(.system(size: 11, weight: .thin, design: .rounded))
                 .foregroundStyle(done ? Color.watchSage : .secondary)
+                if let pick {
+                    Button(action: pick.action) {
+                        HStack(spacing: 2) {
+                            Text(pick.label).lineLimit(1).minimumScaleFactor(0.8)
+                            Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
+                        }
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(pick.chosen ? Color.watchSage : Color.secondary)
+                        .padding(.horizontal, 8).padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                        .frame(maxWidth: 88)
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 3)
+                }
             }
         }
         .frame(width: 112, height: 112)
@@ -524,6 +552,8 @@ struct WatchCounterConfig: Identifiable {
 
     /// Tasbih Fatimah after a prayer: 33 · 33 · 34 in one session (the phone's post-salah zikr).
     var postSalah = false
+    /// Freestyle under a zikr (the Freestyle picker): the session saves with that zikr, like the phone's.
+    var zikrName: String? = nil
 
     init(task: WatchTask?, startCount: Int = 0, startSeconds: Double = 0) {
         self.task = task
@@ -559,6 +589,7 @@ struct WatchZikrPage: View {
     @State private var resumeAsk: WatchTask?
     /// The task the open session belongs to, so closing it can move on once it's done.
     @State private var sessionTaskID: String?
+    @State private var showZikrPicker = false
     private let rowHeight: CGFloat = 122
 
     private enum Item: Identifiable {
@@ -619,6 +650,7 @@ struct WatchZikrPage: View {
             }
         }
         #endif
+        .sheet(isPresented: $showZikrPicker) { WatchZikrPicker(isPresented: $showZikrPicker) }
         .fullScreenCover(item: $running, onDismiss: landAfterSession) { config in
             WatchCounterView(config: config)
         }
@@ -648,7 +680,10 @@ struct WatchZikrPage: View {
     private func face(_ item: Item, now: Date) -> some View {
         switch item {
         case .freestyle:
-            WatchZikrFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "tap to freestyle", fraction: 1)
+            // The picked zikr, if any, under the title (one tap still starts counting).
+            WatchZikrFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "tap to count", fraction: 1,
+                          pick: store.azkar.isEmpty ? nil
+                              : (store.freestylePick ?? "Pick a zikr", store.freestylePick != nil, { showZikrPicker = true }))
         case .task(let task):
             let p = store.progress(task, at: now)
             let done = store.isDone(task, at: now)
@@ -694,7 +729,9 @@ struct WatchZikrPage: View {
         WatchHaptics.tick()
         switch item {
         case .freestyle:
-            running = WatchCounterConfig(task: nil)
+            var config = WatchCounterConfig(task: nil)
+            config.zikrName = store.freestylePick
+            running = config
         case .task(let task):
             let p = store.progress(task, at: now)
             if !store.isDone(task, at: now) && (p.count > 0 || p.seconds >= 1) {
@@ -1062,7 +1099,12 @@ struct WatchCounterView: View {
         if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
     }
 
-    private var sessionName: String { postSalah ? WatchPostSalah.name : task?.name ?? config.draft?.name ?? "" }
+    private var sessionName: String { postSalah ? WatchPostSalah.name : task?.name ?? config.zikrName ?? config.draft?.name ?? "" }
+    /// Freestyle's title: the zikr it counts under, else "Freestyle".
+    private var freestyleTitle: String {
+        let name = config.zikrName ?? config.draft?.name ?? ""
+        return name.isEmpty ? "Freestyle" : name
+    }
     private var sessionMode: Int { postSalah ? 2 : task.map { $0.countMode ? 2 : 1 } ?? config.draft?.mode ?? 0 }
     private var sessionTargetCount: Int { postSalah ? WatchPostSalah.total : task.map { $0.countMode ? $0.goal : 0 } ?? config.draft?.targetCount ?? 0 }
 
@@ -1163,7 +1205,7 @@ struct WatchCounterView: View {
     private var pauseScreen: some View {
         TabView(selection: $pausePage) {
             WatchPauseStats(
-                name: postSalah ? WatchPostSalah.name : task?.title ?? config.draft?.name ?? "Freestyle",
+                name: postSalah ? WatchPostSalah.name : task?.title ?? freestyleTitle,
                 memoTask: task.flatMap { $0.memo != nil || WatchMemoButton.demo ? $0 : nil },
                 count: sessionCount,
                 seconds: lastCountActive,
@@ -1640,6 +1682,38 @@ struct WatchCrownGate {
         print("CROWNTEST \(passed)/\(profiles.count + 1) passed")
     }
     #endif
+}
+
+/// Freestyle's zikr: "Just count" or one of your azkar (from the phone). The pick is remembered.
+struct WatchZikrPicker: View {
+    @Binding var isPresented: Bool
+    @ObservedObject private var store = WatchZikrStore.shared
+
+    var body: some View {
+        List {
+            row("Just count", selected: store.freestylePick == nil) { store.freestylePick = nil }
+            ForEach(store.azkar, id: \.self) { name in
+                row(name, selected: store.freestylePick == name) { store.freestylePick = name }
+            }
+        }
+        .navigationTitle("Freestyle")
+    }
+
+    private func row(_ title: String, selected: Bool, pick: @escaping () -> Void) -> some View {
+        Button {
+            WatchHaptics.tick()
+            pick()
+            isPresented = false
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 15, design: .rounded))
+                    .foregroundStyle(title == "Just count" ? Color.secondary : Color.primary)
+                Spacer(minLength: 4)
+                if selected { Image(systemName: "checkmark").foregroundStyle(Color.watchSage) }
+            }
+        }
+    }
 }
 
 /// 40 / 41 mm faces (under ~180 pt wide): a touch smaller, so everything clears the ring.
