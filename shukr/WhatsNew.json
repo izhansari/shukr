@@ -1124,7 +1124,7 @@
       "checked": "sim", "shots": ["wn-prayer-row-tap.jpg"], "asked": "Make the hit boxes for the prayer list buttons easier to tap cause I was watching some beta testers and they were all having some issue with it so maybe if we tap even the name that registers is marking it but still make sure that tapping the time, lets us toggle the time text"
     },
     {
-      "id": "completion-moment-3", "date": "2026-09-29", "commit": "next", "time": null, "topic": "completion-moment", "notes": null,
+      "id": "completion-moment-3", "date": "2026-09-29", "commit": "b8ac223", "time": "2026-09-29T04:04:53-04:00", "topic": "completion-moment", "notes": null,
       "title": "Prayer list: a bigger tap circle round each prayer's dot (44 pt, was the 14 pt dot); the name and time still flip the time", "headline": "Bigger tap circle round the dot",
       "tryIt": ["Salah page → swipe up for the list → tap just beside a prayer's dot (not dead on it): it's marked, with the usual moment", "Tap the name or the time instead: the time flips (score / countdown), nothing is marked", "On a marked prayer: tap near its dot → \"mark as incomplete?\"; hold → the time editor, as before"],
       "checked": "sim", "shots": ["wn-prayer-dot-hit-circle.jpg"], "asked": "get frank to instead make the tap area only around the circle button in the list item. not the name. just make the hitbox larger i guess... and show the old hitbox area compared to the new one. — then: oh that red hitbox is huge. lets keep it a circle still but just bigger."
