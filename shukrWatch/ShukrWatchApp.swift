@@ -57,6 +57,20 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
                 ? ["lat": at[0], "lon": at[1], "method": 2, "school": 0, "city": "Demo"]
                 : ["lat": 40.7128, "lon": -74.006, "method": 2, "school": 0, "city": "New York"])
             WidgetCenter.shared.reloadAllTimelines()
+            // `-demoWatchTasks`: two tasks as the phone would send them (a 100-count Subhanallah with a
+            // usual pace of 0.9 s, a 5-minute Astaghfirullah) and Tasbih Fatimah's usual pace.
+            if ProcessInfo.processInfo.arguments.contains("-demoWatchTasks") { MainActor.assumeIsolated {
+                _ = WatchZikrStore.shared.take([
+                    "zikrDay": WatchZikrStore.shared.dayStart().timeIntervalSince1970,
+                    "zikrTasks": [
+                        ["id": "demo-1", "title": "Subhanallah", "name": "Subhanallah", "countMode": true, "goal": 100,
+                         "count": 0, "seconds": 0.0, "step": 0, "mantraID": "demo-m1", "pace": 0.9],
+                        ["id": "demo-2", "title": "Astaghfirullah", "name": "Astaghfirullah", "countMode": false, "goal": 5,
+                         "count": 0, "seconds": 0.0, "step": 0],
+                    ],
+                    "zikrSessions": [String](), "freestyleStep": 0, "postSalahPace": 0.7,
+                ])
+            } }
         }
         #endif
         guard WCSession.isSupported() else { return }

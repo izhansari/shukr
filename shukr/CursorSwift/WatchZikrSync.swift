@@ -115,6 +115,8 @@ enum WatchZikrSync {
             if let mantra = task.mantra {
                 row["mantraID"] = mantra.id.uuidString
                 if let memo = memoHash(mantra), !memo.isEmpty { row["memo"] = memo }
+                // Your usual pace for this zikr: the watch's pause screen compares a session with it.
+                if let pace = usualPace(mantra) { row["pace"] = pace }
             }
             return row
         }
@@ -139,7 +141,15 @@ enum WatchZikrSync {
             // Your masajid, so a Friday Dhuhr marked on the watch at one is Jumu'ah there too.
             "masajid": MosqueFavorites.all.map { [$0.name, String($0.latitude), String($0.longitude)] },
             "freestyleStep": QuickAddSteps.step(for: nil),
+            // Tasbih Fatimah's usual pace (the post-salah session has no task).
+            "postSalahPace": MantraModel.find(named: PostSalahTasbeeh.mantraName, in: context).flatMap(usualPace) ?? 0,
         ]
+    }
+
+    /// `MantraModel.secondsPerCount`, rounded to 0.01 s so the context only changes when it really does.
+    private static func usualPace(_ mantra: MantraModel) -> Double? {
+        guard let pace = mantra.secondsPerCount, pace > 0 else { return nil }
+        return (pace * 100).rounded() / 100
     }
 
     /// The zikr's memo hash, loading its audio only when it isn't cached.

@@ -999,8 +999,21 @@ memo requests in). **No schema change** in any round — the watch keeps its own
   (`watch.screenTapsWithCrown`). A one-time "Pinch to count · or turn the Crown" hint (`watch.countHintSeen`). 40 / 41 mm
   get a smaller count and ring.
 - **Pause / results:** solid screens, nav bar hidden (watchOS's ✕ would drop the session; watchOS 26's glass circles
-  stayed as empty bubbles); pause = count / time / pace, the zikr's voice memo (requested from the phone, a file per
-  transfer, cached per zikr), a big Resume and a two-tap Finish early; results "✓ 33 · saved · N of 100 today".
+  stayed as empty bubbles); results "✓ 33 · saved · N of 100 today". **Pause = two pages, each one screen, no scrolling
+  (2026-09-29, owner):** page 1 `WatchPauseStats` = the phone's ZikrBento small — the zikr name, count over time on the
+  left, a tall rate tile (tap: per count ⇄ per tasbeeh, ⇆) with the usual-pace line ("0.7s faster" sage / "slower"
+  secondary / "about your usual" within 5 %; none without a usual pace), the finish tile for a count goal ("20s left" ⇄
+  "Finishing at 4:39"), a 32 pt Resume capsule (the system bordered button is ~50 pt) and the two-tap Finish early; page 2
+  `WatchPauseSettings` = toggle chips: haptics (silent → soft → medium → strong taps, a sample each change) and "count
+  with" Tap & pinch ⇄ Crown only (crown mode). The finish tile is on page 1 only when `WatchScreen.roomy` (≥ 240 pt tall:
+  45 mm+), else at the top of page 2. Pausing opens page 1. Usual pace: the phone sends each task row's `pace`
+  (`MantraModel.secondsPerCount`, 0.01 s) and `postSalahPace` (Tasbih Fatimah). The zikr's voice memo is a 22 pt play ring beside the name
+  (`WatchMemoButton(compact: true)`). Checked on 46 / 42 / 40 mm sims.
+- **Haptics (`WatchHaptics`, 2026-09-29):** watchOS has no intensity, only `WKHapticType`s: soft = `.click` (the
+  lightest), medium `.directionUp`, strong `.start`; the rest are multi-tap patterns. `watch.hapticStrength` 0 soft / 1
+  medium / 2 strong / 3 off; unset = soft (was medium). Off silences counting only (counts, sets, hundreds, phrase / goal,
+  −); button clicks, marking, the qibla and notifications keep theirs (as the phone's "silent"). Settings has the
+  four-row `WatchHapticPicker` on the same key.
 - **Wrist down:** a mindfulness `WKExtendedRuntimeSession` (`WKBackgroundModes` in shukrWatchInfo.plist) keeps counting;
   stops on pause, buzzes before it expires, restarts with a timeout.
 - **Drafts:** a paused session is kept (`watch.zikr.draft`, matched by session id, saved at most every 2 s) and reopens
@@ -1013,7 +1026,7 @@ memo requests in). **No schema change** in any round — the watch keeps its own
 - **DEBUG (watch):** `-demoWatch`, `-watchPage N`, `-watchSalahList YES`, `-demoWatchContinue`, `-demoWatchCrown`,
   `-demoWatchFinish`, `-demoWatchHold`, `-demoWatchMemo`, `-demoWatchPause`, `-demoWatchPostSalah`, `-demoWatchUndo`,
   `-demoWatchMark <prayer>`, `-demoWatchHeading <deg>`, `-demoWatchCounter N`, `-demoWatchTaps N`, `-demoWatchPreset N`,
-  `-demoWatchDraftAge <s>`, `-watchSettingsBottom`; scripted `-demoWatch` runs skip the runtime session. Phone:
+  `-demoWatchDraftAge <s>`, `-watchSettingsBottom`, `-demoWatchTasks` (two tasks + usual paces), `-demoWatchPausePage 1`; scripted `-demoWatch` runs skip the runtime session. Phone:
   `-demoTasbeehCount` / `-demoTasbeehTaps` for comparison shots.
 
 **2026-09-26 — Zikr widget → task, and time estimates.**

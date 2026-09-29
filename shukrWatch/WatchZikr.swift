@@ -43,6 +43,8 @@ struct WatchTask: Identifiable, Equatable {
     let phoneCount: Int
     let phoneSeconds: Double
     let step: Int
+    /// Your usual seconds per count for this zikr (the phone's `MantraModel.secondsPerCount`).
+    let pace: Double?
 
     init?(_ row: [String: Any]) {
         guard let id = row["id"] as? String, let title = row["title"] as? String else { return nil }
@@ -57,6 +59,7 @@ struct WatchTask: Identifiable, Equatable {
         phoneCount = row["count"] as? Int ?? 0
         phoneSeconds = row["seconds"] as? Double ?? 0
         step = row["step"] as? Int ?? 0
+        pace = (row["pace"] as? Double).flatMap { $0 > 0 ? $0 : nil }
     }
 }
 
@@ -127,7 +130,7 @@ final class WatchZikrStore: ObservableObject {
         static let day = "watch.zikr.day", tasks = "watch.zikr.tasks", sessions = "watch.zikr.sessions"
         static let freestyleStep = "watch.zikr.freestyleStep", pending = "watch.zikr.pending"
         static let memos = "watch.zikr.memos", hasData = "watch.zikr.hasData"
-        static let draft = "watch.zikr.draft"
+        static let draft = "watch.zikr.draft", postSalahPace = "watch.zikr.postSalahPace"
     }
     private var d: UserDefaults { WatchStore.defaults }
 
@@ -142,6 +145,7 @@ final class WatchZikrStore: ObservableObject {
         d.set(rows, forKey: Key.tasks)
         d.set(context["zikrSessions"] as? [String] ?? [], forKey: Key.sessions)
         d.set(context["freestyleStep"] as? Int ?? 0, forKey: Key.freestyleStep)
+        d.set(context["postSalahPace"] as? Double ?? 0, forKey: Key.postSalahPace)
         dropConfirmed()
         bump()
         return true
@@ -150,6 +154,8 @@ final class WatchZikrStore: ObservableObject {
     /// Has the phone ever sent its tasks?
     var hasData: Bool { d.bool(forKey: Key.hasData) }
     var freestyleStep: Int { d.integer(forKey: Key.freestyleStep) }
+    /// Tasbih Fatimah's usual seconds per count (nil until the phone has one).
+    var postSalahPace: Double? { let v = d.double(forKey: Key.postSalahPace); return v > 0 ? v : nil }
 
     /// The tasks in the phone's order.
     var tasks: [WatchTask] {
@@ -347,26 +353,84 @@ final class WatchZikrStore: ObservableObject {
 
 // MARK: - Haptics
 
-/// The phone's counter haptics, as near as the watch's fixed set allows (it has no strengths).
+/// The counter's haptics. watchOS has no intensity control — only a fixed set of `WKHapticType`s —
+/// so the levels are different types: `.click` is the one soft tap (the lightest there is);
+/// `.directionUp` / `.directionDown` a little stronger; `.start` / `.stop` firm; `.success`,
+/// `.retry`, `.failure`, `.notification` and the navigation ones are longer patterns, too much for
+/// every count. Off silences counting only (counts, sets, hundreds, phrase / goal buzzes, −);
+/// buttons' clicks, marking, the qibla and notifications keep theirs (owner, 2026-09-29).
 enum WatchHaptics {
-    static let key = "watch.hapticStrength"   // 0 light · 1 medium · 2 strong
-    static var strength: Int { WatchStore.defaults.object(forKey: key) as? Int ?? 1 }
+    /// Stored values from before Off are kept (0 light · 1 medium · 2 strong), so a choice carries over.
+    static let key = "watch.hapticStrength"
+    static let off = 3
+    /// Softest first, as the pickers list them.
+    static let levels: [(value: Int, name: String)] = [(off, "Off"), (0, "Soft"), (1, "Medium"), (2, "Strong")]
+    /// Unset: Soft (it was Medium; owner: "the haptics seem really strong").
+    static var strength: Int { WatchStore.defaults.object(forKey: key) as? Int ?? 0 }
+    static var counting: Bool { strength != off }
+    static func name(_ level: Int) -> String { levels.first { $0.value == level }?.name ?? "Soft" }
+    /// The pause screen's chip, like the phone's: "soft taps" … "silent".
+    static func chipLabel(_ level: Int) -> String { level == off ? "silent" : "\(name(level).lowercased()) taps" }
+    /// The chip cycles softest first: Off → Soft → Medium → Strong → Off.
+    static func next(after level: Int) -> Int {
+        let i = levels.firstIndex { $0.value == level } ?? 1
+        return levels[(i + 1) % levels.count].value
+    }
 
-    static func count() {
-        let type: WKHapticType = switch strength {
-        case 0: .click
+    private static func countType(_ level: Int) -> WKHapticType? {
+        switch level {
+        case off: nil
+        case 1: .directionUp
         case 2: .start
-        default: .directionUp
+        default: .click
         }
+    }
+    private static func play(_ type: WKHapticType) {
+        guard counting else { return }
         WKInterfaceDevice.current().play(type)
     }
+
+    static func count() { if let t = countType(strength) { WKInterfaceDevice.current().play(t) } }
+    /// A picker row: what a count feels like at that level (Off: nothing).
+    static func sample(_ level: Int) { if let t = countType(level) { WKInterfaceDevice.current().play(t) } }
     /// Counting in sets: the phone's ta-ta-ta. watchOS drops haptics played that close together,
     /// so one built-in multi-tap pattern (.retry) instead.
-    static func set() { WKInterfaceDevice.current().play(.retry) }
-    static func hundred() { WKInterfaceDevice.current().play(.notification) }
-    static func goal() { WKInterfaceDevice.current().play(.success) }
-    static func minus() { WKInterfaceDevice.current().play(.directionDown) }
+    static func set() { play(.retry) }
+    static func hundred() { play(.notification) }
+    static func goal() { play(.success) }
+    static func minus() { play(.directionDown) }
+    /// Buttons (pause, finish, +N): always, like every other button click.
     static func tick() { WKInterfaceDevice.current().play(.click) }
+}
+
+/// How each count feels: Off · Soft · Medium · Strong. Tap one to feel it. Settings and the pause
+/// screen's second page, on the same key.
+struct WatchHapticPicker: View {
+    @AppStorage(WatchHaptics.key, store: WatchStore.defaults) private var strength = 0
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(WatchHaptics.levels, id: \.value) { level in
+                Button {
+                    strength = level.value
+                    WatchHaptics.sample(level.value)
+                } label: {
+                    HStack {
+                        Text(level.name).font(.system(size: 15, design: .rounded))
+                        Spacer()
+                        if strength == level.value {
+                            Image(systemName: "checkmark").foregroundStyle(Color.green)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .background(RoundedRectangle(cornerRadius: 12)
+                        .fill(strength == level.value ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 }
 
 // MARK: - Zikr page (the wheel)
@@ -668,6 +732,8 @@ struct WatchCounterView: View {
     @State private var crownMode = false
     @State private var crownNote = false
     @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
+    /// The pause screen's page: 0 the card, 1 haptics. Back to the card on every pause.
+    @State private var pausePage = 0
     @State private var draftToken = 0
     @State private var sessionID = UUID().uuidString
     @Environment(\.scenePhase) private var scenePhase
@@ -796,6 +862,10 @@ struct WatchCounterView: View {
             }
             if args.contains("-demoWatchPause") || args.contains("-demoWatchFinish") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + after) { togglePause() }
+            }
+            // `-demoWatchPausePage 1` (with -demoWatchPause): the haptics page.
+            if UserDefaults.standard.integer(forKey: "demoWatchPausePage") == 1 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + after + 0.8) { withAnimation { pausePage = 1 } }
             }
             if args.contains("-demoWatchFinish") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + after + 1) { tappedFinish() }
@@ -1027,6 +1097,7 @@ struct WatchCounterView: View {
                 crownFocused = true
             } else {
                 pausedAt = Date()
+                pausePage = 0
                 finishArmed = false
                 runtime.stop()      // a paused session doesn't need to outlive a lowered wrist
             }
@@ -1072,67 +1143,39 @@ struct WatchCounterView: View {
 
     // MARK: Pause
 
+    /// Two pages, each on one screen with no scrolling (owner, 2026-09-29): the phone's pause bento
+    /// with Resume / Finish early, and a swipe away the settings as toggle chips. On a watch too
+    /// short for the finish tile beside the bento (`WatchScreen.roomy` false) it moves to page 2.
     private var pauseScreen: some View {
-        ScrollView {
-            VStack(spacing: 8) {
-                Text("paused")
-                    .font(.system(size: 11, weight: .regular, design: .rounded))
-                    .tracking(1.2)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.tertiary)
-                Text(postSalah ? WatchPostSalah.name : task?.title ?? "Freestyle")
-                    .font(.system(size: 18, weight: .light, design: .rounded))
-                    .multilineTextAlignment(.center)
-                HStack(spacing: 6) {
-                    stat("\(sessionCount)", "count")
-                    stat(minutesText(activeSeconds(at: Date())), "time")
-                    stat(sessionCount > 0 ? String(format: "%.1fs", lastCountActive / Double(sessionCount)) : "–", "pace")
-                }
-                if let task, task.memo != nil || WatchMemoButton.demo {
-                    WatchMemoButton(task: task)
-                }
-                // Screen taps: on, or off while counting with the Crown.
-                Button { setCrownMode(!crownMode) } label: {
-                    Label(crownMode ? "Screen taps off · Crown" : "Screen taps on",
-                          systemImage: crownMode ? "digitalcrown.arrow.clockwise" : "hand.tap")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(crownMode ? Color.green : .secondary)
-                        .padding(.horizontal, 10).padding(.vertical, 5)
-                        .background(Capsule().fill(crownMode ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-                Button { togglePause() } label: {
-                    Text("Resume")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundStyle(Color.watchSage)
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .tint(.watchSage)
-                .handGestureShortcut(.primaryAction)   // Double Tap resumes
-                Button { tappedFinish() } label: {
-                    Text(finishArmed ? "Tap again to finish" : "Finish early")
-                        .font(.system(size: 12, weight: finishArmed ? .semibold : .regular, design: .rounded))
-                        .foregroundStyle(finishArmed ? Color.green : .secondary)
-                        .contentTransition(.opacity)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 2)
-            }
-            .padding(.horizontal, 4)
+        TabView(selection: $pausePage) {
+            WatchPauseStats(
+                name: postSalah ? WatchPostSalah.name : task?.title ?? config.draft?.name ?? "Freestyle",
+                memoTask: task.flatMap { $0.memo != nil || WatchMemoButton.demo ? $0 : nil },
+                count: sessionCount,
+                seconds: lastCountActive,
+                usualPace: postSalah ? WatchZikrStore.shared.postSalahPace : task?.pace,
+                finish: WatchScreen.roomy ? finishEstimate : nil,
+                finishArmed: finishArmed,
+                resume: togglePause,
+                finishEarly: tappedFinish)
+                .tag(0)
+            WatchPauseSettings(
+                finish: WatchScreen.roomy ? nil : finishEstimate,
+                crownOnly: crownMode,
+                setCrownOnly: setCrownMode)
+                .tag(1)
         }
+        .tabViewStyle(.page)
     }
 
-    private func stat(_ value: String, _ label: String) -> some View {
-        VStack(spacing: 1) {
-            Text(value).font(.system(size: 14, weight: .light, design: .rounded)).monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.6)
-            Text(label).font(.system(size: 9, design: .rounded)).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.08)))
+    /// A count goal's finish, at this session's pace: time left and the clock time.
+    private var finishEstimate: (left: TimeInterval, at: Date)? {
+        let goal = postSalah ? WatchPostSalah.total : (task.map { $0.countMode ? $0.goal : 0 } ?? 0)
+        guard goal > count, sessionCount > 0, lastCountActive > 0 else { return nil }
+        let left = Double(goal - count) * lastCountActive / Double(sessionCount)
+        return (left, Date().addingTimeInterval(left))
     }
+
 
     /// Two taps, like the phone: the first arms it (green), it disarms after 3 s.
     private func tappedFinish() {
@@ -1197,6 +1240,8 @@ struct WatchResultsView: View {
 /// The zikr's voice memo from the phone (how it's said): play / stop with a thin progress ring.
 struct WatchMemoButton: View {
     let task: WatchTask
+    /// The ring alone (beside the zikr's name on the pause screen).
+    var compact = false
     @ObservedObject private var store = WatchZikrStore.shared
     @StateObject private var player = WatchMemoPlayer()
 
@@ -1217,14 +1262,18 @@ struct WatchMemoButton: View {
                         .font(.system(size: 9))
                 }
                 .frame(width: 22, height: 22)
-                Text(url == nil ? "getting the memo…" : (player.isPlaying ? "playing" : "hear how it's said"))
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(url == nil ? .secondary : .primary)
-                Spacer(minLength: 0)
+                .opacity(url == nil ? 0.5 : 1)
+                if !compact {
+                    Text(url == nil ? "getting the memo…" : (player.isPlaying ? "playing" : "hear how it's said"))
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(url == nil ? .secondary : .primary)
+                    Spacer(minLength: 0)
+                }
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 4)
+        .padding(.vertical, compact ? 0 : 4)
         .onAppear { store.requestMemoIfNeeded(for: task) }
         .onDisappear { player.stop() }
     }
@@ -1383,8 +1432,6 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 // MARK: - Settings page
 
 struct WatchSettingsPage: View {
-    @AppStorage(WatchHaptics.key, store: WatchStore.defaults) private var strength = 1
-    private let names = ["Light", "Medium", "Strong"]
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1398,26 +1445,8 @@ struct WatchSettingsPage: View {
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
                     .padding(.top, 4)
-                ForEach(0..<3, id: \.self) { level in
-                    Button {
-                        strength = level
-                        WatchHaptics.count()
-                    } label: {
-                        HStack {
-                            Text(names[level]).font(.system(size: 15, design: .rounded))
-                            Spacer()
-                            if strength == level {
-                                Image(systemName: "checkmark").foregroundStyle(Color.green)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .padding(.horizontal, 10)
-                        .background(RoundedRectangle(cornerRadius: 12)
-                            .fill(strength == level ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
-                    }
-                    .buttonStyle(.plain)
-                }
-                Text("How each count feels on your wrist. Tap one to try it.")
+                WatchHapticPicker()
+                Text("How each count feels on your wrist. Tap one to try it. Off keeps counting silent; buttons still click.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
                 // watchOS pairs its haptics with a soft tone unless the watch is silenced; apps can't
@@ -1602,6 +1631,295 @@ struct WatchCrownGate {
 /// 40 / 41 mm faces (under ~180 pt wide): a touch smaller, so everything clears the ring.
 enum WatchScreen {
     static let width = WKInterfaceDevice.current().screenBounds.width
+    static let height = WKInterfaceDevice.current().screenBounds.height
     static var small: Bool { width < 180 }
+    /// Room for the finish tile on the pause screen's first page (45 mm and up: 240 pt tall and
+    /// more); smaller watches show it on the second page.
+    static var roomy: Bool { height >= 240 }
+}
+
+// MARK: - Pause pages
+
+/// The pause screen's first page: the phone's ZikrBento, small — count over time on the left, the
+/// rate on the right (tap: per count ⇄ per tasbeeh, with how it compares with your usual pace), the
+/// finish tile for a count goal (tap: "1m 32s left" ⇄ "Finishing at 1:52"), then Resume and a
+/// two-tap Finish early. Sized to one screen: nothing scrolls.
+struct WatchPauseStats: View {
+    let name: String
+    /// The task whose zikr has a voice memo: its play ring sits beside the name.
+    let memoTask: WatchTask?
+    let count: Int
+    /// Active seconds up to the last count (the phone's rate uses the same).
+    let seconds: Double
+    let usualPace: Double?
+    let finish: (left: TimeInterval, at: Date)?
+    let finishArmed: Bool
+    let resume: () -> Void
+    let finishEarly: () -> Void
+    @State private var perCount = true
+    @State private var showFinishTime = false
+
+    private var gap: CGFloat { WatchScreen.small ? 4 : 5 }
+    private var tileH: CGFloat { WatchScreen.small ? 31 : 36 }
+    private var pace: Double { count > 0 ? seconds / Double(count) : 0 }
+
+    var body: some View {
+        VStack(spacing: gap) {
+            HStack(spacing: 6) {
+                Text(name)
+                    .font(.system(size: WatchScreen.small ? 14 : 15, weight: .light, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if let memoTask { WatchMemoButton(task: memoTask, compact: true) }
+            }
+            .frame(height: 22)
+            HStack(spacing: gap) {
+                VStack(spacing: gap) {
+                    tile { row("circle.hexagonpath", "\(count)", "count") }
+                    tile { row("gauge.with.needle", clock(seconds), "time") }
+                }
+                rateTile
+            }
+            .frame(height: tileH * 2 + gap)
+            if let finish { finishTile(finish) }
+            Spacer(minLength: 0)
+            // The system's bordered button is ~50 pt tall on a watch: a capsule of our own keeps the
+            // page on one screen.
+            Button(action: resume) {
+                Text("Resume")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.watchSage)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: WatchScreen.small ? 30 : 34)
+                    .background(Capsule().fill(Color.watchSage.opacity(0.22)))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .handGestureShortcut(.primaryAction)   // Double Tap resumes
+            Button(action: finishEarly) {
+                Text(finishArmed ? "Tap again to finish" : "Finish early")
+                    .font(.system(size: 11, weight: finishArmed ? .semibold : .regular, design: .rounded))
+                    .foregroundStyle(finishArmed ? Color.green : .secondary)
+                    .contentTransition(.opacity)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 2)
+        .padding(.bottom, 10)   // the page dots
+    }
+
+    private var rateTile: some View {
+        tile {
+            VStack(spacing: 1) {
+                Text("rate").font(.system(size: 9, design: .rounded)).foregroundStyle(.secondary)
+                ZStack {
+                    valueStack(count > 0 ? String(format: "%.2fs", pace) : "–", "per count")
+                        .opacity(perCount ? 1 : 0).offset(y: perCount ? 0 : -8)
+                    valueStack(count > 0 ? minutesText(pace * 100) : "–", "per tasbeeh")
+                        .opacity(perCount ? 0 : 1).offset(y: perCount ? 8 : 0)
+                }
+                if let a = comparison(perCount: true), let b = comparison(perCount: false) {
+                    ZStack {
+                        comparisonText(a).opacity(perCount ? 1 : 0)
+                        comparisonText(b).opacity(perCount ? 0 : 1)
+                    }
+                    .padding(.top, 2)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) { flipMark.padding(6) }
+        }
+        .onTapGesture {
+            WatchHaptics.tick()
+            withAnimation(.easeInOut(duration: 0.3)) { perCount.toggle() }
+        }
+    }
+
+    private func finishTile(_ finish: (left: TimeInterval, at: Date)) -> some View {
+        tile {
+            HStack(spacing: 6) {
+                Image(systemName: "flag.checkered")
+                    .font(.system(size: 11, weight: .light))
+                    .foregroundStyle(.secondary)
+                ZStack(alignment: .leading) {
+                    Text("\(minutesText(finish.left)) left")
+                        .opacity(showFinishTime ? 0 : 1).offset(y: showFinishTime ? -8 : 0)
+                    (Text("Finishing at ") + Text(finish.at, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute()))
+                        .opacity(showFinishTime ? 1 : 0).offset(y: showFinishTime ? 0 : 8)
+                }
+                .font(.system(size: 13, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                flipMark
+            }
+            .padding(.horizontal, 8)
+        }
+        .frame(height: WatchScreen.small ? 26 : 28)
+        .onTapGesture {
+            WatchHaptics.tick()
+            withAnimation(.easeInOut(duration: 0.3)) { showFinishTime.toggle() }
+        }
+    }
+
+    /// The phone's rule: "0.7s faster" / "1m 10s slower" (per tasbeeh) / "about your usual" within
+    /// 5 %. Nil without a usual pace.
+    private func comparison(perCount: Bool) -> (text: String, faster: Bool?)? {
+        guard let usual = usualPace, usual > 0, pace > 0 else { return nil }
+        let diff = pace - usual
+        if abs(diff) / usual < 0.05 { return ("about your usual", nil) }
+        let amount = abs(diff) * (perCount ? 1 : 100)
+        let text: String
+        if perCount {
+            text = amount < 0.1 ? String(format: "%.2fs", amount) : String(format: "%.1fs", amount)
+        } else {
+            let whole = Int(amount.rounded())
+            text = whole >= 60 ? "\(whole / 60)m \(whole % 60)s" : "\(whole)s"
+        }
+        return ("\(text) \(diff < 0 ? "faster" : "slower")", diff < 0)
+    }
+
+    private func comparisonText(_ line: (text: String, faster: Bool?)) -> some View {
+        Text(line.text)
+            .font(.system(size: 9, weight: line.faster == true ? .medium : .regular, design: .rounded))
+            .foregroundStyle(line.faster == true ? Color.watchSage : Color.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .padding(.horizontal, 4)
+    }
+
+    private var flipMark: some View {
+        Image(systemName: "arrow.left.arrow.right")
+            .font(.system(size: 7, weight: .medium))
+            .foregroundStyle(.tertiary)
+    }
+
+    /// "01:32" like the phone's stopwatch; "1:02:05" past an hour.
+    private func clock(_ s: Double) -> String {
+        let t = Int(s.rounded())
+        return t >= 3600 ? String(format: "%d:%02d:%02d", t / 3600, (t % 3600) / 60, t % 60)
+                         : String(format: "%02d:%02d", t / 60, t % 60)
+    }
+
+    private func row(_ icon: String, _ value: String, _ caption: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .light))
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.system(size: WatchScreen.small ? 14 : 16, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(caption).font(.system(size: 8, design: .rounded)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+    }
+
+    private func valueStack(_ value: String, _ caption: String) -> some View {
+        VStack(spacing: 0) {
+            Text(value)
+                .font(.system(size: WatchScreen.small ? 17 : 19, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(caption).font(.system(size: 8, design: .rounded)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func tile<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
+            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+/// The pause screen's second page: toggle chips (owner, 2026-09-29) — the haptics, cycling like the
+/// phone's chip (silent → soft → medium → strong, a sample on each change), and how you count
+/// (Tap & pinch ⇄ Crown only, the same switch as before). On a small watch the finish tile sits
+/// on top of them.
+struct WatchPauseSettings: View {
+    let finish: (left: TimeInterval, at: Date)?
+    let crownOnly: Bool
+    let setCrownOnly: (Bool) -> Void
+    @AppStorage(WatchHaptics.key, store: WatchStore.defaults) private var strength = 0
+    @State private var showFinishTime = false
+
+    var body: some View {
+        VStack(spacing: WatchScreen.small ? 6 : 8) {
+            if let finish {
+                Button {
+                    WatchHaptics.tick()
+                    withAnimation(.easeInOut(duration: 0.3)) { showFinishTime.toggle() }
+                } label: {
+                    VStack(spacing: 1) {
+                        Image(systemName: "flag.checkered").font(.system(size: 11, weight: .light)).foregroundStyle(.secondary)
+                        ZStack {
+                            Text("\(minutesText(finish.left)) left").opacity(showFinishTime ? 0 : 1)
+                            (Text("Finishing at ") + Text(finish.at, format: .dateTime.hour(.defaultDigits(amPM: .omitted)).minute())).opacity(showFinishTime ? 1 : 0)
+                        }
+                        .font(.system(size: 14, weight: .light, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+            section("haptics") {
+                chip(WatchHaptics.chipLabel(strength),
+                     strength == WatchHaptics.off ? "applewatch.slash" : "applewatch.radiowaves.left.and.right",
+                     lit: strength != WatchHaptics.off) {
+                    strength = WatchHaptics.next(after: strength)
+                    WatchHaptics.sample(strength)
+                }
+            }
+            section("count with") {
+                chip(crownOnly ? "Crown only" : "Tap & pinch",
+                     crownOnly ? "digitalcrown.arrow.clockwise" : "hand.tap",
+                     lit: crownOnly) { setCrownOnly(!crownOnly) }
+            }
+        }
+        .frame(maxHeight: .infinity)
+        .padding(.horizontal, 4)
+        .padding(.bottom, 10)   // the page dots
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(.system(size: 10, design: .rounded))
+                .tracking(1.2)
+                .textCase(.uppercase)
+                .foregroundStyle(.tertiary)
+            content()
+        }
+    }
+
+    private func chip(_ text: String, _ symbol: String, lit: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(text, systemImage: symbol)
+                .font(.system(size: 14, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .foregroundStyle(lit ? Color.green : .secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(Capsule().fill(lit ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                .contentTransition(.opacity)
+        }
+        .buttonStyle(.plain)
+    }
 }
 
