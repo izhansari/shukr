@@ -1122,6 +1122,12 @@
       "title": "Tap the watch's prayer ring to flip its time in every state: before a prayer \"at 5:35 AM\" ⇄ \"in 1h 50m\", during it \"ends 6:46 AM\" ⇄ \"3h 0m left\", with one soft click; hold still marks it", "headline": "Tap the ring: at / in, ends / left",
       "tryIt": ["On the watch, open shukr before a prayer starts (NEXT on a dashed ring) and tap the ring: \"at 5:35 AM\" turns into \"in 1h 50m\"; tap again to go back", "During a prayer, tap the ring: \"ends …\" ⇄ \"… left\". A tap never marks it; holding the ring still does"],
       "checked": "sim", "shots": ["wn-watch-ring-tap.jpg"], "asked": "the watch app player ring doesn't allow for tapping to change the text time so it doesn't let me toggle to show like in five minutes or at 5:28"
+    },
+    {
+      "id": "apple-watch-4", "date": "2026-09-29", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "title": "Counting with the Digital Crown is one count per nudge: a flick or a long turn counts once instead of running on; pause, then nudge again", "headline": "Crown: one count per nudge",
+      "tryIt": ["Start a zikr on the watch and nudge the Crown forward a click: one count, one buzz. Flick it hard: still just one", "Nudge, recite, nudge again: each nudge counts. Turning backwards never counts"],
+      "checked": "sim", "shots": ["wn-watch-crown-nudge.jpg"], "asked": "sure get sami to take a stab at the crown"
     }
   ]
 }

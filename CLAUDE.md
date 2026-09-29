@@ -988,8 +988,13 @@ memo requests in). **No schema change** in any round — the watch keeps its own
   `AliveRingFill`) ported and scaled — beads round the outside (one Canvas), hundreds dots with the 18° turn, thousands
   in green, the phone's dark background (black wrist-down); no grain, the gradient / light redraw at 10 fps. Shows only
   the number (privacy). Counting: tap, the pump (hold and drag), − and +N (count in sets, one `.retry` haptic), Double
-  Tap (Series 9+ / Ultra 2, its own hit-testable button; Resume / Done on pause and results), the Digital Crown (a click
-  forward; backwards nothing; ignored wrist-down). Turning the Crown switches to **crown mode**: screen taps flash
+  Tap (Series 9+ / Ultra 2, its own hit-testable button; Resume / Done on pause and results), the Digital Crown —
+  **one count per nudge** (2026-09-29, owner: "too sensitive … easy to overshoot"; every detent of a turn used to count,
+  so a flick ran on): `WatchCrownGate` counts the first detent forward after the crown has been still 0.3 s (or the
+  system's `onIdle`) and drops the rest of that movement, so a flick or a long turn is one count; the rotation is
+  `digitalCrownRotation(detent:…)` with detent haptics off (the only buzz is the count's). Backwards nothing; ignored
+  wrist-down. DEBUG `-demoWatchCrownTest` (8/8: flicks of 8 / 20 detents → 1, nudges 0.35 s apart → one each). No
+  Simulator.app on the Mini, so no real crown input in the sim: the feel is untested. Turning the Crown switches to **crown mode**: screen taps flash
   "Counting with the Crown"; tap the badge or the pause chip to switch back; Settings → Counting keeps taps on
   (`watch.screenTapsWithCrown`). A one-time "Pinch to count · or turn the Crown" hint (`watch.countHintSeen`). 40 / 41 mm
   get a smaller count and ring.

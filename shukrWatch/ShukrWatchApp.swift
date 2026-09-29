@@ -25,6 +25,7 @@ struct ShukrWatchApp: App {
         if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") {
             WatchStore.settleSelfTest(extraLines: WatchPrayerMarker.undoSelfTest)
         }
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchCrownTest") { WatchCrownGate.selfTest() }
         #endif
     }
 
