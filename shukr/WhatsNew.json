@@ -1100,7 +1100,7 @@
       "checked": "sim", "shots": ["wn-stick-pin.jpg"], "addresses": ["D5818BB9"]
     },
     {
-      "id": "move-prayer-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-6", "date": "2026-09-28", "commit": "079c099", "time": "2026-09-28T20:26:14-04:00", "topic": "move-prayer", "notes": null,
       "title": "Moving a prayer uses Apple's own map pin: black on a light map, white on a dark one, lifting while you drag", "headline": "Apple's own pin when you move a prayer",
       "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; the pin lifts, then drops where you stop", "Long-press a marked prayer → the location chip: the same pin, clear on standard and satellite"],
       "checked": "sim", "shots": ["wn-mappin-pin.jpg"], "addresses": ["D5818BB9"]
