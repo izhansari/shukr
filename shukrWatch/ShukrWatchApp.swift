@@ -167,7 +167,7 @@ struct WatchRootView: View {
     var body: some View {
         TabView(selection: $page) {
             WatchZikrPage().tag(0)
-            WatchHomeView().tag(1)
+            WatchHomeView(onScreen: page == 1).tag(1)
             WatchSettingsPage().tag(2)
         }
         .tabViewStyle(.page)
@@ -181,6 +181,8 @@ struct WatchRootView: View {
 /// Crown for the list, swipe down or tap the small ring to go back). A vertical page is watchOS's
 /// own gesture, so it never fights the sideways page swipes or the system's edge swipes.
 struct WatchHomeView: View {
+    /// The Salah page is the one showing (not paged to Zikr / Settings).
+    var onScreen = true
     @EnvironmentObject var session: WatchSession
     @ObservedObject private var moments = WatchMoment.shared
     @State private var tasbih: WatchCounterConfig?
@@ -227,26 +229,15 @@ struct WatchHomeView: View {
                                 .foregroundStyle(.secondary)
                                 .transition(.opacity)
                         } else if moments.offerIsLive(at: context.date) {
-                            // The phone's post-salah pill.
-                            HStack(spacing: 6) {
-                                Button {
+                            // The phone's post-salah pill, going by itself after 15 s.
+                            WatchPostSalahPill(
+                                shown: onScreen && showList == 0 && tasbih == nil,
+                                onOpen: {
                                     moments.dismissOffer()
                                     tasbih = WatchCounterConfig(postSalah: true)
-                                } label: {
-                                    Label("Post-salah tasbih?", systemImage: "circle.hexagonpath")
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundStyle(Color.watchSage)
-                                }
-                                .buttonStyle(.plain)
-                                Button { moments.dismissOffer() } label: {
-                                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Capsule().fill(Color.watchSage.opacity(0.15)))
+                                },
+                                onDismiss: { moments.dismissOffer() },
+                                onExpire: { moments.expireOffer() })
                             .transition(.opacity)
                         } else {
                             Button {
@@ -283,6 +274,7 @@ struct WatchHomeView: View {
                     if ProcessInfo.processInfo.arguments.contains("-demoWatchUndo") {   // undo 4 s after a mark
                         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { moments.undo() }
                     }
+                    if ProcessInfo.processInfo.arguments.contains("-demoWatchOffer") { moments.demoOffer() }
                     if ProcessInfo.processInfo.arguments.contains("-demoWatchPostSalah") {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { tasbih = WatchCounterConfig(postSalah: true) }
                     }

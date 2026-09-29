@@ -1018,6 +1018,14 @@ memo requests in). **No schema change** in any round — the watch keeps its own
   stops on pause, buzzes before it expires, restarts with a timeout.
 - **Drafts:** a paused session is kept (`watch.zikr.draft`, matched by session id, saved at most every 2 s) and reopens
   paused; saved to history after an hour or at Fajr.
+- **Post-salah pill goes by itself (2026-09-29, owner, as the phone's):** `WatchPostSalahPill` (WatchSalah.swift) — a sage
+  ring round the beads starts full and empties toward 12 o'clock over 15 s, then the pill fades (0.4 s) and goes
+  (`WatchMoment.expireOffer`, no animation of its own). The clock (a `.task`, 20 Hz) runs only while it can be seen: app
+  active, wrist up (not `isLuminanceReduced`), the Salah page showing (`WatchHomeView(onScreen:)`), the ring's page (not
+  the list) and no counter over it; each step counts at most 0.1 s (suspended time can't land at once); back after being
+  hidden it has ≥ 5 s left. ✕ and the tap into 33 · 33 · 34 as before; it still ends at the next prayer too. DEBUG
+  `-demoWatchOffer` (the pill at once), `-postSalahTimerFreeze <s>`. Sim ✓: gone at ~15 s; Home 8 s in, back 12 s later
+  → a third left, gone 5 s after.
 - **Tasbih Fatimah:** the post-salah pill after a mark leads into 33 · 33 · 34 in one session (the Arabic phrase above
   the centred count, "7 of 33" and the bars below, a haptic per phrase), saved under the Tasbih Fatimah zikr.
 - **Session sync:** each session → the phone as `transferUserInfo` (`zikrSession`) with its UUID, so a retry is never
