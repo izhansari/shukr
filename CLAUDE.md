@@ -1545,6 +1545,25 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
   iPhone SE on iOS 18.5 (a simulator "Frank SE test" was created for it). Not tried: Reduce Motion, the deep-link deferral,
   Run setup again, the travel update, a real device.
 
+## Fajr alarm with AlarmKit (iOS 26.1+, 2026-09-29, ideas #8, ask alarmkit)
+
+`CursorSwift/FajrAlarmKit.swift`. Same rule and keys as before (`alarmEnabled`, `alarmOffsetMinutes` in 5-min steps,
+`alarmIsBefore`, `alarmIsFajr`); on iOS 26.1+ the app sets real system alarms itself — one `.fixed` alarm per day
+(Fajr moves), as many days ahead as allowed (`daysAhead` 60; `maximumLimitReached` ends the run — the sim took 60),
+titled "Fajr starts 5:37 AM", system sound, secondary button "I'm up — open Fajr" (`FajrAlarmOpenIntent`: stops it, sets
+`alarmOpenSalah` → PrayerTimesView pages to Salah). `plan()` is a diff (past / changed alarms cancelled, missing days
+added; nothing when nothing changed) and runs at the end of every `NotificationScheduler` run, on Stop
+(`FajrAlarmStopIntent`) and "I'm up" — so stopping the alarm each morning keeps it topped up without opening the app.
+`alarmKitActive` (app group) = AlarmKit mode: set by `enable()` after permission (`NSAlarmKitUsageDescription`), cleared if
+permission goes. **The old Shortcut** ("Shukr - Auto Fajr Alarm" = our `SetFajrAlarmIntent` → Clock's Create Alarm →
+a notification) stops itself: while `alarmKitActive` the intent throws `SetByShukrError`, so Create Alarm never runs (no
+second alarm, no automation to delete; iOS may show the error text as a banner). Settings: the switch asks for
+permission on 26.1+ (the Shortcut alert only below), "✓ shukr sets it · every day through …", "Let shukr set it (no
+Shortcut needed)" for Shortcut users; the setup's step says shukr sets it and Continue asks. The result reads in two lines
+("Alarm tomorrow 5:27 AM" semibold sage, "Fajr starts 5:37 AM" under it). iOS 18 – 26.0: the Shortcut path unchanged.
+Unverified (no Clock app in the sim): whether AlarmKit alarms show in the Clock app's list; whether Stop's intent gets
+enough time to re-plan on a real phone.
+
 ## Masjid-aware prayers (owner idea 2026-09-25 — parts 1, 2 and most of 4 built 2026-09-26)
 
 **Built:**

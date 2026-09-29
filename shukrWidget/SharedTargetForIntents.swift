@@ -1163,10 +1163,20 @@ struct SetFajrAlarmIntent: AppIntent {
         }
     }
 
+    /// shukr sets the Fajr alarm itself (AlarmKit, iOS 26.1+): this Shortcut step fails on purpose,
+    /// so the shared Shortcut stops here and its next step ("Create Alarm") never runs — no second
+    /// alarm, and nobody has to delete their automation.
+    struct SetByShukrError: Error, CustomLocalizedStringResourceConvertible {
+        var localizedStringResource: LocalizedStringResource {
+            "shukr sets your Fajr alarm itself now, so this automation doesn't need to. You can turn it off in Shortcuts."
+        }
+    }
+
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-        print("yoyoyo")
-        
+        if UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.bool(forKey: "alarmKitActive") == true {
+            throw SetByShukrError()
+        }
         let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
         let resultTime = calculatedAlarm.time
 

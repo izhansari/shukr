@@ -896,6 +896,9 @@ struct AlarmSettingsView: View {
     
     // A flag to remember if user has already seen the “setup required” alert
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
+    /// iOS 26.1+: shukr sets the alarm itself (AlarmKit); the Shortcut steps aside.
+    @AppStorage(FajrAlarms.activeKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmKitActive = false
+    @State private var alarmKitRefused = false
     
     // ------------------------------------------
     // MARK: - Computed Helpers
@@ -922,18 +925,25 @@ struct AlarmSettingsView: View {
         let ref = alarmIsFajr ? nextFajrTime : nextSunriseTime
         let offsetSeconds = alarmIsBefore ? -Double(alarmOffsetMinutes)*60 : Double(alarmOffsetMinutes)*60
         let calcDate = ref.addingTimeInterval(offsetSeconds)
-        return "is \(shortTimePM(calcDate))"
+        let day = Calendar.current.isDateInToday(calcDate) ? "today" : "tomorrow"
+        return "Alarm \(day) \(shortTimePM(calcDate))"
 //        return "\(shortTime(alarmIsFajr ? nextFajrTime : nextSunriseTime)) \(alarmIsBefore ? "-" : "+") \(alarmOffsetMinutes)m = \(shortTimePM(calcDate))"
 //        return "is \(shortTimePM(calcDate))"
 //        return alarmIsFajr ? "\(shortTimePM(calcDate)) (Fajr is at \(shortTimePM(nextFajrTime)))" : "\(shortTimePM(calcDate)) (Sunrise at \(shortTimePM(nextSunriseTime)))"
 //        return "\(shortTimePM(calcDate))"
     }
     
+    /// "shukr sets it · every day through Wed, Nov 26".
+    private var alarmKitStatus: String {
+        guard let through = FajrAlarms.scheduledThrough else { return "shukr sets it itself" }
+        return "shukr sets it · every day through \(through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
+    }
+
     private var fajrTimeRangeText: String {
 //        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
 //        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
         // "Start" / "End" of Fajr (owner, 2026-09-28), not "Fajr" / "Sunrise".
-        return alarmIsFajr ? "(Fajr starts \(shortTimePM(nextFajrTime)))" : "(Fajr ends \(shortTimePM(nextSunriseTime)))"
+        return alarmIsFajr ? "Fajr starts \(shortTimePM(nextFajrTime))" : "Fajr ends \(shortTimePM(nextSunriseTime))"
     }
     
     // ------------------------------------------
@@ -969,6 +979,20 @@ struct AlarmSettingsView: View {
                         withAnimation {
                             self.alarmEnabled = newValue
                         }
+                        // iOS 26.1+: shukr sets real alarms itself (asks once); no Shortcut.
+                        if FajrAlarms.supported {
+                            Task { @MainActor in
+                                if newValue {
+                                    if !(await FajrAlarms.enable()) {
+                                        withAnimation { alarmEnabled = false }
+                                        alarmKitRefused = true
+                                    }
+                                } else {
+                                    await FajrAlarms.plan(reason: "switched off")
+                                }
+                            }
+                            return
+                        }
                         // If user just turned it ON and has never seen the alert, show it now
                         if newValue && !didShowAlarmSetupAlert {
                             isShowingShortcutAlert = true
@@ -976,6 +1000,14 @@ struct AlarmSettingsView: View {
                         }
                     }
                 ))
+            }
+            .alert("Alarms are off for shukr", isPresented: $alarmKitRefused) {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                Button("Not now", role: .cancel) {}
+            } message: {
+                Text("To set your Fajr alarm, allow shukr to schedule alarms in Settings.")
             }
             // Present an alert the first time user toggles the alarm ON
             .alert("Shortcut Required", isPresented: $isShowingShortcutAlert) {
@@ -998,9 +1030,10 @@ struct AlarmSettingsView: View {
                     VStack{
                         
                         HStack {
+                            // 5-minute steps (owner, 2026-09-29).
                             Picker("", selection: $alarmOffsetMinutes) {
-                                ForEach(0...60, id: \.self) { number in
-                                    Text("\(number) min")
+                                ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { number in
+                                    Text("\(number) min").tag(number)
                                 }
                             }
                             .pickerStyle(.wheel)
@@ -1029,14 +1062,19 @@ struct AlarmSettingsView: View {
                         .frame(height: 100) // Adjust this value to your preferred height
                         .clipped() // This ensures the picker doesn't overflow its frame
                         
+                        // The result big, the Fajr time under it as the proof (owner, 2026-09-29).
                         Text(timeOfCalcAlarmText)
-                            .foregroundStyle(.secondary)
-                            .font(.subheadline)
-                        
+                            .font(.headline.weight(.semibold))
+                            .fontDesign(.rounded)
+                            .foregroundStyle(Color.sage)
+
                         Text(fajrTimeRangeText)
-                            .foregroundStyle(.secondary.opacity(0.8))
+                            .foregroundStyle(.secondary)
                             .font(.footnote)
                     }
+                    // The divider under the wheels runs the card's full width (it started at the
+                    // centred text, ~200 pt in — owner).
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
                     
                 }
                     
@@ -1053,6 +1091,8 @@ struct AlarmSettingsView: View {
                                 print("Error: \(error.localizedDescription)")
                             }
                         }
+                        // A new rule: the alarms ahead move with it.
+                        if !isEditingAlarm { Task { await FajrAlarms.plan(reason: "rule changed") } }
                     }) {
                         HStack {
                             Text(isEditingAlarm ? "Save" : alarmDescription)
@@ -1067,6 +1107,27 @@ struct AlarmSettingsView: View {
                     // Plain: keep our colours and the full-width hit area. iOS 26 restyles a
                     // Form's buttons (tint + label-only hit area), which broke this row's look.
                     .buttonStyle(.plain)
+
+                    // iOS 26.1+: who sets it. shukr (AlarmKit) — how far ahead; or still the
+                    // Shortcut (from before) — one tap to let shukr take over.
+                    if FajrAlarms.supported && !isEditingAlarm {
+                        if alarmKitActive {
+                            Label(alarmKitStatus, systemImage: "checkmark.circle")
+                                .font(.footnote)
+                                .foregroundStyle(Color.sage)
+                        } else {
+                            Button {
+                                Task { @MainActor in
+                                    if !(await FajrAlarms.enable()) { alarmKitRefused = true }
+                                }
+                            } label: {
+                                Label("Let shukr set it (no Shortcut needed)", systemImage: "alarm.waves.left.and.right")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(Color.sage)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
             }
             
             // Info Block
@@ -1079,6 +1140,8 @@ struct AlarmSettingsView: View {
             // at launch, so a force unwrap here crashed the app.
             if let sunrise = viewModel.getNextPrayerTime(for: "sunrise") { nextSunriseTime = sunrise }
             if let fajr = viewModel.getNextPrayerTime(for: "fajr") { nextFajrTime = fajr }
+            // 5-minute steps: an older value (e.g. 7) snaps to the nearest step.
+            if alarmOffsetMinutes % 5 != 0 { alarmOffsetMinutes = min(60, Int((Double(alarmOffsetMinutes) / 5).rounded()) * 5) }
         }
         .onChange(of: alarmEnabled){_, newValue in
                 if newValue {
@@ -1091,9 +1154,30 @@ struct AlarmSettingsView: View {
     // MARK: - Info Section
     // ------------------------------------------
     
-    /// A quick informational view about how to use the alarm feature and set up the shortcuts.
+    /// iOS 26.1+: how shukr's own alarm works; older: the Shortcut steps.
     @ViewBuilder
     private var alarmInfoView: some View {
+        if FajrAlarms.supported {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Information:")
+                Text("Set the rule once. shukr sets a real alarm for every day ahead, each at the right time as Fajr moves through the year. It rings like any alarm, even on silent or in a Focus.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text("It keeps itself topped up: each time you stop it, and whenever shukr runs, the next days are set. Tap “I'm up — open Fajr” on the alarm to go straight to Fajr.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+                Text("Had the Shortcut automation? It no longer makes an alarm while shukr sets it — no need to delete it.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+        } else {
+            shortcutInfoView
+        }
+    }
+
+    /// A quick informational view about how to use the alarm feature and set up the shortcuts.
+    @ViewBuilder
+    private var shortcutInfoView: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Information:")
             

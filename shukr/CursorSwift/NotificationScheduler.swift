@@ -143,6 +143,9 @@ enum NotificationScheduler {
         scheduleBackgroundRefresh()
         // Settings' status row and Your reminders read what's scheduled: tell them it just changed
         // (a refresh on activation can run before this re-plan finishes).
+        // The AlarmKit Fajr alarm tops up with every run (launch, coming back, background refresh,
+        // notification actions, settings) — a diff, so nothing changes when nothing's due.
+        await FajrAlarms.plan(reason: reason.isEmpty ? "reschedule" : reason)
         await NotificationHealth.shared.refresh()
         if !stalePending.isEmpty || !toAdd.isEmpty || !stale.isEmpty {
             print("🔔 notifications (\(reason)): \(chosen.count) of \(items.count) planned\(chosen.contains { $0.id.hasPrefix(keepAlivePrefix) } ? " (incl. the last-resort reminder)" : "") — removed \(stalePending.count), added \(toAdd.count), \(others) other pending, cleared \(stale.count) delivered")

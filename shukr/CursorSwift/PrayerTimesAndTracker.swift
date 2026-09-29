@@ -102,6 +102,12 @@ struct PrayerTimesView: View {
             // widget's page opened behind it (owner, 2026-09-26).
             let zikrTaskID = store.string(forKey: "widgetZikrTask")
             if zikrTaskID != nil { store.removeObject(forKey: "widgetZikrTask") }
+            // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
+            if store.bool(forKey: "alarmOpenSalah") {
+                store.set(false, forKey: "alarmOpenSalah")
+                lastDeepLinkAt = Date()
+                clearCovers { sharedState.horizontalPage = .main }
+            }
             // A marked row in the widget's times list: ask here, never unmark there.
             if store.string(forKey: WidgetListMarks.unmarkKey) != nil {
                 lastDeepLinkAt = Date()

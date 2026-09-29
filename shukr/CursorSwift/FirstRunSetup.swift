@@ -1609,7 +1609,7 @@ private struct FajrStep: View {
                     VStack(spacing: 6) {
                         HStack(spacing: 0) {
                             Picker("Minutes", selection: $offset) {
-                                ForEach(0...60, id: \.self) { Text("\($0) min").tag($0) }
+                                ForEach(Array(stride(from: 0, through: 60, by: 5)), id: \.self) { Text("\($0) min").tag($0) }
                             }
                             Picker("Before or after", selection: $isBefore) {
                                 Text("before").tag(true)
@@ -1626,23 +1626,37 @@ private struct FajrStep: View {
                         .clipped()
                         // Just the result, backed by the time it's worked from (owner: the wheels already
                         // say the rule) — like Settings' "is 5:24 AM (Fajr starts 5:34 AM)".
+                        // The result big, the Fajr time under it as the proof (owner, 2026-09-29).
                         if let next = nextAlarm {
-                            Text("Alarm tomorrow \(clockTime(next.alarm)) · Fajr \(isFajr ? "starts" : "ends") \(clockTime(next.reference))")
-                                .font(.system(.subheadline, design: .rounded))
-                                .foregroundStyle(Color.sage)
+                            VStack(spacing: 2) {
+                                Text("Alarm tomorrow \(clockTime(next.alarm))")
+                                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                                    .foregroundStyle(Color.sage)
+                                Text("Fajr \(isFajr ? "starts" : "ends") \(clockTime(next.reference))")
+                                    .font(.system(.footnote, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
-                    VStack(spacing: 8) {
-                        Text("shukr sets the alarm through a Shortcut you add once.")
+                    if FajrAlarms.supported {
+                        // iOS 26.1+: shukr sets real alarms itself (Continue asks once).
+                        Text("shukr sets a real alarm for each day, ringing even on silent. You'll be asked to allow alarms.")
                             .font(.system(.footnote, design: .rounded, weight: .light))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Button("Get the Shortcut") {
-                            didShowShortcut = true
-                            if let url = Self.shortcutURL { UIApplication.shared.open(url) }
+                    } else {
+                        VStack(spacing: 8) {
+                            Text("shukr sets the alarm through a Shortcut you add once.")
+                                .font(.system(.footnote, design: .rounded, weight: .light))
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Get the Shortcut") {
+                                didShowShortcut = true
+                                if let url = Self.shortcutURL { UIApplication.shared.open(url) }
+                            }
+                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                            .foregroundStyle(Color.sage)
                         }
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
-                        .foregroundStyle(Color.sage)
                     }
                 }
             }
@@ -1650,8 +1664,19 @@ private struct FajrStep: View {
         } bottom: {
             PrimaryButton(title: "Continue") {
                 saveDescription()
-                next()
+                // iOS 26.1+: ask for alarms and set them now; refused → the switch goes off.
+                if enabled && FajrAlarms.supported {
+                    Task { @MainActor in
+                        if !(await FajrAlarms.enable()) { enabled = false }
+                        next()
+                    }
+                } else {
+                    next()
+                }
             }
+        }
+        .onAppear {
+            if offset % 5 != 0 { offset = min(60, Int((Double(offset) / 5).rounded()) * 5) }   // 5-minute steps
         }
     }
 
