@@ -1133,7 +1133,7 @@
       "checked": "sim", "shots": ["wn-prayer-dot-hit-circle.jpg"], "asked": "get frank to instead make the tap area only around the circle button in the list item. not the name. just make the hitbox larger i guess... and show the old hitbox area compared to the new one. — then: oh that red hitbox is huge. lets keep it a circle still but just bigger."
     },
     {
-      "id": "tasbeeh-haptics-1", "date": "2026-09-29", "commit": "next", "time": null, "topic": "tasbeeh-haptics", "notes": null,
+      "id": "tasbeeh-haptics-1", "date": "2026-09-29", "commit": "a8161ec", "time": "2026-09-29T04:10:30-04:00", "topic": "tasbeeh-haptics", "notes": null,
       "title": "Tasbeeh: the pause screen's haptics chip has Off — nothing buzzes while you count", "headline": "Haptics off for the counter",
       "tryIt": ["Zikr → start a session → tap to pause → tap the phone chip (light → medium → strong → taps off): the waves go", "Resume and count: no buzz on taps, on −, or at 100 / the goal; buttons still tick", "Tap the chip again → light taps: the buzz is back"],
       "checked": "sim", "shots": ["wn-tasbeeh-haptics-off.jpg"], "asked": "we should have a setting to turn haptics off btw in case someone finds it annoying lol — counter only. btw im talking ab watch. but frank showing the no haptic toggle in the pause page is good"
