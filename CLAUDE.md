@@ -2393,6 +2393,13 @@ value 0.2 / 0.5 / 1 lights 1 / 2 / 3 waves for light / medium / strong, the wave
 picker) in task sessions (mode ≠ 0 with `selectedTask`, "from your task") and post-salah ones. At the bottom, Finish (outlined) / Resume (sage). The red ✕ and
 the top-right play button are hidden while paused; tapping the dimmed background still resumes.
 `tasbeehView.sessionMantra` = `mantraForSession`, else `MantraModel.find(named:)` on the title.
+**Haptics off (2026-09-29, owner: "a setting to turn haptics off … counter only"):** the pause screen's phone chip
+(`currentVibrationMode`, standard defaults, raw values "Light" / "Medium" / "Heavy" / "" = off — unchanged) cycles light →
+medium → strong → "taps off" (the phone alone, waves hidden). `tasbeehView.countingHapticsOff` gates every counting haptic:
+each tap (already), the count-in-sets triple tick, every hundred, −, Tasbih Fatimah's phrase switch, the stop buzz (goal /
+auto-stop / Finish's second buzz). Buttons keep theirs (pause, Finish's own tap, +N, chips, tiles) and so does the
+session-start buzz; nothing outside the tasbeeh reads the key. No Settings picker (`VibrationModeToggleButton` in Utils is
+unused). The watch's own Off is Sami's. Not felt yet (no haptics in the sim).
 **Mantra page** (`MantraEditorView`, from the Mantras list / history swipe): `MantraCardFields`
 (shared with the pause ✎ editor) on a grouped card as the page's top — its name IS the title.
 **Nothing may change the nav bar's height** (owner: the page shifted as Cancel / Save and the

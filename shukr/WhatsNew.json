@@ -82,7 +82,10 @@
      "summary": "Daily Ayah's reveal: tap and the verse comes forward as a green light blooms behind it, then breathes softly (in light and dark mode)"},
     {"id": "insights", "area": "Insights", "title": "Insights", "link": "insights",
      "summary": "Insights: how you're scoring first (average day score, and each prayer's ring — its symbol inside — as it usually is when you mark it; tap one for the details), then how consistent you are (streaks, prayed counts, a 14-day grid with dates and a show-scores switch), then whether you're getting better",
-     "tryIt": ["☰ → Insights"]}
+     "tryIt": ["☰ → Insights"]},
+    {"id": "tasbeeh-haptics", "area": "Zikr", "title": "Tasbeeh haptics", "link": "zikr",
+     "summary": "The counter's haptics: the pause screen's phone chip cycles light → medium → strong → taps off. Off silences every counting haptic (each tap, the count-in-sets ticks, every hundred, −, a Tasbih Fatimah phrase ending, the buzz at the goal); buttons keep theirs",
+     "tryIt": ["Start a tasbeeh → tap to pause → tap the phone chip until it says \"taps off\" → resume and count"]}
   ],
   "entries": [
     {
@@ -1128,6 +1131,12 @@
       "title": "Prayer list: a bigger tap circle round each prayer's dot (44 pt, was the 14 pt dot); the name and time still flip the time", "headline": "Bigger tap circle round the dot",
       "tryIt": ["Salah page → swipe up for the list → tap just beside a prayer's dot (not dead on it): it's marked, with the usual moment", "Tap the name or the time instead: the time flips (score / countdown), nothing is marked", "On a marked prayer: tap near its dot → \"mark as incomplete?\"; hold → the time editor, as before"],
       "checked": "sim", "shots": ["wn-prayer-dot-hit-circle.jpg"], "asked": "get frank to instead make the tap area only around the circle button in the list item. not the name. just make the hitbox larger i guess... and show the old hitbox area compared to the new one. — then: oh that red hitbox is huge. lets keep it a circle still but just bigger."
+    },
+    {
+      "id": "tasbeeh-haptics-1", "date": "2026-09-29", "commit": "next", "time": null, "topic": "tasbeeh-haptics", "notes": null,
+      "title": "Tasbeeh: the pause screen's haptics chip has Off — nothing buzzes while you count", "headline": "Haptics off for the counter",
+      "tryIt": ["Zikr → start a session → tap to pause → tap the phone chip (light → medium → strong → taps off): the waves go", "Resume and count: no buzz on taps, on −, or at 100 / the goal; buttons still tick", "Tap the chip again → light taps: the buzz is back"],
+      "checked": "sim", "shots": ["wn-tasbeeh-haptics-off.jpg"], "asked": "we should have a setting to turn haptics off btw in case someone finds it annoying lol — counter only. btw im talking ab watch. but frank showing the no haptic toggle in the pause page is good"
     }
   ]
 }

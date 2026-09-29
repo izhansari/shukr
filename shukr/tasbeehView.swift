@@ -34,6 +34,9 @@ struct tasbeehView: View {
     private var tapWorth: Int { countingInSets && secondaryStep > 1 ? secondaryStep : 1 }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
+    /// The pause screen's haptics chip on "off": no counting haptic plays (each tap, the sets' ticks,
+    /// every hundred, −, a Tasbih Fatimah phrase ending, the stop at the goal). Buttons keep theirs.
+    private var countingHapticsOff: Bool { currentVibrationMode == .off }
     
     // State properties
 //    @FocusState private var isNumberEntryFocused
@@ -462,7 +465,7 @@ struct tasbeehView: View {
             if sharedState.isDoingPostNamazZikr {
                 // A phrase finished (33, 66): a success buzz as the next one starts.
                 let phase = PostSalahTasbeeh.phase(at: newTasbeeh).index
-                if phase > postSalahPhase { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+                if phase > postSalahPhase && !countingHapticsOff { UINotificationFeedbackGenerator().notificationOccurred(.success) }
                 postSalahPhase = phase
             }
             
@@ -604,7 +607,7 @@ struct tasbeehView: View {
         noteModalText = ""
         
         
-        if !stoppedDueToInactivity {
+        if !stoppedDueToInactivity && !countingHapticsOff {
             triggerSomeVibration(type: .vibrate)
         }
         
@@ -709,7 +712,7 @@ struct tasbeehView: View {
             tasbeeh = min(tasbeeh + step, 10000) // Adjust maximum value as needed
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
-            if step > 1 {
+            if step > 1 && !countingHapticsOff {
                 // Counting in sets: a quick ta-ta-ta instead of one tap, so it's felt, not just
                 // seen (owner kept counting in sets after a pause without noticing).
                 let tick = UIImpactFeedbackGenerator(style: .light)
@@ -718,7 +721,7 @@ struct tasbeehView: View {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { tick.impactOccurred(intensity: 0.6) }
             }
             // Every hundred crossed (a set can jump over the exact multiple).
-            if tasbeeh / 100 > before / 100 { triggerSomeVibration(type: .error) }
+            if tasbeeh / 100 > before / 100 && !countingHapticsOff { triggerSomeVibration(type: .error) }
         }
     }
     
@@ -726,7 +729,7 @@ struct tasbeehView: View {
         if timerIsActive {
             tasbeeh = max(tasbeeh - tapWorth, countOffset) // undoes one tap; never below where a continued task started
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
-            triggerSomeVibration(type: .rigid)
+            if !countingHapticsOff { triggerSomeVibration(type: .rigid) }
         }
     }
     
@@ -1281,7 +1284,7 @@ struct tasbeehView: View {
 
         /// The phone with waves either side: one wave lit for light taps, two for medium, all
         /// three for strong (the symbols' variable value); the waves ripple outward and the
-        /// phone buzzes each time it changes. Off: the phone with every wave dimmed.
+        /// phone buzzes each time it changes. Off: the phone alone, the waves gone.
         private var hapticsChip: some View {
             let level: Double = switch currentVibrationMode {
             case .off: 0
@@ -1298,11 +1301,13 @@ struct tasbeehView: View {
                     HStack(spacing: 1) {
                         Image(systemName: "wave.3.left", variableValue: level)
                             .symbolEffect(.variableColor.iterative.nonReversing, options: .speed(1.6), value: currentVibrationMode)
+                            .opacity(currentVibrationMode == .off ? 0 : 1)
                         Image(systemName: "iphone")
                             .font(.system(size: 17, weight: .light))
                             .symbolEffect(.bounce, value: currentVibrationMode)
                         Image(systemName: "wave.3.right", variableValue: level)
                             .symbolEffect(.variableColor.iterative.nonReversing, options: .speed(1.6), value: currentVibrationMode)
+                            .opacity(currentVibrationMode == .off ? 0 : 1)
                     }
                     .font(.system(size: 11, weight: .regular))
                     .symbolRenderingMode(.hierarchical)
@@ -1324,7 +1329,7 @@ struct tasbeehView: View {
 
         private var hapticLabel: String {
             switch currentVibrationMode {
-            case .off: return "no taps"
+            case .off: return "taps off"
             case .light: return "light taps"
             case .heavy: return "strong taps"
             default: return "medium taps"
