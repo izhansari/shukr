@@ -2690,7 +2690,8 @@ DEBUG `-demoPostSalahOffer` shows the pill.
 `PostSalahNudge.lifetime` 15 s, shown as a sage ring round the beads that starts full and empties toward 12 o'clock (the
 owner picked it over a line along the pill's bottom: "depleting the ring … not progressing the ring forward"). A `.task`
 loop (30 Hz, the pill's own state only) counts only while it can be seen and isn't held: `shown` from the chrome
-(zikrness / settingsness < 0.5), the scene active, `WelcomeTarget.canLand`, `CircleCover.active` empty, and not mid-flick
+(zikrness / settingsness < 0.5), the scene active, `WelcomeTarget.canLand`, `CircleCover.active` empty except
+`PostSalahNudge.seeThroughCovers` (the ☰ popover — the pill stays in sight; owner, 71800F94), and not mid-flick
 (`FlickAway(onHold:)`). Coming back after it was hidden: at least `comebackMinimum` (5 s) left. At 0 it fades in place
 (0.4 s) and `onDismiss` runs without animation, like a flick. The loop mirrors `shown` / the scene phase into @State (a
 task holds a copy of self). DEBUG `-postSalahTimerFreeze <seconds>` holds it at that point. Sim ✓: drains and fades at
