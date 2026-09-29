@@ -2451,7 +2451,7 @@ the top-right play button are hidden while paused; tapping the dimmed background
 `tasbeehView.sessionMantra` = `mantraForSession`, else `MantraModel.find(named:)` on the title.
 **Haptics off (2026-09-29, owner: "a setting to turn haptics off … counter only"):** the pause screen's phone chip
 (`currentVibrationMode`, standard defaults, raw values "Light" / "Medium" / "Heavy" / "" = off — unchanged) cycles light →
-medium → strong → "silent" (the phone alone, waves hidden; "taps off" for one build — owner picked "silent"); a change only steps the lit waves (no `.variableColor` ripple — A1399C45). `tasbeehView.countingHapticsOff` gates every counting haptic:
+medium → strong → "silent" (the phone alone, waves hidden; "taps off" for one build — owner picked "silent"); a change only steps the lit waves (no `.variableColor` ripple — A1399C45; no phone bounce either — A7B8CB0A). `tasbeehView.countingHapticsOff` gates every counting haptic:
 each tap (already), the count-in-sets triple tick, every hundred, −, Tasbih Fatimah's phrase switch, the stop buzz (goal /
 auto-stop / Finish's second buzz). Buttons keep theirs (pause, Finish's own tap, +N, chips, tiles) and so does the
 session-start buzz; nothing outside the tasbeeh reads the key. No Settings picker (`VibrationModeToggleButton` in Utils is

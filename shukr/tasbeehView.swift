@@ -1287,7 +1287,8 @@ struct tasbeehView: View {
         /// The phone with waves either side: one wave lit for light taps, two for medium, all
         /// three for strong (the symbols' variable value). A change only steps the lit waves to
         /// the new level (owner, A1399C45: the full inner-to-outer ripple on every tap was too long);
-        /// the phone bounces. Silent: the waves fade out; back to light, the first returns.
+        /// the phone stays still (owner, A7B8CB0A: "the waves is enough"). Silent: the waves fade out;
+        /// back to light, the first returns.
         private var hapticsChip: some View {
             let level: Double = switch currentVibrationMode {
             case .off: 0
@@ -1306,7 +1307,6 @@ struct tasbeehView: View {
                             .opacity(currentVibrationMode == .off ? 0 : 1)
                         Image(systemName: "iphone")
                             .font(.system(size: 17, weight: .light))
-                            .symbolEffect(.bounce, value: currentVibrationMode)
                         Image(systemName: "wave.3.right", variableValue: level)
                             .opacity(currentVibrationMode == .off ? 0 : 1)
                     }
