@@ -155,6 +155,11 @@ enum WhatsNew {
     private static let entryIndex: [String: WhatsNewEntry] = Dictionary(file.entries.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
     static func topicTitle(_ id: String) -> String { topic(id)?.title ?? id }
     static func area(_ id: String) -> String { topic(id)?.area ?? "Other" }
+    /// The page's areas, in order — Your asks is grouped by them, Every change filters by them (owner,
+    /// ask wn-areas). `scripts/whatsnew.py`'s AREAS keeps the same list; an unknown area sorts last.
+    static let areaOrder = ["Salah", "Zikr", "Apple Watch", "Widgets", "Map & Mosques", "Insights", "Daily Ayah",
+                            "99 Names", "Reminders", "Setup & Settings"]
+    static func areaRank(_ area: String) -> Int { areaOrder.firstIndex(of: area) ?? areaOrder.count }
     /// A topic's changes, oldest first.
     static func entries(topic: String) -> [WhatsNewEntry] { byTopic[topic] ?? [] }
     private static let byTopic: [String: [WhatsNewEntry]] = Dictionary(grouping: file.entries, by: \.topic)
@@ -191,7 +196,14 @@ enum WhatsNew {
 
     /// Waiting for him, newest change first.
     @MainActor static func openAsks() -> [(ask: WhatsNewAsk, latest: WhatsNewEntry)] {
-        asks.compactMap { a in if case .open(let l) = status(of: a) { (a, l) } else { nil } }
+        #if DEBUG
+        // `-demoWhatsNewAllOpen`: every ask listed as waiting (screenshots of Your asks by area). View-level
+        // only: nothing about an ask's stored state changes.
+        if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewAllOpen") {
+            return asks.compactMap { a in entries(ask: a.id).last.map { (a, $0) } }.sorted { $0.1.when > $1.1.when }
+        }
+        #endif
+        return asks.compactMap { a in if case .open(let l) = status(of: a) { (a, l) } else { nil } }
             .sorted { $0.latest.when > $1.latest.when }
     }
 

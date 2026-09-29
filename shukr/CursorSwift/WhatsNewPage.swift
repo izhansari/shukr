@@ -26,6 +26,8 @@ struct WhatsNewView: View {
     @State private var path: [WhatsNewRoute]
     @State private var answersOpen = false
     @State private var search = ""
+    /// Every change's area chip (nil = All).
+    @State private var areaFilter: String?
     @State private var daysShown = 4
     @State private var composing: Compose?
     @State private var sharing: [FeedbackItem]?
@@ -121,12 +123,21 @@ struct WhatsNewView: View {
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.leading, 4)
-            ForEach(open, id: \.ask.id) { item in
-                AskCard(ask: item.ask, latest: item.latest,
-                        works: { works(item.ask, item.latest) },
-                        notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
-                        openChange: { path.append(.change(item.latest.id)) })
-                    .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
+            // By area in the page's order, newest first inside; a header per area once there are two.
+            let groups = Dictionary(grouping: open) { WhatsNew.area($0.latest.topic) }
+                .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
+            ForEach(groups, id: \.key) { group in
+                if groups.count > 1 {
+                    SectionTitle(text: group.key, count: group.value.count)
+                        .padding(.leading, 4).padding(.top, 6)
+                }
+                ForEach(group.value, id: \.ask.id) { item in
+                    AskCard(ask: item.ask, latest: item.latest,
+                            works: { works(item.ask, item.latest) },
+                            notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
+                            openChange: { path.append(.change(item.latest.id)) })
+                        .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
+                }
             }
         }
         .animation(.snappy, value: open.map(\.ask.id))
@@ -174,7 +185,7 @@ struct WhatsNewView: View {
     private var days: [(day: Date, entries: [WhatsNewEntry])] {
         let q = search.trimmingCharacters(in: .whitespaces)
         let list = WhatsNew.entries.reversed().filter { e in
-            e.live && (q.isEmpty || e.title.localizedCaseInsensitiveContains(q) || (e.headline ?? "").localizedCaseInsensitiveContains(q)
+            e.live && (areaFilter == nil || WhatsNew.area(e.topic) == areaFilter) && (q.isEmpty || e.title.localizedCaseInsensitiveContains(q) || (e.headline ?? "").localizedCaseInsensitiveContains(q)
                        || WhatsNew.topicTitle(e.topic).localizedCaseInsensitiveContains(q)
                        || WhatsNew.area(e.topic).localizedCaseInsensitiveContains(q))
         }
@@ -189,7 +200,8 @@ struct WhatsNewView: View {
 
     private var changesSection: some View {
         let all = days
-        let shown = search.isEmpty ? Array(all.prefix(daysShown)) : all
+        let narrowed = !search.isEmpty || areaFilter != nil
+        let shown = narrowed ? all : Array(all.prefix(daysShown))
         return VStack(alignment: .leading, spacing: 10) {
             SectionTitle(text: "Every change", count: WhatsNew.entries.filter(\.live).count).padding(.leading, 4)
             HStack(spacing: 8) {
@@ -203,6 +215,7 @@ struct WhatsNewView: View {
             }
             .padding(10)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.tertiarySystemFill)))
+            areaChips
             ForEach(shown, id: \.day) { group in
                 Text(dayTitle(group.day))
                     .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
@@ -218,12 +231,42 @@ struct WhatsNewView: View {
             if all.isEmpty {
                 Text("Nothing matches.").font(.subheadline).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity).padding(.vertical, 24)
-            } else if search.isEmpty && all.count > daysShown {
+            } else if !narrowed && all.count > daysShown {
                 Button("Earlier days") { withAnimation(.snappy) { daysShown += 7 } }
                     .font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
                     .frame(maxWidth: .infinity).padding(.vertical, 6)
             }
         }
+    }
+
+    /// "All" and each area that has changes, in the page's order. Clipped like any ScrollView — never
+    /// `scrollClipDisabled` here (a horizontal ScrollView let this page move sideways once, BA0ECB7A).
+    private var areaChips: some View {
+        let present = Set(WhatsNew.entries.filter(\.live).map { WhatsNew.area($0.topic) })
+        let areas = present.sorted { (WhatsNew.areaRank($0), $0) < (WhatsNew.areaRank($1), $1) }
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                areaChip("All", on: areaFilter == nil) { areaFilter = nil }
+                ForEach(areas, id: \.self) { area in
+                    areaChip(area, on: areaFilter == area) { areaFilter = areaFilter == area ? nil : area }
+                }
+            }
+        }
+    }
+
+    private func areaChip(_ title: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            withAnimation(.snappy) { action() }
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(on ? .semibold : .regular))
+                .foregroundStyle(on ? Color.sage : Color.primary)
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Capsule().fill(on ? Color.sage.opacity(0.16) : Color(.tertiarySystemFill)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func dayTitle(_ day: Date) -> String {

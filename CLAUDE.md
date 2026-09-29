@@ -23,6 +23,11 @@ Your asks (things he asked for, built: picture, headline, "Look for", his words,
 feature's other changes). Notes carry words plus any number of photos (drawn on with PencilKit; the original is kept)
 and videos (exported 960×540, ≤ 60 s).
 
+**Areas (ask wn-areas):** every topic's `area` is one of `AREAS` in whatsnew.py = `WhatsNew.areaOrder` (Salah · Zikr ·
+Apple Watch · Widgets · Map & Mosques · Insights · Daily Ayah · 99 Names · Reminders · Setup & Settings; `--area` only
+takes these, `check` flags others, `areas-remap` moved the old ones once). Your asks is grouped by them (headers once
+there are 2+ areas); Every change has area chips (clipped ScrollView, never `scrollClipDisabled`) that combine with search.
+
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
 `merge=union`, so branches appending lines don't conflict; `whatsnew.py check` flags a line a merge kept twice.
@@ -58,7 +63,7 @@ shows "Bradley has it". Send on the page shares the .md and every file (TestFlig
 deferred a turn — a recursive dispatch_once crashed once). Never a horizontal ScrollView on the change page (BA0ECB7A).
 Decode screenshots / thumbnails off the main thread. DEBUG args: `-demoWhatsNew`, `-demoWhatsNewChange <id>`,
 `-demoWhatsNewTopic <id>`, `-demoWhatsNewPage said`, `-demoWhatsNewAnswers YES`, `-demoWhatsNewCompose <change id>`,
-`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`.
+`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots).
 
 **Other beta extras** (Your reminders' link, its Details and card previews) follow `WhatsNewAccess.beta`: DEBUG or any
 TestFlight install. "Run setup again" and What's new follow `.available` (the owner only).

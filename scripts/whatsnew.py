@@ -32,7 +32,8 @@ New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint 
   whatsnew.py verdict --ask SLUG --works|--not-yet [--words "…"]  record an answer he gave in chat
   whatsnew.py import-verdicts        bring in Bradley's queued chat answers (../board/verdicts.jsonl)
   whatsnew.py shot <png> <name>      → shukr/WhatsNewShots/wn-<name>.jpg (≤ 600 px) and prints the name
-  whatsnew.py check                  validate the file (duplicate ids, missing shots, bad lengths)
+  whatsnew.py check                  validate the file (duplicate ids, missing shots, bad lengths, unknown areas)
+  whatsnew.py areas-remap            one-time: every topic's old area → AREAS (Watch → Apple Watch, …)
   whatsnew.py testflight --since <commit> [--out notes.txt]   TestFlight "What to Test" (≤ 4000 chars, no emoji)
   whatsnew.py convert                one-time: WhatsNew.json (v3) → WhatsNew.jsonl
 """
@@ -50,6 +51,13 @@ VERDICT_QUEUE = TEAM / "board" / "verdicts.jsonl"
 TITLE_MAX = 60
 HEADLINE_MAX = 40
 LINKS = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"]
+# The page groups by these, in this order (WhatsNew.areaOrder in the app keeps the same list).
+AREAS = ["Salah", "Zikr", "Apple Watch", "Widgets", "Map & Mosques", "Insights", "Daily Ayah", "99 Names",
+         "Reminders", "Setup & Settings"]
+# One-time: the areas before 2026-09-29 → the ones above (`areas-remap`).
+AREA_REMAP = {"Watch": "Apple Watch", "Widget": "Widgets", "Map": "Map & Mosques", "Mosques": "Map & Mosques",
+              "Notifications": "Reminders", "Setup": "Setup & Settings", "Settings": "Setup & Settings",
+              "Welcome": "Setup & Settings", "Location": "Setup & Settings", "Beta": "Setup & Settings"}
 KEY_ORDER = {
     "topic": ["kind", "id", "area", "title", "link", "summary", "tryIt"],
     "ask": ["kind", "id", "topic", "source", "note", "created", "words"],
@@ -374,6 +382,8 @@ def check():
     for t in of(records, "topic"):
         if len(t.get("title", "")) > TITLE_MAX:
             problems.append(f"topic {t['id']}: title over {TITLE_MAX} chars")
+        if t.get("area") not in AREAS:
+            problems.append(f"topic {t['id']}: unknown area {t.get('area')!r} (one of: {', '.join(AREAS)})")
     for v in of(records, "verdict"):
         if v.get("ask") not in asks:
             problems.append(f"verdict for unknown ask {v.get('ask')!r}")
@@ -386,6 +396,19 @@ def check():
 
 
 EMOJI = re.compile("[\U00010000-\U0010FFFF☀-➿⬀-⯿️]")
+
+
+def areas_remap():
+    records = load()
+    moved = 0
+    for t in of(records, "topic"):
+        new = AREA_REMAP.get(t.get("area"), t.get("area"))
+        if new != t.get("area"):
+            t["area"] = new
+            moved += 1
+    save(records)
+    left = sorted({t.get("area") for t in of(records, "topic")} - set(AREAS), key=str)
+    print(f"{moved} topic(s) moved" + (f"; not in AREAS: {left}" if left else ""))
 
 
 def clean(s):
@@ -503,7 +526,7 @@ def parser_add(prog, edit=False):
     if not edit:
         p.add_argument("--no-try", action="store_true")
         p.add_argument("--notes")
-        p.add_argument("--area")
+        p.add_argument("--area", choices=AREAS)
         p.add_argument("--topic-title")
         p.add_argument("--topic-summary")
         p.add_argument("--topic-try", action="append")
@@ -539,7 +562,7 @@ if __name__ == "__main__":
         p = argparse.ArgumentParser(prog="whatsnew.py topic")
         p.add_argument("--id", required=True)
         p.add_argument("--title")
-        p.add_argument("--area")
+        p.add_argument("--area", choices=AREAS)
         p.add_argument("--summary")
         p.add_argument("--try", dest="tryit", action="append")
         p.add_argument("--link", choices=LINKS)
@@ -560,6 +583,8 @@ if __name__ == "__main__":
         check()
     elif cmd == "testflight" and len(rest) >= 2 and rest[0] == "--since":
         testflight(rest[1], rest[3] if len(rest) >= 4 and rest[2] == "--out" else None)
+    elif cmd == "areas-remap":
+        areas_remap()
     elif cmd == "convert":
         convert()
     elif cmd == "resolve":
