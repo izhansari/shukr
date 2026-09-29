@@ -1157,13 +1157,13 @@
       "checked": "sim", "shots": ["wn-watch-crown-nudge.jpg"], "asked": "sure get sami to take a stab at the crown"
     },
     {
-      "id": "post-salah-2", "date": "2026-09-29", "commit": "next", "time": null, "topic": "post-salah", "notes": null,
+      "id": "post-salah-2", "date": "2026-09-29", "commit": "8c65af6", "time": "2026-09-29T04:34:16-04:00", "topic": "post-salah", "notes": null,
       "title": "The post-salah tasbih pill goes by itself after 15 s: a ring round the beads empties as it counts down, then the pill fades", "headline": "Goes after 15 s, a ring counts down",
       "tryIt": ["Mark a prayer: when the pill comes up, watch the ring round the beads empty; at 0 the pill fades away", "Flick it partway and hold, or go to another app: the ring waits, and you come back to at least 5 s", "Tap it before the ring runs out: the 33 · 33 · 34 starts as before; ✕ still closes it"],
       "checked": "sim", "shots": ["wn-post-salah-timer.jpg"], "asked": "post tasbih Fatima on both the iOS app and the watch app, it persists for way too long. I think we should put like a 15 second timer or something like that and have like a little bar on it or some sort of indicator that shows that timer like depleting. And then after that timer ends, dismiss that prompt. — then: ring is great. make sure its depleting the ring tho, not progressing the ring forward so we know its an expiring countdown..."
     },
     {
-      "id": "tasbeeh-haptics-2", "date": "2026-09-29", "commit": "next", "time": null, "topic": "tasbeeh-haptics", "notes": null,
+      "id": "tasbeeh-haptics-2", "date": "2026-09-29", "commit": "92825b7", "time": "2026-09-29T04:34:42-04:00", "topic": "tasbeeh-haptics", "notes": null,
       "title": "The haptics chip's off state is called \"silent\"", "headline": "Haptics off is now \"silent\"",
       "tryIt": ["Zikr → start → pause → tap the phone chip to its last state: it says \"silent\""],
       "checked": "sim", "shots": ["wn-tasbeeh-haptics-silent.jpg"], "asked": "silent"
