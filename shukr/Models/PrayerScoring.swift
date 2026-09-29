@@ -55,6 +55,16 @@ enum PrayerScoring {
         return .qaza
     }
 
+    /// When a prayer's colour changes on the clock: Perfect → On time (30 min in) and On time →
+    /// Late (halfway through the rest of the window). The Prayers widget adds a timeline entry at
+    /// each (the watch has the same rule in `WatchScoring.gradeChanges`).
+    static func gradeChanges(start: Date, end: Date) -> [Date] {
+        let rest = end.timeIntervalSince(start) - earlyWindow
+        guard rest > 0 else { return [] }
+        let perfectEnds = start.addingTimeInterval(earlyWindow)
+        return [perfectEnds, perfectEnds.addingTimeInterval(rest / 2)]
+    }
+
     /// "On time · 88"
     static func summary(for score: Double) -> String {
         "\(grade(for: score).rawValue) · \(Int((score * 100).rounded()))"

@@ -167,6 +167,11 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         } else if shown.current, shown.end > base.date {
             moments = [shown.end]
         }
+        // …and when its colour changes (Perfect → On time → Late), so the ring's colour moves on
+        // time like the app's (the fill itself runs live). Two more entries at most.
+        if shown.end > shown.start {
+            moments += PrayerScoring.gradeChanges(start: shown.start, end: shown.end).filter { $0 > base.date }
+        }
         // Style "Follows the sun" flips at Maghrib and at sunrise: an entry at each still ahead.
         if entry.style == .auto, let sunrise = entry.prayerDict["Sunrise"]?.start,
            let maghrib = entry.prayerDict["Maghrib"]?.start {
@@ -185,6 +190,8 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             .appendingPathComponent("Library/Caches/widget-shots", isDirectory: true) else { return }
         try? FileManager.default.removeItem(at: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        PrayersWidgetView.LiveArc.snapshot = true
+        defer { PrayersWidgetView.LiveArc.snapshot = false }
         /// Drawn as the home screen would: `phoneDark` is the phone's appearance, the container
         /// colour is the entry's (Style can force it).
         func render(_ shown: PrayersWidgetEntry, size: Double, phoneDark: Bool, _ name: String) {
@@ -213,6 +220,23 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                 var open = entry.at(entry.date, list: true)
                 open.completedScores = entry.completedScores.filter { $0.key == "Fajr" }
                 render(open, size: size, phoneDark: phoneDark, "\(px)-list-open-\(phone)")
+            }
+            // The ring's colour through a prayer's window (Asr, not marked): its start, +31 min
+            // (Perfect → On time), the On time → Late point, and after its end.
+            if let asr = entry.prayerDict["Asr"] {
+                var open = entry
+                open.completedScores = entry.completedScores.filter { $0.key != "Asr" }
+                let changes = PrayerScoring.gradeChanges(start: asr.start, end: asr.end)
+                let points: [(String, Date)] = [("start", asr.start.addingTimeInterval(60)),
+                                                ("31min", asr.start.addingTimeInterval(31 * 60)),
+                                                ("late", (changes.last ?? asr.end).addingTimeInterval(60)),
+                                                ("ended", asr.end.addingTimeInterval(60))]
+                for (label, date) in points {
+                    for phoneDark in [false, true] {
+                        render(open.at(date, list: false), size: size, phoneDark: phoneDark,
+                               "\(px)-asr-\(label)-\(phoneDark ? "phoneDark" : "phoneLight")")
+                    }
+                }
             }
             // "Follows the sun" either side of Maghrib and of sunrise (the phone in light mode).
             if let maghrib = entry.prayerDict["Maghrib"]?.start, let sunrise = entry.prayerDict["Sunrise"]?.start {
@@ -543,11 +567,15 @@ struct PrayersWidgetView: View {
             }
         }
 
+        /// The app's rule (`PrayerScoring`), the colour the prayer would score if marked now:
+        /// Perfect green for the first 30 min, On time yellow for the first half of the rest, Late
+        /// red for the second half, grey once the window has ended. The timeline has an entry at
+        /// each change (`PrayerScoring.gradeChanges`). It used to be a fraction-of-the-window rule
+        /// (green to half, yellow to ¾), so it read green while the app's circle was yellow (owner).
         private var progressColor: Color {
-            if progress < 0.5 { return .green }
-            else if progress < 0.75 { return .yellow }
-            else if progress < 1 { return .red }
-            else {return .gray}
+            let p = relevantPrayer
+            guard p.current, entry.date <= p.end else { return .gray }
+            return PrayerScoring.color(for: PrayerScoring.score(start: p.start, end: p.end, markedAt: entry.date))
         }
 
 
@@ -582,13 +610,9 @@ struct PrayersWidgetView: View {
                                     .stroke(Color.secondary.opacity(0.75), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))   // a touch stronger, like the app (2026-09-28)
                             }
 
-                            Circle()
-                                .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
-                                .stroke(
-                                    progressColor,
-                                    style: StrokeStyle(lineWidth: 2, lineCap: .butt)
-                                )
-                                .rotationEffect(.degrees(-90))
+                            if relevantPrayer.current {
+                                LiveArc(start: relevantPrayer.start, end: relevantPrayer.end, color: progressColor, at: entry.date)
+                            }
                             
                             // Same type as the app's main circle and Insights ring (light, rounded,
                             // thin secondary caption), scaled from the 200 pt ring to this 90 pt one.
@@ -718,6 +742,50 @@ struct PrayersWidgetView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(up ? "Today's prayer times" : "Back to the ring")
+        }
+    }
+
+    /// The app's ring — a thin butt-cap arc in the score colour on the pale band — filling live
+    /// between timeline reloads. A widget can't animate its own drawing; the stock timer-driven
+    /// `ProgressView(timerInterval:)` is what the system keeps updating, but it draws a thick,
+    /// round-capped ring with a tinted track. So it's used only as a mask for the app's own thin
+    /// arc: sized so its ~8.7 pt stroke covers the arc's radius, masked twice so its track (about
+    /// 30 % alpha) is squared down to ~9 % and barely tints the band.
+    struct LiveArc: View {
+        let start: Date
+        let end: Date
+        let color: Color
+        /// The entry's time: only the DEBUG renders use it (ImageRenderer can't run the timer).
+        var at: Date = Date()
+        #if DEBUG
+        static var snapshot = false
+        #endif
+
+        var body: some View {
+            #if DEBUG
+            if Self.snapshot {
+                let f = end > start ? min(max(at.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
+                return AnyView(Circle().trim(from: 0, to: f)
+                    .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                    .rotationEffect(.degrees(-90)))
+            }
+            #endif
+            return AnyView(Circle()
+                .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                .mask { liveRing }
+                .mask { liveRing })
+        }
+
+        private var liveRing: some View {
+            ProgressView(timerInterval: start...end, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .progressViewStyle(.circular)
+            .tint(.white)
+            .labelsHidden()
+            .frame(width: 98, height: 98)
         }
     }
 
