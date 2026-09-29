@@ -298,127 +298,10 @@ struct QuickAddStepRow: View {
     }
 }
 
-/// The pause screen's ✎: the mantra card itself, editable — the same glass card, name in the
-/// same light type, the full mantra in its inset box, notes, quick add — over the pause
-/// screen's colour (owner, 2026-09-25: the Form editor was "a really ugly view" after that card).
-/// Opens straight into editing; Save stays gray until something changes, and a swipe can't
-/// throw away edits.
-struct MantraCardEditor: View {
-    @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
-    @Query private var allMantras: [MantraModel]
-    let mantra: MantraModel
-
-    @State private var name: String
-    @State private var fullText: String
-    @State private var notes: String
-    @State private var quickAdd: Int
-    /// The photo / voice memo are part of the edit (owner, 2026-09-27: adding one left Save grey —
-    /// it had quietly saved already): drafts until Save, dropped by Cancel.
-    @State private var draftImage: Data?
-    @State private var draftAudio: Data?
-    @State private var mediaEdited = false
-    @State private var recording = false
-    /// Set while Cancel throws a take in progress away, so it doesn't land in the draft.
-    @State private var discarding = false
-    @State private var confirmDiscard = false
-
-    init(mantra: MantraModel) {
-        self.mantra = mantra
-        _name = State(initialValue: mantra.name)
-        _fullText = State(initialValue: mantra.fullText)
-        _notes = State(initialValue: mantra.notes)
-        _quickAdd = State(initialValue: mantra.quickAddStep)
-        _draftImage = State(initialValue: mantra.imageData)
-        _draftAudio = State(initialValue: mantra.audioData)
-    }
-
-    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var isDuplicate: Bool {
-        let key = BuiltInAzkar.key(trimmedName)   // the same match as seeding ("Subhan Allah" = "Subhanallah")
-        return allMantras.contains { BuiltInAzkar.key($0.name) == key && $0.persistentModelID != mantra.persistentModelID }
-    }
-    private var hasEdits: Bool {
-        name != mantra.name || fullText != mantra.fullText || notes != mantra.notes || quickAdd != mantra.quickAddStep
-            || mediaEdited || recording
-    }
-    private var canSave: Bool { hasEdits && !trimmedName.isEmpty && !isDuplicate }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                MantraCardFields(name: $name, fullText: $fullText, notes: $notes, quickAdd: $quickAdd,
-                                 imageData: draft($draftImage), audioData: draft($draftAudio),
-                                 isDuplicate: isDuplicate, identityLocked: mantra.isBuiltIn)
-                    .onPreferenceChange(MemoRecordingKey.self) { recording = $0 }
-                    .padding(16)
-                    .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
-                    .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
-                    .padding(20)
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Color("pauseColor").ignoresSafeArea())
-            .fontDesign(.rounded)
-            .navigationTitle("Edit zikr")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismissKeyboard()
-                        if hasEdits { confirmDiscard = true } else { dismiss() }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    SaveButton(enabled: canSave) { save() }
-                }
-            }
-            .interactiveDismissDisabled(hasEdits)
-            .alert("Discard changes?", isPresented: $confirmDiscard) {
-                Button("Discard", role: .destructive) {
-                    discarding = true
-                    ZikrAudio.stopAll()          // a take in progress goes too
-                    dismiss()
-                }
-                Button("Keep editing", role: .cancel) {}
-            } message: {
-                Text("Your edits, photo and voice memo changes aren't saved.")
-            }
-        }
-        .presentationDragIndicator(.visible)
-        .onDisappear { ZikrAudio.stopAll() }   // really closed: keep a take, stop playback
-    }
-
-    /// A photo / memo change waits in the draft (and marks the edit) until Save.
-    private func draft(_ value: Binding<Data?>) -> Binding<Data?> {
-        Binding(get: { value.wrappedValue }, set: { new in
-            guard !discarding else { return }
-            value.wrappedValue = new
-            mediaEdited = true
-        })
-    }
-
-    private func save() {
-        ZikrAudio.stopAll()   // a take in progress is finished into the draft (synchronously) and kept
-        guard canSave else { return }
-        dismissKeyboard()
-        if mediaEdited {
-            mantra.imageData = draftImage
-            mantra.audioData = draftAudio
-        }
-        mantra.name = trimmedName
-        mantra.fullText = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
-        mantra.notes = notes.trimmingCharacters(in: .whitespacesAndNewlines)
-        mantra.quickAddStep = quickAdd
-        for task in mantra.tasks { task.mantraName = trimmedName }   // as MantraEditorView does
-        try? context.save()
-        triggerSomeVibration(type: .success)
-        dismiss()
-    }
-}
-
-/// A mantra as the pause card shows it, editable: the name in large light type, the full mantra
-/// in its centred inset box, notes beside the note icon, then count in sets. No background —
-/// the pause-screen editor puts it on glass, the Mantras page on a grouped card.
+/// A zikr's card, editable: the name in large light type (with `nameAccessory` top right), then
+/// one fixed box with four tabs down its left — the full zikr (ع), notes, voice memo, photo — then
+/// count in sets. No background — the zikr page (and a new zikr) put it on a
+/// grouped card.
 struct MantraCardFields: View {
     @Binding var name: String
     @Binding var fullText: String
@@ -435,13 +318,17 @@ struct MantraCardFields: View {
     /// A built-in: its name and full text stay as they are (notes, memo, photo, sets are the
     /// user's) — owner, 2026-09-27.
     var identityLocked = false
+    /// Beside the name, top right (owner, 2026-09-29, #17): the zikr page's ✎ / Cancel · Save —
+    /// it edits only these fields, so it sits on the card, not in the page's bar.
+    var nameAccessory: AnyView? = nil
     @FocusState private var focus: Field?
     private enum Field { case name, fullText, notes }
-    /// Which of notes / voice memo / photo the box shows. The box keeps one size for all three
-    /// (owner, 2026-09-27: nothing on the card or page may move when switching).
-    enum Pane: CaseIterable { case notes, memo, photo
-        var symbol: String { switch self { case .notes: "doc.text"; case .memo: "waveform"; case .photo: "photo" } }
-        var label: String { switch self { case .notes: "Notes"; case .memo: "Voice memo"; case .photo: "Photo" } }
+    /// Which of the full zikr / notes / voice memo / photo the box shows. The box keeps one size for
+    /// all four (owner, 2026-09-27: nothing on the card or page may move when switching). The full
+    /// zikr is a tab too since 2026-09-29 (#17, option A: ع first and the default; it scrolls in the box).
+    enum Pane: CaseIterable { case fullText, notes, memo, photo
+        var symbol: String { switch self { case .fullText: ""; case .notes: "doc.text"; case .memo: "waveform"; case .photo: "photo" } }
+        var label: String { switch self { case .fullText: "Full zikr"; case .notes: "Notes"; case .memo: "Voice memo"; case .photo: "Photo" } }
     }
     /// The card's one audio engine (VoiceMemoPanel only borrows it), so a take survives tab
     /// switches and List cell recycling. Leaving the memo tab finishes it; the sheets call
@@ -449,9 +336,11 @@ struct MantraCardFields: View {
     @State private var audio = ZikrAudio()
     @State private var pane: Pane = {
         #if DEBUG
-        switch UserDefaults.standard.string(forKey: "demoZikrPane") { case "memo": return .memo; case "photo": return .photo; default: break }
+        switch UserDefaults.standard.string(forKey: "demoZikrPane") {
+        case "notes": return .notes; case "memo": return .memo; case "photo": return .photo; default: break
+        }
         #endif
-        return .notes
+        return .fullText
     }()
     static let paneHeight: CGFloat = 132
 
@@ -461,24 +350,28 @@ struct MantraCardFields: View {
         let _ = wireRecorder()
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                TextField("name", text: $name)
-                    .font(.system(size: 24, weight: .light, design: .rounded))
-                    .autocorrectionDisabled(true)
-                    .focused($focus, equals: .name)
-                    .disabled(!editable || identityLocked)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(fieldBox(alwaysFilled: false, editing: editable && !identityLocked))
-                    // Built-in: a small lock in the field while editing (an overlay, so nothing moves).
-                    .overlay(alignment: .trailing) {
-                        if identityLocked && editable {
-                            Image(systemName: "lock.fill")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                                .padding(.trailing, 10)
-                                .accessibilityLabel("Built-in: name and text can't be changed")
+                HStack(alignment: .center, spacing: 8) {
+                    // "Nickname" (owner): a short name for it — the full zikr has its own tab.
+                    TextField("Nickname", text: $name)
+                        .font(.system(size: 24, weight: .light, design: .rounded))
+                        .autocorrectionDisabled(true)
+                        .focused($focus, equals: .name)
+                        .disabled(!editable || identityLocked)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(fieldBox(alwaysFilled: false, editing: editable && !identityLocked))
+                        // Built-in: a small lock in the field while editing (an overlay, so nothing moves).
+                        .overlay(alignment: .trailing) {
+                            if identityLocked && editable {
+                                Image(systemName: "lock.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.trailing, 10)
+                                    .accessibilityLabel("Built-in: name and text can't be changed")
+                            }
                         }
-                    }
+                    if let nameAccessory { nameAccessory }
+                }
                 if isDuplicate {
                     Text("another zikr already has this name")
                         .font(.caption)
@@ -486,12 +379,8 @@ struct MantraCardFields: View {
                 }
             }
 
-            editorBox(text: $fullText, field: .fullText,
-                      placeholder: "the full zikr — Arabic, transliteration, meaning",
-                      minHeight: 110, centered: true, enabled: !identityLocked)
-
             HStack(alignment: .top, spacing: 8) {
-                // doc.text / waveform / photo, top to bottom — tabs for the box beside them.
+                // ع / doc.text / waveform / photo, top to bottom — tabs for the box beside them.
                 VStack(spacing: 6) {
                     ForEach(Pane.allCases, id: \.self) { p in
                         paneButton(p)
@@ -511,6 +400,9 @@ struct MantraCardFields: View {
                             .transition(.opacity)
                     case .notes:
                         notesPane
+                            .transition(.opacity)
+                    case .fullText:
+                        fullTextPane
                             .transition(.opacity)
                     }
                 }
@@ -543,13 +435,43 @@ struct MantraCardFields: View {
         }
     }
 
+    /// The full zikr tab: the editor while editing (a built-in's text stays as it is), else the text —
+    /// Arabic lines in the Uthmani face, the rest light rounded — scrolling inside the box.
+    private var fullTextPane: some View {
+        ZStack(alignment: .top) {
+            Color.clear
+            if editable && !identityLocked {
+                editorBox(text: $fullText, field: .fullText,
+                          placeholder: "The full zikr — Arabic, transliteration, or meaning",
+                          minHeight: Self.paneHeight - 8, centered: true, inset: false)
+            } else {
+                ScrollView {
+                    Group {
+                        if fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text("no text yet")
+                                .font(.subheadline)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            ZikrFullText(text: fullText, arabicSize: 22, otherSize: 14)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
+        }
+        .background { if !(editable && !identityLocked) { fieldBox(alwaysFilled: true) } }
+    }
+
     /// The notes tab: the editor while editing, else the notes as text in the same box.
     private var notesPane: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
             if editable {
                 editorBox(text: $notes, field: .notes,
-                          placeholder: "notes — why or when you read it, who taught you",
+                          placeholder: "Notes to remember — where you heard it, who taught you, why you read it",
                           minHeight: Self.paneHeight - 8, centered: false, inset: false)
             } else {
                 // Long notes scroll inside the box; short ones don't bounce.
@@ -573,6 +495,7 @@ struct MantraCardFields: View {
     private func paneButton(_ p: Pane) -> some View {
         let selected = pane == p
         let filled = switch p {
+        case .fullText: !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .notes: !notes.isEmpty
         case .memo: audioData != nil
         case .photo: imageData != nil
@@ -582,8 +505,10 @@ struct MantraCardFields: View {
             focus = nil
             pane = p
         } label: {
-            Image(systemName: p.symbol)
-                .font(.system(size: 14, weight: .medium))
+            Group {
+                if p == .fullText { Text("ع").font(.system(size: 17, weight: .medium)) }
+                else { Image(systemName: p.symbol).font(.system(size: 14, weight: .medium)) }
+            }
                 .foregroundStyle(selected ? Color.sage : (filled ? Color.secondary : Color(.tertiaryLabel)))
                 .frame(width: 34, height: 34)
                 .background(Circle().fill(selected ? Color.sage.opacity(0.16) : Color.clear))
@@ -635,6 +560,31 @@ struct MantraCardFields: View {
         return shape
             .fill(Color.primary.opacity(alwaysFilled || on ? 0.04 : 0))
             .overlay(shape.stroke(Color.sage.opacity(on ? 0.45 : 0), lineWidth: 1))
+    }
+}
+
+/// A zikr's full text as the cards show it: Arabic lines in the Uthmani face, the rest
+/// (transliteration, meaning) in light rounded type, centred.
+struct ZikrFullText: View {
+    let text: String
+    var arabicSize: CGFloat = 26
+    var otherSize: CGFloat = 15
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ForEach(Array(text.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, line in
+                let t = line.trimmingCharacters(in: .whitespaces)
+                if !t.isEmpty {
+                    let arabic = t.unicodeScalars.contains { (0x0600...0x06FF).contains($0.value) }
+                    Text(t)
+                        .font(arabic ? .custom("KFGQPCUthmanTahaNaskh", size: arabicSize)
+                                     : .system(size: otherSize, weight: .light, design: .rounded))
+                        .foregroundStyle(arabic ? .primary : .secondary)
+                        .lineSpacing(arabic ? 6 : 2)
+                        .multilineTextAlignment(.center)
+                }
+            }
+        }
     }
 }
 
@@ -975,7 +925,6 @@ struct MantraEditorView: View {
     /// A new zikr's photo / memo wait here until Save; an existing one's save straight to it.
     @State private var draftImage: Data?
     @State private var draftAudio: Data?
-    @State private var showTitle = false
     /// Viewing by default; the pencil unlocks the fields in place (a new mantra starts editing).
     @State private var isEditing: Bool
     /// The task sheet for a new task with this zikr locked in (notes #17).
@@ -1078,7 +1027,8 @@ struct MantraEditorView: View {
                                      imageData: media(\.imageData, draft: $draftImage),
                                      audioData: media(\.audioData, draft: $draftAudio),
                                      isDuplicate: isDuplicate, editable: isEditing,
-                                     identityLocked: mantra?.isBuiltIn ?? false)
+                                     identityLocked: mantra?.isBuiltIn ?? false,
+                                     nameAccessory: AnyView(cardControls))
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .fill(Color(.secondarySystemGroupedBackground)))
@@ -1144,46 +1094,10 @@ struct MantraEditorView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .fontDesign(.rounded)
-            // Nothing here changes the bar's height (owner: the page kept shifting as Cancel /
-            // Save and the title came and went): the trailing slot always holds a button — the
-            // pencil while viewing, Save while editing (green only with something to save) —
-            // and the name in the bar only fades in once the card has scrolled away.
-            .contentMargins(.top, 6, for: .scrollContent)
-            .onScrollGeometryChange(for: Bool.self) { geo in
-                geo.contentOffset.y + geo.contentInsets.top > 64
-            } action: { _, scrolledPast in
-                withAnimation(.easeInOut(duration: 0.2)) { showTitle = scrolledPast }
-            }
-            .navigationTitle(mantra?.name ?? "New Zikr")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(mantra == nil ? "New Zikr" : name)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .opacity(mantra == nil || showTitle ? 1 : 0)
-                }
-                // Only while editing; the trailing button alone keeps the bar's height fixed.
-                if isEditing {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { cancelEdits() }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if isEditing {
-                        SaveButton(enabled: canSave) { save() }
-                    } else {
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            beginEditing()
-                        } label: {
-                            Image(systemName: "pencil")
-                        }
-                        .accessibilityLabel("Edit")
-                        .disabled(sessionsEditing)      // one mode at a time while sessions are selected
-                    }
-                }
-            }
+            // No bar (owner, 2026-09-29, #17): ✎ / Cancel · Save sit on the card beside the name —
+            // they only edit the card — and the space the bar took is the page's again.
+            .contentMargins(.top, 12, for: .scrollContent)
+            .toolbar(.hidden, for: .navigationBar)
             // Don't lose typed edits to a swipe; with no edits it swipes away like any sheet.
             .interactiveDismissDisabled((mantra != nil && hasEdits) || newHasContent)
             .fullScreenCover(isPresented: $creatingTask) {
@@ -1242,6 +1156,14 @@ struct MantraEditorView: View {
                 Text(deleteMessage)
             }
         }
+        #if DEBUG
+        // `-demoZikrEditing`: the page opens in ✎ mode (simulator screenshots).
+        .task {
+            guard mantra != nil, ProcessInfo.processInfo.arguments.contains("-demoZikrEditing") else { return }
+            try? await Task.sleep(for: .seconds(1))
+            beginEditing()
+        }
+        #endif
         // Fires when this sheet closes, and when the New task cover (full screen) goes over it:
         // either way a take in progress is finished and saved, and playback stops.
         .onDisappear { ZikrAudio.stopAll() }
@@ -1283,6 +1205,46 @@ struct MantraEditorView: View {
             dismiss()
             onCreate?(new)
         }
+    }
+
+    /// Top right of the card: ✎ while viewing; Cancel and ✓ (Save) while editing (✓ sage only with
+    /// something to save). Fixed height, so the name row never moves.
+    private var cardControls: some View {
+        HStack(spacing: 6) {
+            if isEditing {
+                Button("Cancel") { cancelEdits() }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                // Save is a checkmark (owner), sage once there's something to save.
+                Button { save() } label: {
+                    Image(systemName: "checkmark")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(canSave ? Color.sage : Color.secondary.opacity(0.6))
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(canSave ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06)))
+                }
+                .disabled(!canSave)
+                .accessibilityLabel("Save")
+            } else {
+                Button {
+                    triggerSomeVibration(type: .light)
+                    beginEditing()
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.sage)
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(Color.sage.opacity(0.14)))
+                }
+                .accessibilityLabel("Edit zikr")
+                .disabled(sessionsEditing)      // one mode at a time while sessions are selected
+            }
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
     }
 
     /// Existing mantra: put the fields back as they were (the sheet stays). New: close (asking

@@ -969,7 +969,6 @@ struct tasbeehView: View {
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
         @State private var chosenMantraObject: MantraModel? = nil
-        @State private var editingMantra: MantraModel?
         @State private var fullTextExpanded = false
 
         // Computed variables for est time completion (only for target count mode)
@@ -1068,15 +1067,6 @@ struct tasbeehView: View {
                     presentation: [.large]
                 )
             }
-            .sheet(item: $editingMantra, onDismiss: {
-                // A rename: the session's title (what gets saved and shown) follows the mantra.
-                if let mantra, sharedState.titleForSession != mantra.name {
-                    sharedState.mantraForSession = mantra
-                    sharedState.titleForSession = mantra.name
-                }
-            }) { mantra in
-                MantraCardEditor(mantra: mantra)
-            }
         }
 
         // MARK: mantra card
@@ -1111,18 +1101,9 @@ struct tasbeehView: View {
                     .allowsHitTesting(!mantraLocked)   // not .disabled: that grayed the name out
                     Spacer(minLength: 8)
                     if let mantra {
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            editingMantra = mantra
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(Color.sage)
-                                .frame(width: 34, height: 34)
-                                .background(Circle().fill(Color.sage.opacity(0.14)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Edit zikr")
+                        // The voice memo and photo, a tap away (owner, #17). No editing from the pause
+                        // screen (owner, 2026-09-29): a zikr is edited on its own page.
+                        ZikrMediaStrip(mantra: mantra, paused: paused, compact: true)
                     }
                 }
 
@@ -1167,16 +1148,6 @@ struct tasbeehView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.footnote)
-                    }
-                    // The voice memo (▶︎, 0.75×, loop) and a tap-to-expand photo, for learning it.
-                    ZikrMediaStrip(mantra: mantra, paused: paused)
-                    if full.isEmpty && notes.isEmpty && mantra.audioData == nil && mantra.imageData == nil {
-                        Button { editingMantra = mantra } label: {
-                            Label("add the full zikr or notes", systemImage: "plus")
-                                .font(.footnote)
-                                .foregroundStyle(Color.sage)
-                        }
-                        .buttonStyle(.plain)
                     }
                 } else if title.isEmpty {
                     Text("its full text, notes and sets show up here")
