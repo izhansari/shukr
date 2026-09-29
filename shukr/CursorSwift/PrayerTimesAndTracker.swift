@@ -1186,7 +1186,8 @@ struct PrayerTimesView: View {
                             sharedState.isDoingPostNamazZikr = true
                             showTasbeehPage = true
                         },
-                        onDismiss: { live.postSalahNudge = nil }   // the pill animates (or not) itself
+                        onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
+                        shown: zikrness < 0.5 && settingsness < 0.5
                     )
                     .padding(.top, showBottom ? 64 : 0)
                     .padding(.bottom, showBottom ? 0 : 34)

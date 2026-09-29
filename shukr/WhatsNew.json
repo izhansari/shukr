@@ -45,7 +45,7 @@
      "summary": "The medium Zikr widget fits more tasks and always shows progress"},
     {"id": "welcome", "area": "Welcome", "title": "The welcome animation plays only when the app starts fresh"},
     {"id": "post-salah", "area": "Salah", "title": "Post-salah tasbih pill", "link": "salah",
-     "summary": "After marking a prayer, a single \"Post-salah tasbih?\" pill at the bottom"},
+     "summary": "After marking a prayer, a single \"Post-salah tasbih?\" pill at the bottom (under the top bar with the list open). A ring round its beads empties over 15 s and then the pill fades; it waits while it can't be seen or is being dragged"},
     {"id": "map-style", "area": "Map", "title": "Map style: the globe", "link": "map",
      "summary": "The map's globe toggles Standard ⇄ Satellite, and the map follows light / dark",
      "tryIt": ["Open the map → tap the globe (top right) → satellite; tap again → standard", "Settings → dark (or auto after Maghrib) → the standard map is dark", "The ? sits on its own under the globe / locate buttons"]},
@@ -1155,6 +1155,12 @@
       "title": "Counting with the Digital Crown is one count per nudge: a flick or a long turn counts once instead of running on; pause, then nudge again", "headline": "Crown: one count per nudge",
       "tryIt": ["Start a zikr on the watch and nudge the Crown forward a click: one count, one buzz. Flick it hard: still just one", "Nudge, recite, nudge again: each nudge counts. Turning backwards never counts"],
       "checked": "sim", "shots": ["wn-watch-crown-nudge.jpg"], "asked": "sure get sami to take a stab at the crown"
+    },
+    {
+      "id": "post-salah-2", "date": "2026-09-29", "commit": "next", "time": null, "topic": "post-salah", "notes": null,
+      "title": "The post-salah tasbih pill goes by itself after 15 s: a ring round the beads empties as it counts down, then the pill fades", "headline": "Goes after 15 s, a ring counts down",
+      "tryIt": ["Mark a prayer: when the pill comes up, watch the ring round the beads empty; at 0 the pill fades away", "Flick it partway and hold, or go to another app: the ring waits, and you come back to at least 5 s", "Tap it before the ring runs out: the 33 · 33 · 34 starts as before; ✕ still closes it"],
+      "checked": "sim", "shots": ["wn-post-salah-timer.jpg"], "asked": "post tasbih Fatima on both the iOS app and the watch app, it persists for way too long. I think we should put like a 15 second timer or something like that and have like a little bar on it or some sort of indicator that shows that timer like depleting. And then after that timer ends, dismiss that prompt. — then: ring is great. make sure its depleting the ring tho, not progressing the ring forward so we know its an expiring countdown..."
     }
   ]
 }

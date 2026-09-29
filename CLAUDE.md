@@ -2645,6 +2645,16 @@ the top pill (`FloatingChainZikrButton`, `-demoChainButton`), the dev picker
 through the Salah page were deleted; the old `postSalahPromptStyle` key is cleared at launch.
 DEBUG `-demoPostSalahOffer` shows the pill.
 
+**The pill goes by itself (2026-09-29, owner: "it persists for way too long … a 15 second timer … depleting"):**
+`PostSalahNudge.lifetime` 15 s, shown as a sage ring round the beads that starts full and empties toward 12 o'clock (the
+owner picked it over a line along the pill's bottom: "depleting the ring … not progressing the ring forward"). A `.task`
+loop (30 Hz, the pill's own state only) counts only while it can be seen and isn't held: `shown` from the chrome
+(zikrness / settingsness < 0.5), the scene active, `WelcomeTarget.canLand`, `CircleCover.active` empty, and not mid-flick
+(`FlickAway(onHold:)`). Coming back after it was hidden: at least `comebackMinimum` (5 s) left. At 0 it fades in place
+(0.4 s) and `onDismiss` runs without animation, like a flick. The loop mirrors `shown` / the scene phase into @State (a
+task holds a copy of self). DEBUG `-postSalahTimerFreeze <seconds>` holds it at that point. Sim ✓: drains and fades at
+15 s; 20 s in another app → back with 5 s; docked under the top bar. The watch copies the look (Sami).
+
 **Post-salah zikr** (`PostSalahTasbeeh` / `PostSalahPhaseStrip`, tasbeehView.swift, 2026-09-25):
 one 100-count session (Subhanallah 33 · Alhamdulillah 33 · Allahu Akbar 34) saved once under a
 "Tasbih Fatimah" mantra (created on first use with the phrases as full text and a note). Above

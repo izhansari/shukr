@@ -312,6 +312,8 @@ enum PrayerStartPreview {
 /// the pager is held (inside a page, a sideways drag would otherwise turn it).
 struct FlickAway: ViewModifier {
     let onDismiss: () -> Void
+    /// The finger is on it (true) / let go (false): the pill's countdown waits meanwhile.
+    var onHold: (Bool) -> Void = { _ in }
     @State private var drag: CGSize = .zero
     @State private var gone = false
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
@@ -331,11 +333,13 @@ struct FlickAway: ViewModifier {
                 DragGesture(minimumDistance: 6)
                     .onChanged { value in
                         guard !gone else { return }
+                        if drag == .zero { onHold(true) }
                         if live?.pagerLocked == false { live?.pagerLocked = true }
                         drag = value.translation
                     }
                     .onEnded { value in
                         live?.pagerLocked = false
+                        onHold(false)
                         let t = value.predictedEndTranslation
                         if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
                             triggerSomeVibration(type: .light)
@@ -354,7 +358,9 @@ struct FlickAway: ViewModifier {
 }
 
 extension View {
-    func flickAway(onDismiss: @escaping () -> Void) -> some View { modifier(FlickAway(onDismiss: onDismiss)) }
+    func flickAway(onHold: @escaping (Bool) -> Void = { _ in }, onDismiss: @escaping () -> Void) -> some View {
+        modifier(FlickAway(onDismiss: onDismiss, onHold: onHold))
+    }
 }
 
 /// The post-salah prompt at the bottom of the Salah page (owner, 2026-09-25, after trying an arc
@@ -362,17 +368,49 @@ extension View {
 /// bead icon + "Post-salah tasbih?", with a small ✕ on its corner so it's plainly dismissable.
 /// Tap → the 33 · 33 · 34. Flick it any way to put it away. It's drawn by the pager's
 /// chrome, above the pages, so dragging it never moves a page (it did when it lived in the page).
+///
+/// It goes by itself after `lifetime` (owner, 2026-09-29: "it persists for way too long … a 15 second
+/// timer … a little bar … depleting"): a sage ring round the beads starts full and empties toward
+/// 12 o'clock (owner picked the ring over a line along the bottom: "depleting the ring … not progressing
+/// the ring forward"), and at 0 the pill fades where it is, like a flick. The clock only runs while the pill can be seen and nobody's touching it — not in the
+/// background, paged away, under a cover (`WelcomeTarget.canLand`, `CircleCover`) or mid-flick; after
+/// being away it comes back with at least `comebackMinimum` left.
 struct PostSalahNudge: View {
     let onOpen: () -> Void
     let onDismiss: () -> Void
+    /// The host's page is the one showing (not paged to Zikr / Settings).
+    var shown = true
+
+    static let lifetime: Double = 15
+    static let comebackMinimum: Double = 5
 
     @State private var pressed = false
+    @State private var elapsed: Double = 0
+    @State private var holding = false
+    @State private var expiring = false
+    /// Mirrors of `shown` / the scene phase the clock's loop can read (a task holds a copy of self).
+    @State private var hostShown = true
+    @State private var appActive = true
+    @Environment(\.scenePhase) private var scenePhase
+
+    private var left: Double { max(0, 1 - elapsed / Self.lifetime) }
 
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "circle.hexagonpath")   // the zikr beads (hands = prayer-spot pins)
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(Color.green)
+                .overlay {
+                    // Time left: full at the start, its end running back to 12 o'clock as it empties.
+                    ZStack {
+                        Circle().stroke(Color.sage.opacity(0.18), lineWidth: 2)
+                        Circle().trim(from: 0, to: left)
+                            .stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 32, height: 32)
+                }
+                .padding(.horizontal, 4)
             Text("Post-salah tasbih?")
                 .font(.system(size: 17, weight: .regular, design: .rounded))
                 .foregroundStyle(.primary)
@@ -411,9 +449,48 @@ struct PostSalahNudge: View {
                 onOpen()
             }
         }
-        .flickAway(onDismiss: onDismiss)
+        .flickAway(onHold: { holding = $0 }, onDismiss: onDismiss)
+        .opacity(expiring ? 0 : 1)
+        .onChange(of: shown, initial: true) { _, v in hostShown = v }
+        .onChange(of: scenePhase, initial: true) { _, p in appActive = p == .active }
+        .task { await runClock() }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Post-salah tasbih")
+    }
+
+    /// Counts up while the pill can be seen and isn't held; at `lifetime` it fades and goes.
+    private func runClock() async {
+        #if DEBUG
+        // `-postSalahTimerFreeze <seconds>`: stop the bar at that point (screenshots).
+        let freeze = UserDefaults.standard.double(forKey: "postSalahTimerFreeze")
+        if freeze > 0 { elapsed = freeze; return }
+        #endif
+        var last = Date()
+        var wasVisible = true
+        while !Task.isCancelled && !expiring {
+            try? await Task.sleep(for: .milliseconds(33))
+            let now = Date()
+            let dt = now.timeIntervalSince(last)
+            last = now
+            let visible = hostShown && appActive && WelcomeTarget.canLand && CircleCover.active.isEmpty
+            if visible && !wasVisible {
+                elapsed = min(elapsed, Self.lifetime - Self.comebackMinimum)   // back: a moment to see it
+            }
+            wasVisible = visible
+            guard visible && !holding else { continue }
+            elapsed += dt
+            if elapsed >= Self.lifetime { expire() }
+        }
+    }
+
+    /// Time's up: fade where it is, then go without an animation of its own (as a flick does).
+    private func expire() {
+        withAnimation(.easeOut(duration: 0.4)) { expiring = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { onDismiss() }
+        }
     }
 }
 
