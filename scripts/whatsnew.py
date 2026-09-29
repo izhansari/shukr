@@ -1,241 +1,341 @@
 #!/usr/bin/env python3
-"""shukr/WhatsNew.json helper (see CLAUDE.md "What's new").
+"""shukr/WhatsNew.jsonl helper — What's new v4 (see CLAUDE.md "What's new").
 
-The file has two lists: `topics` (one card each: id, area, a title that describes the CURRENT
-state, optional current try-it steps) and `entries` (one per visible change, chronological:
-a stable `id` ("<topic>-<n>", never changes, even if the title is edited), date, commit, time,
-topic, notes item, one-line title, try-it steps, checked, optional status "dropped" /
-"replaced" / "removed", optional screenshots).
+The file is JSON Lines: one record per line, never hand-edited. Four kinds:
+  topic   {"kind":"topic","id","area","title","summary"?,"link"?,"tryIt"?}      a feature (short title ≤ 60)
+  ask     {"kind":"ask","id","topic","words","source":"chat"|"note","note"?,"created"}
+          something the owner asked for (his words, verbatim) — the page's "Your asks"
+  change  {"kind":"change","id","time","topic","title","headline","tryIt","shots"?,"asks"?,"notes"?,
+           "status"?,"checked"}                                                   one visible change
+  verdict {"kind":"verdict","ask","verdict":"works"|"notyet","words"?,"at","by":"chat"}
+          his answer given in chat (Bradley records it; the phone's own answers live in its feedback.json)
 
-  scripts/whatsnew.py resolve
-      Fill in "commit": "next" with the hash of the commit that added the entry, and every
-      committed entry's "time" (commit time, from git). Run it before committing.
+`.gitattributes` merges this file with `merge=union`, so two branches that both append lines merge cleanly.
+New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint the same id.
 
-  scripts/whatsnew.py add --topic ID --title "…" --headline "…" --try "…" [--try "…"] [--notes "#17"]
-                          [--area Zikr --topic-title "…" --topic-summary "…"] [--topic-try "…"]…
-                          [--shot wn-x.jpg]… [--checked sim|phone|no] [--status dropped|replaced|removed]
-                          [--topic-link salah|zikr|settings|history|azkar|map|names|ayah|insights]
-                          [--addresses <feedback id>]… [--asked "<the owner's words>"] [--no-try]
-      Append an entry ("commit": "next"). A new topic needs --area and --topic-title.
-      --topic-title is SHORT (≤ 60 chars, e.g. "Prayers widget"); the long description of the feature
-      as it is now goes in --topic-summary (shown in the detail).
-      Every entry needs its own --try steps for THIS change; --no-try only for invisible changes.
-      Every entry needs a --headline: what changed, in a few words (≤ 40 chars, e.g. "Only the newest
-      change shown") — the bold line on its To check / To test card; the --title is the full sentence.
-      --addresses: feedback this change fixes (the app shows it under "To check").
-      --asked: the owner's own request from chat (relayed by Bradley, in his words) — the app shows
-      "You asked in chat: '…'" and puts the change under "To check" like addressed feedback.
+  whatsnew.py add --topic ID --title "…" --headline "…" --try "…" [--try "…"] [--shot wn-x.jpg]…
+                  [--ask SLUG [--ask-words "his words"] | --ask-note <feedback id>]… [--notes "#17"]
+                  [--area Zikr --topic-title "…"] [--topic-summary "…"] [--topic-try "…"]… [--topic-link salah|…]
+                  [--checked sim|phone|no] [--status dropped|replaced|removed] [--no-try]
+      Append a change (stamped with the time now; no resolve step). A new topic needs --area and --topic-title.
+      --ask: the ask this change answers. New asks are created on the spot: from chat, give --ask-words
+      (Bradley's brief quotes him); from a note, --ask-note <id> (the words come from the pulled
+      feedback.json; the slug is note-<first 8 of the id>). Old flags still work:
+      --asked "<words>" = a new chat ask, --addresses <id> = --ask-note <id>.
 
-  scripts/whatsnew.py headline --entry <entry id> --text "<a few words>"
-      Set an existing entry's headline (backfill).
-
-  scripts/whatsnew.py asked --entry <entry id> --text "<the owner's words>"
-      Set an existing entry's chat request (backfill).
-
-  scripts/whatsnew.py address --entry <entry id> --feedback <id> [--feedback <id>]…
-      Add feedback ids to an existing entry's "addresses" (e.g. a fix committed earlier).
-
-  scripts/whatsnew.py status --entry <entry id> --set dropped|replaced|removed
-      Mark an older change as undone / replaced (shown greyed).
-
-  scripts/whatsnew.py shot <screenshot.png> <name>
-      Save a small JPEG (≤ 600 px wide) as shukr/WhatsNewShots/wn-<name>.jpg and print the name
-      to pass as --shot.
-
-  scripts/whatsnew.py testflight --since <commit> [--out notes.txt]
-      The TestFlight "What to Test" text for every entry after <commit> (≤ 4000 chars, no emoji),
-      ready for `scripts/asc.py release <build> notes.txt`.
+  whatsnew.py edit --entry ID [--title …] [--headline …] [--try …]… [--shot …]… [--ask …]…
+  whatsnew.py drop --entry ID
+      Change or remove a change that isn't committed yet (refused once it's in HEAD).
+  whatsnew.py status --entry ID --set dropped|replaced|removed     an older change undone / replaced (greyed)
+  whatsnew.py headline --entry ID --text "…"                       backfill a headline
+  whatsnew.py topic --id ID [--title …] [--area …] [--summary …] [--try …]… [--link …]
+  whatsnew.py verdict --ask SLUG --works|--not-yet [--words "…"]  record an answer he gave in chat
+  whatsnew.py import-verdicts        bring in Bradley's queued chat answers (../board/verdicts.jsonl)
+  whatsnew.py shot <png> <name>      → shukr/WhatsNewShots/wn-<name>.jpg (≤ 600 px) and prints the name
+  whatsnew.py check                  validate the file (duplicate ids, missing shots, bad lengths)
+  whatsnew.py testflight --since <commit> [--out notes.txt]   TestFlight "What to Test" (≤ 4000 chars, no emoji)
+  whatsnew.py convert                one-time: WhatsNew.json (v3) → WhatsNew.jsonl
 """
-import argparse, datetime, json, re, subprocess, sys
+import argparse, datetime, glob, json, os, re, secrets, subprocess, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FILE = ROOT / "shukr" / "WhatsNew.json"
+FILE = ROOT / "shukr" / "WhatsNew.jsonl"
+REL = "shukr/WhatsNew.jsonl"
+OLD = ROOT / "shukr" / "WhatsNew.json"
 SHOTS = ROOT / "shukr" / "WhatsNewShots"
-
-
-def load():
-    return json.loads(FILE.read_text())
-
-
-def git(*args):
-    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True).stdout.strip()
-
-
-def j(v):
-    return json.dumps(v, ensure_ascii=False)
-
-
-def save(data):
-    """Compact, diff-friendly layout: one topic per line or two, an entry in four lines."""
-    out = ["{", '  "topics": [']
-    for i, t in enumerate(data["topics"]):
-        head = f'    {{"id": {j(t["id"])}, "area": {j(t["area"])}, "title": {j(t["title"])}'
-        if t.get("link"):
-            head += f', "link": {j(t["link"])}'
-        if t.get("summary"):
-            head += f',\n     "summary": {j(t["summary"])}'
-        if t.get("tryIt"):
-            head += f',\n     "tryIt": {j(t["tryIt"])}'
-        out.append(head + "}" + ("," if i < len(data["topics"]) - 1 else ""))
-    out += ["  ],", '  "entries": [']
-    for i, e in enumerate(data["entries"]):
-        first = f'"id": {j(e["id"])}, "date": {j(e["date"])}, "commit": {j(e["commit"])}, "time": {j(e.get("time"))}, ' \
-                f'"topic": {j(e["topic"])}, "notes": {j(e.get("notes"))}'
-        if e.get("status"):
-            first += f', "status": {j(e["status"])}'
-        last = f'"checked": {j(e["checked"])}'
-        if e.get("shots"):
-            last += f', "shots": {j(e["shots"])}'
-        if e.get("addresses"):
-            last += f', "addresses": {j(e["addresses"])}'
-        if e.get("asked"):
-            last += f', "asked": {j(e["asked"])}'
-        out += ["    {",
-                f"      {first},",
-                f'      "title": {j(e["title"])},' + (f' "headline": {j(e["headline"])},' if e.get("headline") else ""),
-                f'      "tryIt": {j(e["tryIt"])},',
-                f"      {last}",
-                "    }" + ("," if i < len(data["entries"]) - 1 else "")]
-    out += ["  ]", "}", ""]
-    text = "\n".join(out)
-    json.loads(text)  # still valid
-    FILE.write_text(text)
-
-
-def resolve():
-    data = load()
-    hashes_filled = times_filled = 0
-    for e in data["entries"]:
-        if e["commit"] == "next":
-            # The oldest commit whose diff added this entry's id (stable; titles can be edited).
-            found = git("log", "--format=%h", "--reverse", "-S", f'"id": {j(e["id"])}', "--", "shukr/WhatsNew.json").split()
-            if found:
-                e["commit"] = found[0]
-                hashes_filled += 1
-        if e["commit"] != "next" and not e.get("time"):
-            iso = git("show", "-s", "--format=%cI", e["commit"])
-            if iso:
-                e["time"] = iso
-                times_filled += 1
-    save(data)
-    print(f"resolved {hashes_filled} commit(s), {times_filled} time(s)")
-
+TEAM = ROOT.parent                       # shukrGit: board/ and feedback/ sit beside every checkout
+VERDICT_QUEUE = TEAM / "board" / "verdicts.jsonl"
 
 TITLE_MAX = 60
 HEADLINE_MAX = 40
+LINKS = ["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"]
+KEY_ORDER = {
+    "topic": ["kind", "id", "area", "title", "link", "summary", "tryIt"],
+    "ask": ["kind", "id", "topic", "source", "note", "created", "words"],
+    "change": ["kind", "id", "time", "topic", "asks", "notes", "status", "checked", "commit", "headline", "title", "tryIt", "shots"],
+    "verdict": ["kind", "ask", "verdict", "at", "by", "words"],
+}
 
 
-def with_headline(e, text):
-    """The entry with its headline right after the title (stable key order in the file)."""
-    out = {}
-    for k, v in e.items():
-        if k == "headline":
+def now():
+    return datetime.datetime.now().astimezone().replace(microsecond=0).isoformat()
+
+
+def git(*args):
+    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True).stdout
+
+
+# MARK: the file
+
+def load():
+    if not FILE.exists():
+        sys.exit(f"no {REL} (run `whatsnew.py convert` once)")
+    out = []
+    for n, line in enumerate(FILE.read_text().splitlines(), 1):
+        if not line.strip():
             continue
-        out[k] = v
-        if k == "title":
-            out["headline"] = text
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError as e:
+            sys.exit(f"{REL}:{n}: not JSON ({e})")
     return out
 
 
-def add(a):
-    if a.topic_title and len(a.topic_title) > TITLE_MAX:
-        sys.exit(f"--topic-title is {len(a.topic_title)} chars: keep it short (≤ {TITLE_MAX}, e.g. \"Prayers widget\") "
-                 "and put the description in --topic-summary")
-    if not a.tryit and not a.no_try:
-        sys.exit("every entry needs its own --try steps for this change (or --no-try for an invisible one)")
-    if not a.headline:
-        sys.exit("every entry needs a --headline: what changed, in a few words (e.g. \"Only the newest change shown\")")
-    if len(a.headline) > HEADLINE_MAX:
-        sys.exit(f"--headline is {len(a.headline)} chars: keep it ≤ {HEADLINE_MAX}")
-    data = load()
-    topics = {t["id"]: t for t in data["topics"]}
-    t = topics.get(a.topic)
+def ordered(r):
+    keys = KEY_ORDER.get(r.get("kind"), [])
+    out = {k: r[k] for k in keys if k in r and r[k] not in (None, [], "")}
+    for k, v in r.items():
+        if k not in out and v not in (None, [], ""):
+            out[k] = v
+    return out
+
+
+def save(records):
+    text = "".join(json.dumps(ordered(r), ensure_ascii=False, separators=(", ", ": ")) + "\n" for r in records)
+    for line in text.splitlines():
+        json.loads(line)
+    FILE.write_text(text)
+
+
+def of(records, kind):
+    return [r for r in records if r.get("kind") == kind]
+
+
+def find(records, kind, id_):
+    hits = [r for r in records if r.get("kind") == kind and r.get("id") == id_]
+    return hits[-1] if hits else None
+
+
+def committed_ids():
+    """Change ids already in HEAD's file (edit / drop refuse those)."""
+    ids = set()
+    for line in git("show", f"HEAD:{REL}").splitlines():
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("kind") == "change":
+            ids.add(r.get("id"))
+    return ids
+
+
+# MARK: pulled feedback (a note's words)
+
+def pulled_feedback():
+    """Every note pulled from the phones (the newest copy of each id)."""
+    notes = {}
+    paths = sorted(glob.glob(str(TEAM / "feedback" / "*" / "feedback.json")), key=os.path.getmtime)
+    for p in paths:
+        try:
+            for f in json.load(open(p)):
+                if f.get("id"):
+                    notes[f["id"].upper()] = f
+        except (OSError, json.JSONDecodeError):
+            pass
+    return notes
+
+
+def resolve_note(prefix, notes=None):
+    notes = pulled_feedback() if notes is None else notes
+    p = prefix.upper()
+    hits = [k for k in notes if k.startswith(p)]
+    return (hits[0], notes[hits[0]]) if len(hits) == 1 else (p, None)
+
+
+# MARK: asks
+
+def ensure_ask(records, slug, topic, words=None, note=None):
+    """The ask with this slug; created if it's new (needs his words, or a note to take them from)."""
+    a = find(records, "ask", slug)
+    if a:
+        if words and not a.get("words"):
+            a["words"] = words
+        return a
+    if note:
+        full, f = resolve_note(note)
+        a = {"kind": "ask", "id": slug, "topic": (f or {}).get("topic") or topic, "source": "note", "note": full,
+             "created": (f or {}).get("created") or now(), "words": (f or {}).get("text") or words or ""}
+        if not a["words"]:
+            print(f"note: no pulled note {note!r} to take the words from — the app shows the note from the phone",
+                  file=sys.stderr)
+    else:
+        if not words:
+            sys.exit(f"new ask {slug!r}: pass --ask-words \"<his words, verbatim>\" (or --ask-note <feedback id>)")
+        a = {"kind": "ask", "id": slug, "topic": topic, "source": "chat", "created": now(), "words": words}
+    records.append(a)
+    print(f"new ask {slug}: {a['words'][:70]}")
+    return a
+
+
+def ask_slugs(records, a, topic):
+    """The slugs this change answers, creating any new asks."""
+    slugs = []
+    words = list(a.ask_words or [])
+    for i, slug in enumerate(a.ask or []):
+        ensure_ask(records, slug, topic, words=words[i] if i < len(words) else None)
+        slugs.append(slug)
+    for note in (a.ask_note or []) + (a.addresses or []):
+        slug = f"note-{note[:8].lower()}"
+        ensure_ask(records, slug, topic, note=note)
+        slugs.append(slug)
+    if a.asked:
+        slug = f"chat-{secrets.token_hex(2)}"
+        ensure_ask(records, slug, topic, words=a.asked)
+        slugs.append(slug)
+    return list(dict.fromkeys(slugs))
+
+
+# MARK: commands
+
+def check_texts(title=None, headline=None, topic_title=None):
+    if topic_title and len(topic_title) > TITLE_MAX:
+        sys.exit(f"--topic-title is {len(topic_title)} chars: keep it ≤ {TITLE_MAX} (e.g. \"Prayers widget\"); "
+                 "the long description goes in --topic-summary")
+    if headline is not None and len(headline) > HEADLINE_MAX:
+        sys.exit(f"--headline is {len(headline)} chars: keep it ≤ {HEADLINE_MAX}")
+
+
+def upsert_topic(records, a):
+    t = find(records, "topic", a.topic)
     if t is None:
         if not (a.area and a.topic_title):
             sys.exit(f"new topic {a.topic!r}: pass --area and --topic-title")
-        t = {"id": a.topic, "area": a.area, "title": a.topic_title}
-        data["topics"].append(t)
-    else:
-        if a.topic_title:
-            t["title"] = a.topic_title
-        if a.area:
-            t["area"] = a.area
-    if a.topic_summary:
-        t["summary"] = a.topic_summary
-    if a.topic_try:
-        t["tryIt"] = a.topic_try
-    if a.topic_link:
-        t["link"] = a.topic_link
-    # Keep key order stable in the file.
-    for k in ("summary", "tryIt"):
-        if k in t:
-            t[k] = t.pop(k)
+        t = {"kind": "topic", "id": a.topic, "area": a.area, "title": a.topic_title}
+        records.append(t)
+    for k, v in (("title", a.topic_title), ("area", a.area), ("summary", a.topic_summary), ("tryIt", a.topic_try),
+                 ("link", a.topic_link)):
+        if v:
+            t[k] = v
+    return t
+
+
+def add(a):
+    check_texts(a.title, a.headline, a.topic_title)
+    if not a.tryit and not a.no_try:
+        sys.exit("every change needs its own --try steps (or --no-try for an invisible one)")
+    if not a.headline:
+        sys.exit("every change needs a --headline: what changed, in a few words (≤ 40)")
     for s in a.shot or []:
         if not (SHOTS / s).exists():
             sys.exit(f"no screenshot {SHOTS / s} (make it with `whatsnew.py shot`)")
-    used = {x["id"] for x in data["entries"]}
-    n = 1
-    while f"{a.topic}-{n}" in used:
-        n += 1
-    e = {"id": f"{a.topic}-{n}", "date": datetime.date.today().isoformat(), "commit": "next", "time": None, "topic": a.topic,
-         "notes": a.notes, "title": a.title, "headline": a.headline, "tryIt": a.tryit or [], "checked": a.checked}
-    if a.status:
-        e["status"] = a.status
+    records = load()
+    upsert_topic(records, a)
+    import_verdicts(records, quiet=True)
+    used = {r.get("id") for r in of(records, "change")}
+    cid = f"{a.topic}-{secrets.token_hex(2)}"
+    while cid in used:
+        cid = f"{a.topic}-{secrets.token_hex(2)}"
+    e = {"kind": "change", "id": cid, "time": now(), "topic": a.topic, "asks": ask_slugs(records, a, a.topic),
+         "notes": a.notes, "status": a.status, "checked": a.checked, "headline": a.headline, "title": a.title,
+         "tryIt": a.tryit or [], "shots": a.shot}
+    records.append(e)
+    save(records)
+    print(f"added {cid}: {a.headline}" + (f" (answers {', '.join(e['asks'])})" if e["asks"] else ""))
+
+
+def uncommitted(records, entry_id):
+    e = find(records, "change", entry_id)
+    if e is None:
+        sys.exit(f"no change {entry_id!r}")
+    if entry_id in committed_ids():
+        sys.exit(f"{entry_id} is already committed: use `status --set replaced` and add a new change instead")
+    return e
+
+
+def edit(a):
+    check_texts(a.title, a.headline)
+    records = load()
+    e = uncommitted(records, a.entry)
+    if a.title:
+        e["title"] = a.title
+    if a.headline:
+        e["headline"] = a.headline
+    if a.tryit:
+        e["tryIt"] = a.tryit
     if a.shot:
+        for s in a.shot:
+            if not (SHOTS / s).exists():
+                sys.exit(f"no screenshot {SHOTS / s}")
         e["shots"] = a.shot
-    if a.addresses:
-        e["addresses"] = [x.upper() for x in a.addresses]
-    if a.asked:
-        e["asked"] = a.asked
-    data["entries"].append(e)
-    save(data)
-    print(f"added to {a.topic}: {a.title}")
+    if a.ask or a.ask_note or a.addresses or a.asked:
+        e["asks"] = ask_slugs(records, a, e["topic"])
+    save(records)
+    print(f"edited {a.entry}")
 
 
-def address(entry_id, ids):
-    data = load()
-    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
+def drop(entry_id):
+    records = load()
+    e = uncommitted(records, entry_id)
+    records.remove(e)
+    save(records)
+    print(f"dropped {entry_id}")
+
+
+def set_field(entry_id, field, value, limit=None):
+    if limit and len(value) > limit:
+        sys.exit(f"{field} is {len(value)} chars: keep it ≤ {limit}")
+    records = load()
+    e = find(records, "change", entry_id)
     if e is None:
-        sys.exit(f"no entry {entry_id!r}")
-    have = e.setdefault("addresses", [])
-    for i in ids:
-        if i.upper() not in have:
-            have.append(i.upper())
-    save(data)
-    print(f"{entry_id} addresses {', '.join(have)}")
+        sys.exit(f"no change {entry_id!r}")
+    e[field] = value
+    save(records)
+    print(f"{entry_id} {field}: {value}")
 
 
-def set_headline(entry_id, text):
-    if len(text) > HEADLINE_MAX:
-        sys.exit(f"headline is {len(text)} chars: keep it ≤ {HEADLINE_MAX}")
-    data = load()
-    i = next((n for n, x in enumerate(data["entries"]) if x["id"] == entry_id), None)
-    if i is None:
-        sys.exit(f"no entry {entry_id!r}")
-    data["entries"][i] = with_headline(data["entries"][i], text)
-    save(data)
-    print(f"{entry_id} headline: {text}")
+def topic_cmd(a):
+    check_texts(topic_title=a.title)
+    records = load()
+    t = find(records, "topic", a.id)
+    if t is None:
+        sys.exit(f"no topic {a.id!r} (a new one comes with `add --area --topic-title`)")
+    for k, v in (("title", a.title), ("area", a.area), ("summary", a.summary), ("tryIt", a.tryit), ("link", a.link)):
+        if v:
+            t[k] = v
+    save(records)
+    print(f"topic {a.id} updated")
 
 
-def set_asked(entry_id, text):
-    data = load()
-    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
-    if e is None:
-        sys.exit(f"no entry {entry_id!r}")
-    e["asked"] = text
-    save(data)
-    print(f"{entry_id} asked: {text}")
+def verdict(a):
+    records = load()
+    if find(records, "ask", a.ask) is None:
+        sys.exit(f"no ask {a.ask!r}")
+    records.append({"kind": "verdict", "ask": a.ask, "verdict": "works" if a.works else "notyet", "at": now(),
+                    "by": "chat", "words": a.words})
+    save(records)
+    print(f"{a.ask}: {'works' if a.works else 'not yet'} (from chat)")
 
 
-def set_status(entry_id, status):
-    data = load()
-    e = next((x for x in data["entries"] if x["id"] == entry_id), None)
-    if e is None:
-        sys.exit(f"no entry {entry_id!r}")
-    e["status"] = status
-    save(data)
-    print(f"{entry_id}: {status}")
+def import_verdicts(records=None, quiet=False):
+    """Bradley doesn't write the repo: he queues answers Izhan gives in chat in ../board/verdicts.jsonl
+    (one {"ask","verdict","words","at"} per line); every `add`, and this command, brings new ones in."""
+    standalone = records is None
+    if standalone:
+        records = load()
+    if not VERDICT_QUEUE.exists():
+        if not quiet:
+            print("no queued verdicts")
+        return 0
+    have = {(v.get("ask"), v.get("at")) for v in of(records, "verdict")}
+    asks = {a.get("id") for a in of(records, "ask")}
+    added = 0
+    for line in VERDICT_QUEUE.read_text().splitlines():
+        try:
+            q = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (q.get("ask"), q.get("at")) in have or q.get("ask") not in asks or q.get("verdict") not in ("works", "notyet"):
+            continue
+        records.append({"kind": "verdict", "ask": q["ask"], "verdict": q["verdict"], "at": q["at"], "by": "chat",
+                        "words": q.get("words")})
+        have.add((q["ask"], q["at"]))
+        added += 1
+    if standalone:
+        save(records)
+    if added or not quiet:
+        print(f"imported {added} chat verdict(s) from board/verdicts.jsonl")
+    return added
 
 
 def shot(png, name):
@@ -248,6 +348,43 @@ def shot(png, name):
     print(f"({out.stat().st_size // 1024} KB; all screenshots {total // 1024} KB)", file=sys.stderr)
 
 
+def check():
+    records = load()
+    problems = []
+    seen = {}
+    for r in records:
+        if r.get("kind") in ("topic", "ask", "change"):
+            key = (r["kind"], r.get("id"))
+            if key in seen and seen[key] != r:
+                problems.append(f"two different {r['kind']} lines for {r.get('id')!r} (a union merge kept both: keep one)")
+            seen[key] = r
+    topics = {t["id"] for t in of(records, "topic")}
+    asks = {a["id"] for a in of(records, "ask")}
+    for e in of(records, "change"):
+        if e.get("topic") not in topics:
+            problems.append(f"{e['id']}: unknown topic {e.get('topic')!r}")
+        for s in e.get("shots") or []:
+            if not (SHOTS / s).exists():
+                problems.append(f"{e['id']}: missing screenshot {s}")
+        for s in e.get("asks") or []:
+            if s not in asks:
+                problems.append(f"{e['id']}: unknown ask {s!r}")
+        if e.get("headline") and len(e["headline"]) > HEADLINE_MAX:
+            problems.append(f"{e['id']}: headline over {HEADLINE_MAX} chars")
+    for t in of(records, "topic"):
+        if len(t.get("title", "")) > TITLE_MAX:
+            problems.append(f"topic {t['id']}: title over {TITLE_MAX} chars")
+    for v in of(records, "verdict"):
+        if v.get("ask") not in asks:
+            problems.append(f"verdict for unknown ask {v.get('ask')!r}")
+    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict")))
+    for p in problems:
+        print("✗ " + p)
+    if problems:
+        sys.exit(1)
+    print("✓ ok")
+
+
 EMOJI = re.compile("[\U00010000-\U0010FFFF☀-➿⬀-⯿️]")
 
 
@@ -255,31 +392,40 @@ def clean(s):
     return EMOJI.sub("", s.replace("☰", "the menu")).strip()
 
 
+def ids_at(commit):
+    """Change ids in the file as of a commit (before the switch: v3's WhatsNew.json)."""
+    ids = set()
+    for line in git("show", f"{commit}:{REL}").splitlines():
+        try:
+            r = json.loads(line)
+            if r.get("kind") == "change":
+                ids.add(r["id"])
+        except json.JSONDecodeError:
+            pass
+    old = git("show", f"{commit}:shukr/WhatsNew.json")
+    if old:
+        try:
+            ids |= {e["id"] for e in json.loads(old).get("entries", []) if e.get("id")}
+        except json.JSONDecodeError:
+            pass
+    return ids
+
+
 def testflight(since, out):
-    data = load()
-    entries = data["entries"]
-    topics = {t["id"]: t for t in data["topics"]}
-    idx = max((i for i, e in enumerate(entries) if e["commit"] == since), default=-1)
-    if idx >= 0:
-        new = entries[idx + 1:]
-    else:
-        # A commit with no entries of its own (e.g. a build): everything not already in it.
-        def in_since(c):
-            return c != "next" and subprocess.run(
-                ["git", "-C", str(ROOT), "merge-base", "--is-ancestor", c, since]).returncode == 0
-        new = [e for e in entries if not in_since(e["commit"])]
-    # One line per topic, as it is now (dropped changes don't go to testers).
+    records = load()
+    topics = {t["id"]: t for t in of(records, "topic")}
+    before = ids_at(since)
+    changes = of(records, "change")
     order = []
-    for e in new:
-        if e.get("status") in ("dropped", "replaced") or e["topic"] in order:
+    for e in changes:
+        if e["id"] in before or e.get("status") in ("dropped", "replaced") or e["topic"] in order:
             continue
         order.append(e["topic"])
     areas = {}
     for tid in order:
-        t = topics[tid]
-        latest = [e for e in entries if e["topic"] == tid and not e.get("status")]
+        t = topics.get(tid, {"title": tid, "area": "Other"})
+        latest = [e for e in changes if e["topic"] == tid and not e.get("status")]
         steps = t.get("tryIt") or (latest[-1]["tryIt"] if latest else [])
-        # The feature as it is now (the short card title alone, "What's new", says nothing to testers).
         areas.setdefault(t["area"], []).append((t.get("summary") or t["title"], steps))
     lines = ["What's new since the last build. Thank you for testing!", ""]
     for area, items in areas.items():
@@ -292,7 +438,6 @@ def testflight(since, out):
     lines.append("Found something off? Send feedback with a screenshot from TestFlight.")
     text = "\n".join(lines)
     if len(text) > 4000:
-        # Keep titles, drop the try-it steps.
         text = "\n".join(l for l in lines if not l.startswith("  Try:"))[:4000]
     if out:
         Path(out).write_text(text)
@@ -300,57 +445,124 @@ def testflight(since, out):
     print(f"\n({len(text)} chars)", file=sys.stderr)
 
 
-if __name__ == "__main__":
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "resolve":
-        resolve()
-    elif cmd == "add":
-        p = argparse.ArgumentParser(prog="whatsnew.py add")
+def convert():
+    """One-time: v3's WhatsNew.json → JSON Lines. Keeps every change id (the phone's saved state is keyed by
+    them) and turns `asked` / `addresses` into asks."""
+    if FILE.exists():
+        sys.exit(f"{REL} already exists")
+    old = json.loads(OLD.read_text())
+    notes = pulled_feedback()
+    records = [{"kind": "topic", **t} for t in old["topics"]]
+    chat = {}                      # his words (first 60 chars, normalised) → slug: one ask across entries / topics
+    note_slugs = set()
+    asks, changes = [], []
+    for e in old["entries"]:
+        slugs = []
+        if e.get("asked"):
+            key = re.sub(r"\s+", " ", e["asked"].strip().lower())[:60]
+            if key not in chat:
+                chat[key] = f"chat-{e['id']}"
+                asks.append({"kind": "ask", "id": chat[key], "topic": e["topic"], "source": "chat",
+                             "created": e.get("time") or e["date"], "words": e["asked"]})
+            slugs.append(chat[key])
+        for a in e.get("addresses") or []:
+            full, f = resolve_note(a, notes)
+            slug = f"note-{full[:8].lower()}"
+            if slug not in note_slugs:
+                note_slugs.add(slug)
+                asks.append({"kind": "ask", "id": slug, "topic": (f or {}).get("topic") or e["topic"], "source": "note",
+                             "note": full, "created": (f or {}).get("created") or e.get("time") or e["date"],
+                             "words": (f or {}).get("text", "")})
+            slugs.append(slug)
+        changes.append({"kind": "change", "id": e["id"], "time": e.get("time") or (e["date"] + "T12:00:00-04:00"),
+                        "topic": e["topic"], "asks": slugs, "notes": e.get("notes"), "status": e.get("status"),
+                        "checked": e.get("checked"), "commit": e.get("commit") if e.get("commit") != "next" else None,
+                        "headline": e.get("headline"), "title": e["title"], "tryIt": e.get("tryIt"), "shots": e.get("shots")})
+    records += asks + changes
+    save(records)
+    print(f"converted: {len(old['topics'])} topics, {len(asks)} asks ({len(chat)} chat, {len(note_slugs)} notes), "
+          f"{len(changes)} changes → {REL}")
+
+
+def parser_add(prog, edit=False):
+    p = argparse.ArgumentParser(prog=prog)
+    if edit:
+        p.add_argument("--entry", required=True)
+        p.add_argument("--title")
+    else:
         p.add_argument("--topic", required=True)
         p.add_argument("--title", required=True)
-        p.add_argument("--headline", help="what changed, in a few words (≤ 40 chars): the card's bold line")
-        p.add_argument("--try", dest="tryit", action="append")
-        p.add_argument("--no-try", action="store_true", help="an invisible change: no try-it steps")
-        p.add_argument("--asked", help="the owner's request from chat, in his words")
-        p.add_argument("--topic-summary", help="the feature as it is now, long form (the detail)")
+    p.add_argument("--headline", help="what changed, in a few words (≤ 40 chars)")
+    p.add_argument("--try", dest="tryit", action="append")
+    p.add_argument("--shot", action="append")
+    p.add_argument("--ask", action="append", help="the ask (slug) this change answers")
+    p.add_argument("--ask-words", action="append", help="a new chat ask's words, verbatim (one per --ask)")
+    p.add_argument("--ask-note", action="append", help="a feedback note this change answers (its id)")
+    p.add_argument("--asked", help="(old flag) a new chat ask, in his words")
+    p.add_argument("--addresses", action="append", help="(old flag) = --ask-note")
+    if not edit:
+        p.add_argument("--no-try", action="store_true")
         p.add_argument("--notes")
         p.add_argument("--area")
         p.add_argument("--topic-title")
+        p.add_argument("--topic-summary")
         p.add_argument("--topic-try", action="append")
-        p.add_argument("--topic-link", choices=["salah", "zikr", "settings", "history", "azkar", "map", "names", "ayah", "insights"],
-                       help="where What's new's \"Open in shukr\" goes")
-        p.add_argument("--shot", action="append")
+        p.add_argument("--topic-link", choices=LINKS)
         p.add_argument("--checked", default="sim", choices=["sim", "phone", "no"])
         p.add_argument("--status", choices=["dropped", "replaced", "removed"])
-        p.add_argument("--addresses", action="append", help="a feedback id this change fixes")
-        add(p.parse_args(sys.argv[2:]))
-    elif cmd == "address":
-        p = argparse.ArgumentParser(prog="whatsnew.py address")
+    return p
+
+
+if __name__ == "__main__":
+    cmd, rest = (sys.argv[1], sys.argv[2:]) if len(sys.argv) > 1 else ("", [])
+    if cmd == "add":
+        add(parser_add("whatsnew.py add").parse_args(rest))
+    elif cmd == "edit":
+        edit(parser_add("whatsnew.py edit", edit=True).parse_args(rest))
+    elif cmd == "drop":
+        p = argparse.ArgumentParser(prog="whatsnew.py drop")
         p.add_argument("--entry", required=True)
-        p.add_argument("--feedback", action="append", required=True)
-        a = p.parse_args(sys.argv[2:])
-        address(a.entry, a.feedback)
-    elif cmd == "headline":
-        p = argparse.ArgumentParser(prog="whatsnew.py headline")
-        p.add_argument("--entry", required=True)
-        p.add_argument("--text", required=True)
-        a = p.parse_args(sys.argv[2:])
-        set_headline(a.entry, a.text)
-    elif cmd == "asked":
-        p = argparse.ArgumentParser(prog="whatsnew.py asked")
-        p.add_argument("--entry", required=True)
-        p.add_argument("--text", required=True)
-        a = p.parse_args(sys.argv[2:])
-        set_asked(a.entry, a.text)
+        drop(p.parse_args(rest).entry)
     elif cmd == "status":
         p = argparse.ArgumentParser(prog="whatsnew.py status")
         p.add_argument("--entry", required=True)
         p.add_argument("--set", required=True, choices=["dropped", "replaced", "removed"])
-        a = p.parse_args(sys.argv[2:])
-        set_status(a.entry, a.set)
-    elif cmd == "shot" and len(sys.argv) == 4:
-        shot(sys.argv[2], sys.argv[3])
-    elif cmd == "testflight" and len(sys.argv) >= 4 and sys.argv[2] == "--since":
-        testflight(sys.argv[3], sys.argv[5] if len(sys.argv) >= 6 and sys.argv[4] == "--out" else None)
+        a = p.parse_args(rest)
+        set_field(a.entry, "status", a.set)
+    elif cmd == "headline":
+        p = argparse.ArgumentParser(prog="whatsnew.py headline")
+        p.add_argument("--entry", required=True)
+        p.add_argument("--text", required=True)
+        a = p.parse_args(rest)
+        set_field(a.entry, "headline", a.text, HEADLINE_MAX)
+    elif cmd == "topic":
+        p = argparse.ArgumentParser(prog="whatsnew.py topic")
+        p.add_argument("--id", required=True)
+        p.add_argument("--title")
+        p.add_argument("--area")
+        p.add_argument("--summary")
+        p.add_argument("--try", dest="tryit", action="append")
+        p.add_argument("--link", choices=LINKS)
+        topic_cmd(p.parse_args(rest))
+    elif cmd == "verdict":
+        p = argparse.ArgumentParser(prog="whatsnew.py verdict")
+        p.add_argument("--ask", required=True)
+        g = p.add_mutually_exclusive_group(required=True)
+        g.add_argument("--works", action="store_true")
+        g.add_argument("--not-yet", action="store_true")
+        p.add_argument("--words")
+        verdict(p.parse_args(rest))
+    elif cmd == "import-verdicts":
+        import_verdicts()
+    elif cmd == "shot" and len(rest) == 2:
+        shot(*rest)
+    elif cmd == "check":
+        check()
+    elif cmd == "testflight" and len(rest) >= 2 and rest[0] == "--since":
+        testflight(rest[1], rest[3] if len(rest) >= 4 and rest[2] == "--out" else None)
+    elif cmd == "convert":
+        convert()
+    elif cmd == "resolve":
+        print("resolve isn't needed any more: `add` stamps the time, and scripts look up commits when they need them")
     else:
         print(__doc__)

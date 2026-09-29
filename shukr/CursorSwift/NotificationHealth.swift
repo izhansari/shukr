@@ -195,7 +195,7 @@ struct NotificationHealthRows: View {
         let issues = health.issues
         Group {
             if health.checked {
-                if UpcomingReminders.isPublic || betaAccess.available {
+                if UpcomingReminders.isPublic || betaAccess.beta {
                     NavigationLink { YourRemindersView() } label: { statusRow(issues) }
                 } else {
                     statusRow(issues)
@@ -824,7 +824,7 @@ struct YourRemindersView: View {
                     LabeledContent("Time Sensitive", value: settingText(health.timeSensitive))
                     LabeledContent("Waiting, by kind", value: kindCounts)
                     LabeledContent("Delivered today", value: "\(deliveredToday.count)")
-                    if betaAccess.available {
+                    if betaAccess.beta {
                         // Testing the reminders card (feedback E37CE0F0): it follows rules, so it
                         // doesn't come every time — these show it now, whatever the rules say.
                         Divider()

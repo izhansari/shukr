@@ -2,29 +2,25 @@
 //  WhatsNewFeedback.swift
 //  shukr
 //
-//  Feedback on "What's new" topics, back to Claude (2026-09-27, notes #19). Per topic: works /
-//  issue / note, a line of text and an optional photo. One UNSENT item per topic (editing it
-//  updates it); "Send feedback" shares a Markdown summary of every unsent item with the photos and
-//  marks them sent, so a later note on the same topic starts a new unsent item.
+//  What the owner says back from What's new (v4, 2026-09-29): an answer on something he asked for
+//  (Works / Not yet) or a comment on any change — words plus any number of photos (drawn on or not) and
+//  short videos. Nothing he says disappears: it sits in "Your answers" (saved on this phone → sent →
+//  Bradley has it) and always in "Everything you've said".
 //
 //  Stored in the app group's Library/Feedback (reachable with `devicectl device copy from`):
-//  feedback.json (all items), feedback.md (the same, rendered) and photos/<id>.jpg.
-//  `scripts/pull-feedback.sh` pulls it to shukrGit/feedback/<date>.md.
-//
-//  v3 (2026-09-27, notes #23) — a note's life: draft → sent (shared) or received (the pull script
-//  writes received.json back: id → time) → addressed (a WhatsNew.json entry lists its id in
-//  `addresses`) → Looks good (closed) or Still off (reopened, with a follow-up note). 👍 Works closes
-//  itself once sent / received, unless something addressed it.
+//  feedback.json (every item), feedback.md (the same, rendered for Bradley) and photos/ (photos AND
+//  videos — the folder kept its v1 name). `scripts/pull-feedback.sh` pulls them and writes
+//  received.json back ({"received": {id: when first pulled}, "seen": {id: the `updated` it pulled}}).
 //
 
 import SwiftUI
-import PhotosUI
 
 struct FeedbackItem: Codable, Identifiable, Equatable {
     enum Kind: String, Codable, CaseIterable {
+        /// works = "Works"; issue = "Not yet" (v1–v3 called it Issue); note = a comment.
         case works, issue, note
-        var label: String { switch self { case .works: "Works"; case .issue: "Issue"; case .note: "Note" } }
-        var symbol: String { switch self { case .works: "hand.thumbsup.fill"; case .issue: "hand.thumbsdown.fill"; case .note: "text.bubble.fill" } }
+        var label: String { switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment" } }
+        var symbol: String { switch self { case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill" } }
         var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬" } }
         var color: Color { switch self { case .works: .green; case .issue: .orange; case .note: .sage } }
     }
@@ -36,26 +32,30 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     var commits: [String]
     var kind: Kind
     var text: String
-    var photo: String?          // file name in photos/
+    /// v1–v3's single photo (still read; new items use `media`).
+    var photo: String?
+    /// Photos (.jpg) and videos (.mp4) in photos/, in the order he added them.
+    var media: [String]?
+    /// The ask this answers (Works / Not yet).
+    var ask: String?
+    /// The change it was given on.
+    var onEntry: String?
     var created = Date()
     var updated = Date()
     var sentAt: Date?
     var build: String
-    /// "Looks good ✓" on an addressed note.
+    // v3, kept so old notes still read and migrate:
     var closedAt: Date?
-    /// "Still off": the fix didn't do it; a follow-up note carries on (`followUpOf` = this id).
     var reopenedAt: Date?
     var followUpOf: UUID?
-    /// "Still off" on a change asked for in chat: that entry's id.
     var followUpOfEntry: String?
 
-    init(topic: String, topicTitle: String, notes: [String], commits: [String], kind: Kind, text: String, build: String) {
-        self.topic = topic; self.topicTitle = topicTitle; self.notes = notes; self.commits = commits
+    init(topic: String, topicTitle: String, kind: Kind, text: String, build: String) {
+        self.topic = topic; self.topicTitle = topicTitle; self.notes = []; self.commits = []
         self.kind = kind; self.text = text; self.build = build
     }
 
-    /// Every field optional with a default, so a file written by an older or newer build still
-    /// reads (a failed decode used to lose the whole list).
+    /// Every field optional with a default, so a file written by an older or newer build still reads.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID()
@@ -66,6 +66,9 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         kind = (try? c.decodeIfPresent(Kind.self, forKey: .kind)) ?? .note
         text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
         photo = try? c.decodeIfPresent(String.self, forKey: .photo)
+        media = try? c.decodeIfPresent([String].self, forKey: .media)
+        ask = try? c.decodeIfPresent(String.self, forKey: .ask)
+        onEntry = try? c.decodeIfPresent(String.self, forKey: .onEntry)
         created = (try? c.decodeIfPresent(Date.self, forKey: .created)) ?? Date()
         updated = (try? c.decodeIfPresent(Date.self, forKey: .updated)) ?? created
         sentAt = try? c.decodeIfPresent(Date.self, forKey: .sentAt)
@@ -75,18 +78,19 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         followUpOf = try? c.decodeIfPresent(UUID.self, forKey: .followUpOf)
         followUpOfEntry = try? c.decodeIfPresent(String.self, forKey: .followUpOfEntry)
     }
+
+    /// Photos and videos, old single photo included.
+    var attachments: [String] { media ?? (photo.map { [$0] } ?? []) }
+    /// What it's about, in a few words (the change's headline, else the feature).
+    var about: String { onEntry.flatMap(WhatsNew.entry)?.short ?? topicTitle }
+    var isAnswer: Bool { kind != .note && ask != nil }
 }
 
-/// Where a note stands (in order of how much it needs you).
-enum FeedbackState {
-    case draft                          // written, not sent
-    case toCheck(WhatsNewEntry)         // a change in this build addresses it
-    case received(Date)                 // Claude has it (the pull script said so)
-    case sent(Date)                     // shared, not yet pulled
-    case closed                         // looks good / 👍 works
-    case reopened                       // still off — its follow-up note carries on
-
-    var isOpen: Bool { if case .closed = self { false } else if case .reopened = self { false } else { true } }
+/// Where something he said stands.
+enum NoteState: Equatable {
+    case saved                  // on the phone; the next pull (or Send) takes it
+    case sent(Date)             // shared from the phone
+    case received(Date)         // Bradley has it (the pull wrote received.json)
 }
 
 @MainActor @Observable
@@ -94,18 +98,19 @@ final class FeedbackStore {
     static let shared = FeedbackStore()
 
     private(set) var items: [FeedbackItem] = []
-    /// From received.json, written by scripts/pull-feedback.sh: id → when Claude pulled it.
+    /// From received.json: id → when it was first pulled, and the `updated` the latest pull saw.
     private(set) var received: [UUID: Date] = [:]
+    private(set) var seen: [UUID: Date] = [:]
 
-    private static var folder: URL? {
+    static var folder: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup)?
             .appendingPathComponent("Library/Feedback", isDirectory: true)
     }
-    private static var photos: URL? { folder?.appendingPathComponent("photos", isDirectory: true) }
+    static var mediaFolder: URL? { folder?.appendingPathComponent("photos", isDirectory: true) }
 
-    /// feedback.md is rewritten at launch too, so a pull never copies states older than the app's.
-    /// Written on the next turn, not in init: writing asks WhatsNew for states, which read
-    /// `FeedbackStore.shared` — from inside its own initialiser that's a recursive dispatch_once (crash).
+    /// feedback.md is written on the next turn, not in init: writing it asks WhatsNew for ask states,
+    /// which read `FeedbackStore.shared` — from inside its own initialiser that's a recursive
+    /// dispatch_once (it crashed opening What's new once).
     private init() {
         load(); loadReceived()
         Task { @MainActor [weak self] in self?.writeMarkdown() }
@@ -113,139 +118,99 @@ final class FeedbackStore {
 
     // MARK: Reading
 
-    func isSent(_ item: FeedbackItem) -> Bool { item.sentAt != nil || received[item.id] != nil }
-    /// Still a draft: not sent / received, not closed / reopened, and not addressed by a change
-    /// (an addressed note reached Claude one way or another — it's "to check", never re-edited).
-    private func isDraft(_ item: FeedbackItem) -> Bool {
-        !isSent(item) && item.closedAt == nil && item.reopenedAt == nil && WhatsNew.addressing(item.id) == nil
+    func state(_ item: FeedbackItem) -> NoteState {
+        // Pulled after its last edit.
+        if let s = seen[item.id], s.addingTimeInterval(1) >= item.updated { return .received(received[item.id] ?? s) }
+        if seen[item.id] == nil, let r = received[item.id], r >= item.updated { return .received(r) }
+        if let s = item.sentAt, s.addingTimeInterval(1) >= item.updated { return .sent(s) }
+        return .saved
     }
-    /// Any draft on the topic (for "unsent" badges / sections; a received / sent note isn't edited
-    /// again — a new one starts fresh).
-    func unsent(for topic: String) -> FeedbackItem? { items.last { $0.topic == topic && isDraft($0) } }
-    /// THE draft a composer edits: the topic's plain draft, or the draft following up one note
-    /// ("Still off"). One lookup for save() and the composer, so neither loads one and writes the
-    /// other (review, 2026-09-27: a follow-up duplicated a plain draft and lost its photo).
-    func draft(for topic: String, followUpOf: UUID? = nil, followUpOfEntry: String? = nil) -> FeedbackItem? {
-        if let followUpOf { return items.last { $0.followUpOf == followUpOf && isDraft($0) } }
-        // "Still off" on a chat request: its own draft, never the topic's plain one.
-        if let followUpOfEntry { return items.last { $0.followUpOfEntry == followUpOfEntry && isDraft($0) } }
-        return items.last { $0.topic == topic && isDraft($0) && $0.followUpOf == nil && $0.followUpOfEntry == nil }
-    }
-    func all(for topic: String) -> [FeedbackItem] { items.filter { $0.topic == topic } }
-    var unsentItems: [FeedbackItem] { items.filter(isDraft) }
 
-    func state(_ item: FeedbackItem) -> FeedbackState {
-        if item.reopenedAt != nil { return .reopened }
-        if item.closedAt != nil { return .closed }
-        if let fix = WhatsNew.addressing(item.id) {
-            // A newer note on the topic, written on a build with the fix, answers it (owner, 14CEC68B):
-            // 👍 = looks good, 👎 / a note = still off.
-            if let later = items.last(where: { $0.topic == item.topic && $0.id != item.id && $0.created > item.created
-                                                && WhatsNew.saw(fix, $0) }) {
-                return later.kind == .works ? .closed : .reopened
-            }
-            return .toCheck(fix)
-        }
-        if !isSent(item) { return .draft }
-        if item.kind == .works { return .closed }        // nothing to follow up
-        if let r = received[item.id] { return .received(r) }
-        return .sent(item.sentAt ?? item.updated)
-    }
-    /// Where a note stands, in words (the card's Feedback section, Your feedback).
-    func stateLine(_ item: FeedbackItem, _ state: FeedbackState? = nil) -> String {
-        let t = { (d: Date) in WhatsNew.whenLabel(d) }
-        switch state ?? self.state(item) {
-        case .received(let d): return "Received by Claude · \(t(d))"
-        case .sent(let d): return "Sent \(t(d))"
-        case .toCheck(let fix): return "Addressed in \(fix.buildLabel)"
-        case .closed:
-            if let c = item.closedAt { return "Looks good · \(t(c))" }
-            if item.kind == .works { return "👍 Works" }
-            return received[item.id].map { "Received by Claude · \(t($0)) · closed" } ?? "Sent · closed"
-        case .reopened: return item.reopenedAt.map { "Still off · \(t($0))" } ?? "Still off"
-        case .draft: return "Saved · Claude will pick it up"
+    func stateLine(_ item: FeedbackItem) -> String {
+        switch state(item) {
+        case .saved: return seen[item.id] != nil || received[item.id] != nil
+            ? "Edited · not picked up yet" : "Saved on this phone · not picked up yet"
+        case .sent(let d): return "Sent \(WhatsNew.whenLabel(d))"
+        case .received(let d): return "Bradley has it · \(WhatsNew.whenLabel(d))"
         }
     }
-    var toCheck: [(item: FeedbackItem, fix: WhatsNewEntry)] {
-        items.compactMap { item in if case .toCheck(let fix) = state(item) { (item, fix) } else { nil } }
-    }
-    /// The topic's note that needs checking, if any.
-    func toCheck(for topic: String) -> Bool { toCheck.contains { $0.item.topic == topic } }
 
-    func image(for item: FeedbackItem) -> UIImage? {
-        guard let name = item.photo, let url = Self.photos?.appendingPathComponent(name) else { return nil }
-        return UIImage(contentsOfFile: url.path)
+    /// "Your answers": what the team hasn't read yet, plus what they picked up in the last day.
+    var pending: [FeedbackItem] {
+        let dayAgo = Date().addingTimeInterval(-24 * 3600)
+        return items.filter { item in
+            // v1–v3 notes (no change attached) that the team has: history, in Everything you've said.
+            if case .received(let d) = state(item) { return item.onEntry != nil && d > dayAgo }
+            return true
+        }
+        .sorted { $0.updated > $1.updated }
     }
+    /// Not yet sent or pulled (what Send shares).
+    var unsent: [FeedbackItem] { items.filter { state($0) == .saved } }
+
+    /// His answer on this change of this ask, if it can still be edited in place (not picked up yet).
+    func editableAnswer(ask: String, entry: String) -> FeedbackItem? {
+        items.last { $0.ask == ask && $0.onEntry == entry && $0.kind != .note && state($0) == .saved }
+    }
+
+    func mediaURL(_ name: String) -> URL? { Self.mediaFolder?.appendingPathComponent(name) }
+    static func isVideo(_ name: String) -> Bool { ["mp4", "mov", "m4v"].contains((name as NSString).pathExtension.lowercased()) }
 
     // MARK: Writing
 
-    /// Create or update the topic's unsent item. `photo`: nil = leave, .some(nil) = remove.
-    func save(card: WhatsNewCard, kind: FeedbackItem.Kind, text: String, photo: Data??, followUpOf: UUID? = nil,
-              followUpOfEntry: String? = nil) {
-        let fresh = FeedbackItem(topic: card.id, topicTitle: card.title, notes: card.notes,
-                                 commits: card.commits, kind: kind, text: "", build: BuildInfo.line)
-        // A "Still off" follow-up is always its own note (its own id — a later fix lists that id),
-        // never merged into a draft already on the topic. Re-saving the same follow-up updates it.
-        // A chat request still waiting on this topic: this note answers it (👍 closes it, 👎 / a note is
-        // its "still off", linked as the follow-up).
-        let pendingAsked = followUpOf == nil && followUpOfEntry == nil
-            ? WhatsNew.askedChecks().filter { $0.topic == card.id } : []
-        var item = draft(for: card.id, followUpOf: followUpOf, followUpOfEntry: followUpOfEntry) ?? fresh
-        if let followUpOf { item.followUpOf = followUpOf }
-        if let followUpOfEntry { item.followUpOfEntry = followUpOfEntry }
-        if let newest = pendingAsked.first {
-            if kind == .works { pendingAsked.forEach { WhatsNew.closeAsked($0) } }
-            else { item.followUpOfEntry = item.followUpOfEntry ?? newest.id; pendingAsked.forEach { WhatsNew.reopenAsked($0) } }
-        }
-        item.topicTitle = card.title
-        item.notes = card.notes
-        item.commits = card.commits
+    /// Works / Not yet on an ask's change (or a comment when `kind` is .note). Edits `existing` when given.
+    @discardableResult
+    func save(existing: FeedbackItem? = nil, entry: WhatsNewEntry, ask: String?, kind: FeedbackItem.Kind,
+              text: String, media: [String]) -> FeedbackItem {
+        var item = existing ?? FeedbackItem(topic: entry.topic, topicTitle: WhatsNew.topicTitle(entry.topic),
+                                            kind: kind, text: "", build: BuildInfo.line)
+        let removed = Set(item.attachments).subtracting(media)
         item.kind = kind
+        item.ask = kind == .note ? nil : ask
+        item.onEntry = entry.id
         item.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.media = media
+        item.photo = nil
+        item.notes = entry.notes.map { [$0] } ?? []
+        item.commits = [entry.id]
+        item.topicTitle = WhatsNew.topicTitle(entry.topic)
         item.updated = Date()
         item.build = BuildInfo.line
-        if let photo {
-            if let old = item.photo { removePhoto(old) }
-            item.photo = nil
-            if let small = photo, let dir = Self.photos {             // already downscaled by the composer
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                let name = "\(item.id.uuidString.prefix(8))-\(Int(Date().timeIntervalSince1970)).jpg"
-                if (try? small.write(to: dir.appendingPathComponent(name))) != nil { item.photo = name }
-            }
-        }
+        removed.forEach(removeMedia)
         if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
-        // Any feedback on a card covers the changes it has (it leaves "To test"; the note's state
-        // takes over — owner, 2026-09-28).
-        WhatsNew.acknowledge(card)
         persist()
+        WhatsNew.writeState()
+        return item
     }
 
     func delete(_ item: FeedbackItem) {
-        if let p = item.photo { removePhoto(p) }
+        item.attachments.forEach(removeMedia)
         items.removeAll { $0.id == item.id }
         persist()
+        WhatsNew.writeState()
     }
 
-    /// "Looks good ✓" — and the topic is acknowledged through the change that addressed it, so that
-    /// change doesn't come back under "To test".
-    func close(_ item: FeedbackItem) {
-        let fix = WhatsNew.addressing(item.id)
-        update(item.id) { $0.closedAt = Date() }
-        if let fix { WhatsNew.acknowledge(topic: item.topic, through: fix.id) }
+    /// A new photo or video file in photos/ (the composer calls this as soon as one is added).
+    func storeMedia(_ data: Data, ext: String) -> String? {
+        guard let dir = Self.mediaFolder else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "\(UUID().uuidString.prefix(8).lowercased())-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        return (try? data.write(to: dir.appendingPathComponent(name))) != nil ? name : nil
     }
-    /// "Still off": reopened; the caller opens a follow-up note (`save(…, followUpOf:)`).
-    func reopen(_ item: FeedbackItem) { update(item.id) { $0.reopenedAt = Date(); $0.closedAt = nil } }
-
-    private func update(_ id: UUID, _ change: (inout FeedbackItem) -> Void) {
-        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
-        change(&items[i])
-        persist()
+    func storeMedia(file: URL, ext: String) -> String? {
+        guard let dir = Self.mediaFolder else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = "\(UUID().uuidString.prefix(8).lowercased())-\(Int(Date().timeIntervalSince1970)).\(ext)"
+        return (try? FileManager.default.moveItem(at: file, to: dir.appendingPathComponent(name))) != nil ? name : nil
     }
-
-    /// "Still off" cancelled with nothing written: back to "to check".
-    func undoReopen(_ id: UUID) {
-        guard !items.contains(where: { $0.followUpOf == id }) else { return }
-        update(id) { $0.reopenedAt = nil }
+    /// Files added in a composer that was cancelled (never part of a saved item).
+    func discardMedia(_ names: [String]) {
+        let kept = Set(items.flatMap(\.attachments))
+        names.filter { !kept.contains($0) }.forEach(removeMedia)
+    }
+    private func removeMedia(_ name: String) {
+        guard let url = mediaURL(name) else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     /// Pick up a received.json the pull script wrote while the app was running.
@@ -257,51 +222,34 @@ final class FeedbackStore {
         persist()
     }
 
-    private func removePhoto(_ name: String) {
-        guard let url = Self.photos?.appendingPathComponent(name) else { return }
-        try? FileManager.default.removeItem(at: url)
-    }
+    // MARK: Markdown (for Bradley)
 
-    // MARK: Markdown
-
-    /// One summary for Claude: build, then each item — kind, topic, notes #, commits, status, note.
-    /// `photoPrefix`: "photos/" in the stored copy (next to its folder); "" when shared (the
-    /// photos travel as files with exactly those names).
-    func markdown(for list: [FeedbackItem], title: String = "shukr feedback", photoPrefix: String = "photos/") -> String {
+    /// Each item: what it's about, the answer, where it stands, his words, its files. `mediaPrefix`:
+    /// "photos/" in the stored copy; "" when shared (the files travel with exactly those names).
+    func markdown(for list: [FeedbackItem], title: String = "shukr feedback", mediaPrefix: String = "photos/") -> String {
         let when = Date().formatted(date: .abbreviated, time: .shortened)
         var lines = ["# \(title) — \(when)", "", "Build: \(BuildInfo.line)", ""]
         for item in list {
-            let notes = item.notes.isEmpty ? "" : " (\(item.notes.joined(separator: ", ")))"
-            lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.topicTitle)\(notes)")
-            lines.append("- Topic: `\(item.topic)` · Id: `\(item.id.uuidString)`")
-            if let f = item.followUpOf { lines.append("- Follow-up of: `\(f.uuidString)` (still off after its fix)") }
-            if let e = item.followUpOfEntry { lines.append("- Still off after the change asked for in chat: `\(e)`") }
-            if !item.commits.isEmpty { lines.append("- Commits: \(item.commits.joined(separator: ", "))") }
-            let tested = WhatsNew.card(id: item.topic).map { WhatsNew.isTested($0) } ?? false
-            lines.append("- Status: \(statusLine(item)) · \(tested ? "tested ✓" : "not ticked tested")")
+            lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.about)")
+            var meta = ["Feature: `\(item.topic)`"]
+            if let e = item.onEntry { meta.append("Change: `\(e)`") }
+            if let a = item.ask { meta.append("Ask: `\(a)`") }
+            meta.append("Id: `\(item.id.uuidString)`")
+            lines.append("- " + meta.joined(separator: " · "))
+            if let a = item.ask.flatMap(WhatsNew.ask), let words = a.words, !words.isEmpty {
+                lines.append("- He asked: “\(words.prefix(160))\(words.count > 160 ? "…" : "")”")
+            }
+            lines.append("- Status: \(stateLine(item))")
             lines.append("- Written: \(item.updated.formatted(date: .abbreviated, time: .shortened)) on \(item.build)")
-            if let p = item.photo { lines.append("- Photo: \(photoPrefix)\(p)") }
+            for m in item.attachments { lines.append("- \(Self.isVideo(m) ? "Video" : "Photo"): \(mediaPrefix)\(m)") }
             lines.append("")
-            lines.append(item.text.isEmpty ? "_(no note)_" : item.text)
+            lines.append(item.text.isEmpty ? "_(no words)_" : item.text)
             lines.append("")
         }
         return lines.joined(separator: "\n")
     }
 
-    private func statusLine(_ item: FeedbackItem) -> String {
-        let t = { (d: Date) in d.formatted(date: .abbreviated, time: .shortened) }
-        switch state(item) {
-        case .draft: return "saved (not yet picked up)"
-        case .toCheck(let fix): return "addressed by \(fix.commit) — to check"
-        case .received(let d): return "received \(t(d))"
-        case .sent(let d): return "sent \(t(d))"
-        case .closed: return item.closedAt.map { "closed \(t($0))" } ?? "closed (works)"
-        case .reopened: return "reopened \(item.reopenedAt.map(t) ?? "")"
-        }
-    }
-
-    /// What "Send feedback" shares: the Markdown as a .md file plus each photo as a file named
-    /// as the Markdown references it — so AirDrop / Files / the Claude app keep them together.
+    /// Send: the Markdown as a .md file plus every photo / video, named as the Markdown names them.
     func shareFiles(for list: [FeedbackItem]) -> [URL] {
         let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
             .replacingOccurrences(of: ":", with: "")
@@ -309,9 +257,9 @@ final class FeedbackStore {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var urls: [URL] = []
         let md = dir.appendingPathComponent("shukr-feedback-\(stamp).md")
-        if (try? markdown(for: list, photoPrefix: "").write(to: md, atomically: true, encoding: .utf8)) != nil { urls.append(md) }
-        for item in list {
-            guard let name = item.photo, let from = Self.photos?.appendingPathComponent(name) else { continue }
+        if (try? markdown(for: list, mediaPrefix: "").write(to: md, atomically: true, encoding: .utf8)) != nil { urls.append(md) }
+        for name in list.flatMap(\.attachments) {
+            guard let from = mediaURL(name) else { continue }
             let to = dir.appendingPathComponent(name)
             try? FileManager.default.removeItem(at: to)
             if (try? FileManager.default.copyItem(at: from, to: to)) != nil { urls.append(to) }
@@ -330,26 +278,26 @@ final class FeedbackStore {
             items = try decoder.decode([FeedbackItem].self, from: data)
         } catch {
             // Never overwrite what can't be read: move it aside and start a new list.
-            let stamp = Int(Date().timeIntervalSince1970)
-            let aside = url.deletingLastPathComponent().appendingPathComponent("feedback.json.bad-\(stamp)")
+            let aside = url.deletingLastPathComponent().appendingPathComponent("feedback.json.bad-\(Int(Date().timeIntervalSince1970))")
             try? FileManager.default.moveItem(at: url, to: aside)
             print("⚠️ feedback.json unreadable (\(error)); moved to \(aside.lastPathComponent)")
             items = []
         }
     }
 
-    /// `{"received": {"<id>": "<ISO 8601>"}}` — scripts/pull-feedback.sh writes it with
-    /// `devicectl device copy to` (dev builds; a TestFlight install can't be written to).
     private func loadReceived() {
         guard let url = Self.folder?.appendingPathComponent("received.json"),
               let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let map = obj["received"] as? [String: String] else { return }
-        var result: [UUID: Date] = [:]
-        for (id, when) in map {
-            if let uuid = UUID(uuidString: id), let date = WhatsNew.iso.date(from: when) { result[uuid] = date }
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        func map(_ key: String) -> [UUID: Date] {
+            var out: [UUID: Date] = [:]
+            for (id, when) in obj[key] as? [String: String] ?? [:] {
+                if let uuid = UUID(uuidString: id), let date = WhatsNew.iso.date(from: when) { out[uuid] = date }
+            }
+            return out
         }
-        received = result
+        received = map("received")
+        seen = map("seen")
     }
 
     private func persist() {
@@ -364,134 +312,23 @@ final class FeedbackStore {
         writeMarkdown()
     }
 
-    /// feedback.md: what the pull script copies. After every change, at launch and after reading
-    /// received.json (states depend on it).
+    /// feedback.md: what the pull copies. Not picked up yet first, then the rest; then the asks still
+    /// waiting for him.
     private func writeMarkdown() {
         guard let dir = Self.folder, FileManager.default.fileExists(atPath: dir.path) else { return }
-        // Unsent first, then everything else (sent, received, to check, closed, reopened — each
-        // with its state), newest first within each — what the pull script copies.
-        let drafts = unsentItems
-        let draftIDs = Set(drafts.map(\.id))
-        let ordered = drafts.sorted { $0.updated > $1.updated }
-            + items.filter { !draftIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
-        var md = markdown(for: ordered)
-        // Changes asked for in chat, and whether he's checked them.
-        let asked = WhatsNew.entries.filter { $0.asked != nil && $0.live }
-        if !asked.isEmpty {
-            md += "\n## Asked in chat\n\n" + asked.map { "- `\($0.id)` \($0.title) — \(WhatsNew.askedState($0)) (asked: “\($0.asked ?? "")”)" }.joined(separator: "\n") + "\n"
-        }
+        let fresh = items.filter { state($0) == .saved }.sorted { $0.updated > $1.updated }
+        let freshIDs = Set(fresh.map(\.id))
+        let rest = items.filter { !freshIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
+        var md = markdown(for: fresh + rest)
+        let open = WhatsNew.openAsks()
+        md += "\n## Waiting for him (Your asks)\n\n"
+        md += open.isEmpty ? "_(nothing)_\n"
+            : open.map { "- `\($0.ask.id)` — \($0.latest.short) (`\($0.latest.id)`)" }.joined(separator: "\n") + "\n"
         try? md.write(to: dir.appendingPathComponent("feedback.md"), atomically: true, encoding: .utf8)
     }
 }
 
-// MARK: - Composer
-
-/// Works / issue / note, a line, an optional photo. Edits the topic's unsent item.
-struct FeedbackComposer: View {
-    let card: WhatsNewCard
-    var startKind: FeedbackItem.Kind? = nil
-    /// "Still off": the note this one follows up.
-    var followUpOf: UUID? = nil
-    /// "Still off" on a change asked for in chat.
-    var followUpEntry: String? = nil
-    var onSaved: () -> Void = {}
-
-    @State private var store = FeedbackStore.shared
-    @State private var kind: FeedbackItem.Kind = .works
-    @State private var text = ""
-    @State private var photoData: Data?? = nil       // nil = unchanged
-    @State private var pick: PhotosPickerItem?
-    @State private var loaded = false
-    @FocusState private var typing: Bool
-
-    private var existing: FeedbackItem? { store.draft(for: card.id, followUpOf: followUpOf, followUpOfEntry: followUpEntry) }
-    private var shownImage: UIImage? {
-        if let photoData { return photoData.flatMap(UIImage.init(data:)) }
-        return existing.flatMap(store.image(for:))
-    }
-    private var changed: Bool {
-        guard let e = existing else { return true }
-        return e.kind != kind || e.text != text.trimmingCharacters(in: .whitespacesAndNewlines) || photoData != nil
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                ForEach(FeedbackItem.Kind.allCases, id: \.self) { k in
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) { kind = k }
-                    } label: {
-                        Label(k.label, systemImage: k.symbol)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(kind == k ? k.color : Color.secondary)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(Capsule().fill(kind == k ? k.color.opacity(0.14) : Color(.tertiarySystemFill)))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .sensoryFeedback(.selection, trigger: kind)
-
-            TextField(kind == .works ? "Anything to add? (optional)" : "What happened?", text: $text, axis: .vertical)
-                .lineLimit(2...6)
-                .focused($typing)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.tertiarySystemFill)))
-
-            HStack(spacing: 12) {
-                if let ui = shownImage {
-                    Image(uiImage: ui)
-                        .resizable().scaledToFill()
-                        .frame(width: 52, height: 52)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    Button("Remove", role: .destructive) { photoData = .some(nil) }
-                        .font(.subheadline)
-                } else {
-                    PhotosPicker(selection: $pick, matching: .images) {
-                        Label("Add a photo", systemImage: "photo.badge.plus")
-                            .font(.subheadline)
-                    }
-                    .tint(.secondary)
-                }
-                Spacer()
-                Button {
-                    typing = false
-                    store.save(card: card, kind: kind, text: text, photo: photoData, followUpOf: followUpOf, followUpOfEntry: followUpEntry)
-                    photoData = nil
-                    triggerSomeVibration(type: .success)
-                    onSaved()
-                } label: {
-                    Text(existing == nil ? "Save" : "Update")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(changed ? Color.green : Color.secondary)
-                }
-                .disabled(!changed)
-            }
-            if let e = existing {
-                Text("Saved \(e.updated.formatted(date: .omitted, time: .shortened)) · Claude will pick it up")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
-        }
-        .onAppear {
-            guard !loaded else { return }
-            loaded = true
-            if let e = existing { kind = e.kind; text = e.text }
-            if let startKind { kind = startKind }
-            if startKind == .issue || startKind == .note { typing = true }
-        }
-        .onChange(of: pick) { _, item in
-            guard let item else { return }
-            Task {
-                if let data = try? await item.loadTransferable(type: Data.self), let small = await downscaledJPEG(data) {
-                    photoData = .some(small)
-                }
-                pick = nil
-            }
-        }
-    }
-}
-
-/// UIActivityViewController for the Markdown + photos; `completed` only when something was done.
+/// UIActivityViewController for the Markdown + files; `completed` only when something was done.
 struct FeedbackShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     /// `activity`: where it went (Copy is told apart: copying isn't sending).
