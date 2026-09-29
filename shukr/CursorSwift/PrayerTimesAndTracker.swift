@@ -807,6 +807,12 @@ struct PrayerTimesView: View {
                 showInsightsPage = true
                 return
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoPrayerListOpen") {
+                // The prayer list up (to tap its rows); with `-demoPrayerStart`, its prayers to come too.
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                if !ProcessInfo.processInfo.arguments.contains("-demoPrayerStart") { return }
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
                 // Streak (fake 12) + on-time streak (fake 5) in the top bar, perfect day in the list.
                 try? await Task.sleep(for: .seconds(1.5))
@@ -1603,7 +1609,6 @@ struct PrayerButton: View {
     @State private var selectedEditTimeDate = Date()
     @State private var selectedLocation: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 0, longitude: 0)
     @State private var searchQuery = ""
-    @State private var timer: Timer?
     
     private func handlePrayerButtonPress() {
         // Only allow pressing on Future Prayers
@@ -1756,128 +1761,88 @@ struct PrayerButton: View {
     }
     
     
+    /// A tap on the time: flip its text (a started prayer's time doesn't flip).
+    private func timeTap() {
+        guard isFuturePrayer || prayerObject.isCompleted else { return }
+        withAnimation { toggledText.toggle() }   // ExternalToggleText flips (and flips back after 3 s)
+    }
+
+    /// A tap on the row's left part (dot, name, the space up to the time): mark / unmark, like the
+    /// dot used to be the only way to (owner, 2026-09-29: testers kept missing it). A prayer that
+    /// hasn't started can't be marked, so there it flips the time as the whole row used to.
+    private func markTap() {
+        if isFuturePrayer { timeTap() } else { handlePrayerButtonPress() }
+    }
+
+    /// Hold → the time editor (a marked prayer), else a tap. Exclusive, so letting go of a hold never
+    /// also taps (a tap here now unmarks: the alert would come up under the editor).
+    private func tapOrHold(_ tap: @escaping () -> Void) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.5)
+            .onEnded { _ in openTimeEditor() }
+            .exclusively(before: TapGesture().onEnded { tap() })
+    }
+
+    private func openTimeEditor() {
+        guard prayerObject.isCompleted else { return }
+        // Open on the prayer's own day. The wheel only edits hour/minute and keeps the date it
+        // starts with: starting from a tap after midnight (rollover) put every picked time on the
+        // next day — always Qaza.
+        let marked = prayerObject.timeAtComplete ?? Date()
+        selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
+        showTimePicker = true
+    }
+
     var body: some View {
-            HStack {
-                // Status Circle
-//                Button(action: {
-//                    handlePrayerButtonPress()
-//                }) {
-//                    Image(systemName: statusImageName)
-//                        .foregroundColor(grayCircleStyle)
-//                        .frame(width: 24, height: 24, alignment: .leading)
-//                        .overlay{
-//                            Image(systemName: "circle")
-//                                .foregroundColor(overlayCircleColor.opacity(overlayCircleColor == .red  && colorScheme == .dark ? 0.5 : overlayCircleColor == .yellow  && colorScheme == .light ? 1 : 0.7))
-//                                .frame(width: 24, height: 24, alignment: .leading)
-//                                .fontWeight(.medium)
-//                        }
-//                }
-//                    .buttonStyle(PlainButtonStyle())
-                // Status Circle
-                Button(action: {
-                    handlePrayerButtonPress()
-                }) {
+            // Two tap zones that never overlap: everything left of the time marks, the time (its own
+            // column, the row's full height, ≥ 44 pt) flips its text.
+            HStack(spacing: 0) {
+                HStack {
                     PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
                                     done: prayerObject.isCompleted && !isFuturePrayer,
                                     future: isFuturePrayer,
                                     scoreColor: prayerObject.getColorForPrayerScore(),
                                     pulse: completionPulse)
-                        
-                        // Inner circle that’s filled (or clear) depending on whether the prayer is completed.
+                        .frame(width: 24, height: 24, alignment: .leading)
 
-                }
-                .buttonStyle(PlainButtonStyle())
-                .frame(width: 24, height: 24, alignment: .leading)
-
-                // Prayer Name Label
-                Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
-                    .font(.callout) //.callout
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                // Prayed at a masjid: a small mosque mark by the name.
-                if prayerObject.atMasjid {
-                    Image(systemName: "building.columns")
-                        .font(.system(size: 11, weight: .light))
-                        .foregroundStyle(Color.sage)
-                }
-                
-                Spacer()
-                
-                // Time Display Section
-                if isFuturePrayer {
-                    // Future Prayer: Toggleable Time/Countdown
-                    ExternalToggleText(
-                        originalText: shortTimePM(calcStartTime),
-                        toggledText: timeUntilStart(calcStartTime),
-                        externalTrigger: $toggledText,
-                        font: timeFontSize,
-                        fontDesign: .rounded,
-                        fontWeight: .light,
-                        hapticFeedback: true
-                    )
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
-
-                } else if prayerObject.isCompleted {
-                    // Completed Prayer: Show Completion Time
-                    if let completedTime = prayerObject.timeAtComplete {
-                        ExternalToggleText(
-                            originalText: shortTimePM(calcStartTime),
-                            //originalText:  "@ \(shortTimePM(completedTime))",
-                            toggledText: completedTimeAndScore,
-                            /*(prayerObject.numberScore == 0 ? "Kaza" : "\((prayerObject.numberScore ?? 00)*100, specifier: "%.0f")% left" ),*/
-                            externalTrigger: $toggledText,
-                            font: timeFontSize,
-                            fontDesign: .rounded,
-                            fontWeight: .light,
-                            hapticFeedback: true
-                        )
-                            .font(timeFontSize)
-                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
-                    }
-                } else {
-                    // Current Prayer: Show Start Time
-                    Text(shortTimePM(calcStartTime))
-                        .font(timeFontSize)
-                        .foregroundColor(.secondary)
+                    // Prayer Name Label
+                    Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
+                        .font(.callout) //.callout
+                        .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
                         .fontDesign(.rounded)
                         .fontWeight(.light)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .layoutPriority(1)
+                    // Prayed at a masjid: a small mosque mark by the name.
+                    if prayerObject.atMasjid {
+                        Image(systemName: "building.columns")
+                            .font(.system(size: 11, weight: .light))
+                            .foregroundStyle(Color.sage)
+                    }
+
+                    Spacer(minLength: 8)
                 }
-                
-                // Chevron Arrow
-//                if name == "Fajr"{
-//                    ChevronTap()
-//                        .opacity(statusBasedOpacity)
-//                }else{
-//                    ChevronTap2()
-//                        .opacity(statusBasedOpacity)
-//                }
+                .padding(.leading)
+                .padding(.vertical, 12)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .gesture(tapOrHold(markTap))
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(isFuturePrayer ? [] : .isButton)
+                .accessibilityHint(isFuturePrayer ? "" : (prayerObject.isCompleted ? "Marks it not prayed" : "Marks it prayed"))
+
+                timeColumn
+                    .padding(.leading, 8)   // + the Spacer's 8: the old gap between name and time
+                    .padding(.trailing)
+                    .padding(.vertical, 12)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                    .gesture(tapOrHold(timeTap))
             }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
             // Background Effects Container
             .background(
                 RoundedRectangle(cornerRadius: 13)
                     .fill(backgroundColor)
-
-                //
-                /*
-                 Group {
-                    if isFuturePrayer || !prayerObject.isCompleted {
-                        // Plain Effect: Future Prayer (No Shadow) or Current
-                        RoundedRectangle(cornerRadius: 13)
-                            .fill(backgroundColor)
-                    } else {
-                        // Neumorphic Effect: Completed Prayer
-                        RoundedRectangle(cornerRadius: 13)
-                            .fill(backgroundColor
-                                  // Indent/Outdent Effects
-                                .shadow(.inner(color: Color("NeuDarkShad").opacity(0.5), radius: 1, x: -shadowXOffset, y: -shadowYOffset))
-                                .shadow(.inner(color: Color("NeuLightShad").opacity(0.5), radius: 1, x: shadowXOffset, y: shadowYOffset))
-                            )
-                    }
-                }
-                 */
             )
             .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
             .onChange(of: prayerObject.isCompleted) { _, done in
@@ -1916,41 +1881,49 @@ struct PrayerButton: View {
                                         showTimePicker = false
                                     })
             }
-            .onTapGesture {
-                if isFuturePrayer {
-                    withAnimation {
-                        toggledText.toggle()
-                    }
-                }
-                else if prayerObject.isCompleted{
-                    timer?.invalidate()
+    }
 
-                    withAnimation {
-                        toggledText.toggle()
+    /// The right column: the start time, flipping to the countdown (a prayer to come) or the score
+    /// (a marked one). Its own tap is off: the column's gesture drives it through `toggledText`.
+    @ViewBuilder private var timeColumn: some View {
+                if isFuturePrayer {
+                    // Future Prayer: Toggleable Time/Countdown
+                    ExternalToggleText(
+                        originalText: shortTimePM(calcStartTime),
+                        toggledText: timeUntilStart(calcStartTime),
+                        externalTrigger: $toggledText,
+                        font: timeFontSize,
+                        fontDesign: .rounded,
+                        fontWeight: .light,
+                        hapticFeedback: true
+                    )
+                    .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                    .allowsHitTesting(false)
+
+                } else if prayerObject.isCompleted {
+                    // Completed Prayer: Show Completion Time
+                    if prayerObject.timeAtComplete != nil {
+                        ExternalToggleText(
+                            originalText: shortTimePM(calcStartTime),
+                            toggledText: completedTimeAndScore,
+                            externalTrigger: $toggledText,
+                            font: timeFontSize,
+                            fontDesign: .rounded,
+                            fontWeight: .light,
+                            hapticFeedback: true
+                        )
+                            .font(timeFontSize)
+                            .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                            .allowsHitTesting(false)
                     }
-                    
-                    if toggledText {
-                        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
-                            withAnimation{
-                                toggledText = false
-                            }
-                        }
-                    }
+                } else {
+                    // Current Prayer: Show Start Time
+                    Text(shortTimePM(calcStartTime))
+                        .font(timeFontSize)
+                        .foregroundColor(.secondary)
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
                 }
-            }
-            .simultaneousGesture(
-                LongPressGesture()
-                    .onEnded { _ in
-                        if prayerObject.isCompleted {
-                            // Open on the prayer's own day. The wheel only edits hour/minute and
-                            // keeps the date it starts with: starting from a tap after midnight
-                            // (rollover) put every picked time on the next day — always Qaza.
-                            let marked = prayerObject.timeAtComplete ?? Date()
-                            selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
-                            showTimePicker = true
-                        }
-                    }
-            )
     }
 
         

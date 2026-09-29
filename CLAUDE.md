@@ -1824,6 +1824,15 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   `-demoPrayerStart…ThenMark`) marks from the open list; `-demoPrayerStartPrayer Isha` completes the day. Sim ✓
   frame by frame (simctl recordVideo — variable frame rate, so pick frames by index: `fps=10,select=between(n,…)`),
   all three paths; Release builds.
+- **Prayer list rows: two tap zones (2026-09-29, owner: testers kept missing the dot).** `PrayerButton` is two columns
+  that never overlap: everything left of the time (dot, name, the gap) marks / unmarks (`markTap`; a prayer that hasn't
+  started flips its time instead — it can't be marked), the time column (its own 8 pt lead-in, the row's full height,
+  ≥ 44 pt) only flips its text (`timeTap`; `ExternalToggleText` has `allowsHitTesting(false)` there, driven through
+  `toggledText`). Both use `tapOrHold`: `LongPressGesture(0.5).exclusively(before: TapGesture())` → the time editor on a
+  hold. **Trap:** don't go back to `onTapGesture` + a simultaneous long press — letting go of a hold would also tap, and a
+  tap now unmarks (the alert would come up under the editor). The name is `lineLimit(1)` + `minimumScaleFactor(0.8)`
+  (at XXXL "Maghrib" wrapped). DEBUG `-demoPrayerListOpen` (opens the list; with `-demoPrayerStart`, prayers to come).
+  Sim ✓ light / dark / XXXL: name tap → full completion moment + pill; time tap never marks; hold → editor, no alert.
 - **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
   the circle's `CompletionFlourish` (arc sweeps closed in the score colour, glow, "✓ Asr ·
   On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a footer row, "✓ N done ⌄" (tap to show
