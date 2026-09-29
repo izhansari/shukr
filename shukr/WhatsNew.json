@@ -1193,7 +1193,7 @@
       "checked": "sim", "shots": ["wn-widget-track-plain.jpg"], "addresses": ["BB277A98"]
     },
     {
-      "id": "post-salah-3", "date": "2026-09-29", "commit": "next", "time": null, "topic": "post-salah", "notes": null,
+      "id": "post-salah-3", "date": "2026-09-29", "commit": "9153577", "time": "2026-09-29T12:36:12-04:00", "topic": "post-salah", "notes": null,
       "title": "The post-salah pill keeps counting down while the ☰ menu is open (it's still in sight); sheets and other pages still pause it", "headline": "Keeps counting with the ☰ menu open",
       "tryIt": ["Mark a prayer, then open ☰ while the pill's ring is draining: it keeps going and the pill leaves on time", "Open a prayer's time editor or the map instead: the ring waits, as before"],
       "checked": "sim", "shots": ["wn-post-salah-menu.jpg"], "addresses": ["71800F94"]
