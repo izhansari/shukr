@@ -1112,7 +1112,7 @@
       "checked": "sim", "shots": ["wn-widget-ring-live.jpg"], "asked": "I would love the fill to move live on its own. Also… make the widget match the prayer ring in the app"
     },
     {
-      "id": "widget-next-12", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "id": "widget-next-12", "date": "2026-09-28", "commit": "8a6f160", "time": "2026-09-28T23:47:02-04:00", "topic": "widget-next", "notes": null,
       "title": "Prayers widget: tapping the ring no longer makes its fill flicker; it still fills live on its own", "headline": "No flicker when you tap the ring",
       "tryIt": ["During a prayer, tap the widget's ring a few times: the time flips, the coloured fill stays put", "Leave it a minute: the fill still creeps forward on its own"],
       "checked": "sim", "shots": ["wn-widget-ring-steady.jpg"], "asked": "tapping the prayer ring in widget is different now. before tapping it would just change the time. now there's a visible flicker on the progress ring fill. idt we had that before."
