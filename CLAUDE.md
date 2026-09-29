@@ -31,6 +31,11 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
 6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
    item; nits ride along with a later one.
 7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
+8. **Every question for Izhan is a card on the board's Decisions page, never a long chat message** (owner, 2026-09-29).
+   A card has the question in one line, the options side by side with their pictures, Bradley's recommendation, one-tap
+   answers and an optional note. Chat only says "N decisions waiting" plus the link. His answer is saved on the board,
+   where Bradley reads it, and answered cards move to a "decided" list. A review finding that needs him becomes a card.
+   His board shows only Plan and Decisions; Reviews stay behind a small link, for the team.
 
 **Git:** one team line, `claude/tasbeeh-zikr-updates`.
 - Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch` (his own branch name, pushing to the team line).
