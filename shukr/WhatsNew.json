@@ -1212,6 +1212,12 @@
       "title": "Arrange tasks right on the wheel: a long press makes the circles jiggle in place (− to delete, tap to edit), drag one along the arc while the others make room (another finger or the edges move the wheel), Done top left; nothing on the page moves, and a task done today keeps its place", "headline": "Arrange tasks right on the wheel",
       "tryIt": ["Zikr page → long-press a task: the circles jiggle where they are, Done appears top left and the bottom line says \"drag to reorder · tap to edit\"", "Hold a circle and drag it up or down: the others make room; drop it and it stays there. While holding, swipe with another finger to move the wheel", "Finish a task's goal: back on the wheel it keeps its place and the next open task comes to the middle"],
       "checked": "sim", "shots": ["wn-zikr-jiggle.jpg"], "asked": "yeah lets do it — Long press a task → the gentle arc itself jiggles (no new page), with a − button; drag tasks up / down the arc; tap while jiggling to edit the title or reminder — also small tweak for finished tasks when returning from their completion screen, we started putting them at the bottom remember... lets not do that then for the sake of jiggling and reordering. just keep them at their position and move to next open task — get rid of that text that I crossed out and move the done button to replace the history in us car button … so that the viewport doesn't change because we always want that circle to stay in the center — when in jiggle mode, if I'm holding the item down with my right thumb, I would like to be able to scroll with my other finger the page — that text … we can probably put that in the space at the bottom with where that text goes right now, showing how many tasks there are and how many are done"
+    },
+    {
+      "id": "first-run-setup-17", "date": "2026-09-29", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "title": "Setup's end (and the opening animation) over an upcoming prayer: the ring grows all the way to the circle's edge, then turns into its dashes", "headline": "Ring reaches the dashed circle now",
+      "tryIt": ["Mark the current prayer so the circle shows the next one dashed, then Settings → Run setup again → Bismillah", "Watch the end: the thin ring grows out to the dashed circle, becomes the dashes, and the prayer fades in inside it"],
+      "checked": "sim", "shots": ["wn-setup-landing-dashed.jpg"], "addresses": ["6F3BCE52"]
     }
   ]
 }

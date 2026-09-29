@@ -2371,6 +2371,10 @@ suck").** The track (`CircleTrack`, PrayerCompletionFX.swift) *is* the state:
   at full width. The start also gives one soft haptic (`playStartMoment`, on "Asr|next" →
   "Asr|now" with the same on-screen guards). The fade / draw / glow looks and their picker are gone.
 - The welcome lands as the dashed ring when `WelcomeTarget.trackDashed` (set by `settleTrack`).
+  Fixed 2026-09-29 (feedback 6F3BCE52, "didn't extend to the edges properly"): the dashes used to appear at full size the
+  moment the ring started to grow, while the ring faded out inside them (two rings, no landing). Now the ring grows to
+  200 pt as a thin line in the dashed track's grey and width, then breaks into the dashes (`dashesIn`, 0.3 s) before the
+  page fades in. Solid-track landings unchanged. Same `WelcomeOverlay` for the setup's Bismillah and the everyday launch.
 - Prayers widget: the dashed track (no inner ring) for a prayer that hasn't started, no animation.
 - An upcoming prayer's progress is 0 (it was 1 in a clear colour and sprang from full to empty).
 - **Preview** (DEBUG, Settings → My Dev Stuff → Preview prayer begins): `PrayerStartPreview.request`
