@@ -1197,6 +1197,12 @@
       "title": "The post-salah pill keeps counting down while the ☰ menu is open (it's still in sight); sheets and other pages still pause it", "headline": "Keeps counting with the ☰ menu open",
       "tryIt": ["Mark a prayer, then open ☰ while the pill's ring is draining: it keeps going and the pill leaves on time", "Open a prayer's time editor or the map instead: the ring waits, as before"],
       "checked": "sim", "shots": ["wn-post-salah-menu.jpg"], "addresses": ["71800F94"]
+    },
+    {
+      "id": "tasbeeh-haptics-3", "date": "2026-09-29", "commit": "next", "time": null, "topic": "tasbeeh-haptics", "notes": null,
+      "title": "The haptics chip steps between states: one more wave lights (or goes), silent fades them out; no full ripple on every tap", "headline": "Chip steps a wave, no full ripple",
+      "tryIt": ["Zikr → start → pause → tap the phone chip: light → medium lights a second wave, strong a third, silent fades them out", "From silent, tap once: just the first wave comes back; the phone still bounces"],
+      "checked": "sim", "shots": ["wn-haptics-chip-steps.jpg"], "addresses": ["A1399C45"]
     }
   ]
 }
