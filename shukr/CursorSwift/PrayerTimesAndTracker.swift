@@ -178,11 +178,14 @@ struct PrayerTimesView: View {
         return rows.filter(\.isCompleted)
     }
 
-    /// "Unmark Asr?" appears only when it can be seen: after the first-run setup and the opening,
-    /// never over a tasbeeh session, and with nothing presented (a sheet or popover the page can't
-    /// see — What's new, the ☰ menu, a row's time editor, Settings' sheets — would swallow the
-    /// alert). Until then the request stays in the app group and this retries every second for a
-    /// while; the next activation picks it up again. The map and pushed pages are closed first.
+    /// "Unmark Asr?" appears over whatever is on screen — the Zikr page, Settings, a pushed page, the
+    /// map, a sheet or the ☰ popover — with no navigating (owner, CBBBBD1D: it only came up on the Salah
+    /// page). It's a UIKit alert in its own window above the app (`OverlayAlert`), so no sheet, popover
+    /// or cover can hide it (presented from the root it sat under a sheet SwiftUI had presented from a
+    /// nested controller). It waits during the first-run setup and the opening, while the app
+    /// isn't active and during a tasbeeh session (taps there count; it comes up once the session closes).
+    /// Until then the request stays in the app group and this retries every second for a while; the next
+    /// activation picks it up again.
     private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0) {
         guard token == widgetUnmarkToken, widgetUnmark == nil,
               let store = UserDefaults(suiteName: SharedStore.appGroup),
@@ -192,24 +195,31 @@ struct PrayerTimesView: View {
             guard attempt < 90 else { return }   // the request stays: the next activation tries again
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1) }
         }
-        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage || scenePhase != .active
-        guard !blocked else { later(); return }
-        clearCovers {
-            sharedState.horizontalPage = .main
-            // Once the page has settled (a cover was closing, or the app was just opening).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                guard token == widgetUnmarkToken, widgetUnmark == nil else { return }
-                guard !(FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage || somethingCovers
-                        || PresentedCheck.anything) else { later(); return }
-                // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
-                store.removeObject(forKey: WidgetListMarks.unmarkKey)
-                let rows = completedRows(request)
-                guard !rows.isEmpty else { return }
-                var shown = request
-                shown.displayName = rows.contains(where: \.isJumuah) ? "Jumu'ah" : request.name
-                widgetUnmark = shown
-            }
-        }
+        // (`CircleCover` "tasbeeh", set by the session itself: this closure's own view copy can read a
+        // stale `showTasbeehPage`.)
+        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage
+            || CircleCover.active.contains("tasbeeh") || UIApplication.shared.applicationState != .active
+        guard !blocked, OverlayAlert.canShow else { later(); return }
+        // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
+        store.removeObject(forKey: WidgetListMarks.unmarkKey)
+        let rows = completedRows(request)
+        guard !rows.isEmpty else { return }
+        var shown = request
+        shown.displayName = rows.contains(where: \.isJumuah) ? "Jumu'ah" : request.name
+        widgetUnmark = shown
+        let alert = UIAlertController(title: "Unmark \(shown.displayName)?",
+                                      message: "Are you sure you want to mark this prayer as incomplete?",
+                                      preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in
+            widgetUnmark = nil
+            OverlayAlert.finish()
+        })
+        alert.addAction(UIAlertAction(title: "Unmark", style: .destructive) { _ in
+            widgetUnmark = nil
+            OverlayAlert.finish()
+            unmarkFromWidget(shown)
+        })
+        OverlayAlert.show(alert)
     }
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
@@ -560,16 +570,12 @@ struct PrayerTimesView: View {
         }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
-        // A marked row tapped in the Prayers widget's times list: the app asks.
-        .alert(widgetUnmark.map { "Unmark \($0.displayName)?" } ?? "",
-               isPresented: Binding(get: { widgetUnmark != nil }, set: { if !$0 { widgetUnmark = nil } }),
-               presenting: widgetUnmark) { request in
-            Button("Unmark", role: .destructive) { unmarkFromWidget(request) }
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Are you sure you want to mark this prayer as incomplete?")
-        }
+        // A marked row tapped in the Prayers widget's times list: the app asks (showWidgetUnmarkWhenClear).
         .onChange(of: widgetUnmark != nil) { _, up in CircleCover.set("widgetUnmark", up) }
+        // A request that waited out a tasbeeh session: now.
+        .onChange(of: showTasbeehPage) { _, up in
+            if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
+        }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
             viewModel.reconcileAfterWidgetWrites()
@@ -598,6 +604,24 @@ struct PrayerTimesView: View {
             }
         }
         #if DEBUG
+        .task {
+            // `-demoWidgetUnmarkAfter <seconds>`: what a marked row's tap in the widget's times list
+            // does — the request for today's first marked prayer, then the widget hand-off (combine
+            // with a page's demo arg, or move about the app meanwhile).
+            let after = UserDefaults.standard.double(forKey: "demoWidgetUnmarkAfter")
+            guard after > 0 else { return }
+            try? await Task.sleep(for: .seconds(after))
+            // With `-demoPauseScreen`: only once the session is really up (it opens late).
+            if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
+                for _ in 0..<40 where !CircleCover.active.contains("tasbeeh") { try? await Task.sleep(for: .milliseconds(250)) }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            if let p = viewModel.todaysPrayers.first(where: \.isCompleted) {
+                UserDefaults(suiteName: SharedStore.appGroup)?
+                    .set("\(p.name)|\(p.startTime.timeIntervalSince1970)", forKey: WidgetListMarks.unmarkKey)
+                openFromWidgetFlags()
+            }
+        }
         .task {
             // Masjid detection check: a late Friday Dhuhr at your first favourite masjid (+ one
             // 400 m away) → the first should come back as Jumu'ah, scored Early; the second not.
@@ -2126,13 +2150,38 @@ struct WidgetUnmarkRequest: Identifiable {
     }
 }
 
-/// Is anything presented over the app's window (a sheet, a popover, an alert, a cover)? For
-/// alerts that must not fire under one (they'd never show).
-@MainActor enum PresentedCheck {
-    static var anything: Bool {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .contains { $0.isKeyWindow && $0.rootViewController?.presentedViewController != nil }
+/// An alert over everything in the app, whatever is presented (sheets, popovers, covers — some are
+/// presented from nested controllers, out of reach from the root): its own window just above the
+/// app's, in the app's own light / dark look. One at a time; `finish()` removes the window.
+@MainActor enum OverlayAlert {
+    private static var window: UIWindow?
+
+    private static var scene: UIWindowScene? {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+    }
+    static var canShow: Bool { window == nil && scene != nil }
+
+    static func show(_ alert: UIAlertController) {
+        guard window == nil, let scene else { return }
+        let appWindow = scene.windows.first { $0.isKeyWindow }
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .alert + 1
+        // The app's own appearance (shukr's Light / Dark / Auto, not the system's).
+        w.overrideUserInterfaceStyle = appWindow?.rootViewController?.traitCollection.userInterfaceStyle ?? .unspecified
+        let root = UIViewController()
+        root.view.backgroundColor = .clear
+        w.rootViewController = root
+        w.makeKeyAndVisible()
+        window = w
+        root.present(alert, animated: true)
+    }
+
+    /// After an action: hand the keyboard / focus back to the app's window.
+    static func finish() {
+        let appWindow = scene?.windows.first { $0 !== window && $0.windowLevel == .normal }
+        window?.isHidden = true
+        window = nil
+        appWindow?.makeKey()
     }
 }

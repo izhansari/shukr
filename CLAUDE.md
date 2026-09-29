@@ -989,6 +989,14 @@ memo requests in). **No schema change** in any round — the watch keeps its own
 - The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
   the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
   (WidgetKit can render future entries ahead of time).
+- **Widget "Unmark?" anywhere (2026-09-29, feedback CBBBBD1D):** a marked row in the widget's times list opens the app to
+  "Unmark Asr?" (`showWidgetUnmarkWhenClear`). It's a UIKit alert in its own window above the app (`OverlayAlert`,
+  windowLevel .alert + 1, the app's own light / dark) — no navigating, over any page, sheet, popover or cover. (Presented
+  from the root it sat UNDER a sheet SwiftUI had presented from a nested controller; the old SwiftUI alert only showed on
+  the Salah page, so the flow paged there.) It waits during the setup, the opening and a tasbeeh session — the session
+  registers itself as `CircleCover` "tasbeeh" (the retry closure's view copy can read a stale `showTasbeehPage`) — and
+  comes up when the session closes. DEBUG `-demoWidgetUnmarkAfter <s>` (today's first marked prayer). **Test trap:** a
+  request is only taken once its alert shows; kill the app with an alert up and the next launch shows the leftover one.
 - **Widget ring track (2026-09-29, feedback BB277A98):** the live arc is the app's thin arc masked by the stock
   `ProgressView(timerInterval:)`, whose unfilled track is ~30 % alpha — so the score colour showed round the whole track
   (at ~9 % with fa63e22's double mask, ~30 % once 8a6f160 went to one mask). `LiveArc.liveRing` now thresholds the mask:

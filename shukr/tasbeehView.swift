@@ -410,6 +410,7 @@ struct tasbeehView: View {
         )
         
         .onAppear {
+            CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
             tasbeehColorMode = colorScheme == .dark ? true : false
             resolveSessionMantra()
             
@@ -490,6 +491,7 @@ struct tasbeehView: View {
             }
         }
         .onDisappear {
+            CircleCover.set("tasbeeh", false)
             sharedState.isDoingPostNamazZikr = false
             UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
         }
