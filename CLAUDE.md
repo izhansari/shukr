@@ -914,7 +914,9 @@ too many sheets.
   arc on a 7 pt pale band, coloured by `WatchScoring.color` (a copy of `PrayerScoring`'s rule in
   shukrWatchShared/WatchPrayerCore.swift — PrayerScoring.swift also holds SwiftData code, so the watch can't compile it;
   keep the two in step). Upcoming: empty arc, dashed 1 pt track, NEXT, dimmed name. Tap → "ends 6:45 PM" ⇄ "54m left" +
-  `WKInterfaceDevice.play(.click)`. Complications: `countsDown: false`, `.tint(entry.tint)` (score colour at the entry's
+  `WKInterfaceDevice.play(.click)`; before a prayer "at 5:35 AM" ⇄ "in 1h 50m" (2026-09-29 — until then the tap was
+  wired only for a prayer that's on, so on the NEXT ring it did nothing; owner). The flip resets when the prayer shown
+  changes or starts. DEBUG `-demoWatchAt "24.86,67.0"` (with `-demoWatch`) seeds another place, for a prayer that's on. Complications: `countsDown: false`, `.tint(entry.tint)` (score colour at the entry's
   date), timeline entries at every start / end **and** each grade change (`WatchScoring.gradeChanges`: +30 min, and the
   On time → Late point); circular upcoming = dashed ring + tiny NEXT. The watchOS 27 simulator runtime is installed now
   (Apple Watch Series 12 46mm, AEDA90A5…); DEBUG `-demoWatch` seeds New York / ISNA / Shafi'i so a standalone watch sim

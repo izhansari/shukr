@@ -1116,6 +1116,12 @@
       "title": "Prayers widget: tapping the ring no longer makes its fill flicker; it still fills live on its own", "headline": "No flicker when you tap the ring",
       "tryIt": ["During a prayer, tap the widget's ring a few times: the time flips, the coloured fill stays put", "Leave it a minute: the fill still creeps forward on its own"],
       "checked": "sim", "shots": ["wn-widget-ring-steady.jpg"], "asked": "tapping the prayer ring in widget is different now. before tapping it would just change the time. now there's a visible flicker on the progress ring fill. idt we had that before."
+    },
+    {
+      "id": "apple-watch-3", "date": "2026-09-29", "commit": "next", "time": null, "topic": "apple-watch", "notes": null,
+      "title": "Tap the watch's prayer ring to flip its time in every state: before a prayer \"at 5:35 AM\" ⇄ \"in 1h 50m\", during it \"ends 6:46 AM\" ⇄ \"3h 0m left\", with one soft click; hold still marks it", "headline": "Tap the ring: at / in, ends / left",
+      "tryIt": ["On the watch, open shukr before a prayer starts (NEXT on a dashed ring) and tap the ring: \"at 5:35 AM\" turns into \"in 1h 50m\"; tap again to go back", "During a prayer, tap the ring: \"ends …\" ⇄ \"… left\". A tap never marks it; holding the ring still does"],
+      "checked": "sim", "shots": ["wn-watch-ring-tap.jpg"], "asked": "the watch app player ring doesn't allow for tapping to change the text time so it doesn't let me toggle to show like in five minutes or at 5:28"
     }
   ]
 }
