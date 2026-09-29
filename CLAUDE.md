@@ -1195,6 +1195,10 @@ Uploaded: 2.0 (3) 09-24, (6) 09-25, (7) and (8) 09-26, (9) 09-27 (first with the
 (12) 09-29 00:00: from 994ee5a (bump 4aec319) — Apple Watch zikr / marking, first-run setup, Your reminders, Insights rework,
 the Apple `mappin` picking pin, the live widget ring, What's new headlines / lists; notes TestFlightNotes-2.0.12.md; on the public
 link the same night (IN_BETA_TESTING).
+(13) 09-29 ~14:30: from 155615f (bump e80839b, notes 2342c0f) — What's new v4 (areas, ideas, Next build), the setup opening page +
+edit-returns-to-review + dashed landing, zikr reminders page, wheel arranging, haptics silent, post-salah 15 s ring, widget
+unmark-anywhere, watch pause / Crown / ring tap; the first build testflight.sh recorded in WhatsNew.jsonl; notes
+TestFlightNotes-2.0.13.md; on the public link the same afternoon (IN_BETA_TESTING).
 (10) 09-27: the iOS 26 Settings-rows fix (pager drag `minimumDistance: 0` → 5), on the public link the same day (IN_BETA_TESTING).
 Note: on a real iOS 26.6 phone the dead rows showed in Release / TestFlight builds and not in Debug installs; in
 the iOS 26.5 simulator Debug was dead too. Verify gesture fixes with a **Release** device install
