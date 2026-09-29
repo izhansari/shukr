@@ -22,8 +22,9 @@ import UniformTypeIdentifiers
 // MARK: - Composer
 
 struct NoteComposer: View {
-    let entry: WhatsNewEntry
-    /// Answering this ask (Works / Not yet); nil = a comment on the change.
+    /// The change it's about; nil = a new idea from the page's header (ask wn-ideas).
+    let entry: WhatsNewEntry?
+    /// Answering this ask (Works / Not yet); nil = a comment or an idea.
     let ask: WhatsNewAsk?
     var startKind: FeedbackItem.Kind = .issue
     /// Editing something already said (not picked up yet).
@@ -46,19 +47,32 @@ struct NoteComposer: View {
     @State private var playing: PlayTarget?
     @State private var notice: String?
     @State private var confirmDiscard = false
+    /// An idea's area when there's no card to take it from.
+    @State private var area: String?
     @FocusState private var typing: Bool
 
     private var isAnswer: Bool { ask != nil }
+    private var isIdea: Bool { kind == .idea }
     private var changed: Bool {
         guard let e = existing else { return isAnswer || !text.trimmingCharacters(in: .whitespaces).isEmpty || !media.isEmpty }
         return e.kind != kind || e.text != text.trimmingCharacters(in: .whitespacesAndNewlines) || e.attachments != media
+            || (isIdea && entry == nil && e.area != area)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    context
+                    // A comment on a card can be a new idea instead (most of his ideas come from a card).
+                    if !isAnswer, entry != nil {
+                        Picker("What it is", selection: $kind) {
+                            Text("About this change").tag(FeedbackItem.Kind.note)
+                            Text("New idea").tag(FeedbackItem.Kind.idea)
+                        }
+                        .pickerStyle(.segmented)
+                        .sensoryFeedback(.selection, trigger: kind)
+                    }
+                    if let entry { context(entry) } else { areaPicker }
                     if isAnswer {
                         Picker("Answer", selection: $kind) {
                             Text("Works").tag(FeedbackItem.Kind.works)
@@ -68,9 +82,10 @@ struct NoteComposer: View {
                         .sensoryFeedback(.selection, trigger: kind)
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(isAnswer && kind == .works ? "Anything to add? (optional)" : isAnswer ? "What's off? (optional)" : "Your comment")
+                        Text(isAnswer && kind == .works ? "Anything to add? (optional)" : isAnswer ? "What's off? (optional)"
+                             : isIdea ? "Your idea" : "Your comment")
                             .font(.footnote).foregroundStyle(.secondary).padding(.leading, 4)
-                        TextField("Say it however you like", text: $text, axis: .vertical)
+                        TextField(isIdea ? "What's the idea?" : "Say it however you like", text: $text, axis: .vertical)
                             .lineLimit(3...10)
                             .focused($typing)
                             .padding(12)
@@ -83,7 +98,7 @@ struct NoteComposer: View {
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
             .fontDesign(.rounded)
-            .navigationTitle(isAnswer ? "Your answer" : "Comment")
+            .navigationTitle(isAnswer ? "Your answer" : isIdea ? "New idea" : "Comment")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -102,9 +117,13 @@ struct NoteComposer: View {
         }
         .interactiveDismissDisabled(changed)
         .onAppear {
-            if let e = existing { kind = e.kind; text = e.text; media = e.attachments }
-            else { kind = isAnswer ? startKind : .note }
-            if kind == .issue || kind == .note { typing = true }
+            if let e = existing { kind = e.kind; text = e.text; media = e.attachments; area = e.area }
+            else { kind = isAnswer ? startKind : (entry == nil || startKind == .idea ? .idea : .note) }
+            if kind == .issue || kind == .note || kind == .idea { typing = true }
+            #if DEBUG
+            if existing == nil, let t = UserDefaults.standard.string(forKey: "demoIdeaText") { text = t }
+            if existing == nil, entry == nil, let a = UserDefaults.standard.string(forKey: "demoIdeaArea") { area = a }
+            #endif
         }
         .onChange(of: picks) { _, list in
             guard !list.isEmpty else { return }
@@ -138,7 +157,24 @@ struct NoteComposer: View {
 
     private var changedWords: Bool { (existing?.text ?? "") != text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private var context: some View {
+    /// A new idea with no card: which part of the app it's about (the page's areas).
+    private var areaPicker: some View {
+        HStack {
+            Label("Area", systemImage: "square.grid.2x2").foregroundStyle(.secondary)
+            Spacer()
+            Picker("Area", selection: $area) {
+                Text("Choose").tag(String?.none)
+                ForEach(WhatsNew.areaOrder, id: \.self) { Text($0).tag(String?.some($0)) }
+            }
+            .pickerStyle(.menu)
+            .tint(Color.sage)
+        }
+        .font(.subheadline)
+        .padding(.horizontal, 14).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    private func context(_ entry: WhatsNewEntry) -> some View {
         HStack(spacing: 12) {
             if let shot = entry.shots?.first { ShotThumb(name: shot, size: 48) }
             VStack(alignment: .leading, spacing: 2) {
@@ -271,7 +307,8 @@ struct NoteComposer: View {
         typing = false
         // Files dropped from the list during this edit that were added here: gone for good.
         store.discardMedia(added.filter { !media.contains($0) })
-        let item = store.save(existing: existing, entry: entry, ask: ask?.id, kind: kind, text: text, media: media)
+        let item = store.save(existing: existing, entry: entry, ask: ask?.id, kind: kind, text: text, media: media,
+                              area: entry == nil ? area : nil)
         triggerSomeVibration(type: .success)
         onDone(item)
         dismiss()

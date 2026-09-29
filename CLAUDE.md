@@ -28,6 +28,11 @@ Apple Watch · Widgets · Map & Mosques · Insights · Daily Ayah · 99 Names ·
 takes these, `check` flags others, `areas-remap` moved the old ones once). Your asks is grouped by them (headers once
 there are 2+ areas); Every change has area chips (clipped ScrollView, never `scrollClipDisabled`) that combine with search.
 
+**Ideas (ask wn-ideas):** `FeedbackItem.Kind.idea` (💡, "Idea"; an older build reads it as a comment) with an optional
+`area`: on a change, "Comment or idea" → the composer's "About this change | New idea" (keeps `onEntry` = the card), or the
+header's "New idea" (no card, an area picker). `Kind.isVerdict` (works / issue) is what counts as an answer — never an idea
+or a comment. feedback.md: "## 💡 Idea — <area>" + "- From: `<change>` (<headline>)".
+
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
 `merge=union`, so branches appending lines don't conflict; `whatsnew.py check` flags a line a merge kept twice.
@@ -63,7 +68,8 @@ shows "Bradley has it". Send on the page shares the .md and every file (TestFlig
 deferred a turn — a recursive dispatch_once crashed once). Never a horizontal ScrollView on the change page (BA0ECB7A).
 Decode screenshots / thumbnails off the main thread. DEBUG args: `-demoWhatsNew`, `-demoWhatsNewChange <id>`,
 `-demoWhatsNewTopic <id>`, `-demoWhatsNewPage said`, `-demoWhatsNewAnswers YES`, `-demoWhatsNewCompose <change id>`,
-`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots).
+`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots), `-demoWhatsNewIdea` / `-demoWhatsNewIdeaFrom <change id>`
+(+ `-demoIdeaText`, `-demoIdeaArea`: menus / segmented controls don't take simulated taps).
 
 **Other beta extras** (Your reminders' link, its Details and card previews) follow `WhatsNewAccess.beta`: DEBUG or any
 TestFlight install. "Run setup again" and What's new follow `.available` (the owner only).

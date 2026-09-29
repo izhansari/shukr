@@ -44,7 +44,18 @@ struct WhatsNewView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Text(BuildInfo.line).font(.footnote).foregroundStyle(.secondary).padding(.leading, 4)
+                    HStack {
+                        Text(BuildInfo.line).font(.footnote).foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        // An idea that isn't about a card (ask wn-ideas).
+                        Button { composing = Compose(entry: nil, ask: nil, kind: .idea) } label: {
+                            Label("New idea", systemImage: "lightbulb")
+                                .font(.footnote.weight(.semibold)).foregroundStyle(Color.sage)
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.leading, 4)
                     AnswersRow(open: $answersOpen, send: { sharing = feedback.unsent },
                                edit: { item in edit(item) }, everything: { path.append(.said) })
                     asksSection
@@ -176,7 +187,8 @@ struct WhatsNewView: View {
     }
 
     private func edit(_ item: FeedbackItem) {
-        guard let e = item.onEntry.flatMap(WhatsNew.entry) else { return }
+        let e = item.onEntry.flatMap(WhatsNew.entry)
+        guard e != nil || item.kind == .idea else { return }     // a v1–v3 note isn't edited here
         composing = Compose(entry: e, ask: item.ask.flatMap(WhatsNew.ask), kind: item.kind, existing: item)
     }
 
@@ -203,7 +215,8 @@ struct WhatsNewView: View {
         let narrowed = !search.isEmpty || areaFilter != nil
         let shown = narrowed ? all : Array(all.prefix(daysShown))
         return VStack(alignment: .leading, spacing: 10) {
-            SectionTitle(text: "Every change", count: WhatsNew.entries.filter(\.live).count).padding(.leading, 4)
+            // The count follows the chip and the search (owner: "sure to filter totals").
+            SectionTitle(text: "Every change", count: all.reduce(0) { $0 + $1.entries.count }).padding(.leading, 4)
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Search changes, e.g. widget", text: $search)
@@ -264,6 +277,9 @@ struct WhatsNewView: View {
                 .foregroundStyle(on ? Color.sage : Color.primary)
                 .padding(.horizontal, 12).padding(.vertical, 7)
                 .background(Capsule().fill(on ? Color.sage.opacity(0.16) : Color(.tertiarySystemFill)))
+                // A 44 pt tall tap target round the same-looking chip (owner: "sure to tap area").
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(on ? .isSelected : [])
@@ -311,6 +327,12 @@ struct WhatsNewView: View {
         if d.string(forKey: "demoWhatsNewPage") == "said" { path = [.said] }
         if let id = d.string(forKey: "demoWhatsNewTopic") { path = [.topic(id)] }
         if let id = d.string(forKey: "demoWhatsNewChange") { path = [.change(id)] }
+        // `-demoWhatsNewIdea`: the header's New idea · `-demoWhatsNewIdeaFrom <change id>`: an idea from that card
+        // (`-demoIdeaText` / `-demoIdeaArea` fill it in).
+        if d.object(forKey: "demoWhatsNewIdea") != nil { composing = Compose(entry: nil, ask: nil, kind: .idea) }
+        if let id = d.string(forKey: "demoWhatsNewIdeaFrom"), let e = WhatsNew.entry(id) {
+            composing = Compose(entry: e, ask: nil, kind: .idea)
+        }
         if let id = d.string(forKey: "demoWhatsNewCompose"), let e = WhatsNew.entry(id) {
             composing = Compose(entry: e, ask: e.askIDs.first.flatMap(WhatsNew.ask), kind: .issue)
         }
@@ -334,11 +356,12 @@ struct WhatsNewView: View {
 
 /// What the composer sheet opens on.
 struct Compose: Identifiable {
-    let entry: WhatsNewEntry
+    /// nil = a new idea from the page's header.
+    let entry: WhatsNewEntry?
     let ask: WhatsNewAsk?
     var kind: FeedbackItem.Kind = .issue
     var existing: FeedbackItem? = nil
-    var id: String { "\(entry.id)|\(ask?.id ?? "-")|\(existing?.id.uuidString ?? "new")" }
+    var id: String { "\(entry?.id ?? "idea")|\(ask?.id ?? "-")|\(existing?.id.uuidString ?? "new")" }
 }
 
 struct SectionTitle: View {
@@ -403,7 +426,9 @@ private struct AnswersRow: View {
             .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
             if open {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(pending) { item in AnswerCard(item: item, edit: item.onEntry == nil ? nil : { edit(item) }) }
+                    ForEach(pending) { item in
+                        AnswerCard(item: item, edit: item.onEntry == nil && item.kind != .idea ? nil : { edit(item) })
+                    }
                     if pending.isEmpty {
                         Text("The team has read everything you've said.")
                             .font(.subheadline).foregroundStyle(.secondary).padding(.leading, 4)
@@ -670,7 +695,7 @@ struct ChangeDetailView: View {
                 }
                 HStack(spacing: 10) {
                     Button { compose(Compose(entry: entry, ask: nil, kind: .note)) } label: {
-                        Label("Add a comment", systemImage: "text.bubble")
+                        Label("Comment or idea", systemImage: "text.bubble")
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .background(Capsule().fill(Color(.secondarySystemGroupedBackground)))
                     }

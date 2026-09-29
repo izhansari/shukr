@@ -17,12 +17,19 @@ import SwiftUI
 
 struct FeedbackItem: Codable, Identifiable, Equatable {
     enum Kind: String, Codable, CaseIterable {
-        /// works = "Works"; issue = "Not yet" (v1–v3 called it Issue); note = a comment.
-        case works, issue, note
-        var label: String { switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment" } }
-        var symbol: String { switch self { case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill" } }
-        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬" } }
-        var color: Color { switch self { case .works: .green; case .issue: .orange; case .note: .sage } }
+        /// works = "Works"; issue = "Not yet" (v1–v3 called it Issue); note = a comment; idea = a new idea
+        /// (ask wn-ideas: from a card or from the page's "New idea"). An older build reads an idea as a note.
+        case works, issue, note, idea
+        var label: String { switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment"; case .idea: "Idea" } }
+        var symbol: String {
+            switch self { case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill"; case .idea: "lightbulb.fill" }
+        }
+        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬"; case .idea: "💡" } }
+        var color: Color {
+            switch self { case .works: .green; case .issue: .orange; case .note: .sage; case .idea: Color(red: 0.72, green: 0.53, blue: 0.08) }
+        }
+        /// An answer on an ask (Works / Not yet) — comments and ideas never are.
+        var isVerdict: Bool { self == .works || self == .issue }
     }
 
     var id = UUID()
@@ -38,8 +45,10 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     var media: [String]?
     /// The ask this answers (Works / Not yet).
     var ask: String?
-    /// The change it was given on.
+    /// The change it was given on (an idea: the card it came from, if any).
     var onEntry: String?
+    /// An idea's area (WhatsNew.areaOrder).
+    var area: String?
     var created = Date()
     var updated = Date()
     var sentAt: Date?
@@ -69,6 +78,7 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         media = try? c.decodeIfPresent([String].self, forKey: .media)
         ask = try? c.decodeIfPresent(String.self, forKey: .ask)
         onEntry = try? c.decodeIfPresent(String.self, forKey: .onEntry)
+        area = try? c.decodeIfPresent(String.self, forKey: .area)
         created = (try? c.decodeIfPresent(Date.self, forKey: .created)) ?? Date()
         updated = (try? c.decodeIfPresent(Date.self, forKey: .updated)) ?? created
         sentAt = try? c.decodeIfPresent(Date.self, forKey: .sentAt)
@@ -82,8 +92,11 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     /// Photos and videos, old single photo included.
     var attachments: [String] { media ?? (photo.map { [$0] } ?? []) }
     /// What it's about, in a few words (the change's headline, else the feature).
-    var about: String { onEntry.flatMap(WhatsNew.entry)?.short ?? topicTitle }
-    var isAnswer: Bool { kind != .note && ask != nil }
+    var about: String {
+        if let e = onEntry.flatMap(WhatsNew.entry) { return kind == .idea ? "Idea from: \(e.short)" : e.short }
+        return kind == .idea ? (area.map { "Idea · \($0)" } ?? "Idea") : topicTitle
+    }
+    var isAnswer: Bool { kind.isVerdict && ask != nil }
 }
 
 /// Where something he said stands.
@@ -150,7 +163,7 @@ final class FeedbackStore {
 
     /// His answer on this change of this ask, if it can still be edited in place (not picked up yet).
     func editableAnswer(ask: String, entry: String) -> FeedbackItem? {
-        items.last { $0.ask == ask && $0.onEntry == entry && $0.kind != .note && state($0) == .saved }
+        items.last { $0.ask == ask && $0.onEntry == entry && $0.kind.isVerdict && state($0) == .saved }
     }
 
     func mediaURL(_ name: String) -> URL? { Self.mediaFolder?.appendingPathComponent(name) }
@@ -158,22 +171,26 @@ final class FeedbackStore {
 
     // MARK: Writing
 
-    /// Works / Not yet on an ask's change (or a comment when `kind` is .note). Edits `existing` when given.
+    /// Works / Not yet on an ask's change, a comment (.note), or an idea (.idea: `entry` = the card it came
+    /// from, or nil from the page's "New idea"; `area` its area). Edits `existing` when given.
     @discardableResult
-    func save(existing: FeedbackItem? = nil, entry: WhatsNewEntry, ask: String?, kind: FeedbackItem.Kind,
-              text: String, media: [String]) -> FeedbackItem {
-        var item = existing ?? FeedbackItem(topic: entry.topic, topicTitle: WhatsNew.topicTitle(entry.topic),
-                                            kind: kind, text: "", build: BuildInfo.line)
+    func save(existing: FeedbackItem? = nil, entry: WhatsNewEntry?, ask: String?, kind: FeedbackItem.Kind,
+              text: String, media: [String], area: String? = nil) -> FeedbackItem {
+        let topic = entry?.topic ?? "idea"
+        let topicTitle = entry.map { WhatsNew.topicTitle($0.topic) } ?? "Idea"
+        var item = existing ?? FeedbackItem(topic: topic, topicTitle: topicTitle, kind: kind, text: "", build: BuildInfo.line)
         let removed = Set(item.attachments).subtracting(media)
         item.kind = kind
-        item.ask = kind == .note ? nil : ask
-        item.onEntry = entry.id
+        item.ask = kind.isVerdict ? ask : nil
+        item.onEntry = entry?.id
+        item.area = kind == .idea ? (area ?? entry.map { WhatsNew.area($0.topic) }) : nil
         item.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         item.media = media
         item.photo = nil
-        item.notes = entry.notes.map { [$0] } ?? []
-        item.commits = [entry.id]
-        item.topicTitle = WhatsNew.topicTitle(entry.topic)
+        item.notes = entry?.notes.map { [$0] } ?? []
+        item.commits = entry.map { [$0.id] } ?? []
+        item.topic = topic
+        item.topicTitle = topicTitle
         item.updated = Date()
         item.build = BuildInfo.line
         removed.forEach(removeMedia)
@@ -230,9 +247,16 @@ final class FeedbackStore {
         let when = Date().formatted(date: .abbreviated, time: .shortened)
         var lines = ["# \(title) — \(when)", "", "Build: \(BuildInfo.line)", ""]
         for item in list {
-            lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.about)")
-            var meta = ["Feature: `\(item.topic)`"]
-            if let e = item.onEntry { meta.append("Change: `\(e)`") }
+            if item.kind == .idea {
+                lines.append("## \(item.kind.emoji) Idea — \(item.area ?? "no area")")
+                if let e = item.onEntry {
+                    lines.append("- From: `\(e)` (\(WhatsNew.entry(e)?.short ?? WhatsNew.topicTitle(item.topic)))")
+                }
+            } else {
+                lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.about)")
+            }
+            var meta = item.kind == .idea ? [] : ["Feature: `\(item.topic)`"]
+            if let e = item.onEntry, item.kind != .idea { meta.append("Change: `\(e)`") }
             if let a = item.ask { meta.append("Ask: `\(a)`") }
             meta.append("Id: `\(item.id.uuidString)`")
             lines.append("- " + meta.joined(separator: " · "))

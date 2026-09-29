@@ -178,7 +178,7 @@ enum WhatsNew {
         guard let latest = entries(ask: ask.id).last else { return .gone }
         var best: AskAnswer?
         func consider(_ a: AskAnswer) { if best == nil || a.at > best!.at { best = a } }
-        for item in FeedbackStore.shared.items where item.ask == ask.id && item.kind != .note {
+        for item in FeedbackStore.shared.items where item.ask == ask.id && item.kind.isVerdict {
             // An answer counts for the change it was given on; one without (never, but safe) by time.
             if item.onEntry == latest.id || (item.onEntry == nil && item.created >= latest.when) {
                 consider(AskAnswer(works: item.kind == .works, at: item.updated, source: .phone(item)))
@@ -214,7 +214,7 @@ enum WhatsNew {
 
     /// The small tag in the change list: "you said it works", "you said not yet", "you asked".
     @MainActor static func tag(for entry: WhatsNewEntry) -> (text: String, tone: Color)? {
-        if let v = said(on: entry).first(where: { $0.kind != .note }) {
+        if let v = said(on: entry).first(where: { $0.kind.isVerdict }) {
             return v.kind == .works ? ("you said it works", .green) : ("you said not yet", .orange)
         }
         for id in entry.askIDs {
