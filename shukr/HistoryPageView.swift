@@ -56,8 +56,9 @@ struct HistoryPageView: View {
     var body: some View {
         // Selection only in Edit mode: outside it a long press (Feel the pace) selected the row
         // and left it grey until another row was touched (owner, 2026-09-27).
-        List(selection: Binding(get: { isEditing ? selection : [] },
-                                set: { if isEditing { selection = $0 } })) {
+        // Our own checkmarks, not List selection: the system's deselect faded the check through
+        // grey (owner, FAD0EBFA — deselect at once, no animation). Same as a zikr page's sessions.
+        List {
             if sessions.isEmpty {
                 ContentUnavailableView(
                     "No sessions yet",
@@ -70,7 +71,6 @@ struct HistoryPageView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
-                .selectionDisabled()
                 ForEach(days, id: \.date) { day in
                     Section {
                         ForEach(day.sessions) { session in
@@ -82,7 +82,6 @@ struct HistoryPageView: View {
                 }
             }
         }
-        .environment(\.editMode, .constant(isEditing ? .active : .inactive))
         .fontDesign(.rounded)
         .navigationTitle("Zikr History")
         .navigationBarTitleDisplayMode(.inline)
@@ -159,10 +158,14 @@ struct HistoryPageView: View {
 
     /// One session. Tap → a small glass menu (Open zikr · Feel the pace); in Edit mode a tap
     /// selects instead. No swipes: deleting is Edit → select → Delete (owner).
-    private func sessionRow(_ session: SessionDataModel) -> some View {
-        SessionRow(session: session, tappable: !isEditing,
-                   onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
-            .tag(session.persistentModelID)
+    @ViewBuilder private func sessionRow(_ session: SessionDataModel) -> some View {
+        let row = SessionRow(session: session, tappable: !isEditing,
+                             onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
+        if isEditing {
+            SelectableRow(selected: $selection, id: session.persistentModelID) { row }
+        } else {
+            row
+        }
     }
 }
 

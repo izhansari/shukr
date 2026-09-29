@@ -1488,22 +1488,43 @@ struct MantraSessionsSection: View {
     @ViewBuilder private func row(_ session: SessionDataModel) -> some View {
         let id = session.persistentModelID
         if editing {
-            let on = selected.contains(id)
-            HStack(spacing: 12) {
-                Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(on ? Color.accentColor : Color(.tertiaryLabel))   // stock, no green
-                    .contentTransition(.symbolEffect(.replace))
+            SelectableRow(selected: $selected, id: id) {
                 SessionRow(session: session, showsMantraName: false, tappable: false)   // a tap selects
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                triggerSomeVibration(type: .light)
-                if on { selected.remove(id) } else { selected.insert(id) }
             }
         } else {
             // Tap → Feel the pace (no "Open zikr": this is its page).
             SessionRow(session: session, showsMantraName: false)
+        }
+    }
+}
+
+/// A session row while selecting (Zikr History, a zikr page's sessions): our own check circle
+/// before the row, a tap toggles it. Selecting animates the check in; deselecting is instant —
+/// the replace effect (and List's own selection) ran the filled check out in grey, a grey flash
+/// (owner, FAD0EBFA: "just deselect it and don't animate that deselection").
+struct SelectableRow<Content: View>: View {
+    @Binding var selected: Set<PersistentIdentifier>
+    let id: PersistentIdentifier
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let on = selected.contains(id)
+        HStack(spacing: 12) {
+            Image(systemName: on ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(on ? Color.accentColor : Color(.tertiaryLabel))   // stock, no green
+                .contentTransition(on ? .symbolEffect(.replace) : .identity)
+            content
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            triggerSomeVibration(type: .light)
+            if on {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { _ = selected.remove(id) }
+            } else {
+                selected.insert(id)
+            }
         }
     }
 }
