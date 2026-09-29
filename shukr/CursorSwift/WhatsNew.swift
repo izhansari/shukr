@@ -325,8 +325,10 @@ enum WhatsNew {
         /// "looks good" · "still off" · "followed up" · "checked" (nil in v1's records).
         var how: String? = nil
     }
-    private static let key = "whatsNew.v4.migrated2"
-    private static let doneKey = "whatsNew.v4.migrated2Done"
+    // v3 (the third key): only asks whose newest change existed in v3 are carried (Frank / Bradley, 2026-09-29:
+    // a fix for a note written on a v4 build was born "checked", because the note isn't a v3 note).
+    private static let key = "whatsNew.v4.migrated3"
+    private static let doneKey = "whatsNew.v4.migrated3Done"
 
     static var answers: [String: Answer] = {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
@@ -343,11 +345,15 @@ enum WhatsNew {
         // A phone that never used What's new (a fresh install): everything asked so far is history, not
         // a to-do list — only asks built after this launch come up.
         let fresh = items.isEmpty && closed.isEmpty && reopened.isEmpty && d.object(forKey: "whatsNew.acked") == nil
-        let ctx = Context(items: items, closed: closed, reopened: reopened)
+        let ctx = Context(items: items, v4Notes: Set(FeedbackStore.shared.items.filter { $0.onEntry != nil }.map { $0.id.uuidString.lowercased() }),
+                          closed: closed, reopened: reopened)
         var out: [String: Answer] = [:]
         var open = 0
         for ask in WhatsNew.asks {
             guard let latest = WhatsNew.entries(ask: ask.id).last else { continue }
+            // Only what v3 knew: a change from before v4 carries its converted `commit`; anything newer is v4's
+            // to decide (`status(of:)`), never carried.
+            guard latest.commit != nil else { open += 1; continue }
             if fresh {
                 out[ask.id] = Answer(works: true, entry: latest.id, how: "checked")
             } else if let (works, how) = ctx.earlierAnswer(ask, latest) {
@@ -364,13 +370,17 @@ enum WhatsNew {
 
     private struct Context {
         let items: [FeedbackItem]
+        /// Ids of notes written on a v4 build (lowercased).
+        let v4Notes: Set<String>
         let closed: Set<String>
         let reopened: Set<String>
 
         /// (works, how) — nil = still waiting for him.
         func earlierAnswer(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry) -> (Bool, String)? {
             if ask.fromNote {
-                guard let note = note(ask) else { return (true, "checked") }      // not on this phone
+                // A note written on a v4 build: only his own Works / Not yet on the phone answers it.
+                if isV4Note(ask) { return nil }
+                guard let note = note(ask) else { return (true, "checked") }      // an old note not on this phone
                 if note.closedAt != nil { return (true, "looks good") }
                 if note.reopenedAt != nil {
                     return followUp(items.first { $0.followUpOf == note.id }, latest)
@@ -406,6 +416,10 @@ enum WhatsNew {
             return WhatsNew.entries(topic: latest.topic).contains { closed.contains($0.id) && $0.when >= latest.when }
         }
 
+        private func isV4Note(_ ask: WhatsNewAsk) -> Bool {
+            guard let prefix = ask.note?.lowercased() else { return false }
+            return v4Notes.contains { $0.hasPrefix(prefix) }
+        }
         private func note(_ ask: WhatsNewAsk) -> FeedbackItem? {
             guard let prefix = ask.note?.lowercased() else { return nil }
             return items.first { $0.id.uuidString.lowercased().hasPrefix(prefix) }
