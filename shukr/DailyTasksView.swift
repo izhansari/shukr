@@ -142,30 +142,11 @@ struct ZikrCircleWheel: View {
     @State private var centered: String? = Item.freestyle.id
     @State private var showAddTask = false
     @State private var newTaskScrollTarget: UUID?
-    @State private var editingTask: TaskModel?
-    /// Home-screen-style arranging, in place (owner, 2026-09-29, #26: the separate grid lost his
-    /// place): long-press a task → the wheel's own task circles jiggle with − badges; hold one and
-    /// drag it up / down the arc to reorder (the others make room, the wheel scrolls at the edges),
-    /// tap one to edit it, Done or a tap beside the circles to leave.
-    @State private var arranging = false
-    @State private var arrangeOrder: [TaskModel] = []
-    @State private var draggingID: UUID?
+    /// A long-press on a task opens the Tasks sheet on that task's edit screen (owner, 2026-09-29,
+    /// zikr-tasks-sheet: jiggle mode is gone; the sheet reorders, edits and deletes).
+    @State private var tasksSheetOn: TaskModel?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
     @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.gentle.rawValue
-    /// The drag, in the wheel's own coordinates ("wheel"): the finger, and wheel slots as `items`
-    /// indices — where the lifted task came from, where it would land, and the slot in the middle.
-    @State private var dragPoint: CGPoint = .zero
-    @State private var dragFrom = 0
-    @State private var dragTo = 0
-    @State private var dragCentre = 0
-    @State private var wheelSize: CGSize = .zero
-    /// True while a lift's gesture is alive; it resets by itself however the gesture ends
-    /// (cancelled too), so a lift can never be left hanging.
-    @GestureState private var liftAlive = false
-    @State private var showReorderList = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(PagerLiveState.self) private var live: PagerLiveState?
-    @State private var taskToDelete: TaskModel?
     /// A task tapped with some of today's goal already done: continue or start over?
     @State private var resumeAsk: TaskModel?
     /// A finger on the dots: they become a scrubber (like dragging a page's scroll bar).
@@ -196,61 +177,23 @@ struct ZikrCircleWheel: View {
     private func progress(_ task: TaskModel) -> TaskProgress { task.progress(in: todaysSessions) }
     private func isDone(_ task: TaskModel) -> Bool { task.isCompleted(with: progress(task)) }
 
-    /// Freestyle, the tasks in the user's order, then "new task". A task done today keeps its place
-    /// (owner, 2026-09-29: moving them to the end fought arranging — the wheel is always the order
-    /// you set); coming back from its session centres the next one still to do (`landAfterSession`).
-    /// While arranging: the order being arranged.
+    /// Freestyle, the tasks in the user's order (set in the Tasks sheet), then "new task". A task done
+    /// today keeps its place; coming back from its session centres the next one still to do
+    /// (`landAfterSession`).
     private var items: [Item] {
-        [.freestyle] + (arranging ? arrangeOrder : tasks).map { .task($0) } + [.add]
+        [.freestyle] + tasks.map { .task($0) } + [.add]
     }
 
     var body: some View {
-        ZStack {
-            wheel
-                .overlay(alignment: .bottom) {
-                    // Arranging: the hint takes the summary's place (same spot, same type — owner),
-                    // so nothing on the page moves.
-                    ZStack {
-                        tasksSummary.opacity(arranging ? 0 : 1)
-                        Text("drag to reorder · tap to edit")
-                            .font(.footnote)
-                            .fontWeight(.light)
-                            .fontDesign(.rounded)
-                            .foregroundStyle(.secondary)
-                            .opacity(arranging ? 1 : 0)
-                    }
+        wheel
+            .overlay(alignment: .bottom) {
+                tasksSummary
                     .padding(.bottom, 108)
                     .allowsHitTesting(false)
-                }
-        }
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: arranging)
-        // Done lives in the chrome, in the History & Azkar button's place (so nothing here moves).
-        .onChange(of: live?.arrangeDoneRequest) { _, _ in
-            guard arranging else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { stopArranging() }
-        }
-        .onChange(of: live?.arrangeReorderRequest) { _, _ in
-            guard arranging else { return }
-            if draggingID != nil { drop() }
-            commitArrangeOrder()
-            showReorderList = true
-        }
-        // A lift whose gesture went away without ending (cancelled): drop it where it is.
-        .onChange(of: liftAlive) { _, alive in if !alive && draggingID != nil { drop() } }
-        .sheet(isPresented: $showReorderList, onDismiss: {
-            arrangeOrder = tasks   // the list's order, back on the wheel (still arranging)
-        }) {
-            ReorderTasksView()
-        }
-        .onChange(of: arranging) { _, on in live?.holdForArranging = on }
-        // Leaving the page (the bottom bar still works while arranging) ends arranging, or the
-        // pager stayed held and the Salah page couldn't be swiped at all (owner, 2026-09-25).
-        .onChange(of: sharedState.horizontalPage) { _, page in
-            if page != .zikr && arranging { stopArranging() }
-        }
-        .onDisappear { live?.holdForArranging = false }
-        .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
-        .onAppear { focusPending() }
+            }
+            .sheet(item: $tasksSheetOn) { task in ZikrTasksSheet(startOn: task) }
+            .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
+            .onAppear { focusPending() }
     }
 
     /// "1 of 3 tasks done · about 14 min to go" / "all 3 tasks done today".
@@ -294,28 +237,20 @@ struct ZikrCircleWheel: View {
         let items = items
         return GeometryReader { geo in
             ScrollView(.vertical, showsIndicators: false) {
-                // Not lazy: a lifted task's row must outlive scrolling off screen, or its drag
-                // gesture dies without ending and the lift is stuck (owner, round 4). Tasks are few.
-                VStack(spacing: 0) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                LazyVStack(spacing: 0) {
+                    ForEach(items) { item in
                         circle(for: item)
                             .frame(maxWidth: .infinity)
                             .frame(height: itemHeight)
                             .contentShape(Rectangle())
-                            // Arranging: beside the circles leaves (like the home screen).
-                            .onTapGesture { if arranging { stopArranging() } else { tapped(item) } }
+                            .onTapGesture { tapped(item) }
                             .id(item.id)
-                            // Arranging: the lifted task is drawn at the finger; the ones between
-                            // where it was and where it would land move a slot to make room (the
-                            // falloff takes the shift, so they get that slot's size and place on the arc).
-                            .opacity(isDragging(item) ? 0 : 1)
                             // Size and fade follow the circle's distance from the middle in rows,
                             // easing out (owner: more dramatic, and not at its smallest the moment it
                             // leaves the middle): one row away ≈ 0.62×, two ≈ 0.45×, never below
                             // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
                             .modifier(WheelFalloff(itemHeight: itemHeight,
-                                                   style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle,
-                                                   shift: CGFloat(roomShift(index))))
+                                                   style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle))
                     }
                 }
                 .scrollTargetLayout()
@@ -323,18 +258,13 @@ struct ZikrCircleWheel: View {
             .contentMargins(.vertical, max((geo.size.height - itemHeight) / 2, 0), for: .scrollContent)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollPosition(id: $centered, anchor: .center)
-            .scrollDisabled(draggingID != nil)
-            .coordinateSpace(.named("wheel"))
-            .onGeometryChange(for: CGSize.self) { $0.size } action: { wheelSize = $0 }
-            // The lifted task, at the finger, on the arc.
-            .overlay(alignment: .topLeading) { liftedCircle }
             // Soft edges under the page's title and bottom bar.
             .mask(
                 LinearGradient(stops: [.init(color: .clear, location: 0.06), .init(color: .black, location: 0.2),
                                        .init(color: .black, location: 0.8), .init(color: .clear, location: 0.94)],
                                startPoint: .top, endPoint: .bottom)
             )
-            .overlay(alignment: .leading) { scrubber(items).opacity(arranging ? 0 : 1).allowsHitTesting(!arranging) }   // left edge (owner)
+            .overlay(alignment: .leading) { scrubber(items) }   // left edge (owner)
             // Centre the focused circle on the SCREEN (owner): the page starts under the status
             // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
@@ -381,9 +311,6 @@ struct ZikrCircleWheel: View {
             landAfterSession(task.id)
         }
         #endif
-        .sheet(item: $editingTask) { task in
-            AddDailyTaskView(editing: task, isPresented: Binding(get: { editingTask != nil }, set: { if !$0 { editingTask = nil } }))
-        }
         .alert(resumeAsk?.title ?? "",
                isPresented: Binding(get: { resumeAsk != nil }, set: { if !$0 { resumeAsk = nil } }),
                presenting: resumeAsk) { task in
@@ -396,21 +323,6 @@ struct ZikrCircleWheel: View {
                  ? "You've done \(p.count) of \(task.goal) today. Pick up from there, or count a fresh \(task.goal)?"
                  : "You've done \(zikrDurationString(p.seconds)) of \(task.goal) min today. Pick up from there, or start a fresh \(task.goal) min?")
         }
-        .alert("Delete this task?",
-               isPresented: Binding(get: { taskToDelete != nil }, set: { if !$0 { taskToDelete = nil } }),
-               presenting: taskToDelete) { task in
-            Button("Delete", role: .destructive) {
-                withAnimation {
-                    arrangeOrder.removeAll { $0.id == task.id }
-                    TaskModel.delete(task, in: context)   // its reminders go too
-                    sharedState.resetTasbeehInputs()
-                }
-                taskToDelete = nil
-            }
-            Button("Cancel", role: .cancel) { taskToDelete = nil }
-        } message: { task in
-            Text("\(task.title) · its sessions stay in your history.")
-        }
     }
 
     /// How far the page's middle sits below the screen's middle.
@@ -419,157 +331,6 @@ struct ZikrCircleWheel: View {
             ?? geo.frame(in: .global).maxY
         let pageMid = geo.frame(in: .global).minY + geo.size.height / 2
         return min(max(pageMid - screenHeight / 2, 0), 80)
-    }
-
-    // MARK: arranging (home-screen style, in place)
-
-    private func startArranging(on task: TaskModel) {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        arrangeOrder = tasks   // the user's order, as the wheel shows it
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) {
-            arranging = true
-            centered = task.id.uuidString   // the one you pressed stays in the middle
-        }
-    }
-
-    private func stopArranging() {
-        if draggingID != nil { drop() }   // a lift in flight lands first, so Done saves what you see
-        commitArrangeOrder()
-        draggingID = nil
-        let keep = centered
-        arranging = false
-        centered = keep
-    }
-
-    private func commitArrangeOrder() {
-        for (position, task) in arrangeOrder.enumerated() where task.sortOrder != position {
-            task.sortOrder = position
-        }
-        try? context.save()
-    }
-
-    private func isDragging(_ item: Item) -> Bool {
-        if case .task(let t) = item { return t.id == draggingID }
-        return false
-    }
-
-    /// Slots a circle moves while a task is lifted: +1 / −1 between where it was and where it'd land.
-    private func roomShift(_ index: Int) -> Int {
-        guard draggingID != nil, dragFrom != dragTo else { return 0 }
-        if dragFrom < dragTo, index > dragFrom, index <= dragTo { return -1 }
-        if dragTo < dragFrom, index >= dragTo, index < dragFrom { return 1 }
-        return 0
-    }
-
-    /// Where a slot `rows` away from the middle is drawn, and how (WheelFalloff's own maths).
-    private func wheelLook(rows: CGFloat) -> (y: CGFloat, x: CGFloat, scale: CGFloat, turn: CGFloat) {
-        let style = ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle
-        let d = min(abs(rows), 3)
-        let scale = 1 - 0.62 * (1 - exp(-1.1 * d))
-        let theta = min(max(rows, -2.2), 2.2) * style.anglePerRow
-        let pull = -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.45 * min(d, 1.5)
-        return (rows * itemHeight + pull, -(1 - cos(theta)) * style.radius, scale, theta * style.tilt)
-    }
-
-    /// The slot (as an `items` index) nearest the finger: the drawn slots, not the raw rows (the
-    /// neighbours are pulled in).
-    private func slot(atY y: CGFloat) -> Int {
-        let fromMiddle = y - wheelSize.height / 2
-        let rows = (-4...4).min { abs(wheelLook(rows: CGFloat($0)).y - fromMiddle) < abs(wheelLook(rows: CGFloat($1)).y - fromMiddle) } ?? 0
-        return min(max(dragCentre + rows, 1), arrangeOrder.count)   // tasks only: 1…n
-    }
-
-    /// The lifted task at the finger: on the arc, the size of the slot it's over, a little bigger.
-    @ViewBuilder private var liftedCircle: some View {
-        if let id = draggingID, let task = arrangeOrder.first(where: { $0.id == id }) {
-            let rows = (dragPoint.y - wheelSize.height / 2) / itemHeight
-            let look = wheelLook(rows: rows)
-            face(for: task)
-                .scaleEffect(look.scale * 1.08)
-                .rotationEffect(.radians(Double(look.turn)))
-                .shadow(color: .black.opacity(0.2), radius: 14, y: 10)
-                .position(x: wheelSize.width / 2 + look.x, y: dragPoint.y)
-                .allowsHitTesting(false)
-        }
-    }
-
-    /// Hold a jiggling circle briefly, then drag it up / down the arc: the others make room, and
-    /// near the top / bottom edge the wheel moves on a slot every half second.
-    private func arrangeDrag(_ task: TaskModel) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.2)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("wheel")))
-            .updating($liftAlive) { value, alive, _ in
-                if case .second(true, _?) = value { alive = true }
-            }
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
-                if draggingID == nil {
-                    guard let from = items.firstIndex(where: { $0.id == task.id.uuidString }),
-                          let mid = items.firstIndex(where: { $0.id == centered }) else { return }
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    dragFrom = from
-                    dragTo = from
-                    dragCentre = mid
-                    draggingID = task.id
-                    Task { await edgeScroll() }
-                }
-                dragPoint = drag.location
-                moveTarget()
-            }
-            .onEnded { _ in drop() }
-    }
-
-    private func moveTarget() {
-        let to = slot(atY: dragPoint.y)
-        guard to != dragTo else { return }
-        withAnimation(.snappy(duration: 0.25)) { dragTo = to }
-        triggerSomeVibration(type: .light)
-    }
-
-    /// While a task is lifted: a finger near the top / bottom edge rolls the wheel on, faster the
-    /// closer it is to the edge (a slot every 0.6 s at the band's inner edge, 0.16 s at the very
-    /// edge). Each slot is a linear scroll lasting until the next, so it reads as one smooth roll.
-    private func edgeScroll() async {
-        while draggingID != nil {
-            guard wheelSize.height > 0 else { try? await Task.sleep(for: .milliseconds(50)); continue }
-            let band = wheelSize.height * 0.22
-            let y = dragPoint.y
-            var step = 0
-            var depth: CGFloat = 0
-            if y < band, dragCentre > 1 { step = -1; depth = (band - y) / band }
-            if y > wheelSize.height - band, dragCentre < arrangeOrder.count {
-                step = 1; depth = (y - (wheelSize.height - band)) / band
-            }
-            guard step != 0 else { try? await Task.sleep(for: .milliseconds(50)); continue }
-            let interval = 0.6 - 0.44 * Double(min(max(depth, 0), 1))
-            dragCentre += step
-            withAnimation(.linear(duration: interval)) { centered = items[dragCentre].id }
-            moveTarget()
-            try? await Task.sleep(for: .seconds(interval))
-        }
-    }
-
-    /// Let go: the task takes its new place (the wheel doesn't move) and the order is saved.
-    private func drop() {
-        guard draggingID != nil else { return }
-        var order = arrangeOrder
-        let from = dragFrom - 1, to = dragTo - 1   // items → tasks
-        if from != to, order.indices.contains(from), order.indices.contains(to) {
-            order.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-            triggerSomeVibration(type: .light)
-        }
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) {
-            arrangeOrder = order
-            draggingID = nil
-            dragFrom = 0
-            dragTo = 0
-            centered = items[min(dragCentre, items.count - 1)].id   // the same slot stays in the middle
-        }
-        commitArrangeOrder()
     }
 
     private func face(for task: TaskModel) -> some View {
@@ -584,37 +345,6 @@ struct ZikrCircleWheel: View {
                               note: done ? nil : estimateNote(task, p))
     }
 
-    /// A task circle while arranging: the home screen's wobble (Reduce Motion: a quiet outline
-    /// instead), a − badge, tap to edit, hold and drag to move.
-    private func jiggling(_ task: TaskModel) -> some View {
-        let index = arrangeOrder.firstIndex { $0.id == task.id } ?? 0
-        return face(for: task)
-            .overlay {
-                if reduceMotion { Circle().stroke(Color.sage.opacity(0.45), lineWidth: 1.5).padding(-8) }
-            }
-            .overlay(alignment: .topLeading) {
-                Button {
-                    triggerSomeVibration(type: .light)
-                    taskToDelete = task
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(.regularMaterial))
-                        .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-                        .shadow(color: .black.opacity(0.15), radius: 3, y: 1)
-                }
-                .buttonStyle(.plain)
-                .offset(x: 10, y: 10)
-                .accessibilityLabel("Delete \(task.title)")
-            }
-            .modifier(Wobble(on: !reduceMotion, index: index))
-            .contentShape(Circle())
-            .onTapGesture { editingTask = task }
-            .gesture(arrangeDrag(task))
-    }
-
     // MARK: circles
 
     @ViewBuilder
@@ -625,12 +355,11 @@ struct ZikrCircleWheel: View {
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
-            if arranging {
-                jiggling(task)
-            } else {
-                face(for: task)
-                    .onLongPressGesture(minimumDuration: 0.45) { startArranging(on: task) }
-            }
+            face(for: task)
+                .onLongPressGesture(minimumDuration: 0.45) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    tasksSheetOn = task
+                }
         }
     }
 
@@ -759,28 +488,6 @@ struct ZikrCircleWheel: View {
     }
 }
 
-/// The home screen's wobble for an arranging circle; slightly different speeds so they don't
-/// move in step. Off: nothing (Reduce Motion).
-private struct Wobble: ViewModifier {
-    let on: Bool
-    let index: Int
-    func body(content: Content) -> some View {
-        if on {
-            // Round 4 (owner: "more prominent"): ±3° (was ±1.6°), a little quicker, and a slight
-            // breathing scale on its own slower beat.
-            content
-                .phaseAnimator([false, true]) { view, big in
-                    view.scaleEffect(big ? 1.025 : 0.985)
-                } animation: { _ in .easeInOut(duration: 0.34 + Double(index % 2) * 0.05) }
-                .phaseAnimator([-3.0, 3.0]) { view, angle in
-                    view.rotationEffect(.degrees(angle))
-                } animation: { _ in .easeInOut(duration: 0.11 + Double(index % 3) * 0.015) }
-        } else {
-            content
-        }
-    }
-}
-
 /// The Zikr wheel's shapes, to try side by side (owner, 2026-09-25: the arc "needs tweaking";
 /// pick one, then drop the rest). `radius` = how far left the arc pulls the off-centre circles
 /// (0 = straight column), `anglePerRow` = how far round the wheel one row is, `tilt` = how much
@@ -833,15 +540,13 @@ enum ZikrWheelStyle: String, CaseIterable, Identifiable {
 struct WheelFalloff: ViewModifier {
     let itemHeight: CGFloat
     let style: ZikrWheelStyle
-    /// Drawn this many slots away from where it's laid out (arranging: making room for a lifted task).
-    var shift: CGFloat = 0
 
     func body(content: Content) -> some View {
         let radius = style.radius, perRow = style.anglePerRow, tilt = style.tilt
-        return content.visualEffect { [itemHeight, radius, perRow, tilt, shift] content, proxy in
+        return content.visualEffect { [itemHeight, radius, perRow, tilt] content, proxy in
             let frame = proxy.frame(in: .scrollView(axis: .vertical))
             let viewport = proxy.bounds(of: .scrollView(axis: .vertical))?.height ?? frame.height
-            let rows: CGFloat = (frame.midY - viewport / 2) / itemHeight + shift
+            let rows: CGFloat = (frame.midY - viewport / 2) / itemHeight
             let d: CGFloat = min(abs(rows), 3)
             let ease: CGFloat = 1 - exp(-1.1 * d)
             let scale: CGFloat = 1 - 0.62 * ease
@@ -855,7 +560,7 @@ struct WheelFalloff: ViewModifier {
                 // Turned with the wheel, like a lazy Susan seen from above (owner): each circle
                 // faces out from the hub, so the ones above tilt back and the ones below forward.
                 .rotationEffect(.radians(Double(theta * tilt)))
-                .offset(x: arcX, y: pullY + shift * itemHeight)
+                .offset(x: arcX, y: pullY)
         }
     }
 }

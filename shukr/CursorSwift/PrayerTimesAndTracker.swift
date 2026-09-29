@@ -1107,9 +1107,7 @@ struct PrayerTimesView: View {
                         // The menu is a popover (a native Menu can't show the wordmark):
                         // "shukr" on top like the old sidebar, then the destinations.
                         ZStack {
-                        // Zikr page: History & Mantras (one page) instead of the hamburger. While
-                        // the wheel is arranging, Done takes its place (owner, 2026-09-29: in the
-                        // chrome, so nothing on the page moves when jiggling starts or ends).
+                        // Zikr page: History & Mantras (one page) instead of the hamburger.
                         Button {
                             triggerSomeVibration(type: .light)
                             showZikrHistory = true
@@ -1122,33 +1120,9 @@ struct PrayerTimesView: View {
                                 .padding()
                                 .contentShape(Rectangle())
                         }
-                        .opacity(live.holdForArranging ? 0 : Double(zikrness))
-                        .allowsHitTesting(zikrness > 0.5 && !live.holdForArranging)
+                        .opacity(Double(zikrness))
+                        .allowsHitTesting(zikrness > 0.5)
                         .accessibilityLabel("Zikr history and azkar")
-                        .overlay(alignment: .leading) {
-                            if live.holdForArranging {
-                                Button {
-                                    triggerSomeVibration(type: .light)
-                                    live.arrangeDoneRequest += 1
-                                } label: {
-                                    Text("Done")
-                                        .font(.subheadline.weight(.semibold))
-                                        .fontDesign(.rounded)
-                                        .foregroundStyle(Color.sage)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 7)
-                                        .background(Capsule().fill(Color.sage.opacity(0.16)))
-                                        .fixedSize()
-                                        .padding(.leading, 12)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .opacity(Double(zikrness))
-                                .allowsHitTesting(zikrness > 0.5)
-                                .transition(.opacity)
-                            }
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: live.holdForArranging)
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
@@ -1203,36 +1177,12 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
-                        // Zikr page, top right: the reminders bell (owner, #27); while the wheel is
-                        // arranging, Reorder (a plain list with drag handles) takes the slot.
-                        if !live.holdForArranging {
-                            ZikrRemindersButton()
-                                .opacity(Double(zikrness))
-                                .allowsHitTesting(zikrness > 0.5)
-                                .transition(.opacity)
-                        } else {
-                            Button {
-                                triggerSomeVibration(type: .light)
-                                live.arrangeReorderRequest += 1
-                            } label: {
-                                Text("Reorder")
-                                    .font(.subheadline.weight(.semibold))
-                                    .fontDesign(.rounded)
-                                    .foregroundStyle(Color.sage)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 7)
-                                    .background(Capsule().fill(Color.sage.opacity(0.16)))
-                                    .fixedSize()
-                                    .padding(.trailing, 12)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                        // Zikr page, top right: Tasks (owner, 2026-09-29) — the list of tasks to
+                        // reorder, edit, delete and set reminders on (it replaced the bell and jiggle mode).
+                        ZikrTasksButton()
                             .opacity(Double(zikrness))
                             .allowsHitTesting(zikrness > 0.5)
-                            .transition(.opacity)
-                        }
                     }
-                    .animation(.easeInOut(duration: 0.2), value: live.holdForArranging)
                 }
 
                 Spacer()
@@ -2102,14 +2052,6 @@ struct ChevronTap2: View {
     /// Just prayed (post-salah prompt style "nudge"): the prayer's name while the bottom nudge is
     /// up; nil hides it. Set by MainCircleView, cleared by the nudge or when the next prayer begins.
     var postSalahNudge: String?
-    /// The Zikr page is arranging its task circles (home-screen jiggle): the pager stays put so
-    /// sideways drags move circles. Separate from `pagerLocked`, which releases on every lift.
-    var holdForArranging = false
-    /// Bumped by the chrome's Done (in the History & Azkar button's place while arranging): the
-    /// Zikr wheel stops arranging.
-    var arrangeDoneRequest = 0
-    /// Bumped by the chrome's Reorder (top right while arranging): the wheel opens the list sheet.
-    var arrangeReorderRequest = 0
     /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
     var scrollProgress: CGFloat = 1
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it
@@ -2155,7 +2097,7 @@ struct PagerBackdrop: View {
 struct PagerLock: ViewModifier {
     var live: PagerLiveState
     func body(content: Content) -> some View {
-        content.scrollDisabled(live.pagerLocked || live.holdForArranging)
+        content.scrollDisabled(live.pagerLocked)
     }
 }
 

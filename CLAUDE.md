@@ -234,7 +234,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Tap-anywhere counter; freestyle / time / count; count in sets (`quickAddStep`); pause screen (`ZikrBento`, silent-haptics chip, Resume big, Finish two taps); results; a task session links `SessionDataModel.task`, continue or start over (`resumeCount`). Tasbih Fatimah 33 · 33 · 34 is one session (`PostSalahTasbeeh`). DEBUG `-demoPauseScreen`.
 
 **Zikr page, tasks, reminders** (DailyTasksView.swift, ZikrReminders.swift)
-- `ZikrCircleWheel` (gentle arc, left dot scrubber); long-press arranges in place, Reorder list; after a session the next task centres. Tasks: own name, count or minutes goal, estimates; reminder per task, bell → `ZikrRemindersView`. DEBUG `-demoZikrPage`.
+- `ZikrCircleWheel` (gentle arc, left dot scrubber); after a session the next task centres. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen). **Tasks** top right → `ZikrTasksSheet` (2026-09-29, ask zikr-tasks-sheet; replaced jiggle mode and the reminders page — both deleted, owner: "stop working on jiggle"): rows in the wheel's order (ring / ✓, "40 of 100" / "done" — no "today", the reminder line), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → `AddDailyTaskView(editing:)` pushed (its own ‹ is Back), swipe → confirm → `TaskModel.delete`; long-press a wheel task → the sheet on its editor (`startOn`). **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`. DEBUG `-demoZikrPage`, `-demoZikrTasks`, `-demoZikrTasksSeed`, `-demoZikrTasksEdit N`, `-demoZikrTasksDelete N`.
 
 **Azkar & zikr card** (MantrasView.swift, ZikrMedia.swift, BuiltInAzkar.swift)
 - Azkar: yours first, built-ins below (locked name / text), sort button (Name A→Z default), read-only page until ✎. Card: notes / voice memo / photo.
@@ -328,7 +328,7 @@ keywords, "What's New" and screenshot captions.
   sleep mode that dims the screen, and auto-stop at your goal.
 - Freestyle, count goals (e.g. 100) or time goals (e.g. 10 min), with a live finish estimate.
 - Daily zikr tasks shown as a wheel of circles, each ringed with today's progress; continue
-  where you left off or start over; arrange them home-screen style.
+  where you left off or start over; a Tasks list to reorder, edit and delete them.
 - Azkar: your own library of zikr with the full Arabic / transliteration and notes (who
   taught you, why), shown right on the pause screen; lifetime count, time and pace per zikr.
 - Each zikr can keep a voice memo (how it's said — you, a teacher; slow 0.75× and loop) and a
