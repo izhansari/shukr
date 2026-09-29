@@ -705,7 +705,7 @@ struct ZikrLibraryView: View {
     /// filter state and redrew both pages for nothing).
     private var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
     private var showsEdit: Bool { tab == .history && !anySession.isEmpty }
-    /// The top-right slot's fixed width: "Done" / "Edit", or the sort pill (field + arrow).
+    /// The top-right slot's fixed width: "Done" / "Select", or the sort pill (field + arrow).
     static let trailingSlotWidth: CGFloat = 50
 
     private static var bottomBarPlus: Bool {
@@ -789,7 +789,7 @@ struct ZikrLibraryView: View {
                     if tab == .mantras {
                         AzkarSortButton()
                     } else {
-                        Button(editing ? "Done" : "Edit") {
+                        Button(editing ? "Done" : "Select") {
                             withAnimation { editingHistory.toggle() }
                         }
                         .fontWeight(editing ? .semibold : .regular)
@@ -1180,6 +1180,7 @@ struct MantraEditorView: View {
                             Image(systemName: "pencil")
                         }
                         .accessibilityLabel("Edit")
+                        .disabled(sessionsEditing)      // one mode at a time while sessions are selected
                     }
                 }
             }
@@ -1455,13 +1456,16 @@ struct MantraSessionsSection: View {
                 HStack {
                     Text("Sessions")
                     Spacer()
-                    Button(editing ? "Done" : "Edit") {
+                    // "Select", not a second "Edit" (the pencil edits the zikr; owner, zikr-two-edits):
+                    // quiet grey, "Done" in the accent while selecting — iOS's own multi-select word.
+                    Button(editing ? "Done" : "Select") {
                         withAnimation(.snappy(duration: 0.2)) {
                             editing.toggle()
                             if !editing { selected.removeAll() }
                         }
                     }
                     .font(.subheadline.weight(editing ? .semibold : .regular))
+                    .foregroundStyle(editing ? Color.accentColor : Color.secondary)
                     .textCase(nil)
                 }
             }

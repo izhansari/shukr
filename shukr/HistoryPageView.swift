@@ -89,7 +89,7 @@ struct HistoryPageView: View {
         .toolbar {
             if editing == nil && !sessions.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(ownEditing ? "Done" : "Edit") { withAnimation { ownEditing.toggle() } }
+                    Button(ownEditing ? "Done" : "Select") { withAnimation { ownEditing.toggle() } }
                 }
             }
         }
