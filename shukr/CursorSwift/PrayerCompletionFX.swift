@@ -470,7 +470,9 @@ struct PostSalahNudge: View {
         while !Task.isCancelled && !expiring {
             try? await Task.sleep(for: .milliseconds(33))
             let now = Date()
-            let dt = now.timeIntervalSince(last)
+            // A split second at most: time the app spent frozen (background, a stall) mustn't land in
+            // one tick and skip the comeback minimum.
+            let dt = min(now.timeIntervalSince(last), 0.1)
             last = now
             let visible = hostShown && appActive && WelcomeTarget.canLand && CircleCover.active.isEmpty
             if visible && !wasVisible {
