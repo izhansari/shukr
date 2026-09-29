@@ -120,6 +120,8 @@ struct ZikrTasksSheet: View {
                     .toolbar(.hidden, for: .navigationBar)   // the editor has its own ‹
             }
         }
+        // A task's edit screen is up: a swipe down would close the whole sheet (owner) — ‹ goes back.
+        .interactiveDismissDisabled(!path.isEmpty)
         .sheet(isPresented: $creating) {
             AddDailyTaskView(isPresented: $creating, scrollProxy: .constant(nil))
         }
@@ -170,11 +172,17 @@ struct ZikrTasksSheet: View {
                     .foregroundStyle(done ? Color.sage : Color.secondary)
                     .monospacedDigit()
                 if task.reminderKind != nil {
-                    Label(reminderText(task), systemImage: "bell")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .labelStyle(.titleAndIcon)
-                        .lineLimit(1)
+                    // Sage, on a soft sage capsule (owner: tasks with a reminder obvious at a glance).
+                    HStack(spacing: 4) {
+                        Image(systemName: "bell.fill").font(.system(size: 9.5, weight: .semibold))
+                        Text(reminderText(task)).lineLimit(1)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color.sage)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.sage.opacity(0.14)))
+                    .padding(.top, 1)
                 }
             }
             Spacer(minLength: 4)
