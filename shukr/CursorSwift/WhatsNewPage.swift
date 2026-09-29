@@ -29,6 +29,9 @@ struct WhatsNewView: View {
     @State private var search = ""
     /// Every change's area chip (nil = All).
     @State private var areaFilter: String?
+    /// Your asks: grouped by area, or one list newest first (ask wn-asks-view); and the areas he folded.
+    @AppStorage("whatsNew.asksByArea") private var asksByArea = true
+    @AppStorage("whatsNew.foldedAreas") private var foldedAreasRaw = ""
     @State private var daysShown = 4
     @State private var composing: Compose?
     @State private var sharing: [FeedbackItem]?
@@ -131,31 +134,71 @@ struct WhatsNewView: View {
 
     private var asksSection: some View {
         let open = WhatsNew.openAsks()
+        let groups = Dictionary(grouping: open) { WhatsNew.area($0.latest.topic) }
+            .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
+        let grouped = asksByArea && groups.count > 1
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                SectionTitle(text: "Your asks", count: open.count)
+                HStack(alignment: .center) {
+                    SectionTitle(text: "Your asks", count: open.count)
+                    Spacer(minLength: 8)
+                    if open.count > 1 { asksViewToggle }
+                }
                 Text(open.isEmpty ? "Nothing waiting for you." : "Built for you. Is it right?")
                     .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.leading, 4)
-            // By area in the page's order, newest first inside; a header per area once there are two.
-            let groups = Dictionary(grouping: open) { WhatsNew.area($0.latest.topic) }
-                .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
-            ForEach(groups, id: \.key) { group in
-                if groups.count > 1 {
-                    SectionTitle(text: group.key, count: group.value.count)
-                        .padding(.leading, 4).padding(.top, 6)
+            if grouped {
+                // Groups inside Your asks, not peers of it: sentence case, indented, a chevron to fold.
+                ForEach(groups, id: \.key) { group in
+                    let folded = foldedAreas.contains(group.key)
+                    AreaGroupHeader(area: group.key, count: group.value.count, folded: folded) {
+                        withAnimation(.snappy) { toggleFold(group.key) }
+                    }
+                    if !folded {
+                        ForEach(group.value, id: \.ask.id) { askCard($0) }
+                    }
                 }
-                ForEach(group.value, id: \.ask.id) { item in
-                    AskCard(ask: item.ask, latest: item.latest,
-                            works: { works(item.ask, item.latest) },
-                            notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
-                            openChange: { path.append(.change(item.latest.id)) })
-                        .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
-                }
+            } else {
+                ForEach(open, id: \.ask.id) { askCard($0) }
             }
         }
         .animation(.snappy, value: open.map(\.ask.id))
+    }
+
+    private func askCard(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry)) -> some View {
+        AskCard(ask: item.ask, latest: item.latest,
+                works: { works(item.ask, item.latest) },
+                notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
+                openChange: { path.append(.change(item.latest.id)) })
+            .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
+    }
+
+    /// "By area" ⇄ "Newest first" (remembered).
+    private var asksViewToggle: some View {
+        Button {
+            triggerSomeVibration(type: .light)
+            withAnimation(.snappy) { asksByArea.toggle() }
+        } label: {
+            Label(asksByArea ? "By area" : "Newest first", systemImage: asksByArea ? "square.grid.2x2" : "clock")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.sage)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .background(Capsule().fill(Color.sage.opacity(0.14)))
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Switches between grouping by area and newest first")
+    }
+
+    private var foldedAreas: Set<String> {
+        Set(foldedAreasRaw.split(separator: "|").map(String.init))
+    }
+    private func toggleFold(_ area: String) {
+        var s = foldedAreas
+        if s.contains(area) { s.remove(area) } else { s.insert(area) }
+        foldedAreasRaw = s.sorted().joined(separator: "|")
     }
 
     private func works(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry) {
@@ -367,6 +410,40 @@ struct Compose: Identifiable {
     var kind: FeedbackItem.Kind = .issue
     var existing: FeedbackItem? = nil
     var id: String { "\(entry?.id ?? "idea")|\(ask?.id ?? "-")|\(existing?.id.uuidString ?? "new")" }
+}
+
+/// An area's header inside Your asks: a sub-heading of it (sentence case, indented), with a chevron that
+/// folds its cards and the count.
+private struct AreaGroupHeader: View {
+    let area: String
+    let count: Int
+    let folded: Bool
+    let toggle: () -> Void
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(folded ? 0 : 90))
+                Text(area)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary.opacity(0.75))
+                Text("\(count)")
+                    .font(.caption.weight(.semibold)).monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7).padding(.vertical, 1)
+                    .background(Capsule().fill(Color(.tertiarySystemFill)))
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 12)
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(area), \(count) \(count == 1 ? "ask" : "asks")")
+        .accessibilityHint(folded ? "Shows them" : "Hides them")
+    }
 }
 
 struct SectionTitle: View {

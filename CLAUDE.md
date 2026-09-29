@@ -59,7 +59,8 @@ and videos (exported 960×540, ≤ 60 s).
 **Areas (ask wn-areas):** every topic's `area` is one of `AREAS` in whatsnew.py = `WhatsNew.areaOrder` (Salah · Zikr ·
 Apple Watch · Widgets · Map & Mosques · Insights · Daily Ayah · 99 Names · Reminders · Setup & Settings; `--area` only
 takes these, `check` flags others, `areas-remap` moved the old ones once). Your asks is grouped by them (headers once
-there are 2+ areas); Every change has area chips (clipped ScrollView, never `scrollClipDisabled`) that combine with search.
+there are 2+ areas — sub-headings inside it, foldable, `whatsNew.foldedAreas`; a "By area ⇄ Newest first" toggle,
+`whatsNew.asksByArea`, ask wn-asks-view); Every change has area chips (clipped ScrollView, never `scrollClipDisabled`) that combine with search.
 
 **Ideas (ask wn-ideas):** `FeedbackItem.Kind.idea` (💡, "Idea"; an older build reads it as a comment) with an optional
 `area`: on a change, "Comment or idea" → the composer's "About this change | New idea" (keeps `onEntry` = the card), or the
