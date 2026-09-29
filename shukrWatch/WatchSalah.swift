@@ -173,8 +173,8 @@ enum WatchPrayerMarker {
 /// The phone's completion moment after a mark, and then its post-salah offer.
 /// - moment: the ring's arc sweeps closed in the score colour, "✓ Asr" / "On time · 88", with an
 ///   Undo for 5 s;
-/// - then "Post-salah tasbih?" (the phone's pill) until it's dismissed, started, or the next prayer
-///   begins.
+/// - then "Post-salah tasbih?" (the phone's pill) until it's dismissed, started, its 15 s run out
+///   (`WatchPostSalahPill`), or the next prayer begins.
 final class WatchMoment: ObservableObject {
     static let shared = WatchMoment()
 
@@ -227,6 +227,18 @@ final class WatchMoment: ObservableObject {
     }
 
     func dismissOffer() { withAnimation(.easeIn(duration: 0.25)) { offer = nil } }
+
+    /// Its time ran out: it has already faded, so it goes without an animation of its own.
+    func expireOffer() {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { offer = nil }
+    }
+
+    #if DEBUG
+    /// `-demoWatchOffer`: the offer at once, as if a prayer was just marked (simulator).
+    func demoOffer() { offer = ("Dhuhr", Date().addingTimeInterval(3 * 3600)) }
+    #endif
 
     /// Still on offer at `now`?
     func offerIsLive(at now: Date) -> Bool { offer.map { now < $0.until } ?? false }
@@ -478,5 +490,109 @@ struct WatchQiblaArrow: View {
         guard on != running else { return }
         running = on
         on ? compass.start() : compass.stop()
+    }
+}
+
+/// The phone's post-salah pill (PostSalahNudge), small: the beads with a sage ring round them that
+/// starts full and empties toward 12 o'clock over `lifetime` (owner: "depleting the ring, not
+/// progressing it forward, so we know it's an expiring countdown"), then the pill fades where it is
+/// and goes. The clock only runs while it can be seen — the app active, the wrist up, the Salah
+/// page's ring showing — and a step never counts more than 0.1 s, so time spent suspended can't
+/// land at once; back after being hidden, it has at least `comebackMinimum` left. Tap → the
+/// 33 · 33 · 34; ✕ puts it away.
+struct WatchPostSalahPill: View {
+    /// The Salah page's ring is on screen (not paged away, not the list, no counter over it).
+    let shown: Bool
+    let onOpen: () -> Void
+    let onDismiss: () -> Void
+    let onExpire: () -> Void
+
+    static let lifetime: Double = 15
+    static let comebackMinimum: Double = 5
+
+    @State private var elapsed: Double = 0
+    @State private var expiring = false
+    /// Mirrors the loop can read (a task holds a copy of self).
+    @State private var hostShown = true
+    @State private var appActive = true
+    @State private var wristUp = true
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.isLuminanceReduced) private var wristDown
+
+    private var left: Double { max(0, 1 - elapsed / Self.lifetime) }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: onOpen) {
+                HStack(spacing: 7) {
+                    Image(systemName: "circle.hexagonpath")
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(Color.watchSage)
+                        .overlay {
+                            // Time left: full at the start, its end running back to 12 o'clock.
+                            ZStack {
+                                Circle().stroke(Color.watchSage.opacity(0.18), lineWidth: 1.5)
+                                Circle().trim(from: 0, to: left)
+                                    .stroke(Color.watchSage, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                                    .rotationEffect(.degrees(-90))
+                            }
+                            .frame(width: 20, height: 20)
+                        }
+                        .frame(width: 20, height: 20)
+                    Text("Post-salah tasbih?")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.watchSage)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
+            .buttonStyle(.plain)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 10)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(Color.watchSage.opacity(0.15)))
+        .opacity(expiring ? 0 : 1)
+        .onChange(of: shown, initial: true) { _, v in hostShown = v }
+        .onChange(of: scenePhase, initial: true) { _, p in appActive = p == .active }
+        .onChange(of: wristDown, initial: true) { _, d in wristUp = !d }
+        .task { await runClock() }
+    }
+
+    /// Counts up while the pill can be seen; at `lifetime` it fades and goes.
+    private func runClock() async {
+        #if DEBUG
+        // `-postSalahTimerFreeze <seconds>`: stop the ring at that point (screenshots), as on the phone.
+        let freeze = UserDefaults.standard.double(forKey: "postSalahTimerFreeze")
+        if freeze > 0 { elapsed = freeze; return }
+        #endif
+        var last = Date()
+        var wasVisible = true
+        while !Task.isCancelled && !expiring {
+            try? await Task.sleep(for: .milliseconds(50))
+            let now = Date()
+            // A split second at most: time the app spent suspended mustn't land in one tick.
+            let dt = min(now.timeIntervalSince(last), 0.1)
+            last = now
+            let visible = hostShown && appActive && wristUp
+            if visible && !wasVisible {
+                elapsed = min(elapsed, Self.lifetime - Self.comebackMinimum)   // back: a moment to see it
+            }
+            wasVisible = visible
+            guard visible else { continue }
+            elapsed += dt
+            if elapsed >= Self.lifetime { expire() }
+        }
+    }
+
+    /// Time's up: fade where it is, then go without an animation of its own.
+    private func expire() {
+        withAnimation(.easeOut(duration: 0.4)) { expiring = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { onExpire() }
     }
 }
