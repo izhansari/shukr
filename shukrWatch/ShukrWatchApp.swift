@@ -25,6 +25,7 @@ struct ShukrWatchApp: App {
         if ProcessInfo.processInfo.arguments.contains("-demoWatchSettleTest") {
             WatchStore.settleSelfTest(extraLines: WatchPrayerMarker.undoSelfTest)
         }
+        if ProcessInfo.processInfo.arguments.contains("-demoWatchCrownTest") { WatchCrownGate.selfTest() }
         #endif
     }
 
@@ -50,7 +51,11 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
         // `-demoWatch`: a standalone watch simulator has no phone to send the context — seed New
         // York, ISNA, Shafi'i so the ring and complications can be looked at.
         if ProcessInfo.processInfo.arguments.contains("-demoWatch") {
-            _ = WatchStore.save(["lat": 40.7128, "lon": -74.006, "method": 2, "school": 0, "city": "New York"])
+            // `-demoWatchAt "24.86,67.0"`: somewhere else instead (a prayer that's on right now).
+            let at = (UserDefaults.standard.string(forKey: "demoWatchAt") ?? "").split(separator: ",").compactMap { Double($0) }
+            _ = WatchStore.save(at.count == 2
+                ? ["lat": at[0], "lon": at[1], "method": 2, "school": 0, "city": "Demo"]
+                : ["lat": 40.7128, "lon": -74.006, "method": 2, "school": 0, "city": "New York"])
             WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
@@ -398,7 +403,8 @@ struct WatchPrayerList: View {
 /// the phone showed a nearly full red ring). Same as the phone: a pale band as the track, a thin arc
 /// that *fills* as the window passes (butt cap), coloured by the score you'd get marking it now
 /// (green Perfect · yellow On time · red Late). A prayer that hasn't started: an empty arc, a dashed
-/// track, "NEXT" over a dimmed name. Tap: "ends 5:21 PM" ⇄ "31m left", with a click.
+/// track, "NEXT" over a dimmed name. Tap: "ends 5:21 PM" ⇄ "31m left" (before it starts: "at 5:35 AM"
+/// ⇄ "in 1h 51m"), with a click.
 struct WatchPrayerRing: View {
     let prayer: WatchPrayer
     let current: Bool
@@ -440,6 +446,14 @@ struct WatchPrayerRing: View {
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m left" : "\(minutes)m left"
     }
 
+    /// Before it starts: "in 5m" / "in 1h 51m", the phone's `timeUntilStart` (to the minute: the
+    /// page redraws once a minute).
+    private var untilText: String {
+        let minutes = max(0, Int(prayer.start.timeIntervalSince(now) / 60))
+        if minutes < 1 { return "in <1m" }
+        return minutes >= 60 ? "in \(minutes / 60)h \(minutes % 60)m" : "in \(minutes)m"
+    }
+
     var body: some View {
         ZStack {
             // The phone's 200 pt circle has a 12 pt band and a 4 pt arc; scaled to ~118 pt.
@@ -476,10 +490,11 @@ struct WatchPrayerRing: View {
                     }
                 }
                 Group {
+                    // Tap flips it, in both states, like the phone's circle.
                     if current {
                         if showLeft { Text(leftText) } else { Text("ends ") + Text(prayer.end, style: .time) }
                     } else {
-                        Text("at ") + Text(prayer.start, style: .time)
+                        if showLeft { Text(untilText) } else { Text("at ") + Text(prayer.start, style: .time) }
                     }
                 }
                 .font(.system(size: 11 * max(k, 0.8), weight: .light, design: .rounded))
@@ -489,8 +504,9 @@ struct WatchPrayerRing: View {
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
         }
         .contentShape(Circle())
-        // A new prayer on the ring starts on "ends …" again.
+        // A new prayer on the ring, or the one shown starting, goes back to "ends …" / "at …".
         .onChange(of: prayer.name) { _, _ in showLeft = false }
+        .onChange(of: current) { _, _ in showLeft = false }
         #if DEBUG
         // `-demoWatchHold`: the hold's look, without marking (simulator screenshots).
         .onAppear {
@@ -500,7 +516,7 @@ struct WatchPrayerRing: View {
         #endif
         .onTapGesture {
             if let onTap { onTap(); return }
-            guard current, !compact else { return }
+            guard !compact else { return }
             WKInterfaceDevice.current().play(.click)
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
         }

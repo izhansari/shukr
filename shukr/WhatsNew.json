@@ -1143,6 +1143,18 @@
       "title": "Setup: a row tapped on the review opens just that step; Done takes you straight back to the review", "headline": "Edits go straight back to the review",
       "tryIt": ["Settings → Run setup again → go to the review → tap Fajr alarm: the button says Done, the ring stays full", "Change it → Done: you're back on the review with the new value, not on through the masjid step", "Tap Prayer times: the method step, then the madhab (Done) → back to the review. Back and Skip return to the review too"],
       "checked": "sim", "shots": ["wn-setup-edit-return.jpg"], "asked": "fix the flow on the on boarding if a user clicks one of the list items to go back to edit one of the pages we shouldn't have to go through the whole floor again"
+    },
+    {
+      "id": "apple-watch-3", "date": "2026-09-29", "commit": "0f0199a", "time": "2026-09-29T03:49:41-04:00", "topic": "apple-watch", "notes": null,
+      "title": "Tap the watch's prayer ring to flip its time in every state: before a prayer \"at 5:35 AM\" ⇄ \"in 1h 50m\", during it \"ends 6:46 AM\" ⇄ \"3h 0m left\", with one soft click; hold still marks it", "headline": "Tap the ring: at / in, ends / left",
+      "tryIt": ["On the watch, open shukr before a prayer starts (NEXT on a dashed ring) and tap the ring: \"at 5:35 AM\" turns into \"in 1h 50m\"; tap again to go back", "During a prayer, tap the ring: \"ends …\" ⇄ \"… left\". A tap never marks it; holding the ring still does"],
+      "checked": "sim", "shots": ["wn-watch-ring-tap.jpg"], "asked": "the watch app player ring doesn't allow for tapping to change the text time so it doesn't let me toggle to show like in five minutes or at 5:28"
+    },
+    {
+      "id": "apple-watch-4", "date": "2026-09-29", "commit": "77afdfd", "time": "2026-09-29T03:59:04-04:00", "topic": "apple-watch", "notes": null,
+      "title": "Counting with the Digital Crown is one count per nudge: a flick or a long turn counts once instead of running on; pause, then nudge again", "headline": "Crown: one count per nudge",
+      "tryIt": ["Start a zikr on the watch and nudge the Crown forward a click: one count, one buzz. Flick it hard: still just one", "Nudge, recite, nudge again: each nudge counts. Turning backwards never counts"],
+      "checked": "sim", "shots": ["wn-watch-crown-nudge.jpg"], "asked": "sure get sami to take a stab at the crown"
     }
   ]
 }

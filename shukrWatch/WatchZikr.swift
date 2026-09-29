@@ -654,10 +654,10 @@ struct WatchCounterView: View {
     /// while tapping faster than once a second (timed goals froze).
     @State private var ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var lastCountActive: Double = 0
-    // Digital Crown counting: each detent forward = one tap's worth; backwards does nothing (− is on
-    // screen), so the crown's value only ever moves the baseline down.
+    // Digital Crown counting: one count per nudge forward (WatchCrownGate); backwards does nothing
+    // (− is on screen).
     @State private var crown: Double = 0
-    @State private var crownBase: Double = 0
+    @State private var crownGate = WatchCrownGate()
     @FocusState private var crownFocused: Bool
     @Environment(\.isLuminanceReduced) private var wristDown
     /// "Pinch to count · or turn the Crown", once, on the first session.
@@ -894,12 +894,13 @@ struct WatchCounterView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .gesture(countGesture)
         .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
-        // The crown counts here (nothing on this screen scrolls). Detent haptics are off: each
-        // count plays the tap's own haptic instead.
+        // The crown counts here (nothing on this screen scrolls). Snapped to detents; detent
+        // haptics are off, so the only buzz is the count's own — you feel exactly what counted.
         .focusable(!paused && finished == nil)
         .focused($crownFocused)
-        .digitalCrownRotation($crown, from: -1_000_000, through: 1_000_000, by: 1,
-                              sensitivity: .low, isContinuous: true, isHapticFeedbackEnabled: false)
+        .digitalCrownRotation(detent: $crown, from: -1_000_000, through: 1_000_000, by: 1,
+                              sensitivity: .low, isContinuous: true, isHapticFeedbackEnabled: false,
+                              onIdle: { crownGate.idle() })
         .onChange(of: crown) { _, value in crownTurned(to: value) }
         .opacity(paused ? 0 : 1)
     }
@@ -923,16 +924,13 @@ struct WatchCounterView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
     }
 
-    /// A detent forward counts; backwards only moves the baseline. Ignored with the wrist down
-    /// (dimmed screen), so a sleeve brushing the crown doesn't count.
+    /// A nudge forward counts once (WatchCrownGate); backwards only moves the baseline. Ignored with
+    /// the wrist down (dimmed screen), so a sleeve brushing the crown doesn't count.
     private func crownTurned(to value: Double) {
-        guard !paused, finished == nil, !wristDown else { crownBase = value; return }
-        if value < crownBase { crownBase = value; return }
-        while value - crownBase >= 1 {
-            crownBase += 1
-            if !crownMode && !tapsWithCrown { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
-            increment()
-        }
+        guard !paused, finished == nil, !wristDown else { crownGate.reset(to: value); return }
+        guard crownGate.turned(to: value, at: Date()) else { return }
+        if !crownMode && !tapsWithCrown { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
+        increment()
     }
 
     /// One gesture for both: a touch that barely moves is a tap (+1 / +N); a drag counts on each
@@ -1436,7 +1434,7 @@ struct WatchSettingsPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Tap anywhere, or drag down", systemImage: "hand.tap")
                     Label("Pinch finger and thumb (Double Tap)", systemImage: "hand.pinch")
-                    Label("Turn the Digital Crown forward, a click a count", systemImage: "digitalcrown.arrow.clockwise")
+                    Label("Nudge the Digital Crown forward, one count a nudge", systemImage: "digitalcrown.arrow.clockwise")
                 }
                 .font(.system(size: 12, design: .rounded))
                 WatchCrownTapsToggle()
@@ -1533,6 +1531,72 @@ struct WatchPostSalahStrip: View {
             .padding(.top, 2)
         }
     }
+}
+
+/// Digital Crown counting, one count per deliberate nudge (owner, build 12: "too sensitive … easy to
+/// overshoot" — every detent of a turn counted, so a flick ran on). A nudge is the first detent
+/// forward after the crown has been still for `still` seconds (or gone idle); the rest of that
+/// movement is dropped, not queued, so a flick or a long turn counts once. Pause, then nudge again.
+/// Backwards only moves the baseline.
+struct WatchCrownGate {
+    static let still: TimeInterval = 0.3
+    private(set) var base: Double = 0
+    private var lastMove: Date = .distantPast
+    private var armed = true
+
+    /// A new detent value; true = count one.
+    mutating func turned(to value: Double, at now: Date) -> Bool {
+        if now.timeIntervalSince(lastMove) >= Self.still { armed = true }
+        lastMove = now
+        guard value - base >= 1 else {
+            if value < base { base = value }
+            return false
+        }
+        base = value
+        guard armed else { return false }
+        armed = false
+        return true
+    }
+
+    /// The crown stopped (the system's own idle): the next nudge counts.
+    mutating func idle() { armed = true }
+
+    /// Paused / wrist down: follow the crown without counting.
+    mutating func reset(to value: Double) { base = value }
+
+    #if DEBUG
+    /// `-demoWatchCrownTest`: detent sequences (seconds between detents) through the gate, before
+    /// (every detent counted) vs now. Printed as CROWNTEST lines.
+    static func selfTest() {
+        let profiles: [(String, [TimeInterval], Int)] = [
+            ("five slow nudges (0.7 s apart)", [0, 0.7, 0.7, 0.7, 0.7], 5),
+            ("six quick nudges (0.35 s apart)", [0, 0.35, 0.35, 0.35, 0.35, 0.35], 6),
+            ("one nudge, 2 detents", [0, 0.06], 1),
+            ("normal flick, 8 detents in 0.5 s", [0, 0.04, 0.04, 0.05, 0.06, 0.08, 0.1, 0.13], 1),
+            ("hard flick, 20 detents in 1.1 s", [0] + Array(repeating: 0.03, count: 12) + [0.05, 0.06, 0.08, 0.1, 0.13, 0.17, 0.22], 1),
+            ("long steady turn, 12 detents in 2 s", [0] + Array(repeating: 0.18, count: 11), 1),
+            ("flick, pause, flick", [0, 0.04, 0.05, 0.08, 0.6, 0.04, 0.05, 0.08], 2),
+        ]
+        var passed = 0
+        for (name, gaps, want) in profiles {
+            var gate = WatchCrownGate()
+            var t = Date(), value = 0.0, got = 0
+            for gap in gaps {
+                t = t.addingTimeInterval(gap); value += 1
+                if gate.turned(to: value, at: t) { got += 1 }
+            }
+            if got == want { passed += 1 }
+            print("CROWNTEST \(got == want ? "✅" : "❌") \(name): before \(gaps.count), now \(got) (want \(want))")
+        }
+        // Backwards never counts, and turning back then forward to where it was doesn't either.
+        var gate = WatchCrownGate(); let t0 = Date()
+        let back = [gate.turned(to: -1, at: t0), gate.turned(to: -2, at: t0 + 0.5), gate.turned(to: -1, at: t0 + 1.2)]
+        let backOK = back == [false, false, true]   // -2 → -1 is a real nudge forward
+        if backOK { passed += 1 }
+        print("CROWNTEST \(backOK ? "✅" : "❌") backwards: \(back)")
+        print("CROWNTEST \(passed)/\(profiles.count + 1) passed")
+    }
+    #endif
 }
 
 /// 40 / 41 mm faces (under ~180 pt wide): a touch smaller, so everything clears the ring.
