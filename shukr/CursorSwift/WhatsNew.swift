@@ -95,7 +95,7 @@ enum AskStatus {
 
 /// Who answered and how.
 struct AskAnswer {
-    enum Source { case phone(FeedbackItem), chat(WhatsNewChatVerdict), earlier }
+    enum Source { case phone(FeedbackItem), chat(WhatsNewChatVerdict), earlier(String?) }
     let works: Bool
     let at: Date
     let source: Source
@@ -103,7 +103,8 @@ struct AskAnswer {
         switch source {
         case .phone: works ? "You said it works" : "You said not yet"
         case .chat: works ? "You said it works (in chat)" : "You said not yet (in chat)"
-        case .earlier: works ? "Checked before" : "You said still off"
+        case .earlier(let how):
+            how == "followed up" ? "Followed up in a later note" : works ? "Checked before" : "You said still off"
         }
     }
 }
@@ -182,7 +183,7 @@ enum WhatsNew {
             consider(AskAnswer(works: v.works, at: v.date, source: .chat(v)))
         }
         if let m = Migration.answers[ask.id], m.entry == latest.id {
-            consider(AskAnswer(works: m.works, at: .distantPast, source: .earlier))
+            consider(AskAnswer(works: m.works, at: .distantPast, source: .earlier(m.how)))
         }
         guard let best else { return .open(latest: latest) }
         return .answered(works: best.works, latest: latest, answer: best)
@@ -206,7 +207,9 @@ enum WhatsNew {
         }
         for id in entry.askIDs {
             if let a = ask(id), case .answered(let works, let latest, let answer) = status(of: a), latest.id == entry.id {
-                if case .earlier = answer.source { return ("checked", Color(.secondaryLabel)) }
+                if case .earlier(let how) = answer.source {
+                    return (how == "followed up" ? "followed up" : works ? "checked" : "you said still off", Color(.secondaryLabel))
+                }
                 return works ? ("you said it works", .green) : ("you said not yet", .orange)
             }
         }
@@ -224,7 +227,9 @@ enum WhatsNew {
         for a in asks {
             switch status(of: a) {
             case .open: map[a.id] = "open"
-            case .answered(let works, _, _): map[a.id] = works ? "works" : "notyet"
+            case .answered(let works, _, let answer):
+                if case .earlier(let how) = answer.source, how == "followed up" { map[a.id] = "followed-up" }
+                else { map[a.id] = works ? "works" : "notyet" }
             case .gone: break
             }
         }
@@ -301,14 +306,27 @@ enum WhatsNew {
 
 // MARK: - Carrying v3's state across (once)
 
-/// v3 kept "what's been checked" in several places (a note's Looks good / Still off, chat requests closed
-/// or reopened, a later note answering a change). The first v4 launch reads them once and records, per ask,
-/// the answer they amount to on its newest change — so what he'd already closed doesn't come back, and
-/// what v3 still had under "To check" is exactly what "Your asks" shows. The old keys are left in place.
+/// v3 kept "what's been checked" in several places (a note's Looks good / Still off, chat requests closed or
+/// reopened, follow-up notes). The first v4 launch reads them once and records, per ask, what they amount to
+/// on its newest change. The old keys are left in place.
+///
+/// v2 of this (2026-09-29, after the first run on his phone filed asks waiting on him as "with the team"):
+/// only EXPLICIT answers count —
+/// - Looks good → works; Still off → it's carried on by its follow-up note: once the team built for that
+///   note (it's an ask with a change), the follow-up's own ask is the one to check, so this one closes; not
+///   built yet → with the team;
+/// - a later "works" / Looks good on the same feature, after this change → checked;
+/// - a note about something else on the feature no longer counts as an answer (v1's `saw` rule did).
+/// Anything else is open: built, and he hasn't said.
 @MainActor enum Migration {
-    struct Answer: Codable { let works: Bool; let entry: String }
-    private static let key = "whatsNew.v4.migrated"
-    private static let doneKey = "whatsNew.v4.migratedDone"
+    struct Answer: Codable {
+        let works: Bool
+        let entry: String
+        /// "looks good" · "still off" · "followed up" · "checked" (nil in v1's records).
+        var how: String? = nil
+    }
+    private static let key = "whatsNew.v4.migrated2"
+    private static let doneKey = "whatsNew.v4.migrated2Done"
 
     static var answers: [String: Answer] = {
         guard let data = UserDefaults.standard.data(forKey: key) else { return [:] }
@@ -325,14 +343,15 @@ enum WhatsNew {
         // A phone that never used What's new (a fresh install): everything asked so far is history, not
         // a to-do list — only asks built after this launch come up.
         let fresh = items.isEmpty && closed.isEmpty && reopened.isEmpty && d.object(forKey: "whatsNew.acked") == nil
+        let ctx = Context(items: items, closed: closed, reopened: reopened)
         var out: [String: Answer] = [:]
         var open = 0
         for ask in WhatsNew.asks {
             guard let latest = WhatsNew.entries(ask: ask.id).last else { continue }
             if fresh {
-                out[ask.id] = Answer(works: true, entry: latest.id)
-            } else if let works = earlierAnswer(ask, latest, items: items, closed: closed, reopened: reopened) {
-                out[ask.id] = Answer(works: works, entry: latest.id)
+                out[ask.id] = Answer(works: true, entry: latest.id, how: "checked")
+            } else if let (works, how) = ctx.earlierAnswer(ask, latest) {
+                out[ask.id] = Answer(works: works, entry: latest.id, how: how)
             } else {
                 open += 1
             }
@@ -343,36 +362,63 @@ enum WhatsNew {
         print("✅ What's new v4: carried \(out.count) answered ask(s) across; \(open) still open")
     }
 
-    /// v3's answer on the ask's newest change: true = closed / works, false = still off, nil = still to check.
-    private static func earlierAnswer(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry, items: [FeedbackItem],
-                                      closed: Set<String>, reopened: Set<String>) -> Bool? {
-        if ask.fromNote {
-            guard let prefix = ask.note?.lowercased(),
-                  let note = items.first(where: { $0.id.uuidString.lowercased().hasPrefix(prefix) }) else {
-                return true                 // not on this phone: nothing for him to check here
-            }
-            if note.reopenedAt != nil { return false }
-            if note.closedAt != nil { return true }
-            // A later note on the topic, written on a build that had the change, answered it (v3's rule).
-            if let later = items.last(where: { $0.topic == note.topic && $0.id != note.id && $0.created > note.created && saw(latest, $0) }) {
-                return later.kind == .works
-            }
-            return nil
-        }
-        if closed.contains(latest.id) { return true }
-        if reopened.contains(latest.id) { return false }
-        if let answer = items.last(where: { $0.topic == latest.topic && ($0.followUpOfEntry == latest.id || saw(latest, $0)) }) {
-            return answer.kind == .works
-        }
-        // v3 checked a change that also answered a note through that note only (one card, not two).
-        if latest.askIDs.contains(where: { WhatsNew.ask($0)?.fromNote == true }) { return true }
-        return nil
-    }
+    private struct Context {
+        let items: [FeedbackItem]
+        let closed: Set<String>
+        let reopened: Set<String>
 
-    /// Was the note written on a build that had this change?
-    private static func saw(_ entry: WhatsNewEntry, _ item: FeedbackItem) -> Bool {
-        let built = WhatsNew.buildTime(of: item) ?? item.created
-        return built.addingTimeInterval(60) >= entry.when && item.created >= entry.when
+        /// (works, how) — nil = still waiting for him.
+        func earlierAnswer(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry) -> (Bool, String)? {
+            if ask.fromNote {
+                guard let note = note(ask) else { return (true, "checked") }      // not on this phone
+                if note.closedAt != nil { return (true, "looks good") }
+                if note.reopenedAt != nil {
+                    return followUp(items.first { $0.followUpOf == note.id }, latest)
+                }
+                return laterWorks(latest) ? (true, "checked") : nil
+            }
+            let followUpNote = items.first { $0.followUpOfEntry == latest.id }
+            if closed.contains(latest.id) { return (true, "looks good") }
+            if reopened.contains(latest.id) || (followUpNote.map { $0.kind != .works } ?? false) {
+                return followUp(followUpNote, latest)
+            }
+            if followUpNote?.kind == .works { return (true, "looks good") }
+            // v3 checked a change that also answered a note through that note only (one card, not two).
+            if latest.askIDs.contains(where: { WhatsNew.ask($0)?.fromNote == true }) { return (true, "checked") }
+            return laterWorks(latest) ? (true, "checked") : nil
+        }
+
+        /// Still off: its follow-up note carries it on once the team built for it.
+        private func followUp(_ f: FeedbackItem?, _ latest: WhatsNewEntry) -> (Bool, String) {
+            if let f, let a = askFor(f), !WhatsNew.entries(ask: a.id).isEmpty { return (true, "followed up") }
+            if f == nil && laterWorks(latest) { return (true, "checked") }
+            return (false, "still off")
+        }
+
+        /// He said the feature is fine after this change: a 👍 on it written on a build that had the change,
+        /// Looks good on a note a later change fixed, or Looks good on a later chat request.
+        private func laterWorks(_ latest: WhatsNewEntry) -> Bool {
+            for i in items where i.topic == latest.topic {
+                if i.kind == .works && saw(latest, i) { return true }
+                if let c = i.closedAt, c >= latest.when, let a = askFor(i),
+                   WhatsNew.entries(ask: a.id).contains(where: { $0.when >= latest.when }) { return true }
+            }
+            return WhatsNew.entries(topic: latest.topic).contains { closed.contains($0.id) && $0.when >= latest.when }
+        }
+
+        private func note(_ ask: WhatsNewAsk) -> FeedbackItem? {
+            guard let prefix = ask.note?.lowercased() else { return nil }
+            return items.first { $0.id.uuidString.lowercased().hasPrefix(prefix) }
+        }
+        private func askFor(_ item: FeedbackItem) -> WhatsNewAsk? {
+            let id = item.id.uuidString.lowercased()
+            return WhatsNew.asks.first { $0.fromNote && ($0.note.map { id.hasPrefix($0.lowercased()) } ?? false) }
+        }
+        /// Was the note written on a build that had this change?
+        private func saw(_ entry: WhatsNewEntry, _ item: FeedbackItem) -> Bool {
+            let built = WhatsNew.buildTime(of: item) ?? item.created
+            return built.addingTimeInterval(60) >= entry.when && item.created >= entry.when
+        }
     }
 
     #if DEBUG
