@@ -1181,7 +1181,7 @@
       "checked": "sim", "shots": ["wn-watch-postsalah-ring.jpg"], "asked": "post tasbih Fatima on both the iOS app and the watch app, it persists for way too long. I think we should put like a 15 second timer or something like that and have like a little bar on it or some sort of indicator that shows that timer like depleting. And then after that timer ends, dismiss that prompt. — ring is great. make sure its depleting the ring tho, not progressing the ring forward so we know its an expiring countdown"
     },
     {
-      "id": "first-run-setup-16", "date": "2026-09-29", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-16", "date": "2026-09-29", "commit": "e0c96cf", "time": "2026-09-29T06:08:58-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Setup opens on a new first page in the original welcome's look: the moving green gradient, the glass circle and \"welcome to shukr\"; a tap drains it away into the setup", "headline": "The original welcome, as the first page",
       "tryIt": ["Settings → Run setup again: a blank page, then the gradient fades in, the circle, \"welcome to shukr\", \"tap to continue\"", "Tap anywhere: the circle goes, the colour drains away while it still moves, then \"Assalamu alaikum\" comes in piece by piece", "Check the words read in light and dark; the gradient isn't anywhere else (not on the lost-location page or the everyday launch)"],
       "checked": "sim", "shots": ["wn-setup-opening.jpg"], "asked": "I like the old style for its gradient and the soft movement. Use it for one new page at the start of onboarding, and nowhere else in the app for now. It shows on a new install and on \"Run setup again\". It's not on the lost-location screen."
