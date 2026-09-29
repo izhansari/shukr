@@ -57,11 +57,19 @@ class MeccaMarkerAnnotationView: MKMarkerAnnotationView {
 /// count and the Mecca proximity publish only when they change, so the SwiftUI shell isn't
 /// re-rendered while the map moves.
 final class LocationViewModel: ObservableObject {
-    /// The pin (one prayer) or cluster (several) the user tapped; drives the half sheet.
+    /// The pin (one prayer) or cluster (several) whose page the prayer-spots sheet shows; nil =
+    /// the sheet's home (filters + the prayers in view).
     @Published var selection: PrayerSpotSelection?
-    /// The sheet's height: compact for one prayer, half for a cluster. Set before the sheet is
-    /// presented, never while it's up.
-    @Published var spotDetent: PresentationDetent = .medium
+    /// The one layer sheet's height (owner, map-one-sheet): small / medium / large, the user's to
+    /// drag and kept across pin taps and pages. Editing a prayer sizes it to the page for a while
+    /// (`setSpotMode`), then gives the user's height back.
+    @Published var sheetDetent: PresentationDetent = .medium
+    static let sheetSmall: PresentationDetent = .height(96)
+    static let browseDetents: Set<PresentationDetent> = [sheetSmall, .medium, .large]
+    /// Where the sheet actually is on screen (for the controls above it and centring pins).
+    let sheet = SheetMetrics()
+    /// The height to return to after editing a prayer.
+    private var browseDetent: PresentationDetent = .medium
     /// A prayer's page (one pin, or one prayer of a cluster) is exactly as tall as what's on it:
     /// the page measures itself (`setPageHeight`) — a fixed height left a gap (owner, 2026-09-26).
     @Published private(set) var pageHeight: CGFloat = 300
@@ -73,10 +81,10 @@ final class LocationViewModel: ObservableObject {
     func setPageHeight(_ h: CGFloat) {
         let h = h.rounded()
         guard abs(h - pageHeight) > 1 else { return }
-        let onPage = spotDetent == pageDetent
-        if onPage { leavingDetent = spotDetent }   // allowed until the move is done, so it animates
+        let onPage = sheetDetent == pageDetent
+        if onPage { leavingDetent = sheetDetent }   // allowed until the move is done, so it animates
         pageHeight = h
-        if onPage { withAnimation(Self.sheetSpring) { spotDetent = pageDetent } }
+        if onPage { withAnimation(Self.sheetSpring) { sheetDetent = pageDetent } }
         let stamp = h
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
             if self?.pageHeight == stamp { self?.leavingDetent = nil }
@@ -86,36 +94,27 @@ final class LocationViewModel: ObservableObject {
     /// Reverse-geocoded addresses, keyed by rounded coordinate, so a pin is looked up once.
     var addressCache: [String: String] = [:]
 
-    /// Show the sheet for a tapped pin. If one is already up, dismiss it first and present the
-    /// new one after the dismissal: swapping `item` under a live sheet kept the old detent
-    /// (and sometimes came back full height).
-    /// True while a sheet is being swapped for another pin's, so the "sheet went away → drop the
-    /// pin highlight" step doesn't deselect the pin that was just tapped.
-    private(set) var swappingSelection = false
-    /// The Explore sheet (layers + their settings). One sheet at a time on this screen, so a pin
-    /// tapped while it's up closes it first.
+    /// The old Explore sheet (unused since the dock; kept so nothing dangles).
     @Published var showExplore = false
+    /// A tapped pin / cluster: its page swaps into the sheet that's already up, in place, at the
+    /// height the user left it (it used to close the sheet and open another 0.4 s later).
+    static let pageSwap = Animation.smooth(duration: 0.3)
     func present(_ new: PrayerSpotSelection) {
-        if showExplore {
-            showExplore = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.present(new) }
-            return
-        }
-        // One prayer, or a cluster opening on one prayer's page: compact. A cluster's list: half.
-        let detent: PresentationDetent = new.prayers.count == 1 || new.focus != nil ? pageDetent : .medium
-        if selection == nil {
-            spotDetent = detent
-            selection = new
-        } else {
-            swappingSelection = true
-            selection = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.spotDetent = detent
-                self?.selection = new
-                self?.swappingSelection = false
-            }
-        }
+        if spotMode != .browse { return }   // editing a prayer: pins are scenery
+        withAnimation(Self.pageSwap) { selection = new }
     }
+    /// A row in the home list: that prayer's page (its pin is lifted out and centred by the page).
+    func open(_ prayer: PrayerModel) {
+        guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return }
+        present(PrayerSpotSelection(prayers: [prayer], coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)))
+    }
+    /// ‹ from a spot's page: back to the home list.
+    func closeSpot() {
+        withAnimation(Self.pageSwap) { selection = nil }
+    }
+    /// The prayers pinned inside the visible map, for the home list (published only when the set
+    /// changes, not per pan).
+    @Published var visiblePrayers: [PrayerModel] = []
 
     @Published var showPrayers: Bool = false
 
@@ -133,24 +132,15 @@ final class LocationViewModel: ObservableObject {
     /// Zoom to fit the results once they arrive (a fresh search, not a pan-and-refresh).
     var fitMosquesWhenFound = false
 
-    /// The mosque sheet: up for as long as Mosques is the layer (2026-09-26, owner: the bottom
-    /// bar "feels out of place" and the list popped up 1.5 s after it). Swiped down it shrinks to
-    /// its header — the sheet is the bubble — and ✕ in the header leaves mosques.
-    @Published var showMosqueList = false
-    static let mosqueCollapsed: PresentationDetent = .height(96)
-    @Published var mosqueDetent: PresentationDetent = .medium
-
-    /// The list (List button / the pill): a fresh list, no mosque open.
+    /// The mosques' list (the pill): back to the list, no mosque open.
     func openMosqueList() {
-        mosquePath = []
-        if mosqueDetent == Self.mosqueCollapsed { mosqueDetent = .medium }
-        showMosqueList = true
+        withAnimation(Self.pageSwap) { mosquePath = [] }
     }
 
-    /// A row in the list: its page slides in inside the same sheet, and the map flies to it
+    /// A row in the list: its page swaps in inside the same sheet, and the map flies to it
     /// (close enough that it isn't in a cluster) and selects its pin, above the sheet.
     func focusMosque(_ item: MKMapItem) {
-        mosquePath = [item]
+        withAnimation(Self.pageSwap) { mosquePath = [item] }
         guard let mapView else { return }
         let spot = MKCoordinateRegion(center: item.placemark.coordinate,
                                       span: MKCoordinateSpan(latitudeDelta: 0.006, longitudeDelta: 0.006))
@@ -161,16 +151,9 @@ final class LocationViewModel: ObservableObject {
         }
     }
 
-    /// A mosque pin: the mosque sheet on that mosque (the list behind its back button).
+    /// A mosque pin: that mosque's page in the sheet (the list behind its ‹), at the user's height.
     func presentMosque(_ item: MKMapItem) {
-        if showExplore {
-            showExplore = false
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.presentMosque(item) }
-            return
-        }
-        if mosquePath != [item] { mosquePath = [item] }
-        if mosqueDetent == Self.mosqueCollapsed { mosqueDetent = .medium }
-        if !showMosqueList { showMosqueList = true }
+        if mosquePath != [item] { withAnimation(Self.pageSwap) { mosquePath = [item] } }
     }
 
     func searchMosques(in region: MKCoordinateRegion, fit: Bool) {
@@ -302,7 +285,14 @@ final class LocationViewModel: ObservableObject {
 
     /// Where the page's pin sits best: the middle of the map above the sheet.
     private func focusTarget(in mapView: MKMapView) -> CGPoint {
-        CGPoint(x: mapView.bounds.midX, y: (130 + mapView.bounds.height - pageHeight - 40) / 2)
+        CGPoint(x: mapView.bounds.midX, y: (130 + mapView.bounds.height - shownSheetHeight - 40) / 2)
+    }
+    /// The sheet's height for placing pins above it: measured, or a half-screen guess before the
+    /// first measurement; a large sheet leaves no map, so pins go where the medium one would.
+    var shownSheetHeight: CGFloat {
+        let screen = mapView?.bounds.height ?? UIScreen.main.bounds.height
+        let h = sheet.height > 0 ? sheet.height : screen * 0.5
+        return min(h, screen * 0.5)
     }
     /// Put the page's pin back in view (also the "Back to …" button after panning away).
     func centreFocus() {
@@ -348,7 +338,7 @@ final class LocationViewModel: ObservableObject {
     static let pickHeight: CGFloat = 190
     var spotDetents: Set<PresentationDetent> {
         var set: Set<PresentationDetent> = switch spotMode {
-        case .browse: [pageDetent, .medium, .large]   // .medium: a cluster's list
+        case .browse: Self.browseDetents
         case .editTime: [pageDetent]
         case .pickSpot: [pageDetent, .large]          // .large while typing an address
         }
@@ -366,7 +356,18 @@ final class LocationViewModel: ObservableObject {
     }
     func setSpotMode(_ mode: SpotSheetMode) {
         if mode != .pickSpot { hidePickPin(); movingPrayer = nil }
-        withAnimation(Self.sheetSpring) { spotMode = mode }
+        guard mode != spotMode else { return }
+        // Editing sizes the sheet to the page; back to browsing returns the user's height.
+        if spotMode == .browse { browseDetent = sheetDetent }
+        let leaving = sheetDetent
+        leavingDetent = leaving
+        withAnimation(Self.sheetSpring) {
+            spotMode = mode
+            sheetDetent = mode == .browse ? browseDetent : pageDetent
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            if self?.leavingDetent == leaving { self?.leavingDetent = nil }
+        }
     }
 
     /// The prayer whose spot is being picked (the map's chrome steps aside for the picker).
@@ -665,8 +666,15 @@ struct MapView: UIViewRepresentable {
             // Our own pins in the visible rect. `annotations(in:)` returns clusters *and* their
             // members, which double-counted everything that was clustered.
             let rect = mapView.visibleMapRect
-            let count = prayerAnnotations.reduce(0) { $0 + (rect.contains(MKMapPoint($1.coordinate)) ? 1 : 0) }
+            let inView = prayerAnnotations.filter { rect.contains(MKMapPoint($0.coordinate)) }
+            let count = inView.count
             if parent.viewModel.visiblePrayerCount != count { parent.viewModel.visiblePrayerCount = count }
+            // The home list's rows: only when the set changed.
+            let prayers = inView.compactMap(\.prayer)
+            let old = parent.viewModel.visiblePrayers
+            if prayers.count != old.count || Set(prayers.map(ObjectIdentifier.init)) != Set(old.map(ObjectIdentifier.init)) {
+                parent.viewModel.visiblePrayers = prayers
+            }
         }
 
         /// The tapped pin stays selected (bigger, green) while its sheet is up.
@@ -852,7 +860,7 @@ struct MapView: UIViewRepresentable {
                 UIView.animate(withDuration: 0.2) { view.transform = CGAffineTransform(scaleX: 1.3, y: 1.3) }
                 view.zPriority = .max
                 parent.viewModel.presentMosque(mosque.item)
-                keepInView(annotation.coordinate, on: mapView, sheetFraction: 0.5)
+                keepInView(annotation.coordinate, on: mapView)
                 return
             }
             let prayers: [PrayerModel]
@@ -873,7 +881,7 @@ struct MapView: UIViewRepresentable {
             view.zPriority = .max
             let selection = PrayerSpotSelection(prayers: prayers, coordinate: annotation.coordinate)
             parent.viewModel.present(selection)
-            keepInView(annotation.coordinate, on: mapView, sheetFraction: prayers.count == 1 ? 0.32 : 0.5)
+            keepInView(annotation.coordinate, on: mapView)
         }
 
         func mapView(_ mapView: MKMapView, didDeselect view: MKAnnotationView) {
@@ -883,11 +891,11 @@ struct MapView: UIViewRepresentable {
         }
 
         /// Pan so the tapped pin isn't under the sheet (or the top controls) when it opens.
-        private func keepInView(_ coordinate: CLLocationCoordinate2D, on mapView: MKMapView, sheetFraction: CGFloat) {
+        private func keepInView(_ coordinate: CLLocationCoordinate2D, on mapView: MKMapView) {
             let bounds = mapView.bounds
             let point = mapView.convert(coordinate, toPointTo: mapView)
-            let top: CGFloat = 130                                     // below the pills
-            let bottom = bounds.height * (1 - sheetFraction) - 40      // above the sheet
+            let top: CGFloat = 130                                                  // below the pills
+            let bottom = bounds.height - parent.viewModel.shownSheetHeight - 40     // above the sheet
             // Always centre the tapped pin in the part of the map the sheet leaves visible (it
             // used to move only when the pin was near an edge or under the sheet — owner wanted
             // every tap to land it in the middle).
@@ -956,6 +964,7 @@ struct LocationMapContentView: View {
 
     /// Qibla (both off), prayers or mosques — one at a time.
     private func setMode(prayers: Bool, mosques: Bool) {
+        let wasQibla = !viewModel.showPrayers && !viewModel.showMosques
         withAnimation {
             viewModel.showPrayers = prayers
             viewModel.showMosques = mosques
@@ -975,13 +984,11 @@ struct LocationMapContentView: View {
                 if abs(viewModel.mapView?.camera.heading ?? 0) > 0.5 { viewModel.resetMapHeading() }
             }
         }
-        if mosques {
-            viewModel.mosquePath = []
-            viewModel.mosqueDetent = .medium
-            viewModel.showMosqueList = true      // right away, "finding mosques…" until results land
-        } else {
-            viewModel.showMosqueList = false
-        }
+        // The one sheet: up for either layer ("finding mosques…" until results land), opening at
+        // half height from the qibla; switching layers keeps the user's height.
+        if !mosques { viewModel.mosquePath = [] }
+        if !prayers { viewModel.selection = nil; viewModel.setSpotMode(.browse) }
+        if (prayers || mosques) && wasQibla { viewModel.sheetDetent = .medium }
         if mosques, viewModel.mosques.isEmpty, !viewModel.mosqueSearching {
             // First look: about 30 km around you.
             if let here = viewModel.mapView?.userLocation.location?.coordinate ?? envLocation.userLocation?.coordinate {
@@ -1039,6 +1046,59 @@ struct LocationMapContentView: View {
         let diff = signedAngleDifference(from: viewModel.qiblaBearing, to: compass.heading)
         let degrees = Int(abs(diff).rounded())
         return diff < 0 ? "← Turn left \(degrees)°" : "Turn right \(degrees)° →"
+    }
+
+    /// A layer is on: its sheet is up.
+    private var layerSheetUp: Bool { viewModel.showPrayers || viewModel.showMosques }
+    private var sheetSmall: Bool { viewModel.sheetDetent == LocationViewModel.sheetSmall }
+
+    /// What the one sheet shows: the layer's home (the list) or one pin's page, swapped in place.
+    @ViewBuilder private var layerSheet: some View {
+        ZStack(alignment: .top) {
+            if viewModel.showMosques {
+                if let item = viewModel.mosquePath.last {
+                    MosqueSheet(item: item, back: { viewModel.openMosqueList() },
+                                close: { setMode(prayers: false, mosques: false) })
+                        .id(ObjectIdentifier(item))
+                        .transition(.layerPage)
+                } else {
+                    MosqueListSheet(items: viewModel.mosques,
+                                    origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
+                                    nearYou: searchedNearYou,
+                                    searching: viewModel.mosqueSearching,
+                                    close: { setMode(prayers: false, mosques: false) },
+                                    collapsed: sheetSmall) { viewModel.focusMosque($0) }
+                        .transition(.layerPage)
+                }
+            } else if viewModel.showPrayers {
+                if let selection = viewModel.selection {
+                    PrayerSpotSheet(selection: selection, viewModel: viewModel,
+                                    close: { setMode(prayers: false, mosques: false) })
+                        .id(selection.id)
+                        .transition(.layerPage)
+                } else {
+                    PrayerSpotsHome(viewModel: viewModel, collapsed: sheetSmall,
+                                    custom: { showFilterSheet = true },
+                                    close: { setMode(prayers: false, mosques: false) })
+                        .transition(.layerPage)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    /// The explore button: opens *in place* into the layers (owner, 2026-09-26: a sheet for three
+    /// choices was friction). The lit layer tapped again goes back to the qibla.
+    private var exploreDock: some View {
+        let active: MapLayer = viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla
+        return ExploreDock(open: $exploreOpen, active: active, mosqueIcon: mosqueIcon.pin) { layer in
+            switch layer {
+            case active: setMode(prayers: false, mosques: false)
+            case .prayers: setMode(prayers: true, mosques: false)
+            case .mosques: setMode(prayers: false, mosques: true)
+            default: setMode(prayers: false, mosques: false)
+            }
+        }
     }
 
     var body: some View {
@@ -1182,15 +1242,9 @@ struct LocationMapContentView: View {
                                 }
                             }
                             .mapGlass(Capsule())
-                            // "How this works" on its own, under the capsule — like Apple Maps' 3D
-                            // button (owner, 2026-09-27).
-                            Button { guide = currentGuideTopic } label: {
-                                Image(systemName: "questionmark")
-                                    .mapControlIcon()
-                            }
-                            .buttonStyle(.plain)
-                            .mapGlass(Circle())
-                            .accessibilityLabel("How this works")
+                            // Explore under the capsule (swapped with the ? — owner, map-one-sheet), so
+                            // it stays reachable over a layer's sheet; it opens leftwards in place.
+                            exploreDock
                         }
                     }
                 }
@@ -1198,44 +1252,30 @@ struct LocationMapContentView: View {
                 .padding(.top, 6)
 
                 Spacer()
-
-                // Bottom row (2026-09-26, owner: "Explore only picks"): with a layer on, its
-                // controls sit right here in a glass bar (prayer range + prayer chips, or drive /
-                // walk) with a ✕ back to the qibla; the round button beside it wears the layer's
-                // icon and reopens the chooser. In qibla mode it's just the 🔍.
-                HStack(spacing: 10) {
-                    if exploreOpen {
-                        Spacer()
-                    } else if viewModel.showPrayers {
-                        PrayerLayerBar(viewModel: viewModel,
-                                       custom: { showFilterSheet = true },
-                                       close: { setMode(prayers: false, mosques: false) })
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    } else {
-                        Spacer()
-                    }
-                    // The explore button opens *in place* into the three layers (owner, 2026-09-26:
-                    // a sheet for three choices was friction).
-                    if !viewModel.showMosques {   // the mosque sheet's header has the ✕
-                    ExploreDock(open: $exploreOpen,
-                                active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
-                                mosqueIcon: mosqueIcon.pin) { layer in
-                        switch layer {
-                        case .prayers: setMode(prayers: true, mosques: false)
-                        case .mosques:
-                            setMode(prayers: false, mosques: true)
-                        default: setMode(prayers: false, mosques: false)
-                        }
-                    }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
             }
             .animation(.easeInOut(duration: 0.2), value: viewModel.showPrayers)
             .animation(.easeInOut(duration: 0.2), value: viewModel.showMosques)
             .animation(.easeInOut(duration: 0.2), value: viewModel.mosqueAreaStale)
             // Moving a prayer's pin: the map's own controls step aside for the picker.
+            .opacity(viewModel.movingPrayer == nil ? 1 : 0)
+            .allowsHitTesting(viewModel.movingPrayer == nil)
+
+            // "How this works", bottom right (swapped with Explore — owner, map-one-sheet); with a
+            // layer's sheet up it floats just above it, like Apple Maps' controls.
+            AboveSheet(metrics: viewModel.sheet, sheetUp: layerSheetUp) {
+                HStack {
+                    Spacer()
+                    Button { guide = currentGuideTopic } label: {
+                        Image(systemName: "questionmark")
+                            .mapControlIcon()
+                    }
+                    .buttonStyle(.plain)
+                    .mapGlass(Circle())
+                    .accessibilityLabel("How this works")
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 12)
+            }
             .opacity(viewModel.movingPrayer == nil ? 1 : 0)
             .allowsHitTesting(viewModel.movingPrayer == nil)
 
@@ -1246,8 +1286,7 @@ struct LocationMapContentView: View {
 
             // Panned away from the open prayer's pin: a way back to it, just above the sheet.
             if viewModel.focusDrifted, viewModel.selection != nil, let name = viewModel.focusName {
-                VStack {
-                    Spacer()
+                AboveSheet(metrics: viewModel.sheet, sheetUp: true) {
                     Button { viewModel.centreFocus() } label: {
                         Label("Back to \(name)", systemImage: "scope")
                             .font(.subheadline.weight(.medium))
@@ -1258,8 +1297,7 @@ struct LocationMapContentView: View {
                             .mapGlass(Capsule())
                     }
                     .buttonStyle(.plain)
-                    // The sheet stands on the bottom safe area, so measure from it.
-                    .padding(.bottom, viewModel.pageHeight + 12)
+                    .padding(.bottom, 12)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.9)))
             }
@@ -1267,76 +1305,42 @@ struct LocationMapContentView: View {
         .animation(.easeInOut(duration: 0.25), value: viewModel.movingPrayer != nil)
         .animation(.easeInOut(duration: 0.2), value: viewModel.focusDrifted)
         .onChange(of: viewModel.selection?.id) { _, id in
-            // Sheet gone (swiped down): drop the pin highlight. Not during a swap — the new pin
-            // is already selected and must stay so.
-            if id == nil, !viewModel.swappingSelection, let mapView = viewModel.mapView {
-                for a in mapView.selectedAnnotations { mapView.deselectAnnotation(a, animated: true) }
+            // Back to the home list: drop the pin highlight.
+            if id == nil, let mapView = viewModel.mapView {
+                for a in mapView.selectedAnnotations where !(a is MosqueAnnotation) { mapView.deselectAnnotation(a, animated: true) }
             }
         }
-        .sheet(item: $viewModel.selection) { selection in
-            // Half sheet: the pin is already on the map behind it, so just the data. The map
-            // stays usable underneath up to the medium detent.
-            PrayerSpotSheet(selection: selection, viewModel: viewModel)
-                .presentationDetents(viewModel.spotDetents, selection: $viewModel.spotDetent)
-                .interactiveDismissDisabled(viewModel.spotMode != .browse)   // Save / Cancel while editing
-                .presentationDragIndicator(.visible)
-                .presentationBackgroundInteraction(viewModel.spotBackground)
-                .presentationContentInteraction(.scrolls)   // scrolling scrolls the list; the grabber resizes
-        }
         .onChange(of: viewModel.mosquePath.isEmpty) { _, empty in
-            // Back to the list (or the sheet closed): the mosque's pin lets go.
+            // Back to the list: the mosque's pin lets go.
             if empty, let mapView = viewModel.mapView {
                 for a in mapView.selectedAnnotations where a is MosqueAnnotation { mapView.deselectAnnotation(a, animated: true) }
             }
         }
-        .onChange(of: viewModel.showMosqueList) { _, open in
-            if !open { viewModel.mosquePath = [] }
-        }
-        .sheet(isPresented: $viewModel.showExplore) {
-            MapExploreSheet(
-                active: viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla,
-                select: { layer in
-                    viewModel.showExplore = false   // pick → gone; the layer's bar takes over
-                    switch layer {
-                    case .prayers: setMode(prayers: true, mosques: false)
-                    case .mosques: setMode(prayers: false, mosques: true)
-                    default: setMode(prayers: false, mosques: false)
-                    }
+        // The one sheet (owner, map-one-sheet): up for as long as a layer is, never swiped away
+        // (small is its header), its pages swapping in place.
+        .sheet(isPresented: Binding(get: { layerSheetUp }, set: { _ in })) {
+            layerSheet
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.sheet.height = $0 }
+                .onDisappear { viewModel.sheet.height = 0 }
+                .presentationDetents(viewModel.spotDetents, selection: $viewModel.sheetDetent)
+                .presentationDragIndicator(viewModel.spotMode == .browse ? .visible : .hidden)
+                .presentationBackgroundInteraction(viewModel.spotBackground)
+                .presentationContentInteraction(.scrolls)   // lists scroll; the grabber resizes
+                .interactiveDismissDisabled()
+                // The ? (and a first-time guide) over the sheet while it's up.
+                .sheet(item: Binding(get: { layerSheetUp ? guide : nil }, set: { guide = $0 })) { topic in
+                    MapGuide(topic: topic) { guide = nil }
+                        .presentationDetents([.height(470)])
+                        .presentationDragIndicator(.visible)
                 }
-            )
-            .presentationDetents([.height(176)])
-            .presentationDragIndicator(.visible)
-            .presentationBackgroundInteraction(.enabled)
+                .sheet(isPresented: $showFilterSheet) {
+                    // Custom… from the filters: just the two dates.
+                    CustomRangeSheet(viewModel: viewModel, earliest: prayers.first?.startTime ?? Date())
+                        .presentationDetents([.height(220)])
+                        .presentationDragIndicator(.visible)
+                }
         }
-        .sheet(isPresented: $viewModel.showMosqueList) {
-            NavigationStack(path: $viewModel.mosquePath) {
-                MosqueListSheet(items: viewModel.mosques,
-                                origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
-                                nearYou: searchedNearYou,
-                                searching: viewModel.mosqueSearching,
-                                close: { setMode(prayers: false, mosques: false) },
-                                collapsed: viewModel.mosqueDetent == LocationViewModel.mosqueCollapsed) { viewModel.focusMosque($0) }
-                    .toolbar(.hidden, for: .navigationBar)
-                    .navigationDestination(for: MKMapItem.self) { item in
-                        MosqueSheet(item: item, showsBack: true)
-                            .toolbar(.hidden, for: .navigationBar)
-                    }
-            }
-            .presentationDetents([LocationViewModel.mosqueCollapsed, .medium, .large], selection: $viewModel.mosqueDetent)
-            .presentationDragIndicator(.visible)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            // Scrolling scrolls the list at half height; drag the grabber to make it bigger.
-            .presentationContentInteraction(.scrolls)
-            // Swiped down it stays as its header; ✕ in the header leaves mosques.
-            .interactiveDismissDisabled()
-            // The ? (and the first-time guide) open over the mosque sheet while it's up.
-            .sheet(item: Binding(get: { viewModel.showMosqueList ? guide : nil }, set: { guide = $0 })) { topic in
-                MapGuide(topic: topic) { guide = nil }
-                    .presentationDetents([.height(470)])
-                    .presentationDragIndicator(.visible)
-            }
-        }
-        .sheet(item: Binding(get: { viewModel.showMosqueList ? nil : guide }, set: { guide = $0 })) { topic in
+        .sheet(item: Binding(get: { layerSheetUp ? nil : guide }, set: { guide = $0 })) { topic in
             MapGuide(topic: topic) { guide = nil }
                 .presentationDetents([.height(470)])
                 .presentationDragIndicator(.visible)
@@ -1350,13 +1354,6 @@ struct LocationMapContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in
             viewModel.mosques = viewModel.mosques   // re-add the pins so hidden ones turn grey
-        }
-        .sheet(isPresented: $showFilterSheet) {
-            // Custom… from the prayer bar: just the two dates (the old FilterView repeated the
-            // ranges and prayer chips the bar already has — owner).
-            CustomRangeSheet(viewModel: viewModel, earliest: prayers.first?.startTime ?? Date())
-                .presentationDetents([.height(220)])
-                .presentationDragIndicator(.visible)
         }
         .toolbar(.hidden, for: .navigationBar)
         .whatsNewReturnPill()   // What's new → "Open in shukr" to the map
@@ -1382,6 +1379,41 @@ struct LocationMapContentView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoMosques") {
                 try? await Task.sleep(for: .seconds(2))
                 setMode(prayers: false, mosques: true)
+            }
+            // `-demoMapLayer prayers|mosques|qibla` (the map opens on it; screenshots of the one sheet).
+            if let layer = UserDefaults.standard.string(forKey: "demoMapLayer") {
+                try? await Task.sleep(for: .seconds(2))
+                setMode(prayers: layer == "prayers", mosques: layer == "mosques")
+                if let d = UserDefaults.standard.string(forKey: "demoMapDetent") {
+                    try? await Task.sleep(for: .seconds(1))
+                    viewModel.sheetDetent = d == "small" ? LocationViewModel.sheetSmall : d == "large" ? .large : .medium
+                }
+                // `-demoMapTour YES`: a pin, another pin, back to the list, 3 s apart (a recording
+                // of the one sheet — simulated taps can't reach map pins everywhere).
+                if UserDefaults.standard.bool(forKey: "demoMapTour") {
+                    try? await Task.sleep(for: .seconds(4))
+                    if layer == "mosques" {
+                        let pins = (viewModel.mapView?.annotations ?? []).compactMap { $0 as? MosqueAnnotation }
+                            .sorted { $0.coordinate.latitude > $1.coordinate.latitude }
+                        for pin in pins.prefix(2) {
+                            viewModel.mapView?.selectAnnotation(pin, animated: true)
+                            try? await Task.sleep(for: .seconds(3))
+                        }
+                        viewModel.openMosqueList()
+                    } else {
+                        // A cluster first (its list), then two prayers' pages.
+                        let few = Array(viewModel.visiblePrayers.prefix(3))
+                        if few.count > 1, let lat = few[0].latPrayedAt, let lon = few[0].longPrayedAt {
+                            viewModel.present(PrayerSpotSelection(prayers: few, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon)))
+                            try? await Task.sleep(for: .seconds(3))
+                        }
+                        for prayer in viewModel.visiblePrayers.prefix(2) {
+                            viewModel.open(prayer)
+                            try? await Task.sleep(for: .seconds(3))
+                        }
+                        viewModel.closeSpot()
+                    }
+                }
             }
         }
         #endif
@@ -1414,8 +1446,9 @@ struct ExploreDock: View {
     }
 
     private var items: [(MapLayer, String, String)] {
-        [(.qibla, "location.north.line", "Qibla"),
-         (.prayers, "hands.and.sparkles.fill", "Prayers"),
+        // No Qibla: it's the map's home, not a layer (owner, map-one-sheet) — a layer's ✕, or
+        // tapping the lit layer here again, goes back to it.
+        [(.prayers, "hands.and.sparkles.fill", "Prayers"),
          (.mosques, mosqueIcon, "Mosques")]
     }
 
@@ -1517,94 +1550,6 @@ struct MapExploreSheet: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
-    }
-}
-
-/// Prayer spots' controls, on the map (was two levels down: Explore → filter line → filter sheet).
-/// The range is a menu; the five prayers are chips — with all shown none is lit, tap one to see
-/// only it, tap more to add, tap the last lit one to go back to all. ✕ = back to the qibla.
-struct PrayerLayerBar: View {
-    @ObservedObject var viewModel: LocationViewModel
-    let custom: () -> Void
-    let close: () -> Void
-
-    private let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-    private var showingAll: Bool { viewModel.selectedPrayerNames == viewModel.defaultPrayerNames }
-
-    private func toggle(_ name: String) {
-        triggerSomeVibration(type: .light)
-        var names = viewModel.selectedPrayerNames
-        if showingAll { names = [name] }
-        else if names.contains(name) { names.remove(name) }
-        else { names.insert(name) }
-        if names.isEmpty || names == viewModel.defaultPrayerNames { names = viewModel.defaultPrayerNames }
-        withAnimation(.snappy(duration: 0.2)) { viewModel.selectedPrayerNames = names }
-    }
-
-    private var rangeTitle: String {
-        switch viewModel.quickRange {
-        case .allTime: "All time"
-        case .thisWeek: "This week"
-        case .last30: "30 days"
-        case .thisYear: "This year"
-        case .lastYear: "12 months"
-        case .custom: "Custom"
-        }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Menu {
-                Toggle(isOn: $viewModel.onlyAtMasjid) {
-                    Label("Only at a masjid", systemImage: "building.columns")
-                }
-                Divider()
-                ForEach(LocationViewModel.QuickRange.allCases) { range in
-                    Button {
-                        if range == .custom { custom() } else { viewModel.apply(range) }
-                    } label: {
-                        Label(range == .custom ? "Custom…" : range.rawValue, systemImage: range.symbol)
-                    }
-                }
-            } label: {
-                HStack(spacing: 3) {
-                    Text(rangeTitle).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
-                }
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(viewModel.quickRange == .allTime && !viewModel.onlyAtMasjid ? Color.primary : Color.green)
-                .padding(.leading, 14).padding(.trailing, 4)
-                .frame(height: 46)
-                .contentShape(Rectangle())
-            }
-            Spacer(minLength: 0)
-            ForEach(order, id: \.self) { name in
-                let lit = !showingAll && viewModel.selectedPrayerNames.contains(name)
-                Button { toggle(name) } label: {
-                    Image(systemName: prayerSymbol(name))
-                        .font(.system(size: 13, weight: .regular))
-                        .foregroundStyle(lit ? Color.green : Color.primary.opacity(0.7))
-                        .frame(width: 30, height: 30)
-                        .background(Circle().fill(lit ? Color.green.opacity(0.16) : Color.clear))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(lit ? "\(name), shown" : name)
-            }
-            Spacer(minLength: 0)
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 34, height: 46)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Back to the qibla")
-            .padding(.trailing, 4)
-        }
-        .frame(height: 46)
-        .mapGlass(Capsule())
     }
 }
 
@@ -2086,16 +2031,19 @@ struct PrayerSpotSelection: Identifiable {
 struct PrayerSpotSheet: View {
     let selection: PrayerSpotSelection
     let viewModel: LocationViewModel
+    /// ✕: leave prayer spots, back to the qibla.
+    let close: () -> Void
     @State private var address: String? = nil
-    /// A cluster's list pushes a prayer's page inside this sheet (2026-09-26: tap a prayer → its
-    /// page; no second sheet).
-    @State private var path: [PrayerModel]
+    /// A cluster's list swaps to a prayer's page in place (the one sheet — no push, no second
+    /// sheet); ‹ on the page comes back to the list.
+    @State private var opened: PrayerModel?
     private var prayers: [PrayerModel] { selection.prayers }
 
-    init(selection: PrayerSpotSelection, viewModel: LocationViewModel) {
+    init(selection: PrayerSpotSelection, viewModel: LocationViewModel, close: @escaping () -> Void) {
         self.selection = selection
         self.viewModel = viewModel
-        _path = State(initialValue: selection.focus.map { [$0] } ?? [])
+        self.close = close
+        _opened = State(initialValue: selection.focus)
     }
 
     /// Street + city for the pin, reverse-geocoded once per spot (cached on the view model).
@@ -2137,19 +2085,21 @@ struct PrayerSpotSheet: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            Group {
-                if prayers.count == 1, let only = prayers.first {
-                    // One pin: its page right away.
-                    PrayerSpotDetail(prayer: only, selection: selection, viewModel: viewModel, pushed: false)
-                } else {
-                    clusterList
-                }
-            }
-            .navigationDestination(for: PrayerModel.self) { prayer in
-                PrayerSpotDetail(prayer: prayer, selection: selection, viewModel: viewModel, pushed: true)
+        ZStack(alignment: .top) {
+            if prayers.count == 1, let only = prayers.first {
+                // One pin: its page right away; ‹ goes back to the home list.
+                PrayerSpotDetail(prayer: only, selection: selection, viewModel: viewModel,
+                                 back: { viewModel.closeSpot() }, close: close)
+            } else if let opened {
+                PrayerSpotDetail(prayer: opened, selection: selection, viewModel: viewModel,
+                                 back: { withAnimation(LocationViewModel.pageSwap) { self.opened = nil } }, close: close)
+                    .transition(.layerPage)
+            } else {
+                clusterList
+                    .transition(.layerPage)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: selection.id) { await loadAddress() }
     }
 
@@ -2157,12 +2107,9 @@ struct PrayerSpotSheet: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(prayers.count) prayers here")
-                        .font(.title3.weight(.semibold))
-                    Label(address ?? "Locating…", systemImage: "mappin.and.ellipse")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    MapSheetHeader(back: { viewModel.closeSpot() }, title: "\(prayers.count) prayers here",
+                                   subtitle: address ?? "Locating…", close: close)
+                        .padding(.bottom, 4)
                     Text(countsLine)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -2175,23 +2122,32 @@ struct PrayerSpotSheet: View {
                         }
                     }
                 }
-                .padding(.vertical, 4)
                 .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 20))
+                .listRowInsets(EdgeInsets(top: 20, leading: 20, bottom: 4, trailing: 20))
             }
 
             ForEach(days, id: \.date) { day in
                 Section(zikrDayLabel(day.date)) {
                     ForEach(day.prayers) { prayer in
-                        NavigationLink(value: prayer) {
-                            PrayerSpotRow(prayer: prayer)
+                        Button {
+                            withAnimation(LocationViewModel.pageSwap) { opened = prayer }
+                        } label: {
+                            HStack {
+                                PrayerSpotRow(prayer: prayer)
+                                Image(systemName: "chevron.right")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
+        .listSectionSpacing(.compact)
+        .contentMargins(.top, 0, for: .scrollContent)
         .fontDesign(.rounded)
-        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -2207,10 +2163,11 @@ struct PrayerSpotDetail: View {
     let prayer: PrayerModel
     let selection: PrayerSpotSelection
     @ObservedObject var viewModel: LocationViewModel
-    /// Pushed from a cluster's list (shows a back button) or the sheet's first page (one pin).
-    let pushed: Bool
+    /// ‹: to the cluster's list, or the home list for a single pin.
+    let back: () -> Void
+    /// ✕: leave prayer spots.
+    let close: () -> Void
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
-    @Environment(\.dismiss) private var dismiss
     @State private var address: String?
     /// Editing: the picked time and spot wait here until Save.
     @State private var draftTime = Date()
@@ -2271,7 +2228,7 @@ struct PrayerSpotDetail: View {
                                embedded: true, setTitle: "Done",
                                onSearching: { on in
                                    withAnimation(LocationViewModel.sheetSpring) {
-                                       viewModel.spotDetent = on ? .large : viewModel.pageDetent
+                                       viewModel.sheetDetent = on ? .large : viewModel.pageDetent
                                    }
                                })
                     .padding(.horizontal, 20)
@@ -2281,7 +2238,7 @@ struct PrayerSpotDetail: View {
             } else {
                 header
                     .padding(.horizontal, 20)
-                    .padding(.top, 22)
+                    .padding(.top, 20)
                     .transition(.opacity)
                 if editing {
                     VStack(alignment: .leading, spacing: 18) {
@@ -2305,13 +2262,9 @@ struct PrayerSpotDetail: View {
         .fixedSize(horizontal: false, vertical: true)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewModel.setPageHeight($0) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(Color(.systemBackground))
         .fontDesign(.rounded)
-        .toolbar(.hidden, for: .navigationBar)
-        // The sheet shrinks onto the prayer's page and grows back for the list, so the map shows
-        // more of where it was prayed.
+        // The page keeps the user's height (the one sheet); its pin is lifted out and centred above it.
         .onAppear {
-            if pushed { withAnimation(LocationViewModel.sheetSpring) { viewModel.spotDetent = viewModel.pageDetent } }
             viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
         }
         // Back from picking: the prayer's own pin returns, centred again.
@@ -2321,9 +2274,6 @@ struct PrayerSpotDetail: View {
         .onDisappear {
             viewModel.clearFocus(prayer)
             if editing { viewModel.setSpotMode(.browse) }
-            if pushed, viewModel.selection?.id == selection.id {
-                withAnimation(LocationViewModel.sheetSpring) { viewModel.spotDetent = .medium }
-            }
         }
         .task(id: spot.map { "\($0.latitude),\($0.longitude)" }) {
             if let spot { address = await PrayerSpotAddress.lookUp(spot) }
@@ -2363,35 +2313,22 @@ struct PrayerSpotDetail: View {
 
     // MARK: header
 
+    /// The shared header: ‹ (not while editing — Save / Cancel decide), the prayer's icon in its
+    /// score colour, name and date, the score, ✕.
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            if pushed && !editing {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Color(.tertiarySystemFill)))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back")
-            }
+        MapSheetHeader(back: editing ? nil : back,
+                       title: prayer.displayName,
+                       subtitle: prayer.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()),
+                       close: editing ? nil : close) {
             Image(systemName: prayerSymbol(prayer.name))
                 .font(.title3)
                 .foregroundStyle(scoreColor)
                 .frame(width: 40, height: 40)
                 .background(Circle().fill(scoreColor.opacity(0.15)))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(prayer.displayName).font(.title3.weight(.semibold))
-                Text(prayer.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 8)
+        } trailing: {
             VStack(alignment: .trailing, spacing: 0) {
                 Text(shownScore.map { "\(Int(($0 * 100).rounded()))" } ?? "–")
-                    .font(.system(size: 30, weight: .light, design: .rounded))
+                    .font(.system(size: 28, weight: .light, design: .rounded))
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text(shownGrade)
@@ -2526,7 +2463,7 @@ struct PrayerSpotDetail: View {
 }
 
 /// One prayer at the spot: name, when it was prayed and where in its window, and the score.
-private struct PrayerSpotRow: View {
+struct PrayerSpotRow: View {
     let prayer: PrayerModel
 
     private var icon: String { prayerSymbol(prayer.name) }

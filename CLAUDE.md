@@ -214,10 +214,19 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Map & qibla** (LocationMapView2.swift, MapModes.swift)
 - Opens qibla-up (`pointQiblaUp`), free rotation, the compass ring on the dot (`MapAnchor`), a heavy buzz each second while aligned, `MapNorthButton` home.
-- Explore dock: Qibla · Prayers · Mosques; prayer pins cluster and open `PrayerSpotDetail` in the sheet (edit time, move spot with `PickPin`). DEBUG `-demoPrayerPins`.
+- **One sheet (map-one-sheet, 2026-09-29, `MapLayerSheet.swift`):** up while prayer spots or mosques are on
+  (`interactiveDismissDisabled`), detents small 96 / medium / large on `sheetDetent`, the user's height kept; content by
+  state — mosques: list or `mosquePath.last`'s page; prayers: `PrayerSpotsHome` (filters + the prayers in view) or
+  `selection`'s page (a cluster's list ⇄ a prayer, in place). A pin tap cross-fades (`pageSwap`, `.layerPage`); ‹ back
+  to the list. Every page wears `MapSheetHeader` (‹ · title / subtitle · accessories · ✕ = back to the qibla). Editing
+  a prayer sizes the sheet to the page (`setSpotMode`), then returns the user's height. `SheetMetrics` (the sheet's
+  real height, @Observable) places the ? / "Back to …" above it (`AboveSheet`) and centres pins above it.
+- Explore (Prayers · Mosques — no Qibla: it's home; the lit layer again or ✕ goes back) sits under the globe / locate
+  capsule; the ? is bottom right. DEBUG `-demoPrayerPins`, `-demoMapLayer prayers|mosques [-demoMapDetent small]
+  [-demoMapTour YES]` (pin → pin → back). Test the map on an iOS 27 sim.
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
-- One persistent mosque sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).
+- Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).
 - `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah; `MasjidArrival` duas (CLMonitor, opt-in); `HolyCityWelcome`.
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
@@ -317,8 +326,8 @@ keywords, "What's New" and screenshot captions.
   puts the qibla back up.
 - A short illustrated guide the first time you open each map layer (qibla, prayer spots,
   mosques), and a ? to bring it back.
-- Explore: pick prayer spots or mosques and their controls sit right on the map — date range and
-  one-tap prayer filters, drive / walk times, a list — with ✕ back to the qibla.
+- Explore: pick prayer spots or mosques; one sheet you size yourself holds the list, date range and
+  one-tap prayer filters, drive / walk times, and each pin's page — tap pin after pin and it swaps in place.
 - Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
   cluster for the prayers there; filter by prayer and date range.
 

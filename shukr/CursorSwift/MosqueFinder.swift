@@ -395,7 +395,7 @@ struct MosqueListSheet: View {
                         .padding(.leading, 4)
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 20)
             .padding(.top, 20)
             .padding(.bottom, 30)
             .scrollTargetLayout()
@@ -431,17 +431,12 @@ struct MosqueListSheet: View {
         }
     }
 
+    /// The map sheet's shared header: "Mosques", how many, drive / walk (for the times in the
+    /// list), ✕ back to the qibla.
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Mosques")
-                    .font(.system(size: 28, weight: .light, design: .rounded))
-                Text(searching ? "finding mosques…" : "\(visible.count) \(nearYou ? "near you" : "in the area you searched")")
-                    .font(.system(size: 14, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            // Drive / walk, for the times in the list (same setting as the map's bar).
+        MapSheetHeader(title: "Mosques",
+                       subtitle: searching ? "finding mosques…" : "\(visible.count) \(nearYou ? "near you" : "in the area you searched")",
+                       close: close) {
             HStack(spacing: 2) {
                 ForEach(MosqueTravel.allCases) { mode in
                     let on = travel == mode
@@ -460,16 +455,6 @@ struct MosqueListSheet: View {
             }
             .padding(3)
             .background(Capsule().fill(Color.primary.opacity(0.05)))
-            // Leave mosques, back to the qibla.
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 36, height: 36)
-                    .background(Circle().fill(Color.primary.opacity(0.05)))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close mosques")
         }
     }
 
@@ -599,10 +584,10 @@ struct MosqueListSheet: View {
 
 struct MosqueSheet: View {
     let item: MKMapItem
-    /// Pushed from the mosque list: a back button in the header row (no navigation bar — it added
-    /// a whole empty row above the name; owner, 2026-09-26).
-    var showsBack = false
-    @Environment(\.dismiss) private var dismiss
+    /// ‹: back to the list (the one map sheet, map-one-sheet); nil = no back button.
+    var back: (() -> Void)? = nil
+    /// ✕: leave mosques, back to the qibla.
+    var close: (() -> Void)? = nil
     @State private var hiddenHere = false
     @State private var favorite = false
     @State private var drive: (time: TimeInterval, meters: CLLocationDistance)?
@@ -627,45 +612,17 @@ struct MosqueSheet: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    if showsBack {
-                        Button { dismiss() } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(.primary)
-                                .frame(width: 44, height: 44)
-                                .background(Circle().fill(Color.primary.opacity(0.06)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Back to the list")
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.name ?? "Mosque")
-                            .font(.system(size: 26, weight: .light, design: .rounded))
-                        if let address {
-                            Text(address)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer(minLength: 8)
-                    // ☆ → My masajid.
-                    Button {
+                // The map sheet's shared header: ‹, name, address, ☆ (My masajid), ✕.
+                MapSheetHeader(back: back, title: item.name ?? "Mosque", subtitle: address, close: close) {
+                    MapSheetCircleButton(symbol: favorite ? "star.fill" : "star",
+                                         label: favorite ? "Remove from My masajid" : "Add to My masajid",
+                                         tint: favorite ? Color.green : Color.secondary,
+                                         fill: favorite ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)) {
                         triggerSomeVibration(type: favorite ? .light : .success)
                         favorite.toggle()
                         MosqueFavorites.setFavorite(item, favorite)
                         if favorite { hiddenHere = false }
-                    } label: {
-                        Image(systemName: favorite ? "star.fill" : "star")
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundStyle(favorite ? Color.green : Color.secondary)
-                            .contentTransition(.symbolEffect(.replace))
-                            .symbolEffect(.bounce, value: favorite)
-                            .frame(width: 44, height: 44)
-                            .background(Circle().fill(favorite ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(favorite ? "Remove from My masajid" : "Add to My masajid")
                 }
 
                 // How far — by car or on foot; tap to switch.

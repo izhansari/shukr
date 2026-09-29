@@ -694,9 +694,9 @@ struct PrayerTimesView: View {
 
                 }
             }
-            if ProcessInfo.processInfo.arguments.contains("-demoMosques") {
-                try? await Task.sleep(for: .seconds(1))
-                showMapPage = true   // the map opens straight into mosque mode (LocationMapContentView)
+            if ProcessInfo.processInfo.arguments.contains("-demoMosques") || UserDefaults.standard.string(forKey: "demoMapLayer") != nil {
+                try? await Task.sleep(for: .seconds(2.5))
+                showQiblaMap = true   // the real map (the circle's arrow); mosque mode / `-demoMapLayer` from there
                 return
             }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrMedia") {
