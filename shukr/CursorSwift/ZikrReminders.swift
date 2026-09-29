@@ -85,7 +85,7 @@ enum ZikrReminders {
     // MARK: Planning (NotificationScheduler)
 
     /// Today's (prayer-day) sessions, for "already done today".
-    private static func todaysSessions(_ context: ModelContext) -> [SessionDataModel] {
+    static func todaysSessions(_ context: ModelContext) -> [SessionDataModel] {
         let start = PrayerDay.sessionDayStart()
         return (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= start }))) ?? []
     }
@@ -94,7 +94,6 @@ enum ZikrReminders {
                       prayerStart: (String, Date) -> Date?) -> [NotificationScheduler.Item] {
         let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(predicate: #Predicate { $0.reminderKind != nil }))) ?? []
         guard !tasks.isEmpty else { return [] }
-        let cal = Calendar.current
         let sessions = todaysSessions(context)
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))
         var items: [NotificationScheduler.Item] = []
@@ -103,26 +102,49 @@ enum ZikrReminders {
         }
         for task in tasks {
             let doneToday = task.isCompleted(with: task.progress(in: sessions))
-            for offset in 0...7 {
-                guard let day = cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: now)) else { continue }
-                let weekdayBit = 1 << (cal.component(.weekday, from: day) - 1)
-                if let mask = task.reminderWeekdays, mask & weekdayBit == 0 { continue }
-                let fire: Date?
-                if task.reminderKind == "prayer", let prayer = task.reminderPrayer {
-                    fire = prayerStart(prayer, day)?.addingTimeInterval(TimeInterval((task.reminderOffsetMinutes ?? 0) * 60))
-                } else {
-                    let m = task.reminderTimeMinutes ?? 20 * 60
-                    fire = cal.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: day)
-                }
-                guard let fire, fire > now, fire < horizon else { continue }
-                let prayerDay = PrayerDay.date(for: fire)
-                if doneToday, PrayerNotificationID.dayKey(prayerDay) == todayKey { continue }
+            for fire in fires(task, now: now, horizon: horizon, doneToday: doneToday, todayKey: todayKey, prayerStart: prayerStart) {
                 let near = fire.timeIntervalSince(now) < 48 * 3600
-                items.append(NotificationScheduler.Item(id: id(task: task.id, day: prayerDay), date: fire,
+                items.append(NotificationScheduler.Item(id: id(task: task.id, day: PrayerDay.date(for: fire)), date: fire,
                                                         priority: near ? 1 : 3, content: content(for: task)))
             }
         }
         return items
+    }
+
+    /// When a task's reminder goes off in the next week (the one rule for the scheduler and the
+    /// reminders page): its days, its clock time or prayer ± offset, and not today once the task is
+    /// done today.
+    static func fires(_ task: TaskModel, now: Date, horizon: Date, doneToday: Bool, todayKey: String,
+                      prayerStart: (String, Date) -> Date?) -> [Date] {
+        let cal = Calendar.current
+        var dates: [Date] = []
+        for offset in 0...7 {
+            guard let day = cal.date(byAdding: .day, value: offset, to: cal.startOfDay(for: now)) else { continue }
+            let weekdayBit = 1 << (cal.component(.weekday, from: day) - 1)
+            if let mask = task.reminderWeekdays, mask & weekdayBit == 0 { continue }
+            let fire: Date?
+            if task.reminderKind == "prayer", let prayer = task.reminderPrayer {
+                fire = prayerStart(prayer, day)?.addingTimeInterval(TimeInterval((task.reminderOffsetMinutes ?? 0) * 60))
+            } else {
+                let m = task.reminderTimeMinutes ?? 20 * 60
+                fire = cal.date(bySettingHour: m / 60, minute: m % 60, second: 0, of: day)
+            }
+            guard let fire, fire > now, fire < horizon else { continue }
+            if doneToday, PrayerNotificationID.dayKey(PrayerDay.date(for: fire)) == todayKey { continue }
+            dates.append(fire)
+        }
+        return dates
+    }
+
+    /// The next time a task's reminder goes off (nil: off, or nothing in the next week — e.g. a
+    /// prayer reminder with no saved location).
+    @MainActor static func nextFire(_ task: TaskModel, sessions: [SessionDataModel], now: Date = Date()) -> Date? {
+        guard task.reminderKind != nil else { return nil }
+        let doneToday = task.isCompleted(with: task.progress(in: sessions))
+        let todayKey = PrayerNotificationID.dayKey(PrayerDay.date(for: now))
+        return fires(task, now: now, horizon: now.addingTimeInterval(8 * 86_400), doneToday: doneToday, todayKey: todayKey) { prayer, day in
+            NotificationScheduler.windows(for: day)?[prayer]?.start
+        }.first
     }
 
     /// "After Fajr" / "Bismillah · 50 counts · ~3 min".
