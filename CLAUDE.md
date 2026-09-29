@@ -2525,14 +2525,19 @@ wheel's own task circles wobble (`Wobble`, `phaseAnimator`; Reduce Motion: a sag
 freestyle / New task don't. Hold one 0.2 s and drag (LongPress→Drag in the ScrollView's "wheel" space; the scroll is
 disabled while a task is lifted): it follows the finger on the arc (`liftedCircle`, `wheelLook` = WheelFalloff's maths),
 the circles between where it was and where it'd land shift a slot (`roomShift` → `WheelFalloff(shift:)`, so they take the
-slot's size / arc / tilt — an `.offset` before the falloff isn't seen by its `visualEffect`), near the top / bottom edge
-the wheel moves a slot every 0.45 s, and a **second finger** moves it too (`SecondFingerPan`, a never-recognising
-`UIGestureRecognizerRepresentable`: the finger that touched first is the drag, else whichever moves first; a slot per
-~200 pt). On drop the order moves with animations off and `centered` = the same slot, so the wheel doesn't jump; sortOrder
+slot's size / arc / tilt — an `.offset` before the falloff isn't seen by its `visualEffect`), and near the top / bottom edge
+the wheel rolls on continuously (a linear roll per slot, 0.6 s at the band's inner edge down to 0.16 s at the edge). On
+drop the order moves with animations off and `centered` = the same slot, so the wheel doesn't jump; sortOrder
 saved. Tap a circle → edit the task; a tap beside the circles or **Done** leaves. Done is in the chrome, in the History &
 Azkar button's place (`PagerLiveState.holdForArranging` shows it, `arrangeDoneRequest` asks the wheel to stop), and the
 summary line crossfades to "drag to reorder · tap to edit" — nothing on the page moves (owner: the focused circle stays put
-like the Salah ring). While arranging the pager is held (`holdForArranging`); leaving the page ends arranging. The focused
+like the Salah ring). **Round 4 (2026-09-29, owner "just not working"):** a **Reorder** button top
+right (chrome, `arrangeReorderRequest`) opens `ReorderTasksView` (stock List, `.onMove`, saves on every move; the wheel
+takes its order on close). **Trap:** the wheel must NOT be a LazyVStack — the edge roll carried a lifted task's row off
+screen, SwiftUI dropped the row and its drag gesture died without ending: `draggingID` stuck (wheel locked) and Done saved
+the old order. Now a plain VStack, a `@GestureState liftAlive` that drops a cancelled lift, and Done / Reorder land a lift
+in flight before saving. The two-finger scroll (`SecondFingerPan`) was removed: the snapping wheel can only step, not
+follow a finger. Wobble ±3° + a 0.985 ↔ 1.025 breathing scale. While arranging the pager is held (`holdForArranging`); leaving the page ends arranging. The focused
 circle sits at the screen's centre, not the page's (the whole wheel is offset up by the
 difference, `screenCentreShift` — asymmetric content margins don't move scroll snapping). Dots down the **left** edge (owner), sage for done tasks, double as a scrubber: a
 finger on them drags through the circles (14 pt per dot) with a pill naming the current one —

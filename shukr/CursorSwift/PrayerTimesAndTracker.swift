@@ -1197,7 +1197,31 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
+                        // Arranging the Zikr wheel: Reorder (a plain list with drag handles) in the
+                        // free top-right slot (owner, 2026-09-29).
+                        if live.holdForArranging {
+                            Button {
+                                triggerSomeVibration(type: .light)
+                                live.arrangeReorderRequest += 1
+                            } label: {
+                                Text("Reorder")
+                                    .font(.subheadline.weight(.semibold))
+                                    .fontDesign(.rounded)
+                                    .foregroundStyle(Color.sage)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 7)
+                                    .background(Capsule().fill(Color.sage.opacity(0.16)))
+                                    .fixedSize()
+                                    .padding(.trailing, 12)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(Double(zikrness))
+                            .allowsHitTesting(zikrness > 0.5)
+                            .transition(.opacity)
+                        }
                     }
+                    .animation(.easeInOut(duration: 0.2), value: live.holdForArranging)
                 }
 
                 Spacer()
@@ -2073,6 +2097,8 @@ struct ChevronTap2: View {
     /// Bumped by the chrome's Done (in the History & Azkar button's place while arranging): the
     /// Zikr wheel stops arranging.
     var arrangeDoneRequest = 0
+    /// Bumped by the chrome's Reorder (top right while arranging): the wheel opens the list sheet.
+    var arrangeReorderRequest = 0
     /// Pager scroll position in pages: 0 = Zikr, 1 = Salah, 2 = Settings.
     var scrollProgress: CGFloat = 1
     /// The Salah page's vertical drag nudge in points (resisted, ±20): the chevron follows it

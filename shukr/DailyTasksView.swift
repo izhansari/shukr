@@ -159,6 +159,10 @@ struct ZikrCircleWheel: View {
     @State private var dragTo = 0
     @State private var dragCentre = 0
     @State private var wheelSize: CGSize = .zero
+    /// True while a lift's gesture is alive; it resets by itself however the gesture ends
+    /// (cancelled too), so a lift can never be left hanging.
+    @GestureState private var liftAlive = false
+    @State private var showReorderList = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
     @State private var taskToDelete: TaskModel?
@@ -225,6 +229,19 @@ struct ZikrCircleWheel: View {
             guard arranging else { return }
             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { stopArranging() }
         }
+        .onChange(of: live?.arrangeReorderRequest) { _, _ in
+            guard arranging else { return }
+            if draggingID != nil { drop() }
+            commitArrangeOrder()
+            showReorderList = true
+        }
+        // A lift whose gesture went away without ending (cancelled): drop it where it is.
+        .onChange(of: liftAlive) { _, alive in if !alive && draggingID != nil { drop() } }
+        .sheet(isPresented: $showReorderList, onDismiss: {
+            arrangeOrder = tasks   // the list's order, back on the wheel (still arranging)
+        }) {
+            ReorderTasksView()
+        }
         .onChange(of: arranging) { _, on in live?.holdForArranging = on }
         // Leaving the page (the bottom bar still works while arranging) ends arranging, or the
         // pager stayed held and the Salah page couldn't be swiped at all (owner, 2026-09-25).
@@ -277,7 +294,9 @@ struct ZikrCircleWheel: View {
         let items = items
         return GeometryReader { geo in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
+                // Not lazy: a lifted task's row must outlive scrolling off screen, or its drag
+                // gesture dies without ending and the lift is stuck (owner, round 4). Tasks are few.
+                VStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         circle(for: item)
                             .frame(maxWidth: .infinity)
@@ -305,9 +324,6 @@ struct ZikrCircleWheel: View {
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollPosition(id: $centered, anchor: .center)
             .scrollDisabled(draggingID != nil)
-            // While a task is lifted, another finger can still move the wheel (like the home
-            // screen): each ~200 pt of it steps a slot, the lifted task following.
-            .gesture(SecondFingerPan { dy in secondFingerMoved(dy) })
             .coordinateSpace(.named("wheel"))
             .onGeometryChange(for: CGSize.self) { $0.size } action: { wheelSize = $0 }
             // The lifted task, at the finger, on the arc.
@@ -419,6 +435,7 @@ struct ZikrCircleWheel: View {
     }
 
     private func stopArranging() {
+        if draggingID != nil { drop() }   // a lift in flight lands first, so Done saves what you see
         commitArrangeOrder()
         draggingID = nil
         let keep = centered
@@ -483,6 +500,9 @@ struct ZikrCircleWheel: View {
     private func arrangeDrag(_ task: TaskModel) -> some Gesture {
         LongPressGesture(minimumDuration: 0.2)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("wheel")))
+            .updating($liftAlive) { value, alive, _ in
+                if case .second(true, _?) = value { alive = true }
+            }
             .onChanged { value in
                 guard case .second(true, let drag?) = value else { return }
                 if draggingID == nil {
@@ -508,37 +528,27 @@ struct ZikrCircleWheel: View {
         triggerSomeVibration(type: .light)
     }
 
-    /// While a task is lifted: a finger near the top / bottom edge moves the wheel a slot at a time.
+    /// While a task is lifted: a finger near the top / bottom edge rolls the wheel on, faster the
+    /// closer it is to the edge (a slot every 0.6 s at the band's inner edge, 0.16 s at the very
+    /// edge). Each slot is a linear scroll lasting until the next, so it reads as one smooth roll.
     private func edgeScroll() async {
         while draggingID != nil {
-            try? await Task.sleep(for: .milliseconds(450))
-            guard draggingID != nil, wheelSize.height > 0 else { return }
-            let band = wheelSize.height * 0.2
+            guard wheelSize.height > 0 else { try? await Task.sleep(for: .milliseconds(50)); continue }
+            let band = wheelSize.height * 0.22
+            let y = dragPoint.y
             var step = 0
-            if dragPoint.y < band, dragCentre > 1 { step = -1 }
-            if dragPoint.y > wheelSize.height - band, dragCentre < arrangeOrder.count { step = 1 }
-            guard step != 0 else { continue }
+            var depth: CGFloat = 0
+            if y < band, dragCentre > 1 { step = -1; depth = (band - y) / band }
+            if y > wheelSize.height - band, dragCentre < arrangeOrder.count {
+                step = 1; depth = (y - (wheelSize.height - band)) / band
+            }
+            guard step != 0 else { try? await Task.sleep(for: .milliseconds(50)); continue }
+            let interval = 0.6 - 0.44 * Double(min(max(depth, 0), 1))
             dragCentre += step
-            withAnimation(.snappy(duration: 0.3)) { centered = items[dragCentre].id }
+            withAnimation(.linear(duration: interval)) { centered = items[dragCentre].id }
             moveTarget()
+            try? await Task.sleep(for: .seconds(interval))
         }
-    }
-
-    /// A second finger while a task is lifted: up moves the wheel on (later tasks come to the
-    /// middle), down moves it back; a slot per ~200 pt (the drawn gap between circles).
-    @State private var secondFingerTravel: CGFloat = 0
-    private func secondFingerMoved(_ dy: CGFloat) {
-        guard draggingID != nil else { secondFingerTravel = 0; return }
-        secondFingerTravel += dy
-        let slot: CGFloat = 200
-        var step = 0
-        if secondFingerTravel <= -slot, dragCentre < arrangeOrder.count { step = 1 }
-        if secondFingerTravel >= slot, dragCentre > 1 { step = -1 }
-        guard step != 0 else { return }
-        secondFingerTravel += CGFloat(step) * slot
-        dragCentre += step
-        withAnimation(.snappy(duration: 0.3)) { centered = items[dragCentre].id }
-        moveTarget()
     }
 
     /// Let go: the task takes its new place (the wheel doesn't move) and the order is saved.
@@ -749,72 +759,6 @@ struct ZikrCircleWheel: View {
     }
 }
 
-/// Reports how far a SECOND finger moves (vertical, per touch move) while another is already down
-/// in the view — the lifted task's finger. It never recognises, so it takes nothing from the
-/// drag or the scroll view; it only watches.
-struct SecondFingerPan: UIGestureRecognizerRepresentable {
-    var onMove: (CGFloat) -> Void
-
-    func makeUIGestureRecognizer(context: Context) -> Watcher {
-        let r = Watcher()
-        r.delegate = context.coordinator
-        r.cancelsTouchesInView = false
-        r.delaysTouchesBegan = false
-        r.delaysTouchesEnded = false
-        return r
-    }
-    func updateUIGestureRecognizer(_ r: Watcher, context: Context) { r.onMove = onMove }
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
-
-    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
-    }
-
-    final class Watcher: UIGestureRecognizer {
-        var onMove: ((CGFloat) -> Void)?
-        /// Every finger down: when it touched and where it was last.
-        private var fingers: [ObjectIdentifier: (began: TimeInterval, startY: CGFloat, lastY: CGFloat)] = [:]
-        private var second: ObjectIdentifier?
-
-        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-            for t in touches {
-                let y = t.location(in: view).y
-                fingers[ObjectIdentifier(t)] = (t.timestamp, y, y)
-            }
-        }
-        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-            for t in touches {
-                let id = ObjectIdentifier(t)
-                guard var f = fingers[id] else { continue }
-                let y = t.location(in: view).y
-                if second == nil, fingers.count >= 2, isOther(id), abs(y - f.startY) > 12 { second = id }
-                if second == id { onMove?(y - f.lastY) }
-                f.lastY = y
-                fingers[id] = f
-            }
-        }
-        /// Not the finger holding the task: that one touched first (a hold, then another finger).
-        /// Both down at once: whichever moves first.
-        private func isOther(_ id: ObjectIdentifier) -> Bool {
-            guard let first = fingers.min(by: { $0.value.began < $1.value.began }) else { return false }
-            let others = fingers.filter { $0.key != first.key }
-            let together = others.allSatisfy { $0.value.began - first.value.began < 0.1 }
-            return together || id != first.key
-        }
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) { lift(touches) }
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) { lift(touches) }
-        private func lift(_ touches: Set<UITouch>) {
-            for t in touches {
-                let id = ObjectIdentifier(t)
-                fingers[id] = nil
-                if second == id { second = nil }
-            }
-            if fingers.isEmpty { state = .failed }   // all fingers up: start fresh next time
-        }
-        override func reset() { fingers = [:]; second = nil }
-    }
-}
-
 /// The home screen's wobble for an arranging circle; slightly different speeds so they don't
 /// move in step. Off: nothing (Reduce Motion).
 private struct Wobble: ViewModifier {
@@ -822,9 +766,15 @@ private struct Wobble: ViewModifier {
     let index: Int
     func body(content: Content) -> some View {
         if on {
-            content.phaseAnimator([-1.6, 1.6]) { view, angle in
-                view.rotationEffect(.degrees(angle))
-            } animation: { _ in .easeInOut(duration: 0.13 + Double(index % 3) * 0.018) }
+            // Round 4 (owner: "more prominent"): ±3° (was ±1.6°), a little quicker, and a slight
+            // breathing scale on its own slower beat.
+            content
+                .phaseAnimator([false, true]) { view, big in
+                    view.scaleEffect(big ? 1.025 : 0.985)
+                } animation: { _ in .easeInOut(duration: 0.34 + Double(index % 2) * 0.05) }
+                .phaseAnimator([-3.0, 3.0]) { view, angle in
+                    view.rotationEffect(.degrees(angle))
+                } animation: { _ in .easeInOut(duration: 0.11 + Double(index % 3) * 0.015) }
         } else {
             content
         }
@@ -1227,6 +1177,7 @@ extension DailyTasksView {
 /// Writes `sortOrder` straight onto the models; the card strip's query is sorted by it.
 struct ReorderTasksView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
     @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
 
     var body: some View {
@@ -1234,10 +1185,16 @@ struct ReorderTasksView: View {
             List {
                 ForEach(tasks) { task in
                     HStack {
-                        Text(task.title)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(task.title)
+                            if let line = task.mantraLine {
+                                Text(line).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
                         Spacer()
-                        Text(task.isCountMode ? "#\(task.goal)" : "\(task.goal) min")
+                        Text(task.isCountMode ? "\(task.goal)" : "\(task.goal) min")
                             .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                 }
                 .onMove(perform: move)
@@ -1260,6 +1217,7 @@ struct ReorderTasksView: View {
         for (position, task) in ordered.enumerated() where task.sortOrder != position {
             task.sortOrder = position
         }
+        try? context.save()   // saved on every move, so nothing is lost if the app goes away
     }
 }
 
