@@ -37,6 +37,14 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
    where Bradley reads it, and answered cards move to a "decided" list. A review finding that needs him becomes a card.
    His board shows only Plan and Decisions; Reviews stay behind a small link, for the team.
 
+**Protocol health (Bradley owns it; owner, 2026-09-29):** once a week, or when Izhan asks, Bradley reports in one short
+digest:
+- CLAUDE.md's size (keep it under ~35 KB);
+- context-full events;
+- any question that reached Izhan outside the Decisions page;
+- any wait for a "go" on pre-approved work.
+He fixes drift himself, and suggests running fewer agents when a lane is quiet.
+
 **Git:** one team line, `claude/tasbeeh-zikr-updates`.
 - Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch` (his own branch name, pushing to the team line).
 - Before every push: `git pull --rebase origin claude/tasbeeh-zikr-updates`. Push with `git push origin HEAD:claude/tasbeeh-zikr-updates`.
