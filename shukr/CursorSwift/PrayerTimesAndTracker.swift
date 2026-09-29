@@ -74,6 +74,7 @@ struct PrayerTimesView: View {
     @State private var widgetUnmarkToken = 0
     #if DEBUG
     @State private var demoMantra: MantraModel?
+    @State private var demoNewZikr = false
     @State private var demoWhatsNew = false
     @State private var demoScheduled = false
     #endif
@@ -706,6 +707,12 @@ struct PrayerTimesView: View {
                 let m = ZikrMediaDemo.seed(in: context)
                 if !ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") { demoMantra = m; return }
             }
+            if ProcessInfo.processInfo.arguments.contains("-demoNewZikr") {
+                // A new zikr's card: editing, every box empty (its placeholders).
+                try? await Task.sleep(for: .seconds(1))
+                demoNewZikr = true
+                return
+            }
             if ProcessInfo.processInfo.arguments.contains("-demoZikrEmpty") {
                 // A zikr's page by name (`-demoZikrName <name>`, default Astaghfirullah — no photo / memo).
                 try? await Task.sleep(for: .seconds(1))
@@ -938,6 +945,7 @@ struct PrayerTimesView: View {
         .whatsNewReturnPill()   // after What's new → "Open in shukr" to a pager page
         #if DEBUG
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
+        .sheet(isPresented: $demoNewZikr) { MantraEditorView(mantra: nil) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
         #endif

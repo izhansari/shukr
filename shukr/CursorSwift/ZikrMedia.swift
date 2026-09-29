@@ -704,12 +704,17 @@ struct ZikrMediaStrip: View {
     let mantra: MantraModel
     /// The pause screen only fades on Resume (it stays mounted), so playback stops on this.
     var paused = true
+    /// The pause card's top-right corner, beside ✎ (owner, 2026-09-29, #17): just ▶︎ and the photo,
+    /// small; 0.75× and loop are in the play button's long-press menu.
+    var compact = false
     @State private var engine = ZikrAudio()
     @State private var viewing = false
     @State private var thumbnail: UIImage?
 
     var body: some View {
-        if mantra.audioData != nil || mantra.imageData != nil {
+        if compact {
+            compactBody
+        } else if mantra.audioData != nil || mantra.imageData != nil {
             HStack(spacing: 12) {
                 if let audio = mantra.audioData {
                     Button { engine.togglePlay(audio) } label: {
@@ -734,6 +739,38 @@ struct ZikrMediaStrip: View {
                             .frame(width: 56, height: 56)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.primary.opacity(0.08)))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show photo")
+                    .fullScreenCover(isPresented: $viewing) { ZikrPhotoViewer(image: ui) }
+                }
+            }
+            .task(id: blobKey(mantra.imageData)) { thumbnail = await decodedImage(mantra.imageData) }
+            .onDisappear { engine.stopPlaying() }
+            .onChange(of: paused) { _, now in if !now { engine.stopPlaying() } }
+        }
+    }
+
+    @ViewBuilder private var compactBody: some View {
+        if mantra.audioData != nil || mantra.imageData != nil {
+            HStack(spacing: 8) {
+                if let audio = mantra.audioData {
+                    Button { engine.togglePlay(audio) } label: {
+                        RingPlayButton(playing: engine.state == .playing, progress: engine.progress, size: 34)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Toggle("Slower (0.75×)", isOn: Binding(get: { engine.slow }, set: { engine.slow = $0 }))
+                        Toggle("Loop", isOn: Binding(get: { engine.loop }, set: { engine.loop = $0 }))
+                    }
+                    .accessibilityLabel(engine.state == .playing ? "Pause" : "Play voice memo")
+                }
+                if mantra.imageData != nil, let ui = thumbnail {
+                    Button { viewing = true } label: {
+                        Image(uiImage: ui).resizable().scaledToFill()
+                            .frame(width: 34, height: 34)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.08)))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show photo")
