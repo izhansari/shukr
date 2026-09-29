@@ -1824,15 +1824,21 @@ Settings) only keeps the day's prayers up so a late Isha can still be marked —
   `-demoPrayerStart…ThenMark`) marks from the open list; `-demoPrayerStartPrayer Isha` completes the day. Sim ✓
   frame by frame (simctl recordVideo — variable frame rate, so pick frames by index: `fps=10,select=between(n,…)`),
   all three paths; Release builds.
-- **Prayer list rows: two tap zones (2026-09-29, owner: testers kept missing the dot).** `PrayerButton` is two columns
-  that never overlap: everything left of the time (dot, name, the gap) marks / unmarks (`markTap`; a prayer that hasn't
-  started flips its time instead — it can't be marked), the time column (its own 8 pt lead-in, the row's full height,
-  ≥ 44 pt) only flips its text (`timeTap`; `ExternalToggleText` has `allowsHitTesting(false)` there, driven through
-  `toggledText`). Both use `tapOrHold`: `LongPressGesture(0.5).exclusively(before: TapGesture())` → the time editor on a
-  hold. **Trap:** don't go back to `onTapGesture` + a simultaneous long press — letting go of a hold would also tap, and a
-  tap now unmarks (the alert would come up under the editor). The name is `lineLimit(1)` + `minimumScaleFactor(0.8)`
-  (at XXXL "Maghrib" wrapped). DEBUG `-demoPrayerListOpen` (opens the list; with `-demoPrayerStart`, prayers to come).
-  Sim ✓ light / dark / XXXL: name tap → full completion moment + pill; time tap never marks; hold → editor, no alert.
+- **Prayer list rows: a bigger tap circle round the dot (2026-09-29, owner: testers kept missing it).** The dot used to
+  be the only place a tap marked: a Button round the 14 pt circle (its 24 pt frame sat outside the Button, adding
+  nothing). Now the row has ONE gesture (`PrayerButton.rowGesture`): `LongPressGesture(0.5).exclusively(before:
+  SpatialTapGesture)` in the row's own coordinate space (`rowSpace`); a tap within `markRadius` (22 pt → a 44 pt circle)
+  of the dot's centre (`dotCenter`, measured with `onGeometryChange`) marks / unmarks (`markTap`), anywhere else flips
+  the time as before (`timeTap`; `ExternalToggleText` has `allowsHitTesting(false)`, driven through `toggledText`), a
+  hold opens the time editor. The circle ends ~3 pt before the name. Row layout is unchanged. Turned down the same day:
+  the name marking too (182d0fd, entry completion-moment-2, replaced — "only around the circle button … not the name")
+  and a full-height rectangle round the dot ("that red hitbox is huge. lets keep it a circle"). **Traps:** don't go back
+  to `onTapGesture` + a simultaneous long press (letting go of a hold on the dot would also tap: the unmark alert under
+  the editor); `lineLimit(1)` + `minimumScaleFactor` on the name shrank some names in this HStack — left off, and
+  "Maghrib" doesn't wrap at XXXL without them. DEBUG `-debugHitAreas old|new` tints where a tap marks (the What's new
+  comparison); `-demoPrayerListOpen` opens the list (with `-demoPrayerStart`, prayers to come). Sim ✓ light / dark /
+  XXXL: 18 pt off-centre marks (full moment + pill), just outside the circle doesn't, a name tap never marks; done rows:
+  name flips "Qaza · 40", the dot asks "mark as incomplete?", a hold opens the editor with no alert.
 - **Completing a prayer** (`CursorSwift/PrayerCompletionFX.swift`): haptic, `.prayerCompleted`,
   the circle's `CompletionFlourish` (arc sweeps closed in the score colour, glow, "✓ Asr ·
   On time · 88"), the row's `CompletionDotPop`. The list folds done prayers into a footer row, "✓ N done ⌄" (tap to show

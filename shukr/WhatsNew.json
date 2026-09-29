@@ -71,8 +71,8 @@
     {"id": "streaks", "area": "Salah", "title": "Streaks", "link": "salah",
      "summary": "Streaks (days in a row, in-time days) count every completed day, even when its last prayer is marked late"},
     {"id": "completion-moment", "area": "Salah", "title": "Marking a prayer", "link": "salah",
-     "summary": "Marking a prayer: hold the circle, or in the list tap the prayer's name, its dot or anywhere left of its time (the time itself flips to the score / countdown). The ring sweeps closed from where it was, a glow and \"✓ Asr · On time · 88\"; the circle and the list stay put until it's done, then the next prayer (or the day's score) fades in",
-     "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and tap a prayer's name — with the day's last prayer the score comes in after the moment"]},
+     "summary": "Marking a prayer: hold the circle, or in the list tap a prayer's dot (a 44 pt circle round it counts; the name and time flip the time). The ring sweeps closed from where it was, a glow and \"✓ Asr · On time · 88\"; the circle and the list stay put until it's done, then the next prayer (or the day's score) fades in",
+     "tryIt": ["Salah page → hold the circle to mark the current prayer", "Open the list and tap a prayer's dot — with the day's last prayer the score comes in after the moment"]},
     {"id": "first-run-setup", "area": "Setup", "title": "First-run setup", "link": "settings",
      "summary": "A first-run setup in the opening's look: welcome, where you pray (location, method, madhab), light / dark / auto, reminders, Fajr alarm, your masjid, a review, then Bismillah into the app",
      "tryIt": ["Open the app after updating: the setup shows once, filled in with your settings", "Beta builds: Settings → Run setup again"]},
@@ -1118,10 +1118,16 @@
       "checked": "sim", "shots": ["wn-widget-ring-steady.jpg"], "asked": "tapping the prayer ring in widget is different now. before tapping it would just change the time. now there's a visible flicker on the progress ring fill. idt we had that before."
     },
     {
-      "id": "completion-moment-2", "date": "2026-09-29", "commit": "182d0fd", "time": "2026-09-29T03:52:59-04:00", "topic": "completion-moment", "notes": null,
+      "id": "completion-moment-2", "date": "2026-09-29", "commit": "182d0fd", "time": "2026-09-29T03:52:59-04:00", "topic": "completion-moment", "notes": null, "status": "replaced",
       "title": "Prayer list: tap a prayer's name (or anywhere left of its time) to mark it; the time still flips on its own", "headline": "Tap the name to mark a prayer",
       "tryIt": ["Salah page → swipe up for the list → tap a prayer's name (not only its circle): it's marked, with the usual moment", "Tap the time instead: it only flips (score, or the countdown for one to come) and never marks", "Tap a marked prayer's name → the \"mark as incomplete?\" check; hold it → the time editor, as before"],
       "checked": "sim", "shots": ["wn-prayer-row-tap.jpg"], "asked": "Make the hit boxes for the prayer list buttons easier to tap cause I was watching some beta testers and they were all having some issue with it so maybe if we tap even the name that registers is marking it but still make sure that tapping the time, lets us toggle the time text"
+    },
+    {
+      "id": "completion-moment-3", "date": "2026-09-29", "commit": "next", "time": null, "topic": "completion-moment", "notes": null,
+      "title": "Prayer list: a bigger tap circle round each prayer's dot (44 pt, was the 14 pt dot); the name and time still flip the time", "headline": "Bigger tap circle round the dot",
+      "tryIt": ["Salah page → swipe up for the list → tap just beside a prayer's dot (not dead on it): it's marked, with the usual moment", "Tap the name or the time instead: the time flips (score / countdown), nothing is marked", "On a marked prayer: tap near its dot → \"mark as incomplete?\"; hold → the time editor, as before"],
+      "checked": "sim", "shots": ["wn-prayer-dot-hit-circle.jpg"], "asked": "get frank to instead make the tap area only around the circle button in the list item. not the name. just make the hitbox larger i guess... and show the old hitbox area compared to the new one. — then: oh that red hitbox is huge. lets keep it a circle still but just bigger."
     }
   ]
 }

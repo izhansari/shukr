@@ -1585,6 +1585,23 @@ struct SomedaysPrayerListView: View {
 }
 */
 
+#if DEBUG
+/// `-debugHitAreas old|new` tints where a tap marks a prayer in the list (to compare the old dot
+/// with the new circle). DEBUG only.
+enum HitAreaDebug {
+    static let mode = UserDefaults.standard.string(forKey: "debugHitAreas")
+    static let tint = Color.red.opacity(0.28)
+    /// Laid over the 14 pt dot: the old Button was the dot itself; now a circle of `markRadius`.
+    @ViewBuilder static var overlay: some View {
+        switch mode {
+        case "old": Circle().fill(tint).frame(width: 14, height: 14)
+        case "new": Circle().fill(tint).frame(width: PrayerButton.markRadius * 2, height: PrayerButton.markRadius * 2)
+        default: EmptyView()
+        }
+    }
+}
+#endif
+
 // MARK: - Prayer Button
 
 
@@ -1600,6 +1617,8 @@ struct PrayerButton: View {
 
     
     @State private var toggledText: Bool = false
+    /// The dot's centre in the row (`rowSpace`), for `rowGesture`.
+    @State private var dotCenter = CGPoint(x: 23, y: 22)
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
     @State private var completionPulse = 0
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
@@ -1767,20 +1786,30 @@ struct PrayerButton: View {
         withAnimation { toggledText.toggle() }   // ExternalToggleText flips (and flips back after 3 s)
     }
 
-    /// A tap on the row's left part (dot, name, the space up to the time): mark / unmark, like the
-    /// dot used to be the only way to (owner, 2026-09-29: testers kept missing it). A prayer that
-    /// hasn't started can't be marked, so there it flips the time as the whole row used to.
+    /// A tap round the dot: mark / unmark (a prayer that hasn't started can't be marked).
     private func markTap() {
-        if isFuturePrayer { timeTap() } else { handlePrayerButtonPress() }
+        if !isFuturePrayer { handlePrayerButtonPress() }
     }
 
-    /// Hold → the time editor (a marked prayer), else a tap. Exclusive, so letting go of a hold never
-    /// also taps (a tap here now unmarks: the alert would come up under the editor).
-    private func tapOrHold(_ tap: @escaping () -> Void) -> some Gesture {
+    /// Radius of the circle round the dot where a tap marks (a 44 pt circle; the dot is 14 pt).
+    static let markRadius: CGFloat = 22
+
+    /// The row's one gesture: hold → the time editor (a marked prayer); a tap within `markRadius` of
+    /// the dot's centre marks / unmarks, anywhere else flips the time. Exclusive, so letting go of a
+    /// hold never also taps (on the dot a tap unmarks: the alert would come up under the editor).
+    private var rowGesture: some Gesture {
         LongPressGesture(minimumDuration: 0.5)
-            .onEnded { _ in openTimeEditor() }
-            .exclusively(before: TapGesture().onEnded { tap() })
+            .exclusively(before: SpatialTapGesture(coordinateSpace: .named(PrayerButton.rowSpace)))
+            .onEnded { value in
+                switch value {
+                case .first: openTimeEditor()
+                case .second(let tap):
+                    let d = hypot(tap.location.x - dotCenter.x, tap.location.y - dotCenter.y)
+                    if d <= Self.markRadius { markTap() } else { timeTap() }
+                }
+            }
     }
+    static let rowSpace = "prayerRow"
 
     private func openTimeEditor() {
         guard prayerObject.isCompleted else { return }
@@ -1793,52 +1822,48 @@ struct PrayerButton: View {
     }
 
     var body: some View {
-            // Two tap zones that never overlap: everything left of the time marks, the time (its own
-            // column, the row's full height, ≥ 44 pt) flips its text.
-            HStack(spacing: 0) {
-                HStack {
-                    PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
-                                    done: prayerObject.isCompleted && !isFuturePrayer,
-                                    future: isFuturePrayer,
-                                    scoreColor: prayerObject.getColorForPrayerScore(),
-                                    pulse: completionPulse)
-                        .frame(width: 24, height: 24, alignment: .leading)
+            // Where a tap marks (owner, 2026-09-29: testers kept missing the dot): a 44 pt circle round the
+            // dot (`markRadius`), stopping short of the name; the rest of the row flips the time as before.
+            // The dot used to be a Button round its 14 pt circle, the only place a tap marked.
+            HStack {
+                PrayerStatusDot(style: PrayerDotStyle(rawValue: dotStyleRaw) ?? .muted,
+                                done: prayerObject.isCompleted && !isFuturePrayer,
+                                future: isFuturePrayer,
+                                scoreColor: prayerObject.getColorForPrayerScore(),
+                                pulse: completionPulse)
+                    .onGeometryChange(for: CGPoint.self) { proxy in
+                        let f = proxy.frame(in: .named(PrayerButton.rowSpace))
+                        return CGPoint(x: f.midX, y: f.midY)
+                    } action: { dotCenter = $0 }
+                    #if DEBUG
+                    .overlay { HitAreaDebug.overlay }
+                    #endif
+                    .frame(width: 24, height: 24, alignment: .leading)
 
-                    // Prayer Name Label
-                    Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
-                        .font(.callout) //.callout
-                        .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
-                        .fontDesign(.rounded)
-                        .fontWeight(.light)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .layoutPriority(1)
-                    // Prayed at a masjid: a small mosque mark by the name.
-                    if prayerObject.atMasjid {
-                        Image(systemName: "building.columns")
-                            .font(.system(size: 11, weight: .light))
-                            .foregroundStyle(Color.sage)
-                    }
-
-                    Spacer(minLength: 8)
+                // Prayer Name Label
+                Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
+                    .font(.callout) //.callout
+                    .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
+                    .fontDesign(.rounded)
+                    .fontWeight(.light)
+                // Prayed at a masjid: a small mosque mark by the name.
+                if prayerObject.atMasjid {
+                    Image(systemName: "building.columns")
+                        .font(.system(size: 11, weight: .light))
+                        .foregroundStyle(Color.sage)
                 }
-                .padding(.leading)
-                .padding(.vertical, 12)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-                .gesture(tapOrHold(markTap))
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(isFuturePrayer ? [] : .isButton)
-                .accessibilityHint(isFuturePrayer ? "" : (prayerObject.isCompleted ? "Marks it not prayed" : "Marks it prayed"))
+
+                Spacer()
 
                 timeColumn
-                    .padding(.leading, 8)   // + the Spacer's 8: the old gap between name and time
-                    .padding(.trailing)
-                    .padding(.vertical, 12)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                    .gesture(tapOrHold(timeTap))
             }
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .coordinateSpace(.named(PrayerButton.rowSpace))
+            .gesture(rowGesture)
+            .accessibilityElement(children: .combine)
+            .accessibilityAction(named: prayerObject.isCompleted ? "Mark not prayed" : "Mark prayed") { markTap() }
             // Background Effects Container
             .background(
                 RoundedRectangle(cornerRadius: 13)
@@ -1883,8 +1908,8 @@ struct PrayerButton: View {
             }
     }
 
-    /// The right column: the start time, flipping to the countdown (a prayer to come) or the score
-    /// (a marked one). Its own tap is off: the column's gesture drives it through `toggledText`.
+    /// The time: the start time, flipping to the countdown (a prayer to come) or the score (a marked
+    /// one). Its own tap is off: the row's gesture drives it through `toggledText`.
     @ViewBuilder private var timeColumn: some View {
                 if isFuturePrayer {
                     // Future Prayer: Toggleable Time/Countdown
