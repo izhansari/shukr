@@ -1167,6 +1167,12 @@
       "title": "The haptics chip's off state is called \"silent\"", "headline": "Haptics off is now \"silent\"",
       "tryIt": ["Zikr → start → pause → tap the phone chip to its last state: it says \"silent\""],
       "checked": "sim", "shots": ["wn-tasbeeh-haptics-silent.jpg"], "asked": "silent"
+    },
+    {
+      "id": "apple-watch-5", "date": "2026-09-29", "commit": "3d2bd69", "time": "2026-09-29T05:51:42-04:00", "topic": "apple-watch", "notes": null,
+      "title": "The watch's pause screen is two pages that each fit one screen: the phone's stats (count and time, a rate tile that flips per count ⇄ per tasbeeh with how it compares with your usual pace, a finish tile for count goals), Resume and Finish early; swipe for haptics (silent → soft → medium → strong, softer by default) and Tap & pinch ⇄ Crown only", "headline": "Pause: the phone's stats + haptics page",
+      "tryIt": ["Start a zikr task on the watch, count a few, pause: count and time on the left, the rate on the right with \"faster / slower than usual\"; tap the rate to flip it", "Swipe left: tap the haptics chip through silent / soft / medium / strong (each buzzes once, silent doesn't), and switch Tap & pinch ⇄ Crown only", "Resume on silent: counting doesn't buzz, buttons still click"],
+      "checked": "sim", "shots": ["wn-watch-pause-bento.jpg"], "asked": "Make the first pause screen arrange the stats the same way we have in the app … count and time stacked on top, rate to the side and tapped to toggle to tasbeeh rate along with a compared to average line at the bottom … Then place haptics as a toggle button on the second screen along with the \"taps on, pinch, crown\" selection count style — The haptics seems really strong … annoying not having a way to change it from the pause screen itself — we should have a setting to turn haptics off btw in case someone finds it annoying lol"
     }
   ]
 }
