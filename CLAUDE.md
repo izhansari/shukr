@@ -1209,6 +1209,14 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
 - **Review:** every choice as a row (tap = that step), the sell lines, and orange never-blocking `Nudge`s: no location · "Set
   up"; a city but location refused · allow; While Using · "Turn on Always" (app Settings); reduced accuracy · precise;
   notifications off · notification Settings; not asked · "Allow".
+- **Editing from the review (2026-09-29, owner: "we shouldn't have to go through the whole flow again"):** a review row
+  sets `FirstRunSetupView.editing` and opens its step; `advance(to:)` goes back to the review after `lastEditedStep` (the
+  step itself; "Prayer times" = method, then madhab — the row covers both). Location returns straight away (an Automatic
+  method follows the new place by itself, and the review shows it). Back / Skip → the review (the madhab's back → its
+  method); the ring stays full while editing (nothing reads as going on); that last step's "Continue" reads "Done"
+  (`\.setupReturnsToReview` → `PrimaryButton`, only for the title "Continue" — permission buttons keep their words).
+  Sim ✓: Fajr alarm on → Done → "At Start of Fajr" on the review; Prayer times → MWL, Continue → Hanafi, Done → "Muslim
+  World League · Hanafi"; Location → Done; Reminders → Skip; back from Appearance; the normal flow still chains.
 - **Bismillah:** marks done, refetches times, reschedules notifications, reloads widgets, sends the watch context, then the
   hand-off: the page fades, the ring glides to `WelcomeTarget.circleFrame` and becomes the welcome's hairline, then
   `WelcomeOverlay(startDrawn: true)` plays and grows into the circle.

@@ -226,6 +226,10 @@ struct FirstRunSetupView: View {
     /// …and becomes the welcome, which plays as on every launch.
     @State private var welcome = false
     @State private var ringCentre: CGPoint = .zero
+    /// A review row was tapped: that step (and, for "Prayer times", the madhab after the method) is
+    /// edited and then it's straight back to the review (owner, 2026-09-29: "we shouldn't have to go
+    /// through the whole flow again"). The ring stays full meanwhile, so nothing reads as going on.
+    @State private var editing: SetupStep?
 
     init(mode: Mode = .full, onFinish: @escaping () -> Void = {}) {
         self.mode = mode
@@ -245,7 +249,7 @@ struct FirstRunSetupView: View {
             VStack(spacing: 0) {
                 topBar
                     .opacity(leaving ? 0 : 1)
-                SetupRing(progress: step.progress, symbol: step.symbol, handoff: leaving)
+                SetupRing(progress: editing == nil ? step.progress : 1, symbol: step.symbol, handoff: leaving)
                     .onGeometryChange(for: CGPoint.self) { geo in
                         let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
                     } action: { if !leaving { ringCentre = $0 } }
@@ -255,19 +259,21 @@ struct FirstRunSetupView: View {
                 Group {
                     switch step {
                     case .welcome: WelcomeStep(next: { go(.location) })
-                    case .location: LocationStep(locationOnly: mode == .locationOnly, next: { go(.method) })
-                    case .method: MethodStep(next: { go(.madhab) })
-                    case .madhab: MadhabStep(next: { go(.appearance) })
-                    case .appearance: AppearanceStep(next: { go(.reminders) })
+                    case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
+                    case .method: MethodStep(next: { advance(to: .madhab) })
+                    case .madhab: MadhabStep(next: { advance(to: .appearance) })
+                    case .appearance: AppearanceStep(next: { advance(to: .reminders) })
                     case .reminders: RemindersStep(next: {
                         NotificationScheduler.reschedule(context: context, reason: "setup reminders")
-                        go(.fajr)
+                        advance(to: .fajr)
                     })
-                    case .fajr: FajrStep(next: { go(.masjid) })
-                    case .masjid: MasjidStep(next: { go(.review) })
-                    case .review: ReviewStep(jump: { go($0) }, done: enterApp)
+                    case .fajr: FajrStep(next: { advance(to: .masjid) })
+                    case .masjid: MasjidStep(next: { advance(to: .review) })
+                    case .review: ReviewStep(jump: { editing = $0; go($0) }, done: enterApp)
                     }
                 }
+                // The last step of an edit from the review: its "Continue" reads "Done".
+                .environment(\.setupReturnsToReview, editing != nil && step == lastEditedStep)
                 .padding(.top, 26)          // every title at the same height under the ring
                 .id(step)
                 .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
@@ -296,7 +302,10 @@ struct FirstRunSetupView: View {
         HStack {
             if step != .welcome && mode == .full {
                 Button {
-                    if let i = SetupStep.allCases.firstIndex(of: step), i > 0 { go(SetupStep.allCases[i - 1]) }
+                    if editing != nil {
+                        // Editing from the review: back = the review (the madhab's back = its method).
+                        if editing == .method && step == .madhab { go(.method) } else { backToReview() }
+                    } else if let i = SetupStep.allCases.firstIndex(of: step), i > 0 { go(SetupStep.allCases[i - 1]) }
                 } label: {
                     Image(systemName: "chevron.left").font(.body.weight(.medium))
                         .frame(width: 44, height: 44)
@@ -305,7 +314,7 @@ struct FirstRunSetupView: View {
             }
             Spacer()
             if step != .review && mode == .full {
-                Button("Skip") { go(.review) }
+                Button("Skip") { backToReview() }
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
@@ -314,6 +323,19 @@ struct FirstRunSetupView: View {
         .tint(.primary)
         .padding(.horizontal, 12)
         .frame(height: 44)
+    }
+
+    /// A step's Continue: on to `next`, or — editing from the review — back to it once the edited
+    /// row's steps are done ("Prayer times" = method, then madhab; everything else is one step).
+    private func advance(to next: SetupStep) {
+        if editing != nil && step == lastEditedStep { backToReview() } else { go(next) }
+    }
+
+    private var lastEditedStep: SetupStep? { editing == .method ? .madhab : editing }
+
+    private func backToReview() {
+        go(.review)
+        editing = nil
     }
 
     private func go(_ s: SetupStep) {
@@ -778,13 +800,19 @@ private struct StepTitle: View {
 
 /// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause
 /// screen's Resume), not a solid fill.
+extension EnvironmentValues {
+    /// The setup step was opened from the review and goes back to it: "Continue" reads "Done".
+    @Entry var setupReturnsToReview = false
+}
+
 struct PrimaryButton: View {
     let title: String
     var enabled = true
     let action: () -> Void
+    @Environment(\.setupReturnsToReview) private var returnsToReview
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(returnsToReview && title == "Continue" ? "Done" : title)
                 .font(.system(.body, design: .rounded, weight: .medium))
                 .foregroundStyle(Color.sage)
                 .frame(maxWidth: .infinity)
