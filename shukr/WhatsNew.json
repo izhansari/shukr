@@ -1080,6 +1080,12 @@
       "title": "What's new: each card says in a few bold words what changed and what to look for; your words fold away", "headline": "A short headline on every card",
       "tryIt": ["Open What's new: each To check card shows what changed in bold and 'Look for: …'; tap 'your words' to see what you said and the full change", "To test cards show the newest change's headline under the card's name"],
       "checked": "sim", "shots": ["wn-whatsnew-headlines.jpg"], "asked": "both of these things look the same to me. it's low-key a lot of text to read on this page as soon as I first open it. can you make it so that it has a small title or something that just tells me what it is that got changed or what it is to look for."
+    },
+    {
+      "id": "widget-next-11", "date": "2026-09-28", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Prayers widget: the ring fills live on its own and takes the app's colours (green the first 30 min, yellow On time, red Late, grey after)", "headline": "Ring fills live, app's colours",
+      "tryIt": ["Look at the Prayers widget during a prayer for a few minutes: the ring creeps forward by itself", "Compare with the app's circle: same colour (green → yellow at 30 min → red halfway through the rest)"],
+      "checked": "sim", "shots": ["wn-widget-ring-live.jpg"], "asked": "I would love the fill to move live on its own. Also… make the widget match the prayer ring in the app"
     }
   ]
 }
