@@ -230,15 +230,28 @@ struct FirstRunSetupView: View {
     /// edited and then it's straight back to the review (owner, 2026-09-29: "we shouldn't have to go
     /// through the whole flow again"). The ring stays full meanwhile, so nothing reads as going on.
     @State private var editing: SetupStep?
+    /// The opening page (a new install / Run setup again): the original welcome's moving gradient and
+    /// glass circle, before any step. The steps aren't there at all until it has drained away.
+    @State private var opening: Bool
+    /// How much of the first step has come in after the opening (ring 1 · title 2 · rows 3 · button 4);
+    /// 4 = all, as every other time.
+    @State private var reveal: Int
 
     init(mode: Mode = .full, onFinish: @escaping () -> Void = {}) {
         self.mode = mode
         self.onFinish = onFinish
         var start: SetupStep = mode == .locationOnly ? .location : .welcome
+        var withOpening = mode == .full
         #if DEBUG
-        if mode == .full, let raw = UserDefaults.standard.string(forKey: "setupStep"), let s = SetupStep(rawValue: raw) { start = s }
+        // `-setupStep opening` = the opening (as a fresh start); any other step skips it.
+        if mode == .full, let raw = UserDefaults.standard.string(forKey: "setupStep") {
+            if let s = SetupStep(rawValue: raw) { start = s }
+            withOpening = raw == "opening"
+        }
         #endif
         _step = State(initialValue: start)
+        _opening = State(initialValue: withOpening)
+        _reveal = State(initialValue: withOpening ? 0 : 4)
     }
 
     var body: some View {
@@ -246,41 +259,47 @@ struct FirstRunSetupView: View {
             // Gone once the welcome takes over (it has its own background).
             Color(.systemBackground).ignoresSafeArea()
                 .opacity(welcome ? 0 : 1)
-            VStack(spacing: 0) {
-                topBar
-                    .opacity(leaving ? 0 : 1)
-                SetupRing(progress: editing == nil ? step.progress : 1, symbol: step.symbol, handoff: leaving)
-                    .onGeometryChange(for: CGPoint.self) { geo in
-                        let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
-                    } action: { if !leaving { ringCentre = $0 } }
-                    .offset(leaving ? handoffShift : .zero)
-                    .padding(.top, 4)
-                    .zIndex(1)
-                Group {
-                    switch step {
-                    case .welcome: WelcomeStep(next: { go(.location) })
-                    case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
-                    case .method: MethodStep(next: { advance(to: .madhab) })
-                    case .madhab: MadhabStep(next: { advance(to: .appearance) })
-                    case .appearance: AppearanceStep(next: { advance(to: .reminders) })
-                    case .reminders: RemindersStep(next: {
-                        NotificationScheduler.reschedule(context: context, reason: "setup reminders")
-                        advance(to: .fajr)
-                    })
-                    case .fajr: FajrStep(next: { advance(to: .masjid) })
-                    case .masjid: MasjidStep(next: { advance(to: .review) })
-                    case .review: ReviewStep(jump: { editing = $0; go($0) }, done: enterApp)
+            if opening {
+                SetupOpening(onDone: finishOpening)
+            } else {
+                VStack(spacing: 0) {
+                    topBar
+                        .opacity(leaving || reveal < 1 ? 0 : 1)
+                    SetupRing(progress: editing == nil ? step.progress : 1, symbol: step.symbol, handoff: leaving)
+                        .onGeometryChange(for: CGPoint.self) { geo in
+                            let f = geo.frame(in: .global); return CGPoint(x: f.midX, y: f.midY)
+                        } action: { if !leaving { ringCentre = $0 } }
+                        .offset(leaving ? handoffShift : .zero)
+                        .padding(.top, 4)
+                        .opacity(reveal >= 1 ? 1 : 0)
+                        .zIndex(1)
+                    Group {
+                        switch step {
+                        case .welcome: WelcomeStep(next: { go(.location) })
+                        case .location: LocationStep(locationOnly: mode == .locationOnly, next: { advance(to: .method) })
+                        case .method: MethodStep(next: { advance(to: .madhab) })
+                        case .madhab: MadhabStep(next: { advance(to: .appearance) })
+                        case .appearance: AppearanceStep(next: { advance(to: .reminders) })
+                        case .reminders: RemindersStep(next: {
+                            NotificationScheduler.reschedule(context: context, reason: "setup reminders")
+                            advance(to: .fajr)
+                        })
+                        case .fajr: FajrStep(next: { advance(to: .masjid) })
+                        case .masjid: MasjidStep(next: { advance(to: .review) })
+                        case .review: ReviewStep(jump: { editing = $0; go($0) }, done: enterApp)
+                        }
                     }
+                    // The last step of an edit from the review: its "Continue" reads "Done".
+                    .environment(\.setupReturnsToReview, editing != nil && step == lastEditedStep)
+                    .padding(.top, 26)          // every title at the same height under the ring
+                    .id(step)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                    .opacity(leaving ? 0 : 1)
+                    .environment(\.setupReveal, reveal)
                 }
-                // The last step of an edit from the review: its "Continue" reads "Done".
-                .environment(\.setupReturnsToReview, editing != nil && step == lastEditedStep)
-                .padding(.top, 26)          // every title at the same height under the ring
-                .id(step)
-                .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
-                .opacity(leaving ? 0 : 1)
+                .fontDesign(.rounded)
+                .opacity(welcome ? 0 : 1)
             }
-            .fontDesign(.rounded)
-            .opacity(welcome ? 0 : 1)
             if welcome {
                 WelcomeOverlay(startDrawn: true, onFinish: { WelcomeTarget.playing = false; onFinish() })
                     .transition(.identity)
@@ -323,6 +342,18 @@ struct FirstRunSetupView: View {
         .tint(.primary)
         .padding(.horizontal, 12)
         .frame(height: 44)
+    }
+
+    /// The opening has drained to the plain page: the first step comes in piece by piece — the ring
+    /// (it draws itself as it appears), the title, the rows, then Begin.
+    private func finishOpening() {
+        opening = false
+        let beat = reduceMotion ? 0.15 : 0.35
+        for stage in 1...4 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 + beat * Double(stage - 1)) {
+                withAnimation(.easeOut(duration: reduceMotion ? 0.3 : 0.55)) { reveal = stage }
+            }
+        }
     }
 
     /// A step's Continue: on to `next`, or — editing from the review — back to it once the edited
@@ -708,6 +739,120 @@ struct LostLocationView: View {
     }
 }
 
+// MARK: - The opening (the original welcome's look)
+
+/// The page before the setup's steps (owner, 2026-09-29: "I like the old style for its gradient and the
+/// soft movement. Use it for one new page at the start of onboarding, and nowhere else"): the old first
+/// screen's moving wavy gradient + grain (GradientAnimationLoad, removed in 9fce309) and its glass
+/// circle, one piece at a time — the gradient, the circle, "welcome to shukr", "tap to continue". A tap:
+/// the circle and words go, then the gradient drains to the plain page while its waves keep moving, and
+/// only then does the first step come in (`onDone`). Shown on a new install and Run setup again; not
+/// in `.locationOnly` mode or anywhere else. The white words carry a soft dark shadow (the original's
+/// thin white on pale mint was hard to read in light mode).
+private struct SetupOpening: View {
+    let onDone: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// 1 gradient · 2 circle · 3 words · 4 "tap to continue".
+    @State private var stage = 0
+    @State private var leaving = false
+    @State private var draining = false
+    @State private var grain = 0.2
+
+    static let drain: Double = 1.4
+
+    var body: some View {
+        ZStack {
+            ZStack {
+                AnimatedWavyGradient(still: reduceMotion)
+                NoiseOverlay()
+                    .blendMode(.overlay)
+                    .opacity(grain)
+            }
+            .ignoresSafeArea()
+            .opacity(stage >= 1 && !draining ? 1 : 0)
+
+            circle
+                .frame(width: 200, height: 200)
+                .opacity(stage >= 2 && !leaving ? 1 : 0)
+                .scaleEffect(reduceMotion || stage >= 2 ? 1 : 0.94)
+
+            VStack {
+                Spacer()
+                Text("tap to continue")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white)
+                    // A dark halo: it sits on the pale mint in light mode, which swallowed plain white.
+                    .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
+                    .shadow(color: .black.opacity(0.3), radius: 14)
+                    .padding(.bottom, 44)
+                    .opacity(stage >= 4 && !leaving ? 1 : 0)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { advance() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Welcome to shukr")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { advance() }
+        .task { await open() }
+    }
+
+    /// The original's glass circle, the words heavier and shadowed so they read on any part of the gradient.
+    private var circle: some View {
+        Circle()
+            .fill(Color.white.opacity(0.1))
+            .background(Circle().stroke(Color(.secondarySystemFill).opacity(0.7), lineWidth: 1))
+            .overlay {
+                VStack(spacing: 2) {
+                    Text("welcome to")
+                        .font(.system(.footnote, design: .rounded, weight: .light))
+                        .foregroundStyle(.white.opacity(0.85))
+                    Text("shukr")
+                        .font(.system(.title, design: .rounded, weight: .light))
+                        .foregroundStyle(.white.opacity(0.97))
+                }
+                .shadow(color: .black.opacity(0.4), radius: 6, y: 1)
+                .opacity(stage >= 3 ? 1 : 0)
+            }
+            .shadow(radius: 5)
+    }
+
+    private func open() async {
+        func step(_ n: Int, after seconds: Double, _ animation: Animation) async {
+            try? await Task.sleep(for: .seconds(seconds))
+            withAnimation(animation) { stage = max(stage, n) }
+        }
+        await step(1, after: 0.6, .easeInOut(duration: reduceMotion ? 0.6 : 1.4))   // a moment of blank page first
+        if !reduceMotion {
+            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { grain = 0.3 }
+        }
+        await step(2, after: reduceMotion ? 0.5 : 1.1, .easeOut(duration: 0.8))
+        await step(3, after: 0.6, .easeOut(duration: 0.7))
+        await step(4, after: 0.8, .easeOut(duration: 0.7))
+        #if DEBUG
+        // `-setupOpeningTap <seconds>`: tap by itself that long after "tap to continue" (recordings).
+        let auto = UserDefaults.standard.double(forKey: "setupOpeningTap")
+        if auto > 0 {
+            try? await Task.sleep(for: .seconds(auto))
+            advance()
+        }
+        #endif
+    }
+
+    /// The circle, words and hint go; then the gradient drains (still moving); then the steps.
+    private func advance() {
+        guard stage >= 2, !leaving else { return }
+        stage = 4
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeOut(duration: 0.45)) { leaving = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+            withAnimation(.easeInOut(duration: reduceMotion ? 0.6 : Self.drain)) { draining = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.6 : Self.drain) + 0.1) { onDone() }
+        }
+    }
+}
+
 // MARK: - The ring (progress + the step's symbol)
 
 /// The opening's sage ring, small, at the top of every step: a hairline track, the sage arc filling
@@ -758,13 +903,19 @@ private struct StepScaffold<Content: View, Bottom: View>: View {
     @ViewBuilder var content: Content
     @ViewBuilder var bottom: Bottom
 
+    /// After the opening the parts come in one by one (`setupReveal`); otherwise all at once.
+    @Environment(\.setupReveal) private var reveal
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 0) {
                     StepTitle(title: title, subtitle: subtitle)
                         .padding(.bottom, 22)
+                        .modifier(RevealPart(shown: reveal >= 2, rise: !reduceMotion))
                     content
+                        .modifier(RevealPart(shown: reveal >= 3, rise: !reduceMotion))
                 }
                 .padding(.bottom, 16)
             }
@@ -773,7 +924,19 @@ private struct StepScaffold<Content: View, Bottom: View>: View {
             bottom
                 .padding(.top, 8)
                 .padding(.bottom, 8)
+                .modifier(RevealPart(shown: reveal >= 4, rise: !reduceMotion))
         }
+    }
+}
+
+/// A part of the first step coming in after the opening: fades up from a little below.
+private struct RevealPart: ViewModifier {
+    let shown: Bool
+    let rise: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .offset(y: shown || !rise ? 0 : 10)
     }
 }
 
@@ -801,6 +964,8 @@ private struct StepTitle: View {
 extension EnvironmentValues {
     /// The setup step was opened from the review and goes back to it: "Continue" reads "Done".
     @Entry var setupReturnsToReview = false
+    /// How much of the first step has come in after the opening (FirstRunSetupView.reveal).
+    @Entry var setupReveal = 4
 }
 
 /// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause

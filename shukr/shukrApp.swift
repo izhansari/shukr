@@ -538,6 +538,8 @@ import SwiftUI
 
 // MARK: - Animated Wavy Gradient (COMPLETELY REWORKED)
 struct AnimatedWavyGradient: View {
+    /// Reduce Motion: the gradient as it is, no waves.
+    var still = false
     @State private var animate = false
     
     var body: some View {
@@ -574,7 +576,7 @@ struct AnimatedWavyGradient: View {
             value: animate
         )
         .onAppear {
-            animate.toggle()
+            if !still { animate.toggle() }
         }
     }
 }

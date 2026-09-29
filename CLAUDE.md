@@ -1305,6 +1305,19 @@ reminders · Fajr · masjid) with the step's symbol, every title at one height, 
 - **Review:** every choice as a row (tap = that step), the sell lines, and orange never-blocking `Nudge`s: no location · "Set
   up"; a city but location refused · allow; While Using · "Turn on Always" (app Settings); reduced accuracy · precise;
   notifications off · notification Settings; not asked · "Allow".
+- **The opening page (2026-09-29, owner: "I like the old style for its gradient and the soft movement … one new page at
+  the start of onboarding, and nowhere else"):** `SetupOpening` (FirstRunSetup.swift), before the welcome step on a new
+  install and Run setup again (`FirstRunSetupView.opening`; not `.locationOnly`, not the lost page, not the everyday
+  launch). The old GradientAnimationLoad's look (removed in 9fce309; last built at f63737c): `AnimatedWavyGradient` + a
+  pulsing `NoiseOverlay` and the glass circle, one piece at a time — 0.6 s blank, gradient in (1.4 s), circle, "welcome
+  to shukr", "tap to continue". A tap: circle / words out (0.45 s), then the gradient drains over 1.4 s still moving, then
+  `finishOpening` mounts the steps and brings them in 0.35 s apart via `\.setupReveal` (ring 1 · title 2 · rows 3 ·
+  button 4; `StepScaffold` reads it, default 4 = all). The ring / Skip aren't mounted during the opening. Readability:
+  white text one weight up from the original's thin, with dark shadows ("tap to continue" medium + a two-layer halo —
+  plain white vanished on light mode's mint); owner OK'd as is. Reduce Motion: `AnimatedWavyGradient(still: true)`,
+  plain fades (not tried in the sim). DEBUG `-setupStep opening`, `-setupOpeningTap <s>` (taps by itself). The old
+  notification / location gate is NOT back. The white frame before a dark-mode launch is the generated launch screen
+  following the system appearance (queued separately).
 - **Editing from the review (2026-09-29, owner: "we shouldn't have to go through the whole flow again"):** a review row
   sets `FirstRunSetupView.editing` and opens its step; `advance(to:)` goes back to the review after `lastEditedStep` (the
   step itself; "Prayer times" = method, then madhab — the row covers both). Location returns straight away (an Automatic
