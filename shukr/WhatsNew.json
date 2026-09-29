@@ -1094,10 +1094,16 @@
       "checked": "sim", "shots": ["wn-reminders-polish.jpg"], "addresses": ["49171DB2-A9BD-442D-8C05-A78812B07007"]
     },
     {
-      "id": "move-prayer-5", "date": "2026-09-28", "commit": "992153a", "time": "2026-09-28T19:49:03-04:00", "topic": "move-prayer", "notes": null,
+      "id": "move-prayer-5", "date": "2026-09-28", "commit": "992153a", "time": "2026-09-28T19:49:03-04:00", "topic": "move-prayer", "notes": null, "status": "replaced",
       "title": "The stick pin is back for moving a prayer: a green head with a white edge on a thin needle, in both pickers", "headline": "The stick pin is back",
       "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; the green stick lifts, then drops where you stop", "Long-press a marked prayer → the location chip: the same stick (no more thin grey outline)"],
       "checked": "sim", "shots": ["wn-stick-pin.jpg"], "addresses": ["D5818BB9"]
+    },
+    {
+      "id": "move-prayer-6", "date": "2026-09-28", "commit": "next", "time": null, "topic": "move-prayer", "notes": null,
+      "title": "Moving a prayer uses Apple's own map pin: black on a light map, white on a dark one, lifting while you drag", "headline": "Apple's own pin when you move a prayer",
+      "tryIt": ["Map → Prayers → tap a pin → Edit → Change location: drag the map; the pin lifts, then drops where you stop", "Long-press a marked prayer → the location chip: the same pin, clear on standard and satellite"],
+      "checked": "sim", "shots": ["wn-mappin-pin.jpg"], "addresses": ["D5818BB9"]
     }
   ]
 }

@@ -28,41 +28,42 @@ import MapKit
     var pinPoint: CGPoint = .zero
 }
 
-/// The picking pin: the "stick" (owner, 2026-09-28, D5818BB9 — "that green little stick thing … was sleek"; the
-/// SF-symbol teardrop options were turned down): a 24 pt green head with a 3 pt white edge on a thin darker-green
-/// needle whose tip is the spot, a small shadow at the tip. Lifts while the map moves, drops when it stops.
-/// Drawn in a fixed `size` frame with the tip at `tip` (the map's `PickPinView` hosts it at its point;
-/// `CenterPin` centres it). It replaced the time editor's thin SF `mappin` too ("just a shadow" — 723D0745).
+/// The picking pin: Apple's own `mappin` (owner, 2026-09-28, D5818BB9: "is there some basic SF symbol that iOS gives
+/// us … A is fine. no need for it to be green … whatever the stock ios is"). Semibold at 42 pt — the thin regular one
+/// was "just a shadow" (723D0745) — in `.primary` (black on a light map, white on a dark one) with a thin halo in the
+/// opposite colour so it reads on satellite and dark streets; a small ground shadow at the tip. The glyph's needle
+/// end is MEASURED from its pixels (`SymbolPinGlyph`; SF glyphs carry padding) and placed on `tip`. Lifts while the
+/// map moves, drops when it stops. Drawn in a fixed `size` frame (the map's `PickPinView` hosts it at its point;
+/// `CenterPin` centres it).
 struct PickPin: View {
     let lifted: Bool
+    @Environment(\.colorScheme) private var scheme
     static let size = CGSize(width: 48, height: 78)
-    /// Where the needle's tip sits in that frame (the shadow's centre).
+    /// Where the needle's tip sits in that frame (the ground shadow's centre).
     static let tip = CGPoint(x: 24, y: 74)
-    static let head: CGFloat = 24
-    static let needle: CGFloat = 28          // from the head's bottom edge to the tip
+    private static let glyph = SymbolPinGlyph.measure("mappin")
 
     var body: some View {
         let t = Self.tip
+        let halo = (scheme == .dark ? Color.black : Color.white).opacity(0.6)
         ZStack {
-            Capsule()
-                .fill(Color.black.opacity(0.28))
-                .frame(width: 14, height: 6)
-                .scaleEffect(lifted ? 0.6 : 1)
-                .opacity(lifted ? 0.5 : 1)
+            Ellipse()
+                .fill(Color.black.opacity(lifted ? 0.14 : 0.28))
+                .frame(width: lifted ? 9 : 13, height: lifted ? 3.5 : 5)
+                .blur(radius: lifted ? 1.5 : 0.6)
                 .position(x: t.x, y: t.y)
-            ZStack {
-                Capsule()
-                    .fill(Color(red: 0.14, green: 0.55, blue: 0.24))
-                    .frame(width: 2, height: Self.needle + 2)
-                    .position(x: t.x, y: t.y - (Self.needle + 2) / 2)
-                Circle()
-                    .fill(Color.green)
-                    .overlay(Circle().strokeBorder(.white, lineWidth: 3))
-                    .frame(width: Self.head, height: Self.head)
-                    .shadow(color: .black.opacity(0.25), radius: 3, y: 1)
-                    .position(x: t.x, y: t.y - Self.needle - Self.head / 2)
+            if let g = Self.glyph {
+                Image(uiImage: g.image)
+                    .renderingMode(.template)
+                    .foregroundStyle(.primary)
+                    .shadow(color: halo, radius: 0.8)
+                    .shadow(color: halo, radius: 0.8)
+                    .shadow(color: .black.opacity(0.25), radius: lifted ? 5 : 1.5, y: lifted ? 4 : 1)
+                    .frame(width: g.image.size.width, height: g.image.size.height)
+                    // The measured tip on `tip`.
+                    .position(x: t.x - g.tip.x + g.image.size.width / 2, y: t.y - g.tip.y + g.image.size.height / 2)
+                    .offset(y: lifted ? -12 : 0)
             }
-            .offset(y: lifted ? -12 : 0)
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .animation(lifted ? .easeOut(duration: 0.15) : .spring(duration: 0.35, bounce: 0.45), value: lifted)
@@ -469,9 +470,12 @@ enum PrayerSpotAddress {
 /// `-demoPinRender`: the picking pin (resting and lifted) over real map tiles — standard and satellite, light and
 /// dark — written to <app data>/tmp/pin-<look>.png (the simulators won't open the map; feedback 723D0745).
 enum PickPinRender {
+    /// The picking pin (resting + lifted) over map tiles in the four looks → tmp/pin-<look>.png, and
+    /// tmp/pincheck-<look>.png with a 1 px red cross on the true spot (where the tip must land).
     @MainActor static func run() async {
         let centre = CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060)
-        for (name, satellite, dark) in [("standard-light", false, false), ("satellite-dark", true, true)] {
+        for (name, satellite, dark) in [("standard-light", false, false), ("standard-dark", false, true),
+                                        ("satellite-light", true, false), ("satellite-dark", true, true)] {
             let o = MKMapSnapshotter.Options()
             o.region = MKCoordinateRegion(center: centre, latitudinalMeters: 300, longitudinalMeters: 300)
             o.size = CGSize(width: 200, height: 160)
@@ -483,19 +487,86 @@ enum PickPinRender {
                 PickPin(lifted: false)
                 PickPin(lifted: true)
             }
+            .environment(\.colorScheme, dark ? .dark : .light)
             let renderer = ImageRenderer(content: pins)
             renderer.scale = 3
             guard let pinImage = renderer.uiImage else { continue }
-            let out = UIGraphicsImageRenderer(size: o.size, format: {
-                let f = UIGraphicsImageRendererFormat(); f.scale = 3; return f
-            }()).image { _ in
-                snap.image.draw(at: .zero)
-                let s = pinImage.size
-                pinImage.draw(at: CGPoint(x: (o.size.width - s.width) / 2, y: o.size.height / 2 - PickPin.tip.y + 20))
+            let s = pinImage.size
+            let origin = CGPoint(x: (o.size.width - s.width) / 2, y: o.size.height / 2 - PickPin.tip.y + 20)
+            for check in [false, true] {
+                let out = UIGraphicsImageRenderer(size: o.size, format: {
+                    let f = UIGraphicsImageRendererFormat(); f.scale = 3; return f
+                }()).image { _ in
+                    snap.image.draw(at: .zero)
+                    pinImage.draw(at: origin)
+                    guard check else { return }
+                    UIColor.red.setFill()
+                    for x in [origin.x + PickPin.tip.x, origin.x + PickPin.size.width + 30 + PickPin.tip.x] {
+                        let y = origin.y + PickPin.tip.y
+                        UIRectFill(CGRect(x: x - 4, y: y - 1.0 / 6, width: 8, height: 1.0 / 3))
+                        UIRectFill(CGRect(x: x - 1.0 / 6, y: y - 4, width: 1.0 / 3, height: 8))
+                    }
+                }
+                try? out.pngData()?.write(to: FileManager.default.temporaryDirectory.appending(path: "\(check ? "pincheck" : "pin")-\(name).png"))
             }
-            try? out.pngData()?.write(to: FileManager.default.temporaryDirectory.appending(path: "pin-\(name).png"))
         }
         print("PINRENDER done")
     }
 }
 #endif
+
+// MARK: - Apple's own pin glyph (owner, 2026-09-28: "is there some basic SF symbol that iOS gives us for a pin")
+
+/// An SF pin glyph (template image) at a readable size and weight, and where its needle actually ends
+/// (SF glyphs carry padding, so the tip is measured from the rendered pixels, not assumed).
+enum SymbolPinGlyph {
+    struct Measured { let image: UIImage; let tip: CGPoint }   // tip in points, inside `image`
+
+    static func measure(_ name: String, pointSize: CGFloat = 42, weight: UIImage.SymbolWeight = .semibold) -> Measured? {
+        let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
+        guard let template = UIImage(systemName: name, withConfiguration: config) else { return nil }
+        let base = template.withTintColor(.black, renderingMode: .alwaysOriginal)   // for reading alpha
+        // Rasterise at 3× and read alpha.
+        let scale: CGFloat = 3
+        let w = Int(base.size.width * scale), h = Int(base.size.height * scale)
+        guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                                space: CGColorSpaceCreateDeviceRGB(),
+                                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        UIGraphicsPushContext(ctx)
+        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: scale, y: -scale)
+        base.draw(at: .zero)
+        UIGraphicsPopContext()
+        guard let data = ctx.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        func opaque(_ x: Int, _ y: Int) -> Bool { data[(y * w + x) * 4 + 3] > 100 }   // y = 0 is the top row
+        // The needle's column: the middle of the opaque extent on the lowest opaque row near the centre.
+        let mid = w / 2
+        var col = mid
+        var y = h - 1
+        // Scan up the centre band for the first opaque pixel (the needle's end, or an ellipse's bottom edge).
+        func firstOpaqueUp(from start: Int, in columns: ClosedRange<Int>) -> (Int, Int)? {
+            var yy = start
+            while yy >= 0 {
+                for x in columns where opaque(x, yy) { return (x, yy) }
+                yy -= 1
+            }
+            return nil
+        }
+        let band = max(0, mid - 3 * Int(scale))...min(w - 1, mid + 3 * Int(scale))
+        guard let (x0, y0) = firstOpaqueUp(from: y, in: band) else { return nil }
+        col = x0; y = y0
+        if name.contains("ellipse") {
+            // Up through the ellipse's bottom stroke, across the hollow, to the needle's end.
+            while y >= 0 && opaque(mid, y) { y -= 1 }
+            while y >= 0 && !opaque(mid, y) { y -= 1 }
+            col = mid
+        } else {
+            // Centre the tip on the needle: the opaque run on that row.
+            var l = x0, r = x0
+            while l > 0 && opaque(l - 1, y) { l -= 1 }
+            while r < w - 1 && opaque(r + 1, y) { r += 1 }
+            col = (l + r) / 2
+        }
+        return Measured(image: template, tip: CGPoint(x: (CGFloat(col) + 0.5) / scale, y: (CGFloat(y) + 1) / scale))
+    }
+}
+

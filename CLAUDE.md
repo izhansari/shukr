@@ -697,14 +697,18 @@ subtitle is now "on, each tap counts 3" (it truncated). Sim ✓ (light mode).
   coordinates (~35 pt apart). The pin is now `PickPinView`, a UIView added to the MKMapView at
   exactly `pick.pinPoint` (head + needle, lifts while the map moves). Sim ✓: a prayer marked at the
   user's dot → the needle's tip lands on the dot.
-- **The pin itself (2026-09-28):** the time editor's picker drew the thin SF `mappin` ("super small … just a shadow" —
-  723D0745 / 7D8E8B67). A 34 pt SF-symbol pin (eb2bbb0) and three one-shape options (teardrop / map balloon / outlined)
-  were turned down (D5818BB9: "I like the little stick … it was sleek"). Now one shared `PickPin`
-  (PrayerLocationPicker.swift) is the original stick — a 24 pt green head with a 3 pt white edge on a 2 pt darker-green
-  needle (28 pt below the head), a small tip shadow; lifts 12 pt while the map moves. The map's `PickPinView` hosts it
-  (UIHostingController view, tip at `pick.pinPoint`); the time editor's `CenterPin` offsets it so the tip sits on the map
-  centre. The simulators won't open the map, so DEBUG `-demoPinRender` draws it (resting + lifted) over MKMapSnapshotter
-  tiles — standard light / satellite dark — into <app data>/tmp/pin-*.png.
+- **The pin itself (2026-09-28):** the time editor's picker drew the thin SF `mappin` at regular weight ("super small …
+  just a shadow" — 723D0745 / 7D8E8B67). Tried and turned down the same day: a 34 pt SF-symbol pin (eb2bbb0), three
+  one-shape options, the original green stick (992153a — owner: "is there some basic SF symbol that iOS gives us").
+  Now (D5818BB9, option A): one shared `PickPin` (PrayerLocationPicker.swift) = Apple's `mappin`, semibold 42 pt, in
+  `.primary` (black on a light map, white on a dark one) with a thin opposite-colour halo (two 0.8 pt shadows at 0.6)
+  and a soft drop shadow, a small ground-shadow ellipse at the tip; lifts 12 pt while the map moves. The needle's end
+  is MEASURED from the glyph's pixels (`SymbolPinGlyph.measure`: rasterise at 3×, scan up the centre band; for a glyph
+  with an ellipse, past its stroke and hollow) — SF glyphs carry padding — and placed on `PickPin.tip`. The map's
+  `PickPinView` hosts it (UIHostingController view, tip at `pick.pinPoint`, colour scheme from the map's own override);
+  the time editor's `CenterPin` offsets it so the tip sits on the map centre. The simulators won't open the map, so
+  DEBUG `-demoPinRender` draws it (resting + lifted) over MKMapSnapshotter tiles in the four looks → <app data>/tmp/
+  pin-<look>.png, and pincheck-<look>.png with a 1 px red cross on the true spot.
 - **Transitions** (owner, again: "still not smooth"): the two-step timers are gone. The prayer page
   is one self-sizing column (`fixedSize` + `onGeometryChange` → `setPageHeight`); the sheet's
   detent is always `pageDetent` = that height, animated with `LocationViewModel.sheetSpring`

@@ -2036,7 +2036,7 @@ struct MapPickOverlay: View {
 }
 
 /// The picking pin, a subview of the map, so its tip is exactly the point the spot is read from:
-/// the shared `PickPin` (the stick — D5818BB9), hosted here. Lifts while the map moves.
+/// the shared `PickPin` (Apple's `mappin` — D5818BB9), hosted here. Lifts while the map moves.
 final class PickPinView: UIView {
     private final class State: ObservableObject { @Published var lifted = false }
     private struct Host: View {
