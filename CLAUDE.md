@@ -223,7 +223,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   real height, @Observable) places the ? / "Back to …" above it (`AboveSheet`) and centres pins above it.
 - Explore (Prayers · Mosques — no Qibla: it's home; the lit layer again or ✕ goes back) sits under the globe / locate
   capsule; the ? is bottom right. DEBUG `-demoPrayerPins`, `-demoMapLayer prayers|mosques [-demoMapDetent small]
-  [-demoMapTour YES]` (pin → pin → back). Test the map on an iOS 27 sim.
+  [-demoMapTour YES]` (pin → pin → back), `-demoMapEdit YES` (with prayers: Edit → time → Change location → Done → Save
+  → Undo ×2, logs "MAPEDIT" with the sheet's height). Test the map on an iOS 27 sim.
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
 - Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).

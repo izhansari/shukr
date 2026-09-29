@@ -1390,6 +1390,10 @@ struct LocationMapContentView: View {
                 }
                 // `-demoMapTour YES`: a pin, another pin, back to the list, 3 s apart (a recording
                 // of the one sheet — simulated taps can't reach map pins everywhere).
+                if UserDefaults.standard.string(forKey: "demoMapEdit") != nil, layer == "prayers" {
+                    try? await Task.sleep(for: .seconds(3))
+                    if let first = viewModel.visiblePrayers.first(where: { $0.timeAtComplete != nil }) { viewModel.open(first) }
+                }
                 if UserDefaults.standard.bool(forKey: "demoMapTour") {
                     try? await Task.sleep(for: .seconds(4))
                     if layer == "mosques" {
@@ -2282,7 +2286,48 @@ struct PrayerSpotDetail: View {
             draftAddress = nil
             if let draftSpot { draftAddress = await PrayerSpotAddress.lookUp(draftSpot) }
         }
+        #if DEBUG
+        .task { await demoEdit() }
+        #endif
     }
+
+    #if DEBUG
+    /// `-demoMapEdit YES` (with `-demoMapLayer prayers`): Edit → an earlier time → Change location →
+    /// the map moves → Done → Save → Undo time → Undo spot, 2–3 s apart, logging the sheet's height
+    /// ("MAPEDIT"). The same calls the buttons make; simulated taps can't reach this sheet everywhere.
+    private static var demoEditRan = false
+    private func demoEdit() async {
+        guard UserDefaults.standard.string(forKey: "demoMapEdit") != nil, !Self.demoEditRan else { return }
+        Self.demoEditRan = true
+        func log(_ step: String) {
+            print("MAPEDIT \(step): mode=\(viewModel.spotMode) detent=\(viewModel.sheetDetent) page=\(Int(viewModel.pageHeight)) sheet=\(Int(viewModel.sheet.height))")
+        }
+        func wait(_ s: Double) async { try? await Task.sleep(for: .seconds(s)) }
+        await wait(2.5); log("page")
+        draftTime = prayer.timeAtComplete.map { min(max($0, editRange.lowerBound), editRange.upperBound) } ?? editRange.upperBound
+        draftSpot = nil
+        viewModel.setSpotMode(.editTime)
+        await wait(2.5); log("edit")
+        draftTime = max(editRange.lowerBound, draftTime.addingTimeInterval(-10 * 60))
+        await wait(2); log("time -10 min")
+        if let from = spot { viewModel.startPicking(prayer, at: from, recorded: prayer.recordedSpot ?? spot) }
+        await wait(2.5); log("picking")
+        if let from = spot { viewModel.jumpPick(to: CLLocationCoordinate2D(latitude: from.latitude + 0.0012, longitude: from.longitude)) }
+        await wait(2.5)
+        if let mapView = viewModel.mapView { draftSpot = viewModel.pickedCoordinate(on: mapView) }
+        viewModel.stopPicking()
+        await wait(2.5); log("picked → editor")
+        save()
+        await wait(3); log("saved (timeEdited=\(prayer.timeEdited) spotEdited=\(prayer.spotEdited))")
+        prayerViewModel.revertPrayerTime(prayer)
+        viewModel.refreshPins()
+        await wait(2.5); log("undo time (timeEdited=\(prayer.timeEdited))")
+        prayerViewModel.revertPrayerLocation(prayer)
+        viewModel.refreshPins()
+        viewModel.focus(on: prayer, sheetFraction: viewModel.pageFraction)
+        await wait(2.5); log("undo spot (spotEdited=\(prayer.spotEdited))")
+    }
+    #endif
 
     /// The reading page under the header: when, where, and a quiet Edit (owner: the big button was
     /// far too loud).
