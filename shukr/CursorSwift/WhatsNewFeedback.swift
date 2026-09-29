@@ -106,6 +106,9 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         return kind == .idea ? (area.map { "Idea · \($0)" } ?? "Idea") : topicTitle
     }
     var isAnswer: Bool { kind.isVerdict && ask != nil }
+    /// A v1–v3 note: no change attached, and not one of v4's card-less kinds (a top-of-page idea, a Ready
+    /// for TestFlight note) — "no card" alone doesn't mean old.
+    var isV3Note: Bool { onEntry == nil && (kind == .works || kind == .issue || kind == .note) }
 }
 
 /// Where something he said stands.
@@ -162,7 +165,7 @@ final class FeedbackStore {
         let dayAgo = Date().addingTimeInterval(-24 * 3600)
         return items.filter { item in
             // v1–v3 notes (no change attached) that the team has: history, in Everything you've said.
-            if case .received(let d) = state(item) { return item.onEntry != nil && d > dayAgo }
+            if case .received(let d) = state(item) { return !item.isV3Note && d > dayAgo }
             return true
         }
         .sorted { $0.updated > $1.updated }

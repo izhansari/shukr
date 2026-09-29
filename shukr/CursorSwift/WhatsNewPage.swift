@@ -432,7 +432,8 @@ private struct AnswersRow: View {
             if open {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(pending) { item in
-                        AnswerCard(item: item, edit: item.onEntry == nil && item.kind != .idea ? nil : { edit(item) })
+                        // A v3 note isn't edited here, nor a Ready for TestFlight note (nothing to edit).
+                        AnswerCard(item: item, edit: item.isV3Note || item.kind == .ship ? nil : { edit(item) })
                     }
                     if pending.isEmpty {
                         Text("The team has read everything you've said.")
