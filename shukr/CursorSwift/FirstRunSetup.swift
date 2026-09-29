@@ -798,13 +798,13 @@ private struct StepTitle: View {
     }
 }
 
-/// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause
-/// screen's Resume), not a solid fill.
 extension EnvironmentValues {
     /// The setup step was opened from the review and goes back to it: "Continue" reads "Done".
     @Entry var setupReturnsToReview = false
 }
 
+/// The one primary button: the app's calm style (sage text on a soft sage tint, like the pause
+/// screen's Resume), not a solid fill.
 struct PrimaryButton: View {
     let title: String
     var enabled = true
