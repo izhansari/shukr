@@ -541,6 +541,8 @@ private struct AskCard: View {
         }
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        // An edge all round, so the picture reads as part of its card (owner, 2026-09-29).
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
     }
 
     private var meta: String {

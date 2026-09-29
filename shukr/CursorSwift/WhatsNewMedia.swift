@@ -6,8 +6,9 @@
 //  multi upload photos / vids").
 //  - `NoteComposer`: Works / Not yet (on something he asked for) or a comment (any change), words, and
 //    any number of photos and videos from the library, plus the camera.
-//  - A photo opens in `PhotoMarkupView` (PencilKit + Apple's tool picker); Done saves the drawing as a
-//    new photo right after the original, which stays (he can remove either).
+//  - A photo opens in `PhotoMarkupView` (PencilKit + Apple's tool picker); Done puts the drawn version in
+//    the photo's place (owner, 2026-09-29). Until the note is saved, opening it again brings back the
+//    strokes on the untouched photo (erase / undo still work); Save keeps only the drawn version.
 //  - Videos are exported to 960×540 H.264, at most 60 s, so a pull off the phone stays quick
 //    (a 30 s 4K clip is 100+ MB).
 //
@@ -40,6 +41,8 @@ struct NoteComposer: View {
     @State private var loading = 0
     @State private var showCamera = false
     @State private var marking: MarkupTarget?
+    /// Drawn photos in this edit: shown name → the untouched photo and its strokes (re-editable until Save).
+    @State private var drawn: [String: DrawnPhoto] = [:]
     @State private var playing: PlayTarget?
     @State private var notice: String?
     @State private var confirmDiscard = false
@@ -121,11 +124,9 @@ struct NoteComposer: View {
             .ignoresSafeArea()
         }
         .fullScreenCover(item: $marking) { target in
-            PhotoMarkupView(name: target.name) { data in
-                guard let data, let name = store.storeMedia(data, ext: "jpg") else { return }
-                // The drawn copy goes right after the original, which stays.
-                if let i = media.firstIndex(of: target.name) { media.insert(name, at: i + 1) } else { media.append(name) }
-                added.append(name)
+            let earlier = drawn[target.name]
+            PhotoMarkupView(name: earlier?.base ?? target.name, drawing: earlier?.drawing) { result in
+                finishMarkup(target.name, earlier: earlier, result)
             }
         }
         .sheet(item: $playing) { target in
@@ -178,7 +179,7 @@ struct NoteComposer: View {
             .foregroundStyle(Color.sage)
             .buttonStyle(.plain)
             .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-            Text(notice ?? "Tap a photo to draw on it; the original is kept too. Videos keep their first minute.")
+            Text(notice ?? "Tap a photo to draw on it. Videos keep their first minute.")
                 .font(.caption).foregroundStyle(notice == nil ? .secondary : Color.orange).padding(.leading, 4)
         }
     }
@@ -217,6 +218,26 @@ struct NoteComposer: View {
                 if video { playing = PlayTarget(name: name) } else { marking = MarkupTarget(name: name) }
             }
             .accessibilityLabel(video ? "Video, tap to play" : "Photo, tap to draw on it")
+    }
+
+    /// The drawn version takes the photo's place; clearing every stroke puts the untouched photo back.
+    private func finishMarkup(_ shown: String, earlier: DrawnPhoto?, _ result: MarkupResult) {
+        let base = earlier?.base ?? shown
+        var replacement: String?
+        switch result {
+        case .cancelled: return
+        case .cleared: replacement = earlier == nil ? nil : base
+        case .drawn(let data, let drawing):
+            guard let name = store.storeMedia(data, ext: "jpg") else { return }
+            added.append(name)
+            drawn[name] = DrawnPhoto(base: base, drawing: drawing)
+            replacement = name
+        }
+        guard let replacement, let i = media.firstIndex(of: shown) else { return }
+        media[i] = replacement
+        drawn[shown] = nil
+        // An earlier drawn version made in this edit is gone for good.
+        if earlier != nil, added.contains(shown) { store.discardMedia([shown]); added.removeAll { $0 == shown } }
     }
 
     private func append(_ name: String) {
@@ -263,6 +284,7 @@ struct NoteComposer: View {
     }
 
     private struct MarkupTarget: Identifiable { let name: String; var id: String { name } }
+    private struct DrawnPhoto { let base: String; let drawing: PKDrawing }
     private struct PlayTarget: Identifiable { let name: String; var id: String { name } }
 }
 
@@ -354,11 +376,20 @@ func exportVideo(_ url: URL) async throws -> (URL, Bool) {
 
 // MARK: - Drawing on a photo
 
+enum MarkupResult {
+    case cancelled
+    /// Done with no strokes left.
+    case cleared
+    /// The photo with the drawing baked in (JPEG), and the strokes (to edit again until the note is saved).
+    case drawn(Data, PKDrawing)
+}
+
 /// Full screen: the photo with a PencilKit canvas over exactly its frame and Apple's tool picker.
-/// Done hands back the photo with the drawing baked in (JPEG), or nil on Cancel.
 struct PhotoMarkupView: View {
     let name: String
-    let onDone: (Data?) -> Void
+    /// Strokes from an earlier pass (reopened before the note was saved).
+    var drawing: PKDrawing? = nil
+    let onDone: (MarkupResult) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var image: UIImage?
     @State private var model = MarkupModel()
@@ -386,7 +417,7 @@ struct PhotoMarkupView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onDone(nil); dismiss() }.foregroundStyle(.white)
+                    Button("Cancel") { onDone(.cancelled); dismiss() }.foregroundStyle(.white)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { finish() }.fontWeight(.semibold).disabled(image == nil)
@@ -397,6 +428,7 @@ struct PhotoMarkupView: View {
         .task {
             guard let url = FeedbackStore.shared.mediaURL(name) else { return }
             image = await Task.detached(priority: .userInitiated) { UIImage(contentsOfFile: url.path)?.preparingForDisplay() }.value
+            if let drawing { model.canvas.drawing = drawing }
         }
     }
 
@@ -407,9 +439,9 @@ struct PhotoMarkupView: View {
     }
 
     private func finish() {
-        guard let image, model.size.width > 0 else { dismiss(); return }
+        guard let image, model.size.width > 0 else { onDone(.cancelled); dismiss(); return }
         let drawing = model.canvas.drawing
-        guard !drawing.strokes.isEmpty else { onDone(nil); dismiss(); return }
+        guard !drawing.strokes.isEmpty else { onDone(.cleared); dismiss(); return }
         let scale = image.size.width / model.size.width
         let ink = drawing.image(from: CGRect(origin: .zero, size: model.size), scale: scale)
         let format = UIGraphicsImageRendererFormat()
@@ -419,7 +451,7 @@ struct PhotoMarkupView: View {
             image.draw(in: rect)
             ink.draw(in: rect)
         }
-        onDone(composed.jpegData(compressionQuality: 0.85))
+        if let data = composed.jpegData(compressionQuality: 0.85) { onDone(.drawn(data, drawing)) } else { onDone(.cancelled) }
         dismiss()
     }
 }
