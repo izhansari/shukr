@@ -1185,6 +1185,12 @@
       "title": "Setup opens on a new first page in the original welcome's look: the moving green gradient, the glass circle and \"welcome to shukr\"; a tap drains it away into the setup", "headline": "The original welcome, as the first page",
       "tryIt": ["Settings → Run setup again: a blank page, then the gradient fades in, the circle, \"welcome to shukr\", \"tap to continue\"", "Tap anywhere: the circle goes, the colour drains away while it still moves, then \"Assalamu alaikum\" comes in piece by piece", "Check the words read in light and dark; the gradient isn't anywhere else (not on the lost-location page or the everyday launch)"],
       "checked": "sim", "shots": ["wn-setup-opening.jpg"], "asked": "I like the old style for its gradient and the soft movement. Use it for one new page at the start of onboarding, and nowhere else in the app for now. It shows on a new install and on \"Run setup again\". It's not on the lost-location screen."
+    },
+    {
+      "id": "widget-next-13", "date": "2026-09-29", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "title": "Prayers widget: the ring's unfilled track is plain grey again, not tinted with the score colour; only the arc is coloured", "headline": "Ring track plain again, no tint",
+      "tryIt": ["During a prayer, look at the Prayers widget: the arc is in the score colour, the rest of the ring plain grey (light and dark)", "Tap the ring: the time flips, the arc stays put"],
+      "checked": "sim", "shots": ["wn-widget-track-plain.jpg"], "addresses": ["BB277A98"]
     }
   ]
 }

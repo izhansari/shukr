@@ -1069,6 +1069,13 @@ memo requests in). **No schema change** in any round — the watch keeps its own
 - The Prayers timeline has an extra entry at the shown prayer's start and end (2–3 entries), so
   the Lock Screen switches dashed → live on time; the views use `entry.date`, never `Date()`
   (WidgetKit can render future entries ahead of time).
+- **Widget ring track (2026-09-29, feedback BB277A98):** the live arc is the app's thin arc masked by the stock
+  `ProgressView(timerInterval:)`, whose unfilled track is ~30 % alpha — so the score colour showed round the whole track
+  (at ~9 % with fa63e22's double mask, ~30 % once 8a6f160 went to one mask). `LiveArc.liveRing` now thresholds the mask:
+  white on black, `compositingGroup` → brightness −0.35 → contrast ×3 → `luminanceToAlpha`, so the track passes nothing
+  and the fill everything. Sim ✓ on a real home-screen widget (London location + `-demoWidget "Fajr=1.0,Dhuhr=0.8"` for a
+  live Asr): plain track light / dark, the fill still advances, a tap's reload dips about as before. The DEBUG widget
+  shots draw a static arc (`snapshotAt`), so they can't show the live mask — check it on a placed widget.
 - **Prayers widget, current (2026-09-28, Sami, ee0da02, feedback D56CB3C2):** no dots row (`PrayerDotsRow` deleted); the
   mark-prayed check top left, top right empty; `WidgetChevronButton` (chevron.up in a faint 22 pt circle, 30 pt target)
   between the Edit Widget bottom corners opens today's times, and chevron.down in the same spot goes back (the list's top

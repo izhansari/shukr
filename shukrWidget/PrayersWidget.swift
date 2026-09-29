@@ -749,8 +749,12 @@ struct PrayersWidgetView: View {
     /// between timeline reloads. A widget can't animate its own drawing; the stock timer-driven
     /// `ProgressView(timerInterval:)` is what the system keeps updating, but it draws a thick,
     /// round-capped ring with a tinted track. So it's used only as a mask for the app's own thin
-    /// arc: sized so its ~8.7 pt stroke covers the arc's radius, masked twice so its track (about
-    /// 30 % alpha) is squared down to ~9 % and barely tints the band.
+    /// arc, sized so its ~8.7 pt stroke covers the arc's radius. Its track (about 30 % alpha) is
+    /// thresholded away: drawn white on black, pushed down and through a steep contrast, then
+    /// luminance → alpha, so the unfilled track lets nothing through and the fill all of it
+    /// (owner, BB277A98: "we never had the background ring colored"). Masking twice (fa63e22) only
+    /// squared the tint to ~9 % and made a reload dim the arc; one plain mask (8a6f160) showed it
+    /// at ~30 %.
     struct LiveArc: View {
         let start: Date
         let end: Date
@@ -764,8 +768,8 @@ struct PrayersWidgetView: View {
         /// animation or content transition: a reload (the ring's tap flips its time text) used to
         /// crossfade the masked live arc, and with the alpha squared by the double mask the arc
         /// visibly dipped to ~70 % for half a second (owner, 2026-09-28). One mask: the dip is
-        /// ~10 % mid-crossfade (sim frames), the price is a faintly tinted unfilled track. The stock
-        /// ring dips the same and is fat; a static arc doesn't dip but doesn't move.
+        /// ~10 % mid-crossfade (sim frames). The stock ring dips the same and is fat; a static arc
+        /// doesn't dip but doesn't move.
         var body: some View {
             arc
                 .transaction { $0.animation = nil }
@@ -795,15 +799,23 @@ struct PrayersWidgetView: View {
         }
 
         private var liveRing: some View {
-            ProgressView(timerInterval: start...end, countsDown: false) {
-                EmptyView()
-            } currentValueLabel: {
-                EmptyView()
+            ZStack {
+                Color.black
+                ProgressView(timerInterval: start...end, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.circular)
+                .tint(.white)
+                .labelsHidden()
             }
-            .progressViewStyle(.circular)
-            .tint(.white)
-            .labelsHidden()
             .frame(width: 98, height: 98)
+            // Track ≈ 0.3 grey → below 0; fill 1 → ~1 (brightness −0.35, then contrast ×3 round 0.5).
+            .compositingGroup()
+            .brightness(-0.35)
+            .contrast(3)
+            .luminanceToAlpha()
         }
     }
 
