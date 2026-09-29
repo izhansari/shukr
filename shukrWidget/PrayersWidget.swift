@@ -167,6 +167,9 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         } else if shown.current, shown.end > base.date {
             moments = [shown.end]
         }
+        // …and an hour before it ends: the Lock Screen's circle shows the time left from then.
+        let lastHour = shown.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
+        if shown.end > shown.start, lastHour > base.date, lastHour > shown.start { moments.append(lastHour) }
         // …and when its colour changes (Perfect → On time → Late), so the ring's colour moves on
         // time like the app's (the fill itself runs live). Two more entries at most.
         if shown.end > shown.start {
@@ -235,6 +238,27 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     for phoneDark in [false, true] {
                         render(open.at(date, list: false), size: size, phoneDark: phoneDark,
                                "\(px)-asr-\(label)-\(phoneDark ? "phoneDark" : "phoneLight")")
+                    }
+                }
+            }
+            // The Lock Screen circle through Asr (not marked): more than an hour left, then the last hour.
+            if size == 158, let asr = entry.prayerDict["Asr"] {
+                var open = entry
+                open.completedScores = entry.completedScores.filter { $0.key != "Asr" }
+                for (label, date) in [("early", asr.start.addingTimeInterval(20 * 60)),
+                                      ("lastHour", asr.end.addingTimeInterval(-42 * 60)),
+                                      ("last5", asr.end.addingTimeInterval(-5 * 60))] {
+                    let shown = open.at(date, list: false)
+                    for (look, bg, fg) in [("vibrant", Color.black, Color.white), ("wallpaper", Color(red: 0.23, green: 0.35, blue: 0.5), Color.white)] {
+                        let view = PrayerLockScreenView(entry: shown, family: .accessoryCircular)
+                            .frame(width: 76, height: 76)
+                            .foregroundStyle(fg)
+                            .padding(10)
+                            .background(bg)
+                            .environment(\.colorScheme, .dark)
+                        let renderer = ImageRenderer(content: view)
+                        renderer.scale = 3
+                        if let data = renderer.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent("lock-circular-\(label)-\(look).png")) }
                     }
                 }
             }
@@ -1180,6 +1204,12 @@ struct PrayerLockScreenView: View {
         PrayersWidgetView.WidgetPrayerCircleView(entry: entry).relevantPrayer
     }
     private var live: Bool { prayer.current && prayer.end > prayer.start }
+    /// On, not marked (a marked prayer isn't shown — the circle moves on), under an hour left at
+    /// this entry's time. The timeline has an entry at end − 60 min, so it switches on time.
+    private var lastHour: Bool {
+        live && prayer.end > entry.date && prayer.end.timeIntervalSince(entry.date) <= PrayerLockScreenView.timeLeftFrom
+    }
+    static let timeLeftFrom: TimeInterval = 60 * 60
     private static let clock: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "h:mm"
@@ -1206,9 +1236,19 @@ struct PrayerLockScreenView: View {
                     VStack(spacing: 0) {
                         Image(systemName: prayerIcon(for: prayer.name))
                             .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
-                        Text(prayer.name)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .lineLimit(1).minimumScaleFactor(0.6)
+                        if lastHour {
+                            // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left,
+                            // live, in place of the name — the symbol says which prayer.
+                            Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
+                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .multilineTextAlignment(.center)
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                        } else {
+                            Text(prayer.name)
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .lineLimit(1).minimumScaleFactor(0.6)
+                        }
                     }
                 }
                 .progressViewStyle(.circular)
@@ -1243,7 +1283,9 @@ struct PrayerLockScreenView: View {
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
                 Spacer(minLength: 0)
                 if live {
-                    Text(prayer.end, style: .relative)
+                    // A short live timer ("26:53", "1:26:53"): the relative style ("26 min, 53 sec")
+                    // truncated the prayer's name to "Mag…".
+                    Text(timerInterval: entry.date...max(prayer.end, entry.date), countsDown: true, showsHours: true)
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .monospacedDigit()
                         .multilineTextAlignment(.trailing)

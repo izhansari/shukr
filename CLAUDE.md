@@ -243,6 +243,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
 - Prayers (ring, mark check, times list, configurable corners), Lock Screen family, Zikr (rows open the task), Name of the Day, Daily Ayah (once revealed), Controls (Qibla, Tasbeeh). Kinds in `WidgetKinds`.
+- Lock Screen circular (`PrayerLockScreenView`, ask lockscreen-time-left, 2026-09-29): in a live, unmarked prayer's last hour (`timeLeftFrom` 60 min, judged at `entry.date`) the name gives way to `Text(timerInterval:)` under the symbol; the timeline adds an entry at end − 60 min. The rectangular's trailing time left is a timer too (the relative style truncated the name). `ImageRenderer` can't draw the live ring / timer — check in the Lock Screen widget gallery.
 
 **Apple Watch** (shukrWatch/, shukrWatchShared/, WatchSync.swift, WatchZikrSync.swift)
 - Pages Zikr ← Salah → Settings; the phone's ring; marking with Undo through an id'd outbox; qibla arrow (true north); zikr wheel and counter (Crown = one count per nudge, `WatchCrownGate`), two-page pause, `WatchHaptics`, Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
