@@ -122,23 +122,22 @@ extension AnyTransition {
 
 // MARK: - Prayer spots
 
-/// Prayer spots' filters, in the sheet (they were a glass bar on the map): the range menu and the
-/// five prayers as chips. With all shown none is lit; tap one = only it; tap more to add; tap the
-/// last lit one = all again.
-struct PrayerFilterRow: View {
+/// Prayer spots' filters as one control on the header's right, like the mosques' drive / walk
+/// switch (owner, map-one-sheet: the row under the header left an odd gap on the small sheet).
+/// The capsule names the range and lights green while anything is filtered; the menu has the
+/// five prayers (ticked = shown; unticking the last one shows them all again), the ranges and
+/// "Only at a masjid".
+struct PrayerFilterMenu: View {
     @ObservedObject var viewModel: LocationViewModel
     let custom: () -> Void
 
     private let order = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
-    private var showingAll: Bool { viewModel.selectedPrayerNames == viewModel.defaultPrayerNames }
 
     private func toggle(_ name: String) {
         triggerSomeVibration(type: .light)
         var names = viewModel.selectedPrayerNames
-        if showingAll { names = [name] }
-        else if names.contains(name) { names.remove(name) }
-        else { names.insert(name) }
-        if names.isEmpty || names == viewModel.defaultPrayerNames { names = viewModel.defaultPrayerNames }
+        if names.contains(name) { names.remove(name) } else { names.insert(name) }
+        if names.isEmpty { names = viewModel.defaultPrayerNames }
         withAnimation(.snappy(duration: 0.2)) { viewModel.selectedPrayerNames = names }
     }
 
@@ -154,47 +153,50 @@ struct PrayerFilterRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Menu {
-                Toggle(isOn: $viewModel.onlyAtMasjid) {
-                    Label("Only at a masjid", systemImage: "building.columns")
+        Menu {
+            Section("Prayers") {
+                ForEach(order, id: \.self) { name in
+                    Button { toggle(name) } label: {
+                        if viewModel.selectedPrayerNames.contains(name) {
+                            Label(name, systemImage: "checkmark")
+                        } else {
+                            Text(name)
+                        }
+                    }
                 }
-                Divider()
+            }
+            Section("When") {
                 ForEach(LocationViewModel.QuickRange.allCases) { range in
                     Button {
                         if range == .custom { custom() } else { viewModel.apply(range) }
                     } label: {
-                        Label(range == .custom ? "Custom…" : range.rawValue, systemImage: range.symbol)
+                        if viewModel.quickRange == range {
+                            Label(range == .custom ? "Custom…" : range.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(range == .custom ? "Custom…" : range.rawValue)
+                        }
                     }
                 }
-            } label: {
-                let lit = viewModel.quickRange != .allTime || viewModel.onlyAtMasjid
-                HStack(spacing: 3) {
-                    Text(rangeTitle).lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
-                }
-                .font(.system(size: 13, weight: .medium, design: .rounded))
-                .foregroundStyle(lit ? Color.green : Color.primary)
-                .padding(.horizontal, 12)
-                .frame(height: 34)
-                .background(Capsule().fill(lit ? Color.green.opacity(0.14) : Color.primary.opacity(0.06)))
-                .contentShape(Capsule())
             }
-            Spacer(minLength: 0)
-            ForEach(order, id: \.self) { name in
-                let lit = !showingAll && viewModel.selectedPrayerNames.contains(name)
-                Button { toggle(name) } label: {
-                    Image(systemName: prayerSymbol(name))
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(lit ? Color.green : Color.primary.opacity(0.7))
-                        .frame(width: 34, height: 34)
-                        .background(Circle().fill(lit ? Color.green.opacity(0.16) : Color.primary.opacity(0.06)))
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(lit ? "\(name), shown" : name)
+            Toggle(isOn: $viewModel.onlyAtMasjid) {
+                Label("Only at a masjid", systemImage: "building.columns")
             }
+        } label: {
+            let lit = viewModel.filtersActive
+            HStack(spacing: 4) {
+                Image(systemName: "line.3.horizontal.decrease")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(rangeTitle).lineLimit(1)
+            }
+            .font(.system(size: 13, weight: .medium, design: .rounded))
+            .foregroundStyle(lit ? Color.green : Color.secondary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(Capsule().fill(lit ? Color.green.opacity(0.14) : Color.primary.opacity(0.05)))
+            .contentShape(Capsule())
         }
+        .menuActionDismissBehavior(.disabled)   // tick several prayers without reopening it
+        .accessibilityLabel("Filter prayer spots")
     }
 }
 
@@ -269,12 +271,11 @@ struct PrayerSpotsHome: View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close)
-                        .id("top")
-                    // Small is the header alone (like the mosques'); the filters would be cut in half.
-                    PrayerFilterRow(viewModel: viewModel, custom: custom)
-                        .opacity(collapsed ? 0 : 1)
-                        .animation(.easeInOut(duration: 0.2), value: collapsed)
+                    MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close) {
+                        PrayerFilterMenu(viewModel: viewModel, custom: custom)
+                    }
+                    .id("top")
+                    Group {
                     if days.isEmpty {
                         Text(viewModel.prayers.isEmpty
                              ? "Prayers you mark show up here, pinned where you prayed them."
@@ -288,6 +289,10 @@ struct PrayerSpotsHome: View {
                     ForEach(days, id: \.date) { day in
                         daySection(day.date, day.prayers)
                     }
+                    }
+                    // Small is the header alone, nothing peeking under it (owner, map-one-sheet).
+                    .opacity(collapsed ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.2), value: collapsed)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)

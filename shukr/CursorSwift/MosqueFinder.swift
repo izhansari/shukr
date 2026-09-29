@@ -319,6 +319,7 @@ struct MosqueListSheet: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                     .id("top")
+                Group {
                 if searching && items.isEmpty {
                     HStack(spacing: 10) {
                         ProgressView()
@@ -394,6 +395,10 @@ struct MosqueListSheet: View {
                         .foregroundStyle(.tertiary)
                         .padding(.leading, 4)
                 }
+                }
+                // Small is the header alone, nothing peeking under it (as the prayer spots').
+                .opacity(collapsed ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: collapsed)
             }
             .padding(.horizontal, 20)
             .padding(.top, 20)

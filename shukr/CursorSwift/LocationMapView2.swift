@@ -64,7 +64,7 @@ final class LocationViewModel: ObservableObject {
     /// drag and kept across pin taps and pages. Editing a prayer sizes it to the page for a while
     /// (`setSpotMode`), then gives the user's height back.
     @Published var sheetDetent: PresentationDetent = .medium
-    static let sheetSmall: PresentationDetent = .height(96)
+    static let sheetSmall: PresentationDetent = .height(84)
     static let browseDetents: Set<PresentationDetent> = [sheetSmall, .medium, .large]
     /// Where the sheet actually is on screen (for the controls above it and centring pins).
     let sheet = SheetMetrics()
@@ -1384,6 +1384,10 @@ struct LocationMapContentView: View {
             if let layer = UserDefaults.standard.string(forKey: "demoMapLayer") {
                 try? await Task.sleep(for: .seconds(2))
                 setMode(prayers: layer == "prayers", mosques: layer == "mosques")
+                if UserDefaults.standard.bool(forKey: "demoExploreOpen") {   // the dock, open (screenshots)
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) { exploreOpen = true }
+                }
                 if let d = UserDefaults.standard.string(forKey: "demoMapDetent") {
                     try? await Task.sleep(for: .seconds(1))
                     viewModel.sheetDetent = d == "small" ? LocationViewModel.sheetSmall : d == "large" ? .large : .medium
@@ -1459,8 +1463,22 @@ struct ExploreDock: View {
     private let spring = Animation.spring(response: 0.42, dampingFraction: 0.8)
 
     var body: some View {
-        HStack(spacing: 0) {
+        // Under the globe / locate capsule it opens downwards (owner, map-one-sheet): the button
+        // stays put and the layers drop in below it.
+        VStack(spacing: 0) {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(spring) { open.toggle() }
+            } label: {
+                Image(systemName: open ? "xmark" : closedIcon)
+                    .contentTransition(.symbolEffect(.replace))
+                    .mapControlIcon(tint: open || active == .qibla ? nil : .green)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(open ? "Close" : "Explore: prayer spots, mosques")
             if open {
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
+                    .transition(.opacity)
                 ForEach(Array(items.enumerated()), id: \.offset) { i, item in
                     let on = active == item.0
                     Button {
@@ -1473,35 +1491,27 @@ struct ExploreDock: View {
                                 .font(.system(size: 17, weight: .medium))
                                 .frame(height: 20)
                             Text(item.2)
-                                .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                                .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                         }
                         .foregroundStyle(on ? Color.green : Color.primary)
-                        .frame(width: 68, height: 56)
-                        .background(Capsule().fill(on ? Color.green.opacity(0.14) : .clear).padding(.vertical, 4))
+                        .frame(width: 46, height: 54)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(on ? Color.green.opacity(0.14) : .clear).padding(.horizontal, 3).padding(.vertical, 2))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.4, anchor: .trailing).combined(with: .opacity)
-                            .animation(spring.delay(0.04 * Double(items.count - i))),
+                        insertion: .scale(scale: 0.4, anchor: .top).combined(with: .opacity)
+                            .animation(spring.delay(0.04 * Double(i + 1))),
                         removal: .opacity.animation(.easeOut(duration: 0.12))))
                 }
-                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 0.5, height: 28)
-                    .transition(.opacity)
             }
-            Button {
-                triggerSomeVibration(type: .light)
-                withAnimation(spring) { open.toggle() }
-            } label: {
-                Image(systemName: open ? "xmark" : closedIcon)
-                    .contentTransition(.symbolEffect(.replace))
-                    .mapControlIcon(tint: open || active == .qibla ? nil : .green)
-                    .frame(height: open ? 56 : 46)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(open ? "Close" : "Explore: prayer spots, mosques")
         }
-        .padding(.horizontal, open ? 6 : 0)
+        .padding(.bottom, open ? 4 : 0)
+        // As wide as the capsule above it, so the column of controls stays straight.
+        .frame(width: 46)
         .mapGlass(Capsule(), tint: !open && active != .qibla ? .green : nil)
         .animation(spring, value: open)
     }
@@ -2361,10 +2371,10 @@ struct PrayerSpotDetail: View {
     /// The shared header: ‹ (not while editing — Save / Cancel decide), the prayer's icon in its
     /// score colour, name and date, the score, ✕.
     private var header: some View {
+        // No ✕ on a single prayer's page: ‹ is enough (owner, map-one-sheet).
         MapSheetHeader(back: editing ? nil : back,
                        title: prayer.displayName,
-                       subtitle: prayer.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()),
-                       close: editing ? nil : close) {
+                       subtitle: prayer.startTime.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year())) {
             Image(systemName: prayerSymbol(prayer.name))
                 .font(.title3)
                 .foregroundStyle(scoreColor)
