@@ -1139,7 +1139,7 @@
       "checked": "sim", "shots": ["wn-tasbeeh-haptics-off.jpg"], "asked": "we should have a setting to turn haptics off btw in case someone finds it annoying lol — counter only. btw im talking ab watch. but frank showing the no haptic toggle in the pause page is good"
     },
     {
-      "id": "first-run-setup-15", "date": "2026-09-29", "commit": "next", "time": null, "topic": "first-run-setup", "notes": null,
+      "id": "first-run-setup-15", "date": "2026-09-29", "commit": "58b3090", "time": "2026-09-29T04:17:38-04:00", "topic": "first-run-setup", "notes": null,
       "title": "Setup: a row tapped on the review opens just that step; Done takes you straight back to the review", "headline": "Edits go straight back to the review",
       "tryIt": ["Settings → Run setup again → go to the review → tap Fajr alarm: the button says Done, the ring stays full", "Change it → Done: you're back on the review with the new value, not on through the masjid step", "Tap Prayer times: the method step, then the madhab (Done) → back to the review. Back and Skip return to the review too"],
       "checked": "sim", "shots": ["wn-setup-edit-return.jpg"], "asked": "fix the flow on the on boarding if a user clicks one of the list items to go back to edit one of the pages we shouldn't have to go through the whole floor again"
