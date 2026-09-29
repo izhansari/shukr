@@ -190,11 +190,11 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             .appendingPathComponent("Library/Caches/widget-shots", isDirectory: true) else { return }
         try? FileManager.default.removeItem(at: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        PrayersWidgetView.LiveArc.snapshot = true
-        defer { PrayersWidgetView.LiveArc.snapshot = false }
+        defer { PrayersWidgetView.LiveArc.snapshotAt = nil }
         /// Drawn as the home screen would: `phoneDark` is the phone's appearance, the container
         /// colour is the entry's (Style can force it).
         func render(_ shown: PrayersWidgetEntry, size: Double, phoneDark: Bool, _ name: String) {
+            PrayersWidgetView.LiveArc.snapshotAt = shown.date
             let view = PrayersWidgetView(entry: shown)
                 .frame(width: size, height: size)
                 .background(shown.background)
@@ -611,7 +611,7 @@ struct PrayersWidgetView: View {
                             }
 
                             if relevantPrayer.current {
-                                LiveArc(start: relevantPrayer.start, end: relevantPrayer.end, color: progressColor, at: entry.date)
+                                LiveArc(start: relevantPrayer.start, end: relevantPrayer.end, color: progressColor)
                             }
                             
                             // Same type as the app's main circle and Insights ring (light, rounded,
@@ -755,25 +755,43 @@ struct PrayersWidgetView: View {
         let start: Date
         let end: Date
         let color: Color
-        /// The entry's time: only the DEBUG renders use it (ImageRenderer can't run the timer).
-        var at: Date = Date()
         #if DEBUG
-        static var snapshot = false
+        /// The DEBUG renders draw a static arc at this time (ImageRenderer can't run the timer).
+        static var snapshotAt: Date?
         #endif
 
+        /// One stable view with no per-render inputs (no AnyView, no entry time), and no
+        /// animation or content transition: a reload (the ring's tap flips its time text) used to
+        /// crossfade the masked live arc, and with the alpha squared by the double mask the arc
+        /// visibly dipped to ~70 % for half a second (owner, 2026-09-28). One mask: the dip is
+        /// ~10 % mid-crossfade (sim frames), the price is a faintly tinted unfilled track. The stock
+        /// ring dips the same and is fat; a static arc doesn't dip but doesn't move.
         var body: some View {
+            arc
+                .transaction { $0.animation = nil }
+                .contentTransition(.identity)
+                .transition(.identity)
+        }
+
+        @ViewBuilder private var arc: some View {
             #if DEBUG
-            if Self.snapshot {
+            if let at = Self.snapshotAt {
                 let f = end > start ? min(max(at.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
-                return AnyView(Circle().trim(from: 0, to: f)
+                Circle().trim(from: 0, to: f)
                     .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
-                    .rotationEffect(.degrees(-90)))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                live
             }
+            #else
+            live
             #endif
-            return AnyView(Circle()
+        }
+
+        private var live: some View {
+            Circle()
                 .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
                 .mask { liveRing }
-                .mask { liveRing })
         }
 
         private var liveRing: some View {
