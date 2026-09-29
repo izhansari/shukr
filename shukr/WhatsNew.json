@@ -1118,7 +1118,7 @@
       "checked": "sim", "shots": ["wn-widget-ring-steady.jpg"], "asked": "tapping the prayer ring in widget is different now. before tapping it would just change the time. now there's a visible flicker on the progress ring fill. idt we had that before."
     },
     {
-      "id": "completion-moment-2", "date": "2026-09-29", "commit": "next", "time": null, "topic": "completion-moment", "notes": null,
+      "id": "completion-moment-2", "date": "2026-09-29", "commit": "182d0fd", "time": "2026-09-29T03:52:59-04:00", "topic": "completion-moment", "notes": null,
       "title": "Prayer list: tap a prayer's name (or anywhere left of its time) to mark it; the time still flips on its own", "headline": "Tap the name to mark a prayer",
       "tryIt": ["Salah page → swipe up for the list → tap a prayer's name (not only its circle): it's marked, with the usual moment", "Tap the time instead: it only flips (score, or the countdown for one to come) and never marks", "Tap a marked prayer's name → the \"mark as incomplete?\" check; hold it → the time editor, as before"],
       "checked": "sim", "shots": ["wn-prayer-row-tap.jpg"], "asked": "Make the hit boxes for the prayer list buttons easier to tap cause I was watching some beta testers and they were all having some issue with it so maybe if we tap even the name that registers is marking it but still make sure that tapping the time, lets us toggle the time text"
