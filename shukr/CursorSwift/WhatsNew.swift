@@ -81,6 +81,14 @@ struct WhatsNewChatVerdict: Decodable {
     var date: Date { WhatsNew.date(from: at) ?? .distantPast }
 }
 
+/// A TestFlight upload (whatsnew.py build, written by testflight.sh): "Next build" counts from the newest.
+struct WhatsNewBuild: Decodable {
+    let number: Int
+    let time: String
+    let commit: String
+    var date: Date { WhatsNew.date(from: time) ?? .distantPast }
+}
+
 /// Where an ask stands.
 enum AskStatus {
     /// Built and waiting for him: the newest live change is `latest`.
@@ -118,6 +126,7 @@ enum WhatsNew {
         var asks: [String: WhatsNewAsk] = [:]
         var entries: [WhatsNewEntry] = []
         var verdicts: [WhatsNewChatVerdict] = []
+        var builds: [WhatsNewBuild] = []
     }
 
     /// Line by line: a bad line is skipped (and logged), never the file. A repeated id (a union merge
@@ -138,6 +147,7 @@ enum WhatsNew {
             case "ask": if let a = try? decoder.decode(WhatsNewAsk.self, from: data) { f.asks[a.id] = a } else { bad += 1 }
             case "change": if let e = try? decoder.decode(WhatsNewEntry.self, from: data) { entries[e.id] = e } else { bad += 1 }
             case "verdict": if let v = try? decoder.decode(WhatsNewChatVerdict.self, from: data) { f.verdicts.append(v) } else { bad += 1 }
+            case "build": if let b = try? decoder.decode(WhatsNewBuild.self, from: data) { f.builds.append(b) } else { bad += 1 }
             default: bad += 1
             }
         }
@@ -148,6 +158,13 @@ enum WhatsNew {
 
     /// Every change, oldest first.
     static var entries: [WhatsNewEntry] { file.entries }
+    /// The newest TestFlight upload on record (ask wn-next-build).
+    static var lastBuild: WhatsNewBuild? { file.builds.max { ($0.date, $0.number) < ($1.date, $1.number) } }
+    /// "Next build": every live change after the last upload, oldest first.
+    static var sinceLastBuild: [WhatsNewEntry] {
+        let after = lastBuild?.date ?? .distantPast
+        return entries.filter { $0.live && $0.when > after }
+    }
     static var asks: [WhatsNewAsk] { Array(file.asks.values) }
     static func ask(_ id: String) -> WhatsNewAsk? { file.asks[id] }
     static func topic(_ id: String) -> WhatsNewTopic? { file.topics[id] }

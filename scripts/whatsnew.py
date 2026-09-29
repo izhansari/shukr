@@ -9,6 +9,8 @@ The file is JSON Lines: one record per line, never hand-edited. Four kinds:
            "status"?,"checked"}                                                   one visible change
   verdict {"kind":"verdict","ask","verdict":"works"|"notyet","words"?,"at","by":"chat"}
           his answer given in chat (Bradley records it; the phone's own answers live in its feedback.json)
+  build   {"kind":"build","number","time","commit"}   a TestFlight upload (testflight.sh writes it) — the app's
+          "Next build" lists the changes after the newest one
 
 `.gitattributes` merges this file with `merge=union`, so two branches that both append lines merge cleanly.
 New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint the same id.
@@ -34,7 +36,9 @@ New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint 
   whatsnew.py shot <png> <name>      → shukr/WhatsNewShots/wn-<name>.jpg (≤ 600 px) and prints the name
   whatsnew.py check                  validate the file (duplicate ids, missing shots, bad lengths, unknown areas)
   whatsnew.py areas-remap            one-time: every topic's old area → AREAS (Watch → Apple Watch, …)
-  whatsnew.py testflight --since <commit> [--out notes.txt]   TestFlight "What to Test" (≤ 4000 chars, no emoji)
+  whatsnew.py testflight --since <commit>|last [--out notes.txt]   TestFlight "What to Test" (≤ 4000 chars, no emoji);
+                                     `last` = the newest build record's commit
+  whatsnew.py build --number N [--commit <sha>] [--time <iso>]   record an upload (default: HEAD, its commit time)
   whatsnew.py convert                one-time: WhatsNew.json (v3) → WhatsNew.jsonl
 """
 import argparse, datetime, glob, json, os, re, secrets, subprocess, sys
@@ -63,6 +67,7 @@ KEY_ORDER = {
     "ask": ["kind", "id", "topic", "source", "note", "created", "words"],
     "change": ["kind", "id", "time", "topic", "asks", "notes", "status", "checked", "commit", "headline", "title", "tryIt", "shots"],
     "verdict": ["kind", "ask", "verdict", "at", "by", "words"],
+    "build": ["kind", "number", "time", "commit"],
 }
 
 
@@ -387,7 +392,13 @@ def check():
     for v in of(records, "verdict"):
         if v.get("ask") not in asks:
             problems.append(f"verdict for unknown ask {v.get('ask')!r}")
-    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict")))
+    numbers = [b.get("number") for b in of(records, "build")]
+    for b in of(records, "build"):
+        if not isinstance(b.get("number"), int) or not b.get("time") or not b.get("commit"):
+            problems.append(f"build record needs number / time / commit: {b}")
+    if len(numbers) != len(set(numbers)):
+        problems.append("a build number is recorded twice")
+    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict", "build")))
     for p in problems:
         print("✗ " + p)
     if problems:
@@ -434,8 +445,31 @@ def ids_at(commit):
     return ids
 
 
+def last_build(records):
+    builds = of(records, "build")
+    return max(builds, key=lambda b: (b.get("time", ""), b.get("number", 0))) if builds else None
+
+
+def build(number, commit=None, time=None):
+    records = load()
+    if any(b.get("number") == number for b in of(records, "build")):
+        sys.exit(f"build {number} is already recorded")
+    sha = (git("rev-parse", "--short", commit or "HEAD").strip())
+    if not sha:
+        sys.exit(f"unknown commit {commit!r}")
+    when = time or git("show", "-s", "--format=%cI", sha).strip() or now()
+    records.append({"kind": "build", "number": number, "time": when, "commit": sha})
+    save(records)
+    print(f"build {number} recorded: {sha} at {when}")
+
+
 def testflight(since, out):
     records = load()
+    if since == "last":
+        b = last_build(records)
+        if not b:
+            sys.exit("no build recorded yet (whatsnew.py build --number N --commit <sha>)")
+        since = b["commit"]
     topics = {t["id"]: t for t in of(records, "topic")}
     before = ids_at(since)
     changes = of(records, "change")
@@ -583,6 +617,13 @@ if __name__ == "__main__":
         check()
     elif cmd == "testflight" and len(rest) >= 2 and rest[0] == "--since":
         testflight(rest[1], rest[3] if len(rest) >= 4 and rest[2] == "--out" else None)
+    elif cmd == "build":
+        p = argparse.ArgumentParser(prog="whatsnew.py build")
+        p.add_argument("--number", type=int, required=True)
+        p.add_argument("--commit")
+        p.add_argument("--time")
+        a = p.parse_args(rest)
+        build(a.number, a.commit, a.time)
     elif cmd == "areas-remap":
         areas_remap()
     elif cmd == "convert":

@@ -33,6 +33,13 @@ there are 2+ areas); Every change has area chips (clipped ScrollView, never `scr
 header's "New idea" (no card, an area picker). `Kind.isVerdict` (works / issue) is what counts as an answer — never an idea
 or a comment. feedback.md: "## 💡 Idea — <area>" + "- From: `<change>` (<headline>)".
 
+**Next build (ask wn-next-build):** `build` records in the change log (`whatsnew.py build --number N [--commit] [--time]`;
+testflight.sh writes one after a confirmed upload; build 12 backfilled at 994ee5a). `WhatsNew.lastBuild` / `sinceLastBuild`
+(live changes after its time — the same set as `whatsnew.py testflight --since last`). A "Next build · N changes" row
+under Your answers → the list by area, "K of your asks in this build still need your answer" (tap → scrolls there), and
+"I'm happy with this — ready for TestFlight" = a `.ship` note (commits = the change ids; "## 🚀 Ready for TestFlight" at
+the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh.
+
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
 `merge=union`, so branches appending lines don't conflict; `whatsnew.py check` flags a line a merge kept twice.
@@ -68,7 +75,7 @@ shows "Bradley has it". Send on the page shares the .md and every file (TestFlig
 deferred a turn — a recursive dispatch_once crashed once). Never a horizontal ScrollView on the change page (BA0ECB7A).
 Decode screenshots / thumbnails off the main thread. DEBUG args: `-demoWhatsNew`, `-demoWhatsNewChange <id>`,
 `-demoWhatsNewTopic <id>`, `-demoWhatsNewPage said`, `-demoWhatsNewAnswers YES`, `-demoWhatsNewCompose <change id>`,
-`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots), `-demoWhatsNewIdea` / `-demoWhatsNewIdeaFrom <change id>`
+`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots), `-demoWhatsNewPage next` (Next build), `-demoWhatsNewIdea` / `-demoWhatsNewIdeaFrom <change id>`
 (+ `-demoIdeaText`, `-demoIdeaArea`: menus / segmented controls don't take simulated taps).
 
 **Other beta extras** (Your reminders' link, its Details and card previews) follow `WhatsNewAccess.beta`: DEBUG or any
@@ -1118,7 +1125,9 @@ Steps, when the owner says "push a new build":
    What's new screenshots (~230 KB, `wn-*.jpg`) are left out — or accept them (the page never shows
    in production) — and check the archive really drops them:
    `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
-1. **`scripts/testflight.sh`** (for the App Store release itself: `SHUKR_APPSTORE=1 scripts/testflight.sh`, which leaves out the What's new screenshots) bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
+1. **`scripts/testflight.sh`** (it now checks the export log for a real upload — it used to print "uploaded" regardless —
+   and then records the build in WhatsNew.jsonl with `whatsnew.py build`: commit it with the bump; notes can use
+   `whatsnew.py testflight --since last`) (for the App Store release itself: `SHUKR_APPSTORE=1 scripts/testflight.sh`, which leaves out the What's new screenshots) bumps `CURRENT_PROJECT_VERSION` everywhere (12 occurrences, the
    watch targets included), archives Release (iPhone app + embedded watch app), and uploads. The
    export runs with the system PATH, since Homebrew's rsync breaks it. Commit the bump afterwards.
 2. **Write tester notes**: start from `scripts/whatsnew.py testflight --since <previous build's

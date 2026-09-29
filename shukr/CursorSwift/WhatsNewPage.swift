@@ -17,6 +17,7 @@ enum WhatsNewRoute: Hashable {
     case change(String)
     case topic(String)
     case said
+    case nextBuild
     case page(String)
 }
 
@@ -58,6 +59,7 @@ struct WhatsNewView: View {
                     .padding(.leading, 4)
                     AnswersRow(open: $answersOpen, send: { sharing = feedback.unsent },
                                edit: { item in edit(item) }, everything: { path.append(.said) })
+                    NextBuildRow { path.append(.nextBuild) }
                     asksSection
                     changesSection
                 }
@@ -82,6 +84,8 @@ struct WhatsNewView: View {
                     TopicChangesView(topic: id) { path.append(.change($0)) }
                 case .said:
                     EverythingSaidView { path.append(.change($0)) }
+                case .nextBuild:
+                    NextBuildView { path.append(.change($0)) }
                 case .page(let link):
                     pushedPage(link)
                 }
@@ -325,6 +329,7 @@ struct WhatsNewView: View {
         let d = UserDefaults.standard
         if d.bool(forKey: "demoWhatsNewAnswers") { answersOpen = true }
         if d.string(forKey: "demoWhatsNewPage") == "said" { path = [.said] }
+        if d.string(forKey: "demoWhatsNewPage") == "next" { path = [.nextBuild] }
         if let id = d.string(forKey: "demoWhatsNewTopic") { path = [.topic(id)] }
         if let id = d.string(forKey: "demoWhatsNewChange") { path = [.change(id)] }
         // `-demoWhatsNewIdea`: the header's New idea · `-demoWhatsNewIdeaFrom <change id>`: an idea from that card
@@ -618,6 +623,112 @@ private struct AskCard: View {
         if attempt > 1 { parts.append("try \(attempt)") }
         parts.append(WhatsNew.whenLabel(latest.when))
         return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Next build (ask wn-next-build)
+
+/// "Next build · 14 changes since build 12 ›", under Your answers.
+private struct NextBuildRow: View {
+    let open: () -> Void
+    var body: some View {
+        let count = WhatsNew.sinceLastBuild.count
+        let since = WhatsNew.lastBuild.map { "since build \($0.number)" } ?? "so far"
+        Button(action: open) {
+            HStack(spacing: 12) {
+                Image(systemName: "shippingbox").font(.body).foregroundStyle(Color.sage)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Next build").font(.body.weight(.semibold)).foregroundStyle(.primary)
+                    Text("\(count) change\(count == 1 ? "" : "s") \(since)").font(.footnote).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Everything since the last TestFlight upload, by area; how many of his asks in it still wait; and
+/// "I'm happy with this — ready for TestFlight" (a note to the team: Frank confirms with him before
+/// uploading, so it's never a gate and nothing uploads from here).
+private struct NextBuildView: View {
+    let openChange: (String) -> Void
+    @State private var feedback = FeedbackStore.shared
+
+    var body: some View {
+        let changes = WhatsNew.sinceLastBuild
+        let ids = Set(changes.map(\.id))
+        // His asks whose newest change is in this build and still waits for an answer (newest first).
+        let waiting = WhatsNew.openAsks().filter { ids.contains($0.latest.id) }
+        let groups = Dictionary(grouping: changes.reversed()) { WhatsNew.area($0.topic) }
+            .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(WhatsNew.lastBuild.map { "Everything since build \($0.number), by area." } ?? "Everything so far, by area.")
+                        .font(.subheadline).foregroundStyle(.secondary).padding(.leading, 4)
+                    ForEach(groups, id: \.key) { group in
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionTitle(text: group.key, count: group.value.count).padding(.leading, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(group.value.enumerated()), id: \.element.id) { i, e in
+                                    if i > 0 { Divider().padding(.leading, 82) }
+                                    ChangeRow(entry: e) { openChange(e.id) }.id(e.id)
+                                }
+                            }
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                        }
+                    }
+                    if changes.isEmpty {
+                        Text("Nothing new since the last build yet.").font(.subheadline).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity).padding(.vertical, 24)
+                    }
+                    Button {
+                        guard let first = waiting.first else { return }
+                        withAnimation(.snappy) { proxy.scrollTo(first.latest.id, anchor: .center) }
+                    } label: {
+                        Text(waiting.isEmpty ? "Everything you asked for here is answered ✓"
+                             : "\(waiting.count) of your asks in this build still need\(waiting.count == 1 ? "s" : "") your answer")
+                            .font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.leading, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(waiting.isEmpty)
+                    if let ready = feedback.readyForTestFlight {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Label("Sent to the team", systemImage: "paperplane.fill").font(.subheadline.weight(.semibold))
+                            Text("Frank confirms with you before uploading · \(WhatsNew.whenLabel(ready.created))")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(Color.sage)
+                        .padding(.leading, 4)
+                    }
+                    Button {
+                        feedback.saveReadyForTestFlight(changes: changes, openAsks: waiting.count)
+                        triggerSomeVibration(type: .success)
+                    } label: {
+                        Text(feedback.readyForTestFlight == nil ? "I'm happy with this — ready for TestFlight" : "Send again (updated)")
+                            .font(.body.weight(.semibold)).foregroundStyle(Color.sage)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(Capsule().fill(Color.sage.opacity(0.16)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(changes.isEmpty)
+                }
+                .padding(16)
+            }
+        }
+        .background(Color(.systemGroupedBackground))
+        .fontDesign(.rounded)
+        .navigationTitle("Next build")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -46,7 +46,14 @@ cat > build/ExportOptions.plist <<PLIST
 PLIST
 
 # Homebrew's rsync breaks the export ("Copy failed"): use the system one.
+EXPORT_LOG=build/export-$NEXT.log
 env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath "$ARCHIVE" \
-  -exportOptionsPlist build/ExportOptions.plist -exportPath "build/export-$NEXT" "${AUTH[@]}" \
-  | grep -E "Upload succeeded|EXPORT|error" || true
-echo "✓ $VERSION ($NEXT) uploaded — commit the build number bump."
+  -exportOptionsPlist build/ExportOptions.plist -exportPath "build/export-$NEXT" "${AUTH[@]}" > "$EXPORT_LOG" 2>&1 || true
+grep -E "Upload succeeded|EXPORT|error" "$EXPORT_LOG" || true
+if ! grep -qE "Upload succeeded|EXPORT SUCCEEDED" "$EXPORT_LOG"; then
+  echo "✗ $VERSION ($NEXT) didn't upload — see $EXPORT_LOG"
+  exit 1
+fi
+# The change log's record of this upload (What's new → "Next build" counts from it).
+python3 scripts/whatsnew.py build --number "$NEXT" --commit "${STAMP%+}"
+echo "✓ $VERSION ($NEXT) uploaded — commit the build number bump and shukr/WhatsNew.jsonl."

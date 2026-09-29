@@ -19,14 +19,22 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     enum Kind: String, Codable, CaseIterable {
         /// works = "Works"; issue = "Not yet" (v1–v3 called it Issue); note = a comment; idea = a new idea
         /// (ask wn-ideas: from a card or from the page's "New idea"). An older build reads an idea as a note.
-        case works, issue, note, idea
-        var label: String { switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment"; case .idea: "Idea" } }
-        var symbol: String {
-            switch self { case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill"; case .idea: "lightbulb.fill" }
+        /// ship = "Ready for TestFlight" from Next build (ask wn-next-build; `commits` = the changes in it).
+        case works, issue, note, idea, ship
+        var label: String {
+            switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment"; case .idea: "Idea"; case .ship: "Ready for TestFlight" }
         }
-        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬"; case .idea: "💡" } }
+        var symbol: String {
+            switch self {
+            case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill"
+            case .idea: "lightbulb.fill"; case .ship: "paperplane.fill"
+            }
+        }
+        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬"; case .idea: "💡"; case .ship: "🚀" } }
         var color: Color {
-            switch self { case .works: .green; case .issue: .orange; case .note: .sage; case .idea: Color(red: 0.72, green: 0.53, blue: 0.08) }
+            switch self {
+            case .works: .green; case .issue: .orange; case .note, .ship: .sage; case .idea: Color(red: 0.72, green: 0.53, blue: 0.08)
+            }
         }
         /// An answer on an ask (Works / Not yet) — comments and ideas never are.
         var isVerdict: Bool { self == .works || self == .issue }
@@ -93,6 +101,7 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     var attachments: [String] { media ?? (photo.map { [$0] } ?? []) }
     /// What it's about, in a few words (the change's headline, else the feature).
     var about: String {
+        if kind == .ship { return "Next build · \(commits.count) change\(commits.count == 1 ? "" : "s")" }
         if let e = onEntry.flatMap(WhatsNew.entry) { return kind == .idea ? "Idea from: \(e.short)" : e.short }
         return kind == .idea ? (area.map { "Idea · \($0)" } ?? "Idea") : topicTitle
     }
@@ -200,6 +209,26 @@ final class FeedbackStore {
         return item
     }
 
+    /// "I'm happy with this — ready for TestFlight" (Next build): a note for the team, not a gate — Frank
+    /// confirms with him before uploading; nothing uploads from the phone.
+    @discardableResult
+    func saveReadyForTestFlight(changes: [WhatsNewEntry], openAsks: Int) -> FeedbackItem {
+        var item = FeedbackItem(topic: "build", topicTitle: "Next build", kind: .ship,
+                                text: "Ready for TestFlight" + (openAsks > 0 ? " (\(openAsks) ask\(openAsks == 1 ? "" : "s") unanswered)" : ""),
+                                build: BuildInfo.line)
+        item.commits = changes.map(\.id)
+        items.append(item)
+        persist()
+        WhatsNew.writeState()
+        return item
+    }
+
+    /// The newest "Ready for TestFlight" since the last upload.
+    var readyForTestFlight: FeedbackItem? {
+        let after = WhatsNew.lastBuild?.date ?? .distantPast
+        return items.filter { $0.kind == .ship && $0.created > after }.max { $0.created < $1.created }
+    }
+
     func delete(_ item: FeedbackItem) {
         item.attachments.forEach(removeMedia)
         items.removeAll { $0.id == item.id }
@@ -247,7 +276,11 @@ final class FeedbackStore {
         let when = Date().formatted(date: .abbreviated, time: .shortened)
         var lines = ["# \(title) — \(when)", "", "Build: \(BuildInfo.line)", ""]
         for item in list {
-            if item.kind == .idea {
+            if item.kind == .ship {
+                lines.append("## 🚀 Ready for TestFlight")
+                let since = WhatsNew.lastBuild.map { "since build \($0.number)" } ?? "so far"
+                lines.append("- \(item.commits.count) change(s) \(since): " + item.commits.map { "`\($0)`" }.joined(separator: ", "))
+            } else if item.kind == .idea {
                 lines.append("## \(item.kind.emoji) Idea — \(item.area ?? "no area")")
                 if let e = item.onEntry {
                     lines.append("- From: `\(e)` (\(WhatsNew.entry(e)?.short ?? WhatsNew.topicTitle(item.topic)))")
@@ -255,7 +288,7 @@ final class FeedbackStore {
             } else {
                 lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.about)")
             }
-            var meta = item.kind == .idea ? [] : ["Feature: `\(item.topic)`"]
+            var meta = item.kind == .idea || item.kind == .ship ? [] : ["Feature: `\(item.topic)`"]
             if let e = item.onEntry, item.kind != .idea { meta.append("Change: `\(e)`") }
             if let a = item.ask { meta.append("Ask: `\(a)`") }
             meta.append("Id: `\(item.id.uuidString)`")
@@ -340,7 +373,9 @@ final class FeedbackStore {
     /// waiting for him.
     private func writeMarkdown() {
         guard let dir = Self.folder, FileManager.default.fileExists(atPath: dir.path) else { return }
-        let fresh = items.filter { state($0) == .saved }.sorted { $0.updated > $1.updated }
+        // Not picked up yet first, a "Ready for TestFlight" at the very top.
+        let fresh = items.filter { state($0) == .saved }
+            .sorted { ($0.kind == .ship ? 1 : 0, $0.updated) > ($1.kind == .ship ? 1 : 0, $1.updated) }
         let freshIDs = Set(fresh.map(\.id))
         let rest = items.filter { !freshIDs.contains($0.id) }.sorted { $0.updated > $1.updated }
         var md = markdown(for: fresh + rest)
