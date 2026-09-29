@@ -2585,19 +2585,22 @@ sample text if it has none — simulator only).
 tasks were squeezed into a 260 pt strip): a vertical `ScrollView` of 250 pt rows, `.viewAligned`
 one at a time, `scrollPosition(id:)` on string ids ("freestyle", task uuid, "add"), content
 margins that centre the current one; `scrollTransition` shrinks (×0.78) and fades (×0.45) the
-others — the strip's effect on its side. Freestyle circle first, then tasks (user order, done
-today moved to the end) with today's progress as the glowing ring and "12 of 33" / "done
+others — the strip's effect on its side. Freestyle circle first, then tasks (user order — a task done
+today keeps its place since 2026-09-29, owner) with today's progress as the glowing ring and "12 of 33" / "done
 today", then a dashed "New task". Tap = bring to centre, tap the centre one = start; long-press
-a task → **arranging** (home-screen style, owner): the wheel fades out for a 3-column grid of
-small jiggling circles (`phaseAnimator` wobble) with − badges (delete, alert); hold one 0.2 s and
-drag — it lifts and follows the finger, the others move aside (a custom LongPress→Drag in the
-grid's "arrange" coordinate space, slot = 3 columns × 134 pt rows; `onDrag`/`onDrop` was tried
-first but simulated touches never start a system drag, so it couldn't be tested); order saved
-as it changes; tap a circle → Edit goal; Done or a tap between circles leaves. While arranging
-the pager is held (`PagerLiveState.holdForArranging`, separate from `pagerLocked`, which the
-pager gesture clears on every lift); leaving the page (the bottom bar still works) ends
-arranging — it used to leave the pager held and the Salah page frozen. The top-right chrome
-slot is free again. The focused
+a task → **arranging, in place** (2026-09-29, owner #26 — the old 3-column grid lost his place and is gone): the
+wheel's own task circles wobble (`Wobble`, `phaseAnimator`; Reduce Motion: a sage outline) with − badges (delete, alert);
+freestyle / New task don't. Hold one 0.2 s and drag (LongPress→Drag in the ScrollView's "wheel" space; the scroll is
+disabled while a task is lifted): it follows the finger on the arc (`liftedCircle`, `wheelLook` = WheelFalloff's maths),
+the circles between where it was and where it'd land shift a slot (`roomShift` → `WheelFalloff(shift:)`, so they take the
+slot's size / arc / tilt — an `.offset` before the falloff isn't seen by its `visualEffect`), near the top / bottom edge
+the wheel moves a slot every 0.45 s, and a **second finger** moves it too (`SecondFingerPan`, a never-recognising
+`UIGestureRecognizerRepresentable`: the finger that touched first is the drag, else whichever moves first; a slot per
+~200 pt). On drop the order moves with animations off and `centered` = the same slot, so the wheel doesn't jump; sortOrder
+saved. Tap a circle → edit the task; a tap beside the circles or **Done** leaves. Done is in the chrome, in the History &
+Azkar button's place (`PagerLiveState.holdForArranging` shows it, `arrangeDoneRequest` asks the wheel to stop), and the
+summary line crossfades to "drag to reorder · tap to edit" — nothing on the page moves (owner: the focused circle stays put
+like the Salah ring). While arranging the pager is held (`holdForArranging`); leaving the page ends arranging. The focused
 circle sits at the screen's centre, not the page's (the whole wheel is offset up by the
 difference, `screenCentreShift` — asymmetric content margins don't move scroll snapping). Dots down the **left** edge (owner), sage for done tasks, double as a scrubber: a
 finger on them drags through the circles (14 pt per dot) with a pill naming the current one —
