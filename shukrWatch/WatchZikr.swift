@@ -557,6 +557,8 @@ struct WatchZikrPage: View {
     @State private var centered: String? = "freestyle"
     @State private var running: WatchCounterConfig?
     @State private var resumeAsk: WatchTask?
+    /// The task the open session belongs to, so closing it can move on once it's done.
+    @State private var sessionTaskID: String?
     private let rowHeight: CGFloat = 122
 
     private enum Item: Identifiable {
@@ -567,10 +569,8 @@ struct WatchZikrPage: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             let _ = store.revision
-            let tasks = store.tasks
-            let open = tasks.filter { !store.isDone($0, at: context.date) }
-            let done = tasks.filter { store.isDone($0, at: context.date) }
-            let items: [Item] = [.freestyle] + (open + done).map { .task($0) }
+            // Your order, a task done today keeping its place (owner, 2026-09-29, as on the phone).
+            let items: [Item] = [.freestyle] + store.tasks.map { .task($0) }
             GeometryReader { geo in
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -619,9 +619,10 @@ struct WatchZikrPage: View {
             }
         }
         #endif
-        .fullScreenCover(item: $running) { config in
+        .fullScreenCover(item: $running, onDismiss: landAfterSession) { config in
             WatchCounterView(config: config)
         }
+        .onChange(of: running?.task?.id) { _, id in if let id { sessionTaskID = id } }
         .onAppear { reopenDraft() }
         // Continue or start over (owner: shorter) — the zikr's name, then the two choices; the
         // sheet's own ✕ (top left) cancels.
@@ -663,6 +664,19 @@ struct WatchZikrPage: View {
     private func start(_ config: WatchCounterConfig) {
         resumeAsk = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { running = config }
+    }
+
+    /// Back from a task's session: once it's done, centre the next task still to do after it in
+    /// your order (wrapping), else Freestyle — the phone's rule (it stays in its own place).
+    private func landAfterSession() {
+        guard let id = sessionTaskID else { return }
+        sessionTaskID = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            let tasks = store.tasks
+            guard let i = tasks.firstIndex(where: { $0.id == id }), store.isDone(tasks[i]) else { return }
+            let next = (tasks[(i + 1)...] + tasks[..<i]).first { !store.isDone($0) }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = next?.id ?? "freestyle" }
+        }
     }
 
     /// A session the app was closed on comes back, paused (or has just been saved, if stale).
