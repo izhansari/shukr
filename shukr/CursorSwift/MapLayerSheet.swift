@@ -270,11 +270,14 @@ struct PrayerSpotsHome: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                // The scroll-to-top target sits above the padding: scrolling the header itself to the
+                // top threw the 20 pt top padding away, so the small bar's header sat high with an
+                // empty band under it (owner, map-one-sheet — the mosques' bar was fine).
+                Color.clear.frame(height: 0).id("top")
                 VStack(alignment: .leading, spacing: 14) {
                     MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close) {
                         PrayerFilterMenu(viewModel: viewModel, custom: custom)
                     }
-                    .id("top")
                     Group {
                     if days.isEmpty {
                         Text(viewModel.prayers.isEmpty
