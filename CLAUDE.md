@@ -902,7 +902,7 @@ memo requests in). **No schema change** in any round — the watch keeps its own
   has one and the nearest masjid within 100 m → "Jumu'ah at <masjid>".
 - **Watch nudges:** follow the phone's wording and flow, named by prayer, cancelled once it's marked; the phone's
   notification categories are registered on the watch; the delegate is set at launch.
-- **Zikr wheel:** the phone's tasks on the gentle arc, Freestyle first, done tasks last. The watch never creates or edits
+- **Zikr wheel:** the phone's tasks on the gentle arc, Freestyle first, in your order — a task done today keeps its place and, after its session, the wheel centres the next one still to do (2026-09-29, as on the phone; the Zikr widget still lists done ones last). The watch never creates or edits
   tasks (owner, 2026-09-27). A part-done task asks "Continue from N / Start over"; timed tasks read "9:54 left".
 - **Counter** (`WatchTasbeehPort.swift`): the phone's `TasbeehCountView` + `NeuCircularProgressView` ("fine"
   `AliveRingFill`) ported and scaled — beads round the outside (one Canvas), hundreds dots with the 18° turn, thousands

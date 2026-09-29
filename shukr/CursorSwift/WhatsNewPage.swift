@@ -558,13 +558,17 @@ private struct AskCard: View {
 private struct ChangeRow: View {
     let entry: WhatsNewEntry
     let tap: () -> Void
+    /// The time column: wide enough for "12:57 PM" and growing with the text size, so the rows stay
+    /// lined up; the time itself never wraps (it did at 58 pt: "12:57 P" / "M").
+    @ScaledMetric(relativeTo: .footnote) private var timeWidth: CGFloat = 64
     var body: some View {
         let tag = WhatsNew.tag(for: entry)
         Button(action: tap) {
             HStack(spacing: 12) {
                 Text(entry.when.formatted(date: .omitted, time: .shortened))
                     .font(.footnote).monospacedDigit().foregroundStyle(.secondary)
-                    .frame(width: 58, alignment: .leading)
+                    .lineLimit(1).fixedSize()
+                    .frame(minWidth: timeWidth, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {
                         Text(WhatsNew.area(entry.topic))
