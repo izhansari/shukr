@@ -1118,6 +1118,13 @@ App Store" wording (see Share card).
 
 ## Start here: outstanding work, in priority order
 
+**Branches (owner, 2026-09-28):** the team's line is `claude/tasbeeh-zikr-updates` — all work lands there. Sami's
+`claude/watch-zikr` merges into it and fast-forwards / syncs from it. **`main` is frozen: never merge into it or push to
+it** — it's the owner's own code from before the team, kept as is ("no leave main"). Old branches (`claude/map-rework`,
+`claude/app-store-publish-requirements-7vrmcg`) are contained in the team line; don't delete remote branches without
+his OK. `.gitignore` covers build/, .DS_Store, scripts/__pycache__/, xcuserdata/, *.xcuserstate (xcshareddata stays
+tracked).
+
 Branch: `claude/tasbeeh-zikr-updates` (from `claude/map-rework`; neither merged to `main`). Everything below
 the first block is unbuilt by the agent that wrote it; the owner builds in Xcode / a local
 agent builds with xcodebuild. Nothing here has CI.

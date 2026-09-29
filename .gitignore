@@ -1,0 +1,13 @@
+# Build output (xcodebuild -derivedDataPath build/…, archives)
+build/
+
+# macOS
+.DS_Store
+
+# Python caches from scripts/
+scripts/__pycache__/
+__pycache__/
+
+# Per-user Xcode state (the shared schemes / workspace settings in xcshareddata stay tracked)
+xcuserdata/
+*.xcuserstate
