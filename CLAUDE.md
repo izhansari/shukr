@@ -891,7 +891,7 @@ too many sheets.
   - Sim ✓.
 - **Tasbeeh ring default is "fine"** (was "alive").
 
-**2026-09-26 — Apple Watch app + complications (built, not yet signed for devices).**
+**2026-09-26 — Apple Watch app + complications (signed; on TestFlight since build 9, zikr + marking since build 12).**
 - **Targets** (added to the pbxproj by hand):
   - `shukrWatch`: a watchOS 11 single-target app, bundle `com.betternorms.shukr.watchkitapp`,
     embedded in the iPhone app via "Embed Watch Content".
@@ -920,12 +920,11 @@ too many sheets.
   (Apple Watch Series 12 46mm, AEDA90A5…); DEBUG `-demoWatch` seeds New York / ISNA / Shafi'i so a standalone watch sim
   shows prayers. Sim ✓ the app's ring (red, filling, at 5:50 during Asr) and the tap; complications not seen (a fresh
   install didn't show in the watch's widget list).
-- **Watch app:** the prayer ring (like the main circle), today's five times with ✓ for marked ones,
-  the city. "Open shukr on your iPhone…" until a location arrives. Read-only: marking prayers and a
-  wrist tasbeeh are next (they need WatchConnectivity messages back to the phone).
-- **Complications (`PrayerComplication`):** circular (the ring drains live), corner (symbol + a
-  curved gauge with the time), rectangular (name, ends / at, bar or countdown), inline. One
-  timeline entry per prayer start / end.
+- **Watch app (round 1):** the prayer ring, today's five times, the city; "Open shukr on your iPhone…" until a location
+  arrives. Rounds 3–8 (marking, zikr, qibla) are below.
+- **Complications (`PrayerComplication`, WatchComplications.swift):** circular (the ring fills live), corner (symbol + a
+  curved gauge with the time), rectangular (name, ends / at, bar or countdown), inline; accentable content only. Timeline
+  entries at every start, end and grade change, through the next day's Fajr window; circular NEXT drops the time line.
 - **Signing: done 2026-09-26.** After the owner signed in to Xcode again, a command-line
   `-allowProvisioningUpdates` device build registered both watch App IDs; the "No Accounts" error
   was the expired Xcode token. Full builds (with the watch) work now. Old note: the command-line tools can't
@@ -935,8 +934,80 @@ too many sheets.
 - Until then, to put a build on the phones: copy the pbxproj aside, remove the iOS target's
   "Embed Watch Content" phase and its shukrWatch `PBXTargetDependency` line, build and install, then
   restore the copy. Done 2026-09-26 for both phones. Never commit the stripped file.
-- There is no watchOS simulator runtime on this Mac. Sim ✓ = the iPhone simulator build compiles
-  and embeds `Watch/shukrWatch.app` with `PlugIns/shukrWatchWidgets.appex`. Never run on a watch.
+- **Simulators:** the watchOS 27 runtime (Xcode → Settings → Components); pair a watch sim with a phone sim
+  (`xcrun simctl pair <watch> <phone>`). Build the watch alone: `xcodebuild -project shukr.xcodeproj -scheme shukrWatch
+  -destination 'platform=watchOS Simulator,name=<watch sim>' -derivedDataPath build/sami build`. Complications have never
+  shown in a sim face's list after a fresh install — checked by reading the timeline code only.
+- **Real watch:** only the owner's wife's, on build 9 (the read-only app: installed, times matched, a ✓ synced). Build 12
+  (TestFlight, 2026-09-29) is the first with rounds 3–8. **Never tried on a watch:** Double Tap and Crown counting and
+  their haptics, the runtime session wrist-down, `transferUserInfo` with the phone away / asleep and the outbox catching
+  up, the compass qibla, memo playback, complications on a real (tinted / accented) face, the watch's own notifications.
+- **Open questions (ask once he's tried the watch):** Tasbih Fatimah at exactly 33 reads "Alhamdulillah · 0 of 33" (watch
+  and phone) — keep, or hold "33 of 33" until the next tap? The ring's dark-mode track blends into the background (as on
+  the phone) — keep, or lighten? Freestyle has no zikr picker on the watch — needed? (#14). A ready-made `.watchface`
+  (#24, `CLKWatchFaceLibrary`) needs him to build and share one on a real watch first.
+
+**Apple Watch, rounds 3–8 (2026-09-27 / 28, Sami; branch `claude/watch-zikr`).** The read-only app above grew into
+zikr and prayer marking. Files: `shukrWatch/ShukrWatchApp.swift` (pages, Salah page, marking UI, Settings),
+`WatchSalah.swift` (marks outbox, qibla, nudges), `WatchZikr.swift` (store, wheel, counter, pause / results, drafts,
+runtime session, sync), `WatchTasbeehPort.swift` (the phone's counter ported); phone side
+`shukr/CursorSwift/WatchSync.swift` (application context) and `WatchZikrSync.swift` (payload out; sessions, marks, undos,
+memo requests in). **No schema change** in any round — the watch keeps its own state in defaults.
+- **Pages:** Zikr ← Salah → Settings, like the phone (`-watchPage N`).
+- **Salah:** the ring as above; the phone sends today's scores. The prayer list is a vertical page under the ring (swipe
+  up / the Crown; tap the small ring to go back): outstanding prayers only with status dots, then "✓ N done ⌄" (the rest
+  in score colours), all five once the day is done.
+- **Qibla arrow on the ring:** the watch's compass with **true north** (location alongside the heading; both off
+  wrist-down); green + a dot + one buzz per line-up, using the phone's accuracy setting (sent in the context). It asks for
+  location only when you tap it (with a why); with location off it says "No location" rather than use magnetic north.
+  Info.plist `NSLocationWhenInUseUsageDescription`.
+- **Marking:** tap a prayer → "I prayed" (the question previews the grade), or hold the ring (the hold swells the score
+  arc in its own colour). It shows at once; the phone saves it at the tap time and reconciles like a widget mark
+  (`prayerMarked` → `widgetWroteStore` → `reconcileAfterWidgetWrites`, which also recounts streaks; one
+  `.onReceive(.watchMarkedPrayer)` in PrayerTimesAndTracker while open). A late mark rescores its own day, runs the
+  favourite-masjid check, and plays the completion moment if the phone is on screen (same day only). Then the phone's
+  `CompletionFlourish` on the wrist (sweep, glow, "✓ Isha · On time · 93", 1.8 s, `.id(markID)` so a second mark
+  replays), the next prayer crossfades in, and **Undo** for 5 s takes it off on the phone too (`prayerUnmarked`).
+  Tap a done prayer to unmark.
+- **Outbox / sync of marks** (`watch.outbox`): marks and undos carry an id, replay in order and stay until the phone
+  lists them handled (marks and undos listed apart; an undo stays pending until the phone confirms the undo itself; the
+  phone tombstones it and replies even when the mark never arrived). Pending local marks / unmarks settle as soon as the
+  phone reports their id, so both sides end on the phone's state whatever the delivery order. The phone ignores an
+  unmark older than the row's latest mark, resets every completed row of that prayer that day, writes the tombstone only
+  after a successful save; a failed save → `markFailed` (once per id, delayed buzz). Flushed on launch and whenever the
+  phone is in reach. DEBUG self-tests: phone `-demoWatchSyncTest` (9/9), watch `-demoWatchSettleTest` (11/11).
+- **Jumu'ah:** the phone sends your masajid; a Friday Dhuhr marked on the watch uses the watch's own location when it
+  has one and the nearest masjid within 100 m → "Jumu'ah at <masjid>".
+- **Watch nudges:** follow the phone's wording and flow, named by prayer, cancelled once it's marked; the phone's
+  notification categories are registered on the watch; the delegate is set at launch.
+- **Zikr wheel:** the phone's tasks on the gentle arc, Freestyle first, done tasks last. The watch never creates or edits
+  tasks (owner, 2026-09-27). A part-done task asks "Continue from N / Start over"; timed tasks read "9:54 left".
+- **Counter** (`WatchTasbeehPort.swift`): the phone's `TasbeehCountView` + `NeuCircularProgressView` ("fine"
+  `AliveRingFill`) ported and scaled — beads round the outside (one Canvas), hundreds dots with the 18° turn, thousands
+  in green, the phone's dark background (black wrist-down); no grain, the gradient / light redraw at 10 fps. Shows only
+  the number (privacy). Counting: tap, the pump (hold and drag), − and +N (count in sets, one `.retry` haptic), Double
+  Tap (Series 9+ / Ultra 2, its own hit-testable button; Resume / Done on pause and results), the Digital Crown (a click
+  forward; backwards nothing; ignored wrist-down). Turning the Crown switches to **crown mode**: screen taps flash
+  "Counting with the Crown"; tap the badge or the pause chip to switch back; Settings → Counting keeps taps on
+  (`watch.screenTapsWithCrown`). A one-time "Pinch to count · or turn the Crown" hint (`watch.countHintSeen`). 40 / 41 mm
+  get a smaller count and ring.
+- **Pause / results:** solid screens, nav bar hidden (watchOS's ✕ would drop the session; watchOS 26's glass circles
+  stayed as empty bubbles); pause = count / time / pace, the zikr's voice memo (requested from the phone, a file per
+  transfer, cached per zikr), a big Resume and a two-tap Finish early; results "✓ 33 · saved · N of 100 today".
+- **Wrist down:** a mindfulness `WKExtendedRuntimeSession` (`WKBackgroundModes` in shukrWatchInfo.plist) keeps counting;
+  stops on pause, buzzes before it expires, restarts with a timeout.
+- **Drafts:** a paused session is kept (`watch.zikr.draft`, matched by session id, saved at most every 2 s) and reopens
+  paused; saved to history after an hour or at Fajr.
+- **Tasbih Fatimah:** the post-salah pill after a mark leads into 33 · 33 · 34 in one session (the Arabic phrase above
+  the centred count, "7 of 33" and the bars below, a haptic per phrase), saved under the Tasbih Fatimah zikr.
+- **Session sync:** each session → the phone as `transferUserInfo` (`zikrSession`) with its UUID, so a retry is never
+  counted twice; the phone confirms ids for a week (`watchZikr.received`). The phone's tasks, today's progress and memo
+  hashes come back in the context (`watch.zikr.*` on the watch).
+- **DEBUG (watch):** `-demoWatch`, `-watchPage N`, `-watchSalahList YES`, `-demoWatchContinue`, `-demoWatchCrown`,
+  `-demoWatchFinish`, `-demoWatchHold`, `-demoWatchMemo`, `-demoWatchPause`, `-demoWatchPostSalah`, `-demoWatchUndo`,
+  `-demoWatchMark <prayer>`, `-demoWatchHeading <deg>`, `-demoWatchCounter N`, `-demoWatchTaps N`, `-demoWatchPreset N`,
+  `-demoWatchDraftAge <s>`, `-watchSettingsBottom`; scripted `-demoWatch` runs skip the runtime session. Phone:
+  `-demoTasbeehCount` / `-demoTasbeehTaps` for comparison shots.
 
 **2026-09-26 — Zikr widget → task, and time estimates.**
 - **Tap a task in the widget:** each row of the Zikr widget is its own button
@@ -1016,11 +1087,8 @@ too many sheets.
   (open the app to the qibla map / the Zikr page).
 - Sim ✓: all three widgets show in the Lock Screen widget gallery with real data. The controls are
   not tried in the sim.
-- **Apple Watch (not built):** Apple doesn't allow third-party watch faces, only complications on
-  any face. That needs a watchOS app target, and the watch can't read the phone's app group.
-  Prayer times are pure maths (adhan-swift) from a location and a method, so the watch would
-  compute them itself; marking prayers / zikr would need WatchConnectivity. Plan it with the
-  owner first.
+- **Apple Watch:** built since 2026-09-26 — see "Apple Watch app + complications" above. Apple allows no third-party
+  watch faces, only complications on any face.
 
 **Earlier builds (details in the sections below):**
 1. Mantra page (`MantraEditorView`), phone ✓:
