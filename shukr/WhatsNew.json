@@ -1187,7 +1187,7 @@
       "checked": "sim", "shots": ["wn-setup-opening.jpg"], "asked": "I like the old style for its gradient and the soft movement. Use it for one new page at the start of onboarding, and nowhere else in the app for now. It shows on a new install and on \"Run setup again\". It's not on the lost-location screen."
     },
     {
-      "id": "widget-next-13", "date": "2026-09-29", "commit": "next", "time": null, "topic": "widget-next", "notes": null,
+      "id": "widget-next-13", "date": "2026-09-29", "commit": "578a783", "time": "2026-09-29T12:33:03-04:00", "topic": "widget-next", "notes": null,
       "title": "Prayers widget: the ring's unfilled track is plain grey again, not tinted with the score colour; only the arc is coloured", "headline": "Ring track plain again, no tint",
       "tryIt": ["During a prayer, look at the Prayers widget: the arc is in the score colour, the rest of the ring plain grey (light and dark)", "Tap the ring: the time flips, the arc stays put"],
       "checked": "sim", "shots": ["wn-widget-track-plain.jpg"], "addresses": ["BB277A98"]
