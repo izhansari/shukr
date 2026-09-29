@@ -11,6 +11,39 @@ Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehV
 (PrayersWidget + AppIntents shared with the app via `SharedTargetForIntents.swift`).
 Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")`.
 
+## Team protocol (owner-approved 2026-09-29; read this first)
+
+**Who:** Izhan (owner) decides and tests. Bradley plans and reviews: he keeps the backlog, the queue and the board,
+and is Izhan's single inbox. Frank builds the phone app. Sami builds the watch and widgets, and takes phone items
+Bradley splits off. Everyone signs messages with their name and a timing line ("now" only if urgent).
+
+**What needs Izhan** (ask, with pictures for looks, and wait): design choices, new features, TestFlight uploads,
+SwiftData schema changes, and anything destructive or shared in git (force push, deleting branches, touching `main`,
+which stays frozen). **Everything else goes ahead without asking:** work that's exactly what he described, fixes that
+restore agreed behaviour, review fix-ups that don't change what he sees, and internal tooling / notes.
+
+**Flow of an item:**
+1. His words (chat or the app) → Bradley makes an ask (a slug plus his words) and queues it.
+2. Each engineer holds two briefed items: the current one and the next. Starting the next one needs no "go".
+3. Build → a What's new entry (`whatsnew.py add … --ask <slug>`) → commit → push to the team line.
+4. Install on his phone only right after pulling the team line, so every build has everyone's work.
+5. Message Bradley only when done (the hash, what was and wasn't checked) or blocked.
+6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
+   item; nits ride along with a later one.
+7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
+
+**Git:** one team line, `claude/tasbeeh-zikr-updates`.
+- Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch` (his own branch name, pushing to the team line).
+- Before every push: `git pull --rebase origin claude/tasbeeh-zikr-updates`. Push with `git push origin HEAD:claude/tasbeeh-zikr-updates`.
+- WhatsNew.jsonl merges by itself (merge=union).
+- Small, frequent commits; no hold messages (a message lands at the other session's next pause, too late to stop a
+  push). Frank and Sami talk to each other directly about merges and installs, copying Bradley.
+
+**Cost:** planning, review and design choices on the strongest model. Mechanical edits, conversions and bulk
+plumbing go to a cheaper sub-agent (Sonnet), spec'd and then checked. Keep this file current and short: history
+goes to `docs/`, not here.
+
+
 ## What's new (v4, 2026-09-29) — every visible change gets an entry
 
 The owner tests from **What's new** (tap the build line at the bottom of the ☰ menu or Settings). DEBUG builds always
