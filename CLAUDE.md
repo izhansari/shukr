@@ -61,7 +61,7 @@ He fixes drift himself, and suggests running fewer agents when a lane is quiet. 
 - Small, frequent commits; no hold messages (a message lands at the other session's next pause, too late to stop a
   push). Frank and Sami talk to each other directly about merges and installs, copying Bradley only if it blocks someone.
 
-**Board:** https://shukr-board.vercel.app (Vercel login; read-only: Queue · Decisions · Plan). Records:
+**Board:** https://shukr-board.vercel.app (read-only: Queue · Decisions · Plan). Records:
 `shukrGit/board/`: queue, decisions, ideas (was plan), reviews, status .jsonl via queue.sh / decide.sh / idea.sh /
 review.sh / status.sh; the Plan tab derives each item's state from the queue, decisions and the change log — nothing is
 typed except park / drop;
@@ -289,7 +289,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   there's never a second alarm. iOS 18–26.0: the Shortcut path, unchanged.
 - AlarmKit alarms are NOT in the Clock app's list (Lock Screen, Dynamic Island, StandBy, a paired Watch); a `.fixed` alarm
   shows nothing until it rings. Settings' status / result are `Color.green`; **Test alarm** (default +1 min) schedules one
-  real alarm (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, left alone by `plan()` until past). Sim ✓ it fired.
+  real alarm (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, left alone by `plan()` until past).
 - Unverified: whether Stop's intent has time to re-plan on a real phone.
 
 **Tasbeeh session** (tasbeehView.swift)
