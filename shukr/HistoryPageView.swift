@@ -453,16 +453,19 @@ struct SessionRow: View {
                     Text(session.startTime, style: .time)
                         .font(.body.weight(.medium))
                 }
-                HStack(spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
                     if showsMantraName {
                         Text(session.startTime, style: .time)
                         Text("·")
                     }
-                    Image(systemName: modeIcon)
+                    Text("\(Image(systemName: modeIcon))")   // a glyph on the line, like the moon
                     Text(target)
-                    // Sleep mode ended it (owner, idea 4WTV).
+                    // Sleep mode ended it (owner, idea 4WTV). Set as a text glyph, after a "·" like the
+                    // rest of the line: as a free Image it was centred by its box and the top-heavy
+                    // zzz sat off the text's baseline (owner, K8TN).
                     if session.endedAsleep {
-                        Image(systemName: "moon.zzz.fill")
+                        Text("·")
+                        Text("\(Image(systemName: "moon.fill"))")
                             .foregroundStyle(Color.sage)
                             .accessibilityLabel("ended in sleep mode")
                     }
