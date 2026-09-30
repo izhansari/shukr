@@ -348,7 +348,7 @@ struct tasbeehView: View {
                     // dynamic pause / play button shown in active session
                     PlayPauseButton(togglePause: togglePause, paused: paused)
                         .opacity(paused ? 0 : 1)
-                        .disabled(paused)
+                        .allowsHitTesting(!paused)   // a disabled button still swallowed the pause screen's taps
                 }
                 .animation(paused ? .easeOut : .easeIn, value: paused)
                 .padding()
@@ -1182,6 +1182,8 @@ struct tasbeehView: View {
         private var mantraLocked: Bool { isTaskSession || sharedState.isDoingPostNamazZikr }
 
         private var cardShape: RoundedRectangle { RoundedRectangle(cornerRadius: 22, style: .continuous) }
+        /// The pause card's scroll view height: its content fills it, so empty space there resumes.
+        @State private var scrollHeight: CGFloat = 0
 
         var body: some View {
             Color("pauseColor")
@@ -1218,9 +1220,14 @@ struct tasbeehView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)
                     .frame(maxWidth: .infinity)
+                    // The empty space round and under the cards resumes too (owner): the scroll view
+                    // took every tap in its frame. Behind the cards, so a tap on one stays on it.
+                    .frame(minHeight: scrollHeight, alignment: .top)
+                    .background(Color.clear.contentShape(Rectangle()).onTapGesture { togglePause() })
                 }
                 .scrollIndicators(.hidden)
                 .scrollBounceBehavior(.basedOnSize)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { scrollHeight = $0 }
 
                 controls
             }
@@ -1430,7 +1437,9 @@ struct tasbeehView: View {
                                 .blur(radius: finishArmed ? 0 : 3)
                         }
                         .font(.system(size: 14, weight: .regular, design: .rounded))
-                        .frame(maxWidth: .infinity)
+                        // Just round its words: the empty sides of the bottom resume (owner), and a
+                        // stray tap there mustn't arm Finish.
+                        .padding(.horizontal, 24)
                         .padding(.vertical, 10)
                         .contentShape(Rectangle())
                         .animation(.easeInOut(duration: 0.3), value: finishArmed)
