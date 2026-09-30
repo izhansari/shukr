@@ -409,24 +409,10 @@ struct tasbeehView: View {
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
 
-            // Sleep mode saved it: black until the phone locks (then the cover
-            // closes in the background and the morning card waits for the next open). A tap = he's
-            // awake: close it, no card.
-            if sleptSaved {
-                // Pure black, nothing drawn — no status bar, no home indicator: on an OLED phone those
-                // pixels are off, so the screen is dark at once, before iOS locks it (owner: "have
-                // clarity that my phone would turn off and still save it").
-                Color.black
-                    .ignoresSafeArea()
-                    .statusBarHidden(true)
-                    .persistentSystemOverlays(.hidden)
-                .zIndex(5)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    SleepMorning.clear()
-                    closeAfterSleep()
-                }
-            }
+            // Sleep mode saved it with the app open (the countdown): the results screen above stays up
+            // until the phone auto-locks (owner: "show the completion screen until the phone auto
+            // locks - not that full black thing"); the lock closes the cover in the background and the
+            // morning card waits for the next open. Done on it = he's awake: no card (onDisappear).
         }
         .frame(maxWidth: .infinity) // expand to be the whole page (to make it tappable)
         .background(
@@ -516,8 +502,7 @@ struct tasbeehView: View {
         .onChange(of: scenePhase) {_, newScenePhase in
             // Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
             // finish and save, ending at the last tap (he woke up on the pause screen before:
-            // pausing stopped the inactivity timer). Inactive alone (Control Center, a banner)
-            // leaves it counting; the inactivity timer still ends it.
+            // pausing stopped the inactivity timer).
             // Saved by the countdown and now the phone has locked: close quietly in the background.
             if sleptSaved {
                 if newScenePhase == .background { closeAfterSleep() }
@@ -525,9 +510,11 @@ struct tasbeehView: View {
             }
             // Paused with sleep on counts too: auto-lock would leave him on the pause screen (or iOS
             // would kill the app and lose the session).
-            if toggleInactivityTimer && timerIsActive {
-                if newScenePhase == .background { finishAsleep() }
-                if !paused { return }
+            // Inactive alone (the task switcher, Control Center) pauses as usual — he brings the pause
+            // screen up that way (owner); the lock (inactive, then background) then finishes it.
+            if toggleInactivityTimer && timerIsActive && newScenePhase == .background {
+                finishAsleep()
+                return
             }
             if newScenePhase == .inactive || newScenePhase == .background {
                 !paused ? togglePause() : ()
@@ -536,6 +523,7 @@ struct tasbeehView: View {
         }
         .onDisappear {
             CircleCover.set("tasbeeh", false)
+            if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
             sharedState.isDoingPostNamazZikr = false
             UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
         }
@@ -659,7 +647,7 @@ struct tasbeehView: View {
         if inBackground {
             closeAfterSleep()          // locked while counting: no results screen on wake
         } else {
-            sleptSaved = true          // the countdown ended it: stay black until the lock
+            sleptSaved = true          // the countdown ended it: the results screen until the lock
         }
         #if DEBUG
         print("😴 finished asleep · background \(inBackground) · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
