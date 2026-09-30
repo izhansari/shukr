@@ -121,11 +121,9 @@ struct tasbeehView: View {
         progressFraction >= 1 && !autoStop && !paused
     }
     
-    var inactivityLimit: TimeInterval{
-        if tasbeeh > 10{
-            return max(newAvrgTPC * 3, 10) // max of triple the average tpc or 10
-        } else { return 20 }
-    }
+    /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
+    /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
+    var inactivityLimit: TimeInterval { 45 }
 
     private var incrementThreshold: CGFloat = 50 // Threshold for tasbeeh increment
     
@@ -618,6 +616,12 @@ struct tasbeehView: View {
         endedAsleep = true
         stopTimer()
         try? context.save()
+        // iOS's own auto-lock takes over from here: the screen must never stay on after he's
+        // asleep (owner: "so long as we dont risk the screen never turning off").
+        UIApplication.shared.isIdleTimerDisabled = false
+        #if DEBUG
+        print("😴 finished asleep · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
+        #endif
     }
 
     private func completeStopTimer() {
