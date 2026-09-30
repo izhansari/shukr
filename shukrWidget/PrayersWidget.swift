@@ -1228,30 +1228,35 @@ struct PrayerLockScreenView: View {
         ZStack {
             AccessoryWidgetBackground()
             if live {
-                // Fills as the window passes, like the app's ring (it used to drain). The stock
-                // timer-driven view is what keeps updating on a widget; custom drawing goes stale.
-                ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
-                    EmptyView()
-                } currentValueLabel: {
-                    VStack(spacing: 0) {
-                        Image(systemName: prayerIcon(for: prayer.name))
-                            .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
-                        if lastHour {
-                            // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left,
-                            // live, in place of the name — the symbol says which prayer.
-                            Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
-                                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .multilineTextAlignment(.center)
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                        } else {
-                            Text(prayer.name)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .lineLimit(1).minimumScaleFactor(0.6)
-                        }
+                // A thin ring (owner, 2026-09-30, note C522C78E: "less thick to let the content
+                // inside breathe"): the stock timer-driven ring is what keeps moving on a widget but
+                // its band is fat, so it only masks a thin arc (as the home widget's `LiveArc`).
+                Circle()
+                    .inset(by: Self.ringInset)
+                    .stroke(lineWidth: Self.ringWidth)
+                    .opacity(0.25)
+                Circle()
+                    .inset(by: Self.ringInset)
+                    .stroke(style: StrokeStyle(lineWidth: Self.ringWidth, lineCap: .butt))
+                    .mask { liveMask }
+                VStack(spacing: 0) {
+                    Image(systemName: prayerIcon(for: prayer.name))
+                        .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
+                    if lastHour {
+                        // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left,
+                        // live, in place of the name — the symbol says which prayer.
+                        Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
+                            .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .multilineTextAlignment(.center)
+                            .lineLimit(1).minimumScaleFactor(0.6)
+                    } else {
+                        Text(prayer.name)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .lineLimit(1).minimumScaleFactor(0.6)
                     }
                 }
-                .progressViewStyle(.circular)
+                .padding(.horizontal, 7)
             } else {
                 // Not started (most of the time once the current one is marked): just the app's
                 // dashed ring — no NEXT here (owner, 2026-09-27: it didn't look good).
@@ -1273,6 +1278,29 @@ struct PrayerLockScreenView: View {
             }
         }
         .widgetAccentable()
+    }
+
+    static let ringWidth: CGFloat = 2.5
+    /// The arc's middle sits in the stock ring's band, so the mask shows all of it.
+    static let ringInset: CGFloat = 3
+
+    /// The stock ring as a mask: its track (≈ 0.3 grey) to nothing, its fill to everything.
+    private var liveMask: some View {
+        ZStack {
+            Color.black
+            ProgressView(timerInterval: prayer.start...prayer.end, countsDown: false) {
+                EmptyView()
+            } currentValueLabel: {
+                EmptyView()
+            }
+            .progressViewStyle(.circular)
+            .tint(.white)
+            .labelsHidden()
+        }
+        .compositingGroup()
+        .brightness(-0.35)
+        .contrast(3)
+        .luminanceToAlpha()
     }
 
     private var rectangular: some View {
