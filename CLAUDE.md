@@ -23,6 +23,9 @@ which stays frozen). **Everything else goes ahead without asking:** work that's 
 restore agreed behaviour, review fix-ups that don't change what he sees, and internal tooling / notes.
 
 **Flow of an item:**
+0. **A mind dump is recorded before it's discussed**: Bradley runs `board/idea.sh dump` with Izhan's exact words, then
+   splits it into items (`idea.sh add`, his own one-sentence titles + bullets, `--kind about|new`); a new idea leaves the
+   board's Inbox only by link, park or drop.
 1. His words (chat or the app) → Bradley makes an ask (a slug plus his words) and queues it. No new item goes to an
    engineer until Izhan names it; once named, it's briefed as that engineer's next.
 2. Every item is in `board/queue.jsonl` before it's briefed (`queue.sh add`); each engineer holds a current and a next, on
@@ -39,6 +42,8 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
    forced onto the board. An engineer's question goes to Bradley, who logs and asks it. All three land in the same record
    (WhatsNew.jsonl `decision` / `decision-answer`, `whatsnew.py decision` / `decision-answer`; `check` lists the open ones).
    Never a long chat message: one line + the options (pictures, Bradley's pick). A review finding that needs him is one too.
+   Whoever asks Izhan anything — Bradley, an engineer, Ben — logs it first (`decide.sh ask --for <self>`); an unlogged
+   question is invisible on the board and gets overlooked.
 
 **Protocol health (Bradley owns it; owner, 2026-09-29):** once a week, or when Izhan asks, Bradley reports in one short
 digest:
@@ -57,7 +62,9 @@ He fixes drift himself, and suggests running fewer agents when a lane is quiet. 
   push). Frank and Sami talk to each other directly about merges and installs, copying Bradley only if it blocks someone.
 
 **Board:** https://shukr-board.vercel.app (Vercel login; read-only: Queue · Decisions · Plan). Records:
-`shukrGit/board/{queue,decisions,plan,reviews,status}.jsonl` via queue.sh / decide.sh / plan.sh / review.sh / status.sh;
+`shukrGit/board/`: queue, decisions, ideas (was plan), reviews, status .jsonl via queue.sh / decide.sh / idea.sh /
+review.sh / status.sh; the Plan tab derives each item's state from the queue, decisions and the change log — nothing is
+typed except park / drop;
 data uploaded by publish-data.sh and the page deployed by deploy-site.sh, both from the Stop hook — nobody publishes by
 hand. Mocks / storyboards / patches: `board/mocks/<item-id>/`.
 
@@ -280,22 +287,19 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `plan()` is a diff, run after every `NotificationScheduler` run, on Stop (`FajrAlarmStopIntent`) and "I'm up".
   `alarmKitActive` (app group) marks the mode; the old Shortcut's `SetFajrAlarmIntent` then throws `SetByShukrError`, so
   there's never a second alarm. iOS 18–26.0: the Shortcut path, unchanged.
-- AlarmKit alarms are NOT in the Clock app's list (Apple's WWDC25 "Wake up to the AlarmKit API" names the Lock Screen, Dynamic
-  Island, StandBy and a paired Watch — never Clock); a scheduled `.fixed` alarm with no pre-alert countdown shows nothing until it
-  rings; people allow it per app in Settings → shukr. Settings' status line / result are `Color.green` (owner, note C9FB37FF), the
-  info panel says where to see it, and **Test alarm** (a time picker, default +1 min; a time already gone = tomorrow) schedules one
-  real alarm titled "Test alarm from shukr" (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, which `plan()` leaves alone until
-  past). Sim ✓: it fired at the minute as the system alarm banner (the sim can't play the tone).
+- AlarmKit alarms are NOT in the Clock app's list (Lock Screen, Dynamic Island, StandBy, a paired Watch); a `.fixed` alarm
+  shows nothing until it rings. Settings' status / result are `Color.green`; **Test alarm** (default +1 min) schedules one
+  real alarm (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, left alone by `plan()` until past). Sim ✓ it fired.
 - Unverified: whether Stop's intent has time to re-plan on a real phone.
 
 **Tasbeeh session** (tasbeehView.swift)
 - Tap-anywhere counter; freestyle / time / count; count in sets (`quickAddStep`); pause screen (`ZikrBento`, silent-haptics chip, Resume big, Finish two taps); results; a task session links `SessionDataModel.task`, continue or start over (`resumeCount`). Tasbih Fatimah 33 · 33 · 34 is one session (`PostSalahTasbeeh`). DEBUG `-demoPauseScreen`.
 
 **Zikr page, tasks, reminders** (DailyTasksView.swift, ZikrReminders.swift)
-- `ZikrCircleWheel` (gentle arc, left dot scrubber); after a session the next task centres. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen). **Tasks** top right → `ZikrTasksSheet` (2026-09-29, ask zikr-tasks-sheet; replaced jiggle mode and the reminders page — both deleted, owner: "stop working on jiggle"): rows in the wheel's order (ring / ✓, "40 of 100" / "done" — no "today", the reminder as a sage bell capsule), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → `AddDailyTaskView(editing:)` pushed (its own ‹ is Back; no swipe-dismiss while it is up — `interactiveDismissDisabled(!path.isEmpty)`), swipe → confirm → `TaskModel.delete`; long-press a wheel task → the sheet on its editor (`startOn`). **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`. DEBUG `-demoZikrPage`, `-demoZikrTasks`, `-demoZikrTasksSeed`, `-demoZikrTasksEdit N`, `-demoZikrTasksDelete N`.
+- `ZikrCircleWheel` (gentle arc, left dot scrubber); after a session the next task centres. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen). **Tasks** top right → `ZikrTasksSheet` (2026-09-29, ask zikr-tasks-sheet; replaced jiggle mode and the reminders page — both deleted, owner: "stop working on jiggle"): rows in the wheel's order (ring / ✓, "40 of 100" / "done" — no "today", the reminder as a sage bell capsule), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → `AddDailyTaskView(editing:)` pushed (its own ‹ is Back; no swipe-dismiss while it is up — `interactiveDismissDisabled(!path.isEmpty)`), swipe → confirm → `TaskModel.delete`; long-press a wheel task → the sheet on its editor (`startOn`). **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`.
 
 **Azkar & zikr card** (MantrasView.swift, ZikrMedia.swift, BuiltInAzkar.swift)
-- Azkar: yours first, built-ins below (locked name / text), sort button (Name A→Z default). Card (`MantraCardFields`, #17 option A, 2026-09-29): one fixed box, tabs down its left — full zikr (ع, first and default; scrolls in the box), notes, voice memo, photo; empty boxes in edit mode show grey placeholders. The name field says "Nickname". While editing, a sage edge round the whole card; the photo is aspect-fit; the memo line is "Sep 29 · 0:42" — the date read from the .m4a's `mvhd` header (`ZikrAudio.recordedDate`, nothing stored; none for a WAV) (note 3CA19C68). A zikr's page: its task circles — tap → "Start …?" (Continue / Start over when part-done) → the page closes and the Zikr page's wheel starts it (`ZikrFocus.start` → PrayerTimesView `clearCovers` → `wheelStartNotification`); hold → the edit sheet. `nameAccessory` = the zikr page's ✎ / Cancel · ✓ beside the name — the page has no nav bar (`MantraEditorView`). Pause card: full text + notes stacked (owner: keep), ▶︎ + photo thumbnail top right (`ZikrMediaStrip(compact:)`, 0.75× / loop in ▶︎'s long-press menu), **no editing from the pause screen** (its ✎ and `MantraCardEditor` are gone). DEBUG `-demoZikrMedia`, `-demoZikrPane notes|memo|photo`, `-demoZikrEditing`, `-demoNewZikr`.
+- Azkar: yours first, built-ins below (locked name / text), sort button (Name A→Z default). Card (`MantraCardFields`, #17 option A, 2026-09-29): one fixed box, tabs down its left — full zikr (ع, first and default; scrolls in the box), notes, voice memo, photo; empty boxes in edit mode show grey placeholders. The name field says "Nickname". While editing, a sage edge round the whole card; the photo is aspect-fit; the memo line is "Sep 29 · 0:42" — the date read from the .m4a's `mvhd` header (`ZikrAudio.recordedDate`, nothing stored; none for a WAV) (note 3CA19C68). A zikr's page: its task circles — tap → "Start …?" (Continue / Start over when part-done) → the page closes and the Zikr page's wheel starts it (`ZikrFocus.start` → PrayerTimesView `clearCovers` → `wheelStartNotification`); hold → the edit sheet. `nameAccessory` = the zikr page's ✎ / Cancel · ✓ beside the name — the page has no nav bar (`MantraEditorView`). Pause card: full text + notes stacked (owner: keep), ▶︎ + photo thumbnail top right (`ZikrMediaStrip(compact:)`, 0.75× / loop in ▶︎'s long-press menu), **no editing from the pause screen** (its ✎ and `MantraCardEditor` are gone).
 
 **History** (MantrasView.swift `ZikrLibraryView`, HistoryPageView.swift)
 - History | Azkar native pager; all-time header + 14-day bars; delete only via Edit → select; row popover (Open zikr, Feel the pace).
