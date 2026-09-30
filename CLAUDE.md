@@ -259,11 +259,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (`interactiveDismissDisabled`); `sheetDetent` small 84 / medium / large, the user's height kept. Content by state:
   mosques = list or `mosquePath.last`'s page; prayers = `PrayerSpotsHome` (prayers in view, `PrayerFilterMenu` on the
   header's right) or `selection`'s page (cluster list ⇄ prayer, in place). Pin taps cross-fade (`pageSwap`); ‹ back to the
-  list. Every page wears `MapSheetHeader` (✕ = back to the qibla; a single prayer's / mosque's page has only ‹). Small =
+  list. Every page wears `MapSheetHeader` (no ✕ anywhere — layers change in Explore; owner, D0C2E6DD). Small =
   the page's header alone in the shared `MapSheetCollapsed` (env `mapSheetCollapsed`). Editing a prayer sizes the sheet to
   the page (`setSpotMode`), then returns the user's height. `SheetMetrics` + `AboveSheet` float the ? above the sheet.
-- Explore (Prayers · Mosques; no Qibla — it's home) under the globe / locate capsule, opening downwards; the ? bottom
-  right. DEBUG `-demoMapLayer prayers|mosques` and others in LocationMapView2.swift; `-logMapFrames YES` measures in the
+- Explore (`ExploreDock`: Qibla · Prayers · Mosques) under the globe / locate capsule, opening downwards: the button turns
+  into ✕ while open, one short ease (`ExploreDock.motion`, no bounce / stagger — owner: "don't go overboard"); the ? bottom
+  right hides while it's open. DEBUG `-demoMapLayer prayers|mosques` and others in LocationMapView2.swift; `-logMapFrames YES` measures in the
   sheet's own space (global frames go stale while UIKit moves a sheet). Test the map on an iOS 27 sim.
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)

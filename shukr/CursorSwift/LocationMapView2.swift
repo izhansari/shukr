@@ -95,7 +95,6 @@ final class LocationViewModel: ObservableObject {
     var addressCache: [String: String] = [:]
 
     /// The old Explore sheet (unused since the dock; kept so nothing dangles).
-    @Published var showExplore = false
     /// A tapped pin / cluster: its page swaps into the sheet that's already up, in place, at the
     /// height the user left it (it used to close the sheet and open another 0.4 s later).
     static let pageSwap = Animation.smooth(duration: 0.3)
@@ -931,11 +930,11 @@ struct LocationMapContentView: View {
            sort: \PrayerModel.startTime) private var prayers: [PrayerModel]
     @State private var showFilterSheet = false
     @State private var anchor = MapAnchor()
-    /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
-    /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
-    /// The explore dock is spread open (Qibla · Prayers · Mosques).
+    /// The explore dock is open (Qibla · Prayers · Mosques).
     @State private var exploreOpen = false
 
+    /// First visit: how the qibla map works (owner, 2026-09-25: people don't get why the arrows
+    /// don't follow the phone like the Salah page's compass). The ? in the controls reopens it.
     /// The ? explains whatever layer is showing; each layer's guide also opens once by itself.
     @State private var guide: MapGuideTopic? = nil
     private var currentGuideTopic: MapGuideTopic {
@@ -950,9 +949,9 @@ struct LocationMapContentView: View {
             && !ProcessInfo.processInfo.arguments.contains("-demoQiblaGuide") { return }
         #endif
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            // Another sheet up (usually Explore, right after picking the layer): try again when
-            // it closes; only mark it seen once it has actually shown.
-            guard currentGuideTopic == topic, guide == nil, !viewModel.showExplore, viewModel.selection == nil,
+            // Something else up (the Explore column, a sheet): tried again when Explore closes; only
+            // marked seen once it has actually shown.
+            guard currentGuideTopic == topic, guide == nil, !exploreOpen, viewModel.selection == nil,
                   !showFilterSheet,
                   !defaults.bool(forKey: topic.seenKey) else { return }
             defaults.set(true, forKey: topic.seenKey)
@@ -1057,7 +1056,7 @@ struct LocationMapContentView: View {
         ZStack(alignment: .top) {
             if viewModel.showMosques {
                 if let item = viewModel.mosquePath.last {
-                    // A single mosque's page: ‹ only, like a prayer's (owner, map-one-sheet); ✕ stays on the lists.
+                    // A single mosque's page: ‹ back to the list, like a prayer's.
                     MosqueSheet(item: item, back: { viewModel.openMosqueList() })
                         .id(ObjectIdentifier(item))
                         .transition(.layerPage)
@@ -1066,20 +1065,17 @@ struct LocationMapContentView: View {
                                     origin: viewModel.mapView?.userLocation.location ?? envLocation.userLocation,
                                     nearYou: searchedNearYou,
                                     searching: viewModel.mosqueSearching,
-                                    close: { setMode(prayers: false, mosques: false) },
                                     collapsed: sheetSmall) { viewModel.focusMosque($0) }
                         .transition(.layerPage)
                 }
             } else if viewModel.showPrayers {
                 if let selection = viewModel.selection {
-                    PrayerSpotSheet(selection: selection, viewModel: viewModel,
-                                    close: { setMode(prayers: false, mosques: false) })
+                    PrayerSpotSheet(selection: selection, viewModel: viewModel)
                         .id(selection.id)
                         .transition(.layerPage)
                 } else {
                     PrayerSpotsHome(viewModel: viewModel, collapsed: sheetSmall,
-                                    custom: { showFilterSheet = true },
-                                    close: { setMode(prayers: false, mosques: false) })
+                                    custom: { showFilterSheet = true })
                         .transition(.layerPage)
                 }
             }
@@ -1088,16 +1084,11 @@ struct LocationMapContentView: View {
     }
 
     /// The explore button: opens *in place* into the layers (owner, 2026-09-26: a sheet for three
-    /// choices was friction). The lit layer tapped again goes back to the qibla.
+    /// choices was friction). Picking a layer switches to it; Qibla is home.
     private var exploreDock: some View {
         let active: MapLayer = viewModel.showPrayers ? .prayers : viewModel.showMosques ? .mosques : .qibla
         return ExploreDock(open: $exploreOpen, active: active, mosqueIcon: mosqueIcon.pin) { layer in
-            switch layer {
-            case active: setMode(prayers: false, mosques: false)
-            case .prayers: setMode(prayers: true, mosques: false)
-            case .mosques: setMode(prayers: false, mosques: true)
-            default: setMode(prayers: false, mosques: false)
-            }
+            setMode(prayers: layer == .prayers, mosques: layer == .mosques)
         }
     }
 
@@ -1139,7 +1130,7 @@ struct LocationMapContentView: View {
             if exploreOpen {
                 Color.black.opacity(0.001)
                     .ignoresSafeArea()
-                    .onTapGesture { withAnimation(.spring(response: 0.4, dampingFraction: 0.82)) { exploreOpen = false } }
+                    .onTapGesture { withAnimation(ExploreDock.motion) { exploreOpen = false } }
             }
 
             VStack {
@@ -1276,8 +1267,10 @@ struct LocationMapContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
             }
-            .opacity(viewModel.movingPrayer == nil ? 1 : 0)
-            .allowsHitTesting(viewModel.movingPrayer == nil)
+            // Out of the way while the Explore column is open: at the sheet's middle height the two met.
+            .opacity(viewModel.movingPrayer == nil && !exploreOpen ? 1 : 0)
+            .allowsHitTesting(viewModel.movingPrayer == nil && !exploreOpen)
+            .animation(ExploreDock.motion, value: exploreOpen)
 
             if let moving = viewModel.movingPrayer {
                 MapPickOverlay(prayer: moving, pick: viewModel.pick)
@@ -1352,8 +1345,8 @@ struct LocationMapContentView: View {
         .onChange(of: currentGuideTopic) { _, topic in
             if topic != .qibla { showGuideIfFirstTime(topic, after: 0.9) }
         }
-        .onChange(of: viewModel.showExplore) { _, open in
-            if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // Explore closed over a new layer
+        .onChange(of: exploreOpen) { _, open in
+            if !open { showGuideIfFirstTime(currentGuideTopic, after: 0.6) }   // one skipped while it was open
         }
         .onReceive(NotificationCenter.default.publisher(for: MosqueHiding.changed)) { _ in
             viewModel.mosques = viewModel.mosques   // re-add the pins so hidden ones turn grey
@@ -1390,6 +1383,14 @@ struct LocationMapContentView: View {
                 if UserDefaults.standard.bool(forKey: "demoExploreOpen") {   // the dock, open (screenshots)
                     try? await Task.sleep(for: .seconds(1))
                     withAnimation(.spring(response: 0.42, dampingFraction: 0.8)) { exploreOpen = true }
+                }
+                if UserDefaults.standard.bool(forKey: "demoExploreCycle") {   // open / close twice (recordings)
+                    for _ in 0..<2 {
+                        try? await Task.sleep(for: .seconds(1.2))
+                        withAnimation(ExploreDock.motion) { exploreOpen = true }
+                        try? await Task.sleep(for: .seconds(1.6))
+                        withAnimation(ExploreDock.motion) { exploreOpen = false }
+                    }
                 }
                 if let d = UserDefaults.standard.string(forKey: "demoMapDetent") {
                     try? await Task.sleep(for: .seconds(1))
@@ -1437,21 +1438,18 @@ struct LocationMapContentView: View {
 }
 
 /// What the map shows besides the qibla.
-enum MapLayer { case qibla, prayers, mosques, halal }
+enum MapLayer { case qibla, prayers, mosques }
 
-/// The map's Explore sheet (2026-09-25 — owner: prayer pins, mosques and soon halal food need one
-/// home, not a button each): layer tiles like the pause screen's chips — tap one to show it, tap
-/// it again to go back to the qibla — and the active layer's own settings underneath.
 /// The map's explore button. Closed: one glass circle wearing the active layer's icon (🔍 on the
-/// qibla). Open: it springs out leftwards into a glass capsule with Qibla · Prayers · Mosques
-/// (icon over a small label, the active one green) and a ✕; picking one folds it back into that
-/// layer's icon. Items fan in one after another.
+/// qibla). Open: the button turns into ✕ and the capsule drops down to Qibla · Prayers · Mosques
+/// (icon over a small label, the active one green); picking one closes it on that layer. One short
+/// ease, no bounce or stagger (owner, D0C2E6DD: "don't go overboard"). The ✕ is how you close it —
+/// the lit layer is never shown twice.
 struct ExploreDock: View {
     @Binding var open: Bool
     let active: MapLayer
     let mosqueIcon: String
     let pick: (MapLayer) -> Void
-    @Namespace private var glass
 
     private var closedIcon: String {
         switch active {
@@ -1462,13 +1460,14 @@ struct ExploreDock: View {
     }
 
     private var items: [(MapLayer, String, String)] {
-        // No Qibla: it's the map's home, not a layer (owner, map-one-sheet) — a layer's ✕, or
-        // tapping the lit layer here again, goes back to it.
-        [(.prayers, "hands.and.sparkles.fill", "Prayers"),
+        // Qibla is a layer here again: the sheets have no ✕, so this is the way back (owner, D0C2E6DD).
+        [(.qibla, "location.north.line", "Qibla"),
+         (.prayers, "hands.and.sparkles.fill", "Prayers"),
          (.mosques, mosqueIcon, "Mosques")]
     }
 
-    private let spring = Animation.spring(response: 0.42, dampingFraction: 0.8)
+    /// Open / close: one short ease, no bounce (owner, D0C2E6DD: "doing too much to animate").
+    static let motion = Animation.smooth(duration: 0.25)
 
     var body: some View {
         // Under the globe / locate capsule it opens downwards (owner, map-one-sheet): the button
@@ -1476,23 +1475,23 @@ struct ExploreDock: View {
         VStack(spacing: 0) {
             Button {
                 triggerSomeVibration(type: .light)
-                withAnimation(spring) { open.toggle() }
+                withAnimation(Self.motion) { open.toggle() }
             } label: {
                 Image(systemName: open ? "xmark" : closedIcon)
                     .contentTransition(.symbolEffect(.replace))
                     .mapControlIcon(tint: open || active == .qibla ? nil : .green)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(open ? "Close" : "Explore: prayer spots, mosques")
+            .accessibilityLabel(open ? "Close" : "Explore: qibla, prayer spots, mosques")
             if open {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 26, height: 0.5)
                     .transition(.opacity)
-                ForEach(Array(items.enumerated()), id: \.offset) { i, item in
+                ForEach(items, id: \.0) { item in
                     let on = active == item.0
                     Button {
                         triggerSomeVibration(type: .light)
-                        withAnimation(spring) { open = false }
-                        pick(item.0)
+                        withAnimation(Self.motion) { open = false }
+                        if !on { pick(item.0) }
                     } label: {
                         VStack(spacing: 3) {
                             Image(systemName: item.1)
@@ -1510,10 +1509,7 @@ struct ExploreDock: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.4, anchor: .top).combined(with: .opacity)
-                            .animation(spring.delay(0.04 * Double(i + 1))),
-                        removal: .opacity.animation(.easeOut(duration: 0.12))))
+                    .transition(.opacity)
                 }
             }
         }
@@ -1521,57 +1517,7 @@ struct ExploreDock: View {
         // As wide as the capsule above it, so the column of controls stays straight.
         .frame(width: 46)
         .mapGlass(Capsule(), tint: !open && active != .qibla ? .green : nil)
-        .animation(spring, value: open)
-    }
-}
-
-struct MapExploreSheet: View {
-    let active: MapLayer
-    let select: (MapLayer) -> Void
-    @AppStorage(MosqueIconStyle.key) private var mosqueIconRaw = MosqueIconStyle.finder.rawValue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Explore")
-                .font(.system(size: 24, weight: .light, design: .rounded))
-                .padding(.top, 26)
-            // Halal food stays hidden until it exists (a "soon" tile read as unfinished).
-            HStack(spacing: 10) {
-                tile("Qibla", icon: "location.north.line", layer: .qibla)
-                tile("My prayer spots", icon: "hands.and.sparkles.fill", layer: .prayers)
-                tile("Mosques", icon: (MosqueIconStyle(rawValue: mosqueIconRaw) ?? .finder).pin, layer: .mosques)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 20)
-        .fontDesign(.rounded)
-    }
-
-    private func tile(_ title: String, icon: String, layer: MapLayer) -> some View {
-        let on = active == layer
-        return Button {
-            triggerSomeVibration(type: .light)
-            select(layer)
-        } label: {
-            VStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.system(size: 20, weight: .light))
-                    .frame(height: 24)
-                Text(title)
-                    .font(.caption)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-            }
-            .foregroundStyle(on ? Color.green : Color.primary.opacity(0.75))
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(on ? Color.green.opacity(0.14) : Color.primary.opacity(0.06))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .buttonStyle(.plain)
+        .animation(Self.motion, value: open)
     }
 }
 
@@ -2053,18 +1999,15 @@ struct PrayerSpotSelection: Identifiable {
 struct PrayerSpotSheet: View {
     let selection: PrayerSpotSelection
     let viewModel: LocationViewModel
-    /// ✕: leave prayer spots, back to the qibla.
-    let close: () -> Void
     @State private var address: String? = nil
     /// A cluster's list swaps to a prayer's page in place (the one sheet — no push, no second
     /// sheet); ‹ on the page comes back to the list.
     @State private var opened: PrayerModel?
     private var prayers: [PrayerModel] { selection.prayers }
 
-    init(selection: PrayerSpotSelection, viewModel: LocationViewModel, close: @escaping () -> Void) {
+    init(selection: PrayerSpotSelection, viewModel: LocationViewModel) {
         self.selection = selection
         self.viewModel = viewModel
-        self.close = close
         _opened = State(initialValue: selection.focus)
     }
 
@@ -2111,10 +2054,10 @@ struct PrayerSpotSheet: View {
             if prayers.count == 1, let only = prayers.first {
                 // One pin: its page right away; ‹ goes back to the home list.
                 PrayerSpotDetail(prayer: only, selection: selection, viewModel: viewModel,
-                                 back: { viewModel.closeSpot() }, close: close)
+                                 back: { viewModel.closeSpot() })
             } else if let opened {
                 PrayerSpotDetail(prayer: opened, selection: selection, viewModel: viewModel,
-                                 back: { withAnimation(LocationViewModel.pageSwap) { self.opened = nil } }, close: close)
+                                 back: { withAnimation(LocationViewModel.pageSwap) { self.opened = nil } })
                     .transition(.layerPage)
             } else if collapsed {
                 MapSheetCollapsed { clusterHeader }
@@ -2130,7 +2073,7 @@ struct PrayerSpotSheet: View {
     @Environment(\.mapSheetCollapsed) private var collapsed
     private var clusterHeader: some View {
         MapSheetHeader(back: { viewModel.closeSpot() }, title: "\(prayers.count) prayers here",
-                       subtitle: address ?? "Locating…", close: close)
+                       subtitle: address ?? "Locating…")
     }
 
     private var clusterList: some View {
@@ -2194,8 +2137,6 @@ struct PrayerSpotDetail: View {
     @ObservedObject var viewModel: LocationViewModel
     /// ‹: to the cluster's list, or the home list for a single pin.
     let back: () -> Void
-    /// ✕: leave prayer spots.
-    let close: () -> Void
     @EnvironmentObject private var prayerViewModel: PrayerViewModel
     @State private var address: String?
     /// Editing: the picked time and spot wait here until Save.

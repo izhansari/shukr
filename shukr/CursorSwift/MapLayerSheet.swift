@@ -84,12 +84,11 @@ struct MapSheetCollapsed<Header: View>: View {
 /// One header for every page in the map's sheet (prayer spots, a cluster, a prayer, mosques, a
 /// mosque — owner: "ideally all sheets share the same header look"): an optional ‹ on the left,
 /// the title in the app's light rounded type with one quiet line under it, the page's own
-/// accessories, then ✕ (leave the layer, back to the qibla) on the far right.
+/// accessories on the right. No ✕: a layer is left from Explore (owner, D0C2E6DD).
 struct MapSheetHeader<Leading: View, Trailing: View>: View {
     var back: (() -> Void)? = nil
     let title: String
     var subtitle: String? = nil
-    var close: (() -> Void)? = nil
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
@@ -115,28 +114,23 @@ struct MapSheetHeader<Leading: View, Trailing: View>: View {
             .debugMapFrame("text")
             trailing
                 .debugMapFrame("trailing")
-            if let close {
-                MapSheetCircleButton(symbol: "xmark", label: "Back to the qibla", action: close)
-                    .debugMapFrame("close")
-            }
         }
     }
 }
 
 extension MapSheetHeader where Leading == EmptyView {
-    init(back: (() -> Void)? = nil, title: String, subtitle: String? = nil, close: (() -> Void)? = nil,
-         @ViewBuilder trailing: () -> Trailing) {
-        self.init(back: back, title: title, subtitle: subtitle, close: close, leading: { EmptyView() }, trailing: trailing)
+    init(back: (() -> Void)? = nil, title: String, subtitle: String? = nil, @ViewBuilder trailing: () -> Trailing) {
+        self.init(back: back, title: title, subtitle: subtitle, leading: { EmptyView() }, trailing: trailing)
     }
 }
 
 extension MapSheetHeader where Leading == EmptyView, Trailing == EmptyView {
-    init(back: (() -> Void)? = nil, title: String, subtitle: String? = nil, close: (() -> Void)? = nil) {
-        self.init(back: back, title: title, subtitle: subtitle, close: close, leading: { EmptyView() }, trailing: { EmptyView() })
+    init(back: (() -> Void)? = nil, title: String, subtitle: String? = nil) {
+        self.init(back: back, title: title, subtitle: subtitle, leading: { EmptyView() }, trailing: { EmptyView() })
     }
 }
 
-/// The header's round buttons (‹, ✕, ☆): 36 pt, a faint fill.
+/// The header's round buttons (‹, ☆): 36 pt, a faint fill.
 struct MapSheetCircleButton: View {
     let symbol: String
     let label: String
@@ -253,7 +247,6 @@ struct PrayerSpotsHome: View {
     @ObservedObject var viewModel: LocationViewModel
     let collapsed: Bool
     let custom: () -> Void
-    let close: () -> Void
 
     private var subtitle: String {
         let n = viewModel.visiblePrayerCount
@@ -315,7 +308,7 @@ struct PrayerSpotsHome: View {
     }
 
     private var header: some View {
-        MapSheetHeader(title: "Prayer spots", subtitle: subtitle, close: close) {
+        MapSheetHeader(title: "Prayer spots", subtitle: subtitle) {
             PrayerFilterMenu(viewModel: viewModel, custom: custom)
         }
     }

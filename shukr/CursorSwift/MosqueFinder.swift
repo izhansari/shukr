@@ -264,8 +264,6 @@ struct MosqueListSheet: View {
     /// The search is still running (the sheet opens at once, 2026-09-26 — it used to wait for
     /// results behind a bar that meant nothing yet).
     var searching = false
-    /// ✕: leave mosques (the sheet only shrinks to its header when swiped down).
-    var close: () -> Void = {}
     /// Shrunk to its header (the 96 pt bar): the list can't scroll, and goes back to the top, so the
     /// bar never shows rows sliding under it (owner, 2026-09-27).
     var collapsed = false
@@ -438,11 +436,10 @@ struct MosqueListSheet: View {
     }
 
     /// The map sheet's shared header: "Mosques", how many, drive / walk (for the times in the
-    /// list), ✕ back to the qibla.
+    /// list).
     private var header: some View {
         MapSheetHeader(title: "Mosques",
-                       subtitle: searching ? "finding mosques…" : "\(visible.count) \(nearYou ? "near you" : "in the area you searched")",
-                       close: close) {
+                       subtitle: searching ? "finding mosques…" : "\(visible.count) \(nearYou ? "near you" : "in the area you searched")") {
             HStack(spacing: 2) {
                 ForEach(MosqueTravel.allCases) { mode in
                     let on = travel == mode
@@ -592,8 +589,6 @@ struct MosqueSheet: View {
     let item: MKMapItem
     /// ‹: back to the list (the one map sheet, map-one-sheet); nil = no back button.
     var back: (() -> Void)? = nil
-    /// ✕: leave mosques, back to the qibla.
-    var close: (() -> Void)? = nil
     @State private var hiddenHere = false
     @State private var favorite = false
     @State private var drive: (time: TimeInterval, meters: CLLocationDistance)?
@@ -619,7 +614,7 @@ struct MosqueSheet: View {
 
     /// The map sheet's shared header: ‹, name, address, ☆ (My masajid), ✕.
     private var header: some View {
-        MapSheetHeader(back: back, title: item.name ?? "Mosque", subtitle: address, close: close) {
+        MapSheetHeader(back: back, title: item.name ?? "Mosque", subtitle: address) {
             MapSheetCircleButton(symbol: favorite ? "star.fill" : "star",
                                  label: favorite ? "Remove from My masajid" : "Add to My masajid",
                                  tint: favorite ? Color.green : Color.secondary,
