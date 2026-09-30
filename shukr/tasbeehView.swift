@@ -112,6 +112,10 @@ struct tasbeehView: View {
         return Int.random(in: 0..<PostSalahReminder.count)
     }()
     @State private var tasbeehColorMode = false
+    /// The app's own look (Light / Dark / Auto) when the session opened: the counter follows it,
+    /// fixed for the session (Auto passing Maghrib mid-count doesn't flip it); sleep mode goes dark
+    /// and turning sleep off comes back here (owner: the light / dark chip is gone).
+    @State private var appLookDark = false
 
     
     private var totalTime:  Int {
@@ -313,6 +317,7 @@ struct tasbeehView: View {
                     inactivityDimmer: $inactivityDimmer,
                     autoStop: $autoStop,
                     tasbeehColorMode: $tasbeehColorMode,
+                    appLookDark: appLookDark,
                     currentVibrationMode: $currentVibrationMode
                 )
             }
@@ -474,7 +479,8 @@ struct tasbeehView: View {
         
         .onAppear {
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
-            tasbeehColorMode = colorScheme == .dark ? true : false
+            appLookDark = colorScheme == .dark
+            tasbeehColorMode = appLookDark
             resolveSessionMantra()
             
             if !timerIsActive{
@@ -1172,6 +1178,7 @@ struct tasbeehView: View {
         @Binding var inactivityDimmer: Double
         @Binding var autoStop: Bool
         @Binding var tasbeehColorMode: Bool
+        let appLookDark: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
 
         // UI state
@@ -1412,20 +1419,34 @@ struct tasbeehView: View {
                         // The first time (until confirmed once): the intro, which turns it on.
                         if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
                         toggleInactivityTimer.toggle()
-                        if toggleInactivityTimer && !tasbeehColorMode { tasbeehColorMode = true }
+                        // On: dark. Off: back to the app's own look (there's no light / dark chip).
+                        tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
+                    }
+                    // (i) in the chip's corner: the intro again, any time (owner).
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            showSleepIntro = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 12, weight: .regular))
+                                .foregroundStyle(toggleInactivityTimer ? Color.sage.opacity(0.8) : Color.primary.opacity(0.4))
+                                .padding(7)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("About sleep mode")
                     }
                     .fullScreenCover(isPresented: $showSleepIntro) {
-                        SleepIntroView(onTurnOn: {
+                        SleepIntroView(isOn: toggleInactivityTimer, onTurnOn: {
                             sleepIntroConfirmed = true
                             toggleInactivityTimer = true
-                            if !tasbeehColorMode { tasbeehColorMode = true }
+                            tasbeehColorMode = true
                             showSleepIntro = false
                         }, onNotNow: { showSleepIntro = false })
                         .interactiveDismissDisabled()
                     }
                 hapticsChip
-                    chip(tasbeehColorMode ? "dark" : "light", icon: tasbeehColorMode ? "moon.fill" : "sun.max.fill",
-                         on: false) { tasbeehColorMode.toggle() }
                 }
                 }
                 // One button: Resume (owner, 2026-09-26: two big buttons side by side made the

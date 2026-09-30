@@ -5,7 +5,8 @@
 //  Tasbeeh sleep mode (owner, 2026-09-30, ideas F3BR + 4WTV, ask sleep-mode):
 //  - `SleepIntroView`: the first time the sleep chip is turned on, a full-page sheet explains it;
 //    "Turn on sleep mode" turns it on and never shows the sheet again, "Not now" leaves it off and
-//    shows it again next time (decision sleep-intro A, no (i)).
+//    shows it again next time (decision sleep-intro A). The sleep chip's (i) opens it any time (owner,
+//    2026-09-30); with sleep already on it has just "Done".
 //  - `MorningCardView`: when sleep mode ended a session, the next open plays the welcome (from black
 //    after a warm lock — `WelcomeGate`'s curtain) and its ring lands on the card's ring, drawn on the
 //    Salah circle; "Good morning" fades the page away round it, leaving the Salah page (decisions
@@ -62,6 +63,8 @@ enum SleepMorning {
 // MARK: - The intro
 
 struct SleepIntroView: View {
+    /// Opened from the chip's (i) with sleep already on: just "Done".
+    var isOn = false
     let onTurnOn: () -> Void
     let onNotNow: () -> Void
 
@@ -102,19 +105,21 @@ struct SleepIntroView: View {
             .scrollBounceBehavior(.basedOnSize)
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 14) {
-                    Button(action: onTurnOn) {
-                        Text("Turn on sleep mode")
+                    Button(action: isOn ? onNotNow : onTurnOn) {
+                        Text(isOn ? "Done" : "Turn on sleep mode")
                             .font(.headline).fontDesign(.rounded)
                             .foregroundStyle(Color.sage)
                             .frame(maxWidth: 280).frame(height: 50)
                             .background(Capsule().fill(Color.sage.opacity(0.14)))
                             .overlay(Capsule().stroke(Color.sage.opacity(0.5), lineWidth: 1))
                     }
-                    Button(action: onNotNow) {
-                        Text("Not now")
-                            .font(.subheadline).fontDesign(.rounded)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 4)
+                    if !isOn {
+                        Button(action: onNotNow) {
+                            Text("Not now")
+                                .font(.subheadline).fontDesign(.rounded)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 4)
+                        }
                     }
                 }
                 .buttonStyle(.plain)
