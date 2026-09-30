@@ -91,6 +91,10 @@ struct tasbeehView: View {
         var targetCount: String, task: TaskModel?, lastTapAt: Date?
     }
     @State private var sleepResume: SleepResume?
+    /// Keep counting was tapped before the stop's cleanup ran: resume as soon as it has.
+    @State private var resumeWanted = false
+    /// The results came from a sleep finish: dimmed (stays through their fade-out on Keep counting).
+    @State private var resultsDimmed = false
     /// The stop's cleanup has run, so resuming can't be undone by it.
     @State private var sleepResumeReady = false
     @State private var totalPauseInSession: Double = 0
@@ -372,7 +376,10 @@ struct tasbeehView: View {
             
             // adding a dark tint for when they click the sleep mode.
             ZStack{
-                Color.black.opacity(toggleInactivityTimer ? ((1-inactivityDimmer) * 0.9) : 0)
+                // Also on under a sleep finish's results (dimmed themselves), so the two crossfade at
+                // one darkness — it faded out while they faded in and the screen brightened (owner).
+                Color.black.opacity(toggleInactivityTimer || (resultsDimmed && savedSession != nil)
+                                    ? ((1-inactivityDimmer) * 0.9) : 0)
                     .allowsHitTesting(false)
                     .edgesIgnoringSafeArea(.all)
                 
@@ -413,22 +420,28 @@ struct tasbeehView: View {
                     ResultsView(
                         isPresented: $isPresented,
                         savedSession: session, // Pass the saved session
-                        keepCounting: sleptSaved && sleepResumeReady ? { keepCountingAfterSleep() } : nil
+                        // From the first frame (it popped in half a second late and moved the page);
+                        // a tap before the stop's cleanup has run waits for it (`resumeWanted`).
+                        keepCounting: sleptSaved && sleepResume != nil ? { requestKeepCounting() } : nil
                     )
+                }
+                // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep
+                // (owner). On the results layer itself, so on Keep counting it fades out with them over
+                // the counter's own dim (already on) — the same darkness throughout, no bright flash.
+                if resultsDimmed {
+                    Color.black.opacity((1 - inactivityDimmer) * 0.9)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
                 }
             }
             .zIndex(1)
+            // One piece: faded leaf by leaf, the results' dim was half on while the page was half in
+            // (a brief brighter frame on a sleep finish).
+            .compositingGroup()
             .opacity(savedSession == nil ? 0 : 1)
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
 
-            // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep (owner).
-            if sleptSaved {
-                Color.black.opacity((1 - inactivityDimmer) * 0.9)
-                    .ignoresSafeArea()
-                    .allowsHitTesting(false)
-                    .zIndex(2)
-            }
             // After a while it goes black — he's most likely asleep and not looking (owner): OLED pixels
             // off, and black is the curtain the next open's welcome starts from. A tap brings it back.
             if sleptDark {
@@ -513,18 +526,7 @@ struct tasbeehView: View {
                 postSalahPhase = phase
             }
             
-            if(sharedState.selectedMode == 0){
-                //made it so that it never actually gets to 100% (cuz auto stop ends at 100%)
-                let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
-                progressFraction = CGFloat(Int(numerator))/CGFloat(Int(100))
-//                    print("0: \(sharedState.selectedMode) profra: \(progressFraction)")
-//                    print("top: \(CGFloat(Int(numerator))) bot: \(CGFloat(Int(100)))")
-            } else if (sharedState.selectedMode == 2){
-//                    print("in 2: \(tasbeeh)")
-                progressFraction = CGFloat(tasbeeh)/CGFloat(Int(sharedState.targetCount) ?? 0)
-//                    print("2: \(sharedState.selectedMode) profra: \(progressFraction)")
-//                    print("top: \(CGFloat(tasbeeh)) bot: \(CGFloat(Int(sharedState.targetCount) ?? 0))")
-            }
+            refreshCountProgress()
 
         }
         // Something needs him mid-session (the widget's "Unmark?"): into the usual pause state first.
@@ -643,6 +645,7 @@ struct tasbeehView: View {
         // skip resultsview if in sequence
         
         timerIsActive = false // this so functions only run during a sesh AND so timer checking when to stopTimer doesnt save multiple sessions.
+        resultsDimmed = endedAsleep
         updateIdleTimer()
         if sessionCount > 0 {
             savedSession = saveSession()
@@ -708,8 +711,24 @@ struct tasbeehView: View {
         sleptSaved = false
         sleptDark = false
         sleepResume = nil
+        resumeWanted = false
         isPresented = false
         resetSharedState()
+    }
+
+    /// The ring for a counted session: freestyle goes round every 100 (never quite full — a full
+    /// ring means the goal), a count goal fills to it. Timed sessions follow the ticker.
+    private func refreshCountProgress() {
+        if sharedState.selectedMode == 0 {
+            let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
+            progressFraction = CGFloat(numerator) / 100
+        } else if sharedState.selectedMode == 2 {
+            progressFraction = CGFloat(tasbeeh) / CGFloat(Int(sharedState.targetCount) ?? 0)
+        }
+    }
+
+    private func requestKeepCounting() {
+        if sleepResumeReady { keepCountingAfterSleep() } else { resumeWanted = true }
     }
 
     /// "Keep counting" on the results after a sleep finish: he was only dozing. The saved row goes and
@@ -730,12 +749,18 @@ struct tasbeehView: View {
         endTime = r.endTime?.addingTimeInterval(max(doze, 0))
         sharedState.targetCount = r.targetCount
         sharedState.selectedTask = r.task
-        if sharedState.selectedMode == 2, let target = Int(r.targetCount), target > 0 {
-            progressFraction = CGFloat(tasbeeh) / CGFloat(target)
+        // The ring where it was (the stop emptied it; it used to wait for the next tap).
+        if sharedState.selectedMode == 1 {
+            if totalTime > 0 { progressFraction = CGFloat(Int(secsPassed + timeOffset)) / TimeInterval(totalTime) }   // the ticker's own
+        } else {
+            refreshCountProgress()
         }
         paused = false
         timerIsActive = true
-        toggleInactivityTimer = true
+        // The counter's dim on at once, under the results' own (fading with them): never a frame
+        // without either — its usual 0.5 s fade-in was the bright flash (owner).
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet) { toggleInactivityTimer = true }
         startTicker()
         inactivityTimerHandler(run: "restart")
         updateIdleTimer()
@@ -767,6 +792,7 @@ struct tasbeehView: View {
         toggleInactivityTimer = false
         paused = false
         sleepResumeReady = sleepResume != nil
+        if resumeWanted { resumeWanted = false; keepCountingAfterSleep() }
         
         
         if sessionCount <= 0 {
