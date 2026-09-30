@@ -75,6 +75,12 @@ struct tasbeehView: View {
     /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
     /// ending here, not at the countdown's end or when the phone was locked (owner, idea F3BR).
     @State private var secsAtLastTap: TimeInterval = 0
+    /// The clock time of the last tap, for the morning card's "ended around" (the session's own
+    /// seconds leave pauses out).
+    @State private var lastTapAt: Date?
+    /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
+    /// phone locks — nothing bright lights up while he sleeps (owner, sleep-mode-fixes).
+    @State private var sleptSaved = false
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -402,8 +408,24 @@ struct tasbeehView: View {
             .opacity(savedSession == nil ? 0 : 1)
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
-            
-            
+
+            // Sleep mode saved it: black, a faint "saved", until the phone locks (then the cover
+            // closes in the background and the morning card waits for the next open). A tap = he's
+            // awake: close it, no card.
+            if sleptSaved {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    Label("saved · sleep well", systemImage: "moon.zzz.fill")
+                        .font(.footnote).fontDesign(.rounded)
+                        .foregroundStyle(.white.opacity(0.18))
+                }
+                .zIndex(5)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    SleepMorning.clear()
+                    closeAfterSleep()
+                }
+            }
         }
         .frame(maxWidth: .infinity) // expand to be the whole page (to make it tappable)
         .background(
@@ -495,9 +517,16 @@ struct tasbeehView: View {
             // finish and save, ending at the last tap (he woke up on the pause screen before:
             // pausing stopped the inactivity timer). Inactive alone (Control Center, a banner)
             // leaves it counting; the inactivity timer still ends it.
-            if toggleInactivityTimer && timerIsActive && !paused {
-                if newScenePhase == .background { finishAsleep() }
+            // Saved by the countdown and now the phone has locked: close quietly in the background.
+            if sleptSaved {
+                if newScenePhase == .background { closeAfterSleep() }
                 return
+            }
+            // Paused with sleep on counts too: auto-lock would leave him on the pause screen (or iOS
+            // would kill the app and lose the session).
+            if toggleInactivityTimer && timerIsActive {
+                if newScenePhase == .background { finishAsleep() }
+                if !paused { return }
             }
             if newScenePhase == .inactive || newScenePhase == .background {
                 !paused ? togglePause() : ()
@@ -616,19 +645,31 @@ struct tasbeehView: View {
         endedAsleep = true
         stopTimer()
         try? context.save()
-        // In the morning: the Salah page opens on "You fell asleep counting" (MorningCardView), not on
-        // this results screen — so the cover closes once the save has settled.
-        if let savedSession { SleepMorning.remember(savedSession) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            isPresented = false
-            resetSharedState()
+        // Off now, not 0.5 s later in completeStopTimer: iOS can kill the app before that runs, and
+        // sleep mode was still on for the next session (seen on his phone).
+        toggleInactivityTimer = false
+        let inBackground = UIApplication.shared.applicationState == .background
+        if let savedSession {
+            SleepMorning.remember(savedSession, endedAt: lastTapAt ?? Date(), armed: inBackground)
         }
         // iOS's own auto-lock takes over from here: the screen must never stay on after he's
         // asleep (owner: "so long as we dont risk the screen never turning off").
         UIApplication.shared.isIdleTimerDisabled = false
+        if inBackground {
+            closeAfterSleep()          // locked while counting: no results screen on wake
+        } else {
+            sleptSaved = true          // the countdown ended it: stay black until the lock
+        }
         #if DEBUG
-        print("😴 finished asleep · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
+        print("😴 finished asleep · background \(inBackground) · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
         #endif
+    }
+
+    /// Close the counter after sleep mode ended a session — never through the results screen.
+    private func closeAfterSleep() {
+        sleptSaved = false
+        isPresented = false
+        resetSharedState()
     }
 
     private func completeStopTimer() {
@@ -752,6 +793,7 @@ struct tasbeehView: View {
             let before = tasbeeh
             tasbeeh = min(tasbeeh + step, 10000) // Adjust maximum value as needed
             secsAtLastTap = secsPassed
+            lastTapAt = Date()
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
             if step > 1 && !countingHapticsOff {
@@ -771,6 +813,7 @@ struct tasbeehView: View {
         if timerIsActive {
             tasbeeh = max(tasbeeh - tapWorth, countOffset) // undoes one tap; never below where a continued task started
             secsAtLastTap = secsPassed
+            lastTapAt = Date()
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             if !countingHapticsOff { triggerSomeVibration(type: .rigid) }
         }

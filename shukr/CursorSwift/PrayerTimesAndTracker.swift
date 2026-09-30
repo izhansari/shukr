@@ -87,7 +87,7 @@ struct PrayerTimesView: View {
     /// Sleep mode ended a session: once the welcome has landed and nothing is over the Salah page,
     /// go to it (circle showing) and open the morning card on its circle.
     private func showMorningCardWhenClear(tries: Int = 0) {
-        guard morningSession == nil, SleepMorning.pendingID != nil, tries < 40 else { return }
+        guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
         if showTasbeehPage || somethingCovers || FirstRunSetup.showingAtLaunch || WelcomeTarget.playing
             || scenePhase != .active {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showMorningCardWhenClear(tries: tries + 1) }
@@ -283,6 +283,8 @@ struct PrayerTimesView: View {
                 // pages (task sheets, the city picker, What's new…) aren't in `somethingCovers`.
                 guard FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
                       sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil, !demoSheetUp,
+                      // The morning card (sleep mode) comes first; this card waits for another open.
+                      morningSession == nil, !(SleepMorning.pendingID != nil && SleepMorning.isArmed),
                       Date().timeIntervalSince(lastDeepLinkAt) > 10,
                       let issue = health.cardIssue, health.cardDue(for: issue) else { return }
                 healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
@@ -622,7 +624,6 @@ struct PrayerTimesView: View {
         // A request that waited out a tasbeeh session: now.
         .onChange(of: showTasbeehPage) { _, up in
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
-            if !up { showMorningCardWhenClear() }
         }
         .onAppear { showMorningCardWhenClear() }
         .overlay {
@@ -648,6 +649,7 @@ struct PrayerTimesView: View {
                 WatchSync.shared.send()   // the watch's prayer times, city and today's ✓s
             }
             if newScenePhase == .background {
+                SleepMorning.armIfPending()   // the morning card waits for the next open
                 // Tasks added / edited / reordered: let the Zikr widget catch up (it reads the
                 // shared store, so save first).
                 try? context.save()

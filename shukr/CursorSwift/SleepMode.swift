@@ -19,17 +19,39 @@ enum SleepMorning {
     static let pendingKey = "sleepMorningSession"
     static let introConfirmedKey = "sleepIntroConfirmed"
 
-    static func remember(_ session: SessionDataModel) {
-        UserDefaults.standard.set(session.id.uuidString, forKey: pendingKey)
+    /// When the last tap was (the clock time; the session's own seconds leave pauses out).
+    static let endedAtKey = "sleepMorningEndedAt"
+    /// Set once the app has been in the background since: the card waits for the next open — never
+    /// in the same stretch he fell asleep in (owner, sleep-mode-fixes).
+    static let armedKey = "sleepMorningArmed"
+    /// Older than this and it's no longer "this morning": dropped without a word.
+    static let expiresAfter: TimeInterval = 16 * 3600
+
+    static func remember(_ session: SessionDataModel, endedAt: Date, armed: Bool) {
+        let d = UserDefaults.standard
+        d.set(session.id.uuidString, forKey: pendingKey)
+        d.set(endedAt.timeIntervalSince1970, forKey: endedAtKey)
+        d.set(armed, forKey: armedKey)
     }
     static var pendingID: UUID? {
         UserDefaults.standard.string(forKey: pendingKey).flatMap(UUID.init(uuidString:))
     }
-    static func clear() { UserDefaults.standard.removeObject(forKey: pendingKey) }
+    static var endedAt: Date? {
+        let t = UserDefaults.standard.double(forKey: endedAtKey)
+        return t > 0 ? Date(timeIntervalSince1970: t) : nil
+    }
+    static var isArmed: Bool { UserDefaults.standard.bool(forKey: armedKey) }
+    /// The app went to the background with a card waiting: show it on the next open.
+    static func armIfPending() { if pendingID != nil { UserDefaults.standard.set(true, forKey: armedKey) } }
+    static func clear() {
+        let d = UserDefaults.standard
+        d.removeObject(forKey: pendingKey); d.removeObject(forKey: endedAtKey); d.removeObject(forKey: armedKey)
+    }
 
-    /// The session to show, if it still exists (deleted in the meantime → nothing, and the key goes).
+    /// The session to show, if it still exists and ended within `expiresAfter` (else the keys go).
     @MainActor static func pending(in context: ModelContext) -> SessionDataModel? {
         guard let id = pendingID else { return nil }
+        if let endedAt, Date().timeIntervalSince(endedAt) > expiresAfter { clear(); return nil }
         let found = try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.id == id })).first
         if found == nil { clear() }
         return found
@@ -128,7 +150,8 @@ struct MorningCardView: View {
     let onHistory: () -> Void
     @State private var shown = false
 
-    private var ended: Date { session.startTime.addingTimeInterval(session.secondsPassed) }
+    /// The last tap's clock time (stored when it ended); older builds' sessions: start + active time.
+    private var ended: Date { SleepMorning.endedAt ?? session.startTime.addingTimeInterval(session.secondsPassed) }
     private var name: String {
         if let m = session.mantra?.name { return m }
         return session.title == "Untitled" || session.title.isEmpty ? "Freestyle" : session.title
