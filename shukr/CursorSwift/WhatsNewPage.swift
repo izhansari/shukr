@@ -46,6 +46,10 @@ struct WhatsNewView: View {
     @State private var askMarkSent: [FeedbackItem]?
     /// "Saved · Add a comment" after a one-tap Works.
     @State private var justSaved: FeedbackItem?
+    /// An ask picked from Next build's waiting list: scrolled to and outlined for a moment (note DB4DBD4C).
+    @State private var scrollToAsk: String?
+    @State private var position = ScrollPosition(idType: String.self)
+    @State private var highlightedAsk: String?
 
     /// `startCard`: a change's id to open on (the "‹ What's new" pill).
     init(startCard: String? = nil) {
@@ -61,7 +65,10 @@ struct WhatsNewView: View {
         #endif
         NavigationStack(path: $path) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 24) {
+                // Spacing 12 (the cards'); the page's own blocks add 12 more above them. Your asks' cards are
+                // direct rows of this stack, so `scrollTo` finds one that isn't built yet (a nested lazy stack
+                // hid them — Next build's waiting list jumps to them).
+                LazyVStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Text(BuildInfo.line).font(.footnote).foregroundStyle(.secondary)
                         Spacer(minLength: 8)
@@ -76,13 +83,25 @@ struct WhatsNewView: View {
                     .padding(.leading, 4)
                     AnswersRow(open: $answersOpen, send: { sharing = feedback.unsent },
                                edit: { item in edit(item) }, everything: { path.append(.said) })
+                        .padding(.top, 12)
                     NextBuildRow { path.append(.nextBuild) }
+                        .padding(.top, 12)
                     asksSection
                     changesSection
+                        .padding(.top, 12)
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 30)
+            }
+            .scrollPosition($position)
+            .onChange(of: scrollToAsk) { _, id in
+                guard let id else { return }
+                // No animation: an animated scroll to a card the lazy stack hasn't built yet does nothing. The
+                // outline that follows shows where it landed.
+                position.scrollTo(id: id, anchor: .center)
+                scrollToAsk = nil
             }
             .background(Color(.systemGroupedBackground))
             .fontDesign(.rounded)
@@ -115,7 +134,7 @@ struct WhatsNewView: View {
                 case .decisions:
                     DecisionsView()
                 case .nextBuild:
-                    NextBuildView { path.append(.change($0)) }
+                    NextBuildView(openChange: { path.append(.change($0)) }, openAsk: { showAsk($0) })
                 case .page(let link):
                     pushedPage(link)
                 }
@@ -175,14 +194,13 @@ struct WhatsNewView: View {
     }
     private func isLater(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry)) -> Bool { later[item.ask.id] == item.latest.id }
 
-    private var asksSection: some View {
+    @ViewBuilder private var asksSection: some View {
         let all = WhatsNew.openAsks()
         let open = all.filter { !isLater($0) }
         let aside = all.filter { isLater($0) }
         let groups = Dictionary(grouping: open) { WhatsNew.area($0.latest.topic) }
             .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
         let grouped = asksByArea && groups.count > 1
-        return LazyVStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .center) {
                     SectionTitle(text: "Your asks", count: open.count)
@@ -201,41 +219,75 @@ struct WhatsNewView: View {
                 .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.leading, 4)
-            if grouped {
-                // Groups inside Your asks, not peers of it: sentence case, indented, a chevron to fold.
-                ForEach(groups, id: \.key) { group in
-                    let folded = foldedAreas.contains(group.key)
-                    AreaGroupHeader(area: group.key, count: group.value.count, folded: folded) {
-                        withAnimation(.snappy) { toggleFold(group.key) }
+            .padding(.top, 12)
+            // One flat list of rows (headers, cards, set-aside lines): the page's scroll finds a card by its id only
+            // when it's a top-level row — cards inside a per-area ForEach were out of `scrollTo`'s reach.
+            ForEach(askRows(open: open, aside: aside, groups: grouped ? groups : nil)) { row in
+                switch row.kind {
+                case .header(let area, let count):
+                    AreaGroupHeader(area: area, count: count, folded: foldedAreas.contains(area)) {
+                        withAnimation(.snappy) { toggleFold(area) }
                     }
-                    if !folded {
-                        ForEach(group.value, id: \.ask.id) { askCard($0) }
+                case .card(let item, let setAside):
+                    askCard(item, folded: setAside)
+                case .asideTitle(let count):
+                    // Set aside for later: one line each, under the open ones.
+                    Text("Set aside · \(count)")
+                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                        .padding(.leading, 4).padding(.top, 6)
+                case .later(let item):
+                    LaterRow(ask: item.ask, latest: item.latest) {
+                        withAnimation(.snappy) { _ = laterOpen.insert(item.ask.id) }
                     }
-                }
-            } else {
-                ForEach(open, id: \.ask.id) { askCard($0) }
-            }
-            if !aside.isEmpty {
-                // Set aside for later: one line each, under the open ones.
-                Text("Set aside · \(aside.count)")
-                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-                    .padding(.leading, 4).padding(.top, 6)
-                ForEach(aside, id: \.ask.id) { item in
-                    if laterOpen.contains(item.ask.id) {
-                        askCard(item, folded: true)
-                    } else {
-                        LaterRow(ask: item.ask, latest: item.latest) {
-                            withAnimation(.snappy) { _ = laterOpen.insert(item.ask.id) }
-                        }
-                        .transition(.opacity)
-                    }
+                    .transition(.opacity)
                 }
             }
+    }
+
+    /// Your asks' rows, in order; a card's id is its ask's id (what `showAsk` scrolls to).
+    private func askRows(open: [(ask: WhatsNewAsk, latest: WhatsNewEntry)], aside: [(ask: WhatsNewAsk, latest: WhatsNewEntry)],
+                         groups: [(key: String, value: [(ask: WhatsNewAsk, latest: WhatsNewEntry)])]?) -> [AskRow] {
+        var rows: [AskRow] = []
+        if let groups {
+            for group in groups {
+                rows.append(AskRow(id: "area:" + group.key, kind: .header(group.key, group.value.count)))
+                if !foldedAreas.contains(group.key) {
+                    rows += group.value.map { AskRow(id: $0.ask.id, kind: .card($0, setAside: false)) }
+                }
+            }
+        } else {
+            rows += open.map { AskRow(id: $0.ask.id, kind: .card($0, setAside: false)) }
+        }
+        if !aside.isEmpty {
+            rows.append(AskRow(id: "aside", kind: .asideTitle(aside.count)))
+            rows += aside.map { item in
+                laterOpen.contains(item.ask.id) ? AskRow(id: item.ask.id, kind: .card(item, setAside: true))
+                    : AskRow(id: "later:" + item.ask.id, kind: .later(item))
+            }
+        }
+        return rows
+    }
+
+    /// Next build's waiting list → back here, onto that ask's card (unfolding its area or its set-aside line),
+    /// outlined for a moment.
+    private func showAsk(_ id: String) {
+        guard let item = WhatsNew.openAsks().first(where: { $0.ask.id == id }) else { return }
+        if isLater(item) { laterOpen.insert(id) }
+        let area = WhatsNew.area(item.latest.topic)
+        if foldedAreas.contains(area) { toggleFold(area) }
+        path.removeAll()
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.6))   // after the pop
+            scrollToAsk = id
+            try? await Task.sleep(for: .seconds(0.15))
+            withAnimation(.easeOut(duration: 0.25)) { highlightedAsk = id }
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(.easeOut(duration: 0.6)) { if highlightedAsk == id { highlightedAsk = nil } }
         }
     }
 
     private func askCard(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry), folded: Bool = false) -> some View {
-        AskCard(ask: item.ask, latest: item.latest, setAside: folded,
+        AskCard(ask: item.ask, latest: item.latest, setAside: folded, highlighted: highlightedAsk == item.ask.id,
                 works: { works(item.ask, item.latest) },
                 notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
                 openChange: { path.append(.change(item.latest.id)) },
@@ -475,6 +527,9 @@ struct WhatsNewView: View {
     }
 
     private func debugArgs() {
+        if let id = UserDefaults.standard.string(forKey: "demoShowAsk") {   // `-demoShowAsk <ask id>`: onto its card
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { showAsk(id) }
+        }
         // `-demoWhatsNewAllLater`: every open card set aside (the "Nothing left to test" screenshot);
         // `-demoWhatsNewNoLater`: none.
         if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewAllLater") {
@@ -735,6 +790,8 @@ private struct AskCard: View {
     let latest: WhatsNewEntry
     /// Set aside for later and opened in place: the fold closes it back to its one line.
     var setAside = false
+    /// Picked from Next build's waiting list: a sage outline for a moment.
+    var highlighted = false
     let works: () -> Void
     let notYet: () -> Void
     let openChange: () -> Void
@@ -830,6 +887,9 @@ private struct AskCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         // An edge all round, so the picture reads as part of its card (owner, 2026-09-29).
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Color(.separator), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .strokeBorder(Color.sage, lineWidth: 2.5).opacity(highlighted ? 1 : 0))
+        .shadow(color: Color.sage.opacity(highlighted ? 0.35 : 0), radius: 12)
     }
 
     private var meta: String {
@@ -898,6 +958,8 @@ private struct NextBuildRow: View {
 /// uploading, so it's never a gate and nothing uploads from here).
 private struct NextBuildView: View {
     let openChange: (String) -> Void
+    /// A waiting ask → back to its card on the main page.
+    let openAsk: (String) -> Void
     @State private var feedback = FeedbackStore.shared
 
     var body: some View {
@@ -907,11 +969,32 @@ private struct NextBuildView: View {
         let waiting = WhatsNew.openAsks().filter { ids.contains($0.latest.id) }
         let groups = Dictionary(grouping: changes.reversed()) { WhatsNew.area($0.topic) }
             .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
-        ScrollViewReader { proxy in
-            ScrollView {
+        ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    // What still waits, by name (note DB4DBD4C: "2 of your asks … still need your answer" didn't
+                    // say which, and its tap scrolled somewhere unclear). Each row → that ask's card.
+                    if waiting.isEmpty {
+                        Text("Everything you asked for here is answered ✓")
+                            .font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
+                            .padding(.leading, 4)
+                    } else {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Waiting for your Works / Not yet (\(waiting.count)):")
+                                .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                                .padding(.leading, 4)
+                            VStack(spacing: 0) {
+                                ForEach(Array(waiting.enumerated()), id: \.element.ask.id) { i, item in
+                                    if i > 0 { Divider().padding(.leading, 16) }
+                                    WaitingAskRow(headline: item.latest.short, area: WhatsNew.area(item.latest.topic)) {
+                                        openAsk(item.ask.id)
+                                    }
+                                }
+                            }
+                            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                        }
+                    }
                     Text(WhatsNew.lastBuild.map { "Everything since build \($0.number), by area." } ?? "Everything so far, by area.")
-                        .font(.subheadline).foregroundStyle(.secondary).padding(.leading, 4)
+                        .font(.subheadline).foregroundStyle(.secondary).padding(.leading, 4).padding(.top, 4)
                     ForEach(groups, id: \.key) { group in
                         VStack(alignment: .leading, spacing: 8) {
                             SectionTitle(text: group.key, count: group.value.count).padding(.leading, 4)
@@ -928,19 +1011,6 @@ private struct NextBuildView: View {
                         Text("Nothing new since the last build yet.").font(.subheadline).foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity).padding(.vertical, 24)
                     }
-                    Button {
-                        guard let first = waiting.first else { return }
-                        withAnimation(.snappy) { proxy.scrollTo(first.latest.id, anchor: .center) }
-                    } label: {
-                        Text(waiting.isEmpty ? "Everything you asked for here is answered ✓"
-                             : "\(waiting.count) of your asks in this build still need\(waiting.count == 1 ? "s" : "") your answer")
-                            .font(.subheadline.weight(.medium)).foregroundStyle(Color.sage)
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            .padding(.leading, 4)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(waiting.isEmpty)
                     if let ready = feedback.readyForTestFlight {
                         VStack(alignment: .leading, spacing: 4) {
                             Label("Sent to the team", systemImage: "paperplane.fill").font(.subheadline.weight(.semibold))
@@ -963,12 +1033,58 @@ private struct NextBuildView: View {
                     .disabled(changes.isEmpty)
                 }
                 .padding(16)
-            }
         }
         .background(Color(.systemGroupedBackground))
         .fontDesign(.rounded)
         .navigationTitle("Next build")
         .navigationBarTitleDisplayMode(.inline)
+        #if DEBUG
+        // `-demoWaitingAsk N`: taps the Nth waiting ask 2 s in (the jump back to its card, outlined).
+        .task {
+            let n = UserDefaults.standard.integer(forKey: "demoWaitingAsk")
+            guard n > 0 else { return }
+            try? await Task.sleep(for: .seconds(2))
+            let ids = Set(WhatsNew.sinceLastBuild.map(\.id))
+            let waiting = WhatsNew.openAsks().filter { ids.contains($0.latest.id) }
+            if waiting.indices.contains(n - 1) { openAsk(waiting[n - 1].ask.id) }
+        }
+        #endif
+    }
+}
+
+/// A row of Your asks (see `askRows`).
+private struct AskRow: Identifiable {
+    enum Kind {
+        case header(String, Int)
+        case card((ask: WhatsNewAsk, latest: WhatsNewEntry), setAside: Bool)
+        case asideTitle(Int)
+        case later((ask: WhatsNewAsk, latest: WhatsNewEntry))
+    }
+    let id: String
+    let kind: Kind
+}
+
+/// One ask still waiting for his answer, in Next build: its headline and area; tap → its card.
+private struct WaitingAskRow: View {
+    let headline: String
+    let area: String
+    let tap: () -> Void
+    var body: some View {
+        Button(action: tap) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(headline).font(.subheadline).foregroundStyle(.primary)
+                        .lineLimit(2).multilineTextAlignment(.leading)
+                    Text(area).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
