@@ -86,6 +86,20 @@ struct PrayerTimesView: View {
     /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
     /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
     /// open the morning card on its circle — under the welcome while it plays, which lands on the card.
+    /// A morning card is waiting: be on the Salah page (circle showing) while the app is away, so the
+    /// next open's welcome and the card draw on the real circle from the first frame. Left on the Zikr
+    /// page (where the session started), the circle's last frame was off screen and the welcome
+    /// started half off the screen (owner, sleep morning). Behind the black curtain, so unseen.
+    private func goToSalahForMorningCard() {
+        guard SleepMorning.pendingID != nil else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            sharedState.horizontalPage = .main
+            sharedState.navPosition = .main
+        }
+    }
+
     private func showMorningCardWhenClear(tries: Int = 0) {
         guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
         // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
@@ -626,6 +640,7 @@ struct PrayerTimesView: View {
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
         }
         .onAppear { showMorningCardWhenClear() }
+        .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in goToSalahForMorningCard() }
         .overlay {
             if let morningSession {
                 MorningCardView(session: morningSession, onDone: {
@@ -650,6 +665,7 @@ struct PrayerTimesView: View {
             }
             if newScenePhase == .background {
                 SleepMorning.armIfPending()   // the morning card waits for the next open
+                goToSalahForMorningCard()
                 // Tasks added / edited / reordered: let the Zikr widget catch up (it reads the
                 // shared store, so save first).
                 try? context.save()

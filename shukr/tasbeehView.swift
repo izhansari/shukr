@@ -145,7 +145,14 @@ struct tasbeehView: View {
     
     /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
     /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
-    var inactivityLimit: TimeInterval { 45 }
+    var inactivityLimit: TimeInterval {
+        #if DEBUG
+        // -sleepLimit N: a shorter wait for testing sleep mode in the simulator.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-sleepLimit"), i + 1 < args.count, let n = Double(args[i + 1]) { return n }
+        #endif
+        return 45
+    }
 
     private var incrementThreshold: CGFloat = 50 // Threshold for tasbeeh increment
     

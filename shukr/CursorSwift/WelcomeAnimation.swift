@@ -230,7 +230,10 @@ struct WelcomeOverlay: View {
     /// Where a hand-off ring already sits: the Salah circle's centre (so the first frame isn't at
     /// the screen's centre). Only read as the initial `target`; `play()` sets it again.
     private static var handoffTarget: CGPoint? {
-        guard let f = WelcomeTarget.circleFrame, f.width > 100 else { return nil }
+        // Only a circle that's on screen: a stale frame from another page (the Salah page off to the
+        // right of the Zikr page) started the welcome half off the screen (owner, sleep morning).
+        guard let f = WelcomeTarget.circleFrame, f.width > 100,
+              UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) else { return nil }
         return CGPoint(x: f.midX, y: f.midY)
     }
 
