@@ -363,7 +363,8 @@ enum WhatsNew {
                          recommend: "A", why: "The colour tells you how you're doing at a glance.", created: iso.string(from: Date())),
         WhatsNewDecision(id: "demo-map-home", area: "Map & Mosques", question: "Where should the map open?",
                          options: [.init(id: "A", label: "On the qibla", shot: "wn-map-one-sheet.jpg"),
-                                   .init(id: "B", label: "On your last layer", shot: "wn-map-mosque-no-x.jpg")],
+                                   .init(id: "B", label: "On your last layer", shot: "wn-map-mosque-no-x.jpg"),
+                                   .init(id: "C", label: "On prayer spots", shot: nil)],
                          recommend: "A", why: nil, created: iso.string(from: Date().addingTimeInterval(-3600))),
     ]
     #endif

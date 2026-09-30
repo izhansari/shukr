@@ -124,7 +124,9 @@ private struct DecisionCard: View {
             if let why = decision.why, answer == nil || editing {
                 Text("Bradley: \(why)").font(.footnote).foregroundStyle(.secondary).lineLimit(2)
             }
-            HStack(alignment: .top, spacing: 10) {
+            // Two per row: 3–4 options wrap instead of squeezing into narrow columns (never a horizontal scroll).
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10, alignment: .top),
+                                GridItem(.flexible(), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
                 ForEach(decision.options) { o in
                     OptionTile(option: o, recommended: o.id == decision.recommend,
                                chosen: chosen == o.id, dimmed: chosen != nil && chosen != o.id) {
