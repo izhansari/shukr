@@ -42,6 +42,9 @@ struct DecisionsBadgeButton: View {
 /// Open decisions first, then the decided ones (they never vanish).
 struct DecisionsView: View {
     @State private var feedback = FeedbackStore.shared
+    /// Decided is one folded row every time the page opens (owner, wn-decided-fold: "by default, just make it
+    /// collapse when I come onto that page"); a tap shows them all. Never remembered open.
+    @State private var decidedOpen = false
 
     var body: some View {
         let _ = feedback.revision   // re-read when he answers
@@ -71,8 +74,15 @@ struct DecisionsView: View {
                     }
                 }
                 if !decided.isEmpty {
-                    SectionTitle(text: "Decided", count: decided.count).padding(.leading, 4).padding(.top, open.isEmpty ? 0 : 8)
-                    ForEach(decided) { d in DecisionCard(decision: d) }
+                    DecidedFoldRow(count: decided.count, isOpen: decidedOpen) {
+                        withAnimation(.snappy) { decidedOpen.toggle() }
+                    }
+                    .padding(.top, open.isEmpty ? 0 : 8)
+                    if decidedOpen {
+                        ForEach(decided) { d in
+                            DecisionCard(decision: d).transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -87,6 +97,10 @@ struct DecisionsView: View {
         // `-demoDecisionChoose "<id>:<option>"` (+ `-demoDecisionNote "…"`): picks it 2 s in (simulated taps
         // can't reach this sheet everywhere).
         .task {
+            if ProcessInfo.processInfo.arguments.contains("-demoDecidedOpen") {   // the Decided fold, open
+                try? await Task.sleep(for: .seconds(1.5))
+                withAnimation(.snappy) { decidedOpen = true }
+            }
             guard let spec = UserDefaults.standard.string(forKey: "demoDecisionChoose"),
                   let colon = spec.lastIndex(of: ":"),
                   let d = WhatsNew.decision(String(spec[..<colon])) else { return }
@@ -97,6 +111,34 @@ struct DecisionsView: View {
             }
         }
         #endif
+    }
+}
+
+/// "Decided · N" as one row (like Next build); the chevron turns when open.
+private struct DecidedFoldRow: View {
+    let count: Int
+    let isOpen: Bool
+    let toggle: () -> Void
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.circle").font(.body).foregroundStyle(Color.sage)
+                (Text("Decided").font(.body.weight(.semibold)).foregroundStyle(.primary)
+                 + Text(" · \(count)").font(.footnote).foregroundStyle(.secondary))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(isOpen ? "Hide" : "Show all").font(.footnote).foregroundStyle(.secondary)
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(isOpen ? 90 : 0))
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .frame(minHeight: 44)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Decided, \(count)")
+        .accessibilityHint(isOpen ? "Hides them" : "Shows them all")
     }
 }
 
