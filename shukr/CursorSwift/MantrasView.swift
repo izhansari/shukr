@@ -941,6 +941,10 @@ struct MantraEditorView: View {
     @State private var sessionsEditing = false
     @State private var selectedSessions = Set<PersistentIdentifier>()
     @State private var confirmDeleteSessions = false
+    /// A session row's tap / long-press "Delete…" (owner, ask session-page — as on History, minus
+    /// "Open zikr": this is its page). Here, not on the sessions section (its modifiers repeat per Section).
+    @State private var sessionToOpen: SessionDataModel?
+    @State private var sessionToDelete: SessionDataModel?
     @State private var confirmDelete = false
     /// Worked out when Delete is tapped, so nothing reads the row once it's gone.
     @State private var deleteTitle = ""
@@ -1089,7 +1093,8 @@ struct MantraEditorView: View {
                     }
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
-                    MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions)
+                    MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions,
+                                          sessionToOpen: $sessionToOpen, sessionToDelete: $sessionToDelete)
 
                     // Only while editing, never for a built-in (owner, 2026-09-27).
                     if isEditing && !mantra.isBuiltIn {
@@ -1143,6 +1148,22 @@ struct MantraEditorView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Their counts come off this zikr's totals and today's task progress. This can't be undone.")
+            }
+            .sheet(item: $sessionToOpen) { session in
+                SessionPage(session: session)   // no Open zikr: we're on it
+            }
+            .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
+            .alert("Delete this session?", isPresented: Binding(get: { sessionToDelete != nil },
+                                                               set: { if !$0 { sessionToDelete = nil } })) {
+                Button("Delete", role: .destructive) {
+                    if let doomed = sessionToDelete {
+                        withAnimation { SessionDeletion.delete([doomed], in: context) }
+                    }
+                    sessionToDelete = nil
+                }
+                Button("Cancel", role: .cancel) { sessionToDelete = nil }
+            } message: {
+                Text("Its count comes off this zikr's totals and today's task progress. This can't be undone.")
             }
             .alert("Discard changes?", isPresented: $confirmDiscardChanges) {
                 Button("Discard", role: .destructive) { revertEdits() }
@@ -1432,6 +1453,8 @@ struct MantraSessionsSection: View {
     /// vanishing Delete buttons — review, 2026-09-27).
     @Binding var editing: Bool
     @Binding var selected: Set<PersistentIdentifier>
+    @Binding var sessionToOpen: SessionDataModel?
+    @Binding var sessionToDelete: SessionDataModel?
 
     @ViewBuilder var body: some View {
         if mantra.sessions.isEmpty {
@@ -1482,8 +1505,10 @@ struct MantraSessionsSection: View {
                 SessionRow(session: session, showsMantraName: false, tappable: false)   // a tap selects
             }
         } else {
-            // Tap → Feel the pace (no "Open zikr": this is its page).
-            SessionRow(session: session, showsMantraName: false)
+            // Tap → the session's page; hold → its options; tap the pace to feel it. No "Open zikr":
+            // this is its page.
+            SessionRow(session: session, showsMantraName: false,
+                       onOpen: { sessionToOpen = session }, onDelete: { sessionToDelete = session })
         }
     }
 }

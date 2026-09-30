@@ -19,6 +19,10 @@ struct HistoryPageView: View {
     @Environment(\.modelContext) private var context
     /// Tap a row's Zikr → that session's mantra (its stats + editor).
     @State private var mantraToOpen: MantraModel?
+    /// A row's tap: that session's own page (owner, ask session-page).
+    @State private var sessionToOpen: SessionDataModel?
+    /// A row's long-press "Delete…".
+    @State private var sessionToDelete: SessionDataModel?
     /// From the library's search field: keeps sessions whose mantra (or title) matches.
     var search = ""
     /// Edit mode (select → Delete) — the only way to delete here (owner, 2026-09-27, notes #2b).
@@ -120,6 +124,21 @@ struct HistoryPageView: View {
         .sheet(item: $mantraToOpen) { mantra in
             MantraEditorView(mantra: mantra)
         }
+        .sheet(item: $sessionToOpen) { session in
+            SessionPage(session: session,
+                        onOpenZikr: session.mantra.map { mantra in { mantraToOpen = mantra } })
+        }
+        .alert("Delete this session?", isPresented: Binding(get: { sessionToDelete != nil },
+                                                           set: { if !$0 { sessionToDelete = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let s = sessionToDelete { SessionDeletion.delete([s], in: context) }
+                sessionToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { sessionToDelete = nil }
+        } message: {
+            Text("Its count comes off your totals and today's task progress. This can't be undone.")
+        }
+        .onChange(of: sessionToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .onChange(of: mantraToOpen) { _, open in if open != nil { PaceCoordinator.stopAll() } }
         .onChange(of: isEditing) { _, on in if on { PaceCoordinator.stopAll() } }
     }
@@ -160,7 +179,9 @@ struct HistoryPageView: View {
     /// selects instead. No swipes: deleting is Edit → select → Delete (owner).
     @ViewBuilder private func sessionRow(_ session: SessionDataModel) -> some View {
         let row = SessionRow(session: session, tappable: !isEditing,
-                             onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } })
+                             onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } },
+                             onOpen: { sessionToOpen = session },
+                             onDelete: { sessionToDelete = session })
         if isEditing {
             SelectableRow(selected: $selection, id: session.persistentModelID) { row }
         } else {
@@ -318,15 +339,17 @@ struct SessionRow: View {
     /// Off inside a mantra's own page, where every row would repeat the same name: the time
     /// becomes the headline instead.
     var showsMantraName = true
-    /// A tap opens a small glass menu anchored to the row, like the ☰ menu (owner, 2026-09-27:
-    /// cleaner than the strip that opened under the row and pushed the list down): Open zikr ·
-    /// Feel the pace. While the pace plays, a tap on the row stops it. Off in Edit mode (a tap
+    /// Tap → the session's page, hold → its options, tap the pace pill → feel the pace (owner, ask
+    /// session-page). While the pace plays, a tap on the row stops it. Off in Edit mode (a tap
     /// selects there), which also stops any pace (the row is rebuilt).
     var tappable = true
     /// "Open zikr"; nil hides it (no zikr, or already on its page).
     var onMantra: (() -> Void)? = nil
-    @State private var showMenu = false
-    @State private var pendingAction: (() -> Void)?
+    /// A tap: the session's own page (owner, ask session-page — a tap "should show a screen like the
+    /// pause screen", not a menu).
+    var onOpen: (() -> Void)? = nil
+    /// Long-press → "Delete…" (asks first).
+    var onDelete: (() -> Void)? = nil
 
     private var modeIcon: String {
         switch session.sessionMode {
@@ -348,47 +371,49 @@ struct SessionRow: View {
 
     var body: some View {
         if tappable {
+            // Tap → the page; long press → the row's options (what people expect from a list);
+            // the pace is felt by holding the pace pill itself (`pacePill`).
             core
                 .onTapGesture {
-                    triggerSomeVibration(type: .light)
-                    if feelingPace { stopFeelingPace() } else { showMenu = true }
+                    if feelingPace { stopFeelingPace() } else { onOpen?() }
                 }
-                // No arrow edge: iOS puts it above or below, so rows near the bottom aren't squeezed.
-                .popover(isPresented: $showMenu) {
-                    menu.presentationCompactAdaptation(.popover)
+                .contextMenu {
+                    Button { onOpen?() } label: { Label("Open session", systemImage: "rectangle.portrait.on.rectangle.portrait") }
+                    if let onMantra {
+                        Button { onMantra() } label: { Label("Open zikr", systemImage: "text.quote") }
+                    }
+                    if let pace {
+                        Button { startFeelingPace(pace) } label: { Label("Feel the pace", systemImage: "metronome") }
+                    }
+                    if let onDelete {
+                        Divider()
+                        Button(role: .destructive) { onDelete() } label: { Label("Delete…", systemImage: "trash") }
+                    }
                 }
-                .onChange(of: showMenu) { _, open in
-                    // Run the pick once the popover is really away: its dismissal can take ~0.3 s,
-                    // and a sheet presented during it fails ("presentation in progress").
-                    guard !open, let action = pendingAction else { return }
-                    pendingAction = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: action)
+                // The pace pill is its own button: a tap plays the pace, a tap again stops it (owner:
+                // "tap the rate … instead of having to hold" — the hold stays the row's options,
+                // what people expect). On top of the row, so its tap wins over opening the page.
+                .overlay(alignment: .bottomTrailing) {
+                    if let pace {
+                        Color.clear
+                            .frame(width: 112, height: 38)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if feelingPace { stopFeelingPace() } else { startFeelingPace(pace) }
+                            }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel(feelingPace ? "Stop the pace" : "Feel the pace")
+                    }
                 }
         } else {
             core
         }
     }
 
-    /// Hold the row to feel the session's pace: a tick every `pace` seconds until the finger lifts.
-    /// UIKit's long press, not a SwiftUI gesture: scrolling comes first — any movement in the first 0.2 s
-    /// fails the hold and the list scrolls (SwiftUI drag / long-press versions swallowed scrolls that
-    /// began on a row). Once it has begun the list doesn't scroll, and it lasts until the finger lifts.
-    /// Not while selecting (`tappable` false): no long press there at all, so a tap selects at once
-    /// (owner, 21E37DF2: "there feels like a lag … long press needs to be turned off … in selection mode").
-    @ViewBuilder private var holdable: some View {
-        let base = summary
+    private var holdable: some View {
+        summary
             .padding(.vertical, 2)
             .contentShape(Rectangle())
-        if tappable {
-            base.gesture(PaceHoldGesture { holding in
-                // While the finger is held the library can't page (a sideways drift slid the page).
-                pagerLock?.locked = holding
-                guard let pace else { return }
-                holding ? startFeelingPace(pace) : stopFeelingPace()
-            })
-        } else {
-            base
-        }
     }
 
     private var core: some View {
@@ -400,47 +425,10 @@ struct SessionRow: View {
         }
         // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
         .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
-        // The whole row tints while held — the finger covers the pace text.
+        // The whole row tints while the pace plays.
         // Always an explicit background: the system's grey selected-row fill looked off in Edit
         // mode (owner) — the selection circle is enough.
         .listRowBackground(feelingPace ? Color.green.opacity(0.08) : Color(.secondarySystemGroupedBackground))
-    }
-
-    /// The popover: the ☰ menu's rows. Feel the pace plays the session's rhythm (a tick and a
-    /// glow each count, the pace pill filling) until the row is tapped again.
-    private var menu: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let onMantra {
-                menuRow("Open zikr", "text.quote") { onMantra() }
-            }
-            if let pace {
-                if onMantra != nil { Divider().padding(.leading, 20) }
-                menuRow("Feel the pace", "metronome") { startFeelingPace(pace) }
-            }
-            if onMantra == nil && pace == nil {
-                Text("Nothing to do with this one")
-                    .font(.subheadline).foregroundStyle(.secondary)
-                    .padding(.horizontal, 20).padding(.vertical, 12)
-            }
-        }
-        .padding(.vertical, 6)
-        .frame(width: 230)
-        .fontDesign(.rounded)
-    }
-
-    private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
-        Button {
-            pendingAction = action
-            showMenu = false
-        } label: {
-            Label(title, systemImage: symbol)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     private var summary: some View {
@@ -485,8 +473,10 @@ struct SessionRow: View {
                             .foregroundStyle(feelingPace ? Color.green : Color.secondary)
                             .padding(.horizontal, 6)   // fixed: a layout change mid-hold must not disturb the touch
                             .padding(.vertical, 2)
+                            // A tap target now (the pace button): a faint capsule says so.
+                            .background(Capsule().fill(Color.primary.opacity(tappable && !feelingPace ? 0.06 : 0)))
                             .overlay {
-                                // While held: the pill's border fills once per count; when it
+                                // While playing: the pill's border fills once per count; when it
                                 // closes, the tick fires and the row glows.
                                 if feelingPace, let paceStart {
                                     // The fill comes straight from the clock (no animation to
@@ -1099,22 +1089,3 @@ struct MantraPickerView: View {
 }
 
 /// Long press that yields to scrolling: fails if the finger moves before `minimumPressDuration`.
-struct PaceHoldGesture: UIGestureRecognizerRepresentable {
-    var onChange: (Bool) -> Void
-
-    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
-        let recognizer = UILongPressGestureRecognizer()
-        recognizer.minimumPressDuration = 0.2
-        recognizer.allowableMovement = 10
-        recognizer.cancelsTouchesInView = false
-        return recognizer
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
-        switch recognizer.state {
-        case .began: onChange(true)
-        case .ended, .cancelled, .failed: onChange(false)
-        default: break
-        }
-    }
-}

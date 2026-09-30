@@ -304,7 +304,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Azkar: yours first, built-ins below (locked name / text), sort button (Name A→Z default). Card (`MantraCardFields`): one fixed box, tabs down its left — full zikr (ع, first and default; scrolls in the box), notes, voice memo, photo; empty boxes in edit mode show grey placeholders. The name field says "Nickname". While editing, a sage edge round the whole card; the photo is aspect-fit; the memo line is "Sep 29 · 0:42" — the date read from the .m4a's `mvhd` header (`ZikrAudio.recordedDate`, nothing stored). A zikr's page: its task circles — tap → "Start …?" (Continue / Start over when part-done) → the page closes and the Zikr page's wheel starts it (`ZikrFocus.start` → PrayerTimesView `clearCovers` → `wheelStartNotification`); hold → the edit sheet. `nameAccessory` = the zikr page's ✎ / Cancel · ✓ beside the name — the page has no nav bar (`MantraEditorView`). Pause card: full text + notes stacked, ▶︎ + photo thumbnail top right (`ZikrMediaStrip(compact:)`, 0.75× / loop in ▶︎'s long-press menu), **no editing from the pause screen** (its ✎ and `MantraCardEditor` are gone).
 
 **History** (MantrasView.swift `ZikrLibraryView`, HistoryPageView.swift)
-- History | Azkar native pager; all-time header + 14-day bars; delete only via Edit → select; row popover (Open zikr, Feel the pace).
+- History | Azkar native pager; all-time header + 14-day bars. **Session rows** (`SessionRow`, History and a zikr's page;
+  decision session-page): tap → `SessionPage` (SessionPage.swift, a sheet in the pause screen's look: when / kind, the zikr
+  card, `ZikrBento` with the usual-pace line, task / sleep lines, Open zikr — not on the zikr's own page); hold → the system
+  `.contextMenu` (Open session · Open zikr · Feel the pace · Delete… with an alert); tap the pace pill (a faint capsule, a
+  bottom-trailing overlay) → the pace plays until tapped again. No custom long press on rows: the hold is the menu (owner).
+  Several at once: Edit → select → Delete.
 
 **Insights** (InsightsView.swift, InsightsProgress.swift)
 - Three pages: scoring (hero + five rings at the usual moment), consistency (streaks, 14-day grid), getting better.
