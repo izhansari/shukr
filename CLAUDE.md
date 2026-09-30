@@ -24,10 +24,12 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
 
 **Flow of an item:**
 1. His words (chat or the app) → Bradley makes an ask (a slug plus his words) and queues it.
-2. Each engineer holds two briefed items: the current one and the next. Starting the next one needs no "go".
+2. Every item is in `board/queue.jsonl` before it's briefed (`queue.sh add`); each engineer holds a current and a next, on
+   the board's Queue tab; starting next needs no go: `queue.sh start <id>`.
 3. Build → a What's new entry (`whatsnew.py add … --ask <slug>`) → commit → push to the team line.
 4. Install on his phone only right after pulling the team line, so every build has everyone's work.
-5. Message Bradley only when done (the hash, what was and wasn't checked) or blocked.
+5. Done = `queue.sh done <id> <hash>` right after the push (the What's new entry carries what was and wasn't checked).
+   Message Bradley only when blocked (`queue.sh block`).
 6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
    item; nits ride along with a later one.
 7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
@@ -48,6 +50,7 @@ He fixes drift himself, and suggests running fewer agents when a lane is quiet.
 - Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch` (his own branch name, pushing to the team line).
 - Before every push: `git pull --rebase origin claude/tasbeeh-zikr-updates`. Push with `git push origin HEAD:claude/tasbeeh-zikr-updates`.
 - WhatsNew.jsonl merges by itself (merge=union).
+- publish-data.sh runs from the Stop hook; nobody republishes the board for data.
 - Small, frequent commits; no hold messages (a message lands at the other session's next pause, too late to stop a
   push). Frank and Sami talk to each other directly about merges and installs, copying Bradley.
 
