@@ -409,6 +409,13 @@ struct tasbeehView: View {
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
 
+            // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep (owner).
+            if sleptSaved {
+                Color.black.opacity((1 - inactivityDimmer) * 0.9)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .zIndex(2)
+            }
             // Sleep mode saved it with the app open (the countdown): the results screen above stays up
             // until the phone auto-locks (owner: "show the completion screen until the phone auto
             // locks - not that full black thing"); the lock closes the cover in the background and the
@@ -635,7 +642,9 @@ struct tasbeehView: View {
         stopTimer()
         try? context.save()
         // Off now, not 0.5 s later in completeStopTimer: iOS can kill the app before that runs, and
-        // sleep mode was still on for the next session (seen on his phone).
+        // sleep mode was still on for the next session (seen on his phone). The countdown timer is
+        // stopped first — the handler does nothing once sleep is off, so completeStopTimer can't.
+        inactivityTimerHandler(run: "stop")
         toggleInactivityTimer = false
         let inBackground = UIApplication.shared.applicationState == .background
         if let savedSession {
@@ -676,7 +685,7 @@ struct tasbeehView: View {
         noteModalText = ""
         
         
-        if !stoppedDueToInactivity && !countingHapticsOff {
+        if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff {   // never buzz someone asleep
             triggerSomeVibration(type: .vibrate)
         }
         
