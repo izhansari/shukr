@@ -10,18 +10,19 @@
 
 import SwiftUI
 
-/// The toolbar badge: a checklist symbol with the count of decisions waiting; nothing at 0.
+/// The toolbar badge: a checklist symbol, always there (owner, 426B6DE8: "keep it in top right anyways so i
+/// can click and see a page that says 'no decisions needed'"), with the count of decisions waiting when any.
 struct DecisionsBadgeButton: View {
     let count: Int
     let open: () -> Void
     var body: some View {
-        if count > 0 {
-            Button(action: open) {
-                Image(systemName: "checklist")
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(Color.primary)
-                    .frame(width: 32, height: 32)
-                    .overlay(alignment: .topTrailing) {
+        Button(action: open) {
+            Image(systemName: "checklist")
+                .font(.body.weight(.medium))
+                .foregroundStyle(Color.primary)
+                .frame(width: 32, height: 32)
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
                         Text("\(count)")
                             .font(.caption2.weight(.bold)).monospacedDigit()
                             .foregroundStyle(.white)
@@ -30,11 +31,11 @@ struct DecisionsBadgeButton: View {
                             .background(Capsule().fill(Color.red))
                             .offset(x: 7, y: -5)
                     }
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("\(count) decision\(count == 1 ? "" : "s") waiting")
+                }
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(count > 0 ? "\(count) decision\(count == 1 ? "" : "s") waiting" : "Decisions: none needed")
     }
 }
 
@@ -50,10 +51,17 @@ struct DecisionsView: View {
         let decided = all.filter { !openIDs.contains($0.id) }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
-                if all.isEmpty {
-                    Text("No questions from the team yet.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                if open.isEmpty {
+                    // Nothing to decide: say so plainly (decided ones still listed below).
+                    VStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 34, weight: .light)).foregroundStyle(Color.sage)
+                        Text("No decisions needed").font(.headline)
+                        Text("When the team has a question for you, it shows up here.")
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
                 }
                 if !open.isEmpty {
                     SectionTitle(text: "Waiting for you", count: open.count).padding(.leading, 4)

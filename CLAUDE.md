@@ -107,7 +107,7 @@ stacks; pictures decode in `.task`; a fold animates only its group. **Later:** a
 card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, words folded, buttons 40 pt); a change row
 1–2 lines; Next build one line. DEBUG `-whatsNewPerf`, `-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
 
-**Decisions (ask wn-decisions):** a checklist badge top right (beside Done, hidden at 0) = `WhatsNew.openDecisions()`
+**Decisions (ask wn-decisions):** a checklist badge top right (beside Done, always there — the count only when any; the page says "No decisions needed") = `WhatsNew.openDecisions()`
 (cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided (never vanish); options side
 by side (picture ≤ 160 pt, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
 `FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`; older builds read a comment) → feedback.md "🗳 Decision",
