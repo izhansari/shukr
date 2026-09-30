@@ -122,7 +122,9 @@ enum NoteState: Equatable {
 final class FeedbackStore {
     static let shared = FeedbackStore()
 
-    private(set) var items: [FeedbackItem] = []
+    private(set) var items: [FeedbackItem] = [] { didSet { revision &+= 1 } }
+    /// Bumps whenever `items` changes: what WhatsNew's cached ask states are keyed on (ask wn-speed).
+    private(set) var revision = 0
     /// From received.json: id → when it was first pulled, and the `updated` the latest pull saw.
     private(set) var received: [UUID: Date] = [:]
     private(set) var seen: [UUID: Date] = [:]
@@ -138,7 +140,7 @@ final class FeedbackStore {
     /// dispatch_once (it crashed opening What's new once).
     private init() {
         load(); loadReceived()
-        Task { @MainActor [weak self] in self?.writeMarkdown() }
+        scheduleMarkdown()
     }
 
     // MARK: Reading
@@ -263,7 +265,7 @@ final class FeedbackStore {
     }
 
     /// Pick up a received.json the pull script wrote while the app was running.
-    func reloadReceived() { loadReceived(); writeMarkdown() }
+    func reloadReceived() { loadReceived(); scheduleMarkdown() }
 
     func markSent(_ ids: Set<UUID>) {
         let now = Date()
@@ -360,21 +362,43 @@ final class FeedbackStore {
         seen = map("seen")
     }
 
+    /// feedback.json at once (it's his answers), but written off the main thread; feedback.md follows,
+    /// debounced (ask wn-speed: opening and every save used to rewrite it on the main thread).
     private func persist() {
         guard let dir = Self.folder else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let data = try? encoder.encode(items) {
-            try? data.write(to: dir.appendingPathComponent("feedback.json"), options: .atomic)
+            let url = dir.appendingPathComponent("feedback.json")
+            Self.writer.async {
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try? data.write(to: url, options: .atomic)
+            }
         }
-        writeMarkdown()
+        scheduleMarkdown()
+    }
+
+    /// One serial queue for the folder's files, so writes land in order.
+    static let writer = DispatchQueue(label: "shukr.feedback.writer", qos: .utility)
+    private var markdownWork: Task<Void, Never>?
+    /// feedback.md about a second after the last change (not per keystroke / save / open); the text is
+    /// built here, the file written on `writer`.
+    private func scheduleMarkdown() {
+        markdownWork?.cancel()
+        markdownWork = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.writeMarkdown()
+        }
     }
 
     /// feedback.md: what the pull copies. Not picked up yet first, then the rest; then the asks still
     /// waiting for him.
     private func writeMarkdown() {
+        #if DEBUG
+        WhatsNewPerf.markdown += 1
+        #endif
         guard let dir = Self.folder, FileManager.default.fileExists(atPath: dir.path) else { return }
         // Not picked up yet first, a "Ready for TestFlight" at the very top.
         let fresh = items.filter { state($0) == .saved }
@@ -386,7 +410,8 @@ final class FeedbackStore {
         md += "\n## Waiting for him (Your asks)\n\n"
         md += open.isEmpty ? "_(nothing)_\n"
             : open.map { "- `\($0.ask.id)` — \($0.latest.short) (`\($0.latest.id)`)" }.joined(separator: "\n") + "\n"
-        try? md.write(to: dir.appendingPathComponent("feedback.md"), atomically: true, encoding: .utf8)
+        let url = dir.appendingPathComponent("feedback.md")
+        Self.writer.async { try? md.write(to: url, atomically: true, encoding: .utf8) }
     }
 }
 

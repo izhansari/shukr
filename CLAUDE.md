@@ -100,6 +100,19 @@ under Your answers → the list by area, "K of your asks in this build still nee
 "I'm happy with this — ready for TestFlight" = a `.ship` note (commits = the change ids; "## 🚀 Ready for TestFlight" at
 the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh.
 
+**Speed + Later (ask wn-speed, 2026-09-30):** nothing on the open path writes a file — feedback.md and state.json are
+debounced ~1 s and written on `FeedbackStore.writer` (feedback.json right away, also off the main thread). `status(of:)`
+/ `openAsks()` are cached per `FeedbackStore.revision` (bumps when `items` change; `WhatsNew.invalidate()` after the
+migration). Search filters 150 ms after the last key; the page and each group's rows are `LazyVStack`s; a change's
+pictures decode in `.task`; folding animates only its group (no `.animation(value:)` on the page). Warm open on the
+Pro Max sim: 218 ms → ~60 ms; typing / folding re-run no ask states. **Later:** a card's fold (top right) sets it aside
+(`whatsNew.later`: ask id → the change it was set aside on; a newer change brings it back): one line (32 pt picture,
+headline, area) under "Set aside · N"; tap → the card in place. Nothing open: "Nothing left to test from here · N set
+aside" / "All caught up ✓". **Size rule:** an ask card ≤ ~40 % of the screen (picture 110 pt, headline 2 lines, "Look for"
+2 lines, his words folded, buttons 40 pt); a change row 1–2 lines; Next build one line — nothing taller without folding.
+DEBUG `-whatsNewPerf` (with `-demoWhatsNew`: "WNPERF" open times, cold and warm, and the work on search / fold),
+`-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
+
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
 `merge=union`, so branches appending lines don't conflict; `whatsnew.py check` flags a line a merge kept twice.

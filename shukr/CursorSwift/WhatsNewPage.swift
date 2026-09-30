@@ -27,6 +27,13 @@ struct WhatsNewView: View {
     @State private var path: [WhatsNewRoute]
     @State private var answersOpen = false
     @State private var search = ""
+    /// What the list filters by: the search, 150 ms after the last keystroke (ask wn-speed).
+    @State private var query = ""
+    /// Cards he set aside for later (ask wn-speed): ask id → the change it was set aside on. A newer
+    /// change on that ask brings the card back. Per phone.
+    @AppStorage("whatsNew.later") private var laterRaw = ""
+    /// Set-aside cards opened in place (this visit only).
+    @State private var laterOpen: Set<String> = []
     /// Every change's area chip (nil = All).
     @State private var areaFilter: String?
     /// Your asks: grouped by area, or one list newest first (ask wn-asks-view); and the areas he folded.
@@ -42,12 +49,18 @@ struct WhatsNewView: View {
     /// `startCard`: a change's id to open on (the "‹ What's new" pill).
     init(startCard: String? = nil) {
         _path = State(initialValue: startCard.map { [.change($0)] } ?? [])
+        #if DEBUG
+        if WhatsNewPerf.opened == 0 { WhatsNewPerf.opened = CACurrentMediaTime(); WhatsNewPerf.reset() }
+        #endif
     }
 
     var body: some View {
+        #if DEBUG
+        let _ = WhatsNewPerf.body += 1
+        #endif
         NavigationStack(path: $path) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
+                LazyVStack(alignment: .leading, spacing: 24) {
                     HStack {
                         Text(BuildInfo.line).font(.footnote).foregroundStyle(.secondary)
                         Spacer(minLength: 8)
@@ -72,6 +85,11 @@ struct WhatsNewView: View {
             }
             .background(Color(.systemGroupedBackground))
             .fontDesign(.rounded)
+            .task(id: search) {
+                if search.isEmpty { query = ""; return }
+                try? await Task.sleep(for: .milliseconds(150))
+                if !Task.isCancelled { query = search }
+            }
             .navigationTitle("What's new")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -95,6 +113,7 @@ struct WhatsNewView: View {
             }
             #if DEBUG
             .task { debugArgs() }
+            .task { await perfRun() }
             #endif
         }
         .onAppear {
@@ -132,20 +151,45 @@ struct WhatsNewView: View {
 
     // MARK: Your asks
 
+    private var later: [String: String] {
+        guard let data = laterRaw.data(using: .utf8),
+              let map = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return map
+    }
+    private func setLater(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry, _ on: Bool) {
+        var map = later
+        map[ask.id] = on ? latest.id : nil
+        // Only asks still waiting on that change are worth remembering.
+        let open = Set(WhatsNew.openAsks().map { "\($0.ask.id)|\($0.latest.id)" })
+        map = map.filter { open.contains("\($0.key)|\($0.value)") }
+        laterRaw = (try? String(data: JSONEncoder().encode(map), encoding: .utf8)) ?? ""
+    }
+    private func isLater(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry)) -> Bool { later[item.ask.id] == item.latest.id }
+
     private var asksSection: some View {
-        let open = WhatsNew.openAsks()
+        let all = WhatsNew.openAsks()
+        let open = all.filter { !isLater($0) }
+        let aside = all.filter { isLater($0) }
         let groups = Dictionary(grouping: open) { WhatsNew.area($0.latest.topic) }
             .sorted { WhatsNew.areaRank($0.key) < WhatsNew.areaRank($1.key) }
         let grouped = asksByArea && groups.count > 1
-        return VStack(alignment: .leading, spacing: 12) {
+        return LazyVStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .center) {
                     SectionTitle(text: "Your asks", count: open.count)
                     Spacer(minLength: 8)
                     if open.count > 1 { asksViewToggle }
                 }
-                Text(open.isEmpty ? "Nothing waiting for you." : "Built for you. Is it right?")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                Group {
+                    if !open.isEmpty {
+                        Text("Built for you. Is it right?")
+                    } else if aside.isEmpty {
+                        Text("All caught up ✓")
+                    } else {
+                        Text("Nothing left to test from here · \(aside.count) set aside")
+                    }
+                }
+                .font(.subheadline).foregroundStyle(.secondary)
             }
             .padding(.leading, 4)
             if grouped {
@@ -162,15 +206,37 @@ struct WhatsNewView: View {
             } else {
                 ForEach(open, id: \.ask.id) { askCard($0) }
             }
+            if !aside.isEmpty {
+                // Set aside for later: one line each, under the open ones.
+                Text("Set aside · \(aside.count)")
+                    .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .padding(.leading, 4).padding(.top, 6)
+                ForEach(aside, id: \.ask.id) { item in
+                    if laterOpen.contains(item.ask.id) {
+                        askCard(item, folded: true)
+                    } else {
+                        LaterRow(ask: item.ask, latest: item.latest) {
+                            withAnimation(.snappy) { _ = laterOpen.insert(item.ask.id) }
+                        }
+                        .transition(.opacity)
+                    }
+                }
+            }
         }
-        .animation(.snappy, value: open.map(\.ask.id))
     }
 
-    private func askCard(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry)) -> some View {
-        AskCard(ask: item.ask, latest: item.latest,
+    private func askCard(_ item: (ask: WhatsNewAsk, latest: WhatsNewEntry), folded: Bool = false) -> some View {
+        AskCard(ask: item.ask, latest: item.latest, setAside: folded,
                 works: { works(item.ask, item.latest) },
                 notYet: { composing = Compose(entry: item.latest, ask: item.ask, kind: .issue) },
-                openChange: { path.append(.change(item.latest.id)) })
+                openChange: { path.append(.change(item.latest.id)) },
+                later: {
+                    triggerSomeVibration(type: .light)
+                    withAnimation(.snappy) {
+                        if folded { _ = laterOpen.remove(item.ask.id) }   // back to its one line
+                        else { setLater(item.ask, item.latest, true) }
+                    }
+                })
             .transition(.asymmetric(insertion: .opacity, removal: .scale(scale: 0.96).combined(with: .opacity)))
     }
 
@@ -202,8 +268,10 @@ struct WhatsNewView: View {
     }
 
     private func works(_ ask: WhatsNewAsk, _ latest: WhatsNewEntry) {
-        let item = feedback.save(existing: feedback.editableAnswer(ask: ask.id, entry: latest.id), entry: latest,
-                                 ask: ask.id, kind: .works, text: "", media: [])
+        let item = withAnimation(.snappy) {
+            feedback.save(existing: feedback.editableAnswer(ask: ask.id, entry: latest.id), entry: latest,
+                          ask: ask.id, kind: .works, text: "", media: [])
+        }
         triggerSomeVibration(type: .success)
         withAnimation(.snappy) { justSaved = item }
         Task {
@@ -242,7 +310,7 @@ struct WhatsNewView: View {
     // MARK: Every change
 
     private var days: [(day: Date, entries: [WhatsNewEntry])] {
-        let q = search.trimmingCharacters(in: .whitespaces)
+        let q = query.trimmingCharacters(in: .whitespaces)
         let list = WhatsNew.entries.reversed().filter { e in
             e.live && (areaFilter == nil || WhatsNew.area(e.topic) == areaFilter) && (q.isEmpty || e.title.localizedCaseInsensitiveContains(q) || (e.headline ?? "").localizedCaseInsensitiveContains(q)
                        || WhatsNew.topicTitle(e.topic).localizedCaseInsensitiveContains(q)
@@ -259,7 +327,7 @@ struct WhatsNewView: View {
 
     private var changesSection: some View {
         let all = days
-        let narrowed = !search.isEmpty || areaFilter != nil
+        let narrowed = !query.isEmpty || areaFilter != nil
         let shown = narrowed ? all : Array(all.prefix(daysShown))
         return VStack(alignment: .leading, spacing: 10) {
             // The count follows the chip and the search (owner: "sure to filter totals").
@@ -280,7 +348,7 @@ struct WhatsNewView: View {
                 Text(dayTitle(group.day))
                     .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                     .padding(.leading, 4).padding(.top, 4)
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(Array(group.entries.enumerated()), id: \.element.id) { i, e in
                         if i > 0 { Divider().padding(.leading, 82) }
                         ChangeRow(entry: e) { path.append(.change(e.id)) }
@@ -368,7 +436,43 @@ struct WhatsNewView: View {
     #if DEBUG
     /// `-demoWhatsNewChange <id>` · `-demoWhatsNewTopic <id>` · `-demoWhatsNewPage said` ·
     /// `-demoWhatsNewAnswers` (the row open) · `-demoWhatsNewCompose <change id>` (answering its ask, or a comment).
+    /// DEBUG `-whatsNewPerf`: the open time, then three letters typed in search, then one area folded.
+    private func perfRun() async {
+        guard WhatsNewPerf.on else { return }
+        let ms = (CACurrentMediaTime() - WhatsNewPerf.opened) * 1000
+        WhatsNewPerf.runs += 1
+        print(String(format: "WNPERF open #%d%@: %.0f ms to the first frame", WhatsNewPerf.runs, WhatsNewPerf.runs == 1 ? " (cold, 1 s after launch)" : " (warm)", ms))
+        WhatsNewPerf.report("open")
+        guard WhatsNewPerf.runs == 1 else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        WhatsNewPerf.reset()
+        for letter in ["w", "i", "d"] {
+            search += letter
+            try? await Task.sleep(for: .seconds(0.4))
+        }
+        WhatsNewPerf.report("search 3 letters")
+        search = ""
+        try? await Task.sleep(for: .seconds(1))
+        WhatsNewPerf.reset()
+        let firstArea = Dictionary(grouping: WhatsNew.openAsks()) { WhatsNew.area($0.latest.topic) }.keys
+            .sorted { WhatsNew.areaRank($0) < WhatsNew.areaRank($1) }.first
+        WhatsNewPerf.reset()
+        if let firstArea { withAnimation(.snappy) { toggleFold(firstArea) } }
+        try? await Task.sleep(for: .seconds(0.8))
+        WhatsNewPerf.report("fold one area")
+        if let firstArea { toggleFold(firstArea) }
+        try? await Task.sleep(for: .seconds(1))
+        NotificationCenter.default.post(name: WhatsNewPerf.reopen, object: nil)
+    }
+
     private func debugArgs() {
+        // `-demoWhatsNewAllLater`: every open card set aside (the "Nothing left to test" screenshot);
+        // `-demoWhatsNewNoLater`: none.
+        if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewAllLater") {
+            let map = Dictionary(WhatsNew.openAsks().map { ($0.ask.id, $0.latest.id) }, uniquingKeysWith: { a, _ in a })
+            laterRaw = (try? String(data: JSONEncoder().encode(map), encoding: .utf8)) ?? ""
+        }
+        if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewNoLater") { laterRaw = "" }
         let d = UserDefaults.standard
         if d.bool(forKey: "demoWhatsNewAnswers") { answersOpen = true }
         if d.string(forKey: "demoWhatsNewPage") == "said" { path = [.said] }
@@ -613,12 +717,19 @@ struct VerdictChip: View {
 
 // MARK: - An ask's card
 
+/// The size rule (ask wn-speed — owner: "clearly there was no rule to stop it from taking up the whole
+/// page"): an ask card is at most ~40 % of the screen — picture 110 pt, headline 2 lines, "Look for" 2
+/// lines, his words folded, buttons 40 pt. A change row is 1–2 lines; Next build one line.
 private struct AskCard: View {
     let ask: WhatsNewAsk
     let latest: WhatsNewEntry
+    /// Set aside for later and opened in place: the fold closes it back to its one line.
+    var setAside = false
     let works: () -> Void
     let notYet: () -> Void
     let openChange: () -> Void
+    /// The fold (top right): "Later" — the card drops to one line under the open ones.
+    let later: () -> Void
     @State private var wordsOpen = false
     @State private var image: UIImage?
 
@@ -635,7 +746,7 @@ private struct AskCard: View {
             if let shot = latest.shots?.first {
                 Button(action: openChange) {
                     Rectangle().fill(Color(.tertiarySystemFill).opacity(0.5))
-                        .frame(height: 150)
+                        .frame(height: 110)
                         .overlay { if let image { Image(uiImage: image).resizable().scaledToFit().padding(6) } }
                 }
                 .buttonStyle(.plain)
@@ -645,16 +756,29 @@ private struct AskCard: View {
                 .accessibilityLabel("Screenshot of the change")
             }
             VStack(alignment: .leading, spacing: 8) {
-                Text(meta).font(.footnote).foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(meta).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button(action: later) {
+                        Label(setAside ? "Fold" : "Later", systemImage: setAside ? "chevron.up" : "chevron.down")
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Capsule().fill(Color(.tertiarySystemFill)))
+                            .frame(minHeight: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(setAside ? "Fold it again" : "Set aside for later")
+                }
                 Button(action: openChange) {
                     Text(latest.short).font(.title3.weight(.semibold)).multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
                 }
                 .buttonStyle(.plain)
                 if let look = latest.steps.first {
                     (Text("Look for ").fontWeight(.semibold).foregroundStyle(Color.sage) + Text(look))
                         .font(.subheadline)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(2)
                 }
                 if !words.isEmpty {
                     if wordsOpen {
@@ -675,13 +799,13 @@ private struct AskCard: View {
                     Button(action: works) {
                         Label("Works", systemImage: "checkmark")
                             .font(.body.weight(.semibold)).foregroundStyle(Color.green)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: 40)
                             .background(Capsule().fill(Color.green.opacity(0.14)))
                     }
                     Button(action: notYet) {
                         Label("Not yet", systemImage: "pencil")
                             .font(.body.weight(.semibold)).foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: 40)
                             .background(Capsule().fill(Color(.tertiarySystemFill)))
                     }
                 }
@@ -704,6 +828,32 @@ private struct AskCard: View {
     }
 }
 
+/// A card set aside for later (ask wn-speed): one line — a 32 pt picture, the headline, the area. A tap
+/// opens the full card in place (Works / Not yet); its fold closes it again.
+private struct LaterRow: View {
+    let ask: WhatsNewAsk
+    let latest: WhatsNewEntry
+    let open: () -> Void
+    var body: some View {
+        Button(action: open) {
+            HStack(spacing: 12) {
+                if let shot = latest.shots?.first { ShotThumb(name: shot, size: 32) }
+                else { RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(.tertiarySystemFill)).frame(width: 32, height: 32) }
+                Text(latest.short).font(.subheadline).foregroundStyle(.primary).lineLimit(1)
+                Spacer(minLength: 8)
+                Text(WhatsNew.area(latest.topic)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Image(systemName: "chevron.down").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .frame(minHeight: 48)
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the card")
+    }
+}
+
 // MARK: - Next build (ask wn-next-build)
 
 /// "Next build · 14 changes since build 12 ›", under Your answers.
@@ -715,10 +865,10 @@ private struct NextBuildRow: View {
         Button(action: open) {
             HStack(spacing: 12) {
                 Image(systemName: "shippingbox").font(.body).foregroundStyle(Color.sage)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Next build").font(.body.weight(.semibold)).foregroundStyle(.primary)
-                    Text("\(count) change\(count == 1 ? "" : "s") \(since)").font(.footnote).foregroundStyle(.secondary)
-                }
+                // One line (the size rule).
+                (Text("Next build").font(.body.weight(.semibold)).foregroundStyle(.primary)
+                 + Text(" · \(count) change\(count == 1 ? "" : "s") \(since)").font(.footnote).foregroundStyle(.secondary))
+                    .lineLimit(1)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
             }
@@ -846,6 +996,32 @@ private struct ChangeRow: View {
     }
 }
 
+/// A change's picture, decoded off the main thread (ask wn-speed: it was decoded in `body`).
+private struct DetailShot: View {
+    let name: String
+    let dimmed: Bool
+    let tap: (UIImage) -> Void
+    @State private var image: UIImage?
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+                    .frame(maxHeight: 360)
+                    .onTapGesture { tap(image) }
+            } else {
+                Color.clear.frame(height: 200)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .opacity(dimmed ? 0.5 : 1)
+        .task(id: name) {
+            image = await Task.detached(priority: .userInitiated) { WhatsNew.image(name)?.preparingForDisplay() }.value
+        }
+    }
+}
+
 // MARK: - One change
 
 struct ChangeDetailView: View {
@@ -941,15 +1117,7 @@ struct ChangeDetailView: View {
         if let names = entry.shots, !names.isEmpty {
             VStack(spacing: 10) {
                 ForEach(names, id: \.self) { name in
-                    if let ui = WhatsNew.image(name) {
-                        Image(uiImage: ui).resizable().scaledToFit()
-                            .frame(maxHeight: 360)
-                            .frame(maxWidth: .infinity)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-                            .opacity(entry.superseded ? 0.5 : 1)
-                            .onTapGesture { viewing = ui }
-                    }
+                    DetailShot(name: name, dimmed: entry.superseded) { viewing = $0 }
                 }
             }
         }

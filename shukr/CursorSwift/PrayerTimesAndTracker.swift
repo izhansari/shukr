@@ -947,6 +947,13 @@ struct PrayerTimesView: View {
         .sheet(item: $demoMantra) { m in MantraEditorView(mantra: m) }
         .sheet(isPresented: $demoNewZikr) { MantraEditorView(mantra: nil) }
         .sheet(isPresented: $demoWhatsNew) { WhatsNewView() }
+        #if DEBUG
+        // `-whatsNewPerf`: close and open it again, to time a warm open (no launch work around it).
+        .onReceive(NotificationCenter.default.publisher(for: WhatsNewPerf.reopen)) { _ in
+            demoWhatsNew = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { WhatsNewPerf.opened = 0; demoWhatsNew = true }
+        }
+        #endif
         .sheet(isPresented: $demoScheduled) { NavigationStack { YourRemindersView() } }
         #endif
         .sheet(isPresented: $showMantraSheetFromHomePage) {

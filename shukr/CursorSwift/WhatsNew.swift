@@ -117,6 +117,23 @@ struct AskAnswer {
     }
 }
 
+#if DEBUG
+/// DEBUG `-whatsNewPerf`: how long the page takes to open and how often the expensive work runs
+/// ("WNPERF …"), for ask wn-speed's before / after numbers.
+enum WhatsNewPerf {
+    static var on: Bool { ProcessInfo.processInfo.arguments.contains("-whatsNewPerf") }
+    static var opened: CFTimeInterval = 0
+    static var openAsks = 0, status = 0, markdown = 0, state = 0, body = 0
+    static func report(_ what: String) {
+        guard on else { return }
+        print("WNPERF \(what): openAsks=\(openAsks) status=\(status) markdown=\(markdown) state=\(state) body=\(body)")
+    }
+    static func reset() { openAsks = 0; status = 0; markdown = 0; state = 0; body = 0 }
+    static let reopen = Notification.Name("whatsNewPerfReopen")
+    static var runs = 0
+}
+#endif
+
 // MARK: - The file
 
 enum WhatsNew {
@@ -190,8 +207,31 @@ enum WhatsNew {
 
     // MARK: The one rule
 
+    /// Each ask's state and the open list, worked out once per change to his answers (ask wn-speed: the
+    /// page ran this for every ask on every redraw — typing in search, folding an area).
+    @MainActor private static var statusCache: [String: AskStatus] = [:]
+    @MainActor private static var openCache: [(ask: WhatsNewAsk, latest: WhatsNewEntry)]?
+    @MainActor private static var cacheRevision = -1
+    @MainActor private static func validateCache() {
+        let r = FeedbackStore.shared.revision
+        if r != cacheRevision { statusCache = [:]; openCache = nil; cacheRevision = r }
+    }
+    /// After the migration (or anything else outside his answers) changes what counts as answered.
+    @MainActor static func invalidate() { cacheRevision = -1 }
+
     /// Open until there's an answer on its newest live change (a newer change opens it again).
     @MainActor static func status(of ask: WhatsNewAsk) -> AskStatus {
+        validateCache()
+        if let cached = statusCache[ask.id] { return cached }
+        let s = computeStatus(of: ask)
+        statusCache[ask.id] = s
+        return s
+    }
+
+    @MainActor private static func computeStatus(of ask: WhatsNewAsk) -> AskStatus {
+        #if DEBUG
+        WhatsNewPerf.status += 1
+        #endif
         guard let latest = entries(ask: ask.id).last else { return .gone }
         var best: AskAnswer?
         func consider(_ a: AskAnswer) { if best == nil || a.at > best!.at { best = a } }
@@ -220,8 +260,18 @@ enum WhatsNew {
             return asks.compactMap { a in entries(ask: a.id).last.map { (a, $0) } }.sorted { $0.1.when > $1.1.when }
         }
         #endif
-        return asks.compactMap { a in if case .open(let l) = status(of: a) { (a, l) } else { nil } }
+        validateCache()
+        if let openCache { return openCache }
+        #if DEBUG
+        WhatsNewPerf.openAsks += 1      // counts the work, not cached reads
+        #endif
+        let open: [(ask: WhatsNewAsk, latest: WhatsNewEntry)] = asks
+            .compactMap { a -> (ask: WhatsNewAsk, latest: WhatsNewEntry)? in
+                if case .open(let l) = status(of: a) { return (a, l) } else { return nil }
+            }
             .sorted { $0.latest.when > $1.latest.when }
+        openCache = open
+        return open
     }
 
     /// What he's said about this change (a Works / Not yet on it, or a comment), newest first.
@@ -249,7 +299,20 @@ enum WhatsNew {
 
     /// `{"asks": {slug: "open" | "works" | "notyet"}, "updated": …}` — which asks are still waiting for him.
     /// Written at launch and after every answer, only when it changed.
+    /// state.json about a second after the last answer (debounced; built here, written off the main thread).
+    @MainActor private static var stateWork: Task<Void, Never>?
     @MainActor static func writeState() {
+        stateWork?.cancel()
+        stateWork = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            writeStateNow()
+        }
+    }
+    @MainActor private static func writeStateNow() {
+        #if DEBUG
+        WhatsNewPerf.state += 1
+        #endif
         guard WhatsNewAccess.shared.available else { return }
         guard let dir = FeedbackStore.folder else { return }
         var map: [String: String] = [:]
@@ -262,18 +325,21 @@ enum WhatsNew {
             case .gone: break
             }
         }
-        let body: [String: Any] = ["version": 4, "asks": map]
-        guard let content = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
-        let url = dir.appendingPathComponent("state.json")
-        if let old = try? Data(contentsOf: url), var obj = try? JSONSerialization.jsonObject(with: old) as? [String: Any] {
-            obj["updated"] = nil
-            if let o = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]), o == content { return }
+        let now = iso.string(from: Date())
+        FeedbackStore.writer.async {
+            let body: [String: Any] = ["version": 4, "asks": map]
+            guard let content = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
+            let url = dir.appendingPathComponent("state.json")
+            if let old = try? Data(contentsOf: url), var obj = try? JSONSerialization.jsonObject(with: old) as? [String: Any] {
+                obj["updated"] = nil
+                if let o = try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys]), o == content { return }
+            }
+            var withTime = body
+            withTime["updated"] = now
+            guard let data = try? JSONSerialization.data(withJSONObject: withTime, options: [.sortedKeys, .prettyPrinted]) else { return }
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try? data.write(to: url, options: .atomic)
         }
-        var withTime = body
-        withTime["updated"] = iso.string(from: Date())
-        guard let data = try? JSONSerialization.data(withJSONObject: withTime, options: [.sortedKeys, .prettyPrinted]) else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
     }
 
     /// At launch: carry v3's state across once, and write the team's state file.
@@ -282,6 +348,7 @@ enum WhatsNew {
         if ProcessInfo.processInfo.arguments.contains("-whatsNewResetMigration") { Migration.resetForDebug() }
         #endif
         Migration.runOnce()
+        invalidate()
         writeState()
     }
 
