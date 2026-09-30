@@ -2,8 +2,8 @@
 
 iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer times +
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
-beyond Xcode templates. Build/run happens in Xcode on the owner's machine; this repo has no
-scripts to run. A local agent can build with
+beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: whatsnew.py, testflight.sh,
+pull-feedback.sh, asc.py; the team's board scripts live in shukrGit/board/. A local agent can build with
 `xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`.
 
 Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehView.swift`),
@@ -15,7 +15,7 @@ Widget and app share `UserDefaults(suiteName: "group.betternorms.shukr.shukrWidg
 
 **Who:** Izhan (owner) decides and tests. Bradley plans and reviews: he keeps the backlog, the queue and the board,
 and is Izhan's single inbox. Frank builds the phone app. Sami builds the watch and widgets, and takes phone items
-Bradley splits off. Everyone signs messages with their name and a timing line ("now" only if urgent).
+Bradley splits off. Ben: consultant (protocol, What's new process, board); no app features. Everyone signs messages with their name and a timing line ("now" only if urgent).
 
 **What needs Izhan** (ask, with pictures for looks, and wait): design choices, new features, TestFlight uploads,
 SwiftData schema changes, and anything destructive or shared in git (force push, deleting branches, touching `main`,
@@ -23,18 +23,20 @@ which stays frozen). **Everything else goes ahead without asking:** work that's 
 restore agreed behaviour, review fix-ups that don't change what he sees, and internal tooling / notes.
 
 **Flow of an item:**
-1. His words (chat or the app) → Bradley makes an ask (a slug plus his words) and queues it.
+1. His words (chat or the app) → Bradley makes an ask (a slug plus his words) and queues it. No new item goes to an
+   engineer until Izhan names it; once named, it's briefed as that engineer's next.
 2. Every item is in `board/queue.jsonl` before it's briefed (`queue.sh add`); each engineer holds a current and a next, on
    the board's Queue tab; starting next needs no go: `queue.sh start <id>`.
 3. Build → a What's new entry (`whatsnew.py add … --ask <slug>`) → commit → push to the team line.
 4. Install on his phone only right after pulling the team line, so every build has everyone's work.
-5. Done = `queue.sh done <id> <hash>` right after the push (the What's new entry carries what was and wasn't checked).
-   Message Bradley only when blocked (`queue.sh block`).
+5. Done = `queue.sh done <id> <hash>` right after the push (the What's new entry carries what was and wasn't checked);
+   no done message. Message Bradley only when blocked (`queue.sh block`).
 6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
    item; nits ride along with a later one.
 7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
 8. **A question for Izhan is logged before it's asked (`board/decide.sh ask`) and its answer recorded after
-   (`decide.sh answer`)**; he answers in chat, on the What's new page or on the board — all three land in the same record
+   (`decide.sh answer`)**; he answers on the What's new page, in chat with Bradley, or on the board — in that order; never
+   forced onto the board. An engineer's question goes to Bradley, who logs and asks it. All three land in the same record
    (WhatsNew.jsonl `decision` / `decision-answer`, `whatsnew.py decision` / `decision-answer`; `check` lists the open ones).
    Never a long chat message: one line + the options (pictures, Bradley's pick). A review finding that needs him is one too.
 
@@ -44,15 +46,20 @@ digest:
 - context-full events;
 - any question that reached Izhan without being logged first (`decide.sh ask`);
 - any wait for a "go" on pre-approved work.
-He fixes drift himself, and suggests running fewer agents when a lane is quiet.
+He fixes drift himself, and suggests running fewer agents when a lane is quiet. The digest is
+`board/health.py`'s output plus one line.
 
 **Git:** one team line, `claude/tasbeeh-zikr-updates`.
 - Frank works in `shukrGit/shukr`, Sami in `shukrGit/shukr-watch` (his own branch name, pushing to the team line).
 - Before every push: `git pull --rebase origin claude/tasbeeh-zikr-updates`. Push with `git push origin HEAD:claude/tasbeeh-zikr-updates`.
 - WhatsNew.jsonl merges by itself (merge=union).
-- publish-data.sh runs from the Stop hook; nobody republishes the board for data.
 - Small, frequent commits; no hold messages (a message lands at the other session's next pause, too late to stop a
-  push). Frank and Sami talk to each other directly about merges and installs, copying Bradley.
+  push). Frank and Sami talk to each other directly about merges and installs, copying Bradley only if it blocks someone.
+
+**Board:** https://shukr-board.vercel.app (Vercel login; read-only: Queue · Decisions · Plan). Records:
+`shukrGit/board/{queue,decisions,plan,reviews,status}.jsonl` via queue.sh / decide.sh / plan.sh / review.sh / status.sh;
+data uploaded by publish-data.sh and the page deployed by deploy-site.sh, both from the Stop hook — nobody publishes by
+hand. Mocks / storyboards / patches: `board/mocks/<item-id>/`.
 
 **Cost:** planning, review and design choices on the strongest model. Mechanical edits, conversions and bulk
 plumbing go to a cheaper sub-agent (Sonnet), spec'd and then checked. Keep this file current and short: history
@@ -65,7 +72,9 @@ goes to `docs/`, not here.
   `docs/history/claude-md-2026-09-29.md`).
 - Compact or start fresh **at an item boundary** (after commit + push), around 60–70 % full; never mid-item.
 - First overwrite your handoff, `shukrGit/board/handoff-<name>.md`, in ≤ 20 lines: now, next, half-done, traps seen.
-- Read by line range and grep with `head`; filter logs (`grep -E "error|BUILD"`), never dump them.
+- After a compaction, re-read this file and your handoff from disk; a summary's copy can be stale.
+- A brief over ~40 lines is a linked file in board/.
+- Read by line range, grep with `head`, filter logs; never dump them.
 - Screenshots at small scale, and only to judge a look. Broad searches or big reads go to a sub-agent that returns
   only the answer.
 - Messages between sessions: the hash, the facts and what's wanted, no narration. The reader's context pays for every
@@ -90,7 +99,7 @@ takes these, `check` flags others, `areas-remap` moved the old ones once). Your 
 there are 2+ areas — sub-headings inside it, foldable, `whatsNew.foldedAreas`; a "By area ⇄ Newest first" toggle,
 `whatsNew.asksByArea`, ask wn-asks-view); Every change has area chips (clipped ScrollView, never `scrollClipDisabled`) that combine with search.
 
-**Ideas (ask wn-ideas):** `FeedbackItem.Kind.idea` (💡, "Idea"; an older build reads it as a comment) with an optional
+**Ideas (ask wn-ideas):** `FeedbackItem.Kind.idea` (💡, "Idea") with an optional
 `area`: on a change, "Comment or idea" → the composer's "About this change | New idea" (keeps `onEntry` = the card), or the
 header's "New idea" (no card, an area picker). `Kind.isVerdict` (works / issue) is what counts as an answer — never an idea
 or a comment. feedback.md: "## 💡 Idea — <area>" + "- From: `<change>` (<headline>)".
@@ -100,22 +109,22 @@ testflight.sh writes one after a confirmed upload; build 12 backfilled at 994ee5
 (live changes after its time — the same set as `whatsnew.py testflight --since last`). A "Next build · N changes" row
 under Your answers → the list by area, "K of your asks in this build still need your answer" (tap → scrolls there), and
 "I'm happy with this — ready for TestFlight" = a `.ship` note (commits = the change ids; "## 🚀 Ready for TestFlight" at
-the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh.
+the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh
+(as a decide.sh ask, or his Ready note on the page).
 
-**Speed + Later (ask wn-speed):** no file write on the open path — feedback.md / state.json are debounced ~1 s, written
-on `FeedbackStore.writer`, flushed on going to the background; `status(of:)` / `openAsks()` are cached per
-`FeedbackStore.revision` (`WhatsNew.invalidate()` after the migration); search filters 150 ms after the last key; lazy
-stacks; pictures decode in `.task`; a fold animates only its group. **Later:** a card's fold sets it aside
+**Speed + Later (ask wn-speed):** no file write on the open path — feedback.md / state.json are debounced, written on
+`FeedbackStore.writer`, flushed on going to the background; `status(of:)` / `openAsks()` are cached per
+`FeedbackStore.revision`; debounced search; lazy stacks; pictures decode
+in `.task`. **Later:** a card's fold sets it aside
 (`whatsNew.later`: ask → change; a newer change brings it back) to one line under "Set aside · N". **Size rule:** an ask
 card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, words folded, buttons 40 pt); a change row
-1–2 lines; Next build one line. DEBUG `-whatsNewPerf`, `-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
+1–2 lines; Next build one line.
 
 **Decisions (ask wn-decisions):** a checklist badge top right (beside Done, always there — the count only when any; the page says "No decisions needed") = `WhatsNew.openDecisions()`
 (cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided (never vanish); options side
-by side (picture ≤ 160 pt, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
-`FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`; older builds read a comment) → feedback.md "🗳 Decision",
-state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decision-answer` lines (source phone). DEBUG
-`-demoWhatsNewDecisions` (two samples), `-demoWhatsNewPage decisions`, `-demoDecisionChoose "<id>:<option>"`.
+by side (pictures, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
+`FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`) → feedback.md "🗳 Decision",
+state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decision-answer` lines (source phone).
 
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
@@ -136,7 +145,8 @@ left out of App Store ones by `SHUKR_APPSTORE=1`).
 3. Commit. **No resolve step**: `add` stamps the time; ids get a random suffix, so branches can't clash.
 - Not committed yet and wrong: `whatsnew.py edit --entry <id> …` / `drop --entry <id>`. Committed and undone later:
   `whatsnew.py status --entry <id> --set replaced|dropped` (greyed in history).
-- He answers in chat instead of on the phone: Bradley queues it in `shukrGit/board/verdicts.jsonl`; the next `add`
+- He answers in chat instead of on the phone: Bradley queues it in `shukrGit/board/verdicts.jsonl`
+  (`board/verdict.sh <slug> works|notyet "<words>"`); the next `add`
   (or `whatsnew.py import-verdicts`) brings it in, and his phone closes the ask with the next install.
 
 **The one rule** (`WhatsNew.status(of:)`): an ask is open until there's a Works / Not yet on its newest live change —
@@ -150,10 +160,8 @@ shows "Bradley has it". Send on the page shares the .md and every file (TestFlig
 
 **Traps:** anything reading `FeedbackStore.shared` must not run inside `FeedbackStore.init` (its feedback.md write is
 deferred a turn — a recursive dispatch_once crashed once). Never a horizontal ScrollView on the change page (BA0ECB7A).
-Decode screenshots / thumbnails off the main thread. DEBUG args: `-demoWhatsNew`, `-demoWhatsNewChange <id>`,
-`-demoWhatsNewTopic <id>`, `-demoWhatsNewPage said`, `-demoWhatsNewAnswers YES`, `-demoWhatsNewCompose <change id>`,
-`-whatsNewDump` (each ask's state), `-whatsNewResetMigration`, `-demoWhatsNewAllOpen` (every ask open: screenshots), `-demoWhatsNewPage next` (Next build), `-demoWhatsNewIdea` / `-demoWhatsNewIdeaFrom <change id>`
-(+ `-demoIdeaText`, `-demoIdeaArea`: menus / segmented controls don't take simulated taps).
+Decode screenshots / thumbnails off the main thread. DEBUG args (`-demoWhatsNew…`, `-whatsNewDump`, …) are listed in
+WhatsNewPage.swift.
 
 **Other beta extras** (Your reminders' link, its Details and card previews) follow `WhatsNewAccess.beta`: DEBUG or any
 TestFlight install. "Run setup again" and What's new follow `.available` (the owner only).
@@ -260,7 +268,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (`OverlayAlert`); it waits through the setup / the opening, and a tasbeeh session is paused first
   (`TasbeehSession.pauseRequest`, owner CA197AE2). DEBUG `-demoWidgetUnmarkAfter <s>`.
 - Prayers (ring, mark check, times list, configurable corners), Lock Screen family, Zikr (rows open the task), Name of the Day, Daily Ayah (once revealed), Controls (Qibla, Tasbeeh). Kinds in `WidgetKinds`.
-- Lock Screen circular (`PrayerLockScreenView`, ask lockscreen-time-left, 2026-09-29): in a live, unmarked prayer's last hour (`timeLeftFrom` 60 min, judged at `entry.date`) the name gives way to `Text(timerInterval:)` under the symbol; the timeline adds an entry at end − 60 min. The rectangular's trailing time left is a timer too (the relative style truncated the name). The live ring is a thin 2.5 pt arc masked by the stock `ProgressView(timerInterval:)` (owner, note C522C78E; `liveMask`, like the home widget's `LiveArc`). `ImageRenderer` can't draw the live ring / timer — check in the Lock Screen widget gallery (a live prayer: e.g. `simctl location set` to where one is on).
+- Lock Screen circular (`PrayerLockScreenView`, ask lockscreen-time-left, 2026-09-29): in a live, unmarked prayer's last hour a `Text(timerInterval:)` replaces the name (an entry at end − 60 min); the rectangular's time left is a timer too. The live ring = a 2.5 pt arc masked by the stock `ProgressView(timerInterval:)` (`liveMask`). `ImageRenderer` can't draw them — check in the Lock Screen widget gallery.
 
 **Apple Watch** (shukrWatch/, shukrWatchShared/, WatchSync.swift, WatchZikrSync.swift)
 - Pages Zikr ← Salah → Settings; the phone's ring; marking with Undo through an id'd outbox; qibla arrow (true north); zikr wheel and counter (Crown = one count per nudge, `WatchCrownGate`), two-page pause, `WatchHaptics`, Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
@@ -304,8 +312,6 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 **Needs a real device:** Fajr rollover (yesterday's prayers up until Fajr) and the 15 Pro's first V2 launch (`✅ schema V2 data pass`, no ❌); the Always upgrade prompt (once); travel updates and background relaunch; the Shortcut alarm description; a real Jumu'ah at a masjid and the arrival dua with the app killed; nudge cancel from the widget extension; mic / camera; paging lag re-measure (Release); the watch list under Apple Watch; real Summary / Time Sensitive / Background App Refresh settings.
 
 **Start here, still pending:** horizontal paging and the b4071db items on the phone; `SharedStateClass` → `@Observable`; compass arrow freezes while moving (leads: `handleLocationChange`, `storeLastCoordinate`, the 0.5° guard); three `.ips` UIKit `NSAssertionHandler` aborts on backgrounding (2026-09-24). Backlog: Infinity button → user step; `progressFraction` divides by a zero target; `toggleInactivityTimer` reset; stale finish estimate; dead code (`CommentedOutHistoryPageView.swift`); "How scoring works" card; Umrah companion and personalised 99 Names duas (plan first; the owner has the prompt, don't invent one); post-salah "points" (a separate layer, never in the prayer score).
-
-**Ask the owner (never answered):** how to turn a map layer off (✕ on the top pill?); mosque icon style; should any jama'ah at a masjid score full or only Jumu'ah; post-salah points (+N vs 3/5, own streak, must 33 · 33 · 34 be complete); keep rotating all four Tasbih Fatimah reminders; at exactly 33 show "0 of 33" or hold "33 of 33"; the watch ring's dark track; a `.watchface` (#24) needs him to build one.
 
 **Share card, on release:** `AyahShareCard.footer` says "join the beta on TestFlight" (link https://testflight.apple.com/join/GW5j85jk); when live on the App Store change it to "download on the App Store" and ask whether to add the link.
 
