@@ -561,6 +561,17 @@ struct PrayerTimesView: View {
                   let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }
             sharedState.selectedTask = nil
         }
+        // A zikr's page asked to start one of its tasks: close what covers the pager, then the
+        // Zikr page's wheel starts it.
+        .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.startNotification)) { _ in
+            guard !showTasbeehPage else { return }
+            clearCovers {
+                sharedState.horizontalPage = .zikr
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    NotificationCenter.default.post(name: ZikrFocus.wheelStartNotification, object: nil)
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
             guard let taskID = note.object as? String, scenePhase == .active else { return }
             lastDeepLinkAt = Date()   // no reminders card over the zikr it opened

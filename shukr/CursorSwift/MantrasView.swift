@@ -1060,7 +1060,13 @@ struct MantraEditorView: View {
                     .listRowBackground(Color.clear)
 
                     Section {
-                        MantraTaskCircles(mantra: mantra) { creatingTask = true }
+                        MantraTaskCircles(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
+                            // Close this page, then the Zikr page starts it.
+                            ZikrAudio.stopAll()
+                            dismiss()
+                            let id = task.id.uuidString
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { ZikrFocus.start(id, resume: resume) }
+                        }
                     } header: {
                         HStack(spacing: 10) {
                             Text("Tasks")
@@ -1293,20 +1299,23 @@ struct MantraEditorView: View {
 // MARK: - Editor: tasks, sessions
 
 /// This mantra's tasks the way the Zikr page shows tasks: circles ringed with today's progress,
-/// in a row you can scroll (2026-09-25, owner). Tap → the task sheet in edit mode (goal / units,
-/// mantra locked); long-press → Edit / Delete.
+/// in a row you can scroll (2026-09-25, owner). Tap → "Start?" (then the Zikr page starts it);
+/// long-press → the task sheet in edit mode (2026-09-30). Deleting is in the Zikr page's Tasks list.
 struct MantraTaskCircles: View {
     let mantra: MantraModel
     /// The empty state's dashed "New task" circle.
     var onNewTask: () -> Void = {}
+    /// Start the task (owner, 2026-09-30, note 3CA19C68): the page closes, the session opens.
+    var onStart: (TaskModel, _ resume: Bool) -> Void = { _, _ in }
+    @State private var asking: TaskModel?
     @Environment(\.modelContext) private var context
     @Query private var todaysSessions: [SessionDataModel]
     @State private var editing: TaskModel?
-    @State private var deleting: TaskModel?
 
-    init(mantra: MantraModel, onNewTask: @escaping () -> Void = {}) {
+    init(mantra: MantraModel, onNewTask: @escaping () -> Void = {}, onStart: @escaping (TaskModel, Bool) -> Void = { _, _ in }) {
         self.mantra = mantra
         self.onNewTask = onNewTask
+        self.onStart = onStart
         let todayStart = PrayerDay.sessionDayStart()   // the prayer day (Fajr to Fajr)
         _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= todayStart })
     }
@@ -1351,13 +1360,24 @@ struct MantraTaskCircles: View {
                     set: { if !$0 { editing = nil } }
                 ))
             }
-            .alert("Delete this task?",
-                   isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-                   presenting: deleting) { task in
-                Button("Delete", role: .destructive) { withAnimation { TaskModel.delete(task, in: context) }; deleting = nil }
-                Button("Cancel", role: .cancel) { deleting = nil }
-            } message: { _ in
-                Text("Its sessions stay in your history.")
+            // Tap = "Start?" (owner): part-done today → continue or start over, as on the Zikr page.
+            .alert(asking.map { "Start \($0.title)?" } ?? "",
+                   isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
+                   presenting: asking) { task in
+                let p = task.progress(in: todaysSessions)
+                if !task.isCompleted(with: p) && (p.count > 0 || p.seconds >= 1) {
+                    Button(task.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
+                        asking = nil; onStart(task, true)
+                    }
+                    Button("Start over") { asking = nil; onStart(task, false) }
+                } else {
+                    Button("Start") { asking = nil; onStart(task, false) }
+                }
+                Button("Cancel", role: .cancel) { asking = nil }
+            } message: { task in
+                let p = task.progress(in: todaysSessions)
+                Text(task.isCompleted(with: p) ? "Done today. Start another session?"
+                     : task.isCountMode ? "\(p.count) of \(task.goal) today." : "\(Int(p.seconds / 60)) of \(task.goal) min today.")
             }
         }
     }
@@ -1378,11 +1398,11 @@ struct MantraTaskCircles: View {
             .scaleEffect(0.7)
             .frame(width: 140, height: 140)
             .contentShape(Circle())
-            .onTapGesture { editing = task }
-            .contentShape(.contextMenuPreview, Circle())
-            .contextMenu {
-                Button { editing = task } label: { Label("Edit goal", systemImage: "slider.horizontal.3") }
-                Button(role: .destructive) { deleting = task } label: { Label("Delete", systemImage: "trash") }
+            // Tap → "Start?"; hold → its edit sheet (owner, 2026-09-30).
+            .onTapGesture { triggerSomeVibration(type: .light); asking = task }
+            .onLongPressGesture(minimumDuration: 0.45) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                editing = task
             }
     }
 }

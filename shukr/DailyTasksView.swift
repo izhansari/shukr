@@ -128,6 +128,17 @@ enum ZikrFocus {
         NotificationCenter.default.post(name: notification, object: nil)
     }
     static func take() -> String? { defer { pending = nil }; return pending }
+
+    /// Start a task's session from elsewhere (a zikr's page, owner 2026-09-30): the app closes
+    /// what covers it, goes to the Zikr page, and the wheel starts it (`resume`: from today's count).
+    static let startNotification = Notification.Name("zikrStartTask")
+    static let wheelStartNotification = Notification.Name("zikrWheelStartTask")
+    private(set) static var pendingStart: (id: String, resume: Bool)?
+    static func start(_ taskID: String, resume: Bool) {
+        pendingStart = (taskID, resume)
+        NotificationCenter.default.post(name: startNotification, object: nil)
+    }
+    static func takeStart() -> (id: String, resume: Bool)? { defer { pendingStart = nil }; return pendingStart }
     /// A deleted task can't be focused later.
     static func forget(_ ids: [String]) { if let p = pending, ids.contains(p) { pending = nil } }
 }
@@ -193,6 +204,7 @@ struct ZikrCircleWheel: View {
             }
             .sheet(item: $tasksSheetOn) { task in ZikrTasksSheet(startOn: task) }
             .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
+            .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.wheelStartNotification)) { _ in startPending() }
             .onAppear { focusPending() }
     }
 
@@ -203,6 +215,16 @@ struct ZikrCircleWheel: View {
         guard secondsLeft > 0 else { return base }
         let estimate = zikrEstimateString(secondsLeft).replacingOccurrences(of: "~", with: "")
         return base + " · about " + estimate + " to go"
+    }
+
+    /// A start asked for from a zikr's page: centre that task, then start it (no second question —
+    /// the page already asked).
+    private func startPending() {
+        guard let request = ZikrFocus.pendingStart,
+              let task = tasks.first(where: { $0.id.uuidString == request.id }) else { return }
+        _ = ZikrFocus.takeStart()
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = request.id }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { start(task, resume: request.resume) }
     }
 
     /// Scroll a widget-requested task to the middle (after the page has come in).
