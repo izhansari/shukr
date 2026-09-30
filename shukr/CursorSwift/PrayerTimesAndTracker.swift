@@ -84,12 +84,12 @@ struct PrayerTimesView: View {
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
     /// first-run setup is up — the flags stay set and this runs again once it's done
     /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
-    /// Sleep mode ended a session: once the welcome has landed and nothing is over the Salah page,
-    /// go to it (circle showing) and open the morning card on its circle.
+    /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
+    /// open the morning card on its circle — under the welcome while it plays, which lands on the card.
     private func showMorningCardWhenClear(tries: Int = 0) {
         guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
-        if showTasbeehPage || somethingCovers || FirstRunSetup.showingAtLaunch || WelcomeTarget.playing
-            || scenePhase != .active {
+        // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
+        if showTasbeehPage || somethingCovers || FirstRunSetup.showingAtLaunch || scenePhase != .active {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showMorningCardWhenClear(tries: tries + 1) }
             return
         }

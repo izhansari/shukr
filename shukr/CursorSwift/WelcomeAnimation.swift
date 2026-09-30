@@ -31,10 +31,25 @@ enum WelcomeTarget {
     static var trackDashed = false
     /// The welcome is on screen (sheets — e.g. the reminders card — wait for it to finish).
     static var playing = false
+    /// The ring has landed and the page is fading in round it (the morning card's words start here).
+    static var landed = false
 }
 
 struct WelcomeGate: ViewModifier {
     @State private var showing = WelcomeGate.shouldShowOnLaunch
+    /// Sleep mode ended a session and the app went to the background: black over everything until
+    /// the next open, which replays the welcome from black and lands it on the morning card (owner,
+    /// sleep-morning-open). Black is what the screen already showed, so iOS's picture of the app
+    /// and the welcome's first frame match.
+    @State private var curtain = false
+    @State private var fromBlack = false
+    @Environment(\.scenePhase) private var scenePhase
+    /// The curtain is up or the welcome is about to replay (the morning card waits under it).
+    static var curtainUp = false
+    /// Sleep mode just saved a session in the background (`finishAsleep` / the lock after it): black at
+    /// once, in this turn — iOS takes its picture of the app right after the background handlers, and
+    /// one turn later it had already caught the tasbeeh cover being torn down.
+    static let raiseCurtain = Notification.Name("WelcomeGate.raiseCurtain")
 
     private static var shouldShowOnLaunch: Bool {
         // The first-run setup is up: it ends in this welcome itself (its Bismillah hand-off).
@@ -51,11 +66,40 @@ struct WelcomeGate: ViewModifier {
         content
             .overlay {
                 if showing {
-                    WelcomeOverlay { showing = false; WelcomeTarget.playing = false }
+                    WelcomeOverlay(fromBlack: fromBlack) {
+                        showing = false; fromBlack = false; WelcomeTarget.playing = false
+                    }
                         .transition(.identity)
-                        .onAppear { WelcomeTarget.playing = true }
+                        .onAppear { WelcomeTarget.playing = true; WelcomeGate.curtainUp = false }
+                } else if curtain {
+                    Color.black.ignoresSafeArea().transition(.identity)
                 }
             }
+            .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in raise() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background, SleepMorning.pendingID != nil { raise() }
+                if phase == .active, curtain {
+                    var quiet = Transaction(); quiet.disablesAnimations = true
+                    withTransaction(quiet) {
+                        curtain = false
+                        // Still this morning's: the welcome, from black, onto the card. Otherwise
+                        // (the card expired) just the app.
+                        if SleepMorning.pendingID != nil, SleepMorning.endedAt.map({ Date().timeIntervalSince($0) < SleepMorning.expiresAfter }) ?? true {
+                            fromBlack = true
+                            showing = true
+                        } else {
+                            WelcomeGate.curtainUp = false
+                        }
+                    }
+                }
+            }
+    }
+
+    private func raise() {
+        guard !showing, !curtain else { return }
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet) { curtain = true }
+        WelcomeGate.curtainUp = true
     }
 }
 
@@ -79,7 +123,10 @@ struct WelcomeOverlay: View {
     /// Handed off from a ring already on screen in the same place (the first-run setup's ring,
     /// OnboardingMockups): the ring is there from the first frame, only the letters write in.
     var startDrawn = false
+    /// Opening from the sleep curtain: starts black and fades to the page colour as the word writes in.
+    var fromBlack = false
     let onFinish: () -> Void
+    @State private var blackOn = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var lettersIn = false
@@ -142,6 +189,7 @@ struct WelcomeOverlay: View {
                     .opacity(grow || portal ? 0 : 1)
             }
             .offset(shift)
+            Color.black.opacity(fromBlack && blackOn ? 1 : 0).allowsHitTesting(false)
         }
         .ignoresSafeArea()
         .opacity(morph ? 0 : 1)
@@ -204,6 +252,8 @@ struct WelcomeOverlay: View {
         }
         target = circleCentre()
         if startDrawn { ringDrawn = true }
+        WelcomeTarget.landed = false
+        if fromBlack { withAnimation(.easeInOut(duration: 0.7)) { blackOn = false } }
         lettersIn = true
         withAnimation(.easeInOut(duration: 0.9).delay(0.1)) { ringDrawn = true }
 
@@ -242,6 +292,7 @@ struct WelcomeOverlay: View {
         }
         // …and once it's there, the page fades in around it. The welcome's ring and the real track
         // are the same shape in the same place, so only the page appears.
+        WelcomeTarget.landed = true
         withAnimation(.easeInOut(duration: 0.45)) { morph = true }
         try? await Task.sleep(for: .milliseconds(470))
         onFinish()

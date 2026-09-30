@@ -81,6 +81,9 @@ struct tasbeehView: View {
     /// Sleep mode saved the session while the app was up: the screen stays black ("saved") until the
     /// phone locks — nothing bright lights up while he sleeps (owner, sleep-mode-fixes).
     @State private var sleptSaved = false
+    /// The results after a sleep finish have been up a while: black until the lock (or a tap).
+    @State private var sleptDark = false
+    static let sleptResultsSeconds: Double = 15
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -416,6 +419,18 @@ struct tasbeehView: View {
                     .allowsHitTesting(false)
                     .zIndex(2)
             }
+            // After a while it goes black — he's most likely asleep and not looking (owner): OLED pixels
+            // off, and black is the curtain the next open's welcome starts from. A tap brings it back.
+            if sleptDark {
+                Color.black
+                    .ignoresSafeArea()
+                    .statusBarHidden(true)
+                    .persistentSystemOverlays(.hidden)
+                    .zIndex(5)
+                    .contentShape(Rectangle())
+                    .onTapGesture { withAnimation(.easeOut(duration: 0.3)) { sleptDark = false } }
+                    .transition(.opacity)
+            }
             // Sleep mode saved it with the app open (the countdown): the results screen above stays up
             // until the phone auto-locks (owner: "show the completion screen until the phone auto
             // locks - not that full black thing"); the lock closes the cover in the background and the
@@ -512,7 +527,10 @@ struct tasbeehView: View {
             // pausing stopped the inactivity timer).
             // Saved by the countdown and now the phone has locked: close quietly in the background.
             if sleptSaved {
-                if newScenePhase == .background { closeAfterSleep() }
+                if newScenePhase == .background {
+                    NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
+                    closeAfterSleep()
+                }
                 return
             }
             // Paused with sleep on counts too: auto-lock would leave him on the pause screen (or iOS
@@ -654,9 +672,13 @@ struct tasbeehView: View {
         // asleep (owner: "so long as we dont risk the screen never turning off").
         UIApplication.shared.isIdleTimerDisabled = false
         if inBackground {
+            NotificationCenter.default.post(name: WelcomeGate.raiseCurtain, object: nil)   // black before iOS's picture
             closeAfterSleep()          // locked while counting: no results screen on wake
         } else {
-            sleptSaved = true          // the countdown ended it: the results screen until the lock
+            sleptSaved = true          // the countdown ended it: the results screen until the lock…
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.sleptResultsSeconds) {
+                if sleptSaved { withAnimation(.easeInOut(duration: 1.2)) { sleptDark = true } }   // …then black
+            }
         }
         #if DEBUG
         print("😴 finished asleep · background \(inBackground) · idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
@@ -666,6 +688,7 @@ struct tasbeehView: View {
     /// Close the counter after sleep mode ended a session — never through the results screen.
     private func closeAfterSleep() {
         sleptSaved = false
+        sleptDark = false
         isPresented = false
         resetSharedState()
     }

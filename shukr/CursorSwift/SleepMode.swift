@@ -6,9 +6,10 @@
 //  - `SleepIntroView`: the first time the sleep chip is turned on, a full-page sheet explains it;
 //    "Turn on sleep mode" turns it on and never shows the sheet again, "Not now" leaves it off and
 //    shows it again next time (decision sleep-intro A, no (i)).
-//  - `MorningCardView`: when sleep mode ended a session, the next time the app is on the Salah page
-//    a page opens round the Salah circle — the welcome's ring lands on that ring, and "Good morning"
-//    fades the page away round it, leaving the Salah page (decision sleep-morning-card A).
+//  - `MorningCardView`: when sleep mode ended a session, the next open plays the welcome (from black
+//    after a warm lock — `WelcomeGate`'s curtain) and its ring lands on the card's ring, drawn on the
+//    Salah circle; "Good morning" fades the page away round it, leaving the Salah page (decisions
+//    sleep-morning-card A, sleep-morning-open).
 //
 
 import SwiftUI
@@ -148,6 +149,8 @@ struct MorningCardView: View {
     let session: SessionDataModel
     let onDone: () -> Void
     let onHistory: () -> Void
+    /// The page (opaque at once under the welcome, which lands on this ring) and, after, its words.
+    @State private var pageIn = false
     @State private var shown = false
 
     /// The last tap's clock time (stored when it ended); older builds' sessions: start + active time.
@@ -164,7 +167,7 @@ struct MorningCardView: View {
             ?? CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
         ZStack(alignment: .topLeading) {
             Color(.systemBackground)
-                .opacity(shown ? 1 : 0)
+                .opacity(pageIn ? 1 : 0)
                 .contentShape(Rectangle())
             // The Salah circle's own ring, with the count in it.
             ZStack {
@@ -252,7 +255,19 @@ struct MorningCardView: View {
         .ignoresSafeArea()
         .onAppear {
             CircleCover.set("morningCard", true)
-            withAnimation(.easeOut(duration: 0.5)) { shown = true }
+            guard WelcomeTarget.playing || WelcomeGate.curtainUp else {
+                withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
+                return
+            }
+            pageIn = true   // under the welcome: its ring lands on this one, then the words come in
+        }
+        .task {
+            guard !shown else { return }
+            // From the moment the welcome's ring lands: its page fades out as the words fade in.
+            while (WelcomeTarget.playing && !WelcomeTarget.landed) || WelcomeGate.curtainUp {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
         }
         .onDisappear { CircleCover.set("morningCard", false) }
     }
@@ -260,7 +275,7 @@ struct MorningCardView: View {
     /// The words and the page fade from round the ring, which stays: what's left is the Salah
     /// circle in the same place (the welcome's landing, backwards).
     private func finish(then go: @escaping () -> Void) {
-        withAnimation(.easeInOut(duration: 0.45)) { shown = false }
+        withAnimation(.easeInOut(duration: 0.45)) { shown = false; pageIn = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { go() }
     }
 
