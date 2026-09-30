@@ -94,6 +94,8 @@ struct ChipIntroPage: View {
                     .padding(.top, 40)
                     Text(title)
                         .font(.system(size: 28, weight: .light, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                         .padding(.top, 22)
                     Text(subtitle)
                         .font(.subheadline).fontDesign(.rounded)
@@ -187,7 +189,7 @@ struct GoalIntroView: View {
     @Binding var autoStop: Bool
     /// Past the goal on keeps going: switching back is locked (it would end the session at once).
     let locked: Bool
-    /// "33" or "10 min".
+    /// "33" or "10 min" (in the cards' lines; the subtitle carries it too).
     let goal: String
     /// "Alhamdulillah · 12 of 33 so far" — whatever the session knows.
     let subtitle: String
@@ -195,7 +197,7 @@ struct GoalIntroView: View {
 
     var body: some View {
         ChipIntroPage(
-            symbol: "flag.checkered", title: "Your goal: \(goal)", subtitle: subtitle,
+            symbol: "flag.checkered", title: "How should this session end?", subtitle: subtitle,
             points: [],
             primary: "Done", onPrimary: onDone,
             extra: AnyView(cards))
@@ -204,9 +206,9 @@ struct GoalIntroView: View {
     private var cards: some View {
         VStack(spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                card(stops: true, symbol: "flag.checkered", title: "Stops at goal",
+                card(stops: true, symbol: "flag.checkered", title: "Stops at goal", kind: "Auto stop",
                      line: "Ends and saves by itself at \(goal).")
-                card(stops: false, symbol: "arrow.clockwise", title: "Keeps going",
+                card(stops: false, symbol: "arrow.clockwise", title: "Keeps going", kind: "Manual stop",
                      line: "Carries on past \(goal) — finish with \u{201C}goal reached\u{201D} at the bottom.")
             }
             Text(locked
@@ -219,7 +221,7 @@ struct GoalIntroView: View {
         }
     }
 
-    private func card(stops: Bool, symbol: String, title: String, line: String) -> some View {
+    private func card(stops: Bool, symbol: String, title: String, kind: String, line: String) -> some View {
         let picked = autoStop == stops
         let disabled = locked && stops
         return Button {
@@ -237,9 +239,15 @@ struct GoalIntroView: View {
                         .font(.system(size: 17))
                         .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.25))
                 }
-                Text(title)
-                    .font(.headline.weight(.medium)).fontDesign(.rounded)
-                    .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.headline.weight(.medium)).fontDesign(.rounded)
+                        .foregroundStyle(.primary)
+                    // What the switch does, in two words (owner).
+                    Text(kind)
+                        .font(.subheadline.weight(.medium)).fontDesign(.rounded)
+                        .foregroundStyle(picked ? Color.sage : Color.secondary)
+                }
                 Text(line)
                     .font(.footnote).fontDesign(.rounded)
                     .foregroundStyle(.secondary)

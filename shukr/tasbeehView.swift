@@ -1281,13 +1281,12 @@ struct tasbeehView: View {
         private var goalText: String {
             sharedState.selectedMode == 1 ? "\(sharedState.selectedMinutes) min" : sharedState.targetCount
         }
-        /// "Alhamdulillah · 12 of 33 so far" / "After Fajr · 4 min so far".
+        /// "Alhamdulillah · goal 33 · 12 so far" / "After Fajr · goal 10 min · 4 min so far" (the page's
+        /// title is the question, so the goal lives here).
         private var goalSubtitle: String {
             let name = isTaskSession ? sharedState.selectedTask?.title : mantra?.name
-            let progress = sharedState.selectedMode == 1
-                ? "\(Int(secsToReport / 60)) min so far"
-                : (goalReached ? "\(tasbeeh) so far" : "\(tasbeeh) of \(sharedState.targetCount) so far")
-            return [name, progress].compactMap { $0 }.joined(separator: " · ")
+            let progress = sharedState.selectedMode == 1 ? "\(Int(secsToReport / 60)) min so far" : "\(tasbeeh) so far"
+            return [name, "goal \(goalText)", progress].compactMap { $0 }.joined(separator: " · ")
         }
 
         /// Count goal, not post-salah, started and not done: the bento adds the finish tile.
