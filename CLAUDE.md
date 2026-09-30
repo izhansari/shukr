@@ -68,9 +68,9 @@ typed except park / drop;
 data uploaded by publish-data.sh and the page deployed by deploy-site.sh, both from the Stop hook — nobody publishes by
 hand. Mocks / storyboards / patches: `board/mocks/<item-id>/`.
 
-**Cost:** planning, review and design choices on the strongest model. Mechanical edits, conversions and bulk
-plumbing go to a cheaper sub-agent (Sonnet), spec'd and then checked. Keep this file current and short: history
-goes to `docs/`, not here.
+**Cost:** planning, review and design choices on the strongest model. App code is written by the engineer on the
+strongest model, with no cheaper sub-agents for coding (owner, 2026-09-30: code quality first). Cheaper sub-agents only
+for read-only searches and board tooling. Keep this file current and short: history goes to `docs/`, not here.
 
 **Context (sessions fill up; owner, 2026-09-29):**
 - State lives in files (this file, the board, `shukr-ideas.md`, `WhatsNew.jsonl`, memory), so a fresh start loses nothing.
