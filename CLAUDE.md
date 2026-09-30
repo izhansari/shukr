@@ -31,11 +31,10 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
 6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
    item; nits ride along with a later one.
 7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
-8. **Every question for Izhan is a card on the board's Decisions page, never a long chat message** (owner, 2026-09-29).
-   A card has the question in one line, the options side by side with their pictures, Bradley's recommendation, one-tap
-   answers and an optional note. Chat only says "N decisions waiting" plus the link. His answer is saved on the board,
-   where Bradley reads it, and answered cards move to a "decided" list. A review finding that needs him becomes a card.
-   His board shows only Plan and Decisions; Reviews stay behind a small link, for the team.
+8. **A question for Izhan is logged before it's asked (`board/decide.sh ask`) and its answer recorded after
+   (`decide.sh answer`)**; he answers in chat, on the What's new page or on the board — all three land in the same record
+   (WhatsNew.jsonl `decision` / `decision-answer`, `whatsnew.py decision` / `decision-answer`; `check` lists the open ones).
+   Never a long chat message: one line + the options (pictures, Bradley's pick). A review finding that needs him is one too.
 
 **Protocol health (Bradley owns it; owner, 2026-09-29):** once a week, or when Izhan asks, Bradley reports in one short
 digest:
@@ -100,19 +99,13 @@ under Your answers → the list by area, "K of your asks in this build still nee
 "I'm happy with this — ready for TestFlight" = a `.ship` note (commits = the change ids; "## 🚀 Ready for TestFlight" at
 the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh.
 
-**Speed + Later (ask wn-speed, 2026-09-30):** nothing on the open path writes a file — feedback.md and state.json are
-debounced ~1 s and written on `FeedbackStore.writer` (feedback.json right away, also off the main thread); going to the
-background flushes both (`FeedbackStore.flush()`, so a pull of a suspended app never reads a stale summary). `status(of:)`
-/ `openAsks()` are cached per `FeedbackStore.revision` (bumps when `items` change; `WhatsNew.invalidate()` after the
-migration). Search filters 150 ms after the last key; the page and each group's rows are `LazyVStack`s; a change's
-pictures decode in `.task`; folding animates only its group (no `.animation(value:)` on the page). Warm open on the
-Pro Max sim: 218 ms → ~60 ms; typing / folding re-run no ask states. **Later:** a card's fold (top right) sets it aside
-(`whatsNew.later`: ask id → the change it was set aside on; a newer change brings it back): one line (32 pt picture,
-headline, area) under "Set aside · N"; tap → the card in place. Nothing open: "Nothing left to test from here · N set
-aside" / "All caught up ✓". **Size rule:** an ask card ≤ ~40 % of the screen (picture 110 pt, headline 2 lines, "Look for"
-2 lines, his words folded, buttons 40 pt); a change row 1–2 lines; Next build one line — nothing taller without folding.
-DEBUG `-whatsNewPerf` (with `-demoWhatsNew`: "WNPERF" open times, cold and warm, and the work on search / fold),
-`-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
+**Speed + Later (ask wn-speed):** no file write on the open path — feedback.md / state.json are debounced ~1 s, written
+on `FeedbackStore.writer`, flushed on going to the background; `status(of:)` / `openAsks()` are cached per
+`FeedbackStore.revision` (`WhatsNew.invalidate()` after the migration); search filters 150 ms after the last key; lazy
+stacks; pictures decode in `.task`; a fold animates only its group. **Later:** a card's fold sets it aside
+(`whatsNew.later`: ask → change; a newer change brings it back) to one line under "Set aside · N". **Size rule:** an ask
+card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, words folded, buttons 40 pt); a change row
+1–2 lines; Next build one line. DEBUG `-whatsNewPerf`, `-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
 
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with
@@ -236,20 +229,17 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Map & qibla** (LocationMapView2.swift, MapModes.swift)
 - Opens qibla-up (`pointQiblaUp`), free rotation, the compass ring on the dot (`MapAnchor`), a heavy buzz each second while aligned, `MapNorthButton` home.
-- **One sheet (map-one-sheet, 2026-09-29, `MapLayerSheet.swift`):** up while prayer spots or mosques are on
-  (`interactiveDismissDisabled`), detents small 84 / medium / large; small = every page's header alone in the one shared
-  `MapSheetCollapsed` (centred; env `mapSheetCollapsed`) — never the list scrolled to its top (it drifted off-centre) on `sheetDetent`, the user's height kept; content by
-  state — mosques: list or `mosquePath.last`'s page; prayers: `PrayerSpotsHome` (the prayers in view; the filter is `PrayerFilterMenu` on the header's right, like drive / walk) or
-  `selection`'s page (a cluster's list ⇄ a prayer, in place). A pin tap cross-fades (`pageSwap`, `.layerPage`); ‹ back
-  to the list. Every page wears `MapSheetHeader` (‹ · title / subtitle · accessories · ✕ = back to the qibla; a single prayer's or
-  mosque's page has no ✕, ‹ is enough — owner). Editing
-  a prayer sizes the sheet to the page (`setSpotMode`), then returns the user's height. `SheetMetrics` (the sheet's
-  real height, @Observable) places the ? / "Back to …" above it (`AboveSheet`) and centres pins above it.
-- Explore (Prayers · Mosques — no Qibla: it's home; the lit layer again or ✕ goes back) sits under the globe / locate
-  capsule and opens downwards (DEBUG `-demoExploreOpen YES`); the ? is bottom right. DEBUG `-demoPrayerPins`, `-demoMapLayer prayers|mosques [-demoMapDetent small]
-  [-demoMapTour YES]` (pin → pin → back), `-demoMapEdit YES` (with prayers: Edit → time → Change location → Done → Save
-  → Undo ×2, logs "MAPEDIT" with the sheet's height), `-logMapFrames YES` (with `-demoMapDetent`: the header parts' frames in
-  the sheet's own space — global frames go stale while UIKit moves a sheet). Test the map on an iOS 27 sim.
+- **One sheet** (`MapLayerSheet.swift`, map-one-sheet): up while prayer spots or mosques are on
+  (`interactiveDismissDisabled`); `sheetDetent` small 84 / medium / large, the user's height kept. Content by state:
+  mosques = list or `mosquePath.last`'s page; prayers = `PrayerSpotsHome` (prayers in view, `PrayerFilterMenu` on the
+  header's right) or `selection`'s page (cluster list ⇄ prayer, in place). Pin taps cross-fade (`pageSwap`); ‹ back to the
+  list. Every page wears `MapSheetHeader` (✕ = back to the qibla; a single prayer's / mosque's page has only ‹). Small =
+  the page's header alone in the shared `MapSheetCollapsed` (env `mapSheetCollapsed`). Editing a prayer sizes the sheet to
+  the page (`setSpotMode`), then returns the user's height. `SheetMetrics` + `AboveSheet` float the ? above the sheet.
+- Explore (Prayers · Mosques; no Qibla — it's home) under the globe / locate capsule, opening downwards; the ? bottom
+  right. DEBUG `-demoPrayerPins`, `-demoMapLayer prayers|mosques`, `-demoMapDetent small`, `-demoMapTour YES`,
+  `-demoMapEdit YES` (logs "MAPEDIT"), `-logMapFrames YES` (frames in the sheet's own space — global frames go stale while
+  UIKit moves a sheet), `-demoExploreOpen YES`. Test the map on an iOS 27 sim.
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
 - Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).
@@ -306,95 +296,5 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 ## Feature list (for the App Store listing)
 
-What shukr does, meatiest first — keep this current; it's the source for the description,
-keywords, "What's New" and screenshot captions.
-
-**Prayer**
-- Accurate daily prayer times for where you are (GPS, or a city you pick), with the
-  calculation method and madhab (Hanafi / Shafi'i) of your choice.
-- The main circle: the current or next prayer with a live ring of how much of its window is
-  left, coloured by the score you'd get right now; tap to flip between "ends at" and time left.
-- Prayer tracker: mark each prayer as prayed; it's scored by *when* — Perfect (first 30 min) ·
-  On time · Late · Qaza (after the window) · Missed — and each day gets a score.
-- A satisfying completion moment (the ring sweeps closed, a haptic, "✓ Asr · On time · 88"),
-  done prayers fold away, all five come back with a "perfect day" flourish.
-- Edit when you prayed with a custom time wheel that won't let you pick an impossible time.
-- The prayer day runs Fajr to Fajr, so a late Isha after midnight still counts for its day.
-- Streaks: the day streak, "in-time days" (no Qaza), best streaks, with celebrations.
-- Notifications at each prayer with "I already prayed" / "nudge me in 5 / 10 min" actions,
-  per-prayer on / off / nudge settings, and an optional daily Fajr alarm.
-- Home-screen widget: the current prayer's ring and time, mark it prayed right from the
-  widget (the check fills once the current prayer is prayed and the circle moves on to the next),
-  and corner buttons for today's times, the qibla and tasbeeh.
-
-**More widgets**
-- Zikr: today's zikr tasks like the Reminders widget — an overall progress ring, how many are
-  left, and each task with a circle that fills as you go.
-- Name of the Day: one of the 99 Names each day, in Arabic inside the app's circle, with its
-  meaning — in the mint / forest look of the share card.
-- Daily Ayah: today's verse on your home screen, once you've revealed it in the app (it never
-  spoils the reveal).
-
-**Mosque finder**
-- One tap on the map finds the mosques around you (Apple Maps search for mosque / masjid /
-  Islamic center, filtered to real places of prayer — no halal shops or restaurants).
-- Tap a mosque: how far it is by car, a street-level Look Around view of the entrance,
-  Directions in Apple Maps or Google Maps, Call, its website in-app, and Apple Maps' place card (photos where Apple has them).
-- Pan anywhere and "Search this area".
-- A list of every mosque found, nearest first with the distance; tap one to fly straight to it.
-
-**Qibla & map**
-- Qibla direction on the main circle; a full map with the great-circle line to the Kaaba from
-  where you stand, a compass ring on your dot that tells you which way to turn, and a glow
-  when you're facing Mecca.
-- Qibla-up map: it turns so the line to the Kaaba points straight up your screen — hold the
-  phone out, turn until the streets match, and the top of your phone is the qibla. Worked out
-  from where you are, so it's right even when the phone's compass isn't. Rotate freely; one tap
-  puts the qibla back up.
-- A short illustrated guide the first time you open each map layer (qibla, prayer spots,
-  mosques), and a ? to bring it back.
-- Explore: pick prayer spots or mosques; one sheet you size yourself holds the list, date range and
-  one-tap prayer filters, drive / walk times, and each pin's page — tap pin after pin and it swaps in place.
-- Every prayer you've marked, pinned where you prayed it, coloured by score; tap a pin or a
-  cluster for the prayers there; filter by prayer and date range.
-
-**Insights**
-- "Am I getting better?" — each prayer ranked by its recent score with an 8-week trend.
-- "How am I scoring?" — average score ring with the grade makeup, per-prayer rings, week /
-  month / all time.
-- "How consistent am I?" — streaks and a 14-day prayer grid you can scrub.
-
-**Zikr (tasbeeh)**
-- A tap-anywhere tasbeeh counter with haptics (light / medium / strong), bead animation,
-  sleep mode that dims the screen, and auto-stop at your goal.
-- Freestyle, count goals (e.g. 100) or time goals (e.g. 10 min), with a live finish estimate.
-- Daily zikr tasks shown as a wheel of circles, each ringed with today's progress; continue
-  where you left off or start over; a Tasks list to reorder, edit and delete them.
-- Azkar: your own library of zikr with the full Arabic / transliteration and notes (who
-  taught you, why), shown right on the pause screen; lifetime count, time and pace per zikr.
-- Each zikr can keep a voice memo (how it's said — you, a teacher; slow 0.75× and loop) and a
-  photo (a written dua, calligraphy), both a tap away on the pause screen.
-- Count in sets: switch on a per-zikr "+N" and every tap counts N — for when you recite a set
-  on your fingers and tap once.
-- Post-salah tasbih (Tasbih Fatimah): 33 · 33 · 34 in one flowing session, the phrase
-  changing as you go, with the hadith on why it matters.
-- Zikr history: all-time total, a 14-day chart you can scrub, every session with its pace;
-  swipe to delete or jump to the zikr.
-
-**Quran & more**
-- Daily Ayah: a verse a day (Arabic in the Uthmani script + translation) to reveal, with a
-  beautiful 9:16 share card for Stories.
-- 99 Names of Allah: each name with its meaning and explanation, and flashcards to learn
-  them (with a "known" progress ring).
-
-**First run**
-- A short setup in the opening's look: where you pray (location, a calculation method picked
-  automatically for your country, the madhab explained with both Asr times), light / dark / auto,
-  reminders tuned per prayer, the Fajr alarm, your masjid and its duas — then "bismillah" into the app.
-- Prayer times that follow you when you travel (with Always location), even when the app is closed.
-
-**Privacy & feel**
-- Nothing leaves the device: no accounts, no tracking; location is used only on-device.
-- Light / dark / automatic appearance; a calm, rounded, circle-based design throughout.
-- A short welcome — "shukr" writes itself inside a ring that settles onto the prayer circle, with
-  a soft heartbeat haptic — when the app starts fresh.
+`docs/app-store-features.md`: what shukr does, meatiest first — the source for the description, keywords, "What's New"
+and screenshot captions. Keep it current when a feature ships or changes.

@@ -165,6 +165,7 @@ enum WhatsNew {
             case "change": if let e = try? decoder.decode(WhatsNewEntry.self, from: data) { entries[e.id] = e } else { bad += 1 }
             case "verdict": if let v = try? decoder.decode(WhatsNewChatVerdict.self, from: data) { f.verdicts.append(v) } else { bad += 1 }
             case "build": if let b = try? decoder.decode(WhatsNewBuild.self, from: data) { f.builds.append(b) } else { bad += 1 }
+            case "decision", "decision-answer": break   // questions for him (read by the Decisions page)
             default: bad += 1
             }
         }

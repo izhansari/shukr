@@ -11,6 +11,10 @@ The file is JSON Lines: one record per line, never hand-edited. Four kinds:
           his answer given in chat (Bradley records it; the phone's own answers live in its feedback.json)
   build   {"kind":"build","number","time","commit"}   a TestFlight upload (testflight.sh writes it) — the app's
           "Next build" lists the changes after the newest one
+  decision {"kind":"decision","id","area","question","options":[{"id","label","shot"?}],"recommend"?,"why"?,"created"}
+          a question for Izhan (CLAUDE.md step 8); open until a decision-answer line exists
+  decision-answer {"kind":"decision-answer","decision","option","words"?,"source":"chat"|"phone"|"board","at"}
+          his answer — in chat, on the What's new page or on the board, all the same record
 
 `.gitattributes` merges this file with `merge=union`, so two branches that both append lines merge cleanly.
 New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint the same id.
@@ -51,6 +55,9 @@ OLD = ROOT / "shukr" / "WhatsNew.json"
 SHOTS = ROOT / "shukr" / "WhatsNewShots"
 TEAM = ROOT.parent                       # shukrGit: board/ and feedback/ sit beside every checkout
 VERDICT_QUEUE = TEAM / "board" / "verdicts.jsonl"
+# board/decide.sh queues decisions and answers here (Bradley doesn't write the repo); `add` and import-verdicts
+# bring them in, turning each option's picture into a wn-*.jpg.
+DECISION_QUEUE = TEAM / "board" / "decisions.jsonl"
 
 TITLE_MAX = 60
 HEADLINE_MAX = 40
@@ -68,6 +75,8 @@ KEY_ORDER = {
     "change": ["kind", "id", "time", "topic", "asks", "notes", "status", "checked", "commit", "headline", "title", "tryIt", "shots"],
     "verdict": ["kind", "ask", "verdict", "at", "by", "words"],
     "build": ["kind", "number", "time", "commit"],
+    "decision": ["kind", "id", "area", "created", "question", "options", "recommend", "why"],
+    "decision-answer": ["kind", "decision", "option", "source", "at", "words"],
 }
 
 
@@ -235,6 +244,7 @@ def add(a):
     records = load()
     upsert_topic(records, a)
     import_verdicts(records, quiet=True)
+    import_decisions(records, quiet=True)
     used = {r.get("id") for r in of(records, "change")}
     cid = f"{a.topic}-{secrets.token_hex(2)}"
     while cid in used:
@@ -351,6 +361,101 @@ def import_verdicts(records=None, quiet=False):
     return added
 
 
+def parse_option(text):
+    """ "A|label|wn-shot.jpg" (the shot optional) → {"id","label","shot"?} """
+    parts = text.split("|")
+    if len(parts) < 2 or not parts[0].strip() or not parts[1].strip():
+        sys.exit(f"--option needs \"ID|label[|wn-shot.jpg]\", got {text!r}")
+    o = {"id": parts[0].strip(), "label": parts[1].strip()}
+    if len(parts) > 2 and parts[2].strip():
+        o["shot"] = parts[2].strip()
+    return o
+
+
+def decision(a, records=None):
+    standalone = records is None
+    if standalone:
+        records = load()
+    if find(records, "decision", a.id):
+        sys.exit(f"decision {a.id!r} exists already")
+    options = [parse_option(o) for o in a.option]
+    if len(options) < 2:
+        sys.exit("a decision needs at least two --option")
+    ids = [o["id"] for o in options]
+    if len(set(ids)) != len(ids):
+        sys.exit("option ids must differ")
+    if a.recommend and a.recommend not in ids:
+        sys.exit(f"--recommend {a.recommend!r} isn't one of {ids}")
+    for o in options:
+        if o.get("shot") and not (SHOTS / o["shot"]).exists():
+            sys.exit(f"no screenshot {SHOTS / o['shot']} (make it with `whatsnew.py shot`)")
+    records.append({"kind": "decision", "id": a.id, "area": a.area, "created": getattr(a, "created", None) or now(),
+                    "question": a.question, "options": options, "recommend": a.recommend, "why": a.why})
+    if standalone:
+        save(records)
+    print(f"decision {a.id}: {a.question} ({' / '.join(ids)})")
+
+
+def decision_answer(a, records=None):
+    standalone = records is None
+    if standalone:
+        records = load()
+    d = find(records, "decision", a.id)
+    if not d:
+        sys.exit(f"no decision {a.id!r}")
+    if a.option not in [o["id"] for o in d["options"]]:
+        sys.exit(f"{a.id}: no option {a.option!r}")
+    records.append({"kind": "decision-answer", "decision": a.id, "option": a.option, "source": a.source,
+                    "at": getattr(a, "at", None) or now(), "words": a.words})
+    if standalone:
+        save(records)
+    print(f"{a.id}: answered {a.option} ({a.source})")
+
+
+def import_decisions(records=None, quiet=False):
+    """board/decisions.jsonl (from board/decide.sh): {"type":"ask", id, area, question, options:[{id,label,png?}],
+    recommend?, why?, at} and {"type":"answer", id, option, words?, source, at} — each brought in once."""
+    standalone = records is None
+    if standalone:
+        records = load()
+    if not DECISION_QUEUE.exists():
+        if not quiet:
+            print("no queued decisions")
+        return 0
+    added = 0
+    for line in DECISION_QUEUE.read_text().splitlines():
+        try:
+            q = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if q.get("type") == "ask" and q.get("id") and not find(records, "decision", q["id"]):
+            opts = []
+            for o in q.get("options", []):
+                spec = f"{o['id']}|{o['label']}"
+                if o.get("png") and Path(o["png"]).exists():
+                    name = f"decision-{q['id']}-{o['id']}".lower()
+                    shot(o["png"], name)
+                    spec += f"|wn-{name}.jpg"
+                elif o.get("shot"):
+                    spec += f"|{o['shot']}"
+                opts.append(spec)
+            decision(argparse.Namespace(id=q["id"], area=q.get("area"), question=q.get("question", ""), option=opts,
+                                        recommend=q.get("recommend"), why=q.get("why"), created=q.get("at")), records)
+            added += 1
+        elif q.get("type") == "answer" and find(records, "decision", q.get("id")):
+            done = {(r.get("decision"), r.get("at")) for r in of(records, "decision-answer")}
+            if (q["id"], q.get("at")) in done:
+                continue
+            decision_answer(argparse.Namespace(id=q["id"], option=q.get("option"), words=q.get("words"),
+                                               source=q.get("source", "chat"), at=q.get("at")), records)
+            added += 1
+    if standalone:
+        save(records)
+    if added or not quiet:
+        print(f"imported {added} decision line(s) from board/decisions.jsonl")
+    return added
+
+
 def shot(png, name):
     SHOTS.mkdir(exist_ok=True)
     out = SHOTS / f"wn-{name}.jpg"
@@ -366,7 +471,7 @@ def check():
     problems = []
     seen = {}
     for r in records:
-        if r.get("kind") in ("topic", "ask", "change"):
+        if r.get("kind") in ("topic", "ask", "change", "decision"):
             key = (r["kind"], r.get("id"))
             if key in seen and seen[key] != r:
                 problems.append(f"two different {r['kind']} lines for {r.get('id')!r} (a union merge kept both: keep one)")
@@ -392,13 +497,34 @@ def check():
     for v in of(records, "verdict"):
         if v.get("ask") not in asks:
             problems.append(f"verdict for unknown ask {v.get('ask')!r}")
+    decisions = {d.get("id"): d for d in of(records, "decision")}
+    for d in decisions.values():
+        if d.get("area") not in AREAS:
+            problems.append(f"decision {d.get('id')}: unknown area {d.get('area')!r}")
+        opts = [o.get("id") for o in d.get("options") or []]
+        if len(opts) < 2:
+            problems.append(f"decision {d.get('id')}: needs at least two options")
+        if d.get("recommend") and d["recommend"] not in opts:
+            problems.append(f"decision {d.get('id')}: recommends an option it doesn't have")
+        for o in d.get("options") or []:
+            if o.get("shot") and not (SHOTS / o["shot"]).exists():
+                problems.append(f"decision {d.get('id')}: missing screenshot {o['shot']}")
+    for r in of(records, "decision-answer"):
+        d = decisions.get(r.get("decision"))
+        if d is None:
+            problems.append(f"answer for unknown decision {r.get('decision')!r}")
+        elif r.get("option") not in [o.get("id") for o in d.get("options") or []]:
+            problems.append(f"answer for {r.get('decision')}: unknown option {r.get('option')!r}")
     numbers = [b.get("number") for b in of(records, "build")]
     for b in of(records, "build"):
         if not isinstance(b.get("number"), int) or not b.get("time") or not b.get("commit"):
             problems.append(f"build record needs number / time / commit: {b}")
     if len(numbers) != len(set(numbers)):
         problems.append("a build number is recorded twice")
-    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict", "build")))
+    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict", "build", "decision", "decision-answer")))
+    open_d = [i for i in decisions if not any(r.get("decision") == i for r in of(records, "decision-answer"))]
+    if open_d:
+        print("open decisions: " + ", ".join(open_d))
     for p in problems:
         print("✗ " + p)
     if problems:
@@ -610,7 +736,26 @@ if __name__ == "__main__":
         p.add_argument("--words")
         verdict(p.parse_args(rest))
     elif cmd == "import-verdicts":
-        import_verdicts()
+        records = load()
+        import_verdicts(records)
+        import_decisions(records)
+        save(records)
+    elif cmd == "decision":
+        p = argparse.ArgumentParser(prog="whatsnew.py decision")
+        p.add_argument("--id", required=True)
+        p.add_argument("--question", required=True)
+        p.add_argument("--area", required=True, choices=AREAS)
+        p.add_argument("--option", action="append", required=True, help='"A|label|wn-shot.jpg" (shot optional)')
+        p.add_argument("--recommend")
+        p.add_argument("--why")
+        decision(p.parse_args(rest))
+    elif cmd == "decision-answer":
+        p = argparse.ArgumentParser(prog="whatsnew.py decision-answer")
+        p.add_argument("id")
+        p.add_argument("--option", required=True)
+        p.add_argument("--words")
+        p.add_argument("--source", default="chat", choices=["chat", "phone", "board"])
+        decision_answer(p.parse_args(rest))
     elif cmd == "shot" and len(rest) == 2:
         shot(*rest)
     elif cmd == "check":
