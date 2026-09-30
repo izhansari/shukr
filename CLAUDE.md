@@ -114,7 +114,8 @@ or a comment. feedback.md: "## 💡 Idea — <area>" + "- From: `<change>` (<hea
 **Next build (ask wn-next-build):** `build` records in the change log (`whatsnew.py build --number N [--commit] [--time]`;
 testflight.sh writes one after a confirmed upload; build 12 backfilled at 994ee5a). `WhatsNew.lastBuild` / `sinceLastBuild`
 (live changes after its time — the same set as `whatsnew.py testflight --since last`). A "Next build · N changes" row
-under Your answers → the list by area, "K of your asks in this build still need your answer" (tap → scrolls there), and
+under Your answers → first the asks still waiting, by name (tap → back onto that card, a sage outline; Your asks is one flat
+row list so `ScrollPosition.scrollTo(id:)` finds a card — never animated, it silently fails on an unbuilt lazy row), the list by area, and
 "I'm happy with this — ready for TestFlight" = a `.ship` note (commits = the change ids; "## 🚀 Ready for TestFlight" at
 the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh
 (as a decide.sh ask, or his Ready note on the page).
@@ -128,7 +129,7 @@ card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, wor
 1–2 lines; Next build one line.
 
 **Decisions (ask wn-decisions):** a checklist badge top right (beside Done, always there — the count only when any; the page says "No decisions needed") = `WhatsNew.openDecisions()`
-(cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided (never vanish); options side
+(cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided as one folded row, closed on every open; options side
 by side (pictures, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
 `FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`) → feedback.md "🗳 Decision",
 state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decision-answer` lines (source phone).
