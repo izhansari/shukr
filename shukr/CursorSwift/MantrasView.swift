@@ -1475,17 +1475,16 @@ struct SelectableRow<Content: View>: View {
             Image(systemName: on ? "checkmark.circle.fill" : "circle")
                 .font(.title3)
                 .foregroundStyle(on ? Color.accentColor : Color(.tertiaryLabel))   // stock, no green
-                .contentTransition(on ? .symbolEffect(.replace) : .identity)
+                .contentTransition(.identity)
             content
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            // Plain on / off both ways, no animation (owner, 5ABED020: an animated check reads as a hang).
             triggerSomeVibration(type: .light)
-            if on {
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { _ = selected.remove(id) }
-            } else {
-                selected.insert(id)
+            var t = Transaction(); t.disablesAnimations = true
+            withTransaction(t) {
+                if on { selected.remove(id) } else { selected.insert(id) }
             }
         }
     }
