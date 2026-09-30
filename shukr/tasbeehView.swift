@@ -84,6 +84,15 @@ struct tasbeehView: View {
     /// The results after a sleep finish have been up a while: black until the lock (or a tap).
     @State private var sleptDark = false
     static let sleptResultsSeconds: Double = 15
+    /// What "Keep counting" needs to carry the session on after sleep mode saved it (owner,
+    /// sleep-keep-going): taken just before the save, since the stop clears these a beat later.
+    private struct SleepResume {
+        var startTime: Date?, endTime: Date?, totalPause: Double
+        var targetCount: String, task: TaskModel?, lastTapAt: Date?
+    }
+    @State private var sleepResume: SleepResume?
+    /// The stop's cleanup has run, so resuming can't be undone by it.
+    @State private var sleepResumeReady = false
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -403,7 +412,8 @@ struct tasbeehView: View {
                 if /*!inMiddleOfSequence, */let session = savedSession{
                     ResultsView(
                         isPresented: $isPresented,
-                        savedSession: session // Pass the saved session
+                        savedSession: session, // Pass the saved session
+                        keepCounting: sleptSaved && sleepResumeReady ? { keepCountingAfterSleep() } : nil
                     )
                 }
             }
@@ -593,6 +603,14 @@ struct tasbeehView: View {
         secsToReport = 0
         timerIsActive = true //this just ensures increment, decrement and reset dont happen outside of session
         
+        startTicker()
+        triggerSomeVibration(type: .success)
+        updateIdleTimer()
+    }
+
+    /// The 0.1 s tick: the timed ring and the stop at the goal.
+    private func startTicker() {
+        timerbb?.invalidate()
         timerbb = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
         
             withAnimation {
@@ -609,10 +627,6 @@ struct tasbeehView: View {
                 }
             }
         }
-
-        
-        triggerSomeVibration(type: .success)
-        updateIdleTimer()
     }
     
         
@@ -657,6 +671,10 @@ struct tasbeehView: View {
         guard timerIsActive else { return }
         stoppedDueToInactivity = true
         endedAsleep = true
+        sleepResume = SleepResume(startTime: startTime, endTime: endTime, totalPause: totalPauseInSession,
+                                  targetCount: sharedState.targetCount, task: sharedState.selectedTask,
+                                  lastTapAt: lastTapAt)
+        sleepResumeReady = false
         stopTimer()
         try? context.save()
         // Off now, not 0.5 s later in completeStopTimer: iOS can kill the app before that runs, and
@@ -689,8 +707,39 @@ struct tasbeehView: View {
     private func closeAfterSleep() {
         sleptSaved = false
         sleptDark = false
+        sleepResume = nil
         isPresented = false
         resetSharedState()
+    }
+
+    /// "Keep counting" on the results after a sleep finish: he was only dozing. The saved row goes and
+    /// the same session carries on at the same count with sleep still on; the doze (last tap → now)
+    /// counts as a pause, so it's saved once at its real end and the pace stays honest.
+    private func keepCountingAfterSleep() {
+        guard let r = sleepResume, sleepResumeReady else { return }
+        if let saved = savedSession { SessionDeletion.delete([saved], in: context) }
+        SleepMorning.clear()
+        let doze = Date().timeIntervalSince(r.lastTapAt ?? Date())
+        savedSession = nil
+        sleptSaved = false
+        sleptDark = false
+        sleepResume = nil
+        sleepResumeReady = false
+        startTime = r.startTime ?? Date()
+        totalPauseInSession = r.totalPause + max(doze, 0)
+        endTime = r.endTime?.addingTimeInterval(max(doze, 0))
+        sharedState.targetCount = r.targetCount
+        sharedState.selectedTask = r.task
+        if sharedState.selectedMode == 2, let target = Int(r.targetCount), target > 0 {
+            progressFraction = CGFloat(tasbeeh) / CGFloat(target)
+        }
+        paused = false
+        timerIsActive = true
+        toggleInactivityTimer = true
+        startTicker()
+        inactivityTimerHandler(run: "restart")
+        updateIdleTimer()
+        triggerSomeVibration(type: .light)
     }
 
     private func completeStopTimer() {
@@ -717,6 +766,7 @@ struct tasbeehView: View {
         inactivityTimerHandler(run: "stop")
         toggleInactivityTimer = false
         paused = false
+        sleepResumeReady = sleepResume != nil
         
         
         if sessionCount <= 0 {
@@ -858,6 +908,8 @@ struct tasbeehView: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @Binding var isPresented: Bool
         let savedSession: SessionDataModel
+        /// Only after a sleep finish: carry the same session on (he was only dozing).
+        var keepCounting: (() -> Void)? = nil
 
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
@@ -927,6 +979,24 @@ struct tasbeehView: View {
                     .padding(.horizontal, 20)
 
                     Spacer(minLength: 20)
+
+                    if let keepCounting {
+                        Button(action: keepCounting) {
+                            Label("Keep counting", systemImage: "play.fill")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .foregroundStyle(Color.sage)
+                                .background(Capsule().fill(Color.sage.opacity(0.06)))
+                                .overlay(Capsule().stroke(Color.sage.opacity(0.6), lineWidth: 1))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: 420)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 10)
+                        .transition(.opacity)
+                    }
 
                     Button {
                         triggerSomeVibration(type: .success)
