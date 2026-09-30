@@ -234,6 +234,24 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         await Task.detached(priority: .utility) { (try? AVAudioPlayer(data: data))?.duration ?? 0 }.value
     }
 
+    /// When the memo was recorded: the creation time in its .m4a movie header (`mvhd`, seconds
+    /// since 1904 — AVAudioRecorder stamps it). Nil when there isn't one (a WAV, an older memo
+    /// without it); nothing is stored beside the memo (no schema change).
+    nonisolated static func recordedDate(of data: Data) -> Date? {
+        let bytes = [UInt8](data.prefix(min(data.count, 2_000_000)))
+        let tag: [UInt8] = Array("mvhd".utf8)
+        guard bytes.count > 24, let i = (4..<(bytes.count - 16)).first(where: { Array(bytes[$0..<$0 + 4]) == tag }) else { return nil }
+        let version = bytes[i + 4]
+        var seconds: UInt64 = 0
+        let start = i + 8                                   // after the tag, version and flags
+        let width = version == 1 ? 8 : 4
+        guard start + width <= bytes.count else { return nil }
+        for b in bytes[start..<start + width] { seconds = seconds << 8 | UInt64(b) }
+        guard seconds > 0 else { return nil }
+        let date = Date(timeIntervalSince1970: TimeInterval(seconds) - 2_082_844_800)   // 1904 → 1970
+        return date > Date(timeIntervalSince1970: 1_500_000_000) && date < Date().addingTimeInterval(86_400) ? date : nil
+    }
+
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in self.stopPlaying() }
     }
@@ -344,6 +362,8 @@ struct VoiceMemoPanel: View {
     @Binding var audio: Data?
     let engine: ZikrAudio
     @State private var length: TimeInterval = 0
+    /// When it was recorded, from the file itself (nil for a memo without one).
+    @State private var recorded: Date?
 
     var body: some View {
         Group {
@@ -357,7 +377,11 @@ struct VoiceMemoPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // Once per memo, off the main thread; keyed by a cheap fingerprint, not the whole blob.
-        .task(id: blobKey(audio)) { length = await audio.asyncMap(ZikrAudio.length(of:)) ?? 0 }
+        .task(id: blobKey(audio)) {
+            length = await audio.asyncMap(ZikrAudio.length(of:)) ?? 0
+            let data = audio
+            recorded = await Task.detached(priority: .utility) { data.flatMap(ZikrAudio.recordedDate(of:)) }.value
+        }
     }
 
     private var empty: some View {
@@ -418,7 +442,9 @@ struct VoiceMemoPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel(engine.state == .playing ? "Pause" : "Play voice memo")
             VStack(alignment: .leading, spacing: 8) {
-                Text(engine.state == .idle || engine.state == .loading ? "voice memo · \(mmss(length))" : "\(mmss(engine.elapsed)) / \(mmss(engine.duration))")
+                // No "voice memo" title (owner, note 3CA19C68: "looks dumb"): when it was recorded,
+                // if the file says, and how long it is.
+                Text(engine.state == .idle || engine.state == .loading ? idleLine : "\(mmss(engine.elapsed)) / \(mmss(engine.duration))")
                     .font(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
                 HStack(spacing: 6) {
@@ -446,6 +472,14 @@ struct VoiceMemoPanel: View {
             }
         }
         .padding(.horizontal, 6)
+    }
+
+    /// "Sep 29, 2026 · 0:42" (the year only when it isn't this one), else "0:42".
+    private var idleLine: String {
+        guard let recorded else { return mmss(length) }
+        let sameYear = Calendar.current.isDate(recorded, equalTo: Date(), toGranularity: .year)
+        let day = recorded.formatted(.dateTime.month(.abbreviated).day().year(sameYear ? .omitted : .defaultDigits))
+        return "\(day) · \(mmss(length))"
     }
 
     private func chip(_ title: String?, symbol: String? = nil, on: Bool, action: @escaping () -> Void) -> some View {
@@ -498,10 +532,10 @@ struct ZikrPhotoPanel: View {
                 Color.primary.opacity(0.04)               // decoding (a moment)
             } else if image != nil, let ui = decoded {
                 Button { viewing = true } label: {
-                    Image(uiImage: ui).resizable().scaledToFill()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // The whole photo, shrunk to fit the box at its own shape (owner, note 3CA19C68).
+                    Image(uiImage: ui).resizable().scaledToFit()
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(alignment: .bottomTrailing) {
+                        .overlay(alignment: .bottomTrailing) {     // on the photo's own corner
                             Image(systemName: "arrow.up.left.and.arrow.down.right")
                                 .font(.caption2.weight(.bold))
                                 .foregroundStyle(.white)
@@ -509,6 +543,7 @@ struct ZikrPhotoPanel: View {
                                 .background(Circle().fill(.black.opacity(0.35)))
                                 .padding(6)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

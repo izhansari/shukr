@@ -1032,6 +1032,14 @@ struct MantraEditorView: View {
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .fill(Color(.secondarySystemGroupedBackground)))
+                        // While editing, a sage edge round the whole card: this is what ✎ edits,
+                        // not the sessions or the rest of the page (owner, note 3CA19C68).
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .strokeBorder(Color.sage.opacity(isEditing ? 0.75 : 0), lineWidth: 1.5)
+                                .animation(.easeInOut(duration: 0.2), value: isEditing)
+                                .allowsHitTesting(false)
+                        }
                         .onPreferenceChange(MemoRecordingKey.self) { recording = $0 }
                 }
                 .listRowInsets(EdgeInsets())
