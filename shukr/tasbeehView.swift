@@ -414,16 +414,22 @@ struct tasbeehView: View {
                             .animation(.easeInOut, value: paused)
                     }
                     Spacer()
-                    // Keeps going, past the goal: a quiet way to end it without pausing (owner).
-                    if goalReached && !autoStop && savedSession == nil && !showInactivityAlert {
-                        goalReachedLine
-                            .opacity(paused ? 0 : 1)
-                            .allowsHitTesting(!paused)
-                            .transition(.opacity)
-                    }
                     inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
                 }
                 .zIndex(1)
+
+                // Keeps going, past the goal: a quiet way to end it without pausing (owner), low on
+                // the screen just above the home indicator.
+                if goalReached && !autoStop && savedSession == nil && !showInactivityAlert {
+                    VStack {
+                        Spacer()
+                        goalReachedLine
+                    }
+                    .opacity(paused ? 0 : 1)
+                    .allowsHitTesting(!paused)
+                    .transition(.opacity)
+                    .zIndex(2)
+                }
 
                 // Post-salah: why it's worth it, low on the screen, clear of the beads.
                 if sharedState.isDoingPostNamazZikr {
@@ -531,9 +537,10 @@ struct tasbeehView: View {
                 // -demoPauseClicks N: where it pauses (e.g. 32 of 33, to test the goal).
                 let args = ProcessInfo.processInfo.arguments
                 let clicks = args.firstIndex(of: "-demoPauseClicks").flatMap { $0 + 1 < args.count ? Int(args[$0 + 1]) : nil } ?? 12
+                if args.contains("-demoKeepsGoing") { autoStop = false }   // past the goal: "goal reached"
                 simulateTasbeehClicks(times: clicks)
                 try? await Task.sleep(for: .seconds(1))
-                togglePause()
+                if !args.contains("-demoNoPause") { togglePause() }
                 if ProcessInfo.processInfo.arguments.contains("-demoResults") {
                     try? await Task.sleep(for: .seconds(1))
                     stopTimer()
@@ -618,23 +625,28 @@ struct tasbeehView: View {
             }
         } label: {
             ZStack {
-                Label("goal reached", systemImage: "checkmark")
-                    .foregroundStyle(.secondary)
-                    .opacity(goalFinishArmed ? 0 : 0.8)
-                    .blur(radius: goalFinishArmed ? 3 : 0)
+                // The app's sage in the counter's light type: quiet in both looks (grey on the dark
+                // counter read as greyed-out chrome — owner).
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("goal reached")
+                }
+                .foregroundStyle(Color.sage.opacity(0.85))
+                .opacity(goalFinishArmed ? 0 : 1)
+                .blur(radius: goalFinishArmed ? 3 : 0)
                 Text("Tap again to finish")
                     .foregroundStyle(Color.green)
                     .opacity(goalFinishArmed ? 1 : 0)
                     .blur(radius: goalFinishArmed ? 0 : 3)
             }
-            .font(.system(size: 14, weight: .regular, design: .rounded))
+            .font(.system(size: 15, weight: .light, design: .rounded))
             .padding(.horizontal, 28)
             .padding(.vertical, 14)
             .contentShape(Rectangle())
             .animation(.easeInOut(duration: 0.3), value: goalFinishArmed)
         }
         .buttonStyle(.plain)
-        .padding(.bottom, 8)
     }
 
     private func resolveSessionMantra() {
@@ -1265,6 +1277,19 @@ struct tasbeehView: View {
             return Date().addingTimeInterval(timeLeft)
         }
 
+        /// The session's goal for the goal page: "33" or "10 min".
+        private var goalText: String {
+            sharedState.selectedMode == 1 ? "\(sharedState.selectedMinutes) min" : sharedState.targetCount
+        }
+        /// "Alhamdulillah · 12 of 33 so far" / "After Fajr · 4 min so far".
+        private var goalSubtitle: String {
+            let name = isTaskSession ? sharedState.selectedTask?.title : mantra?.name
+            let progress = sharedState.selectedMode == 1
+                ? "\(Int(secsToReport / 60)) min so far"
+                : (goalReached ? "\(tasbeeh) so far" : "\(tasbeeh) of \(sharedState.targetCount) so far")
+            return [name, progress].compactMap { $0 }.joined(separator: " · ")
+        }
+
         /// Count goal, not post-salah, started and not done: the bento adds the finish tile.
         private var showsFinishEstimate: Bool {
             sharedState.selectedMode == 2 && remainingCount > 0 && !sharedState.isDoingPostNamazZikr && tasbeeh > 0
@@ -1483,7 +1508,8 @@ struct tasbeehView: View {
                              on: !autoStop, locked: goalReached) { autoStop.toggle() }
                         .overlay(alignment: .topTrailing) { infoButton("About stops at goal", on: !autoStop) { showGoalIntro = true } }
                         .fullScreenCover(isPresented: $showGoalIntro) {
-                            GoalIntroView { showGoalIntro = false }
+                            GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
+                                          subtitle: goalSubtitle) { showGoalIntro = false }
                         }
                     }
                     chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {

@@ -77,6 +77,8 @@ struct ChipIntroPage: View {
     let onPrimary: () -> Void
     var secondary: String? = nil
     var onSecondary: () -> Void = {}
+    /// Under the points (or instead of them): the goal page's two cards.
+    var extra: AnyView? = nil
 
     var body: some View {
         ZStack {
@@ -113,7 +115,12 @@ struct ChipIntroPage: View {
                         }
                     }
                     .padding(.horizontal, 30)
-                    .padding(.top, 30)
+                    .padding(.top, points.isEmpty ? 0 : 30)
+                    if let extra {
+                        extra
+                            .padding(.horizontal, 20)
+                            .padding(.top, 28)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -172,24 +179,88 @@ struct SleepIntroView: View {
 }
 
 /// The "stops at goal" chip's (i) (owner: "the flexibility to read more than the task at hand, so
-/// they don't get stopped at the goal and have to start a new session").
+/// they don't get stopped at the goal and have to start a new session"). Made from this session:
+/// its goal and where it stands, and the two settings as cards side by side — the current one
+/// picked, tap the other to switch — each saying how this session would go (owner: no generic
+/// lines that could alarm on the default).
 struct GoalIntroView: View {
+    @Binding var autoStop: Bool
+    /// Past the goal on keeps going: switching back is locked (it would end the session at once).
+    let locked: Bool
+    /// "33" or "10 min".
+    let goal: String
+    /// "Alhamdulillah · 12 of 33 so far" — whatever the session knows.
+    let subtitle: String
     let onDone: () -> Void
 
     var body: some View {
         ChipIntroPage(
-            symbol: "flag.checkered", title: "Stops at goal", subtitle: "or keep going past it",
-            points: [
-                .init(symbol: "flag.checkered", title: "Stops at goal",
-                      line: "The usual way: the session ends and saves by itself the moment you reach your goal."),
-                .init(symbol: "arrow.clockwise", title: "Keeps going",
-                      line: "Reach your goal and carry on in the same session — for when you want to read more than the task asks."),
-                .init(symbol: "checkmark.circle", title: "Still one session",
-                      line: "Everything you count is saved together and counts toward your task."),
-                .init(symbol: "hand.tap", title: "Finishing",
-                      line: "Past your goal, a quiet \u{201C}goal reached\u{201D} sits at the bottom — tap it twice to finish, or pause and Finish. The switch stays on Keeps going from there."),
-            ],
-            primary: "Done", onPrimary: onDone)
+            symbol: "flag.checkered", title: "Your goal: \(goal)", subtitle: subtitle,
+            points: [],
+            primary: "Done", onPrimary: onDone,
+            extra: AnyView(cards))
+    }
+
+    private var cards: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                card(stops: true, symbol: "flag.checkered", title: "Stops at goal",
+                     line: "Ends and saves by itself at \(goal).")
+                card(stops: false, symbol: "arrow.clockwise", title: "Keeps going",
+                     line: "Carries on past \(goal) — finish with \u{201C}goal reached\u{201D} at the bottom.")
+            }
+            Text(locked
+                 ? "You're past \(goal), so this session keeps going. Finish it from \u{201C}goal reached\u{201D} or the pause screen."
+                 : "Tap one to switch. It's for this session only.")
+                .font(.footnote).fontDesign(.rounded)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 10)
+        }
+    }
+
+    private func card(stops: Bool, symbol: String, title: String, line: String) -> some View {
+        let picked = autoStop == stops
+        let disabled = locked && stops
+        return Button {
+            guard !disabled, !picked else { return }
+            triggerSomeVibration(type: .light)
+            withAnimation(.snappy(duration: 0.2)) { autoStop = stops }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: symbol)
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.7))
+                    Spacer()
+                    Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 17))
+                        .foregroundStyle(picked ? Color.sage : Color.primary.opacity(0.25))
+                }
+                Text(title)
+                    .font(.headline.weight(.medium)).fontDesign(.rounded)
+                    .foregroundStyle(.primary)
+                Text(line)
+                    .font(.footnote).fontDesign(.rounded)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(picked ? Color.sage.opacity(0.12) : Color.primary.opacity(0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(picked ? Color.sage.opacity(0.6) : Color.clear, lineWidth: 1.2)
+            )
+            .opacity(disabled ? 0.45 : 1)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(picked ? .isSelected : [])
     }
 }
 
