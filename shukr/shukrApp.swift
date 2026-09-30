@@ -48,6 +48,11 @@ struct shukrApp: App {
         // (Automatic for new installs), and Auto appearance for new installs (the setup recommends it).
         FirstRunSetup.migrateDefaults()
         do {
+            #if DEBUG
+            // `-forceStoreFailure`: straight to the in-memory fallback below (skips the recovery, which would
+            // set the real store aside).
+            if ProcessInfo.processInfo.arguments.contains("-forceStoreFailure") { throw StoreFallback.Forced() }
+            #endif
             let container: ModelContainer
             do {
                 container = try SharedStore.makeContainer()
@@ -109,16 +114,25 @@ struct shukrApp: App {
             if ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1" { // without this, the previews donr work and result to a fatalerror.
                 print("Preview mode: Using empty ModelContainer.")
                 return try! ModelContainer(for: Schema([]), configurations: []) // essentially making it an empty dummy
-            } else {
-                fatalError("Could not create ModelContainer: \(error)")
             }
+            // Neither the store nor a recovery opened (WF56; an App Store blocker as a crash): run on an
+            // in-memory store so times, the qibla and the counter work. Nothing is saved; the store and any
+            // set-aside copy stay untouched on disk; an alert says so once the app is up.
+            print("❌ store: couldn't open or recover the shared store (\(error)); running in memory, nothing is saved")
+            StoreFallback.active = true
+            let memory = ModelConfiguration(schema: SharedStore.schema, isStoredInMemoryOnly: true)
+            if let container = try? ModelContainer(for: SharedStore.schema, configurations: [memory]) { return container }
+            print("❌ store: the in-memory store failed too")
+            return try! ModelContainer(for: Schema([]), configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
         }
     }()
     
     
     // 2) Now in the init, create local variables first, then assign them.
     init() {
-        WatchSync.shared.start(container: sharedModelContainer)   // Apple Watch: prayer times, today's ✓s, zikr
+        // Apple Watch: prayer times, today's ✓s, zikr. Not on the in-memory fallback: the phone would confirm the
+        // watch's marks and sessions into a store that's thrown away, and the watch would drop them.
+        if !StoreFallback.active { WatchSync.shared.start(container: sharedModelContainer) }
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
@@ -207,6 +221,7 @@ struct shukrApp: App {
                 }
             }
             .welcomeOnLaunch()   // "shukr" + a ring + two soft taps; cold launch (not under the setup: it ends in it)
+            .task { StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
                 // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.
                 sharedState.horizontalPage = .main
@@ -597,5 +612,32 @@ struct NoiseOverlay: View {
                 )
             }
         }
+    }
+}
+
+/// The shared store couldn't be opened, even after `recoverFromUnopenableStore` (WF56). The app then runs on an
+/// in-memory store: times, the qibla and the counter work, nothing is saved. What would write lasting state from
+/// those empty rows stays off — the streak recount (`PrayerViewModel`) and the watch sync — and the files on disk
+/// are never touched. DEBUG `-forceStoreFailure` goes straight here.
+enum StoreFallback {
+    static var active = false
+    struct Forced: Error {}
+    private static var alerted = false
+
+    /// A plain alert, once per launch, when the app is on screen (retries while another alert or no active
+    /// scene is in the way — e.g. during the welcome).
+    @MainActor static func alertOnce(attempt: Int = 0) {
+        guard active, !alerted, attempt < 40 else { return }
+        guard OverlayAlert.canShow, attempt >= 3 else {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { alertOnce(attempt: attempt + 1) }
+            return
+        }
+        alerted = true
+        let alert = UIAlertController(
+            title: "Couldn't open your saved data",
+            message: "Your prayers and zikr are kept safe on this phone. Until the next update, what you mark or count won't be saved.",
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in OverlayAlert.finish() })
+        OverlayAlert.show(alert)
     }
 }

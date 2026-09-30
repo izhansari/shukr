@@ -730,6 +730,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     //most recent one
     func calculatePrayerStreak() {
+        guard !StoreFallback.active else { return }   // in-memory store (WF56): keep the saved streaks as they are
         let now = Date()
         let todayStart = PrayerDay.start(for: now)
         let lastStreakDateStart = PrayerDay.start(for: lastStreakDate)
@@ -847,6 +848,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// so there's nothing to recount for it. Entry point for marks made elsewhere (the watch):
     /// `recomputeStreaks()`.
     func refreshStreaksFromHistory() {
+        guard !StoreFallback.active else { return }   // an empty in-memory store would recount them to 0
         let now = Date()
         let todayStart = PrayerDay.start(for: now)
         let calendar = Calendar.current
