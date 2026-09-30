@@ -62,11 +62,21 @@ enum SleepMorning {
 
 // MARK: - The intro
 
-struct SleepIntroView: View {
-    /// Opened from the chip's (i) with sleep already on: just "Done".
-    var isOn = false
-    let onTurnOn: () -> Void
-    let onNotNow: () -> Void
+/// The pause screen's explainer pages (sleep mode, stops at goal): one layout, so an (i) always
+/// opens the same kind of page (owner, goal-info B: "keep that pattern").
+struct ChipIntroPage: View {
+    struct Point: Identifiable {
+        let symbol: String, title: String, line: String
+        var id: String { title }
+    }
+    let symbol: String
+    let title: String
+    let subtitle: String
+    let points: [Point]
+    let primary: String
+    let onPrimary: () -> Void
+    var secondary: String? = nil
+    var onSecondary: () -> Void = {}
 
     var body: some View {
         ZStack {
@@ -75,27 +85,32 @@ struct SleepIntroView: View {
                 VStack(spacing: 0) {
                     ZStack {
                         Circle().stroke(Color(.secondarySystemFill), lineWidth: 10).frame(width: 120, height: 120)
-                        Image(systemName: "moon.zzz.fill")
+                        Image(systemName: symbol)
                             .font(.system(size: 40, weight: .light))
                             .foregroundStyle(Color.sage)
                     }
                     .padding(.top, 40)
-                    Text("Sleep mode")
+                    Text(title)
                         .font(.system(size: 28, weight: .light, design: .rounded))
                         .padding(.top, 22)
-                    Text("for counting in bed")
+                    Text(subtitle)
                         .font(.subheadline).fontDesign(.rounded)
                         .foregroundStyle(.secondary)
                         .padding(.top, 2)
                     VStack(alignment: .leading, spacing: 18) {
-                        point("sun.min", "The screen dims",
-                              "Gentle in the dark. Drag the dimmer on the pause screen.")
-                        point("hand.tap", "Fall asleep counting?",
-                              "After 45 seconds without a tap, a quiet 10-second countdown — then shukr saves the session, ending at your last tap.")
-                        point("lock", "Your phone locks as usual",
-                              "Once it's saved, the screen turns off by itself. Locking it yourself while counting saves it the same way.")
-                        point("sunrise", "In the morning",
-                              "shukr shows what you counted and about when you fell asleep.")
+                        ForEach(points) { point in
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: point.symbol)
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(Color.sage)
+                                    .frame(width: 28)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(point.title).font(.headline.weight(.medium)).fontDesign(.rounded)
+                                    Text(point.line).font(.subheadline).fontDesign(.rounded).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                            }
+                        }
                     }
                     .padding(.horizontal, 30)
                     .padding(.top, 30)
@@ -105,17 +120,17 @@ struct SleepIntroView: View {
             .scrollBounceBehavior(.basedOnSize)
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 14) {
-                    Button(action: isOn ? onNotNow : onTurnOn) {
-                        Text(isOn ? "Done" : "Turn on sleep mode")
+                    Button(action: onPrimary) {
+                        Text(primary)
                             .font(.headline).fontDesign(.rounded)
                             .foregroundStyle(Color.sage)
                             .frame(maxWidth: 280).frame(height: 50)
                             .background(Capsule().fill(Color.sage.opacity(0.14)))
                             .overlay(Capsule().stroke(Color.sage.opacity(0.5), lineWidth: 1))
                     }
-                    if !isOn {
-                        Button(action: onNotNow) {
-                            Text("Not now")
+                    if let secondary {
+                        Button(action: onSecondary) {
+                            Text(secondary)
                                 .font(.subheadline).fontDesign(.rounded)
                                 .foregroundStyle(.secondary)
                                 .padding(.vertical, 4)
@@ -130,19 +145,51 @@ struct SleepIntroView: View {
             }
         }
     }
+}
 
-    private func point(_ symbol: String, _ title: String, _ line: String) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 18))
-                .foregroundStyle(Color.sage)
-                .frame(width: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline.weight(.medium)).fontDesign(.rounded)
-                Text(line).font(.subheadline).fontDesign(.rounded).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+struct SleepIntroView: View {
+    /// Opened from the chip's (i) with sleep already on: just "Done".
+    var isOn = false
+    let onTurnOn: () -> Void
+    let onNotNow: () -> Void
+
+    var body: some View {
+        ChipIntroPage(
+            symbol: "moon.zzz.fill", title: "Sleep mode", subtitle: "for counting in bed",
+            points: [
+                .init(symbol: "sun.min", title: "The screen dims",
+                      line: "Gentle in the dark. Drag the dimmer on the pause screen."),
+                .init(symbol: "hand.tap", title: "Fall asleep counting?",
+                      line: "After 45 seconds without a tap, a quiet 10-second countdown — then shukr saves the session, ending at your last tap."),
+                .init(symbol: "lock", title: "Your phone locks as usual",
+                      line: "Once it's saved, the screen turns off by itself. Locking it yourself while counting saves it the same way."),
+                .init(symbol: "sunrise", title: "In the morning",
+                      line: "shukr shows what you counted and about when you fell asleep."),
+            ],
+            primary: isOn ? "Done" : "Turn on sleep mode", onPrimary: isOn ? onNotNow : onTurnOn,
+            secondary: isOn ? nil : "Not now", onSecondary: onNotNow)
+    }
+}
+
+/// The "stops at goal" chip's (i) (owner: "the flexibility to read more than the task at hand, so
+/// they don't get stopped at the goal and have to start a new session").
+struct GoalIntroView: View {
+    let onDone: () -> Void
+
+    var body: some View {
+        ChipIntroPage(
+            symbol: "flag.checkered", title: "Stops at goal", subtitle: "or keep going past it",
+            points: [
+                .init(symbol: "flag.checkered", title: "Stops at goal",
+                      line: "The usual way: the session ends and saves by itself the moment you reach your goal."),
+                .init(symbol: "arrow.clockwise", title: "Keeps going",
+                      line: "Reach your goal and carry on in the same session — for when you want to read more than the task asks."),
+                .init(symbol: "checkmark.circle", title: "Still one session",
+                      line: "Everything you count is saved together and counts toward your task."),
+                .init(symbol: "hand.tap", title: "Finishing",
+                      line: "Past your goal, a quiet \u{201C}goal reached\u{201D} sits at the bottom — tap it twice to finish, or pause and Finish. The switch stays on Keeps going from there."),
+            ],
+            primary: "Done", onPrimary: onDone)
     }
 }
 

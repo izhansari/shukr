@@ -143,9 +143,15 @@ struct tasbeehView: View {
         else { return "\(seconds)s" }
     }
     
-    private var stopCondition: Bool{
-        progressFraction >= 1 && !autoStop && !paused
+    /// A count or time goal session has reached its goal (Tasbih Fatimah ends at its 100 itself).
+    /// On "keeps going" the session carries on: the chip locks and "goal reached" shows at the bottom.
+    private var goalReached: Bool {
+        (sharedState.selectedMode == 1 || sharedState.selectedMode == 2) && !sharedState.isDoingPostNamazZikr
+            && timerIsActive && progressFraction >= 1
     }
+    /// "goal reached" tapped once: "Tap again to finish" (disarms after 3 s, like Finish early).
+    @State private var goalFinishArmed = false
+    @State private var goalFinishToken = 0
     
     /// Sleep mode's rule (owner, 2026-09-30, sleep-timer-rule A): no tap for 45 s, then the silent
     /// 10 s "You still there?" countdown, then the session is saved ending at the last tap.
@@ -318,6 +324,7 @@ struct tasbeehView: View {
                     autoStop: $autoStop,
                     tasbeehColorMode: $tasbeehColorMode,
                     appLookDark: appLookDark,
+                    goalReached: goalReached,
                     currentVibrationMode: $currentVibrationMode
                 )
             }
@@ -407,6 +414,13 @@ struct tasbeehView: View {
                             .animation(.easeInOut, value: paused)
                     }
                     Spacer()
+                    // Keeps going, past the goal: a quiet way to end it without pausing (owner).
+                    if goalReached && !autoStop && savedSession == nil && !showInactivityAlert {
+                        goalReachedLine
+                            .opacity(paused ? 0 : 1)
+                            .allowsHitTesting(!paused)
+                            .transition(.opacity)
+                    }
                     inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
                 }
                 .zIndex(1)
@@ -514,7 +528,10 @@ struct tasbeehView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("-demoPauseScreen") {
                 try? await Task.sleep(for: .seconds(1))
-                simulateTasbeehClicks(times: 12)
+                // -demoPauseClicks N: where it pauses (e.g. 32 of 33, to test the goal).
+                let args = ProcessInfo.processInfo.arguments
+                let clicks = args.firstIndex(of: "-demoPauseClicks").flatMap { $0 + 1 < args.count ? Int(args[$0 + 1]) : nil } ?? 12
+                simulateTasbeehClicks(times: clicks)
                 try? await Task.sleep(for: .seconds(1))
                 togglePause()
                 if ProcessInfo.processInfo.arguments.contains("-demoResults") {
@@ -581,6 +598,44 @@ struct tasbeehView: View {
         .preferredColorScheme(tasbeehColorMode ? .dark : .light)
     }
 //--------------------------------------functions--------------------------------------
+
+    /// "goal reached", subtle (secondary, the counter's own dim over it); a tap makes it "Tap again to
+    /// finish" in green, the second tap ends the session (the Finish early pattern).
+    private var goalReachedLine: some View {
+        Button {
+            if goalFinishArmed {
+                triggerSomeVibration(type: .medium)
+                goalFinishArmed = false
+                stopTimer()
+            } else {
+                triggerSomeVibration(type: .light)
+                goalFinishToken += 1
+                let token = goalFinishToken
+                goalFinishArmed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    if token == goalFinishToken { goalFinishArmed = false }
+                }
+            }
+        } label: {
+            ZStack {
+                Label("goal reached", systemImage: "checkmark")
+                    .foregroundStyle(.secondary)
+                    .opacity(goalFinishArmed ? 0 : 0.8)
+                    .blur(radius: goalFinishArmed ? 3 : 0)
+                Text("Tap again to finish")
+                    .foregroundStyle(Color.green)
+                    .opacity(goalFinishArmed ? 1 : 0)
+                    .blur(radius: goalFinishArmed ? 0 : 3)
+            }
+            .font(.system(size: 14, weight: .regular, design: .rounded))
+            .padding(.horizontal, 28)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+            .animation(.easeInOut(duration: 0.3), value: goalFinishArmed)
+        }
+        .buttonStyle(.plain)
+        .padding(.bottom, 8)
+    }
 
     private func resolveSessionMantra() {
         let title = sharedState.titleForSession
@@ -805,6 +860,7 @@ struct tasbeehView: View {
         toggleInactivityTimer = false
         paused = false
         sleepResumeReady = sleepResume != nil
+        goalFinishArmed = false
         if resumeWanted { resumeWanted = false; keepCountingAfterSleep() }
         
         
@@ -916,6 +972,12 @@ struct tasbeehView: View {
             }
             // Every hundred crossed (a set can jump over the exact multiple).
             if tasbeeh / 100 > before / 100 && !countingHapticsOff { triggerSomeVibration(type: .error) }
+            // A count goal ends on the tap that reaches it — the 0.1 s ticker let a quick double tap
+            // save 34 of 33. A set that jumps past it (30 + 5) keeps its whole set: 35 (owner).
+            if autoStop && sharedState.selectedMode == 2,
+               let target = Int(sharedState.targetCount), target > 0, tasbeeh >= target {
+                stopTimer()
+            }
         }
     }
     
@@ -1164,6 +1226,7 @@ struct tasbeehView: View {
         /// Sleep mode's one-time intro (owner, decision sleep-intro): shown until "Turn on" once.
         @AppStorage(SleepMorning.introConfirmedKey) private var sleepIntroConfirmed = false
         @State private var showSleepIntro = false
+        @State private var showGoalIntro = false
         @EnvironmentObject var sharedState: SharedStateClass
         let paused: Bool
         let mantra: MantraModel?
@@ -1179,6 +1242,8 @@ struct tasbeehView: View {
         @Binding var autoStop: Bool
         @Binding var tasbeehColorMode: Bool
         let appLookDark: Bool
+        /// Past the goal on "keeps going": the chip is locked and Finish isn't "early".
+        let goalReached: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
 
         // UI state
@@ -1411,9 +1476,15 @@ struct tasbeehView: View {
                 if !sharedState.isDoingPostNamazZikr {
                 HStack(spacing: 8) {
                     if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
+                        // Locked once the goal is passed (owner): switching back ended the session the
+                        // moment it resumed.
                         chip(autoStop ? "stops at goal" : "keeps going",
                              icon: autoStop ? "flag.checkered" : "arrow.clockwise",
-                             on: !autoStop) { autoStop.toggle() }
+                             on: !autoStop, locked: goalReached) { autoStop.toggle() }
+                        .overlay(alignment: .topTrailing) { infoButton("About stops at goal", on: !autoStop) { showGoalIntro = true } }
+                        .fullScreenCover(isPresented: $showGoalIntro) {
+                            GoalIntroView { showGoalIntro = false }
+                        }
                     }
                     chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
                         // The first time (until confirmed once): the intro, which turns it on.
@@ -1423,20 +1494,7 @@ struct tasbeehView: View {
                         tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
                     }
                     // (i) in the chip's corner: the intro again, any time (owner).
-                    .overlay(alignment: .topTrailing) {
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            showSleepIntro = true
-                        } label: {
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 12, weight: .regular))
-                                .foregroundStyle(toggleInactivityTimer ? Color.sage.opacity(0.8) : Color.primary.opacity(0.4))
-                                .padding(7)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("About sleep mode")
-                    }
+                    .overlay(alignment: .topTrailing) { infoButton("About sleep mode", on: toggleInactivityTimer) { showSleepIntro = true } }
                     .fullScreenCover(isPresented: $showSleepIntro) {
                         SleepIntroView(isOn: toggleInactivityTimer, onTurnOn: {
                             sleepIntroConfirmed = true
@@ -1481,7 +1539,7 @@ struct tasbeehView: View {
                         }
                     } label: {
                         ZStack {
-                            Text("Finish early")
+                            Text(goalReached ? "Finish" : "Finish early")   // past the goal it isn't early
                                 .foregroundStyle(.secondary)
                                 .opacity(finishArmed ? 0 : 1)
                                 .blur(radius: finishArmed ? 3 : 0)
@@ -1572,8 +1630,26 @@ struct tasbeehView: View {
         }
 
         /// A labelled setting: symbol over a short word, soft tile; sage while on.
-        private func chip(_ title: String, icon: String, on: Bool, action: @escaping () -> Void) -> some View {
+        /// A chip's (i) in its top-right corner: opens its explainer page; its own tap target, so the
+        /// chip underneath doesn't switch.
+        private func infoButton(_ label: String, on: Bool, action: @escaping () -> Void) -> some View {
             Button {
+                triggerSomeVibration(type: .light)
+                action()
+            } label: {
+                Image(systemName: "info.circle")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(on ? Color.sage.opacity(0.8) : Color.primary.opacity(0.4))
+                    .padding(7)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(label)
+        }
+
+        private func chip(_ title: String, icon: String, on: Bool, locked: Bool = false, action: @escaping () -> Void) -> some View {
+            Button {
+                guard !locked else { return }
                 triggerSomeVibration(type: .light)
                 withAnimation(.snappy(duration: 0.2)) { action() }
             } label: {
@@ -1595,8 +1671,10 @@ struct tasbeehView: View {
                         .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .opacity(locked ? 0.45 : 1)
             }
             .buttonStyle(.plain)
+            .accessibilityHint(locked ? "Locked once the goal is reached" : "")
         }
 
     }
