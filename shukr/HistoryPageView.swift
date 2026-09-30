@@ -369,21 +369,30 @@ struct SessionRow: View {
         }
     }
 
+    /// Hold the row to feel the session's pace: a tick every `pace` seconds until the finger lifts.
+    /// UIKit's long press, not a SwiftUI gesture: scrolling comes first — any movement in the first 0.2 s
+    /// fails the hold and the list scrolls (SwiftUI drag / long-press versions swallowed scrolls that
+    /// began on a row). Once it has begun the list doesn't scroll, and it lasts until the finger lifts.
+    /// Not while selecting (`tappable` false): no long press there at all, so a tap selects at once
+    /// (owner, 21E37DF2: "there feels like a lag … long press needs to be turned off … in selection mode").
+    @ViewBuilder private var holdable: some View {
+        let base = summary
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+        if tappable {
+            base.gesture(PaceHoldGesture { holding in
+                // While the finger is held the library can't page (a sideways drift slid the page).
+                pagerLock?.locked = holding
+                guard let pace else { return }
+                holding ? startFeelingPace(pace) : stopFeelingPace()
+            })
+        } else {
+            base
+        }
+    }
+
     private var core: some View {
-        summary
-        .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        // Hold the row to feel the session's pace: a tick every `pace` seconds until the finger
-        // lifts. UIKit's long press, not a SwiftUI gesture: scrolling comes first — any movement
-        // in the first 0.2 s fails the hold and the list scrolls (SwiftUI drag / long-press
-        // versions swallowed scrolls that began on a row). Once it has begun the list doesn't
-        // scroll, and it lasts until the finger lifts.
-        .gesture(PaceHoldGesture { holding in
-            // While the finger is held the library can't page (a sideways drift slid the page).
-            pagerLock?.locked = holding
-            guard let pace else { return }
-            holding ? startFeelingPace(pace) : stopFeelingPace()
-        })
+        holdable
         .onDisappear { stopFeelingPace(); if pagerLock?.locked == true { pagerLock?.locked = false } }
         // Another row started pacing, or the page / a sheet asked everyone to stop.
         .onChange(of: pacer.activeID) { _, active in
