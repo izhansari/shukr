@@ -253,6 +253,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah; `MasjidArrival` duas (CLMonitor, opt-in); `HolyCityWelcome`.
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
+- A marked row in the widget's times list → "Unmark …?" in the app: a UIKit alert in its own window over anything
+  (`OverlayAlert`); it waits through the setup / the opening, and a tasbeeh session is paused first
+  (`TasbeehSession.pauseRequest`, owner CA197AE2). DEBUG `-demoWidgetUnmarkAfter <s>`.
 - Prayers (ring, mark check, times list, configurable corners), Lock Screen family, Zikr (rows open the task), Name of the Day, Daily Ayah (once revealed), Controls (Qibla, Tasbeeh). Kinds in `WidgetKinds`.
 - Lock Screen circular (`PrayerLockScreenView`, ask lockscreen-time-left, 2026-09-29): in a live, unmarked prayer's last hour (`timeLeftFrom` 60 min, judged at `entry.date`) the name gives way to `Text(timerInterval:)` under the symbol; the timeline adds an entry at end − 60 min. The rectangular's trailing time left is a timer too (the relative style truncated the name). `ImageRenderer` can't draw the live ring / timer — check in the Lock Screen widget gallery.
 

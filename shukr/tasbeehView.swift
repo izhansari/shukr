@@ -484,6 +484,10 @@ struct tasbeehView: View {
             }
 
         }
+        // Something needs him mid-session (the widget's "Unmark?"): into the usual pause state first.
+        .onReceive(NotificationCenter.default.publisher(for: TasbeehSession.pauseRequest)) { _ in
+            if !paused { togglePause() }
+        }
         .onChange(of: scenePhase) {_, newScenePhase in
             if newScenePhase == .inactive || newScenePhase == .background {
                 !paused ? togglePause() : ()
@@ -1882,4 +1886,10 @@ struct ZikrBento: View {
 
     tasbeehView(isPresented: $dummyBool)
         .environmentObject(sharedState) // Inject shared state into the environment
+}
+
+/// Asks a running tasbeeh session to pause (its normal pause screen), e.g. before the widget's "Unmark?"
+/// shows over it (owner, CA197AE2).
+enum TasbeehSession {
+    static let pauseRequest = Notification.Name("tasbeehPauseRequest")
 }

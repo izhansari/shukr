@@ -193,7 +193,7 @@ struct PrayerTimesView: View {
     /// isn't active and during a tasbeeh session (taps there count; it comes up once the session closes).
     /// Until then the request stays in the app group and this retries every second for a while; the next
     /// activation picks it up again.
-    private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0) {
+    private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0, sessionPaused: Bool = false) {
         guard token == widgetUnmarkToken, widgetUnmark == nil,
               let store = UserDefaults(suiteName: SharedStore.appGroup),
               let raw = store.string(forKey: WidgetListMarks.unmarkKey) else { return }
@@ -202,11 +202,18 @@ struct PrayerTimesView: View {
             guard attempt < 90 else { return }   // the request stays: the next activation tries again
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1) }
         }
-        // (`CircleCover` "tasbeeh", set by the session itself: this closure's own view copy can read a
-        // stale `showTasbeehPage`.)
-        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || showTasbeehPage
-            || CircleCover.active.contains("tasbeeh") || UIApplication.shared.applicationState != .active
+        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || UIApplication.shared.applicationState != .active
         guard !blocked, OverlayAlert.canShow else { later(); return }
+        // A tasbeeh session up: it goes into its pause state first, then the prompt shows over it (owner,
+        // CA197AE2 — it used to wait until the session closed). `CircleCover` "tasbeeh" is set by the session
+        // itself: this closure's own view copy can read a stale `showTasbeehPage`.
+        if !sessionPaused, showTasbeehPage || CircleCover.active.contains("tasbeeh") {
+            NotificationCenter.default.post(name: TasbeehSession.pauseRequest, object: nil)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1, sessionPaused: true)
+            }
+            return
+        }
         // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
         store.removeObject(forKey: WidgetListMarks.unmarkKey)
         let rows = completedRows(request)
