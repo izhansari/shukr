@@ -141,6 +141,31 @@ final class FeedbackStore {
     private init() {
         load(); loadReceived()
         scheduleMarkdown()
+        // Going to the background: write what's still waiting on the debounce now — a pull while the
+        // app is suspended would otherwise read an old feedback.md / state.json (Ben's review).
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                               object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated {
+                #if DEBUG
+                if WhatsNewPerf.on { print("WNPERF background: pending feedback.md=\(FeedbackStore.shared.markdownWork != nil)") }
+                #endif
+                FeedbackStore.shared.flush()
+            }
+        }
+    }
+
+    /// Anything debounced, written now; returns once the files are on disk.
+    func flush() {
+        if markdownWork != nil {
+            markdownWork?.cancel()
+            markdownWork = nil
+            writeMarkdown()
+            #if DEBUG
+            if WhatsNewPerf.on { print("WNPERF flush: feedback.md written on going to the background") }
+            #endif
+        }
+        WhatsNew.flushState()
+        Self.writer.sync {}
     }
 
     // MARK: Reading
@@ -381,7 +406,7 @@ final class FeedbackStore {
 
     /// One serial queue for the folder's files, so writes land in order.
     static let writer = DispatchQueue(label: "shukr.feedback.writer", qos: .utility)
-    private var markdownWork: Task<Void, Never>?
+    fileprivate(set) var markdownWork: Task<Void, Never>?
     /// feedback.md about a second after the last change (not per keystroke / save / open); the text is
     /// built here, the file written on `writer`.
     private func scheduleMarkdown() {
@@ -389,6 +414,7 @@ final class FeedbackStore {
         markdownWork = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
+            self?.markdownWork = nil
             self?.writeMarkdown()
         }
     }

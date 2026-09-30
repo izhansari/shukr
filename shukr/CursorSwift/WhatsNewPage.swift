@@ -764,8 +764,10 @@ private struct AskCard: View {
                             .font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(Capsule().fill(Color(.tertiarySystemFill)))
-                            .frame(minHeight: 32)
+                            // A 44 pt hit area round the same small capsule; the row doesn't grow.
+                            .frame(minWidth: 44, minHeight: 44)
                             .contentShape(Rectangle())
+                            .padding(.vertical, -6)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(setAside ? "Fold it again" : "Set aside for later")

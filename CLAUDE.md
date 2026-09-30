@@ -101,7 +101,8 @@ under Your answers → the list by area, "K of your asks in this build still nee
 the top of feedback.md until picked up). Not a gate, nothing uploads: Frank still confirms with him before testflight.sh.
 
 **Speed + Later (ask wn-speed, 2026-09-30):** nothing on the open path writes a file — feedback.md and state.json are
-debounced ~1 s and written on `FeedbackStore.writer` (feedback.json right away, also off the main thread). `status(of:)`
+debounced ~1 s and written on `FeedbackStore.writer` (feedback.json right away, also off the main thread); going to the
+background flushes both (`FeedbackStore.flush()`, so a pull of a suspended app never reads a stale summary). `status(of:)`
 / `openAsks()` are cached per `FeedbackStore.revision` (bumps when `items` change; `WhatsNew.invalidate()` after the
 migration). Search filters 150 ms after the last key; the page and each group's rows are `LazyVStack`s; a change's
 pictures decode in `.task`; folding animates only its group (no `.animation(value:)` on the page). Warm open on the

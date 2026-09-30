@@ -306,8 +306,16 @@ enum WhatsNew {
         stateWork = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
+            stateWork = nil
             writeStateNow()
         }
+    }
+    /// A pending state.json, written now (the app going to the background).
+    @MainActor static func flushState() {
+        guard stateWork != nil else { return }
+        stateWork?.cancel()
+        stateWork = nil
+        writeStateNow()
     }
     @MainActor private static func writeStateNow() {
         #if DEBUG
