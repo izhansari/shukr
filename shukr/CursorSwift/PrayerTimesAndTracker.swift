@@ -65,6 +65,8 @@ struct PrayerTimesView: View {
     @State private var showSalahHistoryV1 = false
     @State private var showSalahHistoryV2 = false
     @State private var showZikrHistory = false
+    /// A session sleep mode ended: shown round the Salah circle the next time the page is up.
+    @State private var morningSession: SessionDataModel?
     @State private var showInsightsPage = false
     @State private var showOldInsights = false
     @State private var showNamesPage = false
@@ -82,6 +84,26 @@ struct PrayerTimesView: View {
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
     /// first-run setup is up — the flags stay set and this runs again once it's done
     /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
+    /// Sleep mode ended a session: once the welcome has landed and nothing is over the Salah page,
+    /// go to it (circle showing) and open the morning card on its circle.
+    private func showMorningCardWhenClear(tries: Int = 0) {
+        guard morningSession == nil, SleepMorning.pendingID != nil, tries < 40 else { return }
+        if showTasbeehPage || somethingCovers || FirstRunSetup.showingAtLaunch || WelcomeTarget.playing
+            || scenePhase != .active {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showMorningCardWhenClear(tries: tries + 1) }
+            return
+        }
+        guard let session = SleepMorning.pending(in: context) else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            sharedState.horizontalPage = .main
+            sharedState.navPosition = .main
+        }
+        // Let the circle settle where it lives (its frame is what the card draws round).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { morningSession = session }
+    }
+
     private func openFromWidgetFlags() {
         guard !FirstRunSetup.isShowing else { return }
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -600,6 +622,21 @@ struct PrayerTimesView: View {
         // A request that waited out a tasbeeh session: now.
         .onChange(of: showTasbeehPage) { _, up in
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
+            if !up { showMorningCardWhenClear() }
+        }
+        .onAppear { showMorningCardWhenClear() }
+        .overlay {
+            if let morningSession {
+                MorningCardView(session: morningSession, onDone: {
+                    SleepMorning.clear()
+                    self.morningSession = nil
+                }, onHistory: {
+                    SleepMorning.clear()
+                    self.morningSession = nil
+                    showZikrHistory = true
+                })
+                .transition(.identity)
+            }
         }
         // A prayer marked on the Apple Watch (WatchZikrSync): same as after a widget mark.
         .onReceive(NotificationCenter.default.publisher(for: .watchMarkedPrayer)) { note in
@@ -617,6 +654,7 @@ struct PrayerTimesView: View {
                 WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
             }
             if newScenePhase == .active {
+                showMorningCardWhenClear()
 
                 viewModel.loadTodaysPrayerObjects()
                 viewModel.reconcileAfterWidgetWrites() // prayers completed from the widget while we were closed

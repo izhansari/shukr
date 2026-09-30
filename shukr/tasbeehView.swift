@@ -616,6 +616,13 @@ struct tasbeehView: View {
         endedAsleep = true
         stopTimer()
         try? context.save()
+        // In the morning: the Salah page opens on "You fell asleep counting" (MorningCardView), not on
+        // this results screen — so the cover closes once the save has settled.
+        if let savedSession { SleepMorning.remember(savedSession) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            isPresented = false
+            resetSharedState()
+        }
         // iOS's own auto-lock takes over from here: the screen must never stay on after he's
         // asleep (owner: "so long as we dont risk the screen never turning off").
         UIApplication.shared.isIdleTimerDisabled = false
@@ -981,6 +988,9 @@ struct tasbeehView: View {
     /// its quick-add step, ✎ → the mantra's page), the stats bento, the finish estimate, then
     /// labelled setting chips and Finish / Resume. Tapping the dimmed background still resumes.
     struct pauseScreen_StatsSettingsBG: View {
+        /// Sleep mode's one-time intro (owner, decision sleep-intro): shown until "Turn on" once.
+        @AppStorage(SleepMorning.introConfirmedKey) private var sleepIntroConfirmed = false
+        @State private var showSleepIntro = false
         @EnvironmentObject var sharedState: SharedStateClass
         let paused: Bool
         let mantra: MantraModel?
@@ -1225,8 +1235,19 @@ struct tasbeehView: View {
                              on: !autoStop) { autoStop.toggle() }
                     }
                     chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
+                        // The first time (until confirmed once): the intro, which turns it on.
+                        if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
                         toggleInactivityTimer.toggle()
                         if toggleInactivityTimer && !tasbeehColorMode { tasbeehColorMode = true }
+                    }
+                    .fullScreenCover(isPresented: $showSleepIntro) {
+                        SleepIntroView(onTurnOn: {
+                            sleepIntroConfirmed = true
+                            toggleInactivityTimer = true
+                            if !tasbeehColorMode { tasbeehColorMode = true }
+                            showSleepIntro = false
+                        }, onNotNow: { showSleepIntro = false })
+                        .interactiveDismissDisabled()
                     }
                 hapticsChip
                     chip(tasbeehColorMode ? "dark" : "light", icon: tasbeehColorMode ? "moon.fill" : "sun.max.fill",
