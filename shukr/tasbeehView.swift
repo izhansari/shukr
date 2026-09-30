@@ -409,16 +409,17 @@ struct tasbeehView: View {
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
 
-            // Sleep mode saved it: black, a faint "saved", until the phone locks (then the cover
+            // Sleep mode saved it: black until the phone locks (then the cover
             // closes in the background and the morning card waits for the next open). A tap = he's
             // awake: close it, no card.
             if sleptSaved {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    Label("saved · sleep well", systemImage: "moon.zzz.fill")
-                        .font(.footnote).fontDesign(.rounded)
-                        .foregroundStyle(.white.opacity(0.18))
-                }
+                // Pure black, nothing drawn — no status bar, no home indicator: on an OLED phone those
+                // pixels are off, so the screen is dark at once, before iOS locks it (owner: "have
+                // clarity that my phone would turn off and still save it").
+                Color.black
+                    .ignoresSafeArea()
+                    .statusBarHidden(true)
+                    .persistentSystemOverlays(.hidden)
                 .zIndex(5)
                 .contentShape(Rectangle())
                 .onTapGesture {
