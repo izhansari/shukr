@@ -35,7 +35,11 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
     private(set) var level: Float = 0
     private(set) var elapsed: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
-    var slow = false { didSet { player?.rate = slow ? 0.75 : 1 } }
+    /// 0.75×. The speed-changing processing is only switched on for it: with `enableRate` on, even
+    /// 1× went through the time-pitch effect and a voice sounded smeared (owner, EBJE — Voice Memos
+    /// records the same AAC; the difference was playback). `enableRate` only takes effect on a fresh
+    /// player, so a change mid-play reopens it at the same spot.
+    var slow = false { didSet { if slow != oldValue { reopenForRate() } } }
     var loop = false { didSet { player?.numberOfLoops = loop ? -1 : 0 } }
     /// The microphone was refused (the panel says so, with a way to Settings).
     private(set) var micDenied = false
@@ -43,6 +47,8 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
     @ObservationIgnored var onRecorded: ((Data) -> Void)?
 
     @ObservationIgnored private var recorder: AVAudioRecorder?
+    /// The memo being played (to reopen the player when 0.75× is switched).
+    @ObservationIgnored private var playingData: Data?
     @ObservationIgnored private var player: AVAudioPlayer?
     @ObservationIgnored private var ticker: Timer?
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
@@ -109,7 +115,8 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
                 try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
                 try session.setActive(true)
                 try? FileManager.default.removeItem(at: url)
-                let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44_100,
+                // As Voice Memos' "Compressed": AAC, mono, 48 kHz, ~64 kbps (owner's file, EBJE).
+                let settings: [String: Any] = [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48_000,
                                                AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 64_000,
                                                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue]
                 let r = try AVAudioRecorder(url: url, settings: settings)
@@ -154,6 +161,29 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
     }
 
     // Play
+    /// Speed processing only for 0.75× (see `slow`); set before `prepareToPlay` / `play`.
+    private func configure(_ p: AVAudioPlayer) {
+        p.enableRate = slow
+        if slow { p.rate = 0.75 }
+        p.numberOfLoops = loop ? -1 : 0
+        p.prepareToPlay()
+    }
+
+    /// 0.75× switched while a memo is open: a new player with the speed processing on / off, at the
+    /// same position, playing or paused as it was (the session is already active).
+    private func reopenForRate() {
+        guard let old = player, let data = playingData, let p = try? AVAudioPlayer(data: data) else { return }
+        let wasPlaying = old.isPlaying
+        let at = old.currentTime
+        old.delegate = nil
+        old.stop()
+        p.delegate = self
+        configure(p)
+        p.currentTime = at
+        if wasPlaying { p.play() }
+        player = p
+    }
+
     func togglePlay(_ data: Data) {
         switch state {
         case .playing: pause()
@@ -182,11 +212,10 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
                     return
                 }
                 p.delegate = self
-                p.enableRate = true
-                p.rate = slow ? 0.75 : 1
-                p.numberOfLoops = loop ? -1 : 0
+                configure(p)
                 p.play()
                 player = p
+                playingData = data
                 duration = p.duration
                 state = .playing
                 startTicker()
@@ -224,6 +253,7 @@ final class ZikrAudio: NSObject, AVAudioPlayerDelegate, AVAudioRecorderDelegate 
         guard player != nil || loading else { return }
         player?.stop()
         player = nil
+        playingData = nil
         stopTicker()
         state = .idle
         elapsed = 0
