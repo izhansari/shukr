@@ -389,6 +389,9 @@ class SessionDataModel: Identifiable {
     /// The mantra counted. `title` stays as the snapshot of its name at the time, so history
     /// keeps reading right if the mantra is renamed or deleted.
     var mantra: MantraModel?
+    /// Sleep mode ended it — no tap for a while, or the phone locked / the app left while counting
+    /// (owner, 2026-09-30, idea 4WTV; schema 2.7.0). A moon on its row; nothing else treats it apart.
+    var endedAsleep: Bool = false
 
 
     init(title: String, sessionMode: Int, targetMin: Int, targetCount: Int, totalCount: Int, startTime: Date, secondsPassed: TimeInterval, avgTimePerClick: TimeInterval, tasbeehRate: String, task: TaskModel? = nil, mantra: MantraModel? = nil) {

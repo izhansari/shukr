@@ -35,7 +35,8 @@ enum ShukrSchemaV2: VersionedSchema {
     /// 2.5.0 (2026-09-27): `MantraModel.imageData` / `audioData` (optional, external storage).
     /// 2.6.0 (2026-09-27): `MantraModel.builtInID` (optional) — built-ins are marked on the row,
     /// not guessed from the name.
-    static let versionIdentifier = Schema.Version(2, 6, 0)
+    /// 2.7.0 (2026-09-30): `SessionDataModel.endedAsleep` (a defaulted Bool — lightweight).
+    static let versionIdentifier = Schema.Version(2, 7, 0)
     static var models: [any PersistentModel.Type] {
         [SessionDataModel.self, MantraModel.self, TaskModel.self, DuaModel.self, PrayerModel.self, DailyPrayerScore.self]
     }

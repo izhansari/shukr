@@ -69,7 +69,12 @@ struct tasbeehView: View {
     @State private var showInactivityAlert = false
     @State private var countDownForAlert = 0
     @State private var stoppedDueToInactivity: Bool = false
+    /// Set by `finishAsleep`; saved on the session (`SessionDataModel.endedAsleep`).
+    @State private var endedAsleep = false
     @State private var newAvrgTPC: TimeInterval = 0 //calculated on increment and decrement by secondsPassed / tasbeeh
+    /// Session seconds (pauses excluded) at the last tap: a session sleep mode ends is saved as
+    /// ending here, not at the countdown's end or when the phone was locked (owner, idea F3BR).
+    @State private var secsAtLastTap: TimeInterval = 0
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -182,8 +187,7 @@ struct tasbeehView: View {
                         countDownForAlert = localCountDown
                     }
                     if localCountDown <= 0 {
-                        stoppedDueToInactivity = true
-                        stopTimer()
+                        finishAsleep()
 //                        isPresented = false
                     }
                     
@@ -489,6 +493,14 @@ struct tasbeehView: View {
             if !paused { togglePause() }
         }
         .onChange(of: scenePhase) {_, newScenePhase in
+            // Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
+            // finish and save, ending at the last tap (he woke up on the pause screen before:
+            // pausing stopped the inactivity timer). Inactive alone (Control Center, a banner)
+            // leaves it counting; the inactivity timer still ends it.
+            if toggleInactivityTimer && timerIsActive && !paused {
+                if newScenePhase == .background { finishAsleep() }
+                return
+            }
             if newScenePhase == .inactive || newScenePhase == .background {
                 !paused ? togglePause() : ()
                 print("scenePhase: \(newScenePhase) (session paused? \(paused)")
@@ -598,6 +610,16 @@ struct tasbeehView: View {
     }
 
 
+    /// Sleep mode ended the session (no tap for a while, or the app left while counting): saved now
+    /// — the app may be suspended any moment — ending at the last tap, marked `endedAsleep`.
+    private func finishAsleep() {
+        guard timerIsActive else { return }
+        stoppedDueToInactivity = true
+        endedAsleep = true
+        stopTimer()
+        try? context.save()
+    }
+
     private func completeStopTimer() {
         print("ran a completeStopTimer().")
         
@@ -618,6 +640,7 @@ struct tasbeehView: View {
         }
         
         stoppedDueToInactivity = false
+        endedAsleep = false
         inactivityTimerHandler(run: "stop")
         toggleInactivityTimer = false
         paused = false
@@ -635,7 +658,7 @@ struct tasbeehView: View {
         // Generate session data after the timer stops
         let placeholderTitle = (sharedState.titleForSession != "" ? sharedState.titleForSession : "Untitled")
         
-        secsToReport = paused ? secsPassedAtPause : secsPassed
+        secsToReport = endedAsleep && secsAtLastTap > 0 ? secsAtLastTap : (paused ? secsPassedAtPause : secsPassed)
         
         // Only a session launched from a task card counts toward that task. Freestyle (mode 0)
         // and the post-salah sequence never link, even if a card is still "selected" underneath.
@@ -656,6 +679,7 @@ struct tasbeehView: View {
             // Picked from a task/picker (or Tasbih Fatimah for post-salah) → we have the row.
             mantra: sharedState.mantraForSession ?? MantraModel.find(named: placeholderTitle, in: context)
         )
+        item.endedAsleep = endedAsleep
         print("adding a session card")
         context.insert(item)
         // Finished the task for today: its reminder for today goes (ZikrReminders).
@@ -716,6 +740,7 @@ struct tasbeehView: View {
         if timerIsActive {
             let before = tasbeeh
             tasbeeh = min(tasbeeh + step, 10000) // Adjust maximum value as needed
+            secsAtLastTap = secsPassed
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             triggerSomeVibration(type: currentVibrationMode)
             if step > 1 && !countingHapticsOff {
@@ -734,6 +759,7 @@ struct tasbeehView: View {
     private func decrementTasbeeh() {
         if timerIsActive {
             tasbeeh = max(tasbeeh - tapWorth, countOffset) // undoes one tap; never below where a continued task started
+            secsAtLastTap = secsPassed
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
             if !countingHapticsOff { triggerSomeVibration(type: .rigid) }
         }

@@ -460,6 +460,12 @@ struct SessionRow: View {
                     }
                     Image(systemName: modeIcon)
                     Text(target)
+                    // Sleep mode ended it (owner, idea 4WTV).
+                    if session.endedAsleep {
+                        Image(systemName: "moon.zzz.fill")
+                            .foregroundStyle(Color.sage)
+                            .accessibilityLabel("ended in sleep mode")
+                    }
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
