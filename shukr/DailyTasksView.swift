@@ -188,21 +188,44 @@ struct ZikrCircleWheel: View {
     private func progress(_ task: TaskModel) -> TaskProgress { task.progress(in: todaysSessions) }
     private func isDone(_ task: TaskModel) -> Bool { task.isCompleted(with: progress(task)) }
 
-    /// Freestyle, the tasks in the user's order (set in the Tasks sheet), then "new task". A task done
-    /// today keeps its place; coming back from its session centres the next one still to do
-    /// (`landAfterSession`).
+    /// Freestyle, the tasks still to do today in the user's order (set in the Tasks sheet), then "new
+    /// task". A finished task leaves the wheel (owner, 2026-09-30, note 5FB4D4B1: "just straight up hide
+    /// any tasks that are finished"); the summary under the wheel opens the Tasks sheet with all of
+    /// them. Coming back from a session centres the next one still to do (`landAfterSession`).
     private var items: [Item] {
-        [.freestyle] + tasks.map { .task($0) } + [.add]
+        [.freestyle] + tasks.filter { !isDone($0) }.map { .task($0) } + [.add]
     }
+    /// The summary's tap: the whole list, finished ones included.
+    @State private var showTasksSheet = false
 
     var body: some View {
         wheel
             .overlay(alignment: .bottom) {
-                tasksSummary
-                    .padding(.bottom, 108)
-                    .allowsHitTesting(false)
+                // "2 of 9 tasks done" opens the Tasks sheet (owner): the full list, what's finished.
+                Button {
+                    triggerSomeVibration(type: .light)
+                    showTasksSheet = true
+                } label: {
+                    tasksSummary
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows all your tasks")
+                .padding(.bottom, 100)
             }
             .sheet(item: $tasksSheetOn) { task in ZikrTasksSheet(startOn: task) }
+            .sheet(isPresented: $showTasksSheet) { ZikrTasksSheet() }
+            // A task finished while it's in the middle (or anywhere) leaves the wheel: land on the
+            // next one still to do rather than on a gap.
+            .onChange(of: items.map(\.id)) { _, ids in
+                if let c = centered, !ids.contains(c) {
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                        centered = tasks.first(where: { $0.id.uuidString == c }).map { nextFocus(after: $0) } ?? Item.freestyle.id
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
             .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.wheelStartNotification)) { _ in startPending() }
             .onAppear { focusPending() }
@@ -223,13 +246,16 @@ struct ZikrCircleWheel: View {
         guard let request = ZikrFocus.pendingStart,
               let task = tasks.first(where: { $0.id.uuidString == request.id }) else { return }
         _ = ZikrFocus.takeStart()
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = request.id }
+        if !isDone(task) {   // a finished task isn't on the wheel: start it without centring
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = request.id }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { start(task, resume: request.resume) }
     }
 
     /// Scroll a widget-requested task to the middle (after the page has come in).
     private func focusPending() {
-        guard let id = ZikrFocus.pending, tasks.contains(where: { $0.id.uuidString == id }) else { return }
+        guard let id = ZikrFocus.pending, let task = tasks.first(where: { $0.id.uuidString == id }) else { return }
+        guard !isDone(task) else { _ = ZikrFocus.take(); return }   // finished: not on the wheel
         _ = ZikrFocus.take()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = id }
@@ -246,6 +272,9 @@ struct ZikrCircleWheel: View {
                 if done == tasks.count { Image(systemName: "checkmark") }
                 Text(summaryText(done: done, secondsLeft: left))
                     .contentTransition(.numericText())
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .opacity(0.6)
             }
             .font(.footnote)
             .fontWeight(.light)
