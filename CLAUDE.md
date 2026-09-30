@@ -40,7 +40,7 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
 digest:
 - CLAUDE.md's size (keep it under ~35 KB);
 - context-full events;
-- any question that reached Izhan outside the Decisions page;
+- any question that reached Izhan without being logged first (`decide.sh ask`);
 - any wait for a "go" on pre-approved work.
 He fixes drift himself, and suggests running fewer agents when a lane is quiet.
 
@@ -106,6 +106,13 @@ stacks; pictures decode in `.task`; a fold animates only its group. **Later:** a
 (`whatsNew.later`: ask → change; a newer change brings it back) to one line under "Set aside · N". **Size rule:** an ask
 card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, words folded, buttons 40 pt); a change row
 1–2 lines; Next build one line. DEBUG `-whatsNewPerf`, `-demoWhatsNewAllLater`, `-demoWhatsNewNoLater`.
+
+**Decisions (ask wn-decisions):** a checklist badge top right (beside Done, hidden at 0) = `WhatsNew.openDecisions()`
+(cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided (never vanish); options side
+by side (picture ≤ 160 pt, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
+`FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`; older builds read a comment) → feedback.md "🗳 Decision",
+state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decision-answer` lines (source phone). DEBUG
+`-demoWhatsNewDecisions` (two samples), `-demoWhatsNewPage decisions`, `-demoDecisionChoose "<id>:<option>"`.
 
 **The data:** `shukr/WhatsNew.jsonl`, JSON Lines, written only by `scripts/whatsnew.py` (never by hand):
 topics (features), **asks** (his requests, verbatim), changes, chat verdicts. `.gitattributes` merges it with

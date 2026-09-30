@@ -89,6 +89,46 @@ struct WhatsNewBuild: Decodable {
     var date: Date { WhatsNew.date(from: time) ?? .distantPast }
 }
 
+/// A question for him (CLAUDE.md step 8, ask wn-decisions): logged by `board/decide.sh ask` / `whatsnew.py
+/// decision`, answered in chat, on the board or on What's new's Decisions page.
+struct WhatsNewDecision: Decodable, Identifiable, Hashable {
+    struct Option: Decodable, Hashable, Identifiable {
+        let id: String
+        let label: String
+        var shot: String?
+    }
+    let id: String
+    var area: String?
+    let question: String
+    let options: [Option]
+    var recommend: String?
+    var why: String?
+    var created: String?
+    var createdDate: Date { created.flatMap(WhatsNew.date(from:)) ?? .distantPast }
+    func option(_ id: String) -> Option? { options.first { $0.id == id } }
+}
+
+/// His answer to a decision recorded in the file (chat / the board; the phone's own live in feedback.json).
+struct WhatsNewDecisionAnswer: Decodable {
+    let decision: String
+    let option: String
+    var source: String?
+    var at: String?
+    var words: String?
+    var date: Date { at.flatMap(WhatsNew.date(from:)) ?? .distantPast }
+}
+
+/// His current answer to a decision: the newest of the phone's and the file's.
+struct DecisionAnswer {
+    let option: String
+    let words: String?
+    let at: Date
+    /// "phone", "chat" or "board".
+    let source: String
+    /// The phone's answer, when that's the one (editable until the team picks it up).
+    let item: FeedbackItem?
+}
+
 /// Where an ask stands.
 enum AskStatus {
     /// Built and waiting for him: the newest live change is `latest`.
@@ -144,6 +184,8 @@ enum WhatsNew {
         var entries: [WhatsNewEntry] = []
         var verdicts: [WhatsNewChatVerdict] = []
         var builds: [WhatsNewBuild] = []
+        var decisions: [WhatsNewDecision] = []
+        var decisionAnswers: [WhatsNewDecisionAnswer] = []
     }
 
     /// Line by line: a bad line is skipped (and logged), never the file. A repeated id (a union merge
@@ -165,7 +207,8 @@ enum WhatsNew {
             case "change": if let e = try? decoder.decode(WhatsNewEntry.self, from: data) { entries[e.id] = e } else { bad += 1 }
             case "verdict": if let v = try? decoder.decode(WhatsNewChatVerdict.self, from: data) { f.verdicts.append(v) } else { bad += 1 }
             case "build": if let b = try? decoder.decode(WhatsNewBuild.self, from: data) { f.builds.append(b) } else { bad += 1 }
-            case "decision", "decision-answer": break   // questions for him (read by the Decisions page)
+            case "decision": if let d = try? decoder.decode(WhatsNewDecision.self, from: data) { f.decisions.append(d) } else { bad += 1 }
+            case "decision-answer": if let a = try? decoder.decode(WhatsNewDecisionAnswer.self, from: data) { f.decisionAnswers.append(a) } else { bad += 1 }
             default: bad += 1
             }
         }
@@ -275,6 +318,56 @@ enum WhatsNew {
         return open
     }
 
+    // MARK: Decisions (ask wn-decisions)
+
+    /// Every decision, newest first (DEBUG `-demoWhatsNewDecisions` adds two samples).
+    static var decisions: [WhatsNewDecision] {
+        var all = file.decisions
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewDecisions") { all += demoDecisions }
+        #endif
+        return all.sorted { $0.createdDate > $1.createdDate }
+    }
+    static func decision(_ id: String) -> WhatsNewDecision? { decisions.first { $0.id == id } }
+
+    /// His answer: the newest of the phone's (`FeedbackItem.Kind.decision`) and the file's (chat / board).
+    @MainActor static func answer(to d: WhatsNewDecision) -> DecisionAnswer? {
+        var best: DecisionAnswer?
+        func consider(_ a: DecisionAnswer) { if best == nil || a.at > best!.at { best = a } }
+        for item in FeedbackStore.shared.items where item.kind == .decision && item.decision == d.id {
+            if let o = item.option { consider(DecisionAnswer(option: o, words: item.text.isEmpty ? nil : item.text, at: item.updated, source: "phone", item: item)) }
+        }
+        for a in file.decisionAnswers where a.decision == d.id {
+            consider(DecisionAnswer(option: a.option, words: a.words, at: a.date, source: a.source ?? "chat", item: nil))
+        }
+        return best
+    }
+
+    /// Waiting for his answer, newest first — the badge's count; cached like the open asks.
+    @MainActor private static var openDecisionsCache: [WhatsNewDecision]?
+    @MainActor private static var decisionsRevision = -1
+    @MainActor static func openDecisions() -> [WhatsNewDecision] {
+        let r = FeedbackStore.shared.revision
+        if r != decisionsRevision { openDecisionsCache = nil; decisionsRevision = r }
+        if let openDecisionsCache { return openDecisionsCache }
+        let open = decisions.filter { answer(to: $0) == nil }
+        openDecisionsCache = open
+        return open
+    }
+
+    #if DEBUG
+    private static let demoDecisions: [WhatsNewDecision] = [
+        WhatsNewDecision(id: "demo-widget-ring", area: "Widgets", question: "Widget ring: keep the score colour, or plain sage?",
+                         options: [.init(id: "A", label: "Score colour", shot: file.entries.last { $0.topic.hasPrefix("widget") && $0.shots != nil }?.shots?.first),
+                                   .init(id: "B", label: "Plain sage", shot: nil)],
+                         recommend: "A", why: "The colour tells you how you're doing at a glance.", created: iso.string(from: Date())),
+        WhatsNewDecision(id: "demo-map-home", area: "Map & Mosques", question: "Where should the map open?",
+                         options: [.init(id: "A", label: "On the qibla", shot: "wn-map-one-sheet.jpg"),
+                                   .init(id: "B", label: "On your last layer", shot: "wn-map-mosque-no-x.jpg")],
+                         recommend: "A", why: nil, created: iso.string(from: Date().addingTimeInterval(-3600))),
+    ]
+    #endif
+
     /// What he's said about this change (a Works / Not yet on it, or a comment), newest first.
     @MainActor static func said(on entry: WhatsNewEntry) -> [FeedbackItem] {
         FeedbackStore.shared.items.filter { $0.onEntry == entry.id }.sorted { $0.updated > $1.updated }
@@ -334,9 +427,11 @@ enum WhatsNew {
             case .gone: break
             }
         }
+        var decisionMap: [String: String] = [:]
+        for d in file.decisions { decisionMap[d.id] = answer(to: d) == nil ? "open" : "answered" }
         let now = iso.string(from: Date())
         FeedbackStore.writer.async {
-            let body: [String: Any] = ["version": 4, "asks": map]
+            let body: [String: Any] = ["version": 4, "asks": map, "decisions": decisionMap]
             guard let content = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]) else { return }
             let url = dir.appendingPathComponent("state.json")
             if let old = try? Data(contentsOf: url), var obj = try? JSONSerialization.jsonObject(with: old) as? [String: Any] {

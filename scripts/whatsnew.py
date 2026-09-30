@@ -19,6 +19,9 @@ The file is JSON Lines: one record per line, never hand-edited. Four kinds:
 `.gitattributes` merges this file with `merge=union`, so two branches that both append lines merge cleanly.
 New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint the same id.
 
+  whatsnew.py decision --id ID --question "…" --area AREA --option "A|label|wn-x.jpg" --option "B|…" [--recommend A]
+  whatsnew.py decision-answer ID --option B [--words "…"] [--source chat|phone|board]
+                  (answers from the phone come in with import-verdicts / add, from the pulled feedback.json)
   whatsnew.py add --topic ID --title "…" --headline "…" --try "…" [--try "…"] [--shot wn-x.jpg]…
                   [--ask SLUG [--ask-words "his words"] | --ask-note <feedback id>]… [--notes "#17"]
                   [--area Zikr --topic-title "…"] [--topic-summary "…"] [--topic-try "…"]… [--topic-link salah|…]
@@ -418,12 +421,8 @@ def import_decisions(records=None, quiet=False):
     standalone = records is None
     if standalone:
         records = load()
-    if not DECISION_QUEUE.exists():
-        if not quiet:
-            print("no queued decisions")
-        return 0
     added = 0
-    for line in DECISION_QUEUE.read_text().splitlines():
+    for line in (DECISION_QUEUE.read_text().splitlines() if DECISION_QUEUE.exists() else []):
         try:
             q = json.loads(line)
         except json.JSONDecodeError:
@@ -449,10 +448,25 @@ def import_decisions(records=None, quiet=False):
             decision_answer(argparse.Namespace(id=q["id"], option=q.get("option"), words=q.get("words"),
                                                source=q.get("source", "chat"), at=q.get("at")), records)
             added += 1
+    # His answers on the phone's Decisions page, once pulled (pull-feedback.sh): FeedbackItem kind "decision".
+    known = {(r.get("decision"), r.get("at")) for r in of(records, "decision-answer")}
+    for item in pulled_feedback().values():
+        if item.get("kind") != "decision":
+            continue
+        d = find(records, "decision", item.get("decision"))
+        at = item.get("updated") or item.get("created")
+        if not d or not at or (item["decision"], at) in known:
+            continue
+        if item.get("option") not in [o["id"] for o in d.get("options") or []]:
+            continue
+        decision_answer(argparse.Namespace(id=item["decision"], option=item["option"], words=item.get("text") or None,
+                                           source="phone", at=at), records)
+        known.add((item["decision"], at))
+        added += 1
     if standalone:
         save(records)
     if added or not quiet:
-        print(f"imported {added} decision line(s) from board/decisions.jsonl")
+        print(f"imported {added} decision line(s) (board/decisions.jsonl and the phones' answers)")
     return added
 
 

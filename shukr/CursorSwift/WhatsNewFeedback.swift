@@ -20,20 +20,25 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         /// works = "Works"; issue = "Not yet" (v1–v3 called it Issue); note = a comment; idea = a new idea
         /// (ask wn-ideas: from a card or from the page's "New idea"). An older build reads an idea as a note.
         /// ship = "Ready for TestFlight" from Next build (ask wn-next-build; `commits` = the changes in it).
-        case works, issue, note, idea, ship
+        /// decision = his pick on a question (ask wn-decisions; `decision` + `option`, the note in `text`).
+        /// An older build reads it as a comment.
+        case works, issue, note, idea, ship, decision
         var label: String {
-            switch self { case .works: "Works"; case .issue: "Not yet"; case .note: "Comment"; case .idea: "Idea"; case .ship: "Ready for TestFlight" }
+            switch self {
+            case .works: "Works"; case .issue: "Not yet"; case .note: "Comment"; case .idea: "Idea"; case .ship: "Ready for TestFlight"
+            case .decision: "Decision"
+            }
         }
         var symbol: String {
             switch self {
             case .works: "checkmark.circle.fill"; case .issue: "pencil.circle.fill"; case .note: "text.bubble.fill"
-            case .idea: "lightbulb.fill"; case .ship: "paperplane.fill"
+            case .idea: "lightbulb.fill"; case .ship: "paperplane.fill"; case .decision: "checklist"
             }
         }
-        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬"; case .idea: "💡"; case .ship: "🚀" } }
+        var emoji: String { switch self { case .works: "👍"; case .issue: "👎"; case .note: "💬"; case .idea: "💡"; case .ship: "🚀"; case .decision: "🗳" } }
         var color: Color {
             switch self {
-            case .works: .green; case .issue: .orange; case .note, .ship: .sage; case .idea: Color(red: 0.72, green: 0.53, blue: 0.08)
+            case .works: .green; case .issue: .orange; case .note, .ship, .decision: .sage; case .idea: Color(red: 0.72, green: 0.53, blue: 0.08)
             }
         }
         /// An answer on an ask (Works / Not yet) — comments and ideas never are.
@@ -57,6 +62,9 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     var onEntry: String?
     /// An idea's area (WhatsNew.areaOrder).
     var area: String?
+    /// A decision's id and the option he picked (Kind.decision).
+    var decision: String?
+    var option: String?
     var created = Date()
     var updated = Date()
     var sentAt: Date?
@@ -87,6 +95,8 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         ask = try? c.decodeIfPresent(String.self, forKey: .ask)
         onEntry = try? c.decodeIfPresent(String.self, forKey: .onEntry)
         area = try? c.decodeIfPresent(String.self, forKey: .area)
+        decision = try? c.decodeIfPresent(String.self, forKey: .decision)
+        option = try? c.decodeIfPresent(String.self, forKey: .option)
         created = (try? c.decodeIfPresent(Date.self, forKey: .created)) ?? Date()
         updated = (try? c.decodeIfPresent(Date.self, forKey: .updated)) ?? created
         sentAt = try? c.decodeIfPresent(Date.self, forKey: .sentAt)
@@ -102,13 +112,18 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
     /// What it's about, in a few words (the change's headline, else the feature).
     var about: String {
         if kind == .ship { return "Next build · \(commits.count) change\(commits.count == 1 ? "" : "s")" }
+        if kind == .decision, let id = decision {
+            let d = WhatsNew.decision(id)
+            let label = option.flatMap { d?.option($0)?.label }
+            return "\(d?.question ?? id) → \(label ?? option ?? "?")"
+        }
         if let e = onEntry.flatMap(WhatsNew.entry) { return kind == .idea ? "Idea from: \(e.short)" : e.short }
         return kind == .idea ? (area.map { "Idea · \($0)" } ?? "Idea") : topicTitle
     }
     var isAnswer: Bool { kind.isVerdict && ask != nil }
     /// A v1–v3 note: no change attached, and not one of v4's card-less kinds (a top-of-page idea, a Ready
     /// for TestFlight note) — "no card" alone doesn't mean old.
-    var isV3Note: Bool { onEntry == nil && (kind == .works || kind == .issue || kind == .note) }
+    var isV3Note: Bool { onEntry == nil && decision == nil && (kind == .works || kind == .issue || kind == .note) }
 }
 
 /// Where something he said stands.
@@ -239,6 +254,25 @@ final class FeedbackStore {
         return item
     }
 
+    /// His pick on a decision (Decisions page), with an optional note. Edits `existing` while it can still be
+    /// edited in place (not picked up yet); otherwise a new answer (the newest one counts).
+    @discardableResult
+    func saveDecision(_ d: WhatsNewDecision, option: String, text: String, existing: FeedbackItem? = nil) -> FeedbackItem {
+        var item = existing.flatMap { state($0) == .saved ? $0 : nil }
+            ?? FeedbackItem(topic: "decision", topicTitle: "Decision", kind: .decision, text: "", build: BuildInfo.line)
+        item.kind = .decision
+        item.decision = d.id
+        item.option = option
+        item.area = d.area
+        item.text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        item.updated = Date()
+        item.build = BuildInfo.line
+        if let i = items.firstIndex(where: { $0.id == item.id }) { items[i] = item } else { items.append(item) }
+        persist()
+        WhatsNew.writeState()
+        return item
+    }
+
     /// "I'm happy with this — ready for TestFlight" (Next build): a note for the team, not a gate — Frank
     /// confirms with him before uploading; nothing uploads from the phone.
     @discardableResult
@@ -310,6 +344,11 @@ final class FeedbackStore {
                 lines.append("## 🚀 Ready for TestFlight")
                 let since = WhatsNew.lastBuild.map { "since build \($0.number)" } ?? "so far"
                 lines.append("- \(item.commits.count) change(s) \(since): " + item.commits.map { "`\($0)`" }.joined(separator: ", "))
+            } else if item.kind == .decision {
+                let d = item.decision.flatMap(WhatsNew.decision)
+                let label = item.option.flatMap { d?.option($0)?.label } ?? ""
+                lines.append("## 🗳 Decision — \(item.decision ?? "?"): \(item.option ?? "?") — \(label)")
+                if let q = d?.question { lines.append("- Question: \(q)") }
             } else if item.kind == .idea {
                 lines.append("## \(item.kind.emoji) Idea — \(item.area ?? "no area")")
                 if let e = item.onEntry {
@@ -318,7 +357,7 @@ final class FeedbackStore {
             } else {
                 lines.append("## \(item.kind.emoji) \(item.kind.label) — \(item.about)")
             }
-            var meta = item.kind == .idea || item.kind == .ship ? [] : ["Feature: `\(item.topic)`"]
+            var meta = item.kind == .idea || item.kind == .ship || item.kind == .decision ? [] : ["Feature: `\(item.topic)`"]
             if let e = item.onEntry, item.kind != .idea { meta.append("Change: `\(e)`") }
             if let a = item.ask { meta.append("Ask: `\(a)`") }
             meta.append("Id: `\(item.id.uuidString)`")
@@ -436,6 +475,9 @@ final class FeedbackStore {
         md += "\n## Waiting for him (Your asks)\n\n"
         md += open.isEmpty ? "_(nothing)_\n"
             : open.map { "- `\($0.ask.id)` — \($0.latest.short) (`\($0.latest.id)`)" }.joined(separator: "\n") + "\n"
+        let waiting = WhatsNew.openDecisions()
+        md += "\n## Decisions waiting for him\n\n"
+        md += waiting.isEmpty ? "_(nothing)_\n" : waiting.map { "- `\($0.id)` — \($0.question)" }.joined(separator: "\n") + "\n"
         let url = dir.appendingPathComponent("feedback.md")
         Self.writer.async { try? md.write(to: url, atomically: true, encoding: .utf8) }
     }

@@ -18,6 +18,7 @@ enum WhatsNewRoute: Hashable {
     case topic(String)
     case said
     case nextBuild
+    case decisions
     case page(String)
 }
 
@@ -92,7 +93,13 @@ struct WhatsNewView: View {
             }
             .navigationTitle("What's new")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar {
+                // Decisions waiting for him: a badge top right (ask wn-decisions); nothing at 0.
+                ToolbarItem(placement: .topBarTrailing) {
+                    DecisionsBadgeButton(count: WhatsNew.openDecisions().count) { path.append(.decisions) }
+                }
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
             .overlay(alignment: .bottom) { savedToast }
             .navigationDestination(for: WhatsNewRoute.self) { route in
                 switch route {
@@ -105,6 +112,8 @@ struct WhatsNewView: View {
                     TopicChangesView(topic: id) { path.append(.change($0)) }
                 case .said:
                     EverythingSaidView { path.append(.change($0)) }
+                case .decisions:
+                    DecisionsView()
                 case .nextBuild:
                     NextBuildView { path.append(.change($0)) }
                 case .page(let link):
@@ -477,6 +486,7 @@ struct WhatsNewView: View {
         if d.bool(forKey: "demoWhatsNewAnswers") { answersOpen = true }
         if d.string(forKey: "demoWhatsNewPage") == "said" { path = [.said] }
         if d.string(forKey: "demoWhatsNewPage") == "next" { path = [.nextBuild] }
+        if d.string(forKey: "demoWhatsNewPage") == "decisions" { path = [.decisions] }
         if let id = d.string(forKey: "demoWhatsNewTopic") { path = [.topic(id)] }
         if let id = d.string(forKey: "demoWhatsNewChange") { path = [.change(id)] }
         // `-demoWhatsNewIdea`: the header's New idea · `-demoWhatsNewIdeaFrom <change id>`: an idea from that card
