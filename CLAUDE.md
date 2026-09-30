@@ -269,7 +269,13 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `plan()` is a diff, run after every `NotificationScheduler` run, on Stop (`FajrAlarmStopIntent`) and "I'm up".
   `alarmKitActive` (app group) marks the mode; the old Shortcut's `SetFajrAlarmIntent` then throws `SetByShukrError`, so
   there's never a second alarm. iOS 18–26.0: the Shortcut path, unchanged.
-- Unverified: whether AlarmKit alarms show in Clock's list; whether Stop's intent has time to re-plan on a real phone.
+- AlarmKit alarms are NOT in the Clock app's list (Apple's WWDC25 "Wake up to the AlarmKit API" names the Lock Screen, Dynamic
+  Island, StandBy and a paired Watch — never Clock); a scheduled `.fixed` alarm with no pre-alert countdown shows nothing until it
+  rings; people allow it per app in Settings → shukr. Settings' status line / result are `Color.green` (owner, note C9FB37FF), the
+  info panel says where to see it, and **Test alarm** (a time picker, default +1 min; a time already gone = tomorrow) schedules one
+  real alarm titled "Test alarm from shukr" (`FajrAlarms.scheduleTest`; ids in `alarmKitTestIDs`, which `plan()` leaves alone until
+  past). Sim ✓: it fired at the minute as the system alarm banner (the sim can't play the tone).
+- Unverified: whether Stop's intent has time to re-plan on a real phone.
 
 **Tasbeeh session** (tasbeehView.swift)
 - Tap-anywhere counter; freestyle / time / count; count in sets (`quickAddStep`); pause screen (`ZikrBento`, silent-haptics chip, Resume big, Finish two taps); results; a task session links `SessionDataModel.task`, continue or start over (`resumeCount`). Tasbih Fatimah 33 · 33 · 34 is one session (`PostSalahTasbeeh`). DEBUG `-demoPauseScreen`.

@@ -899,6 +899,10 @@ struct AlarmSettingsView: View {
     /// iOS 26.1+: shukr sets the alarm itself (AlarmKit); the Shortcut steps aside.
     @AppStorage(FajrAlarms.activeKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmKitActive = false
     @State private var alarmKitRefused = false
+    /// Settings' "Test alarm": the time picked, a line after setting it, busy while scheduling.
+    @State private var testAlarmAt = Date().addingTimeInterval(60)
+    @State private var testAlarmMessage: String?
+    @State private var testAlarmBusy = false
     
     // ------------------------------------------
     // MARK: - Computed Helpers
@@ -1066,7 +1070,7 @@ struct AlarmSettingsView: View {
                         Text(timeOfCalcAlarmText)
                             .font(.headline.weight(.semibold))
                             .fontDesign(.rounded)
-                            .foregroundStyle(Color.sage)
+                            .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
 
                         Text(fajrTimeRangeText)
                             .foregroundStyle(.secondary)
@@ -1114,7 +1118,8 @@ struct AlarmSettingsView: View {
                         if alarmKitActive {
                             Label(alarmKitStatus, systemImage: "checkmark.circle")
                                 .font(.footnote)
-                                .foregroundStyle(Color.sage)
+                                .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
+                            testAlarmRow
                         } else {
                             Button {
                                 Task { @MainActor in
@@ -1123,7 +1128,7 @@ struct AlarmSettingsView: View {
                             } label: {
                                 Label("Let shukr set it (no Shortcut needed)", systemImage: "alarm.waves.left.and.right")
                                     .font(.footnote.weight(.medium))
-                                    .foregroundStyle(Color.sage)
+                                    .foregroundStyle(Color.green)
                             }
                             .buttonStyle(.plain)
                         }
@@ -1169,10 +1174,62 @@ struct AlarmSettingsView: View {
                 Text("Had the Shortcut automation? It no longer makes an alarm while shukr sets it — no need to delete it.")
                     .font(.caption)
                     .foregroundColor(.gray)
+                Text("Where to see it: alarms an app sets (Apple's AlarmKit) don't appear in the Clock app's list — only Clock's own do. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, even on silent or in a Focus (and on your Apple Watch if it's paired). To check it works, set a test alarm below.")
+                    .font(.caption)
+                    .foregroundColor(.gray)
             }
         } else {
             shortcutInfoView
         }
+    }
+
+    /// A one-off real alarm at a time you pick (default a minute from now), so you can see and hear
+    /// what the Fajr alarm does (owner, note C9FB37FF: "a test button … or a custom time even").
+    @ViewBuilder private var testAlarmRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(systemName: "alarm")
+                    .foregroundStyle(.secondary)
+                Text("Test alarm")
+                Spacer()
+                DatePicker("Test alarm time", selection: $testAlarmAt, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                Button(testAlarmBusy ? "…" : "Set") {
+                    testAlarmBusy = true
+                    Task { @MainActor in
+                        // A time already gone today means tomorrow.
+                        var at = testAlarmAt
+                        if at <= Date() { at = Calendar.current.date(byAdding: .day, value: 1, to: at) ?? at }
+                        testAlarmMessage = await FajrAlarms.scheduleTest(at: at)
+                            ? "Test alarm set for \(shortTimePM(at)). Lock your phone and wait for it."
+                            : "Couldn't set it — allow Alarms for shukr in Settings."
+                        testAlarmBusy = false
+                    }
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(Color.green)
+                .fontWeight(.semibold)
+                .disabled(testAlarmBusy)
+            }
+            .font(.subheadline)
+            if let testAlarmMessage {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(testAlarmMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 6)
+                    if !FajrAlarms.pendingTests().isEmpty {
+                        Button("Cancel") {
+                            FajrAlarms.cancelTests()
+                            self.testAlarmMessage = nil
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+                }
+            }
+        }
+        .onAppear { testAlarmAt = Date().addingTimeInterval(60) }
     }
 
     /// A quick informational view about how to use the alarm feature and set up the shortcuts.

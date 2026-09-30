@@ -27,6 +27,13 @@ enum FajrAlarms {
     static let throughKey = "alarmKitThrough"
     /// How far ahead we ask for (AlarmKit's own cap may stop us sooner).
     static let daysAhead = 60
+    /// App group: the ids of one-off test alarms (Settings' "Test alarm"), which `plan` leaves alone
+    /// until they're past.
+    static let testKey = "alarmKitTestIDs"
+    private static var testIDs: Set<String> {
+        get { Set(group?.stringArray(forKey: testKey) ?? []) }
+        set { group?.set(Array(newValue), forKey: testKey) }
+    }
 
     private static var group: UserDefaults? { UserDefaults(suiteName: SharedStore.appGroup) }
 
@@ -103,7 +110,15 @@ enum FajrAlarms {
         let existing = (try? AlarmManager.shared.alarms) ?? []
         var have = Set<Int>()
         var cancelled = 0
+        let tests = testIDs
         for alarm in existing where alarm.state != .alerting {
+            // A test alarm is left alone until it's past (then it goes like any other).
+            if tests.contains(alarm.id.uuidString) {
+                if case .fixed(let date)? = alarm.schedule, date > Date() { continue }
+                try? AlarmManager.shared.cancel(id: alarm.id)
+                testIDs.remove(alarm.id.uuidString)
+                continue
+            }
             guard case .fixed(let date)? = alarm.schedule else { try? AlarmManager.shared.cancel(id: alarm.id); cancelled += 1; continue }
             let key = Int(date.timeIntervalSince1970 / 60)
             if date < Date() || !wantedKeys.contains(key) || have.contains(key) {
@@ -143,10 +158,44 @@ enum FajrAlarms {
         }
     }
 
+    /// Settings' "Test alarm" (owner, 2026-09-30, note C9FB37FF): one real AlarmKit alarm at
+    /// `date`, looking just like the Fajr one but titled as a test. False = not allowed / failed.
+    @MainActor static func scheduleTest(at date: Date) async -> Bool {
+        guard #available(iOS 26.1, *) else { return false }
+        do {
+            guard try await AlarmManager.shared.requestAuthorization() == .authorized else { return false }
+            let id = UUID()
+            testIDs.insert(id.uuidString)
+            _ = try await AlarmManager.shared.schedule(id: id, configuration: configuration(id: id, at: date, reference: date, test: true))
+            print("⏰ test alarm set for \(shortTimePM(date))")
+            return true
+        } catch {
+            print("⏰ test alarm failed — \(error)")
+            return false
+        }
+    }
+
+    /// The test alarms still ahead (for Settings' line), soonest first.
+    @MainActor static func pendingTests() -> [Date] {
+        guard #available(iOS 26.1, *) else { return [] }
+        let tests = testIDs
+        return ((try? AlarmManager.shared.alarms) ?? []).compactMap { alarm -> Date? in
+            guard tests.contains(alarm.id.uuidString), case .fixed(let d)? = alarm.schedule, d > Date() else { return nil }
+            return d
+        }.sorted()
+    }
+
+    @MainActor static func cancelTests() {
+        guard #available(iOS 26.1, *) else { return }
+        for id in testIDs { if let u = UUID(uuidString: id) { try? AlarmManager.shared.cancel(id: u) } }
+        testIDs = []
+    }
+
     @available(iOS 26.1, *)
-    private static func configuration(id: UUID, at date: Date, reference: Date) -> AlarmManager.AlarmConfiguration<FajrAlarmMetadata> {
+    private static func configuration(id: UUID, at date: Date, reference: Date, test: Bool = false) -> AlarmManager.AlarmConfiguration<FajrAlarmMetadata> {
         let isFajr = group?.object(forKey: "alarmIsFajr") as? Bool ?? true
-        let title: LocalizedStringResource = "Fajr \(isFajr ? "starts" : "ends") \(shortTimePM(reference))"
+        let title: LocalizedStringResource = test ? "Test alarm from shukr"
+            : "Fajr \(isFajr ? "starts" : "ends") \(shortTimePM(reference))"
         let alert = AlarmPresentation.Alert(
             title: title,
             secondaryButton: AlarmButton(text: "I'm up — open Fajr", textColor: .white, systemImageName: "sunrise.fill"),
