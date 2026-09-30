@@ -615,7 +615,8 @@ struct tasbeehView: View {
                 goalFinishArmed = false
                 stopTimer()
             } else {
-                triggerSomeVibration(type: .light)
+                // No buzz on the first tap: a tap's buzz on the counter reads as a count (owner). The
+                // second, finishing tap keeps its haptic.
                 goalFinishToken += 1
                 let token = goalFinishToken
                 goalFinishArmed = true
@@ -1281,12 +1282,13 @@ struct tasbeehView: View {
         private var goalText: String {
             sharedState.selectedMode == 1 ? "\(sharedState.selectedMinutes) min" : sharedState.targetCount
         }
-        /// "Alhamdulillah · goal 33 · 12 so far" / "After Fajr · goal 10 min · 4 min so far" (the page's
-        /// title is the question, so the goal lives here).
+        /// "You have a count goal of 33" / "You have a time goal of 3 minutes" (owner: no zikr name).
         private var goalSubtitle: String {
-            let name = isTaskSession ? sharedState.selectedTask?.title : mantra?.name
-            let progress = sharedState.selectedMode == 1 ? "\(Int(secsToReport / 60)) min so far" : "\(tasbeeh) so far"
-            return [name, "goal \(goalText)", progress].compactMap { $0 }.joined(separator: " · ")
+            if sharedState.selectedMode == 1 {
+                let m = sharedState.selectedMinutes
+                return "You have a time goal of \(m) minute\(m == 1 ? "" : "s")"
+            }
+            return "You have a count goal of \(sharedState.targetCount)"
         }
 
         /// Count goal, not post-salah, started and not done: the bento adds the finish tile.
