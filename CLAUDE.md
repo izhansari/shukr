@@ -227,8 +227,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `MapSheetCollapsed` (centred; env `mapSheetCollapsed`) — never the list scrolled to its top (it drifted off-centre) on `sheetDetent`, the user's height kept; content by
   state — mosques: list or `mosquePath.last`'s page; prayers: `PrayerSpotsHome` (the prayers in view; the filter is `PrayerFilterMenu` on the header's right, like drive / walk) or
   `selection`'s page (a cluster's list ⇄ a prayer, in place). A pin tap cross-fades (`pageSwap`, `.layerPage`); ‹ back
-  to the list. Every page wears `MapSheetHeader` (‹ · title / subtitle · accessories · ✕ = back to the qibla; a prayer's own page
-  has no ✕, ‹ is enough — owner). Editing
+  to the list. Every page wears `MapSheetHeader` (‹ · title / subtitle · accessories · ✕ = back to the qibla; a single prayer's or
+  mosque's page has no ✕, ‹ is enough — owner). Editing
   a prayer sizes the sheet to the page (`setSpotMode`), then returns the user's height. `SheetMetrics` (the sheet's
   real height, @Observable) places the ? / "Back to …" above it (`AboveSheet`) and centres pins above it.
 - Explore (Prayers · Mosques — no Qibla: it's home; the lit layer again or ✕ goes back) sits under the globe / locate

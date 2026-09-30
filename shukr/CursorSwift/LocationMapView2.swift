@@ -1057,8 +1057,8 @@ struct LocationMapContentView: View {
         ZStack(alignment: .top) {
             if viewModel.showMosques {
                 if let item = viewModel.mosquePath.last {
-                    MosqueSheet(item: item, back: { viewModel.openMosqueList() },
-                                close: { setMode(prayers: false, mosques: false) })
+                    // A single mosque's page: ‹ only, like a prayer's (owner, map-one-sheet); ✕ stays on the lists.
+                    MosqueSheet(item: item, back: { viewModel.openMosqueList() })
                         .id(ObjectIdentifier(item))
                         .transition(.layerPage)
                 } else {
