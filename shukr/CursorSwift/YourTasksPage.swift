@@ -187,16 +187,9 @@ struct TaskRow: View {
             }
             .frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    // On a zikr's page the zikr is the page: its name, or the goal alone.
-                    Text(showsZikr ? task.title : (task.customName ?? "Every day")).lineLimit(1)
-                    Text("· " + (task.isCountMode ? "\(task.goal) count" : "\(task.goal) min"))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                        .fixedSize()
-                        .layoutPriority(1)
-                }
+                // On a zikr's page the zikr is the page: its name, or "Every day". The goal and its unit are
+                // on the line below ("0 of 100 count"; owner: not repeated after the name).
+                Text(showsZikr ? task.title : (task.customName ?? "Every day")).lineLimit(1)
                 Text(progressText(p, done: done))
                     .font(.subheadline)
                     .foregroundStyle(done ? Color.sage : Color.secondary)
@@ -234,7 +227,7 @@ struct TaskRow: View {
     private func progressText(_ p: TaskProgress, done: Bool) -> String {
         // No "today" (owner): everything here is today's.
         if done { return "done" }
-        if task.isCountMode { return "\(p.count) of \(task.goal)" }
+        if task.isCountMode { return "\(p.count) of \(task.goal) count" }
         return "\(Int(p.seconds / 60)) of \(task.goal) min"
     }
 
