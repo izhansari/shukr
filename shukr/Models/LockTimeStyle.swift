@@ -20,8 +20,10 @@ enum LockTimeStyle: String, CaseIterable, Identifiable {
     static let key = "lockTimeStyle"
     var id: String { rawValue }
 
+    /// "27m" unless picked otherwise (owner, 2026-09-30: "lets go with 27m as default").
+    static let standard: LockTimeStyle = .m
     static var current: LockTimeStyle {
-        UserDefaults(suiteName: SharedStore.appGroup)?.string(forKey: key).flatMap(LockTimeStyle.init) ?? .timer
+        UserDefaults(suiteName: SharedStore.appGroup)?.string(forKey: key).flatMap(LockTimeStyle.init) ?? standard
     }
 
     var sample: String {

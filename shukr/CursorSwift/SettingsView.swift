@@ -69,7 +69,7 @@ struct SettingsView: View {
     @ObservedObject private var betaAccess = WhatsNewAccess.shared
     /// The Lock Screen circle's last-hour time left: "27:13" / "27m" / "27min" (owner comparing, J2UQ).
     @AppStorage(LockTimeStyle.key, store: UserDefaults(suiteName: SharedStore.appGroup))
-    private var lockTimeStyle = LockTimeStyle.timer.rawValue
+    private var lockTimeStyle = LockTimeStyle.standard.rawValue
     /// What Automatic currently resolves to (re-read when the stored country changes).
     @AppStorage(AutoMethod.countryKey, store: UserDefaults(suiteName: SharedStore.appGroup)) private var autoCountry = ""
     private var automaticLabel: String {
