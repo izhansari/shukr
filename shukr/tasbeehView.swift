@@ -502,15 +502,13 @@ struct tasbeehView: View {
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
+            // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).
+            if !timerIsActive, sharedState.isDoingPostNamazZikr { PostSalahTasbeeh.prepare(sharedState, in: context) }
             resolveSessionMantra()
             
             if !timerIsActive{
 //                timerIsActive = true // ensures functions dont happen outside of session AND not reenabling the onAppear
                 print("a1 tasbeehView onappear (timerIsActive?: \(timerIsActive) @ \(Date())) ")
-                if sharedState.isDoingPostNamazZikr {
-                    PostSalahTasbeeh.prepare(sharedState, in: context)
-                    resolveSessionMantra()
-                }
                 startTimer()
                 paused = false // sometimes appstorage had paused = true. so clear it.
                 inactivityTimerHandler(run: "restart")
@@ -592,6 +590,7 @@ struct tasbeehView: View {
                 return
             }
             if newScenePhase == .inactive || newScenePhase == .background {
+                writeDraft()   // audit A7: iOS may evict the suspended app
                 !paused ? togglePause() : ()
                 print("scenePhase: \(newScenePhase) (session paused? \(paused)")
             }
@@ -653,6 +652,9 @@ struct tasbeehView: View {
 
     private func resolveSessionMantra() {
         let title = sharedState.titleForSession
+        if let picked = sharedState.mantraForSession, picked.isDeleted || picked.modelContext == nil {
+            sharedState.mantraForSession = nil   // audit A8: deleted since it was picked
+        }
         if let picked = sharedState.mantraForSession, picked.name == title || title.isEmpty {
             sessionMantra = picked
         } else {
@@ -729,6 +731,7 @@ struct tasbeehView: View {
         timerIsActive = false // this so functions only run during a sesh AND so timer checking when to stopTimer doesnt save multiple sessions.
         resultsDimmed = endedAsleep
         updateIdleTimer()
+        if sessionCount == 0 { SessionDraft.clear() }   // audit A7: nothing to keep
         if sessionCount > 0 {
             savedSession = saveSession()
             
@@ -818,7 +821,11 @@ struct tasbeehView: View {
     /// counts as a pause, so it's saved once at its real end and the pace stays honest.
     private func keepCountingAfterSleep() {
         guard let r = sleepResume, sleepResumeReady else { return }
-        if let saved = savedSession { SessionDeletion.delete([saved], in: context) }
+        let toDelete = savedSession
+        savedSession = nil   // audit A9: the results card is still on screen for its fade; it must not read a deleted row
+        if let toDelete {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { SessionDeletion.delete([toDelete], in: context) }
+        }
         SleepMorning.clear()
         let doze = Date().timeIntervalSince(r.lastTapAt ?? Date())
         savedSession = nil
@@ -885,6 +892,21 @@ struct tasbeehView: View {
         }
     }
     
+    /// The running session as a draft (audit A7): written on pause, on going inactive / background and every few
+    /// counts; cleared when the session saves. A draft found at the next launch becomes a saved session.
+    private func writeDraft() {
+        guard timerIsActive, sessionCount > 0, let start = startTime else { return }
+        let linkedTask = (sharedState.selectedMode != 0 && !sharedState.isDoingPostNamazZikr) ? sharedState.selectedTask : nil
+        let picked = sharedState.mantraForSession
+        let mantraID = (picked != nil && !picked!.isDeleted && picked!.modelContext != nil) ? picked!.id : nil
+        SessionDraft.write(SessionDraft(
+            title: sharedState.titleForSession != "" ? sharedState.titleForSession : "Untitled",
+            mode: sharedState.selectedMode, targetMin: sharedState.selectedMinutes,
+            targetCount: Int(sharedState.targetCount) ?? 0, count: sessionCount, startTime: start,
+            secondsPassed: paused ? secsPassedAtPause : secsPassed, avgTimePerClick: newAvrgTPC, tasbeehRate: tasbeehRate,
+            mantraID: mantraID, taskID: linkedTask?.id, postSalah: sharedState.isDoingPostNamazZikr, savedAt: Date()))
+    }
+
     private func saveSession() -> SessionDataModel {
         print("ran a saveSession().")
         // Generate session data after the timer stops
@@ -914,6 +936,7 @@ struct tasbeehView: View {
         item.endedAsleep = endedAsleep
         print("adding a session card")
         context.insert(item)
+        SessionDraft.clear()   // saved for real (audit A7)
         // Finished the task for today: its reminder for today goes (ZikrReminders).
         if let linkedTask { ZikrReminders.taskMaybeDone(linkedTask, context: context) }
         return item
@@ -934,6 +957,7 @@ struct tasbeehView: View {
     private func togglePause() {
         print("ran a togglePause().")
         paused.toggle()
+        if paused { writeDraft() }   // audit A7
         if !paused { ZikrAudio.stopAll() }   // Resume: the pause card's memo stops
         updateIdleTimer()
         triggerSomeVibration(type: .medium)
@@ -975,6 +999,7 @@ struct tasbeehView: View {
             secsAtLastTap = secsPassed
             lastTapAt = Date()
             newAvrgTPC = (sessionCount > 0 ? (secsPassed / Double(sessionCount)) : 0)
+            if sessionCount % 5 == 0 || step > 1 { writeDraft() }   // audit A7
             triggerSomeVibration(type: currentVibrationMode)
             if step > 1 && !countingHapticsOff {
                 // Counting in sets: a quick ta-ta-ta instead of one tap, so it's felt, not just
@@ -1152,6 +1177,7 @@ struct tasbeehView: View {
                         triggerSomeVibration(type: .success)
                         isPresented = false
                         sharedState.titleForSession = ""
+                        sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
                     } label: {
                         Text("Done")
                             .fontWeight(.semibold)

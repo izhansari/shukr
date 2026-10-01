@@ -98,19 +98,43 @@ enum SharedStore {
         guard Bundle.main.bundleURL.pathExtension != "appex" else { return nil }
         let fm = FileManager.default
         guard url != legacyURL, fm.fileExists(atPath: url.path) else { return nil }
+        // Only a store we can read and whose model doesn't match ours (or a corrupt file) is set aside.
+        // Anything else — the file protected before the first unlock after a reboot (a background relaunch
+        // for a location event), locked, a permission or timeout error — is transient: the caller runs in
+        // memory for this launch and the files stay exactly where they are (audit A1, 2026-10-01).
+        let verdict = storeOpenFailure(error)
+        guard verdict.setAside else {
+            print("⚠️ store recovery: not setting the store aside — \(verdict.reason) (\(error))")
+            return nil
+        }
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
-        print("⚠️ store recovery: shared store won't open (\(error)); setting it aside as shukr.store.unopenable-\(stamp)")
-        for suffix in ["", "-shm", "-wal"] {
+        print("⚠️ store recovery: shared store won't open (\(verdict.reason): \(error)); setting it aside as shukr.store.unopenable-\(stamp)")
+        // Copy all three files first, then remove the originals: a half-moved store (main file gone,
+        // WAL left behind) used to lose the latest transactions (audit A3).
+        let dir = url.deletingLastPathComponent()
+        let asideBase = dir.appending(path: "shukr.store.unopenable-\(stamp)").path
+        var copied: [URL] = []
+        for suffix in ["-wal", "-shm", ""] {
             let from = URL(filePath: url.path + suffix)
             guard fm.fileExists(atPath: from.path) else { continue }
-            let to = URL(filePath: url.deletingLastPathComponent().appending(path: "shukr.store.unopenable-\(stamp)").path + suffix)
-            do { try fm.moveItem(at: from, to: to) }
-            catch { print("❌ store recovery: couldn't move \(from.lastPathComponent): \(error)"); return nil }
+            let to = URL(filePath: asideBase + suffix)
+            do { try fm.copyItem(at: from, to: to); copied.append(to) }
+            catch {
+                print("❌ store recovery: couldn't copy \(from.lastPathComponent): \(error) — leaving the store in place")
+                for c in copied { try? fm.removeItem(at: c) }
+                return nil
+            }
+        }
+        for suffix in ["", "-wal", "-shm"] {
+            let from = URL(filePath: url.path + suffix)
+            guard fm.fileExists(atPath: from.path) else { continue }
+            do { try fm.removeItem(at: from) }
+            catch { print("⚠️ store recovery: couldn't remove \(from.lastPathComponent) after copying it: \(error)") }
         }
         // Its photos / voice memos (external storage) go aside with it, never deleted.
-        let support = url.deletingLastPathComponent().appending(path: ".shukr_SUPPORT")
+        let support = dir.appending(path: ".shukr_SUPPORT")
         if fm.fileExists(atPath: support.path) {
-            let aside = url.deletingLastPathComponent().appending(path: "shukr.store.unopenable-\(stamp)_SUPPORT")
+            let aside = dir.appending(path: "shukr.store.unopenable-\(stamp)_SUPPORT")
             do { try fm.moveItem(at: support, to: aside) }
             catch { print("⚠️ store recovery: couldn't set the media aside: \(error)") }
         }
@@ -186,6 +210,54 @@ enum SharedStore {
         guard let meta = try? NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: url) else { return false }
         let ids = meta[NSStoreModelVersionIdentifiersKey] as? [String] ?? []
         return ids.contains(currentVersionIdentifier)
+    }
+
+    /// Why `makeContainer()` failed, and whether setting the store aside is the right answer (audit A1).
+    /// Set aside: the file reads fine but its model version isn't ours (a migration SwiftData won't infer), the
+    /// error chain names a Core Data model / migration code, or the file is corrupt. Leave alone: everything
+    /// else (protected data not yet available, a lock, a permission or timeout error, an unknown failure).
+    static func storeOpenFailure(_ error: Error) -> (setAside: Bool, reason: String) {
+        let codes = cocoaErrorCodes(in: error)
+        // NSPersistentStoreIncompatibleSchemaError, …IncompatibleVersionHashError, the NSMigration* family,
+        // NSInferredMappingModelError, the staged-migration codes (1345xx), NSFileReadCorruptFileError.
+        let structural: Set<Int> = [134020, 134100, 134110, 134111, 134120, 134130, 134140, 134150, 134160, 134170, 134180, 134190, 259]
+        if let c = codes.first(where: { structural.contains($0) || (134500...134599).contains($0) }) {
+            return (true, "model / migration error \(c)")
+        }
+        switch (try? NSPersistentStoreCoordinator.metadataForPersistentStore(type: .sqlite, at: url)) {
+        case .some(let meta):
+            let ids = meta[NSStoreModelVersionIdentifiersKey] as? [String] ?? []
+            if ids.contains(currentVersionIdentifier) { return (false, "the file reads and is at our version; the failure is transient or unknown") }
+            return (true, "the file reads but its model version \(ids) isn't ours (\(currentVersionIdentifier))")
+        case .none:
+            if codes.contains(259) { return (true, "corrupt file") }
+            return (false, "the file can't be read right now (protected, locked or missing)")
+        }
+    }
+
+    /// Every NSCocoaErrorDomain code in an error and its underlying / detailed errors (SwiftData wraps Core Data's).
+    static func cocoaErrorCodes(in error: Error) -> [Int] {
+        var out: [Int] = []
+        var seen = 0
+        func walk(_ e: Error) {
+            seen += 1; guard seen < 20 else { return }
+            let ns = e as NSError
+            if ns.domain == NSCocoaErrorDomain { out.append(ns.code) }
+            if let u = ns.userInfo[NSUnderlyingErrorKey] as? Error { walk(u) }
+            if let many = ns.userInfo[NSDetailedErrorsKey] as? [Error] { many.forEach(walk) }
+        }
+        walk(error)
+        // SwiftData's own error type hides the NSError; its description still carries "Code=1341xx".
+        if out.isEmpty {
+            let text = String(describing: error)
+            var i = text.startIndex
+            while let r = text.range(of: "Code=", range: i..<text.endIndex) {
+                let digits = text[r.upperBound...].prefix { $0.isNumber }
+                if let n = Int(digits) { out.append(n) }
+                i = r.upperBound
+            }
+        }
+        return out
     }
 
     // MARK: One-time import of the pre-app-group store (app only)
@@ -733,6 +805,27 @@ import Adhan
 
 /// Utility class for shared functionality
 struct PrayerUtils {
+    /// The calendar every adhan date is built with (audit A4, 2026-10-01): adhan reads year / month / day as
+    /// Gregorian, so `Calendar.current` on a Buddhist, Persian, Islamic or Japanese phone gave the wrong year
+    /// (every prayer "ended", nothing scheduled). Current time zone, Gregorian always.
+    static var gregorian: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone.current
+        return c
+    }
+
+    /// Times that always exist: 0°,0° (the equator has every prayer every day) on today's Gregorian date. For
+    /// the widget's placeholder and its last-resort fallback (audit A5) — never for anything shown as real.
+    static func dummyPrayerTimes() -> PrayerTimes {
+        let components = gregorian.dateComponents([.year, .month, .day], from: Date())
+        if let t = PrayerTimes(coordinates: Coordinates(latitude: 0, longitude: 0), date: components,
+                               calculationParameters: CalculationMethod.northAmerica.params) { return t }
+        // A fixed date as the last word (adhan can't fail at the equator; this guards a future library change).
+        var fixed = DateComponents(); fixed.year = 2024; fixed.month = 3; fixed.day = 21
+        return PrayerTimes(coordinates: Coordinates(latitude: 0, longitude: 0), date: fixed,
+                           calculationParameters: CalculationMethod.northAmerica.params)!
+    }
+
 
     /// Fetches user location from UserDefaults
     static func getUserCoordinates() throws -> Coordinates {
@@ -819,7 +912,7 @@ struct PrayerUtils {
     
     /// Fetches prayer times for a specific date
     static func getPrayerTimes(for date: Date, coordinates: Coordinates, params: CalculationParameters) throws -> PrayerTimes {
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let components = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: date)
         
         guard let prayerTimes = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) else {
             throw PrayerError(message: "Unable to calculate prayer times for \(date).")
@@ -1268,83 +1361,171 @@ enum SetAsideStoreSalvage {
         }
         defer { sqlite3_close(db) }
         let cal = Calendar.current
+        // Each table in its own try, reading only the columns the file has (an older store lacked
+        // ZSORTORDER; a newer one may have columns we don't know) — one odd table no longer sinks the
+        // whole salvage (audit A2). What's missing from the fresh store is INSERTED, not only patched
+        // onto rows that happen to exist. Photos / voice memos stay in the set-aside `_SUPPORT` folder
+        // (Core Data's external-storage markers can't be re-linked from here; nothing is deleted).
+        var parts: [String] = []
+        var failures: [String] = []
 
-        // Mantras: text and notes, only where the live row has none.
+        // Mantras: missing ones are added (name, text, notes, +N step, created, built-in id); existing
+        // ones get text / notes only where the live row has none.
         var mantraByName: [String: MantraModel] = [:]
-        for m in try context.fetch(FetchDescriptor<MantraModel>()) { mantraByName[m.name.lowercased()] = m }
-        var mantrasUpdated = 0
-        for r in try rows(db, "SELECT ZNAME, ZFULLTEXT, ZNOTES FROM ZMANTRAMODEL") {
-            guard let live = mantraByName[str(r, "ZNAME").lowercased()] else { continue }
-            var changed = false
-            let full = str(r, "ZFULLTEXT"), notes = str(r, "ZNOTES")
-            if live.fullText.isEmpty, !full.isEmpty { live.fullText = full; changed = true }
-            if live.notes.isEmpty, !notes.isEmpty { live.notes = notes; changed = true }
-            if changed { mantrasUpdated += 1 }
-        }
+        var mantrasUpdated = 0, mantrasAdded = 0
+        do {
+            for m in try context.fetch(FetchDescriptor<MantraModel>()) { mantraByName[m.name.lowercased()] = m }
+            let liveBuiltIns = Set(mantraByName.values.compactMap { $0.builtInID })
+            let c = cols(db, "ZMANTRAMODEL")
+            let want = ["ZNAME", "ZFULLTEXT", "ZNOTES", "ZQUICKADDSTEP", "ZCREATEDAT", "ZBUILTINID"].filter { c.contains($0) }
+            if c.contains("ZNAME") {
+                for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZMANTRAMODEL") {
+                    let name = str(r, "ZNAME")
+                    guard !name.isEmpty else { continue }
+                    let full = str(r, "ZFULLTEXT"), notes = str(r, "ZNOTES")
+                    if let live = mantraByName[name.lowercased()] {
+                        var changed = false
+                        if live.fullText.isEmpty, !full.isEmpty { live.fullText = full; changed = true }
+                        if live.notes.isEmpty, !notes.isEmpty { live.notes = notes; changed = true }
+                        if changed { mantrasUpdated += 1 }
+                        continue
+                    }
+                    let m = MantraModel(name: name, fullText: full, notes: notes)
+                    if c.contains("ZQUICKADDSTEP") { m.quickAddStep = Int(int(r, "ZQUICKADDSTEP")) }
+                    if let created = date(r, "ZCREATEDAT") { m.createdAt = created }
+                    if let bid = r["ZBUILTINID"] as? String, !bid.isEmpty, !liveBuiltIns.contains(bid) { m.builtInID = bid }
+                    context.insert(m)
+                    mantraByName[name.lowercased()] = m
+                    mantrasAdded += 1
+                }
+            }
+            parts.append("mantras added=\(mantrasAdded) updated=\(mantrasUpdated)")
+        } catch { failures.append("mantras: \(error)") }
 
         // Tasks missing by id (rare; created after the legacy snapshot).
         var taskByID: [UUID: TaskModel] = [:]
-        for t in try context.fetch(FetchDescriptor<TaskModel>()) { taskByID[t.id] = t }
         var oldTaskPKToID: [Int64: UUID] = [:]
         var tasksAdded = 0
-        // No ZSORTORDER: a set-aside store may predate it (the owner's did). Added tasks go last.
-        let nextOrder = TaskModel.nextSortOrder(in: context)
-        for r in try rows(db, "SELECT Z_PK, ZID, ZMANTRANAME, ZISCOUNTMODE, ZGOAL FROM ZTASKMODEL") {
-            guard let id = uuid(r, "ZID"), let pk = r["Z_PK"] as? Int64 else { continue }
-            oldTaskPKToID[pk] = id
-            if taskByID[id] != nil { continue }
-            let name = str(r, "ZMANTRANAME")
-            let task = TaskModel(mantra: mantraByName[name.lowercased()], isCountMode: int(r, "ZISCOUNTMODE") != 0,
-                                 goal: Int(int(r, "ZGOAL")), mantraName: name, sortOrder: nextOrder + tasksAdded)
-            task.id = id
-            context.insert(task)
-            taskByID[id] = task
-            tasksAdded += 1
-        }
+        do {
+            for t in try context.fetch(FetchDescriptor<TaskModel>()) { taskByID[t.id] = t }
+            let c = cols(db, "ZTASKMODEL")
+            let want = ["Z_PK", "ZID", "ZMANTRANAME", "ZISCOUNTMODE", "ZGOAL", "ZCUSTOMNAME"].filter { c.contains($0) }
+            let nextOrder = TaskModel.nextSortOrder(in: context)
+            if c.contains("ZID") {
+                for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZTASKMODEL") {
+                    guard let id = uuid(r, "ZID"), let pk = r["Z_PK"] as? Int64 else { continue }
+                    oldTaskPKToID[pk] = id
+                    if taskByID[id] != nil { continue }
+                    let name = str(r, "ZMANTRANAME")
+                    let task = TaskModel(mantra: mantraByName[name.lowercased()], isCountMode: int(r, "ZISCOUNTMODE") != 0,
+                                         goal: Int(int(r, "ZGOAL")), mantraName: name, sortOrder: nextOrder + tasksAdded)
+                    task.id = id
+                    if let custom = r["ZCUSTOMNAME"] as? String, !custom.isEmpty { task.customName = custom }
+                    context.insert(task)
+                    taskByID[id] = task
+                    tasksAdded += 1
+                }
+            }
+            parts.append("tasks added=\(tasksAdded)")
+        } catch { failures.append("tasks: \(error)") }
 
         // Sessions missing by id.
-        let sessionIDs = Set(try context.fetch(FetchDescriptor<SessionDataModel>()).map { $0.id })
         var sessionsAdded = 0
-        for r in try rows(db, "SELECT ZID, ZTITLE, ZSESSIONMODE, ZTARGETMIN, ZTARGETCOUNT, ZTOTALCOUNT, ZSTARTTIME, ZSECONDSPASSED, ZAVGTIMEPERCLICK, ZTASBEEHRATE, ZTIMEDURATIONSTRING, ZTASK FROM ZSESSIONDATAMODEL") {
-            guard let id = uuid(r, "ZID"), !sessionIDs.contains(id), let start = date(r, "ZSTARTTIME") else { continue }
-            let title = str(r, "ZTITLE")
-            let task = (r["ZTASK"] as? Int64).flatMap { oldTaskPKToID[$0] }.flatMap { taskByID[$0] }
-            let s = SessionDataModel(
-                title: title, sessionMode: Int(int(r, "ZSESSIONMODE")), targetMin: Int(int(r, "ZTARGETMIN")),
-                targetCount: Int(int(r, "ZTARGETCOUNT")), totalCount: Int(int(r, "ZTOTALCOUNT")), startTime: start,
-                secondsPassed: dbl(r, "ZSECONDSPASSED") ?? 0, avgTimePerClick: dbl(r, "ZAVGTIMEPERCLICK") ?? 0,
-                tasbeehRate: str(r, "ZTASBEEHRATE"), task: task, mantra: mantraByName[title.lowercased()]
-            )
-            s.id = id
-            if !str(r, "ZTIMEDURATIONSTRING").isEmpty { s.timeDurationString = str(r, "ZTIMEDURATIONSTRING") }
-            context.insert(s)
-            sessionsAdded += 1
-        }
+        do {
+            let sessionIDs = Set(try context.fetch(FetchDescriptor<SessionDataModel>()).map { $0.id })
+            let c = cols(db, "ZSESSIONDATAMODEL")
+            let want = ["ZID", "ZTITLE", "ZSESSIONMODE", "ZTARGETMIN", "ZTARGETCOUNT", "ZTOTALCOUNT", "ZSTARTTIME", "ZSECONDSPASSED",
+                        "ZAVGTIMEPERCLICK", "ZTASBEEHRATE", "ZTIMEDURATIONSTRING", "ZTASK"].filter { c.contains($0) }
+            if c.contains("ZID"), c.contains("ZSTARTTIME") {
+                for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZSESSIONDATAMODEL") {
+                    guard let id = uuid(r, "ZID"), !sessionIDs.contains(id), let start = date(r, "ZSTARTTIME") else { continue }
+                    let title = str(r, "ZTITLE")
+                    let task = (r["ZTASK"] as? Int64).flatMap { oldTaskPKToID[$0] }.flatMap { taskByID[$0] }
+                    let sess = SessionDataModel(
+                        title: title, sessionMode: Int(int(r, "ZSESSIONMODE")), targetMin: Int(int(r, "ZTARGETMIN")),
+                        targetCount: Int(int(r, "ZTARGETCOUNT")), totalCount: Int(int(r, "ZTOTALCOUNT")), startTime: start,
+                        secondsPassed: dbl(r, "ZSECONDSPASSED") ?? 0, avgTimePerClick: dbl(r, "ZAVGTIMEPERCLICK") ?? 0,
+                        tasbeehRate: str(r, "ZTASBEEHRATE"), task: task, mantra: mantraByName[title.lowercased()]
+                    )
+                    sess.id = id
+                    if !str(r, "ZTIMEDURATIONSTRING").isEmpty { sess.timeDurationString = str(r, "ZTIMEDURATIONSTRING") }
+                    context.insert(sess)
+                    sessionsAdded += 1
+                }
+            }
+            parts.append("sessions added=\(sessionsAdded)")
+        } catch { failures.append("sessions: \(error)") }
 
-        // Prayer completions onto live rows that aren't complete (name + day).
-        var prayerByKey: [String: PrayerModel] = [:]
-        for p in try context.fetch(FetchDescriptor<PrayerModel>()) {
-            prayerByKey["\(p.name)|\(cal.startOfDay(for: p.startTime).timeIntervalSince1970)"] = p
-        }
-        var prayersCompleted = 0
-        for r in try rows(db, "SELECT ZNAME, ZSTARTTIME, ZTIMEATCOMPLETE, ZNUMBERSCORE, ZENGLISHSCORE, ZLATPRAYEDAT, ZLONGPRAYEDAT, ZPRAYERSTARTEDAT, ZPRAYERCOMPLETEDAT, ZDURATION FROM ZPRAYERMODEL WHERE ZISCOMPLETED = 1") {
-            guard let start = date(r, "ZSTARTTIME"),
-                  let live = prayerByKey["\(str(r, "ZNAME"))|\(cal.startOfDay(for: start).timeIntervalSince1970)"],
-                  !live.isCompleted else { continue }
-            live.isCompleted = true
-            live.timeAtComplete = date(r, "ZTIMEATCOMPLETE")
-            live.numberScore = dbl(r, "ZNUMBERSCORE")
-            live.englishScore = r["ZENGLISHSCORE"] as? String
-            live.latPrayedAt = dbl(r, "ZLATPRAYEDAT")
-            live.longPrayedAt = dbl(r, "ZLONGPRAYEDAT")
-            live.prayerStartedAt = date(r, "ZPRAYERSTARTEDAT")
-            live.prayerCompletedAt = date(r, "ZPRAYERCOMPLETEDAT")
-            live.duration = dbl(r, "ZDURATION")
-            prayersCompleted += 1
-        }
+        // Prayers: a completed row with no live counterpart (name + calendar day) is added whole; a live
+        // incomplete row gets the completion. Unmarked set-aside rows aren't worth carrying over.
+        var prayersCompleted = 0, prayersAdded = 0
+        do {
+            var prayerByKey: [String: PrayerModel] = [:]
+            for p in try context.fetch(FetchDescriptor<PrayerModel>()) {
+                prayerByKey["\(p.name)|\(cal.startOfDay(for: p.startTime).timeIntervalSince1970)"] = p
+            }
+            let c = cols(db, "ZPRAYERMODEL")
+            let want = ["ZNAME", "ZSTARTTIME", "ZENDTIME", "ZDATEATMAKE", "ZTIMEATCOMPLETE", "ZNUMBERSCORE", "ZENGLISHSCORE", "ZLATPRAYEDAT",
+                        "ZLONGPRAYEDAT", "ZPRAYERSTARTEDAT", "ZPRAYERCOMPLETEDAT", "ZDURATION", "ZMOSQUENAME",
+                        "ZRECORDEDTIMEATCOMPLETE", "ZRECORDEDLAT", "ZRECORDEDLON"].filter { c.contains($0) }
+            if c.contains("ZNAME"), c.contains("ZSTARTTIME"), c.contains("ZISCOMPLETED") {
+                for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZPRAYERMODEL WHERE ZISCOMPLETED = 1") {
+                    guard let start = date(r, "ZSTARTTIME") else { continue }
+                    let name = str(r, "ZNAME")
+                    let key = "\(name)|\(cal.startOfDay(for: start).timeIntervalSince1970)"
+                    let row: PrayerModel
+                    if let live = prayerByKey[key] {
+                        guard !live.isCompleted else { continue }
+                        row = live
+                        prayersCompleted += 1
+                    } else {
+                        let end = date(r, "ZENDTIME") ?? start.addingTimeInterval(60 * 60)
+                        row = PrayerModel(name: name, startTime: start, endTime: end, dateAtMake: date(r, "ZDATEATMAKE") ?? start)
+                        context.insert(row)
+                        prayerByKey[key] = row
+                        prayersAdded += 1
+                    }
+                    row.isCompleted = true
+                    row.timeAtComplete = date(r, "ZTIMEATCOMPLETE")
+                    row.numberScore = dbl(r, "ZNUMBERSCORE")
+                    row.englishScore = r["ZENGLISHSCORE"] as? String
+                    row.latPrayedAt = dbl(r, "ZLATPRAYEDAT")
+                    row.longPrayedAt = dbl(r, "ZLONGPRAYEDAT")
+                    row.prayerStartedAt = date(r, "ZPRAYERSTARTEDAT")
+                    row.prayerCompletedAt = date(r, "ZPRAYERCOMPLETEDAT")
+                    row.duration = dbl(r, "ZDURATION")
+                    if c.contains("ZMOSQUENAME") { row.mosqueName = r["ZMOSQUENAME"] as? String }
+                    if c.contains("ZRECORDEDTIMEATCOMPLETE") {
+                        row.recordedTimeAtComplete = date(r, "ZRECORDEDTIMEATCOMPLETE")
+                        row.recordedLat = dbl(r, "ZRECORDEDLAT"); row.recordedLon = dbl(r, "ZRECORDEDLON")
+                    }
+                }
+            }
+            parts.append("prayers added=\(prayersAdded) completed=\(prayersCompleted)")
+        } catch { failures.append("prayers: \(error)") }
 
+        // Day scores missing by day.
+        var scoresAdded = 0
+        do {
+            let c = cols(db, "ZDAILYPRAYERSCORE")
+            if c.contains("ZDATE") {
+                let liveDays = Set(try context.fetch(FetchDescriptor<DailyPrayerScore>()).map { cal.startOfDay(for: $0.date).timeIntervalSince1970 })
+                let want = ["ZDATE", "ZAVERAGESCORE"].filter { c.contains($0) }
+                for r in try rows(db, "SELECT \(want.joined(separator: ", ")) FROM ZDAILYPRAYERSCORE") {
+                    guard let day = date(r, "ZDATE"), !liveDays.contains(cal.startOfDay(for: day).timeIntervalSince1970) else { continue }
+                    let score = DailyPrayerScore(date: day)
+                    score.averageScore = dbl(r, "ZAVERAGESCORE")
+                    context.insert(score)
+                    scoresAdded += 1
+                }
+            }
+            parts.append("day scores added=\(scoresAdded)")
+        } catch { failures.append("day scores: \(error)") }
+
+        guard failures.count < 5 else { throw Failure(description: failures.joined(separator: "; ")) }
         if context.hasChanges { try context.save() }
-        return "mantras updated=\(mantrasUpdated) tasks added=\(tasksAdded) sessions added=\(sessionsAdded) prayers completed=\(prayersCompleted)"
+        if !failures.isEmpty { parts.append("FAILED: " + failures.joined(separator: "; ")) }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: SQLite helpers
@@ -1375,6 +1556,11 @@ enum SetAsideStoreSalvage {
             out.append(row)
         }
         return out
+    }
+
+    /// The columns a table has in this file (`PRAGMA table_info`); empty when the table is missing.
+    private static func cols(_ db: OpaquePointer, _ table: String) -> Set<String> {
+        Set(((try? rows(db, "PRAGMA table_info(\(table))")) ?? []).compactMap { $0["name"] as? String })
     }
 
     private static func str(_ r: [String: Any], _ k: String) -> String { (r[k] as? String) ?? "" }

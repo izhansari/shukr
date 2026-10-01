@@ -114,7 +114,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // Provide a placeholder with *dummy* prayer times so SwiftUI can render a preview
         let dummyCoordinates = Coordinates(latitude: 0, longitude: 0)
         let dummyParams = CalculationMethod.northAmerica.params
-        let dummyDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        let dummyDateComponents = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: Date())
         
         // Safe to force-unwrap for placeholder if you want
         let dummyTimes = PrayerTimes(coordinates: dummyCoordinates,
@@ -310,7 +310,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         let coordinates = Coordinates(latitude: latitude, longitude: longitude)
         // The prayer day (before the rollover hour it's still yesterday's date), like the app.
         let prayerDate = PrayerDay.date()
-        let dateComponents = Calendar.current.dateComponents([.year, .month, .day], from: prayerDate)
+        let dateComponents = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: prayerDate)
         var windows = PrayerUtils.createDummyWindows()
         var nextFajr: Date?
         do {
@@ -320,15 +320,17 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             nextFajr = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params).fajr
             windows = PrayerUtils.createWindowsFromTimes(prayerTimes, on: prayerDate, nextFajr: nextFajr)
         } catch {
-            // If there's an error, either throw or use a fallback
-            // For example, you could use dummy times or just return some default
-            let fallbackCalcParams = CalculationMethod.northAmerica.params
-            print("ran catch block fallback for PrayerUtils")
-            prayerTimes = PrayerTimes(
-                coordinates: coordinates,
-                date: dateComponents,
-                calculationParameters: fallbackCalcParams
-            )!
+            // adhan gives no times for this place and day (polar latitudes in midnight sun / polar night).
+            // The old fallback force-unwrapped a second attempt with the same coordinates — nil again, and
+            // the extension crashed on every timeline (audit A5). Try ISNA once, optionally; else a dummy
+            // day that renders as "open shukr" rather than crashing.
+            print("widget: no prayer times for \(coordinates) on \(dateComponents): \(error)")
+            if let fallback = PrayerTimes(coordinates: coordinates, date: dateComponents,
+                                          calculationParameters: CalculationMethod.northAmerica.params) {
+                prayerTimes = fallback
+            } else {
+                prayerTimes = PrayerUtils.dummyPrayerTimes()   // the gallery's 0°,0° day; the windows stay dummy
+            }
         }
         
         // Finally, create our entry
@@ -922,7 +924,7 @@ import Adhan
 } timeline: {
     // 1. Create some dummy coordinates and parameters
     let dummyCoordinates = Coordinates(latitude: 40.7128, longitude: -74.0060)
-    let dummyDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+    let dummyDateComponents = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: Date())
     let dummyParams = CalculationMethod.northAmerica.params
     let dummyWindows = PrayerUtils.createDummyWindows()
     let dummyLocationName = "dummy location"

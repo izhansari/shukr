@@ -171,8 +171,11 @@ extension MantraModel {
         let tasks = Array(mantra.tasks)              // a copy: deleting edits the relationship
         let taskIDs = Set(tasks.map(\.id)), taskModels = Set(tasks.map(\.persistentModelID))
         for task in tasks { context.delete(task) }
+        let gone = mantra.persistentModelID
         context.delete(mantra)
         try? context.save()
+        // Whoever holds this zikr as "the session's pick" drops it (audit A8: the post-salah pill read a deleted row).
+        NotificationCenter.default.post(name: MantraModel.didDelete, object: gone)
         if !tasks.isEmpty {
             NotificationScheduler.reschedule(context: context, reason: "zikr deleted")
             WidgetCenter.shared.reloadAllTimelines()
@@ -842,6 +845,12 @@ struct MantraEditorView: View {
     /// its ✎ editor, the lifetime stats as `ZikrBento` tiles, and sessions grouped by day like
     /// Zikr History.
     var body: some View {
+        // The page dismisses, then deletes 0.35 s later; if the sheet is still animating out when the row goes, a
+        // re-render must not read it (audit A9).
+        if let m = mantra, m.isDeleted || m.modelContext == nil { Color.clear } else { editorBody }
+    }
+
+    private var editorBody: some View {
         NavigationStack {
             List {
                 Section {

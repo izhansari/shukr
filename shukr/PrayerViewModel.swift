@@ -278,7 +278,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
         // Set up Adhan parameters
         let coordinates = Coordinates(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        let components = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: date)
         let params = PrayerUtils.getCalculationParameters()
         
         guard let times = PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params) else{

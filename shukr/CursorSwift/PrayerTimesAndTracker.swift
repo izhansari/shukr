@@ -599,6 +599,12 @@ struct PrayerTimesView: View {
                   let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }
             sharedState.selectedTask = nil
         }
+        .onReceive(NotificationCenter.default.publisher(for: MantraModel.didDelete)) { note in
+            // Only the identifier is read: the row is gone and its properties must not be touched.
+            guard let gone = note.object as? PersistentIdentifier,
+                  sharedState.mantraForSession?.persistentModelID == gone else { return }
+            sharedState.mantraForSession = nil   // audit A8
+        }
         // A zikr's page asked to start one of its tasks: close what covers the pager, then the
         // Zikr page's wheel starts it.
         .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.startNotification)) { _ in

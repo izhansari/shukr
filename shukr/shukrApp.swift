@@ -75,6 +75,8 @@ struct shukrApp: App {
             PrayerScoring.recalculateHistoryIfNeeded(in: container)
             // Extra unmarked prayer rows from the old 5-row lookup in fetchPrayerTimes (2026-09-27).
             PrayerViewModel.removeDuplicatePrayerRows(in: container)
+            // A tasbeeh session the last run never got to save (evicted / swiped away) is saved now (audit A7).
+            SessionDraft.restoreIfAny(in: container)
             #if DEBUG
             // `-demoNextLabel on|off`: the "Next prayer" dev toggle, for screenshots.
             if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-demoNextLabel"),

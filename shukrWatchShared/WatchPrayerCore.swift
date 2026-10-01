@@ -247,7 +247,9 @@ enum WatchPrayers {
                                       longitude: d.double(forKey: WatchStore.Key.longitude))
         let params = parameters(method: d.object(forKey: WatchStore.Key.method) as? Int ?? 2,
                                 school: d.integer(forKey: WatchStore.Key.school))
-        let components = Calendar.current.dateComponents([.year, .month, .day], from: day)
+        // Gregorian always (audit A4): adhan reads the components as Gregorian; keep in step with PrayerUtils.gregorian.
+        var gregorian = Calendar(identifier: .gregorian); gregorian.timeZone = TimeZone.current
+        let components = gregorian.dateComponents([.year, .month, .day], from: day)
         return PrayerTimes(coordinates: coordinates, date: components, calculationParameters: params)
     }
 

@@ -337,6 +337,9 @@ class MantraModel: Identifiable {
     /// A built-in (or Tasbih Fatimah): name and full text locked, never deleted.
     var isBuiltIn: Bool { builtInID != nil }
 
+    /// Posted by `MantraModel.delete` with the deleted row's `PersistentIdentifier` (audit A8).
+    static let didDelete = Notification.Name("MantraModel.didDelete")
+
     /// Case-insensitive, whitespace-trimmed lookup by name.
     static func find(named name: String, in context: ModelContext) -> MantraModel? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

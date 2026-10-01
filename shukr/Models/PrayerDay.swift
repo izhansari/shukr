@@ -65,10 +65,20 @@ enum PrayerDay {
             ?? Calendar.current.date(byAdding: .hour, value: fallbackHours, to: dayStart) ?? dayStart
     }
 
-    /// Calendar-day bounds for fetching the prayer rows of the day that starts on `dayStart`.
+    /// Bounds for fetching the prayer rows of the prayer day that starts on the calendar day `dayStart`:
+    /// from that day's Fajr (less a 90-min allowance for a Fajr that moved) up to the next day's Fajr.
+    /// It used to be the calendar day — so an Isha starting after midnight (≈45–48°N, 18° methods, June)
+    /// was invisible to its own day (re-inserted on every refresh) and adopted by the next one, and a
+    /// marked row moved days with a time-zone change (audit A6, 2026-10-01). Without a location the
+    /// calendar day stays (no Fajr to anchor on). Shared with the widget.
     static func rowRange(forDayStarting dayStart: Date) -> (start: Date, end: Date) {
-        let end = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? dayStart
-        return (dayStart, end)
+        let calendar = Calendar.current
+        let calendarEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? dayStart
+        guard let fajr = fajr(onCalendarDayOf: dayStart) else { return (dayStart, calendarEnd) }
+        let start = max(dayStart, fajr.addingTimeInterval(-90 * 60))
+        let nextDay = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart
+        let end = (self.fajr(onCalendarDayOf: nextDay) ?? calendarEnd).addingTimeInterval(-1)
+        return (start, max(end, calendarEnd))
     }
 
     /// When the prayer day of the calendar day containing `date` ends: the next day's Fajr
