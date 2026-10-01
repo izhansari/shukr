@@ -743,11 +743,11 @@ struct WatchCounterView: View {
     /// "Pinch to count · or turn the Crown", once, on the first session.
     @AppStorage("watch.countHintSeen", store: WatchStore.defaults) private var hintSeen = false
     @State private var showHint = false
-    /// Counting with the Crown: screen taps / drags stop counting (a hand holding the watch taps
-    /// it by accident). The first crown count turns it on, unless Settings keeps taps on.
+    /// Counting with the Crown: taps, drags and pinches stop counting — the Crown on its own (a hand
+    /// holding the watch taps it by accident). The first crown count turns it on; the badge turns it
+    /// off (owner: tap and pinch together, or the Crown alone — no setting for all three).
     @State private var crownMode = false
     @State private var crownNote = false
-    @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
     /// The pause screen's page: 0 the card, 1 haptics. Back to the card on every pause.
     @State private var pausePage = 0
     @State private var draftToken = 0
@@ -929,12 +929,13 @@ struct WatchCounterView: View {
             WatchTasbeehCountView(tasbeeh: count)
             WatchNeuProgressRing(progress: fraction, animating: !paused)
                 .allowsHitTesting(false)
-            // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap —
-            // in crown mode too. Its own real, hit-testable button (a disabled one may not get
-            // Double Tap), too small to be hit by a finger on the screen.
+            // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap — not
+            // in crown mode (owner: tap and pinch together, or the Crown on its own). Its own real,
+            // hit-testable button (a disabled one may not get Double Tap), too small to be hit by a
+            // finger on the screen.
             Button { increment() } label: { Color.white.opacity(0.001).frame(width: 2, height: 2) }
                 .buttonStyle(.plain)
-                .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil)
+                .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil && !crownMode)
                 .offset(y: 60)
                 .accessibilityLabel("Count")
             if crownMode {
@@ -946,7 +947,7 @@ struct WatchCounterView: View {
                         if crownNote {
                             Text("Counting with the Crown")
                                 .font(.system(size: 11, weight: .light, design: .rounded))
-                            Text("tap here for taps")
+                            Text("tap here for tap & pinch")
                                 .font(.system(size: 9, weight: .light, design: .rounded))
                                 .foregroundStyle(.tertiary)
                         }
@@ -1016,7 +1017,7 @@ struct WatchCounterView: View {
 
     /// A tap / pump on the screen: a count, unless counting with the Crown.
     private func screenCount() {
-        guard crownMode && !tapsWithCrown else { increment(); return }
+        guard crownMode else { increment(); return }
         WKInterfaceDevice.current().play(.click)
         withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
@@ -1027,7 +1028,7 @@ struct WatchCounterView: View {
     private func crownTurned(to value: Double) {
         guard !paused, finished == nil, !wristDown else { crownGate.reset(to: value); return }
         guard crownGate.turned(to: value, at: Date()) else { return }
-        if !crownMode && !tapsWithCrown { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
+        if !crownMode { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
         increment()
     }
 
@@ -1064,16 +1065,16 @@ struct WatchCounterView: View {
         count = min(count + tapWorth, 10_000)
         lastCountAt = Date()
         lastCountActive = activeSeconds(at: Date())
-        tapWorth > 1 ? WatchHaptics.set() : WatchHaptics.count()
-        if postSalah {
-            // The phone's success buzz as each phrase ends; the goal is 100.
-            if count >= WatchPostSalah.total { reachedGoal(); return }
-            if WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index { WatchHaptics.milestone() }
-            saveDraft()
-            return
-        }
-        if count / 100 > before / 100 { WatchHaptics.milestone() }
-        if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
+        // One haptic per count: the stronger one replaces the count's on a milestone (watchOS drops a
+        // haptic played right after another, so playing both lost the milestone). Finishing plays
+        // its own in finish().
+        let finishing = postSalah ? count >= WatchPostSalah.total
+                                  : (task.map { $0.countMode && count >= $0.goal && before < $0.goal } ?? false)
+        let milestone = postSalah ? WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index
+                                  : count / 100 > before / 100
+        if finishing { reachedGoal(); return }
+        if milestone { WatchHaptics.milestone() } else if tapWorth > 1 { WatchHaptics.set() } else { WatchHaptics.count() }
+        saveDraft()
     }
 
     private var sessionName: String { postSalah ? WatchPostSalah.name : task?.name ?? config.zikrName ?? config.draft?.name ?? "" }
@@ -1484,10 +1485,12 @@ struct WatchSettingsPage: View {
                     Label("Turn the Digital Crown a step to count, a step back to get the next one ready", systemImage: "digitalcrown.arrow.clockwise")
                 }
                 .font(.system(size: 12, design: .rounded))
+                Text("Tap and pinch count together. Turning the Crown switches that session to the Crown alone; tap its badge to switch back.")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
                 WatchCrownDirectionPicker()
-                WatchCrownTapsToggle()
-                // Each count is a soft tap, each 100 a stronger one (no choice; owner). watchOS pairs its haptics with a soft tone unless the watch is silenced; apps can't
-                // play the tap alone.
+                // Each count is a soft tap, each 100 a stronger one (no choice; owner). watchOS pairs
+                // its haptics with a soft tone unless the watch is silenced; apps can't play the tap alone.
                 Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -1509,27 +1512,6 @@ struct WatchSettingsPage: View {
         .onAppear { if ProcessInfo.processInfo.arguments.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) } }
         #endif
         }
-    }
-}
-
-/// Settings: whether screen taps still count once you count with the Crown (off: turning the
-/// Crown switches that session to the Crown alone — a hand holding the watch taps it by accident).
-struct WatchCrownTapsToggle: View {
-    @AppStorage("watch.screenTapsWithCrown") private var tapsWithCrown = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Toggle(isOn: $tapsWithCrown) {
-                Text("Taps count while using the Crown").font(.system(size: 13, design: .rounded))
-            }
-            .tint(.green)
-            Text(tapsWithCrown
-                 ? "On: taps and the Crown both count."
-                 : "Off: taps pause when you use the Crown (tap the crown badge to bring them back).")
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.top, 4)
     }
 }
 
