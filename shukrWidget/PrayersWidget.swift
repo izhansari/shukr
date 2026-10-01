@@ -399,21 +399,28 @@ struct PrayersWidgetView: View {
     let prayerOrder = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
     @Environment(\.widgetFamily) private var family
 
+    /// No animation between states (owner, 2026-10-01: "we dont need any fancy transitions"): a reload or a
+    /// new entry swaps the picture at once — no crossfade between ring and list, no text morphing, no dip
+    /// in the live ring.
     var body: some View {
-        switch family {
-        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
-            PrayerLockScreenView(entry: entry, family: family)
-        default:
-            homeScreen
+        Group {
+            switch family {
+            case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+                PrayerLockScreenView(entry: entry, family: family)
+            default:
+                homeScreen
+            }
         }
+        .transaction { $0.animation = nil; $0.disablesAnimations = true }
+        .contentTransition(.identity)
     }
 
     private var homeScreen: some View {
         ZStack {
             if entry.toggleShowAllTImes {
-                TimesListView(entry: entry)
+                TimesListView(entry: entry).transition(.identity)
             } else {
-                WidgetPrayerCircleView(entry: entry)
+                WidgetPrayerCircleView(entry: entry).transition(.identity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
