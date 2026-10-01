@@ -189,7 +189,14 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
            let maghrib = entry.prayerDict["Maghrib"]?.start {
             moments += [sunrise, maghrib, sunrise.addingTimeInterval(86_400)].filter { $0 > base.date }
         }
-        entries += Set(moments).map { base.at($0, list: false) }   // one prayer's end is often the next one's start
+        // one prayer's end is often the next one's start
+        var ahead = Set(moments).sorted()
+        // The home widget: only the next two moments. iOS renders every entry of a timeline before it shows
+        // the first, and each carries the live ring and text — ~10 of them made every tap (ring, chevron,
+        // mark) take ~3 s to redraw, where main's single entry was instant (owner, 2026-10-01). The 60 s
+        // refresh below asks for the rest; a colour change can land late if iOS is slow to grant it.
+        if context.family == .systemSmall { ahead = Array(ahead.prefix(2)) }
+        entries += ahead.map { base.at($0, list: false) }
         let nextRefresh = Date().addingTimeInterval(60)
         WidgetPerf.log("timeline \(context.family) done \(entries.count) entries \(WidgetPerf.ms(since: t0)) ms")
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
