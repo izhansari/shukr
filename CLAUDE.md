@@ -332,7 +332,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Shown: results (`StreakResultsHero` in the ✓'s spot, only after the session that finished today's goal: flame, N−1 → N
   in the type of the "saved" line that follows, then "21 days is your best" / sage "This is your best", ~2 s, then the ✓ / "saved to your history" + a small streak line; no buzz when `asleep`); the results card line says
   where the task stands ("Done for today" / "47 to go today · 🔥 keeps your 7"), never the count again; `ZikrPageTitle`
-  follows the wheel (`ZikrWheelFocus.shared`, set from `centered`): "N Day Streak", tap → "Max N Days"; Tasks sheet rows
+  follows the wheel (`ZikrWheelFocus.shared`, set from `centered`), built like TopBar: "Zikr" up and out / "N Day Streak" in from below, the number rolls, tap → "Max N Days" 3 s; outline icons (owner); Tasks sheet rows
   (`TaskStreakBadge`); today's task reminder adds "🔥 Keep your N-day streak" (N ≥ 2; later days get it on their day's
   reschedule). Not on the wheel's circles, no task page (owner). DEBUG `-logTaskStreaks YES` prints each task's days.
 

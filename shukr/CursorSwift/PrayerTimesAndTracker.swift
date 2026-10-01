@@ -1344,48 +1344,81 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// The Zikr page's title in the fixed top bar, styled like TopBar's location label. It follows the
-    /// wheel (owner, 2026-10-01): a centred task with a streak shows "8 Day Streak" — the Salah page's
-    /// words — with the flame (an outline in grey until today's goal is met); a tap shows its best, like
-    /// Salah's label. Freestyle, New task and a task with no streak show "Zikr".
+    /// The Zikr page's title in the fixed top bar, built like TopBar's (owner, 2026-10-01: rendered and
+    /// moving the same as the Salah page's): the outline beads (owner: not filled) and the thin caption, "Zikr" — and when the
+    /// wheel centres a task with a streak, "Zikr" goes up and out while "8 Day Streak" comes in from below
+    /// (Salah's city ⇄ streak), the number rolling from task to task; a tap shows "Max N Days" for 3 s.
+    /// The flame: an outline in grey while it's still to keep, filled sage once today's goal is met.
     struct ZikrPageTitle: View {
         @Query private var tasks: [TaskModel]
         @State private var showBest = false
+        @State private var revertBest: DispatchWorkItem?
         private let focus = ZikrWheelFocus.shared
 
         var body: some View {
             let streak = focus.taskID.flatMap { id in tasks.first { $0.id == id } }?.streak()
             let shown = streak.flatMap { $0.current > 0 ? $0 : nil }
+            let streakShowing = shown != nil
             // Same metrics as TopBar's location row so the title sits where the city does.
-            HStack {
-                Image(systemName: shown.map { $0.keptToday ? "flame.fill" : "flame" } ?? "circle.hexagonpath")
-                    .foregroundStyle(shown?.keptToday == true ? Color.sage : Color.secondary)
-                    .contentTransition(.symbolEffect(.replace))
-                Group {
-                    if let s = shown {
-                        Text(showBest ? "Max \(s.best) Days" : "\(s.current) Day Streak")
-                    } else {
-                        Text("Zikr")
-                    }
+            ZStack {
+                HStack {
+                    Image(systemName: "circle.hexagonpath")
+                        .foregroundColor(.secondary)
+                    Text("Zikr")
                 }
-                .id("\(focus.taskID?.uuidString ?? "")-\(showBest)")
-                .transition(.blurReplace)
+                .opacity(streakShowing ? 0 : 1)
+                .offset(y: streakShowing ? -10 : 0)            // up and out for the streak
+
+                HStack(alignment: .center) {
+                    Image(systemName: shown?.keptToday == true ? "flame.fill" : "flame")
+                        .foregroundColor(shown?.keptToday == true ? Color.sage : .secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                    Group {
+                        if showBest {
+                            Text("Max \(shown?.best ?? 0) Days").transition(.blurReplace)
+                        } else {
+                            let n = shown?.current ?? lastShown
+                            HStack(spacing: 0) {
+                                Text("\(n)").contentTransition(.numericText(value: Double(n)))
+                                Text(" Day Streak")
+                            }
+                            .transition(.blurReplace)
+                        }
+                    }
+                    .fixedSize()
+                }
+                .opacity(streakShowing ? 1 : 0)
+                .offset(y: streakShowing ? 0 : 10)             // in from below
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard streakShowing else { return }
+                    triggerSomeVibration(type: .light)
+                    showMax(!showBest)
+                }
+                .allowsHitTesting(streakShowing)
             }
             .padding()
             .frame(height: 24, alignment: .center)
             .font(.caption)
             .fontDesign(.rounded)
             .fontWeight(.thin)
-            .animation(.snappy, value: focus.taskID)
-            .animation(.snappy, value: showBest)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                guard shown != nil else { return }
-                triggerSomeVibration(type: .light)
-                showBest.toggle()
-            }
-            .onChange(of: focus.taskID) { _, _ in showBest = false }
+            .animation(.spring, value: streakShowing)
+            .animation(.spring, value: shown?.current)
+            .onChange(of: shown?.current) { _, n in if let n { lastShown = n } }
+            .onChange(of: focus.taskID) { _, _ in showMax(false) }
             .padding()
+        }
+
+        /// The last streak shown, so the label fading out keeps its number instead of dropping to 0.
+        @State private var lastShown = 0
+
+        private func showMax(_ on: Bool) {
+            revertBest?.cancel()
+            withAnimation { showBest = on }
+            guard on else { return }
+            let work = DispatchWorkItem { withAnimation { showBest = false } }
+            revertBest = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
         }
     }
     struct BottomSharedView: View {
