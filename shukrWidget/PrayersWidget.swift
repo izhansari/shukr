@@ -162,14 +162,16 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // Per prayer: its start and end (the Lock Screen's dashed "next" ring turns live on time), the
         // colour changes (Perfect → On time → Late; the fill itself runs live), an hour before the end
         // (the time left), and with "27m" / "27min" an entry each minute of that last hour — iOS can't
-        // tick those itself; the countdown style ("27:13") needs none. Otherwise a few entries — a
-        // long timeline was "not performant" (owner).
+        // tick those itself; the countdown style ("27:13") needs none. Only the Lock Screen circle shows
+        // those: every other family gets a few entries — the home widget's ~120 per-minute entries made
+        // each tap (ring, chevron, mark) slow to redraw (owner, 2026-10-01; a long timeline was "not performant").
+        let perMinute = context.family == .accessoryCircular
         let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: base).relevantPrayer
-        var moments = Self.moments(for: shown, after: base.date)
+        var moments = Self.moments(for: shown, after: base.date, perMinute: perMinute)
         if shown.end > base.date {
             let following = PrayersWidgetView.WidgetPrayerCircleView(entry: base.at(shown.end.addingTimeInterval(1), list: false)).relevantPrayer
             if following.start >= shown.end, following.name != shown.name || following.start != shown.start {
-                moments += Self.moments(for: following, after: base.date)
+                moments += Self.moments(for: following, after: base.date, perMinute: perMinute)
             }
         }
         // Style "Follows the sun" flips at Maghrib and at sunrise: an entry at each still ahead.
@@ -184,12 +186,12 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
 
     /// When one prayer's circle changes (see the timeline above), after `now`.
     static func moments(for prayer: (name: String, current: Bool, start: Date, end: Date, window: TimeInterval),
-                        after now: Date) -> [Date] {
+                        after now: Date, perMinute: Bool) -> [Date] {
         guard prayer.end > prayer.start, prayer.end > now else { return [] }
         var moments = [prayer.start, prayer.end]
         let lastHour = prayer.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
         if lastHour > prayer.start { moments.append(lastHour) }
-        if LockTimeStyle.current != .timer {
+        if perMinute, LockTimeStyle.current != .timer {
             var minute = prayer.end.addingTimeInterval(-60)
             while minute > now, minute >= max(lastHour, prayer.start) {
                 moments.append(minute)
