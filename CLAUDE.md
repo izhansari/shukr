@@ -202,7 +202,12 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 
 **Re-render hygiene**
 - Never create a publisher / Timer inline in `body` (froze the ring): `static let ticker`.
-- Heading / qibla live in `CompassState`; `userLocation` isn't published. Every app-group write, even the same value, invalidates bound `@AppStorage`: write only on change.
+- Heading / qibla live in `CompassState` (never on `EnvLocationManager`, which the root holds — 4789a97, the picker flicker),
+  published only on change; the circle's arrow is its own view (`QiblaArrow`). The heading (LocMans.swift, compass audit
+  2026-09-30): Core Motion's fused heading (true north with location, magnetic without), Core Location's as the fallback;
+  restarted on every didBecomeActive and by a 1 s watchdog when quiet; smoothed; `qibla.heading` −180…180; aligned with
+  hysteresis, never without a place or with an untrustworthy heading (`CompassStatus`). DEBUG Settings → My Dev Stuff →
+  Compass debug, `-demoCompassJiggle [-demoCompassSweep]`. `userLocation` isn't published. Every app-group write, even the same value, invalidates bound `@AppStorage`: write only on change.
 - No `GeometryReader` in the welcome overlay (blank app). Decode images off the main thread, never in `body`.
 
 **Shared store & widget**

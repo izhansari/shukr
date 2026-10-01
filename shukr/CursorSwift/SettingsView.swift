@@ -55,6 +55,8 @@ struct SettingsView: View {
     // For minimizing and expanding the devSection
     /// DEBUG: tap the "Calculation Method" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
+    /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
+    @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
@@ -396,6 +398,7 @@ struct SettingsView: View {
                             }
                             Button("Ring playground…") { showRingPlayground = true }
                             Button("NEXT label playground…") { showNextPlayground = true }
+                            Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
                                 ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }

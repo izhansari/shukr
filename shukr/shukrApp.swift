@@ -147,10 +147,15 @@ struct shukrApp: App {
         #if DEBUG
         // `-demoCompassJiggle`: the heading changes 5× a second, like a phone moving (the simulator
         // has no compass) — reproduces anything that re-renders with the compass.
+        // Through the real heading path (smoothing, the qibla, aligned), turning 3° a step; with
+        // `-demoCompassSweep` it sweeps back and forth across the qibla instead.
         if ProcessInfo.processInfo.arguments.contains("-demoCompassJiggle") {
-            let compass = manager.compass
-            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
-                compass.heading = (compass.heading + 3).truncatingRemainder(dividingBy: 360)
+            var degrees = 0.0, step = 3.0
+            let sweep = ProcessInfo.processInfo.arguments.contains("-demoCompassSweep")
+            Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak manager] _ in
+                degrees += step
+                if sweep, abs(degrees) > 30 { step = -step }
+                manager?.debugHeading(degrees, around: sweep)
             }
         }
         #endif

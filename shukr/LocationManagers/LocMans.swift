@@ -9,6 +9,7 @@ import SwiftUI
 import CoreLocation
 import WidgetKit
 import Combine
+import CoreMotion
 
 //used by pulseCircle
 struct QiblaSettings {
@@ -29,15 +30,33 @@ struct QiblaSettings {
 //MARK: - Env Location Manager
 /// (merged MainCircleLocationManager into GlobalLocationManager)
 
-/// The compass stream: heading and qibla, many updates a second on a phone. Its own object so
-/// only the views that draw the compass (`@EnvironmentObject var compass: CompassState`)
-/// re-render per update. It used to be two @Published properties on EnvLocationManager, which
-/// the root view holds as @StateObject — so every heading tick re-rendered the whole app
-/// (Settings, the pager, the chrome), which is what made every Menu picker flicker on the
-/// phone (2026-09-25). No compass in the simulator, so it never showed there.
+/// The compass stream: heading and qibla, up to ~30 updates a second on a phone. Its own object so
+/// only the views that draw the compass (`@EnvironmentObject var compass: CompassState`) re-render
+/// per update — never the root (4789a97: publishing heading on EnvLocationManager, which the root
+/// holds, re-rendered the whole app and made every Menu picker flicker). Everything here is
+/// published only when it really changes.
 final class CompassState: ObservableObject {
+    /// Degrees from north the top of the phone points: true north whenever iOS has a location
+    /// (the qibla is a true bearing), magnetic otherwise. Smoothed.
     @Published var heading: Double = 0
+    /// `heading`: signed degrees from where the phone points to the qibla, −180…180 (+ = turn
+    /// clockwise). `aligned`: within the qibla-accuracy setting (a little more to leave it, so it
+    /// doesn't flicker at the edge), and only with a trustworthy heading and a known location.
     @Published var qibla: (aligned: Bool, heading: Double) = (false, 0)
+    @Published var status: CompassStatus = .noLocation
+    #if DEBUG
+    /// Settings → My Dev Stuff → Compass debug: one line, refreshed once a second.
+    @Published var debugLine = ""
+    #endif
+}
+
+/// What the compass can be trusted for right now; the arrow dims unless `.ok`.
+enum CompassStatus: Equatable {
+    case ok
+    /// No location yet (fresh install before the first fix): no qibla to point at.
+    case noLocation
+    /// iOS says the heading can't be trusted (needs calibrating, interference — a car, a magnet).
+    case unreliable
 }
 
 class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate { //locman_flag used for the compass in MainCircle and with injection on @Main
@@ -67,8 +86,29 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
     /// Heading + qibla live here (see CompassState). Not @Published on this object on purpose.
     let compass = CompassState()
-    var compassHeading: Double { compass.heading }
-    var qibla: (aligned: Bool, heading: Double) { compass.qibla }
+
+    // MARK: Heading state (see "Heading" below)
+    /// Core Motion's fused heading (compass + gyro, like the Compass app); Core Location's raw
+    /// heading is the fallback.
+    private let motion = CMMotionManager()
+    private var motionFrame: CMAttitudeReferenceFrame?
+    /// Something wants the heading (the Salah circle, the map): restarted on every return to the app.
+    private var headingWanted = false
+    /// Set by didBecomeActive (also at launch), so a background relaunch (travel updates) never
+    /// starts the compass.
+    private var appActive = false
+    private var watchdog: Timer?
+    private var lastSampleAt = Date.distantPast
+    private var lastMotionAt = Date.distantPast
+    private var headingReliable = true
+    /// The smoothed heading as a point on the unit circle (an average of 359° and 1° is 0°, not 180°).
+    private var smoothX = 0.0, smoothY = 0.0, smoothStarted = false
+    /// True bearing to the Kaaba from the last known place; nil = no place yet.
+    private var qiblaBearing: Double?
+    #if DEBUG
+    private var samplesThisSecond = 0, restarts = 0
+    private var lastRaw = "", lastCL = "–"
+    #endif
 
     override init() {
         super.init()
@@ -82,7 +122,16 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // Allowed again while the app wasn't running: the Salah page shows straight away, so
         // there's no lost page to acknowledge it on (a `comeback` later would pop one up over it).
         if isAuthorized && locationLost { locationLost = false }
-//        startLocationServices()
+        // The qibla from the saved place at once, so the arrow never waits on the first GPS fix.
+        setQiblaOrigin(nil)
+        // iOS suspends heading updates in the background; restart them on every return.
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.setAppActive(true)
+        }
+        center.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.setAppActive(false)
+        }
     }
     
     /// FirstRunSetup.isDone (this file is compiled into the widget too, which doesn't have it).
@@ -157,8 +206,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         guard let location = manualLocation else { return }
         userLocation = location
         locationUpdates.send(location)
-        manager.startUpdatingHeading()
-        updateQibla()
+        setQiblaOrigin(location)
+        startHeading()
     }
 
     // Function to start location services
@@ -172,7 +221,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
             if group?.bool(forKey: "locationWasAuthorized") != true { group?.set(true, forKey: "locationWasAuthorized") }
             if locationLost { locationLost = false }
             manager.startUpdatingLocation()
-            manager.startUpdatingHeading()
+            if qiblaBearing == nil, let cached = manager.location { setQiblaOrigin(cached) }
+            startHeading()   // (again: with a location, Core Motion switches to true north)
             // Travel (notes #18): with Always, big moves wake the app — even when it isn't running
             // (iOS relaunches it in the background; shukrApp.init builds this manager again and
             // the fix comes through `locationUpdates` → PrayerViewModel.handleLocationChange:
@@ -207,244 +257,203 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     func startUpdating() {
         if Self.setupDone { manager.requestWhenInUseAuthorization() }
         manager.startUpdatingLocation()
-        manager.startUpdatingHeading()
+        startHeading()
     }
     
     // CL Location Manager Delegate method for location updates
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         userLocation = locations.last
         locationUpdates.send(locations.last)
-        updateQibla()
+        setQiblaOrigin(locations.last)
     }
     
-    // CL Location Manager Delegate method for heading updates
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        guard abs(newHeading.magneticHeading - compass.heading) >= 0.5 else { return }
-        compass.heading = newHeading.magneticHeading
-        updateQibla()
-    }
     
     // Error handling for location updates
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location Manager failed with error: \(error.localizedDescription)")
     }
     
-    // Updates the stored Qibla heading when location/heading changes
-    private func updateQibla() {
-        let qiblaHeading = calculateQiblaDirection()
-        let qiblaAligned = abs(qiblaHeading) <= QiblaSettings.alignmentThreshold
-        compass.qibla = (qiblaAligned, qiblaHeading)
+    // MARK: - Heading
+    //
+    // The arrow used to listen to Core Location's raw magnetic heading only, started once and never
+    // checked (compass audit, 2026-09-30): it froze in a car and sometimes on opening the app, was
+    // ~9° off in Cary (magnetic vs the qibla's true north), said "aligned" before any location, and
+    // its angle wasn't kept to −180…180. Now: Core Motion's fused heading (true north), Core
+    // Location as the fallback, restarted on every return to the app and whenever it goes quiet.
+
+    /// The Salah circle / the map want the heading (also on every return to the app).
+    func startHeading() {
+        headingWanted = true
+        guard appActive else { return }
+        manager.startUpdatingHeading()
+        startMotion()
+        startWatchdog()
     }
 
-    func calculateQiblaDirection() -> Double {
-        guard let userLocation = userLocation else { return 0 }
-        let meccaLatitude = 21.4225
-        let meccaLongitude = 39.8262
-        
-        let userLat = userLocation.coordinate.latitude * .pi / 180
-        let userLong = userLocation.coordinate.longitude * .pi / 180
-        let meccaLat = meccaLatitude * .pi / 180
-        let meccaLong = meccaLongitude * .pi / 180
-        
-        let y = sin(meccaLong - userLong)
-        let x = cos(userLat) * tan(meccaLat) - sin(userLat) * cos(meccaLong - userLong)
-        
-        var qiblaDirection = atan2(y, x) * 180 / .pi
-        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-        
-        let returnVal = qiblaDirection - compassHeading
-        
-        return returnVal
-    }
-}
-
-//@Observable
-//class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate { //locman_flag used for the compass in MainCircle and with injection on @Main
-//    @ObservationIgnored let manager = CLLocationManager()
-//    
-//    // Location and Heading Data
-//    @Published var userLocation: CLLocation?
-//    @Published var compassHeading: Double = 0
-//    @Published var isAuthorized: Bool = false
-//    @Published var qibla: (aligned: Bool, heading: Double) = (false, 0) // Stores the latest Qibla data
-//
-//    override init() {
-//        super.init()
-//        manager.delegate = self
-//        manager.desiredAccuracy = /*kCLLocationAccuracyBest*/ kCLLocationAccuracyNearestTenMeters
-//        startLocationServices()
-//    }
-//    
-//    // CL Location Manager Delegate method for authorization changes
-//    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-//        startLocationServices()
-//    }
-//    
-//    // Function to start location services
-//    func startLocationServices() {
-//        switch manager.authorizationStatus {
-//        case .authorizedAlways, .authorizedWhenInUse:
-//            isAuthorized = true
-//            manager.startUpdatingLocation()
-//            manager.startUpdatingHeading()
-//        case .notDetermined:
-//            isAuthorized = false
-//            manager.requestWhenInUseAuthorization()
-//        case .denied, .restricted:
-//            isAuthorized = false
-//            print("Location services are denied or restricted.")
-//        @unknown default:
-//            isAuthorized = false
-//            print("Unknown authorization status.")
-//        }
-//    }
-//
-//    // Function to explicitly start updating location and heading
-//    func startUpdating() {
-//        manager.requestWhenInUseAuthorization()
-//        manager.startUpdatingLocation()
-//        manager.startUpdatingHeading()
-//    }
-//    
-//    // CL Location Manager Delegate method for location updates
-//    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-//        userLocation = locations.last
-//        updateQibla()
-//    }
-//    
-//    // CL Location Manager Delegate method for heading updates
-//    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-//        compassHeading = newHeading.magneticHeading
-//        updateQibla()
-//    }
-//    
-//    // Error handling for location updates
-//    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-//        print("Location Manager failed with error: \(error.localizedDescription)")
-//    }
-//    
-//    // Updates the stored Qibla heading when location/heading changes
-//    private func updateQibla() {
-//        let qiblaHeading = calculateQiblaDirection()
-//        let qiblaAligned = abs(qiblaHeading) <= QiblaSettings.alignmentThreshold
-//        qibla = (qiblaAligned, qiblaHeading)
-//    }
-//
-//    func calculateQiblaDirection() -> Double {
-//        guard let userLocation = userLocation else { return 0 }
-//        let meccaLatitude = 21.4225
-//        let meccaLongitude = 39.8262
-//        
-//        let userLat = userLocation.coordinate.latitude * .pi / 180
-//        let userLong = userLocation.coordinate.longitude * .pi / 180
-//        let meccaLat = meccaLatitude * .pi / 180
-//        let meccaLong = meccaLongitude * .pi / 180
-//        
-//        let y = sin(meccaLong - userLong)
-//        let x = cos(userLat) * tan(meccaLat) - sin(userLat) * cos(meccaLong - userLong)
-//        
-//        var qiblaDirection = atan2(y, x) * 180 / .pi
-//        qiblaDirection = (qiblaDirection + 360).truncatingRemainder(dividingBy: 360)
-//        
-//        let returnVal = qiblaDirection - compassHeading
-//        
-//        return returnVal
-//    }
-//}
-
-
-//MARK: - Prayer Widget Location Manager
-
-class PrayersWidgetLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate { //locman_flag used in the widget.
-    private let locationManager = CLLocationManager()
-    private let geocoder = CLGeocoder()
-    
-    @Published var heading: Double = 0
-    @Published var latitude: Double = 0
-    @Published var longitude: Double = 0
-    @Published var locationName: String = "Unknown Location"
-    
-    @AppStorage("lastCityName", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastCityName: String = "Wonderland"
-    
-    override init() {
-        super.init()
-        locationManager.delegate = self
-        locationManager.requestWhenInUseAuthorization()
-        locationManager.startUpdatingHeading()
-        locationManager.startUpdatingLocation()
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
-        heading = newHeading.magneticHeading
-        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        latitude = location.coordinate.latitude
-        longitude = location.coordinate.longitude
-        geocodeLocation(location) // Perform reverse geocoding
-//        updateCityName(for: location)
-//        WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
-    }
-    
-    private func geocodeLocation(_ location: CLLocation) {
-        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-            guard let self = self else { return }
-            
-            if let error = error {
-                print("Geocoding failed with error: \(error.localizedDescription)")
-                self.locationName = "ran error"
-                return
-            }
-            
-            if let placemark = placemarks?.first {
-                let cityName = placemark.locality ?? placemark.administrativeArea
-                self.locationName = cityName ?? "if Unknown"
-                
-                if let widgetCityName = cityName {
-                    let oldCityName = self.lastCityName
-                    self.lastCityName = widgetCityName
-                    if oldCityName != self.lastCityName {
-                        WidgetCenter.shared.reloadAllTimelines()
-                        print("Widget 🏙️ Geocoded City: \(self.lastCityName)")
-                    }
-                }
-
-//                print("Widget 🏙️ Geocoded City: \(self.locationName)")
-            } else {
-                self.locationName = "else unknown"
-                print("No placemarks found")
-            }
+    private func setAppActive(_ active: Bool) {
+        appActive = active
+        if active {
+            guard headingWanted else { return }
+            restartHeading()
+            startWatchdog()
+        } else {
+            // Nothing to point while we're not on screen; Core Location suspends its own.
+            motion.stopDeviceMotionUpdates()
+            watchdog?.invalidate(); watchdog = nil
         }
     }
-    
-//    private func updateCityName(for location: CLLocation) {
-//        geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
-//            guard let self = self else { return }
-//
-//            DispatchQueue.main.async {
-//                if let error = error {
-//                    print("Widget ❌ Reverse geocoding error: \(error.localizedDescription)")
-//                    self.locationName = "xUnknown Location"
-//                    return
-//                }
-//
-//                if let placemark = placemarks?.first {
-//                    let newCityName = placemark.locality ?? placemark.administrativeArea ?? "Unknown"
-//                    self.locationName = newCityName
-//                    print("Widget 🏙️ Geocoded City: \(newCityName)")
-//                } else {
-//                    self.locationName = "Unknown"
-//                    print("Widget ⚠️ No placemark found")
-//                }
-//            }
-//        }
-//    }
 
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location manager failed with error: \(error.localizedDescription)")
-        locationName = "fail error"
+    private func restartHeading() {
+        manager.stopUpdatingHeading()
+        manager.startUpdatingHeading()
+        motion.stopDeviceMotionUpdates()
+        startMotion()
+        #if DEBUG
+        restarts += 1
+        #endif
+    }
+
+    /// Core Motion's heading (what the Compass app uses): compass + gyroscope, so it stays steady
+    /// when the compass alone is thrown off. True north needs location permission; magnetic otherwise.
+    private func startMotion() {
+        guard motion.isDeviceMotionAvailable else { return }
+        let frames = CMMotionManager.availableAttitudeReferenceFrames()
+        let frame: CMAttitudeReferenceFrame
+        if isAuthorized && frames.contains(.xTrueNorthZVertical) { frame = .xTrueNorthZVertical }
+        else if frames.contains(.xMagneticNorthZVertical) { frame = .xMagneticNorthZVertical }
+        else { return }
+        if motion.isDeviceMotionActive && motionFrame == frame { return }
+        motion.stopDeviceMotionUpdates()
+        motionFrame = frame
+        motion.deviceMotionUpdateInterval = 1.0 / 30
+        // iOS's own calibration screen ("tilt to roll the ball"), shown by iOS only when the
+        // compass needs it.
+        motion.showsDeviceMovementDisplay = true
+        motion.startDeviceMotionUpdates(using: frame, to: .main) { [weak self] sample, _ in
+            guard let self, let sample, sample.heading >= 0 else { return }
+            self.lastMotionAt = Date()
+            self.take(sample.heading, reliable: sample.magneticField.accuracy != .uncalibrated, smoothing: 0.25)
+        }
+    }
+
+    // Core Location's heading: only while Core Motion is quiet (unavailable, or not started yet).
+    func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+        let value = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+        #if DEBUG
+        lastCL = "\(Int(value.rounded()))° ±\(Int(newHeading.headingAccuracy))"
+        #endif
+        guard Date().timeIntervalSince(lastMotionAt) > 0.5 else { return }
+        // A negative accuracy means iOS couldn't work the heading out; past ~25° it can't be trusted.
+        take(value, reliable: newHeading.headingAccuracy >= 0 && newHeading.headingAccuracy <= 25, smoothing: 0.5)
+    }
+
+    /// Let iOS show its calibration screen when Core Location asks — unless Core Motion's (above)
+    /// is the one in use, so it never shows twice.
+    func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool {
+        !motion.isDeviceMotionActive
+    }
+
+    /// One reading, from either source: smoothed, then published only on a real change.
+    private func take(_ degrees: Double, reliable: Bool, smoothing: Double) {
+        lastSampleAt = Date()
+        #if DEBUG
+        samplesThisSecond += 1
+        lastRaw = "\(Int(degrees.rounded()))°"
+        #endif
+        let r = degrees * .pi / 180
+        if smoothStarted {
+            smoothX += (cos(r) - smoothX) * smoothing
+            smoothY += (sin(r) - smoothY) * smoothing
+        } else {
+            smoothX = cos(r); smoothY = sin(r); smoothStarted = true
+        }
+        var heading = atan2(smoothY, smoothX) * 180 / .pi
+        if heading < 0 { heading += 360 }
+        let reliabilityChanged = reliable != headingReliable
+        headingReliable = reliable
+        if abs(Self.signed(heading - compass.heading)) >= 0.5 { compass.heading = heading }
+        else if !reliabilityChanged { return }
+        updateQibla()
+    }
+
+    /// A second without a reading (the arrow would freeze): start both sources again.
+    private func startWatchdog() {
+        guard watchdog == nil else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.checkHeading() }
+        RunLoop.main.add(timer, forMode: .common)
+        watchdog = timer
+    }
+
+    private func checkHeading() {
+        guard appActive, headingWanted else { return }
+        let quiet = Date().timeIntervalSince(lastSampleAt)
+        // Core Motion reads ~30 times a second; Core Location only when the phone turns (1° filter),
+        // so without Core Motion a still phone is quiet on purpose — give it longer.
+        if quiet > (motion.isDeviceMotionAvailable ? 2 : 6) { restartHeading() }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "compassDebug") {
+            let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
+            let bearing = qiblaBearing.map { "\(Int($0.rounded()))°" } ?? "–"
+            compass.debugLine = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s · quiet \(String(format: "%.1f", quiet))s"
+                + "\nqibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status) · restarts \(restarts)"
+        }
+        samplesThisSecond = 0
+        #endif
+    }
+
+    /// Where the qibla is measured from: a fix, else iOS's cached one, else the saved prayer place.
+    private func setQiblaOrigin(_ location: CLLocation?) {
+        var coordinate = location?.coordinate
+        if coordinate == nil, let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
+            let lat = group.double(forKey: "lastLatitude"), lon = group.double(forKey: "lastLongitude")
+            if lat != 0 || lon != 0 { coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon) }
+        }
+        qiblaBearing = coordinate.map(Self.bearingToKaaba)
+        updateQibla()
+    }
+
+    /// The arrow's angle and "aligned", published only on change. No place yet → not aligned (it
+    /// used to say aligned, since the bearing came back as 0).
+    private func updateQibla() {
+        let status: CompassStatus = qiblaBearing == nil ? .noLocation : headingReliable ? .ok : .unreliable
+        if compass.status != status { compass.status = status }
+        guard let bearing = qiblaBearing else {
+            if compass.qibla.aligned || compass.qibla.heading != 0 { compass.qibla = (false, 0) }
+            return
+        }
+        let off = Self.signed(bearing - compass.heading)
+        let threshold = QiblaSettings.alignmentThreshold
+        // A little more to leave than to enter, so it doesn't flicker (and buzz) at the edge.
+        let aligned = status == .ok && abs(off) <= (compass.qibla.aligned ? threshold + 1.5 : threshold)
+        if aligned != compass.qibla.aligned || abs(off - compass.qibla.heading) >= 0.5 {
+            compass.qibla = (aligned, off)
+        }
+    }
+
+    #if DEBUG
+    /// `-demoCompassJiggle` (the simulator has no compass): a reading through the real path.
+    /// `around`: degrees relative to the qibla instead of north.
+    func debugHeading(_ degrees: Double, around qibla: Bool) {
+        let value = qibla ? (qiblaBearing ?? 0) + degrees : degrees
+        take((value.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), reliable: true, smoothing: 0.5)
+    }
+    #endif
+
+    /// −180…180.
+    static func signed(_ degrees: Double) -> Double {
+        var d = degrees.truncatingRemainder(dividingBy: 360)
+        if d > 180 { d -= 360 }
+        if d < -180 { d += 360 }
+        return d
+    }
+
+    /// The great-circle bearing to the Kaaba, from true north.
+    static func bearingToKaaba(from c: CLLocationCoordinate2D) -> Double {
+        let lat = c.latitude * .pi / 180, lon = c.longitude * .pi / 180
+        let kLat = 21.4225 * .pi / 180, kLon = 39.8262 * .pi / 180
+        let y = sin(kLon - lon)
+        let x = cos(lat) * tan(kLat) - sin(lat) * cos(kLon - lon)
+        let bearing = atan2(y, x) * 180 / .pi
+        return (bearing + 360).truncatingRemainder(dividingBy: 360)
     }
 }

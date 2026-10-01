@@ -22,7 +22,6 @@ struct MainCircleView: View {
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
-    @EnvironmentObject var compass: CompassState                 // heading/qibla, per update
     @Environment(\.colorScheme) var colorScheme
     
     @State private var currentTime = Date()
@@ -249,32 +248,9 @@ struct MainCircleView: View {
             
 
             if sharedState.bottomTabPosition != .zikr {
-                // Qibla Arrow
-                Image(systemName: "chevron.up")
-                    .font(.subheadline)
-                    .foregroundColor(compass.qibla.aligned ? .green : .primary)
-                    .background(
-                        Circle() // this is to increase tappable aread
-                            .fill(Color.white.opacity(0.001))
-                            .frame(width: 44, height: 44)
-                    )
-                    .opacity(0.5)
-                    .offset(y: -80)
-                    .rotationEffect(Angle(degrees: compass.qibla.aligned ? 0 : compass.qibla.heading))
-                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
-                    .onChange(of: compass.qibla.aligned) { _, newIsAligned in
-                        checkToTriggerQiblaHaptic(aligned: newIsAligned)
-                    }
-                    .onTapGesture { showQiblaMap = true }
-                
-                
-                // Alligned Indicator Cirlc
-                Circle()
-                    .fill(Color(.systemGray)/*.primary*/)
-                    .frame(width: 8, height: 8)
-                    .offset(y: -100)
-                    .opacity(compass.qibla.aligned ? 1.0 : 0)
-//                    .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: compass.qibla.aligned)
+                // Its own view: only the arrow redraws with the compass, not the whole circle.
+                QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
+                           tap: { showQiblaMap = true })
             }
             
 
@@ -372,7 +348,7 @@ struct MainCircleView: View {
         }
         .onAppear { currentTime = Date() }
         // One timer for the view's lifetime. It was created inline in `body`, so every re-render made a
-        // new one — and this view re-renders on every compass update, so while the phone moved the
+        // new one — and this view re-rendered on every compass update then (QiblaArrow has its own now), so the
         // timer was replaced before it ever fired: `currentTime` froze and a prayer that had started
         // showed an empty ring (owner, 2026-09-27: Isha 8:28 PM, empty; fixed by leaving the app).
         .onReceive(Self.ticker) { newTime in
@@ -745,3 +721,59 @@ private func triggerPulse() {
      return formatter.string(from: date)
  }
 */
+
+/// The qibla arrow on the Salah circle and the dot it lights when you face the qibla. Its own view
+/// so only it redraws with the compass (up to ~30 times a second) — the whole circle used to, which
+/// is how its 1 s clock froze while the phone moved (2026-09-27) — and nothing above it does
+/// (4789a97, the picker flicker). Dim while there's no place yet or iOS says the heading can't be
+/// trusted; never green then.
+private struct QiblaArrow: View {
+    @EnvironmentObject private var compass: CompassState
+    let onAligned: (Bool) -> Void
+    let tap: () -> Void
+    #if DEBUG
+    @AppStorage("compassDebug") private var debug = false
+    #endif
+
+    var body: some View {
+        let usable = compass.status == .ok
+        let aligned = usable && compass.qibla.aligned
+        ZStack {
+            Image(systemName: "chevron.up")
+                .font(.subheadline)
+                .foregroundColor(aligned ? .green : .primary)
+                .background(
+                    Circle() // a bigger tap area
+                        .fill(Color.white.opacity(0.001))
+                        .frame(width: 44, height: 44)
+                )
+                .opacity(usable ? 0.5 : 0.18)
+                .offset(y: -80)
+                // −180…180, so snapping to "aligned" turns the short way (it could spin a full turn).
+                .rotationEffect(Angle(degrees: aligned ? 0 : compass.qibla.heading))
+                .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: aligned)
+                .animation(.easeOut(duration: 0.25), value: usable)
+                .onChange(of: aligned) { _, isAligned in onAligned(isAligned) }
+                .onTapGesture(perform: tap)
+
+            // Aligned: a dot above the arrow.
+            Circle()
+                .fill(Color(.systemGray))
+                .frame(width: 8, height: 8)
+                .offset(y: -100)
+                .opacity(aligned ? 1.0 : 0)
+
+            #if DEBUG
+            if debug {
+                Text(compass.debugLine)
+                    .font(.system(size: 9, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                    .offset(y: 128)
+                    .allowsHitTesting(false)
+            }
+            #endif
+        }
+    }
+}
