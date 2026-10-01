@@ -170,6 +170,16 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // …and an hour before it ends: the Lock Screen's circle shows the time left from then.
         let lastHour = shown.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
         if shown.end > shown.start, lastHour > base.date, lastHour > shown.start { moments.append(lastHour) }
+        // "27m" / "27min" (LockTimeStyle, the owner comparing styles): iOS can't tick those itself,
+        // so an entry each minute of the last hour — only with one of them picked, only for a prayer
+        // that's on. The countdown style ("27:13") needs none.
+        if LockTimeStyle.current != .timer, shown.current, shown.end > base.date {
+            var minute = shown.end.addingTimeInterval(-60)
+            while minute > base.date, minute >= lastHour {
+                moments.append(minute)
+                minute = minute.addingTimeInterval(-60)
+            }
+        }
         // …and when its colour changes (Perfect → On time → Late), so the ring's colour moves on
         // time like the app's (the fill itself runs live). Two more entries at most.
         if shown.end > shown.start {
@@ -1243,13 +1253,21 @@ struct PrayerLockScreenView: View {
                     Image(systemName: prayerIcon(for: prayer.name))
                         .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
                     if lastHour {
-                        // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left,
-                        // live, in place of the name — the symbol says which prayer.
-                        Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
-                            .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .multilineTextAlignment(.center)
-                            .lineLimit(1).minimumScaleFactor(0.6)
+                        // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left in
+                        // place of the name — the symbol says which prayer. "27:13" live, or "27m" /
+                        // "27min" from this entry (the timeline steps it each minute; LockTimeStyle).
+                        Group {
+                            let style = LockTimeStyle.current
+                            if style == .timer {
+                                Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
+                            } else {
+                                Text(style.text(left: prayer.end.timeIntervalSince(entry.date)))
+                            }
+                        }
+                        .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1).minimumScaleFactor(0.6)
                     } else {
                         Text(prayer.name)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))

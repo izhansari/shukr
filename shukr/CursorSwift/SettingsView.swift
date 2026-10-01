@@ -67,6 +67,9 @@ struct SettingsView: View {
     @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
     /// DEBUG / TestFlight only: Run setup again (the same gate as What's new).
     @ObservedObject private var betaAccess = WhatsNewAccess.shared
+    /// The Lock Screen circle's last-hour time left: "27:13" / "27m" / "27min" (owner comparing, J2UQ).
+    @AppStorage(LockTimeStyle.key, store: UserDefaults(suiteName: SharedStore.appGroup))
+    private var lockTimeStyle = LockTimeStyle.timer.rawValue
     /// What Automatic currently resolves to (re-read when the stored country changes).
     @AppStorage(AutoMethod.countryKey, store: UserDefaults(suiteName: SharedStore.appGroup)) private var autoCountry = ""
     private var automaticLabel: String {
@@ -152,6 +155,7 @@ struct SettingsView: View {
                 .padding(.horizontal)
                 .padding(.top, 8)
                 
+                ScrollViewReader { proxy in
                 Form {
                     
                     //MARK: - Location Info
@@ -325,6 +329,19 @@ struct SettingsView: View {
                     
                     
                     if betaAccess.available {
+                        // Comparing styles before settling on one (owner, J2UQ) — then this goes.
+                        Section {
+                            Picker("Lock Screen time left", selection: $lockTimeStyle) {
+                                ForEach(LockTimeStyle.allCases) { Text($0.sample).tag($0.rawValue) }
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: lockTimeStyle) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
+                        } header: {
+                            Text("Lock Screen time left")
+                        } footer: {
+                            Text("Beta builds only: how the Lock Screen circle shows the time left in a prayer's last hour.")
+                        }
+                        .id("lockTime")
                         Section {
                             Button {
                                 NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
@@ -450,6 +467,14 @@ struct SettingsView: View {
                     }
                     #endif
                     
+                }
+                #if DEBUG
+                .task {   // `-settingsScrollTo lockTime`: Settings opened on the Lock Screen time-left picker
+                    guard UserDefaults.standard.string(forKey: "settingsScrollTo") == "lockTime" else { return }
+                    try? await Task.sleep(for: .seconds(2.5))
+                    proxy.scrollTo("lockTime", anchor: .center)
+                }
+                #endif
                 }
             }
             floatingMessageView(showFloatingMessage: $showFloatingMessage)
