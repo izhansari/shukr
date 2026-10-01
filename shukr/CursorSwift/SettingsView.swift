@@ -414,6 +414,9 @@ struct SettingsView: View {
                                 ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
                             }
                             Button("Ring playground…") { showRingPlayground = true }
+                            // Every notification, today's and the proposed, to this phone 6 s apart (lock it to see).
+                            Button("Send notification samples · now") { Task { await NotificationSamples.send(.current) } }
+                            Button("Send notification samples · proposed") { Task { await NotificationSamples.send(.proposed) } }
                             Button("NEXT label playground…") { showNextPlayground = true }
                             Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
