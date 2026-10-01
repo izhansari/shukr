@@ -937,8 +937,8 @@ struct MantraEditorView: View {
             .toolbar(.hidden, for: .navigationBar)
             // Don't lose typed edits to a swipe; with no edits it swipes away like any sheet.
             .interactiveDismissDisabled((mantra != nil && hasEdits) || newHasContent)
-            .fullScreenCover(isPresented: $creatingTask) {
-                if let mantra { AddDailyTaskView(for: mantra, isPresented: $creatingTask) }
+            .sheet(isPresented: $creatingTask) {
+                if let mantra { NewTaskFlow(locked: mantra) }
             }
             .toolbar {
                 if sessionsEditing {

@@ -74,7 +74,7 @@ struct AzkarPage: View {
                     ToolbarItem(placement: .bottomBar) { plus }
                 }
             }
-            .sheet(isPresented: $showingNewZikr) { MantraEditorView(mantra: nil) }
+            .newZikrCard(isPresented: $showingNewZikr)   // the card over the page, not a sheet
     }
 }
 

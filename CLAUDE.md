@@ -312,6 +312,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `ZikrDoor`s — **Azkar** left → `AzkarPage`, **History** right → `ZikrHistoryPage` (each its own page; the old History |
   Azkar pager `ZikrLibraryView` and the Tasks sheet are gone). The title follows the wheel (task streaks).
 - `ZikrCircleWheel` (gentle arc, left dot scrubber): freestyle, the tasks NOT finished today, New task; after a session the next unfinished task centres (a centred task that finishes → `nextFocus`). A widget focus on a finished task is dropped; a start from a zikr's page still starts it. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen).
+- **New task** = `NewTaskFlow` (NewTaskFlow.swift), one sheet, never swiped away (✕ on step one, ‹ back): which zikr ("A
+  new zikr" = `newZikrCard`, a card over a dimmed screen — also Azkar's ＋) → goal (`RepeatRoundButton` hold-repeat, typed
+  number, Count ⇄ Minutes converts at `secondsPerCount`) → where it goes (`NewTaskPlacer`: the system's List `.onMove`, only
+  the new row moves — `onMove` ignores the rest, `moveDisabled` refused every drop; only with tasks already) → Looks good
+  (preview, name, `TaskReminderSheet(embedded:)` slid in). The wheel's New task, Your tasks' ＋ and a zikr's page all open it.
+  The sim's simulated touches can't start a system drag: verify drags with an XCUITest. DEBUG `-demoNewTaskStep N`.
 - Your tasks: rows in the wheel's order (ring / ✓, "40 of 100" / "done", the reminder as a sage bell capsule, the streak), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → `AddDailyTaskView(editing:)` pushed (`navigationDestination(item:)`, its own ‹), swipe → confirm → `TaskModel.delete`, ＋ top right and a New task row. **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`.
 
 **Task streaks** (TaskStreak.swift; decisions task-streak-rule A / -miss A / -look C / -results A, 2026-10-01)

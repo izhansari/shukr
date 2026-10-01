@@ -87,9 +87,7 @@ struct YourTasksPage: View {
                     get: { editing != nil }, set: { if !$0 { editing = nil } }))
                     .toolbar(.hidden, for: .navigationBar)   // the editor has its own ‹
             }
-        .sheet(isPresented: $creating) {
-            AddDailyTaskView(isPresented: $creating, scrollProxy: .constant(nil))
-        }
+        .sheet(isPresented: $creating) { NewTaskFlow() }
         .onAppear { sessions = ZikrReminders.todaysSessions(context) }
         .onChange(of: editing) { _, _ in sessions = ZikrReminders.todaysSessions(context) }
         #if DEBUG

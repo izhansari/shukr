@@ -341,9 +341,16 @@ struct ZikrCircleWheel: View {
         .onAppear {
             if let task = sharedState.selectedTask { centered = task.id.uuidString }
         }
-        .fullScreenCover(isPresented: $showAddTask) {
-            AddDailyTaskView(isPresented: $showAddTask, scrollProxy: $newTaskScrollTarget)
+        .sheet(isPresented: $showAddTask) {
+            NewTaskFlow { newTaskScrollTarget = $0.id }   // the wheel centres it
         }
+        #if DEBUG
+        .task {   // -demoNewTaskStep N: the flow open at step N
+            guard UserDefaults.standard.integer(forKey: "demoNewTaskStep") > 0 else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            showAddTask = true
+        }
+        #endif
         .onChange(of: newTaskScrollTarget) { _, id in
             if let id { withAnimation { centered = id.uuidString } }
         }

@@ -289,8 +289,11 @@ struct TaskReminderSheet: View {
     private var hasLocation: Bool { (try? PrayerUtils.getUserCoordinates()) != nil }
     var onCancel: () -> Void
     var onSave: (ReminderDraft) -> Void
+    /// Inside another sheet (the new-task flow): no size or grabber of its own (they resized that sheet).
+    var embedded = false
 
-    init(draft: ReminderDraft, onCancel: @escaping () -> Void, onSave: @escaping (ReminderDraft) -> Void) {
+    init(draft: ReminderDraft, embedded: Bool = false, onCancel: @escaping () -> Void, onSave: @escaping (ReminderDraft) -> Void) {
+        self.embedded = embedded
         _draft = State(initialValue: draft)
         original = draft
         self.onCancel = onCancel
@@ -371,9 +374,21 @@ struct TaskReminderSheet: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await refreshPermission() }   // back from the Settings app
         }
-        .presentationDetents([.height(560)])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(28)
+        .modifier(SheetSizing(on: !embedded))
+    }
+
+    private struct SheetSizing: ViewModifier {
+        let on: Bool
+        func body(content: Content) -> some View {
+            if on {
+                content
+                    .presentationDetents([.height(560)])
+                    .presentationDragIndicator(.visible)
+                    .presentationCornerRadius(28)
+            } else {
+                content
+            }
+        }
     }
 
     /// Why a reminder couldn't go out: notifications off / never asked, or no location for a
