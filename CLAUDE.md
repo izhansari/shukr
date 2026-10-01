@@ -279,7 +279,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
 - Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).
-- `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah; `MasjidArrival` duas (CLMonitor, opt-in); `HolyCityWelcome`.
+- `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah; `MasjidArrival` duas (CLMonitor, opt-in; 200 m — a radius change re-adds the conditions, reports in the next 30 s are a baseline; a newly watched masjid is recorded as outside so the first arrival counts; DEBUG Library/Caches/masjid.log = every iOS report, the decision and each dua sent; the simulators don't deliver region events, test on a real visit); `HolyCityWelcome`.
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
 - A marked row in the widget's times list → "Unmark …?" in the app: a UIKit alert in its own window over anything
