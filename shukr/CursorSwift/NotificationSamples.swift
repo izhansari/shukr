@@ -50,24 +50,12 @@ enum NotificationSamples {
                body: "May Allah accept your visit to His House. The qibla is all around you now.", timeSensitive: false),
     ]
 
-    /// The proposal: each prayer nudge when the ring changes colour, in its colour and the app's words;
-    /// one stack per prayer; calmer follow-ups; the duas laid out line by line.
+    /// The proposal (owner, 2026-10-01: only the prayer notifications change; the emoji after the name, no grade
+    /// words): at the start, 30 min in (when the ring turns yellow), and with 30 min left.
     private static let proposed: [Sample] = [
-        Sample(title: "Asr 🟢", subtitle: "Perfect until 4:42 PM · ends 6:48 PM", category: "SampleRound1", thread: "asr"),
-        Sample(title: "Asr 🟡 On time", subtitle: "Still on time until 5:45 PM", category: "SampleRound1", thread: "asr"),
-        Sample(title: "Asr 🔴 Late", subtitle: "Still time: it ends at 6:48 PM", category: "SampleRound1", thread: "asr"),
-        Sample(title: "Asr ⏳ 30 min left", subtitle: "Pray before 6:48 PM so it isn't missed", category: "SampleRound1", thread: "asr"),
-        Sample(title: "Asr · 5 minutes later", body: "It ends at 6:48 PM", category: "SampleRound2", thread: "asr"),
-        Sample(title: "Asr · another 5 minutes?", body: "Yes for one more nudge, or pray now", category: "SampleConfirmNew", thread: "asr"),
-        Sample(title: "Asr · 5 more minutes passed", body: "It ends at 6:48 PM", category: "SampleRound1", thread: "asr"),
-        Sample(title: "Entering Islamic Center of Morrisville",
-               body: arabicIn + "\nAllahumma-ftah li abwaba rahmatik\nO Allah, open for me the gates of Your mercy.", thread: "masjid"),
-        Sample(title: "Leaving Islamic Center of Morrisville",
-               body: arabicOut + "\nAllahumma inni as'aluka min fadlik\nO Allah, I ask You of Your bounty.", thread: "masjid"),
-        Sample(title: "After Fajr", body: "Subhanallah · 33 counts · ~1 min", category: "SampleZikr", timeSensitive: false),
-        Sample(title: "Your prayer reminders end Monday", body: "Open shukr to line up the next week.", timeSensitive: false),
-        Sample(title: "Welcome to Makkah",
-               body: "May Allah accept your visit to His House. The qibla is all around you now.", timeSensitive: false),
+        Sample(title: "Asr 🟢", subtitle: "Pray by 6:48 PM", category: "SampleRound1"),
+        Sample(title: "Asr 🟡", subtitle: "30 minutes since Asr started · pray by 6:48 PM", category: "SampleRound1"),
+        Sample(title: "Asr 🔴", subtitle: "Only 30 minutes left · pray before 6:48 PM", category: "SampleRound1"),
     ]
 
     /// Look-alike buttons: the same titles as the real ones, ids the app doesn't handle.
