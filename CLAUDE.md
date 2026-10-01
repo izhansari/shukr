@@ -256,7 +256,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Streaks: a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`); "in-time days" = no Qaza (≥ 60); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).
 
 **Notifications & reminders** (NotificationScheduler.swift, NotificationHealth.swift)
-- ~7 days ahead: two full days (Start / Mid / End), then Start only; dated ids; defaults `NotificationDefaults`; a keep-alive slot; BGAppRefresh top-up. `ReminderHealthCard`. Actions: I already prayed, nudge 5 / 10.
+- ~7 days ahead: two full days (Start / Mid / End), then Start only; the wording (owner, decision prayer-notif-wording): "Asr 🟢 / 🟡 / 🔴", subtitle "Pray by 6:48 PM", body "Asr has started" · "30 min since Asr started" (Mid = start + 30 min, when the ring turns yellow; none for a window ≤ 1 h) · "Only 30 minutes left" (End = end − 30 min); DEBUG My Dev Stuff → Send notification samples; dated ids; defaults `NotificationDefaults`; a keep-alive slot; BGAppRefresh top-up. `ReminderHealthCard`. Actions: I already prayed, nudge 5 / 10.
 - Your reminders (`YourRemindersView`, Settings → Notifications): 64-bead ring, week rings, three explainer tiles.
 
 **First-run setup, location lost** (FirstRunSetup.swift)

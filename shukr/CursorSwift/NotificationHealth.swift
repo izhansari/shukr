@@ -154,7 +154,7 @@ struct ReminderHealthCard: View {
             if issue == .off {
                 VStack(alignment: .leading, spacing: 8) {
                     line("bell", "each prayer as it begins")
-                    line("bell.badge", "a nudge halfway and with 30 min left")
+                    line("bell.badge", "a nudge 30 min in and with 30 min left")
                     line("sunrise", "Fajr, before it's too late")
                     line("circle.hexagonpath", "your zikr reminders")
                 }
@@ -306,7 +306,7 @@ struct YourRemindersView: View {
         var label: String {
             switch self {
             case .start: "starts"
-            case .halfway: "halfway"
+            case .halfway: "30 min in"   // the "Mid" nudge: 30 min after the start (was halfway)
             case .endingSoon: "30 min left"
             case .zikr: "zikr reminder"
             case .zikrLater: "zikr, later"
@@ -714,7 +714,7 @@ struct YourRemindersView: View {
             let free = max(NotificationScheduler.limit - pending.count, 0)
             return ("How the 64 are spent.", [
                 Point(big: "Every start, all week", small: "Each prayer’s start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "calendar", warn: false),
-                Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "Halfway and 30-min nudges (the dotted days) are added as each day comes closer.", symbol: "bell.badge", warn: false),
+                Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "The 30-min-in and 30-min-left nudges (the dotted days) are added as each day comes closer.", symbol: "bell.badge", warn: false),
                 Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
             ], nil, [])
         }
@@ -913,7 +913,7 @@ struct YourRemindersView: View {
                 let start = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
                 items.append(Item(id: "\(key).\(name)Start", date: start, dayKey: key, kind: .start, prayer: name, title: name))
                 if d < 2 {
-                    items.append(Item(id: "\(key).\(name)Mid", date: start?.addingTimeInterval(5400), dayKey: key, kind: .halfway, prayer: name, title: name))
+                    items.append(Item(id: "\(key).\(name)Mid", date: start?.addingTimeInterval(1800), dayKey: key, kind: .halfway, prayer: name, title: name))
                     items.append(Item(id: "\(key).\(name)End", date: start?.addingTimeInterval(9000), dayKey: key, kind: .endingSoon, prayer: name, title: name))
                 }
             }

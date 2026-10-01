@@ -136,17 +136,8 @@ struct shukrApp: App {
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
-        // `-sendNotificationSamples now|proposed|both` (NotificationSamples): the batch, 6 s apart.
-        if let which = UserDefaults.standard.string(forKey: "sendNotificationSamples") {
-            Task {
-                if which != "proposed" { await NotificationSamples.send(.current) }
-                if which == "proposed" { await NotificationSamples.send(.proposed) }
-                if which == "both" {
-                    try? await Task.sleep(for: .seconds(80))   // after the 11 of today's
-                    await NotificationSamples.send(.proposed)
-                }
-            }
-        }
+        // `-sendNotificationSamples YES` (NotificationSamples): every notification, 6 s apart.
+        if UserDefaults.standard.bool(forKey: "sendNotificationSamples") { Task { await NotificationSamples.send() } }
         if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1) { AlarmSelfTest.run() }   // after migrateDefaults
         }

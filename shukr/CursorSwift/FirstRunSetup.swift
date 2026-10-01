@@ -16,7 +16,7 @@
 //  - location: EnvLocationManager (Always asked here, "Enter a city" = CityPickerSheet);
 //  - method: `calculationMethod` (0 = Automatic, AutoMethod) · madhab: `school` (app group);
 //  - appearance: `modeToggleNew` (0 light, 1 dark, 2 auto);
-//  - reminders: `<prayer>Notif` (at the start) + `<prayer>Nudges` (halfway and 30 min left);
+//  - reminders: `<prayer>Notif` (at the start) + `<prayer>Nudges` (30 min in and 30 min left);
 //  - Fajr alarm: `alarmEnabled` / `alarmOffsetMinutes` / `alarmIsBefore` / `alarmIsFajr`;
 //  - masjid: `MosqueFavorites` + `MasjidArrival`.
 //
@@ -1522,7 +1522,7 @@ private struct RemindersStep: View {
 
     var body: some View {
         StepScaffold(title: "Reminders that help",
-                     subtitle: "Not just at the start: if you haven't marked it yet, a nudge halfway through and with 30 min left.") {
+                     subtitle: "Not just at the start: if you haven't marked it yet, a nudge 30 min in and with 30 min left.") {
             VStack(spacing: 18) {
                 if notifications.isOn == false {
                     Nudge(text: "Notifications are off for shukr, so reminders can't reach you.",
@@ -1545,7 +1545,7 @@ private struct RemindersStep: View {
                 VStack(alignment: .leading, spacing: 6) {
                     legend("bell.slash.fill", "off", "no notification")
                     legend("bell.fill", "start", "when the prayer begins")
-                    legend("bell.badge.fill", "nudge", "also halfway through and with 30 min left, if it isn't marked")
+                    legend("bell.badge.fill", "nudge", "also 30 min in and with 30 min left, if it isn't marked")
                 }
                 .padding(.horizontal, 32)
                 Text("Tap a bell to change it. “I already prayed” on a notification marks the prayer.")
@@ -1851,7 +1851,7 @@ private struct ReviewStep: View {
                     row("circle.lefthalf.filled", "Appearance", ["Light", "Dark", "Auto · follows the sun"][min(max(mode, 0), 2)], step: .appearance)
                     divider
                     row("bell", "Reminders", remindersValue, step: .reminders,
-                        sell: "Not just at the start: if it isn't marked yet, a nudge halfway through and with 30 min left.") { notificationsNudge }
+                        sell: "Not just at the start: if it isn't marked yet, a nudge 30 min in and with 30 min left.") { notificationsNudge }
                     divider
                     row("alarm", "Fajr alarm", alarmValue, step: .fajr,
                         sell: "A real alarm from a rule you set once. It follows Fajr all year.")

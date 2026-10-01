@@ -414,9 +414,8 @@ struct SettingsView: View {
                                 ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
                             }
                             Button("Ring playground…") { showRingPlayground = true }
-                            // Every notification, today's and the proposed, to this phone 6 s apart (lock it to see).
-                            Button("Send notification samples · now") { Task { await NotificationSamples.send(.current) } }
-                            Button("Send notification samples · proposed") { Task { await NotificationSamples.send(.proposed) } }
+                            // Every notification shukr sends, to this phone 6 s apart (lock it to see).
+                            Button("Send notification samples") { Task { await NotificationSamples.send() } }
                             Button("NEXT label playground…") { showNextPlayground = true }
                             Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
@@ -803,8 +802,8 @@ struct NotificationDropdownInfo: View {
             
             HStack{
                 Image(systemName: "bell.badge.fill")
-                // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
-                Text("Nudge: If you haven't marked the prayer yet, you also get a notification halfway through its time and with 30 minutes left.")
+                // What NotificationScheduler sends: Mid = 30 min after the start, End = 30 min before it ends.
+                Text("Nudge: If you haven't marked the prayer yet, you also get a notification 30 minutes after it starts and with 30 minutes left.")
                     .font(.caption)
             }
             .foregroundColor(.gray)
@@ -819,8 +818,9 @@ struct NotificationDropdownInfo: View {
                     content.categoryIdentifier = "Round1_Snooze" // Associate the category
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
-                    content.title = "\(randPrayerName) Time 🟢"
+                    content.title = "\(randPrayerName) 🟢"
                     content.subtitle = "Pray by \(shortTimePM(Date()))"
+                    content.body = "\(randPrayerName) has started"
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
                     addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)
@@ -840,12 +840,13 @@ struct NotificationDropdownInfo: View {
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
                     let randNudge = [
-                        (title: "\(randPrayerName) At Midpoint 🟡", subtitle: "Did you pray? There's \(timeLeftString(from: Double.random(in: 60...110)*60))"),
-                        (title: "\(randPrayerName) Almost Over! 🔴", subtitle: "Did you pray? There's still \(timeLeftString(from: Double.random(in: 20...45)*60))")
+                        (title: "\(randPrayerName) 🟡", body: "30 min since \(randPrayerName) started"),
+                        (title: "\(randPrayerName) 🔴", body: "Only 30 minutes left")
                     ]
                         .randomElement()!
                     content.title = randNudge.title
-                    content.subtitle = randNudge.subtitle
+                    content.subtitle = "Pray by \(shortTimePM(Date().addingTimeInterval(45 * 60)))"
+                    content.body = randNudge.body
                     content.sound = UNNotificationSound.default
                     content.interruptionLevel = .timeSensitive
                     addToNotificationCenterBySeconds(identifier: "test", content: content, sec: 0.1)

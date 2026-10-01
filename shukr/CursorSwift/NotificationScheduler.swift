@@ -257,28 +257,30 @@ enum NotificationScheduler {
         return items
     }
 
-    /// The notification exactly as the app has always sent it (moved from PrayerViewModel's
-    /// `scheduleThisPrayerNotifAt`, 2026-09-27 — don't change the wording without the owner).
+    /// The prayer notifications (owner, 2026-10-01, decision prayer-notif-wording — don't change the wording
+    /// without him): the prayer and its colour, "Pray by 6:48 PM" always first, a second line that changes.
+    /// 🟢 at the start · 🟡 30 min in (when the ring turns from green to yellow; it used to be halfway) ·
+    /// 🔴 with 30 min left. A window of an hour or less gets no 🟡 (it would meet the 🔴).
     static func prayerNotification(_ kind: String, prayer: String,
                                    window: (start: Date, end: Date, window: TimeInterval)) -> (Date, UNNotificationContent)? {
         let endTime = window.end
         let date: Date
         let content = UNMutableNotificationContent()
+        content.subtitle = "Pray by \(shortTimePM(endTime))"
         switch kind {
         case "Start":
             date = window.start
-            content.title = "\(prayer) Time 🟢"
-            content.subtitle = "Pray by \(shortTimePM(endTime))"
-        case "Mid":
-            let timeUntilEnd = window.window * 0.5
-            date = endTime.addingTimeInterval(-timeUntilEnd)
-            content.title = "\(prayer) At Midpoint 🟡"
-            content.subtitle = "There's \(timeLeftString(from: timeUntilEnd))"
+            content.title = "\(prayer) 🟢"
+            content.body = "\(prayer) has started"
+        case "Mid":   // the id keeps "Mid"; it's 30 min in now
+            date = window.start.addingTimeInterval(30 * 60)
+            guard endTime.timeIntervalSince(window.start) > 60 * 60 else { return nil }
+            content.title = "\(prayer) 🟡"
+            content.body = "30 min since \(prayer) started"
         case "End":
-            let timeUntilEnd = 30.0 * 60
-            date = endTime.addingTimeInterval(-timeUntilEnd)
-            content.title = "\(prayer) Almost Over! 🔴"
-            content.subtitle = "There's only \(timeLeftString(from: timeUntilEnd))"
+            date = endTime.addingTimeInterval(-30 * 60)
+            content.title = "\(prayer) 🔴"
+            content.body = "Only 30 minutes left"
         default:
             return nil
         }
