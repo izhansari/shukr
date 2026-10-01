@@ -1317,8 +1317,8 @@ struct PrayerTimesView: View {
                             .padding()
                             .offset(y: live.pull)
                     }
-                    .opacity(Double((1 - sheetP) * (1 - zikrness)) * (live.postSalahNudge == nil ? 1 : 0))
-                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5 && live.postSalahNudge == nil)
+                    .opacity(Double((1 - sheetP) * (1 - zikrness)))
+                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
 
                     // Bottom bar: Salah with the sheet up, and always on Zikr.
                     CustomBottomBar()
@@ -1326,10 +1326,10 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(max(sheetP, zikrness) > 0.5)
                 }
             }
-            // Just prayed: the post-salah pill. Bottom of the page (in the chevron's place) with the
-            // sheet closed; with the prayer list open it would cover the last prayer, so it docks
-            // under the top bar instead. Chrome, above the pager: dragging it never moves a page.
-            .overlay(alignment: showBottom ? .top : .bottom) {
+            // Just prayed: the post-salah pill, always under the top bar — the same spot with the prayer
+            // list open or closed, so it never travels across the page (owner, decision
+            // post-salah-pill-place C). Chrome, above the pager: dragging it never moves a page.
+            .overlay(alignment: .top) {
                 if live.postSalahNudge != nil {
                     PostSalahNudge(
                         onOpen: {
@@ -1340,8 +1340,7 @@ struct PrayerTimesView: View {
                         onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
                         shown: zikrness < 0.5 && settingsness < 0.5
                     )
-                    .padding(.top, showBottom ? 64 : 0)
-                    .padding(.bottom, showBottom ? 0 : 34)
+                    .padding(.top, 64)
                     .opacity(Double(1 - zikrness))
                     .allowsHitTesting(zikrness < 0.5)
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))

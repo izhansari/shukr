@@ -302,7 +302,7 @@ struct MainCircleView: View {
                 withTransaction(swap) { heldPrayer = nil }
                 withAnimation(.easeInOut(duration: 0.45)) {
                     flourish = nil
-                    live?.postSalahNudge = event.name   // the post-salah pill at the bottom
+                    live?.postSalahNudge = event.name   // the post-salah pill under the top bar
                 }
             }
         }
