@@ -130,7 +130,7 @@ card ≤ ~40 % of the screen (picture 110 pt, headline / "Look for" 2 lines, wor
 
 **Decisions (ask wn-decisions):** a checklist badge top right (beside Done, always there — the count only when any; the page says "No decisions needed") = `WhatsNew.openDecisions()`
 (cached per revision) → `DecisionsView` (WhatsNewDecisions.swift): waiting first, then Decided as one folded row, closed on every open; options side
-by side (pictures, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note. His pick =
+by side (pictures, "Bradley's pick"); a tap chooses at once, Edit re-picks / adds a note, and tapping the pick again un-picks it ("Clear answer" → back to Waiting; an answer with `option: null`). The asker can `whatsnew.py decision-withdraw ID [--why]` (kept in Decided, greyed, "withdrawn") or `decision-revise ID [--question] [--option …] [--recommend]` (reopens it; earlier answers stop counting); board/decide.sh mirrors them. His pick =
 `FeedbackItem.Kind.decision` (`decision`, `option`, note in `text`) → feedback.md "🗳 Decision",
 state.json `decisions`; `import-verdicts` / `add` turn pulled ones into `decision-answer` lines (source phone).
 

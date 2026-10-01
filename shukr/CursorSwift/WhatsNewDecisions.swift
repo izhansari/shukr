@@ -101,6 +101,14 @@ struct DecisionsView: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 withAnimation(.snappy) { decidedOpen = true }
             }
+            // `-demoDecisionClear <id>`: un-picks it 2 s in (back to Waiting).
+            if let id = UserDefaults.standard.string(forKey: "demoDecisionClear"), let d = WhatsNew.decision(id) {
+                try? await Task.sleep(for: .seconds(2))
+                withAnimation(.snappy) {
+                    _ = FeedbackStore.shared.saveDecision(d, option: nil, text: "", existing: WhatsNew.answer(to: d)?.item)
+                }
+                return
+            }
             guard let spec = UserDefaults.standard.string(forKey: "demoDecisionChoose"),
                   let colon = spec.lastIndex(of: ":"),
                   let d = WhatsNew.decision(String(spec[..<colon])) else { return }
@@ -143,7 +151,8 @@ private struct DecidedFoldRow: View {
 }
 
 /// One question: the options side by side (their pictures, Bradley's pick marked). Open: tap one to choose it.
-/// Decided: his pick highlighted, his note, and Edit (choose again / change the note). ≤ ~40 % of the screen.
+/// Decided: his pick highlighted, his note, and Edit (choose again, tap the pick again to un-pick it — back to
+/// Waiting — or change the note). Withdrawn by the asker: greyed, "withdrawn", nothing to pick. ≤ ~40 % of the screen.
 private struct DecisionCard: View {
     let decision: WhatsNewDecision
     @State private var editing = false
@@ -153,12 +162,13 @@ private struct DecisionCard: View {
 
     var body: some View {
         let answer = WhatsNew.answer(to: decision)
+        let withdrawn = decision.withdrawnAt != nil
         let chosen = editing ? pick : answer?.option
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text(meta(answer)).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
                 Spacer(minLength: 8)
-                if answer != nil && !editing {
+                if answer != nil && !editing && !withdrawn {
                     Button("Edit") {
                         pick = answer?.option
                         note = answer?.words ?? ""
@@ -171,7 +181,10 @@ private struct DecisionCard: View {
             Text(decision.question)
                 .font(.headline)
                 .lineLimit(2)
-            if let why = decision.why, answer == nil || editing {
+            if withdrawn {
+                Text(decision.withdrawnWhy.map { "Withdrawn: \($0)" } ?? "Withdrawn: no longer needed")
+                    .font(.footnote).foregroundStyle(.secondary).lineLimit(2)
+            } else if let why = decision.why, answer == nil || editing {
                 Text("Bradley: \(why)").font(.footnote).foregroundStyle(.secondary).lineLimit(2)
             }
             // Two per row: 3–4 options wrap instead of squeezing into narrow columns (never a horizontal scroll).
@@ -179,12 +192,16 @@ private struct DecisionCard: View {
                                 GridItem(.flexible(), spacing: 10, alignment: .top)], alignment: .leading, spacing: 10) {
                 ForEach(decision.options) { o in
                     OptionTile(option: o, recommended: o.id == decision.recommend,
-                               chosen: chosen == o.id, dimmed: chosen != nil && chosen != o.id) {
+                               chosen: chosen == o.id, dimmed: withdrawn || (chosen != nil && chosen != o.id)) {
                         choose(o, answer: answer)
                     }
+                    .allowsHitTesting(!withdrawn)
                 }
             }
             if editing {
+                // Undo (ask decision-undo: "i couldn't edit it to deselect"): tap the pick again to clear it.
+                Text(pick == nil ? "No answer: Save puts it back in Waiting." : "Tap your pick again to clear it.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 TextField("Add a note (optional)", text: $note, axis: .vertical)
                     .lineLimit(1...3)
                     .focused($noteFocused)
@@ -194,9 +211,9 @@ private struct DecisionCard: View {
                     Button("Cancel") { withAnimation(.snappy) { editing = false } }
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button("Save") { save(answer: answer) }
+                    Button(pick == nil ? "Clear answer" : "Save") { save(answer: answer) }
                         .font(.body.weight(.semibold)).foregroundStyle(Color.sage)
-                        .disabled(pick == nil)
+                        .disabled(pick == answer?.option && note == (answer?.words ?? ""))
                 }
                 .frame(minHeight: 36)
             } else if let words = answer?.words, !words.isEmpty {
@@ -210,7 +227,10 @@ private struct DecisionCard: View {
 
     private func meta(_ answer: DecisionAnswer?) -> String {
         var parts = [decision.area ?? "Decision"]
-        if let answer {
+        if let withdrawn = decision.withdrawnAt {
+            parts.append("withdrawn")
+            parts.append(WhatsNew.whenLabel(withdrawn))
+        } else if let answer {
             let where_ = answer.source == "phone" ? "here" : answer.source == "board" ? "on the board" : "in chat"
             parts.append("you chose \(answer.option) \(where_)")
             parts.append(WhatsNew.whenLabel(answer.at))
@@ -225,20 +245,21 @@ private struct DecisionCard: View {
     private func choose(_ o: WhatsNewDecision.Option, answer: DecisionAnswer?) {
         triggerSomeVibration(type: .success)
         if editing {
-            pick = o.id
+            pick = pick == o.id ? nil : o.id   // the same one again un-picks it
             return
         }
         guard answer == nil else { return }
         withAnimation(.snappy) {
-            _ = FeedbackStore.shared.saveDecision(decision, option: o.id, text: "")
+            // Picking again after an un-pick edits that same note while the team hasn't picked it up.
+            _ = FeedbackStore.shared.saveDecision(decision, option: o.id, text: "", existing: WhatsNew.clearedItem(for: decision))
         }
     }
 
     private func save(answer: DecisionAnswer?) {
-        guard let pick else { return }
         triggerSomeVibration(type: .success)
         withAnimation(.snappy) {
-            _ = FeedbackStore.shared.saveDecision(decision, option: pick, text: note, existing: answer?.item)
+            // No pick = un-picked: it goes back to Waiting.
+            _ = FeedbackStore.shared.saveDecision(decision, option: pick, text: pick == nil ? "" : note, existing: answer?.item)
             editing = false
         }
     }

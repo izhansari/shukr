@@ -99,19 +99,44 @@ struct WhatsNewDecision: Decodable, Identifiable, Hashable {
     }
     let id: String
     var area: String?
-    let question: String
-    let options: [Option]
+    var question: String
+    var options: [Option]
     var recommend: String?
     var why: String?
     var created: String?
+    /// Set from `decision-revise` lines (the asker changed it): answers before this don't count.
+    var revisedAt: Date?
+    /// Set from a `decision-withdraw` line: no longer asked; kept in Decided as "withdrawn".
+    var withdrawnAt: Date?
+    var withdrawnWhy: String?
     var createdDate: Date { created.flatMap(WhatsNew.date(from:)) ?? .distantPast }
     func option(_ id: String) -> Option? { options.first { $0.id == id } }
+}
+
+/// The asker changed a decision (ask decision-undo): only the fields given; it reopens it.
+struct WhatsNewDecisionRevise: Decodable {
+    let decision: String
+    var question: String?
+    var options: [WhatsNewDecision.Option]?
+    var recommend: String?
+    var why: String?
+    var at: String?
+    var date: Date { at.flatMap(WhatsNew.date(from:)) ?? .distantPast }
+}
+
+/// The asker withdrew a decision (ask decision-undo): gone from the waiting list, kept as "withdrawn".
+struct WhatsNewDecisionWithdraw: Decodable {
+    let decision: String
+    var why: String?
+    var at: String?
+    var date: Date { at.flatMap(WhatsNew.date(from:)) ?? .distantPast }
 }
 
 /// His answer to a decision recorded in the file (chat / the board; the phone's own live in feedback.json).
 struct WhatsNewDecisionAnswer: Decodable {
     let decision: String
-    let option: String
+    /// nil = he un-picked it (back to waiting).
+    var option: String?
     var source: String?
     var at: String?
     var words: String?
@@ -186,6 +211,8 @@ enum WhatsNew {
         var builds: [WhatsNewBuild] = []
         var decisions: [WhatsNewDecision] = []
         var decisionAnswers: [WhatsNewDecisionAnswer] = []
+        var decisionRevisions: [WhatsNewDecisionRevise] = []
+        var decisionWithdrawals: [WhatsNewDecisionWithdraw] = []
     }
 
     /// Line by line: a bad line is skipped (and logged), never the file. A repeated id (a union merge
@@ -209,6 +236,8 @@ enum WhatsNew {
             case "build": if let b = try? decoder.decode(WhatsNewBuild.self, from: data) { f.builds.append(b) } else { bad += 1 }
             case "decision": if let d = try? decoder.decode(WhatsNewDecision.self, from: data) { f.decisions.append(d) } else { bad += 1 }
             case "decision-answer": if let a = try? decoder.decode(WhatsNewDecisionAnswer.self, from: data) { f.decisionAnswers.append(a) } else { bad += 1 }
+            case "decision-revise": if let r = try? decoder.decode(WhatsNewDecisionRevise.self, from: data) { f.decisionRevisions.append(r) } else { bad += 1 }
+            case "decision-withdraw": if let w = try? decoder.decode(WhatsNewDecisionWithdraw.self, from: data) { f.decisionWithdrawals.append(w) } else { bad += 1 }
             default: bad += 1
             }
         }
@@ -322,7 +351,24 @@ enum WhatsNew {
 
     /// Every decision, newest first (DEBUG `-demoWhatsNewDecisions` adds two samples).
     static var decisions: [WhatsNewDecision] {
-        var all = file.decisions
+        // As revised (each revise line's fields over the original, in order) and withdrawn — unless a
+        // revision came after the withdrawal, which asks it again.
+        var all = file.decisions.map { original -> WhatsNewDecision in
+            var d = original
+            for r in file.decisionRevisions.filter({ $0.decision == d.id }).sorted(by: { $0.date < $1.date }) {
+                if let q = r.question { d.question = q }
+                if let o = r.options, o.count >= 2 { d.options = o }
+                if let rec = r.recommend { d.recommend = rec }
+                if let why = r.why { d.why = why }
+                d.revisedAt = r.date
+            }
+            if let w = file.decisionWithdrawals.filter({ $0.decision == d.id }).max(by: { $0.date < $1.date }),
+               w.date > (d.revisedAt ?? .distantPast) {
+                d.withdrawnAt = w.date
+                d.withdrawnWhy = w.why
+            }
+            return d
+        }
         #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("-demoWhatsNewDecisions") { all += demoDecisions }
         #endif
@@ -330,17 +376,29 @@ enum WhatsNew {
     }
     static func decision(_ id: String) -> WhatsNewDecision? { decisions.first { $0.id == id } }
 
-    /// His answer: the newest of the phone's (`FeedbackItem.Kind.decision`) and the file's (chat / board).
+    /// His answer: the newest of the phone's (`FeedbackItem.Kind.decision`) and the file's (chat / board),
+    /// since the last revision. The newest being an un-pick (no option) means none — back to waiting.
     @MainActor static func answer(to d: WhatsNewDecision) -> DecisionAnswer? {
-        var best: DecisionAnswer?
-        func consider(_ a: DecisionAnswer) { if best == nil || a.at > best!.at { best = a } }
+        var best: (option: String?, answer: DecisionAnswer)?
+        let since = d.revisedAt ?? .distantPast
+        func consider(_ option: String?, _ a: DecisionAnswer) {
+            guard a.at > since else { return }
+            if best == nil || a.at > best!.answer.at { best = (option, a) }
+        }
         for item in FeedbackStore.shared.items where item.kind == .decision && item.decision == d.id {
-            if let o = item.option { consider(DecisionAnswer(option: o, words: item.text.isEmpty ? nil : item.text, at: item.updated, source: "phone", item: item)) }
+            consider(item.option, DecisionAnswer(option: item.option ?? "", words: item.text.isEmpty ? nil : item.text,
+                                                 at: item.updated, source: "phone", item: item))
         }
         for a in file.decisionAnswers where a.decision == d.id {
-            consider(DecisionAnswer(option: a.option, words: a.words, at: a.date, source: a.source ?? "chat", item: nil))
+            consider(a.option, DecisionAnswer(option: a.option ?? "", words: a.words, at: a.date, source: a.source ?? "chat", item: nil))
         }
-        return best
+        guard let best, best.option != nil else { return nil }
+        return best.answer
+    }
+
+    /// The phone's own un-pick, when that's the newest word on it (so Edit can still reach that item).
+    @MainActor static func clearedItem(for d: WhatsNewDecision) -> FeedbackItem? {
+        FeedbackStore.shared.items.last { $0.kind == .decision && $0.decision == d.id && $0.option == nil }
     }
 
     /// Waiting for his answer, newest first — the badge's count; cached like the open asks.
@@ -350,7 +408,7 @@ enum WhatsNew {
         let r = FeedbackStore.shared.revision
         if r != decisionsRevision { openDecisionsCache = nil; decisionsRevision = r }
         if let openDecisionsCache { return openDecisionsCache }
-        let open = decisions.filter { answer(to: $0) == nil }
+        let open = decisions.filter { $0.withdrawnAt == nil && answer(to: $0) == nil }
         openDecisionsCache = open
         return open
     }
@@ -429,7 +487,9 @@ enum WhatsNew {
             }
         }
         var decisionMap: [String: String] = [:]
-        for d in file.decisions { decisionMap[d.id] = answer(to: d) == nil ? "open" : "answered" }
+        for d in decisions where !d.id.hasPrefix("demo-") {
+            decisionMap[d.id] = d.withdrawnAt != nil ? "withdrawn" : answer(to: d) == nil ? "open" : "answered"
+        }
         let now = iso.string(from: Date())
         FeedbackStore.writer.async {
             let body: [String: Any] = ["version": 4, "asks": map, "decisions": decisionMap]

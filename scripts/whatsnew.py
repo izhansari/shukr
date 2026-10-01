@@ -14,13 +14,20 @@ The file is JSON Lines: one record per line, never hand-edited. Four kinds:
   decision {"kind":"decision","id","area","question","options":[{"id","label","shot"?}],"recommend"?,"why"?,"created"}
           a question for Izhan (CLAUDE.md step 8); open until a decision-answer line exists
   decision-answer {"kind":"decision-answer","decision","option","words"?,"source":"chat"|"phone"|"board","at"}
-          his answer — in chat, on the What's new page or on the board, all the same record
+          his answer — in chat, on the What's new page or on the board, all the same record. The newest one
+          counts; "option": null = he un-picked it (back to waiting)
+  decision-revise {"kind":"decision-revise","decision","question"?,"options"?,"recommend"?,"why"?,"at"}
+          the asker changed it (only the fields given); answers from before it no longer count — it's open again
+  decision-withdraw {"kind":"decision-withdraw","decision","why"?,"at"}
+          the asker withdrew it: off the waiting lists, kept as "withdrawn" (a later revise asks it again)
 
 `.gitattributes` merges this file with `merge=union`, so two branches that both append lines merge cleanly.
 New change ids get a random suffix ("apple-watch-k3f9"), so branches can't mint the same id.
 
   whatsnew.py decision --id ID --question "…" --area AREA --option "A|label|wn-x.jpg" --option "B|…" [--recommend A]
-  whatsnew.py decision-answer ID --option B [--words "…"] [--source chat|phone|board]
+  whatsnew.py decision-answer ID (--option B | --clear) [--words "…"] [--source chat|phone|board]
+  whatsnew.py decision-revise ID [--question "…"] [--option "A|label|wn-x.jpg"]… [--recommend A] [--why "…"]
+  whatsnew.py decision-withdraw ID [--why "…"]
                   (answers from the phone come in with import-verdicts / add, from the pulled feedback.json)
   whatsnew.py add --topic ID --title "…" --headline "…" --try "…" [--try "…"] [--shot wn-x.jpg]…
                   [--ask SLUG [--ask-words "his words"] | --ask-note <feedback id>]… [--notes "#17"]
@@ -80,6 +87,8 @@ KEY_ORDER = {
     "build": ["kind", "number", "time", "commit"],
     "decision": ["kind", "id", "area", "created", "question", "options", "recommend", "why"],
     "decision-answer": ["kind", "decision", "option", "source", "at", "words"],
+    "decision-revise": ["kind", "decision", "at", "question", "options", "recommend", "why"],
+    "decision-withdraw": ["kind", "decision", "at", "why"],
 }
 
 
@@ -403,16 +412,99 @@ def decision_answer(a, records=None):
     standalone = records is None
     if standalone:
         records = load()
-    d = find(records, "decision", a.id)
+    d = effective_decision(records, a.id)
     if not d:
         sys.exit(f"no decision {a.id!r}")
-    if a.option not in [o["id"] for o in d["options"]]:
-        sys.exit(f"{a.id}: no option {a.option!r}")
-    records.append({"kind": "decision-answer", "decision": a.id, "option": a.option, "source": a.source,
+    option = None if getattr(a, "clear", False) else a.option
+    if option is not None and option not in [o["id"] for o in d["options"]]:
+        sys.exit(f"{a.id}: no option {option!r}")
+    records.append({"kind": "decision-answer", "decision": a.id, "option": option, "source": a.source,
                     "at": getattr(a, "at", None) or now(), "words": a.words})
     if standalone:
         save(records)
-    print(f"{a.id}: answered {a.option} ({a.source})")
+    print(f"{a.id}: " + (f"answered {option}" if option else "un-picked (open again)") + f" ({a.source})")
+
+
+def _ts(text):
+    try:
+        return datetime.datetime.fromisoformat(text)
+    except (TypeError, ValueError):
+        return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+
+
+def effective_decision(records, did):
+    """The decision as revised (each decision-revise line's fields over it, in order), or None."""
+    base = find(records, "decision", did)
+    if not base:
+        return None
+    d = dict(base)
+    for r in sorted((r for r in of(records, "decision-revise") if r.get("decision") == did), key=lambda r: _ts(r.get("at"))):
+        for k in ("question", "options", "recommend", "why"):
+            if r.get(k) is not None:
+                d[k] = r[k]
+        d["revised_at"] = r.get("at")
+    return d
+
+
+def decision_state(records, did):
+    """'open', 'answered' or 'withdrawn' (the app's rule: newest answer since the last revision counts;
+    an un-pick is open; a withdrawal after the last revision is withdrawn)."""
+    d = effective_decision(records, did)
+    since = _ts(d.get("revised_at")) if d and d.get("revised_at") else _ts(None)
+    withdrawals = [_ts(w.get("at")) for w in of(records, "decision-withdraw") if w.get("decision") == did]
+    if withdrawals and max(withdrawals) > since:
+        return "withdrawn"
+    answers = [r for r in of(records, "decision-answer") if r.get("decision") == did and _ts(r.get("at")) > since]
+    if not answers:
+        return "open"
+    newest = max(answers, key=lambda r: _ts(r.get("at")))
+    return "answered" if newest.get("option") else "open"
+
+
+def decision_revise(a, records=None):
+    standalone = records is None
+    if standalone:
+        records = load()
+    d = effective_decision(records, a.id)
+    if not d:
+        sys.exit(f"no decision {a.id!r}")
+    line = {"kind": "decision-revise", "decision": a.id, "at": getattr(a, "at", None) or now()}
+    if a.question:
+        line["question"] = a.question
+    if a.option:
+        options = [parse_option(o) for o in a.option]
+        ids = [o["id"] for o in options]
+        if len(options) < 2 or len(set(ids)) != len(ids):
+            sys.exit("--option: at least two, with different ids (they replace the whole list)")
+        for o in options:
+            if o.get("shot") and not (SHOTS / o["shot"]).exists():
+                sys.exit(f"no screenshot {SHOTS / o['shot']}")
+        line["options"] = options
+    if a.recommend:
+        ids = [o["id"] for o in line.get("options", d["options"])]
+        if a.recommend not in ids:
+            sys.exit(f"--recommend {a.recommend!r} isn't one of {ids}")
+        line["recommend"] = a.recommend
+    if a.why:
+        line["why"] = a.why
+    if len(line) == 3:
+        sys.exit("nothing to revise: give --question, --option, --recommend or --why")
+    records.append(line)
+    if standalone:
+        save(records)
+    print(f"{a.id}: revised (open again)")
+
+
+def decision_withdraw(a, records=None):
+    standalone = records is None
+    if standalone:
+        records = load()
+    if not find(records, "decision", a.id):
+        sys.exit(f"no decision {a.id!r}")
+    records.append({"kind": "decision-withdraw", "decision": a.id, "at": getattr(a, "at", None) or now(), "why": a.why})
+    if standalone:
+        save(records)
+    print(f"{a.id}: withdrawn")
 
 
 def import_decisions(records=None, quiet=False):
@@ -445,8 +537,32 @@ def import_decisions(records=None, quiet=False):
             done = {(r.get("decision"), r.get("at")) for r in of(records, "decision-answer")}
             if (q["id"], q.get("at")) in done:
                 continue
-            decision_answer(argparse.Namespace(id=q["id"], option=q.get("option"), words=q.get("words"),
-                                               source=q.get("source", "chat"), at=q.get("at")), records)
+            clear = q.get("option") in (None, "", "clear", "none")
+            decision_answer(argparse.Namespace(id=q["id"], option=None if clear else q.get("option"), clear=clear,
+                                               words=q.get("words"), source=q.get("source", "chat"), at=q.get("at")), records)
+            added += 1
+        elif q.get("type") == "withdraw" and find(records, "decision", q.get("id")):
+            if any(w.get("decision") == q["id"] and w.get("at") == q.get("at") for w in of(records, "decision-withdraw")):
+                continue
+            decision_withdraw(argparse.Namespace(id=q["id"], why=q.get("why"), at=q.get("at")), records)
+            added += 1
+        elif q.get("type") == "revise" and find(records, "decision", q.get("id")):
+            if any(r.get("decision") == q["id"] and r.get("at") == q.get("at") for r in of(records, "decision-revise")):
+                continue
+            opts = None
+            if q.get("options"):
+                opts = []
+                for o in q["options"]:
+                    spec = f"{o['id']}|{o['label']}"
+                    if o.get("png") and Path(o["png"]).exists():
+                        name = f"decision-{q['id']}-{o['id']}-r".lower()
+                        shot(o["png"], name)
+                        spec += f"|wn-{name}.jpg"
+                    elif o.get("shot"):
+                        spec += f"|{o['shot']}"
+                    opts.append(spec)
+            decision_revise(argparse.Namespace(id=q["id"], question=q.get("question"), option=opts,
+                                               recommend=q.get("recommend"), why=q.get("why"), at=q.get("at")), records)
             added += 1
     # His answers on the phone's Decisions page, once pulled (pull-feedback.sh): FeedbackItem kind "decision".
     known = {(r.get("decision"), r.get("at")) for r in of(records, "decision-answer")}
@@ -457,10 +573,11 @@ def import_decisions(records=None, quiet=False):
         at = item.get("updated") or item.get("created")
         if not d or not at or (item["decision"], at) in known:
             continue
-        if item.get("option") not in [o["id"] for o in d.get("options") or []]:
+        option = item.get("option")   # None = he un-picked it on the phone
+        if option is not None and option not in [o["id"] for o in (effective_decision(records, item["decision"]) or d).get("options") or []]:
             continue
-        decision_answer(argparse.Namespace(id=item["decision"], option=item["option"], words=item.get("text") or None,
-                                           source="phone", at=at), records)
+        decision_answer(argparse.Namespace(id=item["decision"], option=option, clear=option is None,
+                                           words=item.get("text") or None, source="phone", at=at), records)
         known.add((item["decision"], at))
         added += 1
     if standalone:
@@ -527,16 +644,26 @@ def check():
         d = decisions.get(r.get("decision"))
         if d is None:
             problems.append(f"answer for unknown decision {r.get('decision')!r}")
-        elif r.get("option") not in [o.get("id") for o in d.get("options") or []]:
+            continue
+        # Any version's options (an answer can predate a revision); null = un-picked.
+        known = {o.get("id") for o in d.get("options") or []}
+        for rv in of(records, "decision-revise"):
+            if rv.get("decision") == d.get("id"):
+                known |= {o.get("id") for o in rv.get("options") or []}
+        if r.get("option") is not None and r.get("option") not in known:
             problems.append(f"answer for {r.get('decision')}: unknown option {r.get('option')!r}")
+    for r in of(records, "decision-revise") + of(records, "decision-withdraw"):
+        if r.get("decision") not in decisions:
+            problems.append(f"{r.get('kind')} for unknown decision {r.get('decision')!r}")
     numbers = [b.get("number") for b in of(records, "build")]
     for b in of(records, "build"):
         if not isinstance(b.get("number"), int) or not b.get("time") or not b.get("commit"):
             problems.append(f"build record needs number / time / commit: {b}")
     if len(numbers) != len(set(numbers)):
         problems.append("a build number is recorded twice")
-    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict", "build", "decision", "decision-answer")))
-    open_d = [i for i in decisions if not any(r.get("decision") == i for r in of(records, "decision-answer"))]
+    print(", ".join(f"{len(of(records, k))} {k}s" for k in ("topic", "ask", "change", "verdict", "build", "decision",
+                                                            "decision-answer", "decision-revise", "decision-withdraw")))
+    open_d = [i for i in decisions if decision_state(records, i) == "open"]
     if open_d:
         print("open decisions: " + ", ".join(open_d))
     for p in problems:
@@ -766,10 +893,25 @@ if __name__ == "__main__":
     elif cmd == "decision-answer":
         p = argparse.ArgumentParser(prog="whatsnew.py decision-answer")
         p.add_argument("id")
-        p.add_argument("--option", required=True)
+        g = p.add_mutually_exclusive_group(required=True)
+        g.add_argument("--option")
+        g.add_argument("--clear", action="store_true", help="un-pick: open again")
         p.add_argument("--words")
         p.add_argument("--source", default="chat", choices=["chat", "phone", "board"])
         decision_answer(p.parse_args(rest))
+    elif cmd == "decision-revise":
+        p = argparse.ArgumentParser(prog="whatsnew.py decision-revise")
+        p.add_argument("id")
+        p.add_argument("--question")
+        p.add_argument("--option", action="append", help='"A|label|wn-shot.jpg" — replaces the whole list')
+        p.add_argument("--recommend")
+        p.add_argument("--why")
+        decision_revise(p.parse_args(rest))
+    elif cmd == "decision-withdraw":
+        p = argparse.ArgumentParser(prog="whatsnew.py decision-withdraw")
+        p.add_argument("id")
+        p.add_argument("--why")
+        decision_withdraw(p.parse_args(rest))
     elif cmd == "shot" and len(rest) == 2:
         shot(*rest)
     elif cmd == "check":

@@ -115,7 +115,7 @@ struct FeedbackItem: Codable, Identifiable, Equatable {
         if kind == .decision, let id = decision {
             let d = WhatsNew.decision(id)
             let label = option.flatMap { d?.option($0)?.label }
-            return "\(d?.question ?? id) → \(label ?? option ?? "?")"
+            return "\(d?.question ?? id) → \(option == nil ? "un-picked (back to waiting)" : label ?? option ?? "?")"
         }
         if let e = onEntry.flatMap(WhatsNew.entry) { return kind == .idea ? "Idea from: \(e.short)" : e.short }
         return kind == .idea ? (area.map { "Idea · \($0)" } ?? "Idea") : topicTitle
@@ -257,7 +257,8 @@ final class FeedbackStore {
     /// His pick on a decision (Decisions page), with an optional note. Edits `existing` while it can still be
     /// edited in place (not picked up yet); otherwise a new answer (the newest one counts).
     @discardableResult
-    func saveDecision(_ d: WhatsNewDecision, option: String, text: String, existing: FeedbackItem? = nil) -> FeedbackItem {
+    /// `option` nil = he un-picked it: the decision goes back to waiting (ask decision-undo).
+    func saveDecision(_ d: WhatsNewDecision, option: String?, text: String, existing: FeedbackItem? = nil) -> FeedbackItem {
         var item = existing.flatMap { state($0) == .saved ? $0 : nil }
             ?? FeedbackItem(topic: "decision", topicTitle: "Decision", kind: .decision, text: "", build: BuildInfo.line)
         item.kind = .decision
@@ -346,8 +347,12 @@ final class FeedbackStore {
                 lines.append("- \(item.commits.count) change(s) \(since): " + item.commits.map { "`\($0)`" }.joined(separator: ", "))
             } else if item.kind == .decision {
                 let d = item.decision.flatMap(WhatsNew.decision)
-                let label = item.option.flatMap { d?.option($0)?.label } ?? ""
-                lines.append("## 🗳 Decision — \(item.decision ?? "?"): \(item.option ?? "?") — \(label)")
+                if let option = item.option {
+                    let label = d?.option(option)?.label ?? ""
+                    lines.append("## 🗳 Decision — \(item.decision ?? "?"): \(option) — \(label)")
+                } else {
+                    lines.append("## 🗳 Decision — \(item.decision ?? "?"): un-picked (back to waiting)")
+                }
                 if let q = d?.question { lines.append("- Question: \(q)") }
             } else if item.kind == .idea {
                 lines.append("## \(item.kind.emoji) Idea — \(item.area ?? "no area")")
