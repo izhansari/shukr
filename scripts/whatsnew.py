@@ -749,7 +749,7 @@ def testflight(since, out):
     for tid in order:
         t = topics.get(tid, {"title": tid, "area": "Other"})
         latest = [e for e in changes if e["topic"] == tid and not e.get("status")]
-        steps = t.get("tryIt") or (latest[-1]["tryIt"] if latest else [])
+        steps = t.get("tryIt") or (latest[-1].get("tryIt") or [] if latest else [])   # --no-try changes have none
         areas.setdefault(t["area"], []).append((t.get("summary") or t["title"], steps))
     lines = ["What's new since the last build. Thank you for testing!", ""]
     for area, items in areas.items():

@@ -182,7 +182,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - **Verify gesture fixes with a Release device install** (`-configuration Release` + devicectl): on iOS 26.6 dead Settings rows showed in Release only.
 - **TestFlight** (only after Izhan says go; Frank confirms first): `scripts/testflight.sh` bumps `CURRENT_PROJECT_VERSION` (12 places), archives Release with the watch, uploads (system PATH: Homebrew rsync breaks export), records the build (`whatsnew.py build`); commit the bump. Notes: `whatsnew.py testflight --since last` → `TestFlightNotes-<ver>.<build>.md` with a "What to Test (paste this)" block, **≤ 4000 chars, no emoji** (Apple rejects non-BMP). `scripts/asc.py builds` → VALID; `scripts/asc.py release <build> <notes.txt>` sets What to Test, adds every external group ("test" = public link https://testflight.apple.com/join/GW5j85jk), submits for beta review (`IN_BETA_TESTING` = testers have it). App id `6743040873`, team `7R387XZ2Y7`.
 - **App Store archive:** `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves out the What's new shots; check `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
-- Latest: 2.0 (13) from 155615f, 2026-09-29; full list in docs/history.
+- Latest: 2.0 (14) from c5bbcaa, 2026-10-01 (notes TestFlightNotes-2.0.14.md); full list in docs/history.
 
 ## Architecture rules and traps
 
