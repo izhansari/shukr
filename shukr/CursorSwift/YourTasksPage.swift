@@ -1,61 +1,26 @@
 //
-//  ZikrTasksSheet.swift
+//  YourTasksPage.swift
 //  shukr
 //
-//  The Zikr page's "Tasks" sheet (owner, 2026-09-29, ask zikr-tasks-sheet — replaces the wheel's
-//  jiggle mode and the reminders page): every task in the wheel's order with today's progress and
-//  its reminder; hold and drag to reorder (the wheel follows), tap → the task's edit screen pushed
-//  inside the sheet, swipe → delete (confirmed), ＋ → a new task.
+//  Your tasks (owner, 2026-09-29 as the Tasks sheet; a page since the Zikr tab reorganisation,
+//  2026-10-01): every task in the wheel's order with today's progress, its reminder and streak; hold
+//  and drag to reorder (the wheel follows), tap → the task's edit screen, swipe → delete (confirmed),
+//  ＋ → a new task. Reached from "N of M tasks done" under the wheel.
 //
 
 import SwiftUI
 import SwiftData
 
-/// The Zikr page's top-right button: opens the Tasks sheet.
-struct ZikrTasksButton: View {
-    @State private var showSheet = false
-
-    var body: some View {
-        Button {
-            triggerSomeVibration(type: .light)
-            showSheet = true
-        } label: {
-            Text("Tasks")
-                .font(.subheadline.weight(.medium))
-                .fontDesign(.rounded)
-                .foregroundStyle(.gray.opacity(0.9))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(Color.primary.opacity(0.06)))
-                .padding()
-                .contentShape(Rectangle())
-        }
-        .accessibilityLabel("Zikr tasks")
-        .sheet(isPresented: $showSheet) { ZikrTasksSheet() }
-        #if DEBUG
-        .task {
-            guard ProcessInfo.processInfo.arguments.contains("-demoZikrTasks") else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            showSheet = true
-        }
-        #endif
-    }
-}
-
-struct ZikrTasksSheet: View {
-    @Environment(\.dismiss) private var dismiss
+struct YourTasksPage: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
     @State private var sessions: [SessionDataModel] = []
-    @State private var path: [TaskModel] = []
+    /// The task whose edit screen is pushed.
+    @State private var editing: TaskModel?
     @State private var toDelete: TaskModel?
     @State private var creating = false
 
-    /// Opens straight onto `task`'s edit screen (a long-press on the wheel), so Back lands on the list.
-    var startOn: TaskModel? = nil
-
     var body: some View {
-        NavigationStack(path: $path) {
             List {
                 if tasks.isEmpty {
                     Section {
@@ -75,7 +40,8 @@ struct ZikrTasksSheet: View {
                 } else {
                     Section {
                         ForEach(tasks) { task in
-                            NavigationLink(value: task) { row(task) }
+                            Button { editing = task } label: { row(task) }
+                                .buttonStyle(.plain)
                                 .confirmationDialog("Delete “\(task.title)”?",
                                                     isPresented: Binding(get: { toDelete == task }, set: { if !$0 { toDelete = nil } }),
                                                     titleVisibility: .visible) {
@@ -97,6 +63,9 @@ struct ZikrTasksSheet: View {
                                 }
                         }
                         .onMove(perform: move)
+                        Button { creating = true } label: {
+                            Label("New task", systemImage: "plus.circle.fill").foregroundStyle(Color.sage)
+                        }
                     } footer: {
                         Text("Hold and drag to change the order on the Zikr page. Swipe left to delete.")
                     }
@@ -104,32 +73,25 @@ struct ZikrTasksSheet: View {
             }
             .listStyle(.insetGrouped)
             .fontDesign(.rounded)
-            .navigationTitle("Tasks")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Your tasks")
+            .navigationBarTitleDisplayMode(.large)
+            // Also top right: with many tasks the New task row is off screen.
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button { creating = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("New task")
                 }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
-            .navigationDestination(for: TaskModel.self) { task in
+            .navigationDestination(item: $editing) { task in
                 AddDailyTaskView(editing: task, isPresented: Binding(
-                    get: { path.contains(task) },
-                    set: { if !$0 { path.removeAll { $0 == task } } }))
+                    get: { editing != nil }, set: { if !$0 { editing = nil } }))
                     .toolbar(.hidden, for: .navigationBar)   // the editor has its own ‹
             }
-        }
-        // A task's edit screen is up: a swipe down would close the whole sheet (owner) — ‹ goes back.
-        .interactiveDismissDisabled(!path.isEmpty)
         .sheet(isPresented: $creating) {
             AddDailyTaskView(isPresented: $creating, scrollProxy: .constant(nil))
         }
-        .onAppear {
-            sessions = ZikrReminders.todaysSessions(context)
-            if let startOn { path = [startOn] }
-        }
-        .onChange(of: path) { _, _ in sessions = ZikrReminders.todaysSessions(context) }
+        .onAppear { sessions = ZikrReminders.todaysSessions(context) }
+        .onChange(of: editing) { _, _ in sessions = ZikrReminders.todaysSessions(context) }
         #if DEBUG
         .task { await demo() }
         #endif
@@ -191,7 +153,11 @@ struct ZikrTasksSheet: View {
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.tertiary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.tertiary)
         }
+        .contentShape(Rectangle())
         .padding(.vertical, 3)
     }
 
@@ -252,7 +218,7 @@ struct ZikrTasksSheet: View {
         let edit = UserDefaults.standard.integer(forKey: "demoZikrTasksEdit")
         let del = UserDefaults.standard.integer(forKey: "demoZikrTasksDelete")
         try? await Task.sleep(for: .seconds(1.5))
-        if edit > 0, edit <= tasks.count { path = [tasks[edit - 1]] }
+        if edit > 0, edit <= tasks.count { editing = tasks[edit - 1] }
         if del > 0, del <= tasks.count { toDelete = tasks[del - 1] }
     }
     #endif

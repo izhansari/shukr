@@ -195,16 +195,16 @@ struct ZikrCircleWheel: View {
     private var items: [Item] {
         [.freestyle] + tasks.filter { !isDone($0) }.map { .task($0) } + [.add]
     }
-    /// The summary's tap: the whole list, finished ones included.
-    @State private var showTasksSheet = false
+    /// The summary's tap: Your tasks, the whole list, finished ones included (a page).
+    @State private var showTasksPage = false
 
     var body: some View {
         wheel
             .overlay(alignment: .bottom) {
-                // "2 of 9 tasks done" opens the Tasks sheet (owner): the full list, what's finished.
+                // "2 of 9 tasks done" opens Your tasks (owner): the full list, what's finished.
                 Button {
                     triggerSomeVibration(type: .light)
-                    showTasksSheet = true
+                    showTasksPage = true
                 } label: {
                     tasksSummary
                         .padding(.horizontal, 16)
@@ -215,8 +215,14 @@ struct ZikrCircleWheel: View {
                 .accessibilityHint("Shows all your tasks")
                 .padding(.bottom, 100)
             }
-            .sheet(item: $tasksSheetOn) { task in ZikrTasksSheet(startOn: task) }
-            .sheet(isPresented: $showTasksSheet) { ZikrTasksSheet() }
+            .sheet(item: $tasksSheetOn) { task in
+                NavigationStack {
+                    AddDailyTaskView(editing: task, isPresented: Binding(
+                        get: { tasksSheetOn != nil }, set: { if !$0 { tasksSheetOn = nil } }))
+                        .toolbar(.hidden, for: .navigationBar)
+                }
+            }
+            .navigationDestination(isPresented: $showTasksPage) { YourTasksPage() }
             // A task finished while it's in the middle (or anywhere) leaves the wheel: land on the
             // next one still to do rather than on a gap.
             .onChange(of: items.map(\.id)) { _, ids in

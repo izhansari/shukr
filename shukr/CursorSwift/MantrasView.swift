@@ -22,7 +22,7 @@ struct MantrasView: View {
     @State private var editingMantra: MantraModel? = nil
     @State private var showingNewMantra = false
     @State private var search = ""
-    /// Inside `ZikrLibraryView`: the library owns the search field, the + and the sort button
+    /// Inside `AzkarPage`: the page owns the search field, the + and the sort button
     /// (both pages stay mounted side by side, so a page's own toolbar / search would show on the
     /// other page).
     var embedded = false
@@ -610,189 +610,6 @@ struct SaveButton: View {
     }
 }
 
-/// Zikr History and Azkar as one page (2026-09-25 — owner: they're the same subject and
-/// shouldn't be two hamburger rows): a History | Azkar switch in the navigation bar over the two
-/// pages. Reached from the Zikr tab's top-left button (the hamburger stays on Salah), and from
-/// the old routes (`showZikrHistory` / `showMantrasPage`).
-///
-/// **A native paging ScrollView** since 2026-09-27 (owner: paging was laggy). The hand-made pager
-/// changed `@State dragX` every frame, re-rendering both big lists each time. Now the scrolling is
-/// UIKit's, with no SwiftUI state per frame; the switch follows `scrollPosition`. It only
-/// existed so rows could keep sideways swipes, and neither page has any now (History deletes via
-/// Edit → select → Delete; Azkar has no bulk delete — its top-right slot is the sort button).
-struct ZikrLibraryView: View {
-    enum Tab: String, CaseIterable, Hashable { case history = "History", mantras = "Azkar" }
-    /// The page, bound to the pager's scroll position (nil while between pages).
-    @State private var page: Tab?
-    /// The switch's value: follows the page once it settles; a tap scrolls there.
-    @State private var tab: Tab
-    @State private var search = ""
-    @State private var showingNewMantra = false
-    /// History's Edit mode (select → Delete); its button lives in this bar.
-    @State private var editingHistory = false
-    /// Held while the history chart is being scrubbed (and while editing): no paging.
-    @State private var lock = LibraryPagerLock()
-
-    /// Just whether there's any session (History's Edit hides without). Trap from an earlier
-    /// version: a `#Predicate { $0.builtInID == nil }` query here looped SwiftUI's layout at
-    /// 100 % CPU (the library never appeared).
-    @Query private var anySession: [SessionDataModel]
-
-    private let start: Tab
-
-    init(start: Tab) {
-        self.start = start
-        _tab = State(initialValue: start)
-        _page = State(initialValue: start)
-        var one = FetchDescriptor<SessionDataModel>()
-        one.fetchLimit = 1
-        _anySession = Query(one)
-
-    }
-
-    private var editing: Bool { editingHistory }
-    /// What the pages filter by: a stray space doesn't count as a search (it hid the built-ins'
-    /// filter state and redrew both pages for nothing).
-    private var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
-    private var showsEdit: Bool { tab == .history && !anySession.isEmpty }
-    /// The top-right slot's fixed width: "Done" / "Select", or the sort pill (field + arrow).
-    static let trailingSlotWidth: CGFloat = 50
-
-    private static var bottomBarPlus: Bool {
-        if #available(iOS 26.0, *) { return true } else { return false }
-    }
-
-    private var newZikrButton: some View {
-        Button {
-            showingNewMantra = true
-        } label: {
-            Image(systemName: "plus")
-                .fontWeight(.semibold)
-                .foregroundStyle(Color.green)
-        }
-        .accessibilityLabel("New zikr")
-    }
-
-    var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 0) {
-                // Each page redraws only when its own inputs change: the library's body runs on every
-                // page turn (the scroll position, the switch, the toolbar), and without these walls
-                // both lists — History regrouping every session — redrew three times mid-swipe (owner:
-                // paging lagged).
-                LibraryPage(search: trimmedSearch, editing: $editingHistory) { search, editing in
-                    HistoryPageView(search: search, editing: editing)
-                }
-                .equatable()
-                .scrollDisabled(false)          // the lists keep scrolling while paging is off
-                .containerRelativeFrame(.horizontal)
-                .id(Tab.history)
-                LibraryPage(search: trimmedSearch, editing: .constant(false)) { search, _ in
-                    MantrasView(embedded: true, externalSearch: search)
-                }
-                .equatable()
-                .scrollDisabled(false)
-                .containerRelativeFrame(.horizontal)
-                .id(Tab.mantras)
-            }
-            .scrollTargetLayout()
-        }
-        // Editing (a sideways drag would page and drop the selection) or scrubbing the chart.
-        .scrollDisabled(editing || lock.locked)
-        .scrollTargetBehavior(.paging)
-        // Anchored at the centre: the switch changes past halfway, not on the first pixel of a drag.
-        .scrollPosition(id: $page, anchor: .center)
-        // The first layout ignores the initial scroll position: start on the right page.
-        .defaultScrollAnchor(start == .mantras ? .trailing : .leading)
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .environment(lock)
-        .onChange(of: page) { _, new in
-            PaceCoordinator.stopAll()          // a pace on the page left behind stops
-            if let new, new != tab { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { tab = new } }
-        }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        // `.toolbar`: the field lives only where the toolbar puts it (the bottom-bar item above on
-        // iOS 26) — with the automatic placement it could also draw its own, a second field.
-        .searchable(text: $search, placement: .toolbar, prompt: tab == .history ? "Search sessions" : "Search azkar")
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Picker("Section", selection: Binding(get: { tab }, set: { new in
-                    tab = new
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) { page = new }
-                })) {
-                    ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 210)
-                .disabled(editing)
-            }
-            // Top right: History's Edit, or Azkar's sort button in the same spot (owner, 2026-09-27,
-            // feedback D505E0DE: no bulk edit for azkar, and the sort button gets room for its
-            // field + direction icons). One toolbar item throughout: two items swapped on every page
-            // turn and redrew themselves (owner).
-            // Always there and always `trailingSlotWidth` wide (feedback 1F97A704): the switcher is
-            // centred in the space the bar leaves it, so a wider sort pill, or Edit going away with
-            // no sessions, pushed History | Azkar sideways. Edit greys out instead of vanishing.
-            ToolbarItem(id: "libraryTrailing", placement: .topBarTrailing) {
-                Group {
-                    if tab == .mantras {
-                        AzkarSortButton()
-                    } else {
-                        Button(editing ? "Done" : "Select") {
-                            withAnimation { editingHistory.toggle() }
-                        }
-                        .fontWeight(editing ? .semibold : .regular)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .disabled(!showsEdit)
-                    }
-                }
-                // A fixed slot can't grow with Dynamic Type: capped at the default size so the
-                // icons / "Done" never clip, and the switcher stays centred.
-                .dynamicTypeSize(...DynamicTypeSize.large)
-                .frame(width: Self.trailingSlotWidth)
-            }
-            // iOS 18: the ＋ stays top right (iOS 26 puts it by the search field).
-            if tab == .mantras && !Self.bottomBarPlus {
-                ToolbarItem(placement: .topBarTrailing) { newZikrButton }
-            }
-            // iOS 26: the search field in the bottom bar, with the ＋ beside it on Azkar — it
-            // animates in as the page turns (owner, 2026-09-27).
-            if #available(iOS 26.0, *) {
-                if !editing {
-                    DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                }
-                if tab == .mantras {
-                    ToolbarSpacer(.fixed, placement: .bottomBar)
-                    ToolbarItem(placement: .bottomBar) { newZikrButton }
-                }
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: tab)
-        .navigationBarTitleDisplayMode(.inline)
-        .sensoryFeedback(.selection, trigger: tab)
-        .onChange(of: tab) { _, _ in editingHistory = false }
-        .sheet(isPresented: $showingNewMantra) {
-            MantraEditorView(mantra: nil)
-        }
-    }
-}
-
-/// A library page behind an equality wall: it redraws only when the search or its own edit mode
-/// changes (a Binding is never equal to the last one, so the value is compared instead).
-private struct LibraryPage<Content: View>: View, Equatable {
-    let search: String
-    let editing: Binding<Bool>
-    let content: (String, Binding<Bool>) -> Content
-
-    var body: some View { content(search, editing) }
-
-    static func == (a: Self, b: Self) -> Bool {
-        a.search == b.search && a.editing.wrappedValue == b.editing.wrappedValue
-    }
-}
-
 /// How the Azkar list is ordered, within each section: one field and a direction, Notion-style
 /// (owner, 2026-09-27, feedback ADD5836A — it was a list of opposite pairs). The default is Name,
 /// A to Z, for both sections (feedback F5FDC4C1: no separate "Default"; the built-ins go
@@ -844,6 +661,8 @@ enum AzkarSort: String, CaseIterable, Identifiable {
 /// tint so an active sort shows (owner, 2026-09-27, feedback D505E0DE; a solid green fill was too
 /// stark).
 struct AzkarSortButton: View {
+    /// A fixed width, so the bar's title never shifts as the field / direction change.
+    static let width: CGFloat = 50
     @AppStorage(AzkarSort.key) private var sortRaw = AzkarSort.name.rawValue
     @AppStorage(AzkarSort.ascendingKey) private var ascending = true
 
@@ -896,9 +715,8 @@ extension AzkarSortButton {
             .fontWeight(.semibold)
             .foregroundStyle(Color.green)
             // The app's tinted look (like the active chips / Save), not a solid fill — owner: the
-            // filled prominent button was too stark. It fills the slot (ZikrLibraryView's
-            // `trailingSlotWidth`), never wider than Edit.
-            .frame(width: ZikrLibraryView.trailingSlotWidth, height: 36)
+            // filled prominent button was too stark. It fills its fixed slot (`width`).
+            .frame(width: AzkarSortButton.width, height: 36)
             // The whole slot (the item clips at its frame, so it can't bleed out to the glass
             // edge): a thin rim instead of the old wide dark ring round a 30 pt capsule.
             .background(Capsule().fill(Color.green.opacity(0.16)))

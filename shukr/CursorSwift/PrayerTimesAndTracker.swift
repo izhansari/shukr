@@ -1003,10 +1003,10 @@ struct PrayerTimesView: View {
             LocationMapContentView()
         }
         .navigationDestination(isPresented: $showDailyAyahPage) { DailyAyahView() }
-        .navigationDestination(isPresented: $showMantrasPage) { ZikrLibraryView(start: .mantras) }
+        .navigationDestination(isPresented: $showMantrasPage) { AzkarPage() }
         .navigationDestination(isPresented: $showSalahHistoryV1) { SimpleDailyScoreView() }
         .navigationDestination(isPresented: $showSalahHistoryV2) { PrayerEditorView() }
-        .navigationDestination(isPresented: $showZikrHistory) { ZikrLibraryView(start: .history) }
+        .navigationDestination(isPresented: $showZikrHistory) { ZikrHistoryPage() }
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
@@ -1198,22 +1198,10 @@ struct PrayerTimesView: View {
                         // The menu is a popover (a native Menu can't show the wordmark):
                         // "shukr" on top like the old sidebar, then the destinations.
                         ZStack {
-                        // Zikr page: History & Mantras (one page) instead of the hamburger.
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            showZikrHistory = true
-                        } label: {
-                            Image(systemName: "books.vertical")
-                                .frame(width: 24, height: 24)
-                                .font(.system(size: 19))
-                                .fontWeight(.light)
-                                .foregroundColor(.gray.opacity(0.8))
-                                .padding()
-                                .contentShape(Rectangle())
-                        }
-                        .opacity(Double(zikrness))
-                        .allowsHitTesting(zikrness > 0.5)
-                        .accessibilityLabel("Zikr history and azkar")
+                        // Zikr page, top left: Azkar (the Zikr tab reorganisation, 2026-10-01).
+                        ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
+                            .opacity(Double(zikrness))
+                            .allowsHitTesting(zikrness > 0.5)
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
@@ -1292,9 +1280,9 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
-                        // Zikr page, top right: Tasks (owner, 2026-09-29) — the list of tasks to
-                        // reorder, edit, delete and set reminders on (it replaced the bell and jiggle mode).
-                        ZikrTasksButton()
+                        // Zikr page, top right: History (the reorganisation; Your tasks moved to
+                        // "N of M tasks done" under the wheel).
+                        ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
                             .opacity(Double(zikrness))
                             .allowsHitTesting(zikrness > 0.5)
                     }
