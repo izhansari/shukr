@@ -251,6 +251,15 @@ struct MainCircleView: View {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: { showQiblaMap = true })
+                // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
+                // never moves (it stays centred on the page).
+                Color.clear
+                    .frame(width: 0, height: 0)
+                    .overlay {
+                        CompassHintLine(hidden: sharedState.navPosition == .bottom)
+                            .fixedSize()
+                            .offset(y: 134)
+                    }
             }
             
 
@@ -725,8 +734,8 @@ private func triggerPulse() {
 /// The qibla arrow on the Salah circle and the dot it lights when you face the qibla. Its own view
 /// so only it redraws with the compass (up to ~30 times a second) — the whole circle used to, which
 /// is how its 1 s clock froze while the phone moved (2026-09-27) — and nothing above it does
-/// (4789a97, the picker flicker). Dim while there's no place yet or iOS says the heading can't be
-/// trusted; never green then.
+/// (4789a97, the picker flicker). Dashed while there's no place yet or iOS says the heading can't
+/// be trusted (the app's "not live" look; owner: a faint arrow wasn't clear); never green then.
 private struct QiblaArrow: View {
     @EnvironmentObject private var compass: CompassState
     let onAligned: (Bool) -> Void
@@ -739,20 +748,27 @@ private struct QiblaArrow: View {
         let usable = compass.status == .ok
         let aligned = usable && compass.qibla.aligned
         ZStack {
-            Image(systemName: "chevron.up")
-                .font(.subheadline)
+            Group {
+                if usable {
+                    Image(systemName: "chevron.up")
+                        .font(.subheadline)
+                } else {
+                    DashedChevron()
+                        .stroke(style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [2.2, 2.2]))
+                        .frame(width: 15, height: 8)
+                }
+            }
                 .foregroundColor(aligned ? .green : .primary)
                 .background(
                     Circle() // a bigger tap area
                         .fill(Color.white.opacity(0.001))
                         .frame(width: 44, height: 44)
                 )
-                .opacity(usable ? 0.5 : 0.18)
+                .opacity(0.5)
                 .offset(y: -80)
                 // −180…180, so snapping to "aligned" turns the short way (it could spin a full turn).
                 .rotationEffect(Angle(degrees: aligned ? 0 : compass.qibla.heading))
                 .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1), value: aligned)
-                .animation(.easeOut(duration: 0.25), value: usable)
                 .onChange(of: aligned) { _, isAligned in onAligned(isAligned) }
                 .onTapGesture(perform: tap)
 
@@ -775,5 +791,16 @@ private struct QiblaArrow: View {
             }
             #endif
         }
+    }
+}
+
+/// The arrow's chevron as a path, for the dashed (can't-be-trusted) look.
+private struct DashedChevron: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        return path
     }
 }

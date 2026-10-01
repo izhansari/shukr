@@ -50,7 +50,16 @@ final class CompassState: ObservableObject {
     #endif
 }
 
-/// What the compass can be trusted for right now; the arrow dims unless `.ok`.
+/// "The compass needs calibrating", published only when that flips — so the ☰ badge and the line
+/// under the circle can follow it without redrawing with every heading (CompassState publishes up
+/// to ~30 times a second). On after ~3 s of an untrustworthy heading, off as soon as it's good.
+final class CompassHealth: ObservableObject {
+    @Published var needsCalibration = false
+    /// "Calibrate compass" (the line under the circle, the ☰ row) → the sheet (PagerChromeView).
+    static let openSheet = Notification.Name("CompassHealth.openSheet")
+}
+
+/// What the compass can be trusted for right now; the arrow is dashed unless `.ok`.
 enum CompassStatus: Equatable {
     case ok
     /// No location yet (fresh install before the first fix): no qibla to point at.
@@ -86,6 +95,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     }
     /// Heading + qibla live here (see CompassState). Not @Published on this object on purpose.
     let compass = CompassState()
+    let health = CompassHealth()
+    private var unreliableSince: Date?
 
     // MARK: Heading state (see "Heading" below)
     /// Core Motion's fused heading (compass + gyro, like the Compass app); Core Location's raw
@@ -330,9 +341,9 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         motion.stopDeviceMotionUpdates()
         motionFrame = frame
         motion.deviceMotionUpdateInterval = 1.0 / 30
-        // iOS's own calibration screen ("tilt to roll the ball"), shown by iOS only when the
-        // compass needs it.
-        motion.showsDeviceMovementDisplay = true
+        // Not iOS's calibration screen (owner: apps can't open it on demand, so it can't be the
+        // fix we point people to) — ours instead (CompassCalibrationSheet, via CompassHealth).
+        motion.showsDeviceMovementDisplay = false
         motion.startDeviceMotionUpdates(using: frame, to: .main) { [weak self] sample, _ in
             guard let self, let sample, sample.heading >= 0 else { return }
             self.lastMotionAt = Date()
@@ -351,11 +362,8 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         take(value, reliable: newHeading.headingAccuracy >= 0 && newHeading.headingAccuracy <= 25, smoothing: 0.5)
     }
 
-    /// Let iOS show its calibration screen when Core Location asks — unless Core Motion's (above)
-    /// is the one in use, so it never shows twice.
-    func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool {
-        !motion.isDeviceMotionActive
-    }
+    /// Never iOS's calibration screen (see `startMotion`): ours is offered instead.
+    func locationManagerShouldDisplayHeadingCalibration(_ manager: CLLocationManager) -> Bool { false }
 
     /// One reading, from either source: smoothed, then published only on a real change.
     private func take(_ degrees: Double, reliable: Bool, smoothing: Double) {
@@ -395,6 +403,15 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         // so without Core Motion a still phone is quiet on purpose — give it longer.
         if quiet > (motion.isDeviceMotionAvailable ? 2 : 6) {
             restartHeading(because: "quiet \(String(format: "%.1f", quiet))s")
+        }
+        // Calibration: only after ~3 s of a bad heading (a brief dip shouldn't light the ☰ badge).
+        if compass.status == .unreliable {
+            let since = unreliableSince ?? Date()
+            unreliableSince = since
+            if Date().timeIntervalSince(since) >= 3, !health.needsCalibration { health.needsCalibration = true }
+        } else {
+            unreliableSince = nil
+            if compass.status == .ok, health.needsCalibration { health.needsCalibration = false }
         }
         #if DEBUG
         let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
@@ -445,10 +462,14 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     #if DEBUG
     /// `-demoCompassJiggle` (the simulator has no compass): a reading through the real path.
     /// `around`: degrees relative to the qibla instead of north.
+    private static let debugStart = Date()
     func debugHeading(_ degrees: Double, around qibla: Bool) {
         let value = qibla ? (qiblaBearing ?? 0) + degrees : degrees
-        // `-demoCompassUnreliable`: as if iOS said the heading can't be trusted (the dimmed arrow).
-        let reliable = !ProcessInfo.processInfo.arguments.contains("-demoCompassUnreliable")
+        // `-demoCompassUnreliable`: as if iOS said the heading can't be trusted (the dashed arrow,
+        // the line, the ☰ badge); `-demoCompassRecover <s>`: it comes good that many seconds in.
+        var reliable = !ProcessInfo.processInfo.arguments.contains("-demoCompassUnreliable")
+        let recover = UserDefaults.standard.double(forKey: "demoCompassRecover")
+        if !reliable, recover > 0, Date().timeIntervalSince(Self.debugStart) > recover { reliable = true }
         take((value.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), reliable: reliable, smoothing: 0.5)
     }
     #endif

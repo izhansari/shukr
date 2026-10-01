@@ -206,7 +206,12 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
   published only on change; the circle's arrow is its own view (`QiblaArrow`). The heading (LocMans.swift, compass audit
   2026-09-30): Core Motion's fused heading (true north with location, magnetic without), Core Location's as the fallback;
   restarted on every didBecomeActive and by a 1 s watchdog when quiet; smoothed; `qibla.heading` −180…180; aligned with
-  hysteresis, never without a place or with an untrustworthy heading (`CompassStatus`). DEBUG Settings → My Dev Stuff →
+  hysteresis, never without a place or with an untrustworthy heading (`CompassStatus`; the arrow is dashed then).
+  Calibration (CompassCalibration.swift): iOS's own screen is OFF (apps can't open it — owner); after ~3 s untrustworthy
+  `CompassHealth.needsCalibration` (publishes only on flips) shows "Compass needs a moment · tap" under the circle (laid out
+  at zero size: the ring never moves), a red dot on ☰ + a "Calibrate compass" row → `CompassCalibrationSheet` (figure 8,
+  magnets, live status, closes itself when good). DEBUG `-demoCompassUnreliable [-demoCompassRecover s]`,
+  `-demoCalibrationSheet`, `-demoMenuOpen`; the phone keeps Library/Caches/compass.log (DEBUG builds). DEBUG Settings → My Dev Stuff →
   Compass debug, `-demoCompassJiggle [-demoCompassSweep]`. `userLocation` isn't published. Every app-group write, even the same value, invalidates bound `@AppStorage`: write only on change.
 - No `GeometryReader` in the welcome overlay (blank app). Decode images off the main thread, never in `body`.
 

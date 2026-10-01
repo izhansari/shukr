@@ -262,6 +262,7 @@ struct shukrApp: App {
         }
         .environmentObject(environmentLocationManager)
         .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
+        .environmentObject(environmentLocationManager.health)    // "needs calibrating": the ☰ badge / row, the line
         .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
 //            .environmentObject(prayerViewModel) // Inject PrayerViewModel
         /*

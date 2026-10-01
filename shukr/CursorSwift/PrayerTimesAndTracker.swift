@@ -1153,6 +1153,8 @@ struct PrayerTimesView: View {
         @State private var pendingMenuAction: (() -> Void)? = nil
         /// "What's new" (tap the build line in the menu; DEBUG / TestFlight only).
         @State private var showWhatsNew = false
+        /// The compass calibration sheet (the line under the circle, or ☰ → Calibrate compass).
+        @State private var showCalibration = false
 
         /// One row of the hamburger popover; closes it and runs `action` after it's gone.
         private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
@@ -1221,6 +1223,9 @@ struct PrayerTimesView: View {
                                 .fontWeight(.light)
                                 .fontDesign(.rounded)
                                 .foregroundColor(.gray.opacity(0.8))
+                                // The compass needs calibrating: a red dot (its own small view, so the
+                                // chrome doesn't redraw with the compass).
+                                .overlay(alignment: .topTrailing) { CompassMenuBadge().offset(x: 3, y: -1) }
                                 .padding()
                         }
                         .popover(isPresented: $showMenu, arrowEdge: .top) {
@@ -1236,6 +1241,10 @@ struct PrayerTimesView: View {
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
+                                CompassMenuRow {
+                                    pendingMenuAction = { showCalibration = true }
+                                    showMenu = false
+                                }
                                 // Which build this is (BuildInfo): when it was built + the commit.
                                 // Tap → What's new (DEBUG / TestFlight).
                                 BuildLineButton {
@@ -1262,6 +1271,23 @@ struct PrayerTimesView: View {
                         }
                         .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
                         .onChange(of: showWhatsNew) { _, open in CircleCover.set("whatsNew", open) }
+                        .sheet(isPresented: $showCalibration) { CompassCalibrationSheet() }
+                        .onChange(of: showCalibration) { _, open in CircleCover.set("compassCalibration", open) }
+                        .onReceive(NotificationCenter.default.publisher(for: CompassHealth.openSheet)) { _ in
+                            showCalibration = true
+                        }
+                        #if DEBUG
+                        .task {   // `-demoCalibrationSheet` / `-demoMenuOpen`: the sheet / ☰ menu a few s in (screenshots)
+                            let args = ProcessInfo.processInfo.arguments
+                            if args.contains("-demoMenuOpen") {
+                                try? await Task.sleep(for: .seconds(6))
+                                showMenu = true
+                            }
+                            guard args.contains("-demoCalibrationSheet") else { return }
+                            try? await Task.sleep(for: .seconds(4))
+                            showCalibration = true
+                        }
+                        #endif
                         .opacity(Double(1 - zikrness))
                         .allowsHitTesting(zikrness < 0.5)
                         }
