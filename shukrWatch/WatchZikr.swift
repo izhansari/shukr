@@ -490,7 +490,12 @@ struct WatchZikrFace: View {
                 }
                 .font(.system(size: 11, weight: .thin, design: .rounded))
                 .foregroundStyle(done ? Color.watchSage : .secondary)
-                if let pick {
+            }
+            // Freestyle's zikr chip on the circle's bottom edge (owner, YGF3): in the middle it sat
+            // where a thumb aims to start, and opened the picker instead.
+            if let pick {
+                VStack {
+                    Spacer()
                     Button(action: pick.action) {
                         HStack(spacing: 2) {
                             Text(pick.label).lineLimit(1).minimumScaleFactor(0.8)
@@ -501,14 +506,24 @@ struct WatchZikrFace: View {
                         .padding(.horizontal, 8).padding(.vertical, 3)
                         .background(Capsule().fill(Color.white.opacity(0.1)))
                         .frame(maxWidth: 88)
+                        .background(Capsule().fill(Color.black))   // over the ring
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 3)
+                    .offset(y: 10)
                 }
             }
         }
         .frame(width: 112, height: 112)
+    }
+}
+
+/// A wheel circle pressed: it dims a touch, like the system's buttons.
+struct WatchCircleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -606,13 +621,19 @@ struct WatchZikrPage: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(items) { item in
-                            face(item, now: context.date)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: rowHeight)
-                                .contentShape(Rectangle())
-                                .modifier(WatchWheelFalloff(itemHeight: rowHeight))
-                                .onTapGesture { tapped(item, now: context.date) }
-                                .id(item.id)
+                            // A real button (owner, YGF3: starting was hard to hit): the system's
+                            // press feedback and its touch slop — a bare tap gesture in a scrolling
+                            // wheel dropped any tap with a little finger movement. The whole circle
+                            // is the target.
+                            Button { tapped(item, now: context.date) } label: {
+                                face(item, now: context.date)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: rowHeight)
+                                    .contentShape(Circle().inset(by: -6))
+                            }
+                            .buttonStyle(WatchCircleButtonStyle())
+                            .modifier(WatchWheelFalloff(itemHeight: rowHeight))
+                            .id(item.id)
                         }
                     }
                     .scrollTargetLayout()
