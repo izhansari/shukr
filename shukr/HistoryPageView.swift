@@ -175,8 +175,8 @@ struct HistoryPageView: View {
         }
     }
 
-    /// One session. Tap → a small glass menu (Open zikr · Feel the pace); in Edit mode a tap
-    /// selects instead. No swipes: deleting is Edit → select → Delete (owner).
+    /// One session. Tap → its page, hold → its options, swipe left → Delete (asked first); in Select
+    /// mode a tap selects instead (several at once: Select → Delete).
     @ViewBuilder private func sessionRow(_ session: SessionDataModel) -> some View {
         let row = SessionRow(session: session, tappable: !isEditing,
                              onMantra: session.mantra.map { mantra in { mantraToOpen = mantra } },
@@ -388,6 +388,15 @@ struct SessionRow: View {
                     if let onDelete {
                         Divider()
                         Button(role: .destructive) { onDelete() } label: { Label("Delete…", systemImage: "trash") }
+                    }
+                }
+                // Swipe left → Delete, asked first like the menu's (owner, idea DVBP: the pages
+                // stopped paging sideways, so rows can swipe again). Not `role: .destructive`:
+                // the List would expect the row gone at once and the confirm never shows.
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if let onDelete {
+                        Button { onDelete() } label: { Label("Delete", systemImage: "trash") }
+                            .tint(.red)
                     }
                 }
         } else {
