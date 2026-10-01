@@ -312,6 +312,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `ZikrDoor`s — **Azkar** left → `AzkarPage`, **History** right → `ZikrHistoryPage` (each its own page; the old History |
   Azkar pager `ZikrLibraryView` and the Tasks sheet are gone). The title follows the wheel (task streaks).
 - `ZikrCircleWheel` (gentle arc, left dot scrubber): freestyle, the tasks NOT finished today, New task; after a session the next unfinished task centres (a centred task that finishes → `nextFocus`). A widget focus on a finished task is dropped; a start from a zikr's page still starts it. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen).
+- **Hold = a task's options** everywhere (`TaskMenu`, YourTasksPage.swift): wheel (Edit task · Open zikr · Delete…; a tap
+  still starts), Your tasks (Start · Edit · Open zikr · Delete…; `.contextMenu` beside `.onMove`, both verified), a zikr's
+  page (`MantraTaskRows`: `TaskRow`s, tap → "Start …?", hold → Start · Edit · Delete…, + Add task). Start from a page =
+  dismiss, then `ZikrFocus.start`. The sim's injected touches open no context menus and start no drags: XCUITest them.
 - **New task** = `NewTaskFlow` (NewTaskFlow.swift), one sheet, never swiped away (✕ on step one, ‹ back): which zikr ("A
   new zikr" = `newZikrCard`, a card over a dimmed screen — also Azkar's ＋) → goal (`RepeatRoundButton` hold-repeat, typed
   number, Count ⇄ Minutes converts at `secondsPerCount`) → where it goes (`NewTaskPlacer`: the system's List `.onMove`, only

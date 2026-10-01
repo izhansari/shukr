@@ -881,36 +881,15 @@ struct MantraEditorView: View {
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
 
-                    Section {
-                        MantraTaskCircles(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
-                            // Close this page, then the Zikr page starts it.
-                            ZikrAudio.stopAll()
-                            dismiss()
-                            let id = task.id.uuidString
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { ZikrFocus.start(id, resume: resume) }
-                        }
-                    } header: {
-                        HStack(spacing: 10) {
-                            Text("Tasks")
-                            Spacer()
-                            Text(mantra.tasks.count == 1 ? "1 task" : "\(mantra.tasks.count) tasks")
-                            // With no tasks the dashed "New task" circle is the only way in (owner).
-                            if !mantra.tasks.isEmpty {
-                                Button { creatingTask = true } label: {
-                                    Image(systemName: "plus")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.green)
-                                        .frame(width: 28, height: 28)
-                                        .mapGlass(Circle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("New task with this zikr")
-                            }
-                        }
-                        .padding(.horizontal, 16)
+                    // Its tasks as the same rows as Your tasks (the Zikr tab reorganisation): tap → "Start?",
+                    // hold → the task's options; + Add task opens the steps on the goal.
+                    MantraTaskRows(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
+                        // Close this page, then the Zikr page starts it.
+                        ZikrAudio.stopAll()
+                        dismiss()
+                        let id = task.id.uuidString
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { ZikrFocus.start(id, resume: resume) }
                     }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
                     MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions,
                                           sessionToOpen: $sessionToOpen, sessionToDelete: $sessionToDelete)
 
@@ -1140,16 +1119,18 @@ struct MantraEditorView: View {
 /// This mantra's tasks the way the Zikr page shows tasks: circles ringed with today's progress,
 /// in a row you can scroll (2026-09-25, owner). Tap → "Start?" (then the Zikr page starts it);
 /// long-press → the task sheet in edit mode (2026-09-30). Deleting is in the Zikr page's Tasks list.
-struct MantraTaskCircles: View {
+/// A zikr's tasks on its page: one row each (`TaskRow`), tap → "Start …?" (Continue / Start over when
+/// part-done today; owner, note 3CA19C68), hold → Start · Edit task · Delete…; then + Add task.
+struct MantraTaskRows: View {
     let mantra: MantraModel
-    /// The empty state's dashed "New task" circle.
     var onNewTask: () -> Void = {}
-    /// Start the task (owner, 2026-09-30, note 3CA19C68): the page closes, the session opens.
+    /// Start the task: the page closes, the session opens.
     var onStart: (TaskModel, _ resume: Bool) -> Void = { _, _ in }
-    @State private var asking: TaskModel?
     @Environment(\.modelContext) private var context
     @Query private var todaysSessions: [SessionDataModel]
+    @State private var asking: TaskModel?
     @State private var editing: TaskModel?
+    @State private var toDelete: TaskModel?
 
     init(mantra: MantraModel, onNewTask: @escaping () -> Void = {}, onStart: @escaping (TaskModel, Bool) -> Void = { _, _ in }) {
         self.mantra = mantra
@@ -1161,88 +1142,67 @@ struct MantraTaskCircles: View {
 
     private var tasks: [TaskModel] { mantra.tasks.sorted { $0.sortOrder < $1.sortOrder } }
 
-    var body: some View {
-        if tasks.isEmpty {
-            // Like the Zikr page's last circle.
-            ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
-                .scaleEffect(0.7)
-                .frame(width: 140, height: 140)
-                .contentShape(Circle())
-                .onTapGesture { onNewTask() }
-                .accessibilityAddTraits(.isButton)
-                .frame(maxWidth: .infinity)
-                .frame(height: 152)
-        } else {
-            // The focused circle sits in the middle of the width (owner).
-            GeometryReader { geo in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(tasks) { task in
-                        circle(task)
-                            .scrollTransition { content, phase in
-                                content
-                                    .opacity(phase.isIdentity ? 1 : 0.5)
-                                    .scaleEffect(phase.isIdentity ? 1 : 0.85)
-                            }
-                    }
-                }
-                .scrollTargetLayout()
-                .padding(.vertical, 6)
-            }
-            .contentMargins(.horizontal, max((geo.size.width - 140) / 2, 0), for: .scrollContent)
-            .scrollTargetBehavior(.viewAligned)
-            }
-            .frame(height: 152)
-            .fullScreenCover(item: $editing) { task in
-                AddDailyTaskView(editing: task, isPresented: Binding(
-                    get: { editing != nil },
-                    set: { if !$0 { editing = nil } }
-                ))
-            }
-            // Tap = "Start?" (owner): part-done today → continue or start over, as on the Zikr page.
-            .alert(asking.map { "Start \($0.title)?" } ?? "",
-                   isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
-                   presenting: asking) { task in
-                let p = task.progress(in: todaysSessions)
-                if !task.isCompleted(with: p) && (p.count > 0 || p.seconds >= 1) {
-                    Button(task.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
-                        asking = nil; onStart(task, true)
-                    }
-                    Button("Start over") { asking = nil; onStart(task, false) }
-                } else {
-                    Button("Start") { asking = nil; onStart(task, false) }
-                }
-                Button("Cancel", role: .cancel) { asking = nil }
-            } message: { task in
-                let p = task.progress(in: todaysSessions)
-                Text(task.isCompleted(with: p) ? "Done today. Start another session?"
-                     : task.isCountMode ? "\(p.count) of \(task.goal) today." : "\(Int(p.seconds / 60)) of \(task.goal) min today.")
-            }
-        }
+    private func partDone(_ task: TaskModel) -> Bool {
+        let p = task.progress(in: todaysSessions)
+        return !task.isCompleted(with: p) && (p.count > 0 || p.seconds >= 1)
     }
 
-    private func circle(_ task: TaskModel) -> some View {
-        let p = task.progress(in: todaysSessions)
-        let done = task.isCompleted(with: p)
-        let fraction = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1))
-                                        : p.seconds / Double(max(task.goal * 60, 1))
-        let subtitle = done ? "done today"
-            : task.isCountMode ? "\(p.count) of \(task.goal) today" : "\(Int(p.seconds / 60)) of \(task.goal) min"
-        // Its own name when it has one (this page is already about the mantra), the goal otherwise.
-        let goal = task.isCountMode ? "\(task.goal)" : "\(task.goal) min"
-        return ZikrCircleFace(title: task.mantraLine == nil ? goal : task.title,
-                              icon: task.mantraLine == nil ? (task.isCountMode ? "number" : "timer") : nil,
-                              subtitle: subtitle, ring: .progress(min(fraction, 1)), done: done,
-                              mantraLine: task.mantraLine == nil ? nil : (task.isCountMode ? "goal \(goal)" : goal))
-            .scaleEffect(0.7)
-            .frame(width: 140, height: 140)
-            .contentShape(Circle())
-            // Tap → "Start?"; hold → its edit sheet (owner, 2026-09-30).
-            .onTapGesture { triggerSomeVibration(type: .light); asking = task }
-            .onLongPressGesture(minimumDuration: 0.45) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                editing = task
+    var body: some View {
+        Section {
+            ForEach(tasks) { task in
+                Button { triggerSomeVibration(type: .light); asking = task } label: {
+                    TaskRow(task: task, sessions: todaysSessions, showsZikr: false, showsHandle: false)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    TaskMenu(task: task,
+                             onStart: { onStart(task, partDone(task)) },
+                             onEdit: { editing = task },
+                             onDelete: { toDelete = task })
+                }
             }
+            Button(action: onNewTask) {
+                Label("Add task", systemImage: "plus.circle.fill").foregroundStyle(Color.sage)
+            }
+        } header: {
+            Text("Tasks")
+        }
+        .sheet(item: $editing) { task in
+            NavigationStack {
+                AddDailyTaskView(editing: task, isPresented: Binding(
+                    get: { editing != nil }, set: { if !$0 { editing = nil } }))
+                    .toolbar(.hidden, for: .navigationBar)
+            }
+        }
+        .alert(asking.map { "Start \($0.title)?" } ?? "",
+               isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
+               presenting: asking) { task in
+            let p = task.progress(in: todaysSessions)
+            if partDone(task) {
+                Button(task.isCountMode ? "Continue from \(p.count)" : "Continue from \(zikrDurationString(p.seconds))") {
+                    asking = nil; onStart(task, true)
+                }
+                Button("Start over") { asking = nil; onStart(task, false) }
+            } else {
+                Button("Start") { asking = nil; onStart(task, false) }
+            }
+            Button("Cancel", role: .cancel) { asking = nil }
+        } message: { task in
+            let p = task.progress(in: todaysSessions)
+            Text(task.isCompleted(with: p) ? "Done today. Start another session?"
+                 : task.isCountMode ? "\(p.count) of \(task.goal) today." : "\(Int(p.seconds / 60)) of \(task.goal) min today.")
+        }
+        .alert(toDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
+               isPresented: Binding(get: { toDelete != nil }, set: { if !$0 { toDelete = nil } }),
+               presenting: toDelete) { task in
+            Button("Delete Task", role: .destructive) {
+                withAnimation { TaskModel.delete(task, in: context) }
+                toDelete = nil
+            }
+            Button("Cancel", role: .cancel) { toDelete = nil }
+        } message: { _ in
+            Text("Its reminder goes too. The sessions you've counted stay in your history.")
+        }
     }
 }
 

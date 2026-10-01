@@ -156,6 +156,9 @@ struct ZikrCircleWheel: View {
     /// A long-press on a task opens the Tasks sheet on that task's edit screen (owner, 2026-09-29,
     /// zikr-tasks-sheet: jiggle mode is gone; the sheet reorders, edits and deletes).
     @State private var tasksSheetOn: TaskModel?
+    /// The hold menu's Open zikr / Delete….
+    @State private var wheelOpenZikr: MantraModel?
+    @State private var wheelDelete: TaskModel?
     /// How the circles fall away from the middle (Settings → My Dev Stuff while the owner picks).
     @AppStorage(ZikrWheelStyle.key) private var wheelStyleRaw = ZikrWheelStyle.gentle.rawValue
     /// A task tapped with some of today's goal already done: continue or start over?
@@ -223,6 +226,18 @@ struct ZikrCircleWheel: View {
                 }
             }
             .navigationDestination(isPresented: $showTasksPage) { YourTasksPage() }
+            .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0) }
+            .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
+                   isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
+                   presenting: wheelDelete) { task in
+                Button("Delete Task", role: .destructive) {
+                    withAnimation { TaskModel.delete(task, in: context) }
+                    wheelDelete = nil
+                }
+                Button("Cancel", role: .cancel) { wheelDelete = nil }
+            } message: { _ in
+                Text("Its reminder goes too. The sessions you've counted stay in your history.")
+            }
             // A task finished while it's in the middle (or anywhere) leaves the wheel: land on the
             // next one still to do rather than on a gap.
             .onChange(of: items.map(\.id)) { _, ids in
@@ -429,10 +444,14 @@ struct ZikrCircleWheel: View {
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
+            // Hold = the task's options, like every task row in the tab (tap still starts it).
             face(for: task)
-                .onLongPressGesture(minimumDuration: 0.45) {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    tasksSheetOn = task
+                .contentShape(.contextMenuPreview, Circle())
+                .contextMenu {
+                    TaskMenu(task: task,
+                             onEdit: { tasksSheetOn = task },
+                             onOpenZikr: { wheelOpenZikr = task.mantra },
+                             onDelete: { wheelDelete = task })
                 }
         }
     }
