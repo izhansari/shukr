@@ -1268,6 +1268,10 @@ struct PrayerLockScreenView: View {
                         .monospacedDigit()
                         .multilineTextAlignment(.center)
                         .lineLimit(1).minimumScaleFactor(0.6)
+                        // A quiet caption under it (owner, 2026-09-30: "the word left below the countdown").
+                        Text("left")
+                            .font(.system(size: 9, weight: .medium, design: .rounded))
+                            .opacity(0.8)
                     } else {
                         Text(prayer.name)
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
