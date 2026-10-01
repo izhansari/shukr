@@ -1494,6 +1494,13 @@ struct WatchSettingsPage: View {
                 Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
+                // The build on this watch, like the phone's line (owner: tell a fresh install apart).
+                Text(WatchBuildInfo.line)
+                    .font(.system(size: 9, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 8)
                     .id("bottom")
             }
             .padding(.horizontal, 4)
