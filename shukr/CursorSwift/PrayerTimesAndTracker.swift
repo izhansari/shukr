@@ -1176,6 +1176,8 @@ struct PrayerTimesView: View {
         private var showBottom: Bool { sharedState.navPosition == .bottom }
         /// How far onto the Zikr / Settings page we are, 0...1 each, live from the scroll offset.
         private var zikrness: CGFloat { min(max(1 - live.scrollProgress, 0), 1) }
+        /// How far a top-bar title travels as the pager moves between Salah and Zikr.
+        static let titlePush: CGFloat = 150
         private var settingsness: CGFloat { min(max(live.scrollProgress - 1, 0), 1) }
         /// Sheet open-progress on the Salah page, 0...1.
         private var sheetP: CGFloat { showBottom ? 1 : 0 }
@@ -1183,14 +1185,20 @@ struct PrayerTimesView: View {
         var body: some View {
             VStack(spacing: 0) {
                 ZStack(alignment: .top) {
-                    Group {
-                        if sharedState.horizontalPage == .zikr {
-                            ZikrPageTitle()
-                        } else {
-                            TopBar()
-                        }
+                    // The two titles push each other with the pager (owner, 2026-10-01): swiping to Zikr
+                    // (the page on the left) brings "Zikr" in from the left and pushes the Salah title
+                    // out to the right, following the finger; back again the other way. Only these
+                    // offsets read the live scroll — the titles' own bodies don't.
+                    ZStack(alignment: .top) {
+                        TopBar()
+                            .offset(x: zikrness * Self.titlePush)
+                            .opacity(Double(1 - zikrness))
+                            .allowsHitTesting(zikrness < 0.5)
+                        ZikrPageTitle()
+                            .offset(x: -(1 - zikrness) * Self.titlePush)
+                            .opacity(Double(zikrness))
+                            .allowsHitTesting(zikrness > 0.5)
                     }
-                    .animation(.easeInOut(duration: 0.2), value: sharedState.horizontalPage)
 
                     // Menu button: a native Menu instead of the hand-rolled drawer, which
                     // toggled shared state and re-rendered the whole home screen to animate.

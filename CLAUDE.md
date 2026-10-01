@@ -192,7 +192,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - `horizontalPage` = pager page; `navPosition` = the centre page's vertical state only (.main / .bottom); paging never changes it.
 - Pager = native paging ScrollView. `scrollPage` is written only from `onChange(horizontalPage)` while idle; the geometry handler ignores reports while `contentSize.width < 2.5 × width`. Don't turn off bounce.
 - **Never `minimumDistance: 0` on the pager's drag** (it cancelled Settings row taps on iOS 26). Vertical gesture starts at 5 pt, locks the axis at 6 pt (`live.pagerLocked`). The salah sheet pops on a swipe; the finger never drags it.
-- Per-frame values live in `PagerLiveState` (@Observable); PrayerTimesView's body must read none.
+- Per-frame values live in `PagerLiveState` (@Observable); PrayerTimesView's body must read none. The top bar's two titles (TopBar, `ZikrPageTitle`) are both mounted and pushed by `zikrness` offsets (`titlePush`), never rebuilt per frame.
 - Anything presented over the Salah page that `somethingCovers` can't see registers as a `CircleCover`. Widget / control opens go through `clearCovers(then:)`; a tasbeeh session is never closed by one.
 - Root holds `sharedState` as `@State`. No `@Query` with `#Predicate { builtInID == nil }` on the Azkar / History pages (100 % CPU loop): fetch all, filter in memory.
 - The zikr wheel must not be a LazyVStack. A nav bar must never change height (trailing slot always holds a button; Azkar's sort button is a fixed `AzkarSortButton.width`).
