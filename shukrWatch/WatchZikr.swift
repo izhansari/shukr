@@ -790,10 +790,10 @@ struct WatchCounterView: View {
     /// while tapping faster than once a second (timed goals froze).
     @State private var ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State private var lastCountActive: Double = 0
-    // Digital Crown counting: one count per nudge forward (WatchCrownGate); backwards does nothing
-    // (− is on screen).
+    // Digital Crown counting: one count per step the counting way (WatchCrownGate); a step the other
+    // way reloads, never subtracts (− is on screen).
     @State private var crown: Double = 0
-    @State private var crownGate = WatchCrownGate()
+    @State private var crownGate = WatchCrownGate(direction: WatchCrownDirection.current.fixed)
     @FocusState private var crownFocused: Bool
     @Environment(\.isLuminanceReduced) private var wristDown
     /// "Pinch to count · or turn the Crown", once, on the first session.
@@ -1066,7 +1066,7 @@ struct WatchCounterView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
     }
 
-    /// A nudge forward counts once (WatchCrownGate); backwards only moves the baseline. Ignored with
+    /// A step the counting way counts once (WatchCrownGate); the other way reloads. Ignored with
     /// the wrist down (dimmed screen), so a sleeve brushing the crown doesn't count.
     private func crownTurned(to value: Double) {
         guard !paused, finished == nil, !wristDown else { crownGate.reset(to: value); return }
@@ -1540,9 +1540,10 @@ struct WatchSettingsPage: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Tap anywhere, or drag down", systemImage: "hand.tap")
                     Label("Pinch finger and thumb (Double Tap)", systemImage: "hand.pinch")
-                    Label("Nudge the Digital Crown forward, one count a nudge", systemImage: "digitalcrown.arrow.clockwise")
+                    Label("Turn the Digital Crown a step to count, a step back to get the next one ready", systemImage: "digitalcrown.arrow.clockwise")
                 }
                 .font(.system(size: 12, design: .rounded))
+                WatchCrownDirectionPicker()
                 WatchCrownTapsToggle()
                 Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
                     .font(.system(size: 10, design: .rounded))
@@ -1576,6 +1577,57 @@ struct WatchCrownTapsToggle: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.top, 4)
+    }
+}
+
+/// Which way the Crown counts (owner, decision watch-crown-direction A): by default the session's
+/// first turn picks it; Settings can fix it forward or back. The other way reloads.
+enum WatchCrownDirection: String, CaseIterable {
+    case auto, forward, backward
+    static let key = "watch.crownDirection"
+    static var current: Self { Self(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .auto }
+    var fixed: Int? { self == .forward ? 1 : self == .backward ? -1 : nil }
+    var label: String {
+        switch self {
+        case .auto: "Whichever way I start"
+        case .forward: "Forward"
+        case .backward: "Backward"
+        }
+    }
+}
+
+/// Settings: the Crown's counting direction — rows like the haptics picker's.
+struct WatchCrownDirectionPicker: View {
+    @AppStorage(WatchCrownDirection.key) private var raw = WatchCrownDirection.auto.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Crown counts")
+                .font(.system(size: 13, design: .rounded))
+                .padding(.top, 4)
+            ForEach(WatchCrownDirection.allCases, id: \.rawValue) { option in
+                Button {
+                    WKInterfaceDevice.current().play(.click)
+                    raw = option.rawValue
+                } label: {
+                    HStack {
+                        Text(option.label).font(.system(size: 15, design: .rounded))
+                        Spacer()
+                        if raw == option.rawValue {
+                            Image(systemName: "checkmark").foregroundStyle(Color.green)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .background(RoundedRectangle(cornerRadius: 12)
+                        .fill(raw == option.rawValue ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+            Text("The other way gets the next count ready. Whichever way I start: a session's first turn picks.")
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -1649,15 +1701,28 @@ struct WatchCrownGate {
     private(set) var base: Double = 0
     private var lastMove: Date = .distantPast
     private var armed = true
+    /// Which way counts: +1 forward, -1 back; nil until the session's first step picks it
+    /// ("Whichever way I start"), or set from Settings.
+    private(set) var direction: Int?
+
+    init(direction: Int? = nil) { self.direction = direction }
 
     /// A new detent value; true = count one.
+    /// The phone's drag pump (owner, idea E2FW): a step the counting way counts once; a step the
+    /// other way "reloads" — the next step counts at once, no pause needed. A pause (`still`) or the
+    /// Crown going idle reloads too, as before. Further steps the counting way without a reload
+    /// (a flick, a long turn) don't count. A step is the smallest turn the watch reports.
     mutating func turned(to value: Double, at now: Date) -> Bool {
         if now.timeIntervalSince(lastMove) >= Self.still { armed = true }
         lastMove = now
-        guard value - base >= 1 else {
-            if value < base { base = value }
-            return false
+        let delta = value - base
+        if direction == nil {
+            guard abs(delta) >= 1 else { return false }
+            direction = delta > 0 ? 1 : -1   // the first turn picks the way for the session
         }
+        let along = delta * Double(direction ?? 1)
+        if along <= -1 { base = value; armed = true; return false }   // the other way: reload
+        guard along >= 1 else { return false }
         base = value
         guard armed else { return false }
         armed = false
@@ -1694,13 +1759,22 @@ struct WatchCrownGate {
             if got == want { passed += 1 }
             print("CROWNTEST \(got == want ? "✅" : "❌") \(name): before \(gaps.count), now \(got) (want \(want))")
         }
-        // Backwards never counts, and turning back then forward to where it was doesn't either.
-        var gate = WatchCrownGate(); let t0 = Date()
-        let back = [gate.turned(to: -1, at: t0), gate.turned(to: -2, at: t0 + 0.5), gate.turned(to: -1, at: t0 + 1.2)]
-        let backOK = back == [false, false, true]   // -2 → -1 is a real nudge forward
-        if backOK { passed += 1 }
-        print("CROWNTEST \(backOK ? "✅" : "❌") backwards: \(back)")
-        print("CROWNTEST \(passed)/\(profiles.count + 1) passed")
+        // Rocking quickly (0.1 s apart, never still): forward counts, back reloads — 4 counts.
+        var rock = WatchCrownGate(); var t1 = Date(); var rocked = 0
+        for v in [1.0, 0, 1, 0, 1, 0, 1] { t1 += 0.1; if rock.turned(to: v, at: t1) { rocked += 1 } }
+        let rockOK = rocked == 4
+        print("CROWNTEST \(rockOK ? "✅" : "❌") forward-back rocking, 0.1 s apart: \(rocked) (want 4)")
+        // Started backwards: back counts, forward reloads.
+        var down = WatchCrownGate(); var t2 = Date(); var downs = 0
+        for v in [-1.0, -2, -1, -2, -3] { t2 += 0.1; if down.turned(to: v, at: t2) { downs += 1 } }
+        let downOK = downs == 2 && down.direction == -1
+        print("CROWNTEST \(downOK ? "✅" : "❌") started backwards: \(downs) (want 2)")
+        // Set to Forward: turning back first never counts.
+        var fwd = WatchCrownGate(direction: 1); let t3 = Date()
+        let fwdOK = [fwd.turned(to: -1, at: t3), fwd.turned(to: 0, at: t3 + 0.1)] == [false, true]
+        print("CROWNTEST \(fwdOK ? "✅" : "❌") Forward setting: back first doesn't count, then forward does")
+        passed += [rockOK, downOK, fwdOK].filter { $0 }.count
+        print("CROWNTEST \(passed)/\(profiles.count + 3) passed")
     }
     #endif
 }
