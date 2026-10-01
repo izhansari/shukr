@@ -342,11 +342,11 @@ struct ZikrCircleWheel: View {
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
             .offset(y: -screenCentreShift(geo))
         }
-        .onChange(of: centered) { _, id in
+        .onChange(of: centered) { old, id in
             triggerSomeVibration(type: .light)
-            ZikrWheelFocus.shared.taskID = id.flatMap(UUID.init(uuidString:))   // the top bar's streak
+            ZikrWheelFocus.shared.centre(id, from: old, in: items.map(\.id))   // the top bar's title
         }
-        .onAppear { ZikrWheelFocus.shared.taskID = centered.flatMap(UUID.init(uuidString:)) }
+        .onAppear { ZikrWheelFocus.shared.centre(centered, from: nil, in: items.map(\.id)) }
         #if DEBUG
         .task { TaskStreakDebug.log(tasks) }
         .fullScreenCover(isPresented: .constant(StreakHeroDemo.streak != nil)) {

@@ -119,7 +119,27 @@ struct TaskStreakBadge: View {
 /// Its own object so only the title redraws when the wheel turns.
 @Observable final class ZikrWheelFocus {
     static let shared = ZikrWheelFocus()
+    /// What the wheel has centred: a task, or nil (freestyle / New task).
     var taskID: UUID?
+    /// Which item it is ("freestyle", a task's id, "add"), so the title changes even between two
+    /// items that both say "Zikr".
+    var key = "freestyle"
+    /// The wheel's last move: true = down the list (the title's next label comes up from below),
+    /// false = up (it comes down from the top).
+    var movedDown = true
+
+    /// Set from the wheel. The direction lands one turn before the item, so the label on its way
+    /// out already knows which way to leave.
+    func centre(_ key: String?, from old: String?, in order: [String]) {
+        let k = key ?? "freestyle"
+        if let o = old, let a = order.firstIndex(of: o), let b = order.firstIndex(of: k), a != b {
+            movedDown = b > a
+        }
+        DispatchQueue.main.async {
+            self.key = k
+            self.taskID = UUID(uuidString: k)
+        }
+    }
 }
 
 /// The results screen's top after the session that finished a task's goal for the day (decision

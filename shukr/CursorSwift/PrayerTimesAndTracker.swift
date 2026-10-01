@@ -1352,81 +1352,66 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// The Zikr page's title in the fixed top bar, built like TopBar's (owner, 2026-10-01: rendered and
-    /// moving the same as the Salah page's): the outline beads (owner: not filled) and the thin caption, "Zikr" — and when the
-    /// wheel centres a task with a streak, "Zikr" goes up and out while "8 Day Streak" comes in from below
-    /// (Salah's city ⇄ streak), the number rolling from task to task; a tap shows "Max N Days" for 3 s.
-    /// The flame: an outline in grey while it's still to keep, filled sage once today's goal is met.
+    /// The Zikr page's title in the fixed top bar, in TopBar's type (owner, 2026-10-01). It follows the
+    /// wheel: a centred task shows its streak ("8 Day Streak", "0 Day Streak" when there's none yet);
+    /// freestyle and New task show "Zikr". Each item's label is pushed in the wheel's direction — moving
+    /// down, the next one comes up from below and the last goes up and out; moving up, the other way.
+    /// A tap on a task's streak toggles "Max N Days" (back to the streak on the next tap or item).
+    /// Outline beads; the flame is an outline in grey until today's goal is met, then filled sage.
     struct ZikrPageTitle: View {
         @Query private var tasks: [TaskModel]
         @State private var showBest = false
-        @State private var revertBest: DispatchWorkItem?
         private let focus = ZikrWheelFocus.shared
+        private static let travel: CGFloat = 12
 
         var body: some View {
-            let streak = focus.taskID.flatMap { id in tasks.first { $0.id == id } }?.streak()
-            let shown = streak.flatMap { $0.current > 0 ? $0 : nil }
-            let streakShowing = shown != nil
+            let task = focus.taskID.flatMap { id in tasks.first { $0.id == id } }
+            let down = focus.movedDown
             // Same metrics as TopBar's location row so the title sits where the city does.
             ZStack {
-                HStack {
-                    Image(systemName: "circle.hexagonpath")
-                        .foregroundColor(.secondary)
-                    Text("Zikr")
-                }
-                .opacity(streakShowing ? 0 : 1)
-                .offset(y: streakShowing ? -10 : 0)            // up and out for the streak
-
-                HStack(alignment: .center) {
-                    Image(systemName: shown?.keptToday == true ? "flame.fill" : "flame")
-                        .foregroundColor(shown?.keptToday == true ? Color.sage : .secondary)
-                        .contentTransition(.symbolEffect(.replace))
-                    Group {
-                        if showBest {
-                            Text("Max \(shown?.best ?? 0) Days").transition(.blurReplace)
-                        } else {
-                            let n = shown?.current ?? lastShown
-                            HStack(spacing: 0) {
-                                Text("\(n)").contentTransition(.numericText(value: Double(n)))
-                                Text(" Day Streak")
-                            }
-                            .transition(.blurReplace)
-                        }
-                    }
-                    .fixedSize()
-                }
-                .opacity(streakShowing ? 1 : 0)
-                .offset(y: streakShowing ? 0 : 10)             // in from below
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard streakShowing else { return }
-                    triggerSomeVibration(type: .light)
-                    showMax(!showBest)
-                }
-                .allowsHitTesting(streakShowing)
+                label(task)
+                    .id(focus.key)
+                    .transition(.asymmetric(
+                        insertion: .offset(y: down ? Self.travel : -Self.travel).combined(with: .opacity),
+                        removal: .offset(y: down ? -Self.travel : Self.travel).combined(with: .opacity)))
             }
             .padding()
             .frame(height: 24, alignment: .center)
             .font(.caption)
             .fontDesign(.rounded)
             .fontWeight(.thin)
-            .animation(.spring, value: streakShowing)
-            .animation(.spring, value: shown?.current)
-            .onChange(of: shown?.current) { _, n in if let n { lastShown = n } }
-            .onChange(of: focus.taskID) { _, _ in showMax(false) }
+            .animation(.spring, value: focus.key)
+            .onChange(of: focus.key) { _, _ in showBest = false }
             .padding()
         }
 
-        /// The last streak shown, so the label fading out keeps its number instead of dropping to 0.
-        @State private var lastShown = 0
-
-        private func showMax(_ on: Bool) {
-            revertBest?.cancel()
-            withAnimation { showBest = on }
-            guard on else { return }
-            let work = DispatchWorkItem { withAnimation { showBest = false } }
-            revertBest = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+        @ViewBuilder private func label(_ task: TaskModel?) -> some View {
+            if let task {
+                let streak = task.streak()
+                HStack(alignment: .center) {
+                    Image(systemName: streak.keptToday ? "flame.fill" : "flame")
+                        .foregroundColor(streak.keptToday ? Color.sage : .secondary)
+                    Group {
+                        if showBest {
+                            Text("Max \(streak.best) Days").transition(.blurReplace)
+                        } else {
+                            Text("\(streak.current) Day Streak").transition(.blurReplace)
+                        }
+                    }
+                    .fixedSize()
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    triggerSomeVibration(type: .light)
+                    withAnimation { showBest.toggle() }
+                }
+            } else {
+                HStack {
+                    Image(systemName: "circle.hexagonpath")
+                        .foregroundColor(.secondary)
+                    Text("Zikr")
+                }
+            }
         }
     }
     struct BottomSharedView: View {
