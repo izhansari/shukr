@@ -171,6 +171,13 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         let perMinute = context.family == .accessoryCircular
         let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: base).relevantPrayer
         var moments = Self.moments(for: shown, after: base.date, perMinute: perMinute)
+        #if DEBUG
+        // Speed test (My Dev Stuff → Widget: fewest updates): the entry (and the list's return) only.
+        if WidgetSpeedTest.fewestEntries && context.family == .systemSmall {
+            WidgetPerf.log("timeline \(context.family) speed test: \(entries.count) entries")
+            return Timeline(entries: entries, policy: .after(Date().addingTimeInterval(60)))
+        }
+        #endif
         if shown.end > base.date {
             let following = PrayersWidgetView.WidgetPrayerCircleView(entry: base.at(shown.end.addingTimeInterval(1), list: false)).relevantPrayer
             if following.start >= shown.end, following.name != shown.name || following.start != shown.start {
@@ -839,7 +846,23 @@ struct PrayersWidgetView: View {
             #endif
         }
 
-        private var live: some View {
+        @ViewBuilder private var live: some View {
+            #if DEBUG
+            // Speed test (My Dev Stuff → Widget: still ring): a static arc, no timer view or mask.
+            if WidgetSpeedTest.stillRing {
+                let f = end > start ? min(max(Date().timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
+                Circle().trim(from: 0, to: f)
+                    .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                    .rotationEffect(.degrees(-90))
+            } else {
+                masked
+            }
+            #else
+            masked
+            #endif
+        }
+
+        private var masked: some View {
             Circle()
                 .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
                 .mask { liveRing }

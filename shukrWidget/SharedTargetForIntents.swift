@@ -1620,3 +1620,13 @@ enum WidgetPerf {
         return Int(d.components.seconds * 1000 + d.components.attoseconds / 1_000_000_000_000_000)
     }
 }
+
+#if DEBUG
+/// DEBUG switches (Settings → My Dev Stuff) to find what makes a Prayers widget tap slow to redraw.
+enum WidgetSpeedTest {
+    static let stillRingKey = "debugWidget.stillRing"
+    static let fewestEntriesKey = "debugWidget.fewestEntries"
+    static var stillRing: Bool { UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: stillRingKey) == true }
+    static var fewestEntries: Bool { UserDefaults(suiteName: SharedStore.appGroup)?.bool(forKey: fewestEntriesKey) == true }
+}
+#endif

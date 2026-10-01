@@ -30,6 +30,10 @@ struct SettingsView: View {
     
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmEnabled: Bool = false
+    #if DEBUG
+    @AppStorage(WidgetSpeedTest.stillRingKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var widgetStillRing = false
+    @AppStorage(WidgetSpeedTest.fewestEntriesKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var widgetFewestEntries = false
+    #endif
         
 //    @AppStorage("calculationMethod") var calculationMethod: Int = 2
 //    @AppStorage("school") var school: Int = 0
@@ -416,6 +420,11 @@ struct SettingsView: View {
                             Button("Ring playground…") { showRingPlayground = true }
                             // Every notification shukr sends, to this phone 6 s apart (lock it to see).
                             Button("Send notification samples") { Task { await NotificationSamples.send() } }
+                            // Prayers widget speed test: flip one, tap the home widget, feel the difference.
+                            Toggle("Widget: still ring (no live fill)", isOn: $widgetStillRing)
+                                .onChange(of: widgetStillRing) { WidgetCenter.shared.reloadAllTimelines() }
+                            Toggle("Widget: fewest updates", isOn: $widgetFewestEntries)
+                                .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
                             Button("NEXT label playground…") { showNextPlayground = true }
                             Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
