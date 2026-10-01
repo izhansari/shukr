@@ -11,8 +11,8 @@
 import SwiftUI
 import SwiftData
 
-/// A labelled door at the top of the Zikr page ("Azkar" left, "History" right), in the look the
-/// Tasks button had.
+/// A door at the top of the Zikr page: just its symbol (owner, 2026-10-01: SF Symbols only), in the
+/// look of the Salah page's ☰ — History left, Azkar right. The name is its VoiceOver label.
 struct ZikrDoor: View {
     let title: String
     let symbol: String
@@ -23,19 +23,16 @@ struct ZikrDoor: View {
             triggerSomeVibration(type: .light)
             action()
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 14, weight: .regular))
-                Text(title).font(.subheadline.weight(.medium))
-            }
-            .fontDesign(.rounded)
-            .foregroundStyle(.gray.opacity(0.9))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(Capsule().fill(Color.primary.opacity(0.06)))
-            .padding()
-            .contentShape(Rectangle())
+            Image(systemName: symbol)
+                .frame(width: 24, height: 24)
+                .font(.system(size: 19))
+                .fontWeight(.light)
+                .foregroundColor(.gray.opacity(0.8))
+                .padding()
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 

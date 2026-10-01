@@ -1198,8 +1198,8 @@ struct PrayerTimesView: View {
                         // The menu is a popover (a native Menu can't show the wordmark):
                         // "shukr" on top like the old sidebar, then the destinations.
                         ZStack {
-                        // Zikr page, top left: Azkar (the Zikr tab reorganisation, 2026-10-01).
-                        ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
+                        // Zikr page, top left: History (the Zikr tab reorganisation; symbols only, 2026-10-01).
+                        ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
                             .opacity(Double(zikrness))
                             .allowsHitTesting(zikrness > 0.5)
 
@@ -1280,9 +1280,8 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
-                        // Zikr page, top right: History (the reorganisation; Your tasks moved to
-                        // "N of M tasks done" under the wheel).
-                        ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
+                        // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
+                        ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .opacity(Double(zikrness))
                             .allowsHitTesting(zikrness > 0.5)
                     }

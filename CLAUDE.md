@@ -309,7 +309,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Zikr tab** (ZikrTabPages.swift, YourTasksPage.swift, DailyTasksView.swift, ZikrReminders.swift; reorganised 2026-10-01, decision zikr-reorg-next-build A — the mock made real)
 - The Zikr page is today: the wheel, "N of M tasks done ›" under it → **Your tasks** (`YourTasksPage`, pushed). Top bar:
-  `ZikrDoor`s — **Azkar** left → `AzkarPage`, **History** right → `ZikrHistoryPage` (each its own page; the old History |
+  `ZikrDoor`s, SF Symbols only — **History** (clock) left → `ZikrHistoryPage`, **Azkar** (books) right → `AzkarPage` (each its own page; the old History |
   Azkar pager `ZikrLibraryView` and the Tasks sheet are gone). The title follows the wheel (task streaks).
 - `ZikrCircleWheel` (gentle arc, left dot scrubber): freestyle, the tasks NOT finished today, New task; after a session the next unfinished task centres (a centred task that finishes → `nextFocus`). A widget focus on a finished task is dropped; a start from a zikr's page still starts it. Tasks: own name, count or minutes goal, estimates, a reminder per task (set in the task's edit screen).
 - **Hold = a task's options** everywhere (`TaskMenu`, YourTasksPage.swift): wheel (Edit task · Open zikr · Delete…; a tap
