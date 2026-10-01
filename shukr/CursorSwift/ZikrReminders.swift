@@ -102,10 +102,16 @@ enum ZikrReminders {
         }
         for task in tasks {
             let doneToday = task.isCompleted(with: task.progress(in: sessions))
+            // Today's reminder only goes off with the task not done, so its streak is the one still to keep.
+            // A later day's isn't known yet (today may be missed): no streak line until that day's
+            // reschedule writes it (the diff re-adds a request whose text changed).
+            let streak = task.streak(now: now).current
             for fire in fires(task, now: now, horizon: horizon, doneToday: doneToday, todayKey: todayKey, prayerStart: prayerStart) {
                 let near = fire.timeIntervalSince(now) < 48 * 3600
+                let isToday = PrayerNotificationID.dayKey(PrayerDay.date(for: fire)) == todayKey
                 items.append(NotificationScheduler.Item(id: id(task: task.id, day: PrayerDay.date(for: fire)), date: fire,
-                                                        priority: near ? 1 : 3, content: content(for: task)))
+                                                        priority: near ? 1 : 3,
+                                                        content: content(for: task, streak: isToday ? streak : 0)))
             }
         }
         return items
@@ -148,11 +154,13 @@ enum ZikrReminders {
     }
 
     /// "After Fajr" / "Bismillah · 50 counts · ~3 min".
-    static func content(for task: TaskModel) -> UNNotificationContent {
+    /// `streak`: the days to keep (2 or more adds "🔥 Keep your 12-day streak" on its own line).
+    static func content(for task: TaskModel, streak: Int = 0) -> UNNotificationContent {
         let c = UNMutableNotificationContent()
         c.title = task.title
         let goal = task.isCountMode ? "\(task.goal) \(task.goal == 1 ? "count" : "counts")" : "\(task.goal) min"
         c.body = [task.mantraLine, goal, task.estimateNote(TaskProgress())].compactMap { $0 }.joined(separator: " · ")
+            + (streak >= 2 ? "\n🔥 Keep your \(streak)-day streak" : "")
         c.sound = .default
         c.categoryIdentifier = category
         c.userInfo = ["zikrTaskID": task.id.uuidString]

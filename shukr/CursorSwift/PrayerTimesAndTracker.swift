@@ -1357,20 +1357,47 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// The Zikr page's title in the fixed top bar, styled like TopBar's location label.
+    /// The Zikr page's title in the fixed top bar, styled like TopBar's location label. It follows the
+    /// wheel (owner, 2026-10-01): a centred task with a streak shows "8 Day Streak" — the Salah page's
+    /// words — with the flame (an outline in grey until today's goal is met); a tap shows its best, like
+    /// Salah's label. Freestyle, New task and a task with no streak show "Zikr".
     struct ZikrPageTitle: View {
+        @Query private var tasks: [TaskModel]
+        @State private var showBest = false
+        private let focus = ZikrWheelFocus.shared
+
         var body: some View {
+            let streak = focus.taskID.flatMap { id in tasks.first { $0.id == id } }?.streak()
+            let shown = streak.flatMap { $0.current > 0 ? $0 : nil }
             // Same metrics as TopBar's location row so the title sits where the city does.
             HStack {
-                Image(systemName: "circle.hexagonpath")
-                    .foregroundColor(.secondary)
-                Text("Zikr")
+                Image(systemName: shown.map { $0.keptToday ? "flame.fill" : "flame" } ?? "circle.hexagonpath")
+                    .foregroundStyle(shown?.keptToday == true ? Color.sage : Color.secondary)
+                    .contentTransition(.symbolEffect(.replace))
+                Group {
+                    if let s = shown {
+                        Text(showBest ? "Max \(s.best) Days" : "\(s.current) Day Streak")
+                    } else {
+                        Text("Zikr")
+                    }
+                }
+                .id("\(focus.taskID?.uuidString ?? "")-\(showBest)")
+                .transition(.blurReplace)
             }
             .padding()
             .frame(height: 24, alignment: .center)
             .font(.caption)
             .fontDesign(.rounded)
             .fontWeight(.thin)
+            .animation(.snappy, value: focus.taskID)
+            .animation(.snappy, value: showBest)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard shown != nil else { return }
+                triggerSomeVibration(type: .light)
+                showBest.toggle()
+            }
+            .onChange(of: focus.taskID) { _, _ in showBest = false }
             .padding()
         }
     }

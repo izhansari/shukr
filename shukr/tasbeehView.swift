@@ -454,7 +454,8 @@ struct tasbeehView: View {
                         savedSession: session, // Pass the saved session
                         // From the first frame (it popped in half a second late and moved the page);
                         // a tap before the stop's cleanup has run waits for it (`resumeWanted`).
-                        keepCounting: sleptSaved && sleepResume != nil ? { requestKeepCounting() } : nil
+                        keepCounting: sleptSaved && sleepResume != nil ? { requestKeepCounting() } : nil,
+                        asleep: sleptSaved
                     )
                 }
                 // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep
@@ -1024,6 +1025,8 @@ struct tasbeehView: View {
         let savedSession: SessionDataModel
         /// Only after a sleep finish: carry the same session on (he was only dozing).
         var keepCounting: (() -> Void)? = nil
+        /// Saved by sleep mode: no buzz from the streak moment.
+        var asleep = false
 
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
@@ -1043,14 +1046,41 @@ struct tasbeehView: View {
 
         /// A task's session: where the task stands today ("5 of 100 today"), since a continued
         /// session saves only its own counts.
-        private var taskToday: String? {
+        /// Today's progress on the session's task, this session included (nil: not a task session).
+        private var taskProgress: TaskProgress? {
             guard let task = savedSession.task else { return nil }
             let mine = task.sessions.filter { $0.startTime >= PrayerDay.sessionDayStart() }
-            let p = TaskProgress(count: mine.reduce(0) { $0 + $1.totalCount },
-                                 seconds: mine.reduce(0) { $0 + $1.secondsPassed })
-            let today = task.isCountMode ? "\(p.count) of \(task.goal) today"
-                                         : "\(Int(p.seconds / 60)) of \(task.goal) min today"
-            return task.mantraLine == nil ? today : "\(task.title) · \(today)"
+            return TaskProgress(count: mine.reduce(0) { $0 + $1.totalCount },
+                                seconds: mine.reduce(0) { $0 + $1.secondsPassed })
+        }
+
+        /// The streak moment: only after the session that finished the task's goal for today (it wasn't
+        /// done without this session's counts).
+        private var finishedStreak: TaskStreak? {
+            guard let task = savedSession.task, let p = taskProgress, task.isCompleted(with: p),
+                  savedSession.startTime >= PrayerDay.sessionDayStart() else { return nil }
+            let before = TaskProgress(count: p.count - savedSession.totalCount, seconds: p.seconds - savedSession.secondsPassed)
+            guard !task.isCompleted(with: before) else { return nil }
+            let streak = task.streak()
+            return streak.current > 0 ? streak : nil
+        }
+
+        /// The card's line for a task session: where the task stands, never this session's count again
+        /// (the tile has it; owner: "it says 50 three times"). "Done for today" / "70 to go today", with
+        /// the streak still to keep after it.
+        private func taskLine(_ task: TaskModel, _ p: TaskProgress) -> Text {
+            let prefix = task.mantraLine == nil ? Text("") : Text("\(task.title) · ")
+            if task.isCompleted(with: p) {
+                return prefix.foregroundStyle(.secondary) + Text("Done for today").foregroundStyle(Color.sage)
+            }
+            let left = task.isCountMode ? "\(task.goal - p.count) to go today"
+                                        : "\(max(1, Int((Double(task.goal * 60) - p.seconds) / 60 + 0.5))) min to go today"
+            var line = prefix + Text(left)
+            let streak = task.streak()
+            if streak.current > 0 {
+                line = line + Text(" · ") + Text(Image(systemName: "flame")) + Text(" keeps your \(streak.current)")
+            }
+            return line.foregroundStyle(.secondary)
         }
 
         private var sessionLabel: String {
@@ -1068,17 +1098,23 @@ struct tasbeehView: View {
 
                 VStack(spacing: 0) {
                     Spacer(minLength: 20)
-                    VStack(spacing: 10) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(Color.sage)
-                            .frame(width: 52, height: 52)
-                            .background(Circle().fill(Color.sage.opacity(0.16)))
-                            .scaleEffect(checkShown ? 1 : 0.4)
-                            .opacity(checkShown ? 1 : 0)
-                        Text("saved to your history")
-                            .font(.system(size: 17, weight: .light, design: .rounded))
-                            .foregroundStyle(.secondary)
+                    Group {
+                        if let streak = finishedStreak {
+                            StreakResultsHero(streak: streak, quiet: asleep)
+                        } else {
+                            VStack(spacing: 10) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .foregroundStyle(Color.sage)
+                                    .frame(width: 52, height: 52)
+                                    .background(Circle().fill(Color.sage.opacity(0.16)))
+                                    .scaleEffect(checkShown ? 1 : 0.4)
+                                    .opacity(checkShown ? 1 : 0)
+                                Text("saved to your history")
+                                    .font(.system(size: 17, weight: .light, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .padding(.bottom, 22)
 
@@ -1194,10 +1230,15 @@ struct tasbeehView: View {
                                     .foregroundStyle(.tertiary)
                             }
                         }
-                        Text(isTasbihFatimah ? "33 · 33 · 34 after salah"
-                             : locked ? "\(sessionLabel) · \(taskToday ?? "from your task")" : sessionLabel)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Group {
+                            if let task = savedSession.task, let p = taskProgress {
+                                taskLine(task, p)
+                            } else {
+                                Text(isTasbihFatimah ? "33 · 33 · 34 after salah" : sessionLabel)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .font(.caption)
                     }
                     Spacer(minLength: 0)
                 }

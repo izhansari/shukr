@@ -186,6 +186,8 @@ struct ZikrTasksSheet: View {
                 }
             }
             Spacer(minLength: 4)
+            let streak = task.streak()
+            if streak.current > 0 { TaskStreakBadge(streak: streak) }
             Image(systemName: "line.3.horizontal")
                 .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(.tertiary)
