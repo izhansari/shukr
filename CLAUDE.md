@@ -208,9 +208,9 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
   restarted on every didBecomeActive and by a 1 s watchdog when quiet; smoothed; `qibla.heading` −180…180; aligned with
   hysteresis, never without a place or with an untrustworthy heading (`CompassStatus`; the arrow is dashed then).
   Calibration (CompassCalibration.swift): iOS's own screen is OFF (apps can't open it — owner); after ~3 s untrustworthy
-  `CompassHealth.needsCalibration` (publishes only on flips) shows "Compass needs a moment · tap" under the circle (laid out
-  at zero size: the ring never moves), a red dot on ☰ + a "Calibrate compass" row → `CompassCalibrationSheet` (figure 8,
-  magnets, live status, closes itself when good). DEBUG `-demoCompassUnreliable [-demoCompassRecover s]`,
+  `CompassHealth.needsCalibration` (publishes only on flips) shows "Compass needs calibration · tap" under the circle (laid out
+  at zero size: the ring never moves), a red dot on ☰ + a "Calibrate compass" row → `CompassCalibrationSheet` (a full page: it's the
+  iPhone's compass, not shukr; figure 8, magnets, live status, closes itself when good). DEBUG `-demoCompassUnreliable [-demoCompassRecover s]`,
   `-demoCalibrationSheet`, `-demoMenuOpen`; the phone keeps Library/Caches/compass.log (DEBUG builds). DEBUG Settings → My Dev Stuff →
   Compass debug, `-demoCompassJiggle [-demoCompassSweep]`. `userLocation` isn't published. Every app-group write, even the same value, invalidates bound `@AppStorage`: write only on change.
 - No `GeometryReader` in the welcome overlay (blank app). Decode images off the main thread, never in `body`.

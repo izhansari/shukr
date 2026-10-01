@@ -12,7 +12,7 @@
 
 import SwiftUI
 
-/// "Compass needs a moment · tap", under the Salah circle while the compass needs calibrating.
+/// "Compass needs calibration · tap", under the Salah circle while the compass needs calibrating.
 /// Laid out at zero size by its parent, so the circle never moves.
 struct CompassHintLine: View {
     @EnvironmentObject private var health: CompassHealth
@@ -27,7 +27,7 @@ struct CompassHintLine: View {
         } label: {
             HStack(spacing: 6) {
                 Circle().fill(Color.red).frame(width: 6, height: 6)
-                Text("Compass needs a moment · tap")
+                Text("Compass needs calibration · tap")
             }
             .font(.system(size: 13, design: .rounded))
             .foregroundStyle(.secondary)
@@ -84,8 +84,9 @@ struct CompassMenuRow: View {
     }
 }
 
-/// Ours, in place of iOS's calibration screen (which apps can't open): what to do, a phone drawing
-/// a figure 8, and the compass's state live — "All set" closes it by itself.
+/// Ours, in place of iOS's calibration screen (which apps can't open): a full page (owner) saying it's
+/// the iPhone's own compass, not shukr, what to do, a phone drawing a figure 8, and the compass's
+/// state live — "All set" closes it by itself.
 struct CompassCalibrationSheet: View {
     @EnvironmentObject private var health: CompassHealth
     @Environment(\.dismiss) private var dismiss
@@ -93,20 +94,45 @@ struct CompassCalibrationSheet: View {
     @State private var wasNeeded = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Calibrate your compass")
-                .font(.system(size: 24, weight: .light, design: .rounded))
-                .padding(.top, 30)
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close")
+            }
+            .padding(.top, 8)
+            Spacer(minLength: 12)
             FigureEightPhone()
-                .frame(height: 110)
-            VStack(alignment: .leading, spacing: 14) {
+                .frame(height: 190)
+            Text("Calibrate your compass")
+                .font(.system(size: 28, weight: .light, design: .rounded))
+                .padding(.top, 28)
+            // It's the phone, not us (owner): every compass app on this iPhone reads the same sensor.
+            Text("Your iPhone's compass needs calibrating. It happens to every iPhone now and then, near magnets or metal, and it affects every compass app, not just shukr.")
+                .font(.system(size: 16, weight: .light, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+            VStack(alignment: .leading, spacing: 16) {
                 step(1, "Hold your phone and draw a big figure 8 in the air, a few times.")
                 step(2, "Keep it away from magnets: car mounts, magnetic cases, speakers.")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 30)
             status
                 .frame(height: 24)
-            Spacer(minLength: 0)
+                .padding(.top, 28)
+            Spacer(minLength: 12)
             Button {
                 dismiss()
             } label: {
@@ -121,8 +147,7 @@ struct CompassCalibrationSheet: View {
         }
         .padding(.horizontal, 24)
         .fontDesign(.rounded)
-        .presentationDetents([.height(470)])
-        .presentationDragIndicator(.visible)
+        .background(Color(.systemBackground).ignoresSafeArea())
         .onAppear { wasNeeded = health.needsCalibration }
         .onChange(of: health.needsCalibration) { _, needed in
             if needed {
@@ -170,7 +195,7 @@ private struct FigureEightPhone: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private static func point(_ t: Double, in size: CGSize) -> CGPoint {
-        let a = min(size.width * 0.36, 90), b = size.height * 0.3
+        let a = min(size.width * 0.36, 120), b = size.height * 0.3
         return CGPoint(x: size.width / 2 + a * sin(t), y: size.height / 2 + b * sin(2 * t))
     }
 
@@ -191,7 +216,7 @@ private struct FigureEightPhone: View {
                     let next = Self.point(t + 0.05, in: size)
                     let tilt = atan2(next.y - p.y, next.x - p.x) * 180 / .pi
                     Image(systemName: "iphone")
-                        .font(.system(size: 30, weight: .light))
+                        .font(.system(size: 40, weight: .light))
                         .foregroundStyle(Color.sage)
                         .rotationEffect(.degrees(tilt * 0.25))
                         .position(p)

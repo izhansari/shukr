@@ -1271,7 +1271,7 @@ struct PrayerTimesView: View {
                         }
                         .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
                         .onChange(of: showWhatsNew) { _, open in CircleCover.set("whatsNew", open) }
-                        .sheet(isPresented: $showCalibration) { CompassCalibrationSheet() }
+                        .fullScreenCover(isPresented: $showCalibration) { CompassCalibrationSheet() }
                         .onChange(of: showCalibration) { _, open in CircleCover.set("compassCalibration", open) }
                         .onReceive(NotificationCenter.default.publisher(for: CompassHealth.openSheet)) { _ in
                             showCalibration = true
