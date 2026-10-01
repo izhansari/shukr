@@ -157,43 +157,47 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             base = entry.at(max(openedAt.addingTimeInterval(WidgetListState.openFor), entry.date.addingTimeInterval(1)), list: false)
             entries.append(base)
         }
-        // Plus an entry when the shown prayer starts (and when it ends), so the Lock Screen's dashed
-        // "next" ring turns into the live ring on time rather than at the next (throttled) reload.
-        // A few entries at most — a long timeline was "not performant" (owner). No per-minute ones.
+        // The moments the circle changes, for the prayer it shows now AND the one after it (owner,
+        // 2026-09-30: the next one's colour changes and last hour used to wait on iOS's next reload).
+        // Per prayer: its start and end (the Lock Screen's dashed "next" ring turns live on time), the
+        // colour changes (Perfect → On time → Late; the fill itself runs live), an hour before the end
+        // (the time left), and with "27m" / "27min" an entry each minute of that last hour — iOS can't
+        // tick those itself; the countdown style ("27:13") needs none. Otherwise a few entries — a
+        // long timeline was "not performant" (owner).
         let shown = PrayersWidgetView.WidgetPrayerCircleView(entry: base).relevantPrayer
-        var moments: [Date] = []
-        if !shown.current, shown.start > base.date, shown.end > shown.start {
-            moments = [shown.start, shown.end]
-        } else if shown.current, shown.end > base.date {
-            moments = [shown.end]
-        }
-        // …and an hour before it ends: the Lock Screen's circle shows the time left from then.
-        let lastHour = shown.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
-        if shown.end > shown.start, lastHour > base.date, lastHour > shown.start { moments.append(lastHour) }
-        // "27m" / "27min" (LockTimeStyle): iOS can't tick those itself, so an entry each minute of the
-        // last hour — only with one of them picked. Also for a prayer that hasn't started yet (shown as
-        // next once the current one is marked): planned now, so its last hour never waits on a later
-        // reload. The countdown style ("27:13") needs none.
-        if LockTimeStyle.current != .timer, shown.end > shown.start, shown.end > base.date {
-            var minute = shown.end.addingTimeInterval(-60)
-            while minute > base.date, minute >= max(lastHour, shown.start) {
-                moments.append(minute)
-                minute = minute.addingTimeInterval(-60)
+        var moments = Self.moments(for: shown, after: base.date)
+        if shown.end > base.date {
+            let following = PrayersWidgetView.WidgetPrayerCircleView(entry: base.at(shown.end.addingTimeInterval(1), list: false)).relevantPrayer
+            if following.start >= shown.end, following.name != shown.name || following.start != shown.start {
+                moments += Self.moments(for: following, after: base.date)
             }
-        }
-        // …and when its colour changes (Perfect → On time → Late), so the ring's colour moves on
-        // time like the app's (the fill itself runs live). Two more entries at most.
-        if shown.end > shown.start {
-            moments += PrayerScoring.gradeChanges(start: shown.start, end: shown.end).filter { $0 > base.date }
         }
         // Style "Follows the sun" flips at Maghrib and at sunrise: an entry at each still ahead.
         if entry.style == .auto, let sunrise = entry.prayerDict["Sunrise"]?.start,
            let maghrib = entry.prayerDict["Maghrib"]?.start {
             moments += [sunrise, maghrib, sunrise.addingTimeInterval(86_400)].filter { $0 > base.date }
         }
-        entries += moments.map { base.at($0, list: false) }
+        entries += Set(moments).map { base.at($0, list: false) }   // one prayer's end is often the next one's start
         let nextRefresh = Date().addingTimeInterval(60)
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
+    }
+
+    /// When one prayer's circle changes (see the timeline above), after `now`.
+    static func moments(for prayer: (name: String, current: Bool, start: Date, end: Date, window: TimeInterval),
+                        after now: Date) -> [Date] {
+        guard prayer.end > prayer.start, prayer.end > now else { return [] }
+        var moments = [prayer.start, prayer.end]
+        let lastHour = prayer.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
+        if lastHour > prayer.start { moments.append(lastHour) }
+        if LockTimeStyle.current != .timer {
+            var minute = prayer.end.addingTimeInterval(-60)
+            while minute > now, minute >= max(lastHour, prayer.start) {
+                moments.append(minute)
+                minute = minute.addingTimeInterval(-60)
+            }
+        }
+        moments += PrayerScoring.gradeChanges(start: prayer.start, end: prayer.end)
+        return moments.filter { $0 > now }
     }
 
     #if DEBUG
