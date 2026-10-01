@@ -369,77 +369,21 @@ final class WatchZikrStore: ObservableObject {
 /// every count. Off silences counting only (counts, sets, hundreds, phrase / goal buzzes, −);
 /// buttons' clicks, marking, the qibla and notifications keep theirs (owner, 2026-09-29).
 enum WatchHaptics {
-    /// Stored values from before Off are kept (0 light · 1 medium · 2 strong), so a choice carries over.
-    static let key = "watch.hapticStrength"
-    static let off = 3
-    /// Softest first, as the pickers list them.
-    static let levels: [(value: Int, name: String)] = [(off, "Off"), (0, "Soft"), (1, "Medium"), (2, "Strong")]
-    /// Unset: Soft (it was Medium; owner: "the haptics seem really strong").
-    static var strength: Int { WatchStore.defaults.object(forKey: key) as? Int ?? 0 }
-    static var counting: Bool { strength != off }
-    static func name(_ level: Int) -> String { levels.first { $0.value == level }?.name ?? "Soft" }
-    /// The pause screen's chip, like the phone's: "soft taps" … "silent".
-    static func chipLabel(_ level: Int) -> String { level == off ? "silent" : "\(name(level).lowercased()) taps" }
-    /// The chip cycles softest first: Off → Soft → Medium → Strong → Off.
-    static func next(after level: Int) -> Int {
-        let i = levels.firstIndex { $0.value == level } ?? 1
-        return levels[(i + 1) % levels.count].value
-    }
+    // One feel, no choice (owner, idea GUSV): every count is the soft tap; the moments that mean
+    // something — each 100, each Tasbih Fatimah step, a session finishing onto its results — are one
+    // level stronger. (The old strength setting, `watch.hapticStrength`, is no longer read.)
+    private static let soft: WKHapticType = .click
+    private static let stronger: WKHapticType = .directionUp
 
-    private static func countType(_ level: Int) -> WKHapticType? {
-        switch level {
-        case off: nil
-        case 1: .directionUp
-        case 2: .start
-        default: .click
-        }
-    }
-    private static func play(_ type: WKHapticType) {
-        guard counting else { return }
-        WKInterfaceDevice.current().play(type)
-    }
-
-    static func count() { if let t = countType(strength) { WKInterfaceDevice.current().play(t) } }
-    /// A picker row: what a count feels like at that level (Off: nothing).
-    static func sample(_ level: Int) { if let t = countType(level) { WKInterfaceDevice.current().play(t) } }
+    static func count() { WKInterfaceDevice.current().play(soft) }
     /// Counting in sets: the phone's ta-ta-ta. watchOS drops haptics played that close together,
     /// so one built-in multi-tap pattern (.retry) instead.
-    static func set() { play(.retry) }
-    static func hundred() { play(.notification) }
-    static func goal() { play(.success) }
-    static func minus() { play(.directionDown) }
+    static func set() { WKInterfaceDevice.current().play(.retry) }
+    /// Every 100, a Tasbih Fatimah step, a session done: one level above a count.
+    static func milestone() { WKInterfaceDevice.current().play(stronger) }
+    static func minus() { WKInterfaceDevice.current().play(.directionDown) }
     /// Buttons (pause, finish, +N): always, like every other button click.
     static func tick() { WKInterfaceDevice.current().play(.click) }
-}
-
-/// How each count feels: Off · Soft · Medium · Strong. Tap one to feel it. Settings and the pause
-/// screen's second page, on the same key.
-struct WatchHapticPicker: View {
-    @AppStorage(WatchHaptics.key, store: WatchStore.defaults) private var strength = 0
-
-    var body: some View {
-        VStack(spacing: 6) {
-            ForEach(WatchHaptics.levels, id: \.value) { level in
-                Button {
-                    strength = level.value
-                    WatchHaptics.sample(level.value)
-                } label: {
-                    HStack {
-                        Text(level.name).font(.system(size: 15, design: .rounded))
-                        Spacer()
-                        if strength == level.value {
-                            Image(systemName: "checkmark").foregroundStyle(Color.green)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 10)
-                    .background(RoundedRectangle(cornerRadius: 12)
-                        .fill(strength == level.value ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
 }
 
 // MARK: - Zikr page (the wheel)
@@ -807,6 +751,8 @@ struct WatchCounterView: View {
     /// The pause screen's page: 0 the card, 1 haptics. Back to the card on every pause.
     @State private var pausePage = 0
     @State private var draftToken = 0
+    /// When ‹ last resumed (− ignores taps just after; it shares the spot).
+    @State private var resumedAt = Date.distantPast
     @State private var sessionID = UUID().uuidString
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -871,8 +817,17 @@ struct WatchCounterView: View {
             // watchOS 26 draws a glass circle behind each item that stayed as an empty bubble when
             // only the buttons faded (owner). The system ✕ lives in the same bar, so it can't
             // appear while the bar is hidden.
-            .toolbarVisibility(finished == nil && !paused ? .automatic : .hidden, for: .navigationBar)
+            .toolbarVisibility(finished == nil ? .automatic : .hidden, for: .navigationBar)
             .toolbar {
+                if paused {
+                    // Paused: ‹ resumes (owner, idea GUSV: Resume as a back chevron, top left) — in the
+                    // slot watchOS gives its own ✕, so that can't appear. Double Tap resumes too.
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { togglePause() } label: { Image(systemName: "chevron.left") }
+                            .handGestureShortcut(.primaryAction)
+                            .accessibilityLabel("Resume")
+                    }
+                } else {
                 // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
                 ToolbarItem(placement: .cancellationAction) {
                     HStack(spacing: 4) {
@@ -892,6 +847,7 @@ struct WatchCounterView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { togglePause() } label: { Image(systemName: "pause.fill") }
+                }
                 }
             }
         }
@@ -1112,11 +1068,11 @@ struct WatchCounterView: View {
         if postSalah {
             // The phone's success buzz as each phrase ends; the goal is 100.
             if count >= WatchPostSalah.total { reachedGoal(); return }
-            if WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index { WatchHaptics.goal() }
+            if WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index { WatchHaptics.milestone() }
             saveDraft()
             return
         }
-        if count / 100 > before / 100 { WatchHaptics.hundred() }
+        if count / 100 > before / 100 { WatchHaptics.milestone() }
         if let task, task.countMode, count >= task.goal, before < task.goal { reachedGoal() } else { saveDraft() }
     }
 
@@ -1158,6 +1114,8 @@ struct WatchCounterView: View {
     }
 
     private func minus() {
+        // − sits where the pause screen's ‹ was: a quick second tap on ‹ mustn't take one off.
+        guard Date().timeIntervalSince(resumedAt) > 0.7 else { return }
         guard count > config.startCount else { return }
         count = max(count - tapWorth, config.startCount)
         WatchHaptics.minus()
@@ -1170,6 +1128,7 @@ struct WatchCounterView: View {
             if let p = pausedAt {
                 pausedTotal += Date().timeIntervalSince(p)
                 pausedAt = nil
+                resumedAt = Date()
                 runtime.start()
                 crownFocused = true
             } else {
@@ -1182,10 +1141,7 @@ struct WatchCounterView: View {
         saveDraft(now: true)
     }
 
-    private func reachedGoal() {
-        WatchHaptics.goal()
-        finish()
-    }
+    private func reachedGoal() { finish() }   // finish() plays the milestone onto the results
 
     private func finish() {
         let seconds = activeSeconds(at: Date())
@@ -1205,6 +1161,7 @@ struct WatchCounterView: View {
         clearOwnDraft()
         WatchZikrStore.shared.record(record)
         runtime.stop()
+        WatchHaptics.milestone()   // onto the results: one level above a count
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
     }
 
@@ -1233,7 +1190,6 @@ struct WatchCounterView: View {
                 usualPace: postSalah ? WatchZikrStore.shared.postSalahPace : task?.pace,
                 finish: WatchScreen.roomy ? finishEstimate : nil,
                 finishArmed: finishArmed,
-                resume: togglePause,
                 finishEarly: tappedFinish)
                 .tag(0)
             WatchPauseSettings(
@@ -1516,27 +1472,12 @@ struct WatchSettingsPage: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Settings")
                     .font(.system(size: 18, weight: .light, design: .rounded))
-                Text("haptics")
-                    .font(.system(size: 10, design: .rounded))
-                    .tracking(1.2)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                WatchHapticPicker()
-                Text("How each count feels on your wrist. Tap one to try it. Off keeps counting silent; buttons still click.")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
-                // watchOS pairs its haptics with a soft tone unless the watch is silenced; apps can't
-                // play the tap alone.
-                Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
                 Text("counting")
                     .font(.system(size: 10, design: .rounded))
                     .tracking(1.2)
                     .textCase(.uppercase)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                    .padding(.top, 4)
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Tap anywhere, or drag down", systemImage: "hand.tap")
                     Label("Pinch finger and thumb (Double Tap)", systemImage: "hand.pinch")
@@ -1545,6 +1486,11 @@ struct WatchSettingsPage: View {
                 .font(.system(size: 12, design: .rounded))
                 WatchCrownDirectionPicker()
                 WatchCrownTapsToggle()
+                // Each count is a soft tap, each 100 a stronger one (no choice; owner). watchOS pairs its haptics with a soft tone unless the watch is silenced; apps can't
+                // play the tap alone.
+                Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
                 Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -1837,7 +1783,6 @@ struct WatchPauseStats: View {
     let usualPace: Double?
     let finish: (left: TimeInterval, at: Date)?
     let finishArmed: Bool
-    let resume: () -> Void
     let finishEarly: () -> Void
     @State private var perCount = true
     @State private var showFinishTime = false
@@ -1866,25 +1811,18 @@ struct WatchPauseStats: View {
             .frame(height: tileH * 2 + gap)
             if let finish { finishTile(finish) }
             Spacer(minLength: 0)
-            // The system's bordered button is ~50 pt tall on a watch: a capsule of our own keeps the
-            // page on one screen.
-            Button(action: resume) {
-                Text("Resume")
-                    .font(.system(size: 15, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.watchSage)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: WatchScreen.small ? 30 : 34)
-                    .background(Capsule().fill(Color.watchSage.opacity(0.22)))
-                    .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .handGestureShortcut(.primaryAction)   // Double Tap resumes
+            // Finish early in the big capsule (owner, idea GUSV: easier to tap; Resume is the ‹ top
+            // left). Two taps, like the phone: the first arms it (green), it disarms after 3 s. Our own
+            // capsule: the system's bordered button is ~50 pt tall on a watch.
             Button(action: finishEarly) {
                 Text(finishArmed ? "Tap again to finish" : "Finish early")
-                    .font(.system(size: 11, weight: finishArmed ? .semibold : .regular, design: .rounded))
-                    .foregroundStyle(finishArmed ? Color.green : .secondary)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(finishArmed ? Color.green : .primary)
                     .contentTransition(.opacity)
                     .frame(maxWidth: .infinity)
+                    .frame(height: WatchScreen.small ? 30 : 34)
+                    .background(Capsule().fill(finishArmed ? Color.green.opacity(0.22) : Color.white.opacity(0.12)))
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -2033,7 +1971,6 @@ struct WatchPauseSettings: View {
     let finish: (left: TimeInterval, at: Date)?
     let crownOnly: Bool
     let setCrownOnly: (Bool) -> Void
-    @AppStorage(WatchHaptics.key, store: WatchStore.defaults) private var strength = 0
     @State private var showFinishTime = false
 
     var body: some View {
@@ -2059,14 +1996,6 @@ struct WatchPauseSettings: View {
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
-            }
-            section("haptics") {
-                chip(WatchHaptics.chipLabel(strength),
-                     strength == WatchHaptics.off ? "applewatch.slash" : "applewatch.radiowaves.left.and.right",
-                     lit: strength != WatchHaptics.off) {
-                    strength = WatchHaptics.next(after: strength)
-                    WatchHaptics.sample(strength)
-                }
             }
             section("count with") {
                 chip(crownOnly ? "Crown only" : "Tap & pinch",
