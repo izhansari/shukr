@@ -294,22 +294,26 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         appActive = active
         if active {
             guard headingWanted else { return }
-            restartHeading()
+            restartHeading(because: "app active")
             startWatchdog()
         } else {
+            #if DEBUG
+            CompassLog.write("app inactive")
+            #endif
             // Nothing to point while we're not on screen; Core Location suspends its own.
             motion.stopDeviceMotionUpdates()
             watchdog?.invalidate(); watchdog = nil
         }
     }
 
-    private func restartHeading() {
+    private func restartHeading(because reason: String) {
         manager.stopUpdatingHeading()
         manager.startUpdatingHeading()
         motion.stopDeviceMotionUpdates()
         startMotion()
         #if DEBUG
         restarts += 1
+        CompassLog.write("restart #\(restarts): \(reason)")
         #endif
     }
 
@@ -389,14 +393,17 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         let quiet = Date().timeIntervalSince(lastSampleAt)
         // Core Motion reads ~30 times a second; Core Location only when the phone turns (1° filter),
         // so without Core Motion a still phone is quiet on purpose — give it longer.
-        if quiet > (motion.isDeviceMotionAvailable ? 2 : 6) { restartHeading() }
-        #if DEBUG
-        if UserDefaults.standard.bool(forKey: "compassDebug") {
-            let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
-            let bearing = qiblaBearing.map { "\(Int($0.rounded()))°" } ?? "–"
-            compass.debugLine = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s · quiet \(String(format: "%.1f", quiet))s"
-                + "\nqibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status) · restarts \(restarts)"
+        if quiet > (motion.isDeviceMotionAvailable ? 2 : 6) {
+            restartHeading(because: "quiet \(String(format: "%.1f", quiet))s")
         }
+        #if DEBUG
+        let source = motion.isDeviceMotionActive ? (motionFrame == .xTrueNorthZVertical ? "CM true" : "CM mag") : "CL"
+        let bearing = qiblaBearing.map { "\(Int($0.rounded()))°" } ?? "–"
+        let first = "\(source) \(lastRaw) · CL \(lastCL) · \(samplesThisSecond)/s · quiet \(String(format: "%.1f", quiet))s"
+        let second = "qibla \(bearing) · off \(Int(compass.qibla.heading.rounded()))° · \(compass.status)"
+            + "\(compass.qibla.aligned ? " · aligned" : "") · restarts \(restarts)"
+        if UserDefaults.standard.bool(forKey: "compassDebug") { compass.debugLine = first + "\n" + second }
+        CompassLog.write(first + " · " + second)
         samplesThisSecond = 0
         #endif
     }
@@ -416,7 +423,12 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// used to say aligned, since the bearing came back as 0).
     private func updateQibla() {
         let status: CompassStatus = qiblaBearing == nil ? .noLocation : headingReliable ? .ok : .unreliable
-        if compass.status != status { compass.status = status }
+        if compass.status != status {
+            #if DEBUG
+            CompassLog.write("status \(compass.status) → \(status)")
+            #endif
+            compass.status = status
+        }
         guard let bearing = qiblaBearing else {
             if compass.qibla.aligned || compass.qibla.heading != 0 { compass.qibla = (false, 0) }
             return
@@ -435,7 +447,9 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// `around`: degrees relative to the qibla instead of north.
     func debugHeading(_ degrees: Double, around qibla: Bool) {
         let value = qibla ? (qiblaBearing ?? 0) + degrees : degrees
-        take((value.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), reliable: true, smoothing: 0.5)
+        // `-demoCompassUnreliable`: as if iOS said the heading can't be trusted (the dimmed arrow).
+        let reliable = !ProcessInfo.processInfo.arguments.contains("-demoCompassUnreliable")
+        take((value.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), reliable: reliable, smoothing: 0.5)
     }
     #endif
 
@@ -457,3 +471,37 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         return (bearing + 360).truncatingRemainder(dividingBy: 360)
     }
 }
+
+#if DEBUG
+/// The compass's own log on the phone (DEBUG builds): a line a second while the app is on screen,
+/// plus restarts and status changes, in the app's Library/Caches/compass.log (the last ~1 MB; the
+/// one before is compass.old.log). Pull it with
+/// `xcrun devicectl device copy from --device <udid> --domain-type appDataContainer
+///  --domain-identifier com.betternorms.shukr --source Library/Caches/compass.log --destination <file>`.
+enum CompassLog {
+    private static let queue = DispatchQueue(label: "shukr.compassLog", qos: .utility)
+    private static let url = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appending(path: "compass.log")
+    private static let stamp: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
+
+    static func write(_ line: String) {
+        let text = "\(stamp.string(from: Date())) \(line)\n"
+        queue.async {
+            let fm = FileManager.default
+            if let size = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, size > 1_000_000 {
+                let old = url.deletingLastPathComponent().appending(path: "compass.old.log")
+                try? fm.removeItem(at: old)
+                try? fm.moveItem(at: url, to: old)
+            }
+            guard let data = text.data(using: .utf8) else { return }
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile(); handle.write(data); try? handle.close()
+            } else {
+                try? data.write(to: url)
+            }
+        }
+    }
+}
+#endif
