@@ -186,10 +186,15 @@ enum SharedStore {
     private static var cachedWidgetContainer: ModelContainer?
     static var widgetContainer: ModelContainer? {
         if let cached = cachedWidgetContainer { return cached }
-        guard FileManager.default.fileExists(atPath: url.path), storeIsCurrentVersion(at: url) else { return nil }
+        let t0 = ContinuousClock.now
+        guard FileManager.default.fileExists(atPath: url.path), storeIsCurrentVersion(at: url) else {
+            WidgetPerf.log("store not opened (missing or not \(currentVersionIdentifier)) \(WidgetPerf.ms(since: t0)) ms")
+            return nil
+        }
         do {
             let config = ModelConfiguration(schema: schema, url: url)
             let container = try ModelContainer(for: schema, configurations: [config])
+            WidgetPerf.log("store opened \(WidgetPerf.ms(since: t0)) ms")
             cachedWidgetContainer = container
             return container
         } catch {
@@ -478,7 +483,10 @@ struct MarkCompleteIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult {
+        let t0 = ContinuousClock.now
+        WidgetPerf.log("mark \(prayerName) start")
         SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd)
+        WidgetPerf.log("mark \(prayerName) done \(WidgetPerf.ms(since: t0)) ms")
         return .result()
     }
 }
@@ -668,6 +676,7 @@ struct showListToggleIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
+        WidgetPerf.log("list toggle")
         if let store = UserDefaults(suiteName: SharedStore.appGroup) {
             // Showing → back to the ring at once; otherwise open it (again) from now.
             if WidgetListState.isOpen(at: Date()) {
@@ -687,6 +696,7 @@ struct textToggleIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         
+        WidgetPerf.log("ring tap (text toggle)")
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
             store.setValue(!store.bool(forKey: "widgetTextToggle"), forKey: "widgetTextToggle")
             WidgetCenter.shared.reloadAllTimelines()
@@ -1576,5 +1586,37 @@ enum SetAsideStoreSalvage {
     private static func uuid(_ r: [String: Any], _ k: String) -> UUID? {
         guard let data = r[k] as? Data, data.count == 16 else { return nil }
         return UUID(uuid: data.withUnsafeBytes { $0.load(as: uuid_t.self) })
+    }
+}
+
+
+/// DEBUG: the widget's tap → redraw path timed, one line per step, in the app group's
+/// Library/Caches/widget-perf.log (last ~200 KB). Pull it with `xcrun devicectl device copy from --device <udid>
+/// --domain-type appGroupDataContainer --domain-identifier group.betternorms.shukr.shukrWidget
+/// --source Library/Caches/widget-perf.log --destination <file>`.
+enum WidgetPerf {
+    static func log(_ line: @autoclosure () -> String) {
+        #if DEBUG
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: SharedStore.appGroup)?
+            .appending(path: "Library/Caches", directoryHint: .isDirectory) else { return }
+        let url = dir.appending(path: "widget-perf.log")
+        let stamp = Date().formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).second(.twoDigits)
+            .secondFraction(.fractional(3)))
+        let data = Data("\(stamp) [\(ProcessInfo.processInfo.processName)] \(line())\n".utf8)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let h = try? FileHandle(forWritingTo: url) {
+            defer { try? h.close() }
+            if let size = try? h.seekToEnd(), size > 200_000 { try? h.truncate(atOffset: 0) }
+            try? h.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+        #endif
+    }
+
+    /// Milliseconds since `start`.
+    static func ms(since start: ContinuousClock.Instant) -> Int {
+        let d = ContinuousClock.now - start
+        return Int(d.components.seconds * 1000 + d.components.attoseconds / 1_000_000_000_000_000)
     }
 }

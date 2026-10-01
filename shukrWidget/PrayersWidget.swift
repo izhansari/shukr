@@ -140,7 +140,10 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<PrayersWidgetEntry> {
+        let t0 = ContinuousClock.now
+        WidgetPerf.log("timeline \(context.family) start")
         let entry = await makeEntry(configuration)
+        WidgetPerf.log("timeline \(context.family) entry made \(WidgetPerf.ms(since: t0)) ms")
         #if DEBUG
         // `-demoWidgetShots` (the app sets the flag): the small widget drawn at exact sizes, for
         // checking the layout on phones the simulator doesn't have at hand.
@@ -181,6 +184,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         }
         entries += Set(moments).map { base.at($0, list: false) }   // one prayer's end is often the next one's start
         let nextRefresh = Date().addingTimeInterval(60)
+        WidgetPerf.log("timeline \(context.family) done \(entries.count) entries \(WidgetPerf.ms(since: t0)) ms")
         return Timeline(entries: entries.sorted { $0.date < $1.date }, policy: .after(nextRefresh))
     }
 
@@ -1192,6 +1196,8 @@ import Adhan
 extension SharedStore {
     /// Today's marked prayers with their scores (the widget's done state needs the score).
     static func completedPrayerScoresToday() -> [String: Double] {
+        let t0 = ContinuousClock.now
+        defer { WidgetPerf.log("scores read \(WidgetPerf.ms(since: t0)) ms") }
         guard let container = widgetContainer else { return [:] }
         let context = ModelContext(container)
         let (dayStart, dayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
