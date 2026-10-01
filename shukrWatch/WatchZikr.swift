@@ -1018,7 +1018,7 @@ struct WatchCounterView: View {
     /// A tap / pump on the screen: a count, unless counting with the Crown.
     private func screenCount() {
         guard crownMode else { increment(); return }
-        WKInterfaceDevice.current().play(.click)
+        // No buzz (owner): it felt like a count that didn't happen. The note says why instead.
         withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
     }
