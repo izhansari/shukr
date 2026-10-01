@@ -170,12 +170,13 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         // …and an hour before it ends: the Lock Screen's circle shows the time left from then.
         let lastHour = shown.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
         if shown.end > shown.start, lastHour > base.date, lastHour > shown.start { moments.append(lastHour) }
-        // "27m" / "27min" (LockTimeStyle, the owner comparing styles): iOS can't tick those itself,
-        // so an entry each minute of the last hour — only with one of them picked, only for a prayer
-        // that's on. The countdown style ("27:13") needs none.
-        if LockTimeStyle.current != .timer, shown.current, shown.end > base.date {
+        // "27m" / "27min" (LockTimeStyle): iOS can't tick those itself, so an entry each minute of the
+        // last hour — only with one of them picked. Also for a prayer that hasn't started yet (shown as
+        // next once the current one is marked): planned now, so its last hour never waits on a later
+        // reload. The countdown style ("27:13") needs none.
+        if LockTimeStyle.current != .timer, shown.end > shown.start, shown.end > base.date {
             var minute = shown.end.addingTimeInterval(-60)
-            while minute > base.date, minute >= lastHour {
+            while minute > base.date, minute >= max(lastHour, shown.start) {
                 moments.append(minute)
                 minute = minute.addingTimeInterval(-60)
             }
