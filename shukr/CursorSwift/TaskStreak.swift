@@ -62,6 +62,24 @@ extension TaskModel {
 }
 
 #if DEBUG
+/// `-demoStreakHero 7,21` (current,best): the results screen's streak moment alone, on the results'
+/// colour, from a cold launch (looks only; the real one needs a session that finishes a goal).
+struct StreakHeroDemo: View {
+    static var streak: TaskStreak? {
+        guard let raw = UserDefaults.standard.string(forKey: "demoStreakHero") else { return nil }
+        let n = raw.split(separator: ",").compactMap { Int($0) }
+        guard let c = n.first else { return nil }
+        return TaskStreak(current: c, best: max(n.count > 1 ? n[1] : c, c), keptToday: true)
+    }
+    let streak: TaskStreak
+    var body: some View {
+        ZStack {
+            Color("pauseColor").ignoresSafeArea()
+            StreakResultsHero(streak: streak).offset(y: -120)
+        }
+    }
+}
+
 enum TaskStreakDebug {
     /// `-logTaskStreaks YES`: every task's streak and the days that counted, in the console.
     static func log(_ tasks: [TaskModel]) {
@@ -141,19 +159,22 @@ struct StreakResultsHero: View {
                         .foregroundStyle(.secondary)
                         .transition(.blurReplace)
                 } else {
+                    // The same type as "saved to your history" that follows (owner): only the words change.
                     Text(isNew ? "A new streak" : "\(days) days in a row")
-                        .font(.system(size: 26, weight: .light, design: .rounded))
+                        .font(.system(size: 17, weight: .light, design: .rounded))
                         .contentTransition(.numericText(value: Double(days)))
                         .transition(.blurReplace)
                 }
             }
-            .frame(height: 32)
+            .frame(height: 24)
             Group {
                 if settled {
                     Label(isNew ? "Day 1" : "\(streak.current) days in a row", systemImage: "flame.fill")
                         .foregroundStyle(Color.sage)
                 } else if streak.best > streak.current {
-                    Text("best \(streak.best)").foregroundStyle(.secondary)
+                    Text("\(streak.best) days is your best").foregroundStyle(.secondary)
+                } else if !isNew {
+                    Text("This is your best").foregroundStyle(Color.sage)
                 } else {
                     Text(" ")
                 }
@@ -161,6 +182,7 @@ struct StreakResultsHero: View {
             .font(.footnote)
             .id(settled)
             .transition(.opacity)
+            .opacity(settled || isNew || days == streak.current ? 1 : 0)   // about the new number: after the tick
         }
         .task {
             try? await Task.sleep(for: .milliseconds(150))

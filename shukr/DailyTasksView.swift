@@ -328,6 +328,9 @@ struct ZikrCircleWheel: View {
         .onAppear { ZikrWheelFocus.shared.taskID = centered.flatMap(UUID.init(uuidString:)) }
         #if DEBUG
         .task { TaskStreakDebug.log(tasks) }
+        .fullScreenCover(isPresented: .constant(StreakHeroDemo.streak != nil)) {
+            if let s = StreakHeroDemo.streak { StreakHeroDemo(streak: s) }
+        }
         #endif
         .onAppear {
             if let task = sharedState.selectedTask { centered = task.id.uuidString }

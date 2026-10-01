@@ -315,8 +315,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   when its sessions met the goal they ran with (the newest session's `targetCount` / `targetMin`, so a goal change never
   rewrites the past); `current` = today once done, else the run up to yesterday (still to keep); a miss resets, `best` kept.
   Starts 2026-09-23 (sessions carry their task since 4980db3). Flame: `flame.fill` sage = kept today, `flame` grey = to keep.
-- Shown: results (`StreakResultsHero` in the ✓'s spot, only after the session that finished today's goal: flame, N−1 → N,
-  ~2 s, then the ✓ / "saved to your history" + a small streak line; no buzz when `asleep`); the results card line says
+- Shown: results (`StreakResultsHero` in the ✓'s spot, only after the session that finished today's goal: flame, N−1 → N
+  in the type of the "saved" line that follows, then "21 days is your best" / sage "This is your best", ~2 s, then the ✓ / "saved to your history" + a small streak line; no buzz when `asleep`); the results card line says
   where the task stands ("Done for today" / "47 to go today · 🔥 keeps your 7"), never the count again; `ZikrPageTitle`
   follows the wheel (`ZikrWheelFocus.shared`, set from `centered`): "N Day Streak", tap → "Max N Days"; Tasks sheet rows
   (`TaskStreakBadge`); today's task reminder adds "🔥 Keep your N-day streak" (N ≥ 2; later days get it on their day's
