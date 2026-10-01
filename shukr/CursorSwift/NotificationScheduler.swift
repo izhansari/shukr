@@ -260,7 +260,8 @@ enum NotificationScheduler {
     /// The prayer notifications (owner, 2026-10-01, decision prayer-notif-wording — don't change the wording
     /// without him): the prayer and its colour, "Pray by 6:48 PM" always first, a second line that changes.
     /// 🟢 at the start · 🟡 30 min in (when the ring turns from green to yellow; it used to be halfway) ·
-    /// 🔴 with 30 min left. A window of an hour or less gets no 🟡 (it would meet the 🔴).
+    /// 🔴 with 30 min left (owner: kept there, though the ring turns red earlier). A window under 75 min gets no
+    /// 🟡 (it would land within 15 min of the 🔴).
     static func prayerNotification(_ kind: String, prayer: String,
                                    window: (start: Date, end: Date, window: TimeInterval)) -> (Date, UNNotificationContent)? {
         let endTime = window.end
@@ -274,7 +275,8 @@ enum NotificationScheduler {
             content.body = "\(prayer) has started"
         case "Mid":   // the id keeps "Mid"; it's 30 min in now
             date = window.start.addingTimeInterval(30 * 60)
-            guard endTime.timeIntervalSince(window.start) > 60 * 60 else { return nil }
+            // At least 15 min before the 🔴 (30 min before the end): a window of 75 min or more.
+            guard endTime.timeIntervalSince(window.start) >= 75 * 60 else { return nil }
             content.title = "\(prayer) 🟡"
             content.body = "30 min since \(prayer) started"
         case "End":

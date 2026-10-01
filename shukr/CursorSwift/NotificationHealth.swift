@@ -323,7 +323,7 @@ struct YourRemindersView: View {
     // system tints, which adapt to light / dark; free slots a clear system grey.
 
     private static let startColor = Color(.systemGreen)                                // starts
-    private static let halfColor = Color(.systemOrange)                                // halfway
+    private static let halfColor = Color(.systemYellow)                                // 30 min in (the 🟡 nudge)
     private static let endColor = Color(.systemRed)                                    // 30 min left
     private static let zikrColor = Color(.systemBlue)                                  // zikr
     private static let laterColor = Color(.systemPurple)                               // later
@@ -476,7 +476,7 @@ struct YourRemindersView: View {
         let present = Set(pending.map(\.kind))
         var list: [(label: String, color: Color)] = []
         if present.contains(.start) { list.append(("starts", Self.startColor)) }
-        if present.contains(.halfway) { list.append(("halfway", Self.halfColor)) }
+        if present.contains(.halfway) { list.append(("30 min in", Self.halfColor)) }
         if present.contains(.endingSoon) { list.append(("30 min", Self.endColor)) }
         if present.contains(.zikr) || present.contains(.zikrLater) { list.append(("zikr", Self.zikrColor)) }
         if present.contains(.snooze) { list.append(("later", Self.laterColor)) }
@@ -909,12 +909,18 @@ struct YourRemindersView: View {
         for d in 0..<7 {
             guard let day = Calendar.current.date(byAdding: .day, value: d, to: PrayerDay.date()) else { continue }
             let key = PrayerNotificationID.dayKey(day)
+            let windows = NotificationScheduler.windows(for: day)
             for (name, h, m) in times {
-                let start = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
+                // The real window when there's a location (as the scheduler: 🟡 30 min in, 🔴 30 min before
+                // the end, no 🟡 under 75 min); else a 2.5 h stand-in.
+                let start = windows?[name]?.start ?? Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
+                let end = windows?[name]?.end ?? start?.addingTimeInterval(9000)
                 items.append(Item(id: "\(key).\(name)Start", date: start, dayKey: key, kind: .start, prayer: name, title: name))
-                if d < 2 {
-                    items.append(Item(id: "\(key).\(name)Mid", date: start?.addingTimeInterval(1800), dayKey: key, kind: .halfway, prayer: name, title: name))
-                    items.append(Item(id: "\(key).\(name)End", date: start?.addingTimeInterval(9000), dayKey: key, kind: .endingSoon, prayer: name, title: name))
+                if d < 2, let start, let end {
+                    if end.timeIntervalSince(start) >= 75 * 60 {
+                        items.append(Item(id: "\(key).\(name)Mid", date: start.addingTimeInterval(1800), dayKey: key, kind: .halfway, prayer: name, title: name))
+                    }
+                    items.append(Item(id: "\(key).\(name)End", date: end.addingTimeInterval(-1800), dayKey: key, kind: .endingSoon, prayer: name, title: name))
                 }
             }
             if d < 5 {
