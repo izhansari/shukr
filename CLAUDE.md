@@ -312,8 +312,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - History | Azkar native pager; all-time header + 14-day bars. **Session rows** (`SessionRow`, History and a zikr's page;
   decision session-page): tap → `SessionPage` (SessionPage.swift, a sheet in the pause screen's look: when / kind, the zikr
   card, `ZikrBento` with the usual-pace line, task / sleep lines, Open zikr — not on the zikr's own page); hold → the system
-  `.contextMenu` (Open session · Open zikr · Feel the pace · Delete… with an alert); tap the pace pill (a faint capsule, a
-  bottom-trailing overlay) → the pace plays until tapped again. No custom long press on rows: the hold is the menu (owner).
+  `.contextMenu` (Open session · Open zikr · Feel the pace · Delete… with an alert); tap the pace pill (a faint capsule; its own
+  tap — only the pill, "1m 27s" beside it opens the session) → the pace plays until tapped again. No custom long press on rows: the hold is the menu (owner).
   Several at once: Edit → select → Delete.
 
 **Insights** (InsightsView.swift, InsightsProgress.swift)

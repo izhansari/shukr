@@ -372,7 +372,7 @@ struct SessionRow: View {
     var body: some View {
         if tappable {
             // Tap → the page; long press → the row's options (what people expect from a list);
-            // the pace is felt by holding the pace pill itself (`pacePill`).
+            // a tap on the pace pill itself plays the pace (its own tap, in `summary`).
             core
                 .onTapGesture {
                     if feelingPace { stopFeelingPace() } else { onOpen?() }
@@ -388,21 +388,6 @@ struct SessionRow: View {
                     if let onDelete {
                         Divider()
                         Button(role: .destructive) { onDelete() } label: { Label("Delete…", systemImage: "trash") }
-                    }
-                }
-                // The pace pill is its own button: a tap plays the pace, a tap again stops it (owner:
-                // "tap the rate … instead of having to hold" — the hold stays the row's options,
-                // what people expect). On top of the row, so its tap wins over opening the page.
-                .overlay(alignment: .bottomTrailing) {
-                    if let pace {
-                        Color.clear
-                            .frame(width: 112, height: 38)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if feelingPace { stopFeelingPace() } else { startFeelingPace(pace) }
-                            }
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityLabel(feelingPace ? "Stop the pace" : "Feel the pace")
                     }
                 }
         } else {
@@ -475,6 +460,16 @@ struct SessionRow: View {
                             .padding(.vertical, 2)
                             // A tap target now (the pace button): a faint capsule says so.
                             .background(Capsule().fill(Color.primary.opacity(tappable && !feelingPace ? 0.06 : 0)))
+                            // Only the pill plays the pace (owner: "1m 27s" beside it opens the session like
+                            // the rest of the row). A child's tap wins over the row's; a few points of slop
+                            // round the capsule so a thumb finds it.
+                            .contentShape(Capsule().inset(by: -6))
+                            .onTapGesture {
+                                guard tappable else { return }
+                                if feelingPace { stopFeelingPace() } else { startFeelingPace(pace) }
+                            }
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityLabel(feelingPace ? "Stop the pace" : "Feel the pace")
                             .overlay {
                                 // While playing: the pill's border fills once per count; when it
                                 // closes, the tick fires and the row glows.
