@@ -1356,8 +1356,7 @@ struct PrayerTimesView: View {
     /// wheel: a centred task shows its streak ("8 Day Streak", "0 Day Streak" when there's none yet);
     /// freestyle and New task show "Zikr". Each item's label is pushed in the wheel's direction — moving
     /// down, the next one comes up from below and the last goes up and out; moving up, the other way.
-    /// A tap on a task's streak toggles "Best N Days" (back to the streak on the next tap or item); a streak
-    /// that is the best yet reads in the progress ring's green.
+    /// A tap on a task's streak toggles "Best N Days" (back to the streak on the next tap or item).
     /// Outline beads; the flame is an outline in grey until today's goal is met, then filled sage.
     struct ZikrPageTitle: View {
         @Query private var tasks: [TaskModel]
@@ -1389,8 +1388,6 @@ struct PrayerTimesView: View {
         @ViewBuilder private func label(_ task: TaskModel?) -> some View {
             if let task {
                 let streak = task.streak()
-                // At its best (owner): the words go the progress ring's green — this run is the longest yet.
-                let atBest = streak.current > 0 && streak.current >= streak.best
                 HStack(alignment: .center) {
                     Image(systemName: streak.keptToday ? "flame.fill" : "flame")
                         .foregroundColor(streak.keptToday ? Color.sage : .secondary)
@@ -1401,7 +1398,6 @@ struct PrayerTimesView: View {
                             Text("\(streak.current) Day Streak").transition(.blurReplace)
                         }
                     }
-                    .foregroundStyle(atBest ? Color.green : Color.primary)   // the wheel's ring green
                     .fixedSize()
                 }
                 .contentShape(Rectangle())
