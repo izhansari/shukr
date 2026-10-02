@@ -84,10 +84,12 @@ struct tasbeehView: View {
     /// (circle rule 3, out then in — it showed through them as they faded, its arc sweeping over the tiles; Sami's
     /// step-5 check, 2026-10-02).
     @State private var ringOut = false
-    /// That close's steps: the cards go (0.22), the arc lands (SoftSessionEntry.arcMove), the page goes (0.25), then
-    /// the ring fades over the wheel's (0.15) — only once the page has gone, so the wheel's ring is whole under it (the
-    /// two differ a touch in glow: removed at once it stepped; faded while the page still was, it dimmed).
-    private static let cardsOut = 0.22
+    /// That close's steps: the cards go (CircleMomentTiming.out, eased out: eased in, its last faint frame dropped to
+    /// nothing at once), the ring waits for them to be gone (`outDone`), the arc lands (SoftSessionEntry.arcMove), the
+    /// page goes (0.25), then the ring fades over the wheel's (0.15) — only once the page has gone, so the wheel's ring
+    /// is whole under it (the two differ a touch in glow: removed at once it stepped; faded while the page still was,
+    /// it dimmed).
+    private static let cardsOut = CircleMomentTiming.outDone
     private static let pageOut = 0.25
     private static let ringOver = 0.15
     private static let softLeaveFromCards = cardsOut + SoftSessionEntry.arcMove + pageOut + ringOver + 0.03
@@ -592,7 +594,7 @@ struct tasbeehView: View {
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { ringOut = true }
-                withAnimation(.easeIn(duration: cardsOut)) { leaving = true; countIn = false; chromeIn = false }
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true; countIn = false; chromeIn = false }
                 DispatchQueue.main.asyncAfter(deadline: .now() + cardsOut) {
                     withAnimation(.easeOut(duration: 0.15)) { ringOut = false }
                     landRing(fadeAfter: SoftSessionEntry.arcMove + Self.pageOut)
