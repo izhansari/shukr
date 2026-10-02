@@ -80,6 +80,9 @@ struct tasbeehView: View {
     @State private var startFraction: CGFloat = 0
     @State private var ringAtStop: CGFloat?
     @State private var ringHeld = false
+    /// Closing onto the wheel: the living fill settles into the wheel's solid arc as it lands (decision
+    /// circle-ring-handover B).
+    @State private var arcSettled = false
     /// A soft close from the pause screen or the results: the ring under their cards waits hidden until they've gone
     /// (circle rule 3, out then in — it showed through them as they faded, its arc sweeping over the tiles; Sami's
     /// step-5 check, 2026-10-02).
@@ -365,11 +368,14 @@ struct tasbeehView: View {
                 
                 
                 // the circles we see
-                NeuCircularProgressView(progress: (progressFraction))
+                NeuCircularProgressView(progress: (progressFraction), settled: arcSettled)
                     .allowsHitTesting(false) //so taps dont get intercepted.
                     // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { placeEntry(at: $0) }
                     .offset(entryOffset)
+                    // One piece: faded layer by layer, its half-clear track darkened the wheel's identical arc under it
+                    // as it handed over (a 2-frame dip, circle-ring-handover).
+                    .compositingGroup()
                     .opacity((pageIn || ringHeld) && !ringOut ? 1 : 0)
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
@@ -593,8 +599,10 @@ struct tasbeehView: View {
                 let cardsOut = Self.cardsOut
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
-                withTransaction(quiet) { ringOut = true }
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true; countIn = false; chromeIn = false }
+                // The counter under the cards (its count, its buttons) goes at once too: it showed through them as they
+                // faded ("3" under "1.61s").
+                withTransaction(quiet) { ringOut = true; countIn = false; chromeIn = false }
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + cardsOut) {
                     withAnimation(.easeOut(duration: 0.15)) { ringOut = false }
                     landRing(fadeAfter: SoftSessionEntry.arcMove + Self.pageOut)
@@ -1044,7 +1052,7 @@ struct tasbeehView: View {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { progressFraction = stood; ringHeld = true }
-        withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { progressFraction = landing }
+        withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { progressFraction = landing; arcSettled = true }
         // Over the wheel's ring once the page has gone (`fadeAfter`), not while it's still going (Sami's step-5 strip).
         DispatchQueue.main.asyncAfter(deadline: .now() + fadeAfter) {
             withAnimation(.easeOut(duration: Self.ringOver)) { ringHeld = false }

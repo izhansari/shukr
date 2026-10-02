@@ -618,6 +618,10 @@ struct NeuCircularProgressView: View {
     let progress: CGFloat
     /// The ring playground shows the alive style whatever the setting.
     var forceAlive = false
+    /// A soft session closing onto the Zikr wheel: the living fill settles into the wheel's solid green arc (its stroke
+    /// and glow exactly, ZikrCircleFace) as the arc lands, so the hand-over can't be seen (decision
+    /// circle-ring-handover B, owner 2026-10-02).
+    var settled = false
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.fine.rawValue
     @AppStorage(AliveRingTuning.key) private var tuningRaw = ""
@@ -685,6 +689,17 @@ struct NeuCircularProgressView: View {
                     .frame(width: 230, height: 230)
                     .mask { progressArc(band) }
                     .shadow(color: .green.opacity(tuning.glow), radius: 6)
+                    .opacity(settled ? 0 : 1)
+                    .allowsHitTesting(false)
+                // The wheel's arc (ZikrCircleFace's soft glow), under the living fill until it settles.
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color.green, style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
+                    .frame(width: 200, height: 200)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.spring(), value: progress)
+                    .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 6)
+                    .opacity(settled ? 1 : 0)
                     .allowsHitTesting(false)
             }
         }
