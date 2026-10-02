@@ -1634,7 +1634,8 @@ struct TodaysPrayerListView: View {
     private var look: SalahLook { SalahLook(rawValue: lookRaw) ?? .today }
     /// Pills stand apart; the other looks keep their rows close with dividers.
     private var spacing: CGFloat { look == .pills ? 12 : 6 }
-    private var showsDividers: Bool { look != .pills && look != .quiet }
+    @AppStorage(SalahLook.linesKey) private var lines = true
+    private var showsDividers: Bool { look == .today || ((look == .card || look == .well) && lines) }
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
     private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
 

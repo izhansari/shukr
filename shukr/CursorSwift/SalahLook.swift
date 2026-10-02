@@ -35,6 +35,9 @@ enum SalahLook: String, CaseIterable, Identifiable {
 
     static let key = "salahLook.list"
     static let softRingKey = "salahLook.softRing"
+    /// The lines between prayers in the card / well looks (owner, 2026-10-01: "curious to see … sunken and they
+    /// don't have those separator lines"); Today's look always keeps them.
+    static let linesKey = "salahLook.lines"
 
     /// The Salah page wears the soft material: any look but today's, or the soft ring alone.
     static func tinted(_ raw: String, softRing: Bool) -> Bool {
@@ -323,12 +326,14 @@ struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.softRingKey) private var softRing = false
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
     @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
+    @AppStorage(SalahLook.linesKey) private var lines = true
 
     var body: some View {
         Menu {
             Picker("List", selection: $lookRaw) {
                 ForEach(SalahLook.allCases) { Text($0.title).tag($0.rawValue) }
             }
+            Toggle("Lines between prayers", isOn: $lines)
             Toggle("Soft ring", isOn: $softRing)
             Picker("Colours", selection: $paletteRaw) {
                 ForEach(SalahPalette.allCases) { Text($0.title).tag($0.rawValue) }
