@@ -1618,6 +1618,8 @@ struct TodaysPrayerListView: View {
     /// Pills stand apart; the other looks keep their rows close with dividers.
     private var spacing: CGFloat { look == .pills ? 12 : 6 }
     private var showsDividers: Bool { look != .pills && look != .quiet }
+    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
+    private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked lingers ~1 s so its dot can pop first.
@@ -1664,9 +1666,7 @@ struct TodaysPrayerListView: View {
                                 .padding(.horizontal, 25)
                         }
                     }
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .move(edge: .top)),
-                        removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading))))
+                    .transition(motion.transition)   // RowMotion (the look prototype); today's = slide in, shrink out
                 }
 
                 // The folded ones, as a footer row: a divider like the rows', then "✓ 3 done ⌄"
@@ -1684,7 +1684,7 @@ struct TodaysPrayerListView: View {
                         }
                         Button {
                             triggerSomeVibration(type: .light)
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
+                            withAnimation(motion.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) { showDone.toggle() }
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.circle")
@@ -1754,7 +1754,7 @@ struct TodaysPrayerListView: View {
             let name = event.prayerName ?? event.name   // the row's name ("Dhuhr" for a Jumu'ah)
             lingering.insert(name)
             DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                withAnimation(motion.animation(springy: .spring(response: 0.5, dampingFraction: 0.85))) {
                     _ = lingering.remove(name)
                 }
             }

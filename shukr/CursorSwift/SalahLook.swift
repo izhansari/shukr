@@ -42,6 +42,56 @@ enum SalahLook: String, CaseIterable, Identifiable {
     }
 }
 
+/// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
+/// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
+enum RowMotion: String, CaseIterable, Identifiable {
+    /// The motion before: in sliding down from the top, out shrinking to the left, on a spring.
+    case today
+    /// Opacity only, a short ease.
+    case fade
+    /// A small drop: fading in from a few points above, out the same way.
+    case drop
+    /// The system's blur-replace: soft focus in and out.
+    case blur
+    /// Instant: rows appear and go with no motion.
+    case none
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .today: "Today's motion"
+        case .fade: "Fade"
+        case .drop: "Drop"
+        case .blur: "Blur"
+        case .none: "No motion"
+        }
+    }
+
+    static let key = "salahLook.rowMotion"
+    static var current: RowMotion { RowMotion(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .today }
+
+    var transition: AnyTransition {
+        switch self {
+        case .today:
+            .asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
+        case .fade: .opacity
+        case .drop: .opacity.combined(with: .offset(y: -10))
+        case .blur: AnyTransition(.blurReplace)
+        case .none: .identity
+        }
+    }
+
+    /// The animation for a row change; `springy` is what today's motion used at that spot.
+    func animation(springy: Animation) -> Animation? {
+        switch self {
+        case .today: springy
+        case .fade, .drop, .blur: .easeInOut(duration: 0.3)
+        case .none: nil
+        }
+    }
+}
+
 /// The tasbeeh page's material (NeuCircularProgressView): one surface, a dark shadow down-right, a light one
 /// up-left.
 enum Neu {
@@ -111,6 +161,7 @@ struct NeuRingTrack: View {
 struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = false
+    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
 
     var body: some View {
         Menu {
@@ -118,6 +169,10 @@ struct SalahLookSwitcher: View {
                 ForEach(SalahLook.allCases) { Text($0.title).tag($0.rawValue) }
             }
             Toggle("Soft ring", isOn: $softRing)
+            Picker("Rows come and go", selection: $motionRaw) {
+                ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
         } label: {
             Image(systemName: "paintpalette")
                 .frame(width: 24, height: 24)
