@@ -172,14 +172,17 @@ struct WelcomeOverlay: View {
         // offset from the screen's centre to the circle's (global) centre.
         let screen = UIScreen.main.bounds
         let shift = target.map { CGSize(width: $0.x - screen.midX, height: $0.y - screen.midY) } ?? .zero
-        let softBand = softRing && !dashedTarget
+        // Under the soft ring the band is there for a prayer still to come too, the dashes drawn in it (owner,
+        // 2026-10-02), so the ring grows into the band either way.
+        let softBand = softRing
+        let toDashes = dashedTarget && !softBand
         ZStack {
             if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
             ZStack {
                 // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft
                 // ring: its width, surface and lift).
-                WelcomeRing(width: grow ? (dashedTarget ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
-                    .fill(grow ? (dashedTarget ? Color.secondary.opacity(UpcomingTrack.opacity)
+                WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
+                    .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity)
                                                : (softBand ? Neu.surface : Color(.secondarySystemFill)))
                                : Color.sage.opacity(0.6))
                     .shadow(color: softBand && grow ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
@@ -195,7 +198,7 @@ struct WelcomeOverlay: View {
                     // line keeps its own width).
                     .frame(width: portal ? portalSize : (grow ? ringSize : startSize),
                            height: portal ? portalSize : (grow ? ringSize : startSize))
-                    .opacity(reduceMotion || portal || dashesIn ? 0 : 1)
+                    .opacity(reduceMotion || portal || (dashesIn && !softBand) ? 0 : 1)
                 // The dashed track, when that's what the circle is showing: in once the ring is there.
                 Circle()
                     .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)

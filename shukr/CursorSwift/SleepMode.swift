@@ -309,7 +309,11 @@ struct MorningCardView: View {
             ZStack {
                 // The Salah circle's own track as it is right now (dashed for a prayer still to
                 // come), so the page leaves exactly that circle behind.
-                if WelcomeTarget.trackDashed {
+                if WelcomeTarget.trackDashed && softRing {
+                    // The soft band stays for a prayer still to come, its dashes drawn in it (owner, 2026-10-02).
+                    NeuRingTrack().opacity(pageIn ? 1 : 0)
+                    Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
+                } else if WelcomeTarget.trackDashed {
                     Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                 } else if softRing {
                     // Fades with the page: the circle's own band and arc are right under it. Opaque to the end, it

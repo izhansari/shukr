@@ -514,7 +514,9 @@ struct SalahPlayButton: View {
         // in the simulator, whose simulated taps can't open a Menu).
         .task {
             guard let which = UserDefaults.standard.string(forKey: "salahPlay") else { return }
-            try? await Task.sleep(for: .seconds(4))
+            // `-salahPlayDelay <s>` (default 4): later, past the opening welcome.
+            let delay = UserDefaults.standard.double(forKey: "salahPlayDelay")
+            try? await Task.sleep(for: .seconds(delay > 0 ? delay : 4))
             switch which {
             case "mark": post(SalahLookPlay.mark)
             case "begins": post(PrayerStartPreview.request)

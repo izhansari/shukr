@@ -70,6 +70,13 @@ struct MainCircleView: View {
     
     var body: some View {
         ZStack {
+            // The soft ring's raised band, under everything and always there — for a prayer still to come too, with
+            // the dashes drawn in it (owner, 2026-10-02: "make the future ring also soft… dashed ring inside the
+            // track"). It stays through the completion flourish (which hides the content above) and for the day's
+            // score (SalahLook.swift).
+            if softRing && sharedState.bottomTabPosition != .zikr {
+                NeuRingTrack()
+            }
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
             CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
@@ -77,12 +84,6 @@ struct MainCircleView: View {
                     WelcomeTarget.circleFrame = $0
                     WelcomeTarget.salahCircleFrame = $0   // only this circle writes it (the lost page lands on it)
                 }
-            // The soft ring's raised band, under everything — it stays through the completion flourish (which hides
-            // the content above) and is there for the day's score too; it fades in as the dashes go when a prayer
-            // starts, like the grey band grew (SalahLook.swift).
-            if softRing && sharedState.bottomTabPosition != .zikr {
-                NeuRingTrack(solid: trackSolid)
-            }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
             Group {
@@ -130,6 +131,7 @@ struct MainCircleView: View {
                     /// red Late. Was elapsed-time bands (yellow past 50 %) that didn't match the score.
                     var progressColor: Color {
                         if progress >= 1 { return .clear }
+                        if preview == .current { return .green }   // the preview's start (a held row is long past)
                         return PrayerScoring.color(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: currentTime))
                     }
                     var timeText: Text{
@@ -331,7 +333,10 @@ struct MainCircleView: View {
         // The palette's Play → Marking a prayer: the flourish for the prayer on the circle, at today's score — a
         // made-up event, nothing marked (SalahLook.swift).
         .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.mark)) { _ in
-            guard let p = shownPrayer ?? viewModel.relevantPrayer else { return }
+            // All done (the day's score / next Fajr, no prayer on the circle): replays the last mark — Isha's
+            // (owner, 2026-10-02: "none of the transitions are working in my current state").
+            guard let p = shownPrayer ?? viewModel.relevantPrayer ?? viewModel.todaysPrayers.last(where: { $0.isCompleted })
+            else { return }
             let now = Date()
             let window = max(p.endTime.timeIntervalSince(p.startTime), 1)
             let event = PrayerCompletionEvent(name: p.name,
@@ -395,7 +400,13 @@ struct MainCircleView: View {
         // transition exactly as the real one plays it (haptic included). Visual only — no prayer
         // rows, test times or notifications are touched.
         .onReceive(NotificationCenter.default.publisher(for: PrayerStartPreview.request)) { _ in
-            guard viewModel.relevantPrayer != nil, flourish == nil else { return }
+            guard flourish == nil else { return }
+            // All done: Fajr beginning, today's row held on the circle for the preview (nothing written).
+            var held: PrayerModel?
+            if viewModel.relevantPrayer == nil {
+                guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return }
+                held = fajr
+            }
             let onSalah = sharedState.horizontalPage == .main && sharedState.navPosition == .main
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 sharedState.navPosition = .main
@@ -404,12 +415,20 @@ struct MainCircleView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + (onSalah ? 0.1 : 0.8)) {
                 var snap = Transaction()
                 snap.disablesAnimations = true
-                withTransaction(snap) { preview = .upcoming }      // straight into "next"
+                withTransaction(snap) {
+                    if let held { heldPrayer = held }
+                    preview = .upcoming                             // straight into "next"
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
                     preview = .current                              // …and it begins
                     playStartMoment()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                        preview = nil                               // back to the real state
+                        var back = Transaction()
+                        back.disablesAnimations = held != nil       // the summary comes back as it was
+                        withTransaction(back) {
+                            preview = nil                           // back to the real state
+                            if held != nil { heldPrayer = nil }
+                        }
                     }
                 }
             }

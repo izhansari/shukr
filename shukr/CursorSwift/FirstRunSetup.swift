@@ -442,6 +442,9 @@ struct LostLocationView: View {
     @State private var handedOff = false
     /// The Salah circle is the dashed "hasn't started" track: the ring turns into it as it lands.
     @State private var landDashed = false
+    /// Dashes alone (no band) for a prayer still to come — not under the soft ring, where the band stays and the
+    /// dashes are drawn in it (owner, 2026-10-02).
+    private var bareDashes: Bool { landDashed && !softRing }
     /// Coming back: the ring is the welcome's starting ring (150 pt sage hairline round the symbol)
     /// before it grows into the Salah circle exactly as the welcome does (owner, feedback A4D7B736).
     @State private var snug = false
@@ -501,11 +504,11 @@ struct LostLocationView: View {
                     // hand-off leaves it where the Salah page's own track is.
                     // `WelcomeRing`, with the welcome's own sizes, widths and colours: the 12 pt grey track;
                     // snug = the welcome's starting hairline; then grown back into the track (or dashes).
-                    WelcomeRing(width: snug ? 1.2 : (landDashed ? 1 : (softRing ? AliveRingTuning.fine.band : 12)))
-                        .fill(snug ? Color.sage.opacity(0.6) : (landDashed ? Color.clear : (softRing ? Neu.surface : Color(.secondarySystemFill))))
+                    WelcomeRing(width: snug ? 1.2 : (bareDashes ? 1 : (softRing ? AliveRingTuning.fine.band : 12)))
+                        .fill(snug ? Color.sage.opacity(0.6) : (bareDashes ? Color.clear : (softRing ? Neu.surface : Color(.secondarySystemFill))))
                         .shadow(color: Color.sage.opacity(snug ? 0.45 : 0), radius: 8)
-                        .shadow(color: softRing && !snug && !landDashed ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
-                        .shadow(color: softRing && !snug && !landDashed ? Neu.light : .clear, radius: 6, x: -2, y: -2)
+                        .shadow(color: softRing && !snug ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
+                        .shadow(color: softRing && !snug ? Neu.light : .clear, radius: 6, x: -2, y: -2)
                         .frame(width: snug ? 150 : 200, height: snug ? 150 : 200)
                     Circle()
                         .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
