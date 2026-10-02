@@ -25,6 +25,18 @@ struct tasbeehView: View {
     @State private var entryShown = SoftSessionEntry.freshFrame == nil
     /// Closing softly: everything fades over the wheel before the cover goes.
     @State private var leaving = false
+    /// The iris (SessionOpening.iris): the whole session seen through a circle round the ring's centre that widens
+    /// from nothing to past the screen's corners as it opens, and closes back into the ring as it leaves. The ring sits
+    /// exactly on the Zikr ring, so the circle passes through the same ring and only the page changes. The mask is on
+    /// only while it moves.
+    @State private var irisOn = false
+    @State private var irisRadius: CGFloat = 0
+    @State private var irisCentre: CGPoint = .zero
+    @State private var openedByIris = false
+    private var irisFull: CGFloat {
+        let b = UIScreen.main.bounds
+        return hypot(b.width, b.height)   // past every corner from anywhere on screen
+    }
     /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
     /// centre — where the Zikr wheel's and the Salah page's circles are — not the safe area's (≈14 pt lower: the
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
@@ -264,11 +276,46 @@ struct tasbeehView: View {
     private func placeEntry(at frame: CGRect) {
         guard let from = entryFrom, !entryShown, frame.width > 0 else { return }
         entryFrom = nil
+        if SessionOpening.current == .iris && !reduceMotion {
+            // Everything on at once but seen through a circle of nothing at the ring's centre (no animation), then the
+            // circle widens past the corners.
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                irisCentre = CGPoint(x: frame.midX, y: frame.midY)
+                irisRadius = 0
+                irisOn = true
+                openedByIris = true
+                entryShown = true
+            }
+            SoftSessionEntry.leaveDelay = 0.55
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.6)) { irisRadius = irisFull }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { irisOn = false }   // fully open: no mask
+            }
+            return
+        }
+        SoftSessionEntry.leaveDelay = 0.32
         entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { entryOffset = .zero }
             withAnimation(.easeInOut(duration: 0.35)) { entryShown = true }
         }
+    }
+
+    /// The iris's circle, in the session's own coordinates (its centre is a global point: the ring's).
+    private var irisMask: some View {
+        GeometryReader { geo in
+            let origin = geo.frame(in: .global).origin
+            Circle()
+                .frame(width: irisRadius * 2, height: irisRadius * 2)
+                .position(x: irisCentre.x - origin.x, y: irisCentre.y - origin.y)
+        }
+        .ignoresSafeArea()
     }
 
     var body: some View {
@@ -536,10 +583,24 @@ struct tasbeehView: View {
                 .opacity(entryShown ? 1 : 0)   // the soft entry fades the page in over the wheel
                 .edgesIgnoringSafeArea(.all)
         )
-        .opacity(leaving ? 0 : 1)
-        .allowsHitTesting(!leaving)   // no stray count while it fades away
+        .mask {
+            // Off: a mask far larger than any screen, so nothing is ever clipped (Today's look included).
+            if irisOn { irisMask } else { Rectangle().frame(width: 6000, height: 6000) }
+        }
+        .opacity(leaving && !openedByIris ? 0 : 1)
+        .allowsHitTesting(!leaving)   // no stray count while it goes
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+            if openedByIris && !reduceMotion {
+                // Closes back into the ring: the circle narrows to nothing at its centre.
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { irisRadius = irisFull; irisOn = true; leaving = true }
+                DispatchQueue.main.async {
+                    withAnimation(.easeInOut(duration: 0.5)) { irisRadius = 0 }
+                }
+            } else {
+                withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+            }
         }
         
         .onAppear {

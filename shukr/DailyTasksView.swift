@@ -319,12 +319,15 @@ struct ZikrCircleWheel: View {
         return GeometryReader { geo in
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    ForEach(items) { item in
+                    let centreIndex = items.firstIndex { $0.id == centered } ?? 0
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let away = openingSoft && item.id != centered
                         circle(for: item)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 circleFrames.byID[item.id] = frame
                             }
-                            .opacity(openingSoft && item.id != centered ? 0 : 1)
+                            .opacity(away ? 0 : 1)
+                            .blur(radius: away ? 6 : 0)
                             .frame(maxWidth: .infinity)
                             .frame(height: itemHeight)
                             .contentShape(Rectangle())
@@ -336,6 +339,9 @@ struct ZikrCircleWheel: View {
                             // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
                             .modifier(WheelFalloff(itemHeight: itemHeight,
                                                    style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle))
+                            // Opening a session out of the centred ring: the others drift away from it (up above,
+                            // down below) as they fade, and back as it closes (SoftSessionEntry).
+                            .offset(y: away ? (index < centreIndex ? -56 : 56) : 0)
                     }
                 }
                 .scrollTargetLayout()
@@ -389,7 +395,7 @@ struct ZikrCircleWheel: View {
         // task stays where it is (2026-09-29).
         // Back in round the ring as the session closes (it fades first: SoftSessionEntry.leave), or when it's gone.
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false }
+            withAnimation(.easeInOut(duration: 0.5)) { openingSoft = false }
         }
         .onChange(of: showTasbeehPage) { _, showing in
             if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
@@ -579,7 +585,7 @@ struct ZikrCircleWheel: View {
         }
         SoftSessionEntry.fromFrame = frame
         SoftSessionEntry.coverIsSoft = true
-        withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.22)) { openingSoft = true }
+        withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.4)) { openingSoft = true }
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { showTasbeehPage = true }

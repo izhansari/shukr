@@ -1074,7 +1074,7 @@ struct PrayerTimesView: View {
                     }
                     SoftSessionEntry.coverIsSoft = false
                     NotificationCenter.default.post(name: SoftSessionEntry.leave, object: nil)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + SoftSessionEntry.leaveDelay) {
                         var quiet = Transaction()
                         quiet.disablesAnimations = true
                         withTransaction(quiet) { showTasbeehPage = false }

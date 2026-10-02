@@ -95,6 +95,8 @@ enum SoftSessionEntry {
     static var coverIsSoft = false
     /// Close it softly: the session fades out (then the host dismisses with no animation).
     static let leave = Notification.Name("softSessionEntry.leave")
+    /// How long the session's leaving takes before the host may remove the cover (set by the session as it opens).
+    static var leaveDelay: Double = 0.32
 
     /// The soft look is on (the wheel's rings are the tasbeeh ring then).
     static var enabled: Bool {
@@ -102,6 +104,20 @@ enum SoftSessionEntry {
         return SalahLook.tinted(d.string(forKey: SalahLook.key) ?? SalahLook.today.rawValue,
                                 softRing: d.bool(forKey: SalahLook.softRingKey))
     }
+}
+
+/// How a session opens out of a Zikr ring (SoftSessionEntry), picked in the palette (owner, 2026-10-01: "too simple
+/// of a crossfade... something elegant but simple").
+enum SessionOpening: String, CaseIterable, Identifiable {
+    /// The session's page opens out from the ring's centre in a widening circle (and closes back into it); the wheel's
+    /// other circles drift away as they fade.
+    case iris
+    /// Everything crossfades in place.
+    case fade
+    var id: String { rawValue }
+    var title: String { self == .iris ? "Iris" : "Crossfade" }
+    static let key = "salahLook.opening"
+    static var current: SessionOpening { SessionOpening(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .iris }
 }
 
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
@@ -386,6 +402,7 @@ struct SalahLookSwitcher: View {
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
     @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
     @AppStorage(SalahLook.linesKey) private var lines = true
+    @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.iris.rawValue
 
     var body: some View {
         Menu {
@@ -400,6 +417,10 @@ struct SalahLookSwitcher: View {
             .pickerStyle(.menu)
             Picker("Rows come and go", selection: $motionRaw) {
                 ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            Picker("Zikr ring opens", selection: $openingRaw) {
+                ForEach(SessionOpening.allCases) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
         } label: {
