@@ -49,6 +49,8 @@ struct WelcomeGate: ViewModifier {
     /// and the welcome's first frame match.
     @State private var curtain = false
     @State private var fromBlack = false
+    /// ▶︎ Opening: the welcome replayed over the page as it is (not a launch).
+    @State private var inPlace = false
     @Environment(\.scenePhase) private var scenePhase
     /// The curtain is up or the welcome is about to replay (the morning card waits under it).
     static var curtainUp = false
@@ -72,8 +74,8 @@ struct WelcomeGate: ViewModifier {
         content
             .overlay {
                 if showing {
-                    WelcomeOverlay(fromBlack: fromBlack) {
-                        showing = false; fromBlack = false; WelcomeTarget.playing = false
+                    WelcomeOverlay(fromBlack: fromBlack, inPlace: inPlace) {
+                        showing = false; fromBlack = false; inPlace = false; WelcomeTarget.playing = false
                     }
                         .transition(.identity)
                         .onAppear { WelcomeTarget.playing = true; WelcomeGate.curtainUp = false }
@@ -86,7 +88,11 @@ struct WelcomeGate: ViewModifier {
             .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.welcome)) { note in
                 guard !showing, !curtain else { return }
                 var quiet = Transaction(); quiet.disablesAnimations = true
-                withTransaction(quiet) { fromBlack = (note.object as? Bool) ?? false; showing = true }
+                withTransaction(quiet) {
+                    fromBlack = (note.object as? Bool) ?? false
+                    inPlace = !fromBlack
+                    showing = true
+                }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background, SleepMorning.pendingID != nil { raise() }
@@ -150,6 +156,8 @@ struct WelcomeRing: Shape {
     var startDrawn = false
     /// The Salah circle draws the mark and the page waits round it; the overlay draws only the black (fromBlack).
     var inCircle = false
+    /// Replayed over the page as it is (▶︎ Opening): the circle's track and words, and the page, go first.
+    var inPlace = false
     /// The ring is the circle's track now: the circle's own track and words come back, the page fades in.
     var landed = false
 }
@@ -244,8 +252,12 @@ struct WelcomeOverlay: View {
     var startDrawn = false
     /// Opening from the sleep curtain: starts black and fades to the page colour as the word writes in.
     var fromBlack = false
+    /// Replayed over the page as it is (▶︎ Opening), not a launch: it fades in, and on the Salah circle the circle's own
+    /// track and words go before the word writes in — it cut to the welcome in one frame (Sami, step 6).
+    var inPlace = false
     let onFinish: () -> Void
     @State private var blackOn = true
+    @State private var shownIn = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.circleTheme) private var theme
@@ -272,8 +284,9 @@ struct WelcomeOverlay: View {
             Color.black.opacity(fromBlack && blackOn ? 1 : 0).allowsHitTesting(false)
         }
         .ignoresSafeArea()
-        .opacity(morph ? 0 : 1)
+        .opacity(morph || (inPlace && !shownIn) ? 0 : 1)
         .allowsHitTesting(!morph)
+        .onAppear { if inPlace { withAnimation(.easeOut(duration: 0.2)) { shownIn = true } } }
         .task { await play() }
         .onDisappear { if CircleStage.shared.opening === mark { CircleStage.shared.opening = nil } }
     }
@@ -310,11 +323,18 @@ struct WelcomeOverlay: View {
         // one ring, nothing lined up by measured frames. The setup's hand-off (a ring already on screen) and landings
         // elsewhere keep this overlay.
         if target != nil, !startDrawn, WelcomeTarget.landsOnSalah {
+            // A launch: at once (nothing's there yet). In place: animations allowed, so the circle's track and words and
+            // the page fade out (each on its own implicit animation).
             var quiet = Transaction()
-            quiet.disablesAnimations = true
+            quiet.disablesAnimations = !inPlace
             withTransaction(quiet) {
+                mark.inPlace = inPlace
                 mark.inCircle = true
                 CircleStage.shared.opening = mark
+            }
+            if inPlace {
+                // The circle's track and words fade out first (MainCircleView), then the word writes in.
+                try? await Task.sleep(for: .milliseconds(240))
             }
         }
         WelcomeTarget.landed = false

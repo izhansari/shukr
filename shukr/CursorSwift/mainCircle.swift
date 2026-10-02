@@ -114,10 +114,14 @@ struct MainCircleView: View {
             if softRing && sharedState.bottomTabPosition != .zikr {
                 NeuRingTrack()
                     .opacity(openingHides ? 0 : 1)
+                    // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
+                    .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: 0.2) : nil, value: openingHides)
             }
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
             CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
                 .opacity(openingHides ? 0 : 1)
+                    // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
+                    .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: 0.2) : nil, value: openingHides)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     WelcomeTarget.circleFrame = $0
