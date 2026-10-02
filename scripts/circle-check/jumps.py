@@ -45,6 +45,9 @@ def main():
             d, before, after = diffs[i][t], diffs[i - 1][t], diffs[i + 1][t]
             if d >= threshold and before < d * 0.2 and after < d * 0.2:
                 hits.setdefault(i, []).append((t, d))
+    # A thin arc sweeping fast changes the one tile its head crosses in one frame: not a cut. A real cut moves
+    # several tiles at once (the flourish's ring: 6), or one by a lot (a pop: Δ44).
+    hits = {i: t for i, t in hits.items() if len(t) >= 2 or max(d for _, d in t) >= 10}
     for i, tiles in sorted(hits.items()):
         where = ", ".join(f"r{t // cols}c{t % cols}" for t, _ in tiles)
         print(f"jump  t={offset + i / fps:6.2f}s  frame {i:4d}  {len(tiles):2d} tile(s), max Δ{max(d for _, d in tiles):5.1f}  [{where}]")
