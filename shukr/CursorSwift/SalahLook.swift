@@ -197,6 +197,36 @@ struct NeuSurface: View {
     var body: some View { (SalahPalette(rawValue: paletteRaw) ?? .charcoal).surface }
 }
 
+/// The tasbeeh ring's arc colours, without its moving fill: deep green at the start, lighter at the tip
+/// (sampled from a session's ring, dark mode; a touch brighter in light mode).
+enum SoftArc {
+    private static func dynamic(light: UIColor, dark: UIColor) -> Color {
+        Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
+    }
+    static let start = dynamic(light: UIColor(red: 0.24, green: 0.52, blue: 0.33, alpha: 1),
+                               dark: UIColor(red: 0.18, green: 0.42, blue: 0.26, alpha: 1))
+    static let tip = dynamic(light: UIColor(red: 0.30, green: 0.74, blue: 0.45, alpha: 1),
+                             dark: UIColor(red: 0.27, green: 0.73, blue: 0.43, alpha: 1))
+    /// Round the ring from 12 o'clock, the way the arcs are drawn.
+    static let gradient = AngularGradient(colors: [start, tip], center: .center,
+                                          startAngle: .degrees(-90), endAngle: .degrees(270))
+}
+
+/// A groove between the page and the bottom bar: a shade line over a light one, like a line pressed into the
+/// surface (owner, 2026-10-01: "bottom bar needs some divider. neumorphic too").
+struct NeuGroove: View {
+    @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
+
+    var body: some View {
+        let p = SalahPalette(rawValue: paletteRaw) ?? .charcoal
+        VStack(spacing: 0) {
+            Rectangle().fill(p.shade.opacity(0.6)).frame(height: 1)
+            Rectangle().fill(p.light).frame(height: 1)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
 /// The prayer list's frame and card for the chosen look (was `.frame(width: 260).background(FlatBorder())`).
 struct SalahLookListFrame: ViewModifier {
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue

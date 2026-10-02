@@ -744,10 +744,12 @@ struct ZikrCircleFace: View {
 
     @ViewBuilder private func glow<S: Shape>(_ shape: S) -> some View {
         if soft {
-            // The tasbeeh arc (NeuCircularProgressView, "fine"): as wide as the band, round ends, a soft glow.
+            // The tasbeeh arc's look, still (owner, 2026-10-01: its living fill stays the session's own): as wide
+            // as the band, round ends, deep green at the start lightening to the tip (sampled from the session's
+            // ring), a faint glow.
             shape
-                .stroke(Color.green, style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
-                .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 6)
+                .stroke(SoftArc.gradient, style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
+                .shadow(color: SoftArc.tip.opacity(0.25), radius: 6)
         } else {
             shape
                 .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))

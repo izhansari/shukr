@@ -1509,6 +1509,7 @@ struct PrayerTimesView: View {
                     .frame(height: 2)
                     .background(Color(.secondarySystemBackground))
                     .opacity(softSalah ? 0 : 1)
+                    .overlay(alignment: .top) { if softSalah { NeuGroove() } }
 
                     
                     HStack {
