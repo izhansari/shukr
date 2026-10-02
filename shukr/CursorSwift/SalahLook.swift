@@ -131,13 +131,17 @@ struct SalahLookListFrame: ViewModifier {
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
 
     func body(content: Content) -> some View {
+        // The rows are clipped to the card: rows coming in ("N done", a fold) appear at their final place at
+        // once while the card's height animates, so unclipped they floated on the page outside it for a few
+        // frames — "ghosty" (owner's recording, 2026-10-01). Clipped, the card opens like a drawer.
+        let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
         switch SalahLook(rawValue: lookRaw) ?? .today {
         case .today:
-            content.frame(width: 260).background(FlatBorder())
+            content.frame(width: 260).clipShape(RoundedRectangle(cornerRadius: 20)).background(FlatBorder())
         case .card:
-            content.frame(width: 290).background(NeuRaised(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 8, offset: 6))
+            content.frame(width: 290).clipShape(card).background(NeuRaised(shape: card, radius: 8, offset: 6))
         case .well:
-            content.frame(width: 290).background(NeuPressed(shape: RoundedRectangle(cornerRadius: 24, style: .continuous), radius: 5, offset: 5))
+            content.frame(width: 290).clipShape(card).background(NeuPressed(shape: card, radius: 5, offset: 5))
         case .pills, .quiet:
             content.frame(width: 290)
         }
