@@ -463,6 +463,11 @@ struct WatchZikrFace: View {
 }
 
 /// A wheel circle pressed: it dims a touch, like the system's buttons.
+/// Draws its label as it is, pressed or not (the counter's background, Double Tap's button: no press dimming).
+struct WatchStillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
+}
+
 struct WatchCircleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -799,7 +804,16 @@ struct WatchCounterView: View {
                     // The phone's tasbeeh page colour (bgColor, dark), edge to edge — the neumorphic
                     // band and inset beads only read on it (owner: no fade at the edges). Black with
                     // the wrist down, like the rest of watchOS's always-on screens.
-                    (wristDown ? Color.black : WatchNeu.bg)
+                    //
+                    // Double Tap's button (Series 9+ / Ultra 2) is this background: a real, full-size, visible
+                    // control, so watchOS finds and presses it at once — the 2 × 2 pt, near-invisible one it had was
+                    // pressed ~2 s late, after a dim (owner; Sami's review, decision watch-extra-fixes A). The counter
+                    // above takes every touch, so only a pinch reaches it; it counts like a tap, not in crown mode
+                    // (owner: tap and pinch together, or the Crown on its own).
+                    Button { increment() } label: { wristDown ? Color.black : WatchNeu.bg }
+                        .buttonStyle(WatchStillButtonStyle())
+                        .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil && !crownMode)
+                        .accessibilityLabel("Count")
                         .ignoresSafeArea()
                         .opacity(paused ? 0 : 1)
                     counter
@@ -902,7 +916,13 @@ struct WatchCounterView: View {
             #endif
         }
         .onDisappear { runtime.stop() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { saveDraft(now: true) } }
+        .onChange(of: scenePhase) { _, phase in
+            // Leaving the app (the Crown to the watch face, another app) pauses, like the phone — only in the
+            // background: inactive is the wrist down / a banner, and counting goes on through those (the runtime
+            // session keeps it). Pausing saves the draft and ends the runtime session (decision watch-extra-fixes A).
+            if phase == .background, !paused, finished == nil { togglePause(); return }
+            if phase != .active { saveDraft(now: true) }
+        }
         .onReceive(ticker) { date in
             guard finished == nil else { return }
             if let p = pausedAt {
@@ -929,15 +949,7 @@ struct WatchCounterView: View {
             WatchTasbeehCountView(tasbeeh: count)
             WatchNeuProgressRing(progress: fraction, animating: !paused)
                 .allowsHitTesting(false)
-            // Double Tap (Series 9+ / Ultra 2): pinch finger and thumb and it counts like a tap — not
-            // in crown mode (owner: tap and pinch together, or the Crown on its own). Its own real,
-            // hit-testable button (a disabled one may not get Double Tap), too small to be hit by a
-            // finger on the screen.
-            Button { increment() } label: { Color.white.opacity(0.001).frame(width: 2, height: 2) }
-                .buttonStyle(.plain)
-                .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil && !crownMode)
-                .offset(y: 60)
-                .accessibilityLabel("Count")
+            // Double Tap counts through the page's background (body).
             if crownMode {
                 // Tap the badge (or the note) to let screen taps count again.
                 Button { setCrownMode(false) } label: {
@@ -989,8 +1001,10 @@ struct WatchCounterView: View {
             }
         }
         .padding(8)
-        .contentShape(Rectangle())
+        // The whole screen counts (tap-anywhere, like the phone): the touch layer covers it all, so no touch reaches
+        // the background under it — Double Tap's button.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .gesture(countGesture)
         .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
         // The crown counts here (nothing on this screen scrolls). Snapped to detents; detent
