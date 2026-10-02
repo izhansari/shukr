@@ -144,6 +144,7 @@ struct SoftDoneFooter: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .padding(.bottom, 12)   // a little air above the bar (owner: "too close to the bottom bar")
             .transition(.opacity)
         }
     }

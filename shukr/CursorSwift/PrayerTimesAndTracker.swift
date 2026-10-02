@@ -1149,7 +1149,7 @@ struct PrayerTimesView: View {
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
-                Color.clear.frame(height: showBottom ? bottomChromeHeight + (SalahLook.tinted(lookRaw, softRing: softRing) ? 30 : 0)
+                Color.clear.frame(height: showBottom ? bottomChromeHeight + (SalahLook.tinted(lookRaw, softRing: softRing) ? 44 : 0)
                                                      : closedBottomReserve)
             }
         }
@@ -1650,6 +1650,8 @@ struct TodaysPrayerListView: View {
     /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
     /// "N done" tapped (shared with the soft looks' footer in the chrome, SoftDoneFooter).
     private var fold = PrayerListFold.shared
+    /// The tallest row seen: the soft looks size the list's box for all five from it.
+    @State private var rowHeight: CGFloat = 45
     private var showDone: Bool {
         get { fold.showDone }
         nonmutating set { fold.showDone = newValue }
@@ -1753,6 +1755,9 @@ struct TodaysPrayerListView: View {
                             name: prayerName,
                             viewModel: viewModel
                         )
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+                            if h > rowHeight + 0.5 { rowHeight = h }
+                        }
                         .padding(.bottom, index == visible.count - 1 ? 0 : spacing)
 
                         if index < visible.count - 1 && showsDividers {
@@ -1781,6 +1786,10 @@ struct TodaysPrayerListView: View {
                 perfectLine(perfect: perfect)
             }
         }
+        // Soft looks: a box the height of all five rows, the card at its bottom (just above "N done"), so
+        // rows folding away or coming back never re-centre the page — the circle stays still and the rows
+        // appear above the line (owner, 2026-10-01: the transition "still odd").
+        .frame(minHeight: outside ? 24 + 5 * rowHeight + 4 * spacing : nil, alignment: .bottom)
         .onChange(of: outside && (foldedCount > 0 || showDone) && (!allDone || !lingering.isEmpty) ? done.count : -1,
                   initial: true) { _, count in
             fold.softFooterCount = count >= 0 ? count : nil
@@ -1891,6 +1900,7 @@ struct PrayerButton: View {
     @State private var completionPulse = 0
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
@@ -1970,7 +1980,8 @@ struct PrayerButton: View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         switch look {
         case .today:
-            RoundedRectangle(cornerRadius: 13).fill(backgroundColor)
+            // On a tinted page (Soft ring with Today's look) the plain fill drew black slabs: see-through then.
+            RoundedRectangle(cornerRadius: 13).fill(SalahLook.tinted(lookRaw, softRing: softRingOn) ? Color.clear : backgroundColor)
         case .pills:
             if isCurrentPrayer { NeuPressed(shape: shape) }
             else if prayerObject.isCompleted && !isFuturePrayer { Color.clear }
