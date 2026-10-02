@@ -23,6 +23,16 @@ enum CircleMotion {
     static let spring = Animation.spring(response: 0.45, dampingFraction: 0.85)
 }
 
+/// A circle moment's words out and in (Frank, step 2; moved here from CircleMoments.swift).
+/// The moments' timings: words out quick, in a little slower.
+enum CircleMomentTiming {
+    static let out: Double = 0.2
+    static let `in`: Double = 0.35
+    /// How long a moment waits for the words to be gone before it changes the face: the fade starts a frame or two
+    /// after it's asked for, and swapping at exactly `out` cut it at ~60 % (the morning's count popped off).
+    static let outDone: Double = out + 0.08
+}
+
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
 /// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
 enum RowMotion: String, CaseIterable, Identifiable {

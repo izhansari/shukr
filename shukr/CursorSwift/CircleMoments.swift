@@ -48,14 +48,8 @@ enum CircleMomentKind: Equatable {
     case begins
 }
 
-/// The moments' timings: words out quick, in a little slower.
-enum CircleMomentTiming {
-    static let out: Double = 0.2
-    static let `in`: Double = 0.35
-    /// How long a moment waits for the words to be gone before it changes the face: the fade starts a frame or two
-    /// after it's asked for, and swapping at exactly `out` cut it at ~60 % (the morning's count popped off).
-    static let outDone: Double = out + 0.08
-}
+// CircleMomentTiming lives in CircleMotion.swift (one motion vocabulary, rule 8).
+
 
 @MainActor enum CircleGate {
     /// How long a moment waits for the circle to be seen before it just shows where it ends.
