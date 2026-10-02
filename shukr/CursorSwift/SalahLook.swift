@@ -220,16 +220,28 @@ struct SalahLookListFrame: ViewModifier {
         // The rows are clipped to the card: rows coming in ("N done", a fold) appear at their final place at
         // once while the card's height animates, so unclipped they floated on the page outside it for a few
         // frames — "ghosty" (owner's recording, 2026-10-01). Clipped, the card opens like a drawer.
-        let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
         switch SalahLook(rawValue: lookRaw) ?? .today {
         case .today:
             content.frame(width: 260).clipShape(RoundedRectangle(cornerRadius: 20)).background(FlatBorder())
+        case .card, .well, .pills, .quiet:
+            content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
+        }
+    }
+}
+
+/// The soft looks' card round the prayer rows (inside TodaysPrayerListView, so "N done" sits outside it).
+struct SalahLookCard: ViewModifier {
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+
+    func body(content: Content) -> some View {
+        let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
+        switch SalahLook(rawValue: lookRaw) ?? .today {
         case .card:
-            content.frame(width: 290).clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
+            content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
         case .well:
-            content.frame(width: 290).clipShape(card).background(NeuPressed(shape: card, radius: 7, offset: 5))
-        case .pills, .quiet:
-            content.frame(width: 290)
+            content.clipShape(card).background(NeuPressed(shape: card, radius: 7, offset: 5))
+        case .today, .pills, .quiet:
+            content
         }
     }
 }

@@ -1084,6 +1084,8 @@ struct PrayerTimesView: View {
     struct SalahPageContent: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @EnvironmentObject var viewModel: PrayerViewModel
+        @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+        @AppStorage(SalahLook.softRingKey) private var softRing = false
         var live: PagerLiveState
         @Binding var showQiblaMap: Bool
         @Binding var showTasbeehPage: Bool
@@ -1134,7 +1136,15 @@ struct PrayerTimesView: View {
                         showTasbeehPage: $showTasbeehPage
                     )
                     .opacity(1 - Double(live.pull / 90))
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Soft looks (SalahLook.swift): the card no longer slides in from the bottom edge through the
+                    // fading bottom bar (a see-through card over a see-through bar, "ghosty" — owner, 2026-10-01).
+                    // It makes room like the rows: opening, the circle moves up first and the list fades in a few
+                    // points below its place; closing, the list fades out quickly before the circle settles.
+                    .transition(SalahLook.tinted(lookRaw, softRing: softRing)
+                        ? .asymmetric(insertion: .opacity.combined(with: .offset(y: 14))
+                                        .animation(.easeOut(duration: 0.25).delay(0.15)),
+                                      removal: .opacity.animation(.easeIn(duration: 0.1)))
+                        : .move(edge: .bottom).combined(with: .opacity))
                     Spacer()
                 }
 
@@ -1639,6 +1649,70 @@ struct TodaysPrayerListView: View {
     /// once all five rows have come back (they wait for it).
     static let perfectDayCascadeStart: Double = CompletionFlourish.duration + 0.3
 
+    @ViewBuilder private func doneFooter(done: Int, foldedCount: Int, allDone: Bool, visibleIsEmpty: Bool,
+                                         divider: Bool) -> some View {
+                // The folded ones, as a footer row: a divider like the rows', then "✓ 3 done ⌄"
+                // centred with the same air above and below as a row (2026-09-25 — the old line
+                // hung under the list with a bare 10 pt gap and no divider, which read off).
+                // Kept while the last prayer's row lingers (the circle's flourish): hiding it at the
+                // mark shortened the list and dropped the circle ~19 pt mid-moment (2026-09-27).
+        if (foldedCount > 0 || showDone) && (!allDone || !lingering.isEmpty) {
+                    VStack(spacing: 0) {
+                        if divider && !visibleIsEmpty {
+                            Divider()
+                                .frame(height: 1)
+                                .background(Color(.secondarySystemFill))
+                                .padding(.horizontal, 25)
+                        }
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            withAnimation(motion.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) { showDone.toggle() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle")
+                                // Same words open or closed (swapping to "hide done" morphed oddly
+                                // mid-spring — owner); only the chevron turns.
+                                Text("\(done) done")
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(showDone ? 180 : 0))
+                            }
+                            .font(.footnote)
+                            .fontDesign(.rounded)
+                            .fontWeight(.light)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, visibleIsEmpty ? 0 : 12)
+                            .padding(.bottom, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, visibleIsEmpty ? 0 : spacing)
+                    .transition(.opacity)
+                }
+
+    }
+
+    @ViewBuilder private func perfectLine(perfect: Bool) -> some View {
+                // All five Early today.
+        if (perfect && lingering.isEmpty) || demoPerfect {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(.green)
+                            .symbolEffect(.bounce, value: perfectPulse)
+                        Text("perfect day")
+                    }
+                    .font(.caption)
+                    .fontDesign(.rounded)
+                    .fontWeight(.light)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 10)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+    }
+
     var body: some View {
         // Only prayers that are loaded: PrayerButton fatalErrors on a missing one, and
         // this list is now in the tree from launch, before loadTodaysPrayerObjects runs.
@@ -1653,8 +1727,13 @@ struct TodaysPrayerListView: View {
             (viewModel.todaysPrayers.first { $0.name == name }?.numberScore ?? 0) >= 0.9999
         }
 
-        VStack{
-            VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
+        // Today's look: the "N done" footer and "perfect day" sit inside the bordered card, as before. The soft
+        // looks (SalahLook.swift) draw the card round the rows only, with those two lines under it (owner,
+        // 2026-10-01: "move "done" text outside of the prayer list card").
+        let outside = look != .today
+        VStack(spacing: 0) {
+            if !(outside && visible.isEmpty) {
+                VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
                 ForEach(Array(visible.enumerated()), id: \.element) { index, prayerName in
                     VStack(spacing: 0) {
                         PrayerButton(
@@ -1674,66 +1753,22 @@ struct TodaysPrayerListView: View {
                     .transition(motion.transition)   // RowMotion (the look prototype); today's = slide in, shrink out
                 }
 
-                // The folded ones, as a footer row: a divider like the rows', then "✓ 3 done ⌄"
-                // centred with the same air above and below as a row (2026-09-25 — the old line
-                // hung under the list with a bare 10 pt gap and no divider, which read off).
-                // Kept while the last prayer's row lingers (the circle's flourish): hiding it at the
-                // mark shortened the list and dropped the circle ~19 pt mid-moment (2026-09-27).
-                if (foldedCount > 0 || showDone) && (!allDone || !lingering.isEmpty) {
-                    VStack(spacing: 0) {
-                        if !visible.isEmpty {
-                            Divider()
-                                .frame(height: 1)
-                                .background(Color(.secondarySystemFill))
-                                .padding(.horizontal, 25)
-                        }
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            withAnimation(motion.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) { showDone.toggle() }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "checkmark.circle")
-                                // Same words open or closed (swapping to "hide done" morphed oddly
-                                // mid-spring — owner); only the chevron turns.
-                                Text("\(done.count) done")
-                                Image(systemName: "chevron.down")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .rotationEffect(.degrees(showDone ? 180 : 0))
-                            }
-                            .font(.footnote)
-                            .fontDesign(.rounded)
-                            .fontWeight(.light)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, visible.isEmpty ? 0 : 12)
-                            .padding(.bottom, 2)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                    if !outside {
+                        doneFooter(done: done.count, foldedCount: foldedCount, allDone: allDone,
+                                   visibleIsEmpty: visible.isEmpty, divider: true)
+                        perfectLine(perfect: perfect)
                     }
-                    .padding(.top, visible.isEmpty ? 0 : spacing)
-                    .transition(.opacity)
                 }
-
-                // All five Early today.
-                if (perfect && lingering.isEmpty) || demoPerfect {
-                    HStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .foregroundStyle(.green)
-                            .symbolEffect(.bounce, value: perfectPulse)
-                        Text("perfect day")
-                    }
-                    .font(.caption)
-                    .fontDesign(.rounded)
-                    .fontWeight(.light)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 10)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
-                }
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+                .modifier(SalahLookCard())
             }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
+            if outside {
+                doneFooter(done: done.count, foldedCount: foldedCount, allDone: allDone,
+                           visibleIsEmpty: visible.isEmpty, divider: false)
+                    .padding(.top, visible.isEmpty ? 0 : 8)
+                perfectLine(perfect: perfect)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { note in
             if note.object as? Bool == true {
