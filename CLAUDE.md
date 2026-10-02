@@ -3,7 +3,7 @@
 iOS SwiftUI app (iOS 18.0+, SwiftData, WidgetKit extension, adhan-swift). Prayer times +
 tracker, qibla, tasbeeh/zikr counter, daily zikr tasks, duas, daily ayah. No CI, no tests
 beyond Xcode templates. Build/run happens in Xcode on the owner's machine. scripts/: whatsnew.py, testflight.sh,
-pull-feedback.sh, asc.py; the team's board scripts live in shukrGit/board/. A local agent can build with
+pull-feedback.sh, asc.py, circle-check.sh; the team's board scripts live in shukrGit/board/. A local agent can build with
 `xcodebuild -project shukr.xcodeproj -scheme shukr -destination 'platform=iOS Simulator,name=iPhone 16 Pro'`.
 
 Layout: `shukr/` app target (most UI in `Utils.swift`, `CursorSwift/`, `tasbeehView.swift`),
@@ -241,6 +241,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - Zikr card notes / memo / photo = ONE fixed-height box with `switch pane`, never stacked hidden layers; in Save / Cancel editors media wait in drafts.
 
 **Simulator & testing**
+- **The circle system** (decision circle-system A, 2026-10-02; plan, rules, owners: `shukrGit/board/circle-system.md`): every change to the Salah circle, its moments, the list or the look passes `scripts/circle-check.sh` — `shots <parent> HEAD` (pixel diff, app clock pinned by `scripts/circle-check/fakeclock.c`, store restored) and `strip <moment>` (one-frame jumps). Simulators only.
 - Simulated taps miss Menus and segmented controls (use DEBUG args or the app's own prefs; `simctl defaults write` leaves a plist the app can't clear). Any `-demo…` arg skips welcome / prompts / setup. Not testable in the sim: mic, camera, haptics, BGTask, significant-change.
 
 ## Features: current state
