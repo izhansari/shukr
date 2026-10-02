@@ -3,6 +3,7 @@
 
     scripts/asc.py builds                      # recent builds: number, state, expiry
     scripts/asc.py groups                      # beta groups
+    scripts/asc.py notes 8 notes.txt           # build 8 → "What to Test" only: internal group only (the default)
     scripts/asc.py release 8 notes.txt         # build 8 → "What to Test" = notes.txt,
                                                #   add to every external group, submit for beta review
     scripts/asc.py GET /v1/apps                # raw call
@@ -76,8 +77,7 @@ def groups():
     return data["data"]
 
 
-def release(number: str, notes_path: str):
-    notes = open(notes_path).read().strip()
+def valid_build(number: str) -> str:
     match = call("GET", f"/v1/builds?filter[app]={APP_ID}&filter[version]={number}&fields[builds]=version,processingState")["data"]
     if not match:
         raise SystemExit(f"No build {number} yet")
@@ -85,9 +85,10 @@ def release(number: str, notes_path: str):
     state = build["attributes"]["processingState"]
     if state != "VALID":
         raise SystemExit(f"Build {number} is {state} — wait for Apple to finish processing")
-    bid = build["id"]
+    return build["id"]
 
-    # What to Test (en-US)
+
+def set_notes(bid: str, notes: str):
     locs = call("GET", f"/v1/builds/{bid}/betaBuildLocalizations")["data"]
     en = next((l for l in locs if l["attributes"]["locale"] == "en-US"), None)
     if en:
@@ -98,6 +99,19 @@ def release(number: str, notes_path: str):
              {"data": {"type": "betaBuildLocalizations", "attributes": {"locale": "en-US", "whatsNew": notes},
                        "relationships": {"build": {"data": {"type": "builds", "id": bid}}}}})
     print("✓ What to Test set")
+
+
+def notes_only(number: str, notes_path: str):
+    """The default upload (owner, 2026-10-01): What to Test only — the internal group ("Newest builds") gets the build
+    by itself; no external group, no public link, no beta review."""
+    set_notes(valid_build(number), open(notes_path).read().strip())
+
+
+def release(number: str, notes_path: str):
+    notes = open(notes_path).read().strip()
+    bid = valid_build(number)
+
+    set_notes(bid, notes)   # What to Test (en-US)
 
     # External groups (internal ones get builds automatically)
     for g in groups():
@@ -121,5 +135,6 @@ if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "builds"
     if cmd == "builds": builds()
     elif cmd == "groups": groups()
+    elif cmd == "notes": notes_only(sys.argv[2], sys.argv[3])   # internal only (the default)
     elif cmd == "release": release(sys.argv[2], sys.argv[3])
     else: print(json.dumps(call(cmd, sys.argv[2], json.loads(sys.argv[3]) if len(sys.argv) > 3 else None), indent=1)[:4000])
