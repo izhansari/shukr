@@ -98,7 +98,8 @@ struct CompletionFlourish: View {
     @State private var glow: Double = 0
     @State private var showText = false
     /// Under the soft ring (SalahLook.swift) the arc is the soft one's: 6 pt.
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    @Environment(\.circleTheme) private var theme
+    private var softRing: Bool { theme.softRing }
 
     private var color: Color { PrayerScoring.color(for: event.score) }
 

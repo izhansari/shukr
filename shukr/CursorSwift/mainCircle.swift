@@ -23,8 +23,9 @@ struct MainCircleView: View {
     private static let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
-    /// The Salah look prototype's soft ring (SalahLook.swift).
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    /// The soft ring (the theme, CircleTheme.swift).
+    @Environment(\.circleTheme) private var theme
+    private var softRing: Bool { theme.softRing }
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
