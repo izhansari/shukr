@@ -1144,6 +1144,7 @@ struct PrayerTimesView: View {
     struct PagerChromeView: View {
         @EnvironmentObject var sharedState: SharedStateClass
         var live: PagerLiveState
+        @ObservedObject private var access = WhatsNewAccess.shared
         @Binding var showMapPage: Bool
         @Binding var showDailyAyahPage: Bool
         @Binding var showMantrasPage: Bool
@@ -1294,10 +1295,18 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
+                        ZStack {
                         // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .opacity(Double(zikrness))
                             .allowsHitTesting(zikrness > 0.5)
+                        // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
+                        if access.available {
+                            SalahLookSwitcher()
+                                .opacity(Double(1 - zikrness))
+                                .allowsHitTesting(zikrness < 0.5)
+                        }
+                        }
                     }
                 }
 
@@ -1464,8 +1473,7 @@ struct PrayerTimesView: View {
                     )
                     */
                     .transition(.opacity)
-                    .frame(width: 260)  // Same width as PrayerListView
-                    .background(FlatBorder())
+                    .modifier(SalahLookListFrame())   // the look prototype; today's = 260 pt in FlatBorder
                 
                 } else if sharedState.bottomTabPosition == .zikr{
                     DailyTasksView(
@@ -1489,6 +1497,10 @@ struct PrayerTimesView: View {
     
     struct CustomBottomBar: View {
         @EnvironmentObject var sharedState: SharedStateClass
+        @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+        @AppStorage(SalahLook.softRingKey) private var softRing = false
+        /// The Salah look prototype tints the bar with the page (only on Salah).
+        private var softSalah: Bool { SalahLook.tinted(lookRaw, softRing: softRing) && sharedState.horizontalPage == .main }
 
         var body: some View {
             VStack(spacing: 0){
@@ -1496,6 +1508,7 @@ struct PrayerTimesView: View {
                     Divider()
                     .frame(height: 2)
                     .background(Color(.secondarySystemBackground))
+                    .opacity(softSalah ? 0 : 1)
 
                     
                     HStack {
@@ -1560,7 +1573,7 @@ struct PrayerTimesView: View {
 //                    .background(Color("bgColor"))
                 
             }
-            .background(Color(UIColor.systemBackground))
+            .background(softSalah ? Neu.surface : Color(UIColor.systemBackground))
         }
         
     }
@@ -1600,7 +1613,11 @@ struct TodaysPrayerListView: View {
 
     @EnvironmentObject var viewModel: PrayerViewModel
     @Binding var showDailyAyahView: Bool
-    let spacing: CGFloat = 6
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    private var look: SalahLook { SalahLook(rawValue: lookRaw) ?? .today }
+    /// Pills stand apart; the other looks keep their rows close with dividers.
+    private var spacing: CGFloat { look == .pills ? 12 : 6 }
+    private var showsDividers: Bool { look != .pills && look != .quiet }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked lingers ~1 s so its dot can pop first.
@@ -1639,7 +1656,7 @@ struct TodaysPrayerListView: View {
                         )
                         .padding(.bottom, index == visible.count - 1 ? 0 : spacing)
 
-                        if index < visible.count - 1 {
+                        if index < visible.count - 1 && showsDividers {
                             Divider()
                                 .frame(height: 1)
                                 .background(Color(.secondarySystemFill))
@@ -1818,6 +1835,7 @@ struct PrayerButton: View {
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
     @State private var completionPulse = 0
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
@@ -1886,6 +1904,29 @@ struct PrayerButton: View {
         else { return name }
     }
     
+    private var look: SalahLook { SalahLook(rawValue: lookRaw) ?? .today }
+    /// On now: started, not marked, not over.
+    private var isCurrentPrayer: Bool { !isFuturePrayer && !prayerObject.isCompleted && prayerObject.endTime > Date() }
+
+    /// The row's surface for the Salah look (SalahLook.swift). Pills: upcoming and missed ones raised, the
+    /// current one pressed in, done ones flat on the page (their dot carries the score). Quiet: only the
+    /// current one pressed in. Card / well: the rows sit on the card. Today's: the old plain fill.
+    @ViewBuilder private var rowBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        switch look {
+        case .today:
+            RoundedRectangle(cornerRadius: 13).fill(backgroundColor)
+        case .pills:
+            if isCurrentPrayer { NeuPressed(shape: shape) }
+            else if prayerObject.isCompleted && !isFuturePrayer { Color.clear }
+            else { NeuRaised(shape: shape) }
+        case .quiet:
+            if isCurrentPrayer { NeuPressed(shape: shape) } else { Color.clear }
+        case .card, .well:
+            Color.clear
+        }
+    }
+
     private var isFuturePrayer: Bool {
 //        withAnimation(.spring(duration: 0.5)) {
             calcStartTime > Date()
@@ -2039,7 +2080,7 @@ struct PrayerButton: View {
                 // Prayer Name Label
                 Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     .font(.callout) //.callout
-                    .foregroundColor(.secondary.opacity(statusBasedOpacity)) //1
+                    .foregroundStyle(look != .today && isCurrentPrayer ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
                 // Prayed at a masjid: a small mosque mark by the name.
@@ -2061,10 +2102,7 @@ struct PrayerButton: View {
             .accessibilityElement(children: .combine)
             .accessibilityAction(named: prayerObject.isCompleted ? "Mark not prayed" : "Mark prayed") { markTap() }
             // Background Effects Container
-            .background(
-                RoundedRectangle(cornerRadius: 13)
-                    .fill(backgroundColor)
-            )
+            .background { rowBackground }
             .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if done { completionPulse += 1 }
@@ -2236,12 +2274,16 @@ struct ChevronTap2: View {
 struct PagerBackdrop: View {
     let live: PagerLiveState
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
 
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
             HStack(spacing: 0) {
-                Color(.systemBackground).frame(width: width * 2)
+                Color(.systemBackground).frame(width: width)
+                // Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
+                (SalahLook.tinted(lookRaw, softRing: softRing) ? Neu.surface : Color(.systemBackground)).frame(width: width)
                 Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)
             }
             .frame(width: width * 3, alignment: .leading)

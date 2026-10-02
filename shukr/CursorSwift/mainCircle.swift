@@ -19,6 +19,8 @@ struct MainCircleView: View {
     private static let ticker = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     /// "NEXT" above a prayer that hasn't started, or the dashed ring alone (dev toggle, NextLabel).
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
+    /// The Salah look prototype's soft ring (SalahLook.swift).
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
@@ -128,6 +130,7 @@ struct MainCircleView: View {
                     ZStack{
                         // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
                         // dimming crossfade (2026-09-27).
+                        if softRing { NeuRingTrack() }
                         // progress arc
                         Circle()
                             .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
