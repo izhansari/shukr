@@ -25,6 +25,12 @@ struct tasbeehView: View {
     @State private var entryShown = SoftSessionEntry.freshFrame == nil
     /// Closing softly: everything fades over the wheel before the cover goes.
     @State private var leaving = false
+    /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
+    /// centre — where the Zikr wheel's and the Salah page's circles are — not the safe area's (≈14 pt lower: the
+    /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
+    private var softLook: Bool { SalahLook.tinted(lookRaw, softRing: softRingOn) }
     @Environment(\.modelContext) private var context
     @EnvironmentObject var sharedState: SharedStateClass
     
@@ -331,6 +337,8 @@ struct tasbeehView: View {
                     .offset(entryOffset)
                     .opacity(entryShown ? 1 : 0)
             }
+            // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
+            .ignoresSafeArea(.container, edges: softLook ? .all : [])
             
             // Pause Screen (background overlay, stats & settings)
             ZStack {
@@ -521,7 +529,10 @@ struct tasbeehView: View {
         }
         .frame(maxWidth: .infinity) // expand to be the whole page (to make it tappable)
         .background(
-            Color.init("bgColor") // Dynamic color for dark or light mode
+            Group {
+                // Soft look: the picked palette's surface, the Zikr page's own (owner: "match the stone color pallete").
+                if softLook { NeuSurface() } else { Color.init("bgColor") } // Dynamic color for dark or light mode
+            }
                 .opacity(entryShown ? 1 : 0)   // the soft entry fades the page in over the wheel
                 .edgesIgnoringSafeArea(.all)
         )

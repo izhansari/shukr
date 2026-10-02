@@ -621,9 +621,16 @@ struct NeuCircularProgressView: View {
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @AppStorage("tasbeehRingStyle") private var styleRaw = TasbeehRingStyle.fine.rawValue
     @AppStorage(AliveRingTuning.key) private var tuningRaw = ""
+    /// The Salah look prototype (SalahLook.swift): under the soft look the band takes the picked palette, so it's
+    /// the same material as the Salah and Zikr rings it opens out of (owner: "match the stone color pallete").
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
+    @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
 
     var body: some View {
         let style = forceAlive ? .alive : (TasbeehRingStyle(rawValue: styleRaw) ?? .fine)
+        let palette: SalahPalette = SalahLook.tinted(lookRaw, softRing: softRingOn)
+            ? (SalahPalette(rawValue: paletteRaw) ?? .charcoal) : .tasbeeh
         // "fine" is the alive fill with a fixed preset; "alive" follows the playground.
         let tuning = style == .fine ? AliveRingTuning.fine : AliveRingTuning.decode(tuningRaw)
         let band: CGFloat = (style == .alive || style == .fine) ? tuning.band : 24
@@ -632,15 +639,15 @@ struct NeuCircularProgressView: View {
             Circle()
                 .stroke(lineWidth: band)
                 .frame(width: 200, height: 200)
-                .foregroundColor(Color("NeuRing"))
+                .foregroundColor(palette.surface)   // .tasbeeh = Color("NeuRing"), as before
                 .shadow(
-                    color: Color("NeuDarkShad"), // shadow top lighter
+                    color: palette.shade, // shadow top lighter
                     radius: 4,
                     x: 2,
                     y: 2
                 )
                 .shadow(
-                    color: Color("NeuLightShad"), // shadow top lighter
+                    color: palette.light, // shadow top lighter
                     radius: 6,
                     x: -2,
                     y: -2
