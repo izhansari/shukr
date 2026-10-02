@@ -727,7 +727,7 @@ struct LostLocationView: View {
         // lands the symbol blurs out, the band becomes the Salah track (dashed if the prayer hasn't
         // started) and the page fades, so the prayer comes in round the same ring (feedback A535F50B).
         var target = UIScreen.main.bounds.midY
-        if let f = WelcomeTarget.circleFrame, f.width > 100,
+        if let f = WelcomeTarget.salahCircleFrame ?? WelcomeTarget.circleFrame, f.width > 100,
            UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) { target = f.midY }
         // The words go while the ring glides onto the Salah circle and draws in to the welcome's
         // starting ring round the symbol; it rests, then does the welcome's own landing: grows 150 →

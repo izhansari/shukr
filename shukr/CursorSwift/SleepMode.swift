@@ -416,8 +416,11 @@ struct MorningCardView: View {
     /// The words and the page fade from round the ring, which stays: what's left is the Salah
     /// circle in the same place (the welcome's landing, backwards).
     private func finish(then go: @escaping () -> Void) {
-        withAnimation(.easeInOut(duration: 0.45)) { shown = false; pageIn = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { go() }
+        // The words and the sage ring first, then the page: the prayer comes in on an empty circle — together, "3 /
+        // Freestyle" sat over "Isha / ends …" mid-fade (Sami's audit, finding 5), as the welcome already avoids.
+        withAnimation(.easeOut(duration: 0.22)) { shown = false }
+        withAnimation(.easeInOut(duration: 0.4).delay(0.18)) { pageIn = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) { go() }
     }
 
     private func tile(_ value: String, _ caption: String) -> some View {

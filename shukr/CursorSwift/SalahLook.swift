@@ -203,8 +203,10 @@ enum RowMotion: String, CaseIterable, Identifiable {
     var transition: AnyTransition {
         switch self {
         case .room:
-            .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.24)),
-                        removal: .opacity.animation(.easeIn(duration: 0.08)))
+            // Sami's audit timings: in after 0.15 s (0.24 read as a lag, the empty well growing first), out over
+            // 0.12 s (0.08 read as a blink).
+            .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.15)),
+                        removal: .opacity.animation(.easeOut(duration: 0.12)))
         case .today:
             .asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
                         removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
@@ -401,7 +403,8 @@ struct SalahLookListFrame: ViewModifier {
         // frames — "ghosty" (owner's recording, 2026-10-01). Clipped, the card opens like a drawer.
         switch SalahLook(rawValue: lookRaw) ?? .today {
         case .today:
-            content.frame(width: 260).clipShape(RoundedRectangle(cornerRadius: 20)).background(FlatBorder())
+            // Exactly as before the look prototype: not clipped (Sami's audit — the clip cut Today's slide-in rows).
+            content.frame(width: 260).background(FlatBorder())
         case .card, .well, .pills, .quiet:
             content.frame(width: 290)   // the card goes round the rows only (SalahLookCard), "N done" under it
         }
@@ -521,9 +524,15 @@ struct SalahPlayButton: View {
         #endif
     }
 
-    /// Perfect day plays in the prayer list (the dots pop, "perfect day" under it): open it first.
+    /// Perfect day plays in the prayer list (the dots pop, "perfect day" under it): open it first, with the done
+    /// prayers unfolded (else only the one left popped, under a lone row — Sami's audit, finding 10).
     private func playPerfectDay() {
         let open = sharedState.navPosition == .bottom
+        DispatchQueue.main.asyncAfter(deadline: .now() + (open ? 0.1 : 0.7)) {
+            withAnimation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) {
+                PrayerListFold.shared.showDone = true
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 sharedState.horizontalPage = .main

@@ -32,6 +32,11 @@ struct MainCircleView: View {
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
     @State private var flourishID = 0
+    /// The flourish fades out on its own opacity (an implicit animation) while still mounted, then goes quietly: its
+    /// removal transition never animated, so the full ring cut out in one frame and the arc faded in from nothing — a
+    /// blink at the end of every mark (Sami's audit, 2026-10-02, finding 1; his verified fix).
+    @State private var flourishOut = false
+    private var contentHidden: Bool { flourish != nil && !flourishOut }
     /// The prayer just marked, still drawn under the flourish until it ends. Marking updates the row
     /// at once, so without this the circle swapped to the next prayer / the day summary in the
     /// frame the flourish began, and the swap showed through its fade (owner, 2026-09-27: "not the
@@ -68,7 +73,10 @@ struct MainCircleView: View {
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
             CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
+                    WelcomeTarget.circleFrame = $0
+                    WelcomeTarget.salahCircleFrame = $0   // only this circle writes it (the lost page lands on it)
+                }
             // The soft ring's raised band, under everything — it stays through the completion flourish (which hides
             // the content above) and is there for the day's score too; it fades in as the dashes go when a prayer
             // starts, like the grey band grew (SalahLook.swift).
@@ -109,6 +117,9 @@ struct MainCircleView: View {
                         // Not started: 0, so when it starts the arc grows from nothing (it was 1 in
                         // a clear colour, and sprang back from full to empty, green, at the start).
                         if status == .upcoming { return 0 }
+                        // The dev preview of a prayer beginning: from (almost) nothing, as a real start does — its
+                        // own clock drew it already most of the way round (Sami's audit, finding 8).
+                        if preview == .current { return 0.015 }
                         guard status == .current else { return 1 }
                         let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
                         let elapsed = currentTime.timeIntervalSince(prayer.startTime)
@@ -246,13 +257,15 @@ struct MainCircleView: View {
             .animation(.easeInOut(duration: 0.7), value: showsPrayer)
             // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
             // blinks), back in as it fades.
-            .opacity(flourish == nil ? 1 : 0)
-            .blur(radius: flourish == nil ? 0 : 4)
-            .animation(flourish == nil ? .easeInOut(duration: 0.45) : .easeOut(duration: 0.25), value: flourish == nil)
+            .opacity(contentHidden ? 0 : 1)
+            .blur(radius: contentHidden ? 4 : 0)
+            .animation(contentHidden ? .easeOut(duration: 0.25) : .easeInOut(duration: 0.45), value: contentHidden)
 
             if let flourish {
                 CompletionFlourish(event: flourish)
                     .id(flourishID)
+                    .opacity(flourishOut ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.45), value: flourishOut)
                     // In at once (its arc takes over from the prayer's in place), out with a fade.
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
@@ -334,6 +347,7 @@ struct MainCircleView: View {
             // found after the mark — keeps the hold it has).
             let name = event.prayerName ?? event.name
             heldPrayer = viewModel.todaysPrayers.first { $0.name == name } ?? heldPrayer
+            flourishOut = false
             withAnimation(.easeOut(duration: 0.25)) { flourish = event }
             DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
                 guard flourishID == id else { return }   // a newer completion took over
@@ -343,9 +357,14 @@ struct MainCircleView: View {
                 var swap = Transaction()
                 swap.disablesAnimations = true
                 withTransaction(swap) { heldPrayer = nil }
+                flourishOut = true                    // fades on its own (implicit), content fades in
                 withAnimation(.easeInOut(duration: 0.45)) {
-                    flourish = nil
                     live?.postSalahNudge = event.name   // the post-salah pill under the top bar
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard flourishID == id else { return }
+                    var quiet = Transaction(); quiet.disablesAnimations = true
+                    withTransaction(quiet) { flourish = nil; flourishOut = false }
                 }
             }
         }

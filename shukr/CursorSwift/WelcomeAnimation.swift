@@ -25,6 +25,9 @@ extension View {
 /// session covers the app).
 enum WelcomeTarget {
     static var circleFrame: CGRect?
+    /// The Salah page's circle alone (MainCircleView): `circleFrame` is also written by the lost page's own ring, so
+    /// its comeback aimed at itself and two rings crossfaded (Sami's audit, finding 4).
+    static var salahCircleFrame: CGRect?
     static var canLand = true
     /// The circle's track is the dashed "hasn't started" ring right now (MainCircleView): the
     /// welcome lands as that instead of the solid band.

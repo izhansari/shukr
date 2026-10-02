@@ -1080,8 +1080,9 @@ struct PrayerTimesView: View {
                         withTransaction(quiet) { showTasbeehPage = false }
                     }
                 }))
-            // The session draws its own page; clear behind it so the soft entry can fade it in over the wheel.
-            .presentationBackground(.clear)
+            // The session draws its own page; clear behind it only for the soft entry (it fades in over the wheel) —
+            // otherwise the usual opaque cover, so the page under it isn't kept drawing (Sami's audit).
+            .presentationBackground(SoftSessionEntry.coverIsSoft ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemBackground)))
         }
         
         .edgesIgnoringSafeArea(.bottom)
@@ -1177,6 +1178,11 @@ struct PrayerTimesView: View {
                 Color.clear.frame(height: showBottom ? bottomChromeHeight + (SalahLook.tinted(lookRaw, softRing: softRing) ? 44 : 0)
                                                      : closedBottomReserve)
             }
+            // "N done" toggled (in the list, or the soft looks' footer up in the chrome): the page animates the
+            // re-centring itself — the chrome's transaction didn't always reach it, so the fold sometimes snapped, the
+            // circle jumping ~70 pt (Sami's audit, finding 2).
+            .animation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85)),
+                       value: PrayerListFold.shared.showDone)
         }
     }
 
@@ -1336,7 +1342,7 @@ struct PrayerTimesView: View {
                         .allowsHitTesting(zikrness < 0.5)
                         }
                         Spacer()
-                        ZStack {
+                        ZStack(alignment: .trailing) {   // the Azkar door keeps its place beside the Play / palette pair
                         // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .opacity(Double(zikrness))
@@ -1847,6 +1853,9 @@ struct TodaysPrayerListView: View {
         .onChange(of: allDone) { _, isDone in
             if isDone { showDone = false }   // the day's complete: everything's back anyway
         }
+        // The list closed: folded again next time, as when this was the list's own @State (shared now with the soft
+        // looks' footer; it stayed open until a relaunch — Sami's audit).
+        .onDisappear { showDone = false }
     }
  
 }
@@ -2167,7 +2176,8 @@ struct PrayerButton: View {
                 // Prayer Name Label
                 Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     .font(.callout) //.callout
-                    .foregroundStyle(look != .today && isCurrentPrayer ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary.opacity(statusBasedOpacity))) //1
+                    // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
+                    .foregroundStyle(look != .today && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
                 // Prayed at a masjid: a small mosque mark by the name.
@@ -2208,7 +2218,9 @@ struct PrayerButton: View {
                             message: Text("Are you sure you want to mark this prayer as incomplete?"),
                             primaryButton: .destructive(Text("Yes")) {
                                 isMarkingIncomplete = true
-                                withAnimation(.spring(response: 0.1, dampingFraction: 0.7)) {
+                                // A 0.1 s spring snapped the whole page (score → prayer, the list 5 rows → 1); an
+                                // ease lets it settle (Sami's audit, finding 7; his verified fix).
+                                withAnimation(.easeInOut(duration: 0.4)) {
                                     viewModel.togglePrayerCompletion(for: prayerObject)
                                 }
                             },
