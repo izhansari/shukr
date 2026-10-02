@@ -550,6 +550,15 @@ struct summaryCircle: View{
     @Binding var ogText: Bool  // to control the toggle text in the middle
     @State private var animationBool: Bool = false
     @State private var nextFajr: (start: Date, end: Date)?
+    /// The Salah look prototype (SalahLook.swift): under a soft look the score and next Fajr don't crossfade through
+    /// each other — one sinks out, then the other rises in (owner, 2026-10-02: "today score to next upcoming fajr …
+    /// i don't see the transition"; mid-swap "100.0" sat on "Fajr"). nil = between the two.
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
+    @State private var showingScore: Bool? = nil
+    @State private var swapToken = 0
+    private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRingOn) }
+    private var wantsScore: Bool { sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah }
 //    @State private var summaryInfo: [String : Double?] = [:]
 //    @State private var todaysScore : Double = 0.0
     
@@ -630,8 +639,7 @@ struct summaryCircle: View{
                     .fontDesign(.rounded)
                     .padding(.top, 2)
             }
-            .opacity(Double(scoreness))
-            .scaleEffect(0.9 + 0.1 * scoreness)
+            .modifier(SummarySide(soft: soft, staged: showingScore == true, linear: scoreness))
 
             // Fajr Icon, Title, Time — a prayer that hasn't started, so the future look (NEXT over
             // a dimmed name, the dashed track), keeping its own time text: "in 4 hr" ⇄ its window.
@@ -671,13 +679,23 @@ struct summaryCircle: View{
                     .transition(.blurReplace)
                 }
             }
-            .opacity(Double(1 - scoreness))
-            .scaleEffect(1 - 0.1 * scoreness)
+            .modifier(SummarySide(soft: soft, staged: showingScore == false, linear: 1 - scoreness))
         }
         .transition(.opacity)
+        .onChange(of: wantsScore) { _, score in
+            guard soft else { showingScore = score; return }
+            swapToken += 1
+            let token = swapToken
+            withAnimation(.easeIn(duration: 0.18)) { showingScore = nil }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard swapToken == token else { return }   // toggled again meanwhile: the newer swap wins
+                withAnimation(.easeOut(duration: 0.34)) { showingScore = score }
+            }
+        }
 
 
         .onAppear {
+            showingScore = wantsScore
             getTheNextFajrTime()
 //            getTheSummaryInfo()
         }
@@ -867,5 +885,23 @@ private struct DashedChevron: Shape {
         path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         return path
+    }
+}
+
+/// One side of the summary circle (the day's score / next Fajr). Today's look: the old crossfade that follows the sheet
+/// (`linear`, 0…1, opacity + a little scale). Soft looks: in or out the sink way, staged by summaryCircle.
+private struct SummarySide: ViewModifier {
+    let soft: Bool
+    let staged: Bool
+    let linear: CGFloat
+
+    func body(content: Content) -> some View {
+        if soft {
+            content.modifier(SessionAppear(shown: staged, style: .sink))
+        } else {
+            content
+                .opacity(Double(linear))
+                .scaleEffect(0.9 + 0.1 * linear)
+        }
     }
 }
