@@ -1,4 +1,4 @@
-// fakeclock: pins the wall clock of a simulator app (scripts/circle-check.sh). Loaded with
+// fakeclock: sets the wall clock of a simulator app (scripts/circle-check.sh). Loaded with
 // SIMCTL_CHILD_DYLD_INSERT_LIBRARIES; the frozen time comes from SIMCTL_CHILD_CIRCLE_CLOCK (Unix seconds).
 // Only wall time (CLOCK_REALTIME, gettimeofday, time, CFAbsoluteTimeGetCurrent) is pinned: animations and
 // timers run on mach time and keep moving. Simulator only; never shipped.
@@ -11,10 +11,20 @@
   __attribute__((used)) static struct { const void *n; const void *o; } _interpose_##_old \
   __attribute__((section("__DATA,__interpose"))) = { (const void *)(unsigned long)&_new, (const void *)(unsigned long)&_old };
 
+// The clock starts at CIRCLE_CLOCK and runs at real speed from the moment the library loads (a frozen clock stalled
+// SwiftUI's springs and implicit animations at their first frame until the next 1 s tick — Frank, step 2). With
+// CIRCLE_CLOCK_FROZEN=1 it stays put.
+static double start_wall = 0, start_mono = 0;
+static int frozen = 0;
+static double mono(void) { struct timespec m; clock_gettime(CLOCK_MONOTONIC_RAW, &m); return m.tv_sec + m.tv_nsec / 1e9; }
+__attribute__((constructor)) static void fc_init(void) {
+  const char *s = getenv("CIRCLE_CLOCK"); start_wall = s ? atof(s) : 0;
+  const char *f = getenv("CIRCLE_CLOCK_FROZEN"); frozen = f && f[0] == '1';
+  start_mono = mono();
+}
 static double pinned(void) {
-  static double t = -1;
-  if (t < 0) { const char *s = getenv("CIRCLE_CLOCK"); t = s ? atof(s) : 0; }
-  return t;
+  if (start_wall <= 0) return 0;
+  return frozen ? start_wall : start_wall + (mono() - start_mono);
 }
 static int fc_clock_gettime(clockid_t id, struct timespec *ts) {
   if (id == CLOCK_REALTIME && pinned() > 0 && ts) { double t = pinned(); ts->tv_sec = (time_t)t; ts->tv_nsec = (long)((t - (double)ts->tv_sec) * 1e9); return 0; }

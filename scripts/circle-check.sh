@@ -25,9 +25,9 @@
 #   --soft-palette <p>    the soft look's palette (default stone)
 #
 # Fixtures, so two runs can be identical (Frank, circle-system.md):
-#   • the wall clock is pinned for the app only (scripts/circle-check/fakeclock.c, loaded with DYLD_INSERT_LIBRARIES;
-#     animations and timers keep running on their own clock), so "in 4h 3m", the ring's arc and AliveRingFill
-#     hold still;
+#   • the app's wall clock starts at --clock and runs at real speed (scripts/circle-check/fakeclock.c, loaded with
+#     DYLD_INSERT_LIBRARIES; no app code), so every run sees the same time of day; a frozen clock stalled SwiftUI's
+#     springs until the next 1 s tick (CIRCLE_CLOCK_FROZEN=1 still freezes it);
 #   • the status bar is overridden (9:41, full battery, Wi-Fi); the simulator's location is left as it is
 #     (setting it made the first fix land at a different moment each run, moving the times by seconds);
 #   • the app group's store is copied before the run and restored before every launch (no state leaks between
@@ -162,7 +162,7 @@ launch() {
   restore_store
   xcrun simctl ui $sim appearance $mode
   local dark=$([[ $mode == dark ]] && print 1 || print 0)
-  SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=$(fakeclock) SIMCTL_CHILD_CIRCLE_CLOCK=$(clock_epoch) \
+  SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=$(fakeclock) SIMCTL_CHILD_CIRCLE_CLOCK=$(clock_epoch) SIMCTL_CHILD_CIRCLE_CLOCK_FROZEN=${FROZEN_NOW:-${CIRCLE_CLOCK_FROZEN:-0}} \
     xcrun simctl launch $sim $BUNDLE ${=$(look_args $look)} -modeToggleNew $dark "$@" >/dev/null
 }
 
@@ -174,6 +174,9 @@ use_app() { [[ $CURRENT_APP == $1 ]] && return; xcrun simctl install $sim $1; CU
   launch ${looks[1]} ${modes[1]} -demoCircleCheck YES; sleep $settle }   # warm-up after an install, not shot
 shoot() {       # shoot <app> <file> <look> <mode> <state>
   use_app $1
+  # The pause screen shows a demo session's time and rate, measured as it opens: frozen there, so they read 0 every
+  # run (running, the rate jittered 0.08 / 0.09 s).
+  local FROZEN_NOW=$([[ $5 == pause ]] && print 1 || print "")
   launch $3 $4 -demoCircleCheck YES ${=$(state_args $5)}
   sleep $settle
   xcrun simctl io $sim screenshot $2 >/dev/null 2>&1
