@@ -131,13 +131,16 @@ struct MainCircleView: View {
                         // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
                         // dimming crossfade (2026-09-27).
                         if softRing { NeuRingTrack() }
-                        // progress arc
+                        // progress arc. Under the soft ring it takes the tasbeeh arc's shape (NeuCircularProgressView,
+                        // "fine"): as wide as the band, round ends, a soft glow in its own colour (owner, 2026-10-01).
                         Circle()
                             .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
-                            .stroke( progressColor, style: StrokeStyle(lineWidth: 4, lineCap: .butt)
+                            .stroke( progressColor, style: StrokeStyle(lineWidth: softRing ? AliveRingTuning.fine.band : 4,
+                                                                       lineCap: softRing ? .round : .butt)
                             )
                             .rotationEffect(.degrees(-90))
                             .frame(width: 200, height: 200)
+                            .shadow(color: softRing ? progressColor.opacity(AliveRingTuning.fine.glow) : .clear, radius: 6)
                             .animation(animationStyle, value: currentTime/*progress*/)
                             .animation(animationStyle, value: prayer.name)
                     
