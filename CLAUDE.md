@@ -241,7 +241,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - Zikr card notes / memo / photo = ONE fixed-height box with `switch pane`, never stacked hidden layers; in Save / Cancel editors media wait in drafts.
 
 **Simulator & testing**
-- **The circle system** (decision circle-system A, 2026-10-02; plan, rules, owners: `shukrGit/board/circle-system.md`): every change to the Salah circle, its moments, the list or the look passes `scripts/circle-check.sh` — `shots <parent> HEAD` (pixel diff, app clock pinned by `scripts/circle-check/fakeclock.c`, store restored) and `strip <moment>` (one-frame jumps). Simulators only.
+- **The circle system** (decision circle-system A, 2026-10-02; rules and owners: `shukrGit/board/circle-system.md`): MainCircleView owns every moment (CircleMoments.swift — morning, lost and the opening are circle states); the look is one value, `@Environment(\.circleTheme)` (CircleTheme.swift; `CircleTheme.standard` = everyone's default, `.today`) — never the SalahLook keys; timings only from CircleMotion.swift; out, then in (fades eased out; a ring faded over another gets `.compositingGroup()`). Every change passes `scripts/circle-check.sh`: `shots <parent> HEAD` (pixel diff) and `strip <moment>` (one-frame jumps); the app's clock runs from `--clock` (fakeclock.c); simulators only.
 - Simulated taps miss Menus and segmented controls (use DEBUG args or the app's own prefs; `simctl defaults write` leaves a plist the app can't clear). Any `-demo…` arg skips welcome / prompts / setup. Not testable in the sim: mic, camera, haptics, BGTask, significant-change.
 
 ## Features: current state
