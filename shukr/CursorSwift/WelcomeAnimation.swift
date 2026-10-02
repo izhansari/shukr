@@ -158,6 +158,9 @@ struct WelcomeRing: Shape {
     var inCircle = false
     /// Replayed over the page as it is (▶︎ Opening): the circle's track and words, and the page, go first.
     var inPlace = false
+    /// The circle's own words wait under the mark (the opening); false = they stay (the lost page's symbol, as its
+    /// ring lands back on the Salah track).
+    var hidesWords = true
     /// The ring is the circle's track now: the circle's own track and words come back, the page fades in.
     var landed = false
 }

@@ -21,6 +21,8 @@ enum CircleFace: Equatable {
     /// The morning after a sleep finish (step 3): the session's count and zikr in the ring (`MorningFace`), the page
     /// round it the morning card's (`MorningCurtain`).
     case morning(SessionDataModel)
+    /// "shukr lost your location" (step 3b): the crossed-out symbol in the ring (`LostFace`), its words round it.
+    case lost
 }
 
 /// What the Salah page asks its circle to show beyond the prayers (step 3). Set by PrayerTimesView, read by the circle.
@@ -36,6 +38,10 @@ enum CircleFace: Equatable {
         guard let opening, opening.inCircle else { return false }
         return !opening.landed
     }
+    /// Location lost (step 3b), until the ring has landed back on the Salah track (LostPageLayer runs it).
+    var lost: LostStage?
+    /// The page round the circle — the chrome, the list — is hidden (the opening, the lost page); the pager stays put.
+    var pageHidden: Bool { openingHidesPage || (lost.map { !$0.landed } ?? false) }
 }
 
 /// The moments the circle plays.

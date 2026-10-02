@@ -14,7 +14,7 @@ import SwiftData
     }
     /// The morning card is a cover for prompts (they wait for it) but not over the circle: its page has a hole there,
     /// and the circle shows the morning itself (circle step 3).
-    static let besideCircle: Set<String> = ["morningCard"]
+    static let besideCircle: Set<String> = ["morningCard", "lost"]
     static var nothingOverCircle: Bool { active.subtracting(besideCircle).isEmpty }
 }
 
@@ -56,6 +56,7 @@ struct MainCircleView: View {
     @State private var heldPrayer: PrayerModel?
     /// What the circle shows at rest, from the data: the morning card's session while it's up, else the prayers'.
     private var derivedFace: CircleFace {
+        if let lost = CircleStage.shared.lost, !lost.landed { return .lost }
         if let session = CircleStage.shared.morning { return .morning(session) }
         return prayersFace
     }
@@ -70,6 +71,13 @@ struct MainCircleView: View {
         guard let opening = CircleStage.shared.opening, opening.inCircle else { return false }
         return !opening.landed
     }
+    /// The lost page's state, while the circle shows it (step 3b).
+    private var lostShown: LostStage? {
+        guard case .lost = displayedFace ?? derivedFace else { return nil }
+        return CircleStage.shared.lost
+    }
+    /// The opening's mark keeps the circle's words out (the lost page's hand-off keeps its symbol in).
+    private var openingHidesWords: Bool { openingHides && (CircleStage.shared.opening?.hidesWords ?? true) }
     /// The morning card's session, while the circle shows it.
     private var morningShown: SessionDataModel? {
         if case .morning(let session) = displayedFace ?? derivedFace { return session }
@@ -154,6 +162,11 @@ struct MainCircleView: View {
                         .shadow(color: Color.green.opacity(0.3), radius: 10)
                         .shadow(color: Color.green.opacity(0.2), radius: 15)
                         .background(Color.clear) // Ensures the inside remains transparent
+                }
+                else if let lost = lostShown {
+                    // Location lost (step 3b): the crossed-out symbol in the ring; its words round it (LostWords).
+                    LostFace(stage: lost)
+                        .transition(.opacity)
                 }
                 else if let session = morningShown {
                     // The morning after a sleep finish: the session in the ring, the card's page round it (SleepMode).
@@ -305,7 +318,7 @@ struct MainCircleView: View {
             }
             // Between two faces (the summary ↔ a prayer, one prayer → the next) the words go out, then the new ones come
             // in (a swap moment) — they crossfaded through each other.
-            .modifier(CircleWordsAway(away: faceAway || openingHides))
+            .modifier(CircleWordsAway(away: faceAway || openingHidesWords))
             // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
             // blinks), back in as it fades.
             .opacity(contentHidden ? 0 : 1)
@@ -319,6 +332,12 @@ struct MainCircleView: View {
                 WelcomeMark(state: opening)
                     .opacity(opening.landed ? 0 : 1)
                     .animation(.easeOut(duration: 0.25), value: opening.landed)
+            }
+
+            // The lost page's title above the circle and what sharing location gives below (step 3b): the circle's own,
+            // so they rise with it.
+            if let lost = CircleStage.shared.lost {
+                LostWords(stage: lost)
             }
 
             if let flourish {
@@ -351,7 +370,7 @@ struct MainCircleView: View {
             
             
 
-            if sharedState.bottomTabPosition != .zikr && morningShown == nil && !openingHides {
+            if sharedState.bottomTabPosition != .zikr && morningShown == nil && lostShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: { showQiblaMap = true })
@@ -478,10 +497,15 @@ struct MainCircleView: View {
         // The face shown, not the data: the ring changes while the words are out, never before them.
         var face = displayedFace ?? derivedFace
         if case .morning = face { face = prayersFace }   // the morning keeps the track it will leave behind
+        if case .lost = face {
+            // The lost page's ring is the solid band; handing back, the prayer's track (under the mark meanwhile).
+            guard CircleStage.shared.lost?.down == true else { return true }
+            face = prayersFace
+        }
         switch face {
         case .summary: return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
         case .prayer(let p): return p.status() != .upcoming
-        case .morning: return true
+        case .morning, .lost: return true
         }
     }
 
@@ -536,8 +560,9 @@ struct MainCircleView: View {
     /// the new words come in. A mark or a preview syncs the face itself at its end.
     private func faceChanged() {
         guard momentKind == nil, displayedFace != nil, displayedFace != derivedFace else { return }
-        // The morning goes up under the welcome (its ring lands on this one): there at once, nothing to play.
-        if case .morning = derivedFace, WelcomeTarget.playing || WelcomeGate.curtainUp || !canPlay {
+        // The morning / the lost page go up under the welcome (its ring lands on this one): there at once, nothing to play.
+        let isState: Bool = { switch derivedFace { case .morning, .lost: true; default: false } }()
+        if isState, WelcomeTarget.playing || WelcomeGate.curtainUp || !canPlay {
             quietly { displayedFace = derivedFace }
             return
         }
@@ -667,7 +692,7 @@ struct MainCircleView: View {
     }
     
     private func handleTap() {
-        guard morningShown == nil else { return }
+        guard morningShown == nil, lostShown == nil else { return }
         if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an

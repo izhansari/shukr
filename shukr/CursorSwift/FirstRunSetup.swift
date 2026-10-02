@@ -413,188 +413,145 @@ struct FirstRunSetupView: View {
 
 // MARK: - Location lost (after setup)
 
-/// Location was allowed, then turned off in iOS Settings, and there's no city (owner, 2026-09-28:
-/// the whole "Where do you pray" setup read like starting over, and the opening animation had no
-/// circle to land on). A page with the Salah circle's own ring — 200 pt, the 12 pt track, reported
-/// to `WelcomeTarget` — so the welcome settles onto it; what sharing location gives; "Turn location
-/// back on" (iOS Settings) or "Enter a city instead" (honest about what a fixed city misses). Once
-/// location is back or a city is picked, the root goes straight into the app.
-struct LostLocationView: View {
-    @EnvironmentObject private var location: EnvLocationManager
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var pickingCity = false
-    /// The opening into this page (feedback 2396BDF1): 0 = only the circle, at the screen's centre
-    /// (where the welcome's ring starts and lands, as on the Salah page); 1 = the title appears above
-    /// it; 2 = circle and title rise together to their place; 3 = the reasons and buttons fill in.
-    @State private var stage = 0
-    /// The title + circle group's frame in the finished layout (the offset below doesn't move it).
-    @State private var groupFrame: CGRect?
+/// Location was allowed, then turned off in iOS Settings, and there's no city (owner, 2026-09-28: the whole "Where do you
+/// pray" setup read like starting over). "shukr lost your location" — a state of the Salah circle (circle step 3b;
+/// decision lost-page-circle A, owner: "A"): the circle shows the crossed-out symbol in its own ring; the title above and
+/// what sharing location gives below are the circle's (`LostWords`), so they rise with it into the lost page's place;
+/// "Turn location back on" / "Enter a city instead" at the bottom (`LostPageLayer`). Location coming back: the symbol turns
+/// on and the title says so, then the words go while the circle glides back to its place and draws in to the welcome's
+/// starting ring round the symbol, rests, and grows into the track (the welcome's own landing, the same `WelcomeMark`);
+/// the prayer and the page come in round it. It used to be a root overlay with its own ring, lined up by measured frames.
+@MainActor @Observable final class LostStage {
+    /// 0 the circle alone, in its usual place · 1 the title above it · 2 risen to the lost page's place · 3 the reasons
+    /// and the buttons.
+    var stage = 0
+    /// A warm entry holds the title until the circle has risen.
+    var titleHeld = false
+    /// The symbol and caption in the ring (blur in on a warm entry, out as the ring lands back).
+    var symbolIn = true
+    /// Location's back (or a city): the symbol turns on, the title says so.
+    var acknowledged = false
+    var comeback: EnvLocationManager.Comeback?
+    /// The hand-off: the words, reasons and buttons go…
+    var clearing = false
+    /// …while the circle glides back to its usual place.
+    var down = false
+    /// The ring is the Salah track again: the prayer and the page come back.
+    var landed = false
+    /// ▶︎ No location: looks only (nothing to tap).
+    var preview = false
+    /// Measured: the room the title, the reasons and the buttons take round the risen circle (SalahPageContent).
+    var titleHeight: CGFloat = 76
+    var reasonsHeight: CGFloat = 160
+    var buttonsHeight: CGFloat = 170
 
-    // Location coming back (Settings or a city, `EnvLocationManager.comeback`): acknowledge it, then
-    // hand off to the Salah page appearing underneath (owner, 2026-09-28).
-    /// The symbol turns on and the title says so.
-    @State private var acknowledged = false
-    /// The title, reasons and buttons have gone (the ring glides onto the Salah circle meanwhile).
-    @State private var clearing = false
-    /// The Salah circle's centre (y) the ring settles on, like the welcome's landing.
-    @State private var landingY: CGFloat?
-    /// The page fades, leaving the real Salah page round the same ring.
-    @State private var handedOff = false
-    /// The Salah circle is the dashed "hasn't started" track: the ring turns into it as it lands.
-    @State private var landDashed = false
-    /// Dashes alone (no band) for a prayer still to come — not under the soft ring, where the band stays and the
-    /// dashes are drawn in it (owner, 2026-10-02).
-    private var bareDashes: Bool { landDashed && !softRing }
-    /// Coming back: the ring is the welcome's starting ring (150 pt sage hairline round the symbol)
-    /// before it grows into the Salah circle exactly as the welcome does (owner, feedback A4D7B736).
-    @State private var snug = false
-    /// Lost while the app was open (feedback A535F50B): the ring starts on the Salah circle it replaces
-    /// (its centre y) and glides up to its place; nil once it has, or on a cold launch.
-    @State private var entryY: CGFloat?
-    /// The symbol inside the ring (blurs in on a warm entry, out as the ring lands on the Salah circle).
-    @State private var symbolIn = true
-    /// A warm entry holds the title until the ring has risen.
-    @State private var titleHeld = false
-    /// A warm entry fades the whole page in over the Salah page (still there under it) once the app
-    /// is really on screen — the change arrives while iOS still shows the app's snapshot.
-    @State private var pageIn = true
-    /// The Salah look prototype (SalahLook.swift): the soft page, and the ring landing as the soft band.
-    @Environment(\.circleTheme) private var theme
-    private var softRing: Bool { theme.softRing }
+    /// A measured room changing once the page is up ("Location's back" and its line are taller than "Uh oh"): the
+    /// circle eases to its new place with the title's own change — set straight, it stepped a few points in a frame.
+    private var measured = false
+    func measure(_ change: () -> Void) {
+        if measured && stage >= 1 {
+            withAnimation(.snappy(duration: 0.45), change)
+        } else {
+            change()
+        }
+        measured = true
+    }
 
-    init() {
-        // Read before this page reports its own circle: where the Salah circle is right now, if it's on
-        // screen — then this is a warm entry and the ring starts exactly on it (one ring, never two).
-        // (`canLand`: nothing covers the Salah page — not the map or a pushed page — else the centred entry.)
-        if WelcomeTarget.canLand, let f = WelcomeTarget.circleFrame, f.width > 100,
-           UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) {
-            _entryY = State(initialValue: f.midY)
-            _symbolIn = State(initialValue: false)
-            _titleHeld = State(initialValue: true)
-            _pageIn = State(initialValue: false)
+    var risen: Bool { stage >= 2 && !down }
+    var titleShown: Bool { stage >= 1 && !clearing && !titleHeld }
+    var textShown: Bool { stage >= 3 && !clearing }
+
+    var onSymbol: String {
+        if case .city = comeback { return "mappin.and.ellipse" }
+        return "location.fill"
+    }
+    var onCaption: String {
+        if case .city(let name) = comeback { return name.isEmpty ? "your city" : name }
+        return "location is on"
+    }
+    var ackTitle: String {
+        if case .city(let name) = comeback { return name.isEmpty ? "Using your city" : "Using \(name)" }
+        return "Location's back"
+    }
+    var ackLine: String {
+        switch comeback {
+        case .city: return "Prayer times for there, until you turn location on"
+        case .whileUsing: return "Choose Always in Settings so your times follow you when you travel"
+        default: return "Your times follow you again"
         }
     }
+}
 
-    private var comeback: EnvLocationManager.Comeback? { location.comeback }
-
-    /// How far the group is pushed down: onto the Salah circle (a warm entry's start, the hand-off's
-    /// landing), to the screen's centre during the cold opening, 0 in its place.
-    private var lift: CGFloat {
-        guard let g = groupFrame else { return 0 }
-        let circleMid = g.maxY - 100
-        if let landingY { return landingY - circleMid }
-        if let entryY { return entryY - circleMid }
-        if stage < 2 { return UIScreen.main.bounds.midY - circleMid }
-        return 0
-    }
-
-    private var textShown: Bool { stage >= 3 && !clearing }
+/// In the ring: the crossed-out symbol and "location is off" (on, once it's back).
+struct LostFace: View {
+    let stage: LostStage
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 12)
-            VStack(spacing: 0) {
+        VStack(spacing: 6) {
+            Image(systemName: stage.acknowledged ? stage.onSymbol : "location.slash")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(stage.acknowledged ? Color.sage : Color.secondary)
+                .contentTransition(.symbolEffect(.replace))
+            Text(stage.acknowledged ? stage.onCaption : "location is off")
+                .font(.system(.subheadline, design: .rounded, weight: .thin))
+                .foregroundStyle(.secondary)
+                // Inside the snug 150 pt ring too (a long city name).
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: 112)
+                .contentTransition(.opacity)
+        }
+        // Leaves like the welcome's word as the ring grows (scale 0.9, blur 4).
+        .scaleEffect(stage.symbolIn ? 1 : 0.9)
+        .opacity(stage.symbolIn ? 1 : 0)
+        .blur(radius: stage.symbolIn ? 0 : 4)
+    }
+}
+
+/// Round the circle: the title above, what sharing location gives below — laid on a 200 pt frame centred on the circle, so
+/// they move with it. Each reports its height (the page keeps that room round the risen circle).
+struct LostWords: View {
+    let stage: LostStage
+
+    var body: some View {
+        let width = UIScreen.main.bounds.width
+        Color.clear
+            .frame(width: 200, height: 200)
+            .overlay(alignment: .top) {
                 title
                     .padding(.horizontal, 28)
-                    .padding(.bottom, 28)
-                    .opacity(stage >= 1 && !clearing && !titleHeld ? 1 : 0)
-                    .blur(radius: stage >= 1 && !clearing && !titleHeld ? 0 : 6)
-                ZStack {
-                    // The Salah circle's track (mainCircle.swift): the welcome lands on this, and the
-                    // hand-off leaves it where the Salah page's own track is.
-                    // `WelcomeRing`, with the welcome's own sizes, widths and colours: the 12 pt grey track;
-                    // snug = the welcome's starting hairline; then grown back into the track (or dashes).
-                    WelcomeRing(width: snug ? 1.2 : (bareDashes ? 1 : (softRing ? AliveRingTuning.fine.band : 12)))
-                        .fill(snug ? Color.sage.opacity(0.6) : (bareDashes ? Color.clear : (softRing ? theme.surface : Color(.secondarySystemFill))))
-                        .shadow(color: Color.sage.opacity(snug ? 0.45 : 0), radius: 8)
-                        .shadow(color: softRing && !snug ? theme.shade : .clear, radius: 4, x: 2, y: 2)
-                        .shadow(color: softRing && !snug ? theme.light : .clear, radius: 6, x: -2, y: -2)
-                        .frame(width: snug ? 150 : 200, height: snug ? 150 : 200)
-                    Circle()
-                        .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
-                        .opacity(landDashed && !snug ? 1 : 0)
-                    VStack(spacing: 6) {
-                        Image(systemName: acknowledged ? onSymbol : "location.slash")
-                            .font(.system(size: 26, weight: .light))
-                            .foregroundStyle(acknowledged ? Color.sage : Color.secondary)
-                            .contentTransition(.symbolEffect(.replace))
-                        Text(acknowledged ? onCaption : "location is off")
-                            .font(.system(.subheadline, design: .rounded, weight: .thin))
-                            .foregroundStyle(.secondary)
-                            // Inside the snug 150 pt ring too (a long city name).
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(maxWidth: 112)
-                            .contentTransition(.opacity)
-                    }
-                    // Leaves like the welcome's word as the ring grows (scale 0.9, blur 4).
-                    .scaleEffect(symbolIn ? 1 : 0.9)
-                    .opacity(symbolIn ? 1 : 0)
-                    .blur(radius: symbolIn ? 0 : 4)
+                    .frame(width: width)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in stage.measure { stage.titleHeight = h } }
+                    .opacity(stage.titleShown ? 1 : 0)
+                    .blur(radius: stage.titleShown ? 0 : 6)
+                    .alignmentGuide(.top) { $0[.bottom] + 28 }
+            }
+            .overlay(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 14) {
+                    whyRow("clock", "Prayer times that follow you", "They update by themselves when you travel.")
+                    whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed", "On the map, with where you were.")
+                    whyRow("building.columns", "Duas at your masjid", "When you arrive and when you leave.")
                 }
-                .frame(width: 200, height: 200)
+                .padding(.horizontal, 32)
+                .frame(width: width)
+                .fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in stage.measure { stage.reasonsHeight = h } }
+                .opacity(stage.textShown ? 1 : 0)
+                .offset(y: stage.textShown ? 0 : 14)
+                .alignmentGuide(.bottom) { $0[.top] - 28 }
             }
-            .offset(y: lift)
-            // Outside the offset: the finished layout's frame, measured once it's laid out.
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { groupFrame = $0 }
-            .opacity(groupFrame == nil ? 0 : 1)
-            VStack(alignment: .leading, spacing: 14) {
-                whyRow("clock", "Prayer times that follow you", "They update by themselves when you travel.")
-                whyRow("mappin.and.ellipse", "Your prayers, pinned where you prayed", "On the map, with where you were.")
-                whyRow("building.columns", "Duas at your masjid", "When you arrive and when you leave.")
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 28)
-            .opacity(textShown ? 1 : 0)
-            .offset(y: textShown ? 0 : 14)
-            Spacer(minLength: 16)
-            VStack(spacing: 0) {
-                PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
-                SecondaryButton(title: "Enter a city instead") { pickingCity = true }
-                Text("A fixed city keeps prayer times, but not the travel updates, the pins or the masjid duas.")
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 36)
-                    .padding(.top, 8)
-                    .padding(.bottom, 8)
-            }
-            .opacity(textShown ? 1 : 0)
-            .offset(y: textShown ? 0 : 14)
-            .allowsHitTesting(comeback == nil)
-        }
-        .fontDesign(.rounded)
-        .background {
-            Group {
-                if theme.soft { NeuSurface() } else { Color(.systemBackground) }
-            }
-            .ignoresSafeArea()
-        }
-        .opacity(handedOff || !pageIn ? 0 : 1)
-        .allowsHitTesting(!location.lostPreview)   // the Play preview: look only
-        .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
-        // Where the circle is drawn right now (centred during the opening, then in its place).
-        .onChange(of: groupFrame, initial: true) { _, _ in reportCircle() }
-        .onChange(of: stage) { _, _ in reportCircle() }
-        .task { await intro() }
-        .task(id: comeback) { if comeback != nil { await acknowledge() } }
-        // The linger's fallback ended before the page came in (the app stayed inactive): show it now
-        // rather than leave a blank frame.
-        .onChange(of: location.salahLingers) { _, lingers in
-            if !lingers && !pageIn { withAnimation(.easeOut(duration: 0.3)) { pageIn = true } }
-        }
-        .sheet(isPresented: $pickingCity) {
-            CityPickerSheet(onPicked: { pickingCity = false })
-        }
+            .fontDesign(.rounded)
+            .allowsHitTesting(false)
     }
 
     @ViewBuilder private var title: some View {
-        if acknowledged {
+        if stage.acknowledged {
             VStack(spacing: 6) {
-                Text(ackTitle)
+                Text(stage.ackTitle)
                     .font(.system(.title, design: .rounded, weight: .light))
                     .multilineTextAlignment(.center)
-                Text(ackLine)
+                Text(stage.ackLine)
                     .font(.system(.subheadline, design: .rounded, weight: .light))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -612,144 +569,215 @@ struct LostLocationView: View {
             .transition(.blurReplace)
         }
     }
+}
 
-    private var onSymbol: String {
-        if case .city = comeback { return "mappin.and.ellipse" }
-        return "location.fill"
+/// The lost page's buttons at the bottom of the Salah page, and what runs it: in when location is lost (or ▶︎ No location),
+/// the acknowledgement and the hand-off when it comes back (circle step 3b). On PrayerTimesView, over the page.
+struct LostPageLayer: View {
+    @EnvironmentObject private var location: EnvLocationManager
+    @EnvironmentObject private var sharedState: SharedStateClass
+    @EnvironmentObject private var viewModel: PrayerViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pickingCity = false
+
+    private var isLost: Bool {
+        location.lostPreview || (location.locationLost && !(location.isAuthorized || location.hasManualLocation))
     }
-    private var onCaption: String {
-        if case .city(let name) = comeback { return name.isEmpty ? "your city" : name }
-        return "location is on"
-    }
-    private var ackTitle: String {
-        if case .city(let name) = comeback { return name.isEmpty ? "Using your city" : "Using \(name)" }
-        return "Location's back"
-    }
-    private var ackLine: String {
-        switch comeback {
-        case .city: return "Prayer times for there, until you turn location on"
-        case .whileUsing: return "Choose Always in Settings so your times follow you when you travel"
-        default: return "Your times follow you again"
+
+    var body: some View {
+        ZStack {
+            // Always there (an empty Group never appears, so its tasks never ran); takes no taps.
+            Color.clear.allowsHitTesting(false)
+            if let stage = CircleStage.shared.lost {
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    VStack(spacing: 0) {
+                        PrimaryButton(title: "Turn location back on", action: SettingsLinks.app)
+                        SecondaryButton(title: "Enter a city instead") { pickingCity = true }
+                        Text("A fixed city keeps prayer times, but not the travel updates, the pins or the masjid duas.")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 36)
+                            .padding(.top, 8)
+                            .padding(.bottom, 8)
+                    }
+                    .fontDesign(.rounded)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in stage.measure { stage.buttonsHeight = h } }
+                    .opacity(stage.textShown ? 1 : 0)
+                    .offset(y: stage.textShown ? 0 : 14)
+                    .allowsHitTesting(stage.textShown && stage.comeback == nil && !stage.preview)
+                }
+            }
+        }
+        .task(id: isLost) { if isLost { await enter() } }
+        .task(id: location.comeback) { if location.comeback != nil { await acknowledge() } }
+        .sheet(isPresented: $pickingCity) {
+            CityPickerSheet(onPicked: { pickingCity = false })
         }
     }
 
-    private func reportCircle() {
-        // After a comeback the Salah page's own circle reports itself (the hand-off lands on it).
-        guard comeback == nil, let g = groupFrame else { return }
-        WelcomeTarget.circleFrame = CGRect(x: g.midX - 100, y: g.maxY - 200 + lift, width: 200, height: 200)
-        WelcomeTarget.landsOnSalah = false   // the welcome lands on this page's own ring (its overlay draws it)
+    private func quietly(_ change: () -> Void) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet, change)
     }
 
-    private func intro() async {
-        if reduceMotion || comeback != nil {
-            entryY = nil; titleHeld = false; symbolIn = true; stage = 3
-            if !pageIn { withAnimation(.easeInOut(duration: 0.35)) { pageIn = true } }
-            try? await Task.sleep(for: .milliseconds(400))
+    /// Location lost: on a launch, under the welcome — the circle alone where the welcome lands, then the title appears
+    /// above it, both rise to their place, the reasons and buttons fill in. While the app is open: the page round the
+    /// circle fades, its prayer goes out and the symbol comes in, the circle rises, then the title, then the rest.
+    private func enter() async {
+        guard CircleStage.shared.lost == nil else { return }
+        try? await Task.sleep(for: .milliseconds(60))   // a launch: the welcome is up by now
+        guard isLost, CircleStage.shared.lost == nil else { return }
+        let stage = LostStage()
+        stage.preview = location.lostPreview
+        CircleCover.set("lost", true)   // no reminders card / qibla buzz meanwhile (not over the circle: CircleCover)
+        if WelcomeTarget.playing || reduceMotion || UIApplication.shared.applicationState != .active {
+            quietly {
+                sharedState.horizontalPage = .main
+                sharedState.navPosition = .main
+            }
+        } else if sharedState.horizontalPage != .main || sharedState.navPosition != .main {
+            // Open on another page or with the list up: back to the circle the usual way first.
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sharedState.horizontalPage = .main
+                sharedState.navPosition = .main
+            }
+            try? await Task.sleep(for: .milliseconds(450))
+        }
+        if reduceMotion {
+            stage.stage = 3
+            withAnimation(.easeInOut(duration: 0.35)) { CircleStage.shared.lost = stage }
             location.endSalahLinger()
             return
         }
-        if entryY != nil { await warmEntry(); return }
-        // The welcome (a cold launch) grows into the centred circle first; wait for it to finish.
-        try? await Task.sleep(for: .milliseconds(300))
-        while WelcomeTarget.playing {
-            if Task.isCancelled { return }      // the page went away mid-welcome
-            try? await Task.sleep(for: .milliseconds(100))
+        if WelcomeTarget.playing {
+            // Under the welcome (it lands on this circle, solid, the lost ring).
+            quietly { CircleStage.shared.lost = stage }
+            while WelcomeTarget.playing {
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            try? await Task.sleep(for: .milliseconds(150))
+            guard stage.comeback == nil else { return }
+            withAnimation(.easeOut(duration: 0.5)) { stage.stage = 1 }
+            try? await Task.sleep(for: .milliseconds(750))
+            guard stage.comeback == nil else { return }
+            withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage.stage = 2 }
+            try? await Task.sleep(for: .milliseconds(450))
+            guard stage.comeback == nil else { return }
+            withAnimation(.easeOut(duration: 0.5)) { stage.stage = 3 }
+            #if DEBUG
+            // `-demoLostCity London`: pick that city 2 s after the page settles (the city sheet's path).
+            if let city = UserDefaults.standard.string(forKey: "demoLostCity") {
+                try? await Task.sleep(for: .seconds(2))
+                location.setManualLocation(CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278), name: city)
+            }
+            #endif
+            return
         }
-        // Each step only while nothing has come back (acknowledge() takes the page from there).
-        try? await Task.sleep(for: .milliseconds(150))
-        guard comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { stage = 1 }
-        try? await Task.sleep(for: .milliseconds(750))
-        guard comeback == nil else { return }
-        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage = 2 }
-        try? await Task.sleep(for: .milliseconds(450))
-        guard comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { stage = 3 }
-        #if DEBUG
-        // `-demoLostCity London`: pick that city 2 s after the page settles (the city sheet's path).
-        if let city = UserDefaults.standard.string(forKey: "demoLostCity") {
-            try? await Task.sleep(for: .seconds(2))
-            location.setManualLocation(CLLocationCoordinate2D(latitude: 51.5074, longitude: -0.1278), name: city)
-        }
-        #endif
-    }
-
-    /// Lost while the app was open: the Salah page blurs out under the page fading in, whose ring sits
-    /// exactly on the Salah circle; the ring springs up to its place as the crossed-out symbol blurs in,
-    /// then the title, then the reasons and buttons.
-    private func warmEntry() async {
-        CircleCover.set("lostWarmEntry", true)      // no qibla buzz under the page fading in
-        defer { CircleCover.set("lostWarmEntry", false) }
-        for _ in 0..<25 where groupFrame == nil { try? await Task.sleep(for: .milliseconds(20)) }
-        // Only once the app is really on screen (not under iOS's snapshot as it comes back).
+        // While the app is open. Only once it's really on screen (not under iOS's snapshot as it comes back).
         for _ in 0..<60 where UIApplication.shared.applicationState != .active {
             try? await Task.sleep(for: .milliseconds(50))
         }
         try? await Task.sleep(for: .milliseconds(250))
-        // Fade in over the Salah page: its ring sits exactly on the Salah one, the prayer fades away.
-        withAnimation(.easeOut(duration: 0.3)) { pageIn = true }
-        try? await Task.sleep(for: .milliseconds(300))
+        stage.symbolIn = false
+        stage.titleHeld = true
+        stage.stage = 1
+        // The page round the circle fades (its own animations); the circle's prayer goes out, its ring stays.
+        CircleStage.shared.lost = stage
         location.endSalahLinger()
-        guard comeback == nil else { return }
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) { entryY = nil; stage = 2 }
-        withAnimation(.easeOut(duration: 0.4).delay(0.08)) { symbolIn = true }
+        try? await Task.sleep(for: .milliseconds(600))
+        guard stage.comeback == nil else { return }
+        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) { stage.stage = 2 }
+        withAnimation(.easeOut(duration: 0.4).delay(0.08)) { stage.symbolIn = true }
         try? await Task.sleep(for: .milliseconds(550))
-        guard comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { titleHeld = false }
+        guard stage.comeback == nil else { return }
+        withAnimation(.easeOut(duration: 0.5)) { stage.titleHeld = false }
         try? await Task.sleep(for: .milliseconds(450))
-        guard comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { stage = 3 }
+        guard stage.comeback == nil else { return }
+        withAnimation(.easeOut(duration: 0.5)) { stage.stage = 3 }
     }
 
-    /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then
-    /// the words go while the ring glides onto the Salah circle as the welcome's starting ring, then
-    /// grows into it exactly as the welcome does. Reduce Motion: the acknowledgement, a fade.
+    /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then the words go while
+    /// the circle glides back to its place and draws in to the welcome's starting ring round the symbol; it rests, then
+    /// does the welcome's own landing — grows into the track (or the dashes) as the symbol lets go — and the prayer and
+    /// the page come in round it. Reduce Motion: the acknowledgement, a fade.
     private func acknowledge() async {
-        CircleCover.set("lostHandoff", true)       // no reminders card / qibla buzz under it
-        defer { CircleCover.set("lostHandoff", false) }
-        // A comeback can cut a warm entry short: make sure the page, its title and symbol are there.
-        if !pageIn || titleHeld || !symbolIn || entryY != nil {
-            withAnimation(.easeOut(duration: 0.3)) { pageIn = true; titleHeld = false; symbolIn = true; entryY = nil }
+        guard let stage = CircleStage.shared.lost, let comeback = location.comeback else {
+            // Nothing up to acknowledge it (it came back before the page did): just go on.
+            if CircleStage.shared.lost == nil { location.clearComeback() }
+            return
         }
         pickingCity = false
-        if stage < 3 { withAnimation(.easeOut(duration: 0.3)) { stage = 3 } }
+        stage.comeback = comeback
+        if stage.stage < 3 || stage.titleHeld || !stage.symbolIn {
+            withAnimation(.easeOut(duration: 0.3)) { stage.stage = 3; stage.titleHeld = false; stage.symbolIn = true }
+        }
         // On screen first (Settings → back: the change lands while iOS still shows the snapshot).
         for _ in 0..<60 where UIApplication.shared.applicationState != .active {
             try? await Task.sleep(for: .milliseconds(50))
         }
         try? await Task.sleep(for: .milliseconds(450))   // back in the app / the city sheet gone
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.snappy(duration: 0.45)) { acknowledged = true }
+        withAnimation(.snappy(duration: 0.45)) { stage.acknowledged = true }
         try? await Task.sleep(for: .milliseconds(comeback == .whileUsing ? 2000 : 1500))
         if reduceMotion {
-            withAnimation(.easeInOut(duration: 0.5)) { handedOff = true }
+            withAnimation(.easeInOut(duration: 0.5)) { stage.clearing = true; stage.down = true; stage.landed = true }
             try? await Task.sleep(for: .milliseconds(520))
-            location.clearComeback()
+            finish()
             return
         }
-        // The words go while the ring glides straight onto the Salah circle (underneath by now); as it
-        // lands the symbol blurs out, the band becomes the Salah track (dashed if the prayer hasn't
-        // started) and the page fades, so the prayer comes in round the same ring (feedback A535F50B).
-        var target = UIScreen.main.bounds.midY
-        if let f = WelcomeTarget.salahCircleFrame ?? WelcomeTarget.circleFrame, f.width > 100,
-           UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(f) { target = f.midY }
-        // The words go while the ring glides onto the Salah circle and draws in to the welcome's
-        // starting ring round the symbol; it rests, then does the welcome's own landing: grows 150 →
-        // 200 pt as the hairline thickens into the track (or the dashes), the symbol letting go like
-        // the word; 0.65 s later the page fades in round it (WelcomeOverlay.play's timings).
-        withAnimation(.easeOut(duration: 0.3)) { clearing = true }
-        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { landingY = target }   // no overshoot
-        withAnimation(.easeInOut(duration: 0.6)) { snug = true }
-        try? await Task.sleep(for: .milliseconds(750))      // landed, snug
+        // The prayer's track under the ring as it lands: dashed for a prayer that hasn't started (or the next Fajr).
+        let dashed: Bool = {
+            guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else {
+                return sharedState.navPosition != .bottom
+            }
+            return p.status() == .upcoming
+        }()
+        // The ring becomes the welcome's mark — the same band, in the same place, so nothing changes yet — and the
+        // circle's own track waits under it.
+        let mark = WelcomeMarkState()
+        mark.inCircle = true
+        mark.ringDrawn = true
+        mark.startDrawn = true
+        mark.grow = true
+        mark.hidesWords = false   // the symbol stays in the ring
+        quietly { CircleStage.shared.opening = mark }
+        // The words go while the circle glides back to its place and draws in to the starting ring round the symbol.
+        withAnimation(.easeOut(duration: 0.3)) { stage.clearing = true }
+        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { stage.down = true }   // no overshoot
+        withAnimation(.easeInOut(duration: 0.6)) { mark.grow = false }
+        try? await Task.sleep(for: .milliseconds(750))      // back in place, snug
         try? await Task.sleep(for: .milliseconds(350))      // rests, like the welcome before it grows
+        mark.dashedTarget = dashed
         withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) {
-            snug = false
-            landDashed = WelcomeTarget.trackDashed
-            symbolIn = false
+            mark.grow = true
+            stage.symbolIn = false
         }
-        try? await Task.sleep(for: .milliseconds(650))
-        withAnimation(.easeInOut(duration: 0.45)) { handedOff = true }
-        try? await Task.sleep(for: .milliseconds(470))
+        if dashed {
+            try? await Task.sleep(for: .milliseconds(560))
+            withAnimation(.easeInOut(duration: 0.3)) { mark.dashesIn = true }
+            try? await Task.sleep(for: .milliseconds(320))
+        } else {
+            try? await Task.sleep(for: .milliseconds(650))
+        }
+        // Landed: the track is back under the ring, the prayer comes in on it and the page round it.
+        mark.landed = true
+        stage.landed = true
+        try? await Task.sleep(for: .milliseconds(600))
+        finish()
+    }
+
+    private func finish() {
+        quietly {
+            if CircleStage.shared.opening?.inCircle == true, CircleStage.shared.opening?.hidesWords == false {
+                CircleStage.shared.opening = nil
+            }
+            CircleStage.shared.lost = nil
+        }
+        CircleCover.set("lost", false)
         location.clearComeback()
     }
 }

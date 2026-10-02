@@ -474,6 +474,8 @@ struct PrayerTimesView: View {
             }
             .scrollTargetBehavior(.paging)
             .scrollIndicators(.hidden)
+            // The lost page is the Salah page alone (circle step 3b): nothing else to swipe to, as before.
+            .scrollDisabled(CircleStage.shared.lost != nil)
             .scrollPosition(id: $scrollPage)
             .defaultScrollAnchor(.center)
             .modifier(PagerLock(live: live))     // .scrollDisabled(live.pagerLocked), see PagerLiveState
@@ -561,6 +563,9 @@ struct PrayerTimesView: View {
                 showInsightsPage: $showInsightsPage, showOldInsights: $showOldInsights,
                 showNamesPage: $showNamesPage, showTasbeehPage: $showTasbeehPage
             )
+
+            // "shukr lost your location" (circle step 3b): its buttons, and what runs it — the circle shows the rest.
+            LostPageLayer()
         }
         // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
         // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
@@ -1143,12 +1148,15 @@ struct PrayerTimesView: View {
             .first ?? 34
 
         var body: some View {
+            let lost = CircleStage.shared.lost
             VStack {
                 Spacer()
                 if showBottom {
                     Spacer()
                     Spacer()
                 }
+                // The lost page (circle step 3b): the circle risen, with room for its title above and what sharing
+                // location gives below, and the buttons at the bottom (LostWords / LostPageLayer measure them).
 
                 ZStack {
                     MainCircleView(showQiblaMap: $showQiblaMap, showTasbeehPage: $showTasbeehPage)
@@ -1161,6 +1169,11 @@ struct PrayerTimesView: View {
                         }
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                // The lost page (circle step 3b): room for its title above and what sharing location gives below, as
+                // padding — a height that animates; zero otherwise (an extra view in this stack added its spacing, and
+                // inserting / removing one twitched the circle at the hand-off).
+                .padding(.top, lost.map { $0.risen ? $0.titleHeight + 28 : 0 } ?? 0)
+                .padding(.bottom, lost.map { $0.risen ? 28 + $0.reasonsHeight : 0 } ?? 0)
                 .zIndex(3)
 
                 Spacer()
@@ -1174,8 +1187,8 @@ struct PrayerTimesView: View {
                     )
                     .opacity(1 - Double(live.pull / 90))
                     // The opening on the Salah circle (circle step 4): the list waits, then fades in as the ring lands.
-                    .opacity(CircleStage.shared.openingHidesPage ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.openingHidesPage)
+                    .opacity(CircleStage.shared.pageHidden ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.pageHidden)
                     // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
                     // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
                     // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
@@ -1186,8 +1199,9 @@ struct PrayerTimesView: View {
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
-                Color.clear.frame(height: showBottom ? bottomChromeHeight + (theme.soft ? 44 : 0)
-                                                     : closedBottomReserve)
+                Color.clear.frame(height: (showBottom ? bottomChromeHeight + (theme.soft ? 44 : 0)
+                                                      : closedBottomReserve)
+                                          + (lost.map { $0.risen ? $0.buttonsHeight : 0 } ?? 0))   // the lost page's buttons
             }
             // "N done" toggled (in the list, or the soft looks' footer up in the chrome): the page animates the
             // re-centring itself — the chrome's transaction didn't always reach it, so the fold sometimes snapped, the
@@ -1432,8 +1446,8 @@ struct PrayerTimesView: View {
                 content.offset(x: -settingsness * proxy.size.width)
             }
             // The opening on the Salah circle (circle step 4): the chrome waits, then fades in as the ring lands.
-            .opacity(CircleStage.shared.openingHidesPage ? 0 : 1)
-            .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.openingHidesPage)
+            .opacity(CircleStage.shared.pageHidden ? 0 : 1)
+            .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.pageHidden)
         }
     }
 

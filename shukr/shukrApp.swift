@@ -185,15 +185,14 @@ struct shukrApp: App {
             // v4. Nav View with PrayerTimesView and everything else as navlink inside. Reason: we were having unnecesary view redraws causing us to lose state in views like TasbeehView. Debugged this using onappear and ondisappear print statements. I learned tabView with NavigationView inside causes this issue. Well known issue apparently.
             NavigationStack{
                 if environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation
-                    || environmentLocationManager.salahLingers {
+                    || environmentLocationManager.salahLingers
+                    || (!setupShowing && environmentLocationManager.locationLost) {
                     // Under the setup too, once there's a location: its last step lands on this
-                    // page's circle.
+                    // page's circle. Location turned off since, no city: "shukr lost your location" is a
+                    // state of this page's circle (circle step 3b; LostPageLayer), so it stays up as location
+                    // comes back and hands off on the same ring.
                     PrayerTimesView()
                         .transition(.blurReplace())
-                } else if !setupShowing && environmentLocationManager.locationLost {
-                    // Location was on and has been turned off, no city: "shukr lost your location"
-                    // (drawn in the overlay below, so it outlives location coming back).
-                    Color(.systemBackground).ignoresSafeArea()
                 } else if !setupShowing {
                     // No location at all (refused with no city): just the setup's location step.
                     FirstRunSetupView(mode: .locationOnly)
@@ -203,19 +202,6 @@ struct shukrApp: App {
                 }
             }
             .environmentObject(prayerViewModel)
-            .overlay {
-                // "shukr lost your location", with a circle the opening lands on — not the whole setup
-                // again. An overlay over the root, so when location (or a city) comes back it stays up,
-                // the same view, to acknowledge it and hand off to the Salah page appearing under it.
-                if !setupShowing && (environmentLocationManager.comeback != nil || environmentLocationManager.lostPreview
-                    || (environmentLocationManager.locationLost
-                        && !(environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation))) {
-                    // Fades in over the Salah page blurring out (location lost while the app was open):
-                    // its ring starts exactly on the Salah circle, so there's one ring throughout.
-                    LostLocationView()
-                        .transition(.opacity.animation(.easeOut(duration: 0.3)))
-                }
-            }
             .overlay {
                 if setupShowing {
                     FirstRunSetupView(onFinish: {
