@@ -137,6 +137,7 @@ struct shukrApp: App {
         if !StoreFallback.active { WatchSync.shared.start(container: sharedModelContainer) }
         NextLabelTuning.clearSavedTuningOnce()   // back to the original NEXT look (2026-09-27)
         #if DEBUG
+        SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
         // `-sendNotificationSamples YES` (NotificationSamples): every notification, 6 s apart.
         if UserDefaults.standard.bool(forKey: "sendNotificationSamples") { Task { await NotificationSamples.send() } }

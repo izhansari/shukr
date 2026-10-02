@@ -45,6 +45,22 @@ enum SalahLook: String, CaseIterable, Identifiable {
     }
 }
 
+#if DEBUG
+extension SalahLook {
+    /// Dev builds (the owner's phone and the simulators) start the look exploration on Sunken well with no lines
+    /// between prayers (owner, 2026-10-01: "default to no lines with sunken card for this exploring aesthetic
+    /// testing stuff"). Once per install, so a later pick in the palette menu stays. TestFlight / App Store
+    /// builds aren't touched: everyone else keeps Today's look.
+    static func seedExploringDefaults() {
+        let d = UserDefaults.standard
+        guard !d.bool(forKey: "salahLook.seeded.v1") else { return }
+        d.set(true, forKey: "salahLook.seeded.v1")
+        d.set(SalahLook.well.rawValue, forKey: key)
+        d.set(false, forKey: linesKey)
+    }
+}
+#endif
+
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
 /// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
 enum RowMotion: String, CaseIterable, Identifiable {
