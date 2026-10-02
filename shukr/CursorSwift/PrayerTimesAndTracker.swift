@@ -1136,15 +1136,9 @@ struct PrayerTimesView: View {
                         showTasbeehPage: $showTasbeehPage
                     )
                     .opacity(1 - Double(live.pull / 90))
-                    // Soft looks (SalahLook.swift): the card no longer slides in from the bottom edge through the
-                    // fading bottom bar (a see-through card over a see-through bar, "ghosty" — owner, 2026-10-01).
-                    // It makes room like the rows: opening, the circle moves up first and the list fades in a few
-                    // points below its place; closing, the list fades out quickly before the circle settles.
-                    .transition(SalahLook.tinted(lookRaw, softRing: softRing)
-                        ? .asymmetric(insertion: .opacity.combined(with: .offset(y: 14))
-                                        .animation(.easeOut(duration: 0.25).delay(0.15)),
-                                      removal: .opacity.animation(.easeIn(duration: 0.1)))
-                        : .move(edge: .bottom).combined(with: .opacity))
+                    // Slides up from the bottom and fades, in every look (owner, 2026-10-01: "i liked our initial
+                    // transition better" — the soft looks' fade-in-place, e445f71, is gone).
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     Spacer()
                 }
 
@@ -2161,7 +2155,7 @@ struct PrayerButton: View {
                 timeColumn
             }
             .padding(.horizontal)
-            .padding(.vertical, 12)
+            .padding(.vertical, look == .well ? 8 : 12)   // the well's rows a bit shorter (owner, 2026-10-01)
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)

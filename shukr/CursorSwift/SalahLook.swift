@@ -127,18 +127,20 @@ struct SoftDoneFooter: View {
                     fold.showDone.toggle()
                 }
             } label: {
-                HStack(spacing: 6) {
+                // Secondary text, a step quieter than the bar's icons (owner: it read "the same exact color as the
+                // icons in the bottom bar").
+                HStack(spacing: 5) {
                     Image(systemName: "checkmark.circle")
                     Text("\(count) done")
                     Image(systemName: "chevron.up")
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.quaternary)
                         .rotationEffect(.degrees(fold.showDone ? 180 : 0))
                 }
-                .font(.footnote)
+                .font(.caption)
                 .fontDesign(.rounded)
                 .fontWeight(.light)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
