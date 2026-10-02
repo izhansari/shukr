@@ -43,6 +43,11 @@ enum SleepMorning {
         return t > 0 ? Date(timeIntervalSince1970: t) : nil
     }
     static var isArmed: Bool { UserDefaults.standard.bool(forKey: armedKey) }
+    /// The session's zikr as the card names it.
+    static func name(of session: SessionDataModel) -> String {
+        if let m = session.mantra?.name { return m }
+        return session.title == "Untitled" || session.title.isEmpty ? "Freestyle" : session.title
+    }
     /// The app went to the background with a card waiting: show it on the next open.
     static func armIfPending() { if pendingID != nil { UserDefaults.standard.set(true, forKey: armedKey) } }
     static func clear() {
@@ -276,67 +281,66 @@ struct GoalIntroView: View {
 
 /// Drawn over the whole screen (ignoring the safe area, so its coordinates are the screen's): the
 /// ring sits exactly on the Salah circle (`WelcomeTarget.circleFrame`), the words above and below it.
-struct MorningCardView: View {
+/// The morning card's session in the Salah circle (circle step 3): its count and zikr inside the ring, a thin sage ring
+/// just inside the track. The circle shows it while `CircleStage.morning` is set; the page round it is `MorningCurtain`.
+struct MorningFace: View {
+    let session: SessionDataModel
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.sage.opacity(0.9), lineWidth: 2.5).padding(4.75)
+            VStack(spacing: 2) {
+                Text("\(session.totalCount)")
+                    .font(.system(size: 44, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                Text(SleepMorning.name(of: session)).font(.subheadline).fontDesign(.rounded).foregroundStyle(.secondary)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+            .padding(.horizontal, 18)
+        }
+        .frame(width: 200, height: 200)
+    }
+}
+
+/// The morning card round the Salah circle (circle step 3; decisions sleep-morning-card A, sleep-morning-open): the page,
+/// with a hole where the circle — the one ring, showing `MorningFace` — shows through; the words above, the numbers and
+/// the way out below. It used to draw its own copy of the ring over the circle, lined up by measured frames.
+struct MorningCurtain: View {
     let session: SessionDataModel
     let onDone: () -> Void
     let onHistory: () -> Void
-    /// The page (opaque at once under the welcome, which lands on this ring) and, after, its words.
+    /// The page (opaque at once under the welcome, which lands on the circle) and, after, its words.
     @State private var pageIn = false
     @State private var shown = false
-    /// The Salah look prototype (SalahLook.swift): the soft page and band, like the circle it leaves behind.
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    @Environment(\.circleTheme) private var theme
 
     /// The last tap's clock time (stored when it ended); older builds' sessions: start + active time.
     private var ended: Date { SleepMorning.endedAt ?? session.startTime.addingTimeInterval(session.secondsPassed) }
-    private var name: String {
-        if let m = session.mantra?.name { return m }
-        return session.title == "Untitled" || session.title.isEmpty ? "Freestyle" : session.title
-    }
+    /// The hole: the ring, its band and the soft band's shadow, feathered into the page.
+    private static let hole: CGFloat = 244
 
     var body: some View {
         let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds
             ?? CGRect(x: 0, y: 0, width: 393, height: 852)
-        let circle = WelcomeTarget.circleFrame
+        let circle = WelcomeTarget.salahCircleFrame ?? WelcomeTarget.circleFrame
             ?? CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
         ZStack(alignment: .topLeading) {
             Group {
-                if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+                if theme.soft { NeuSurface() } else { Color(.systemBackground) }
             }
+                .mask {
+                    Rectangle()
+                        .overlay {
+                            Circle()
+                                .frame(width: Self.hole, height: Self.hole)
+                                .blur(radius: 5)
+                                .position(x: circle.midX, y: circle.midY)
+                                .blendMode(.destinationOut)
+                        }
+                        .compositingGroup()
+                }
                 .opacity(pageIn ? 1 : 0)
-                .contentShape(Rectangle())
-            // The Salah circle's own ring, with the count in it.
-            ZStack {
-                // The Salah circle's own track as it is right now (dashed for a prayer still to
-                // come), so the page leaves exactly that circle behind.
-                if WelcomeTarget.trackDashed && softRing {
-                    // The soft band stays for a prayer still to come, its dashes drawn in it (owner, 2026-10-02).
-                    NeuRingTrack().opacity(pageIn ? 1 : 0)
-                    Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
-                } else if WelcomeTarget.trackDashed {
-                    Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
-                } else if softRing {
-                    // Fades with the page: the circle's own band and arc are right under it. Opaque to the end, it
-                    // covered the prayer's arc, which then popped in when the card went (owner: "doesnt bring in
-                    // the prayer progress right").
-                    NeuRingTrack().opacity(pageIn ? 1 : 0)
-                } else {
-                    Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
-                }
-                Circle().stroke(Color.sage.opacity(0.9), lineWidth: 2.5).padding(4.75)
-                    .opacity(shown ? 1 : 0)
-                VStack(spacing: 2) {
-                    Text("\(session.totalCount)")
-                        .font(.system(size: 44, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                    Text(name).font(.subheadline).fontDesign(.rounded).foregroundStyle(.secondary)
-                        .lineLimit(1).minimumScaleFactor(0.7)
-                }
-                .padding(.horizontal, 18)
-                .opacity(shown ? 1 : 0)
-            }
-            .frame(width: circle.width, height: circle.height)
-            .position(x: circle.midX, y: circle.midY)
+                .contentShape(Rectangle())   // the hole too: nothing under the card takes a tap
 
             // Above the circle.
             VStack(spacing: 6) {
@@ -404,7 +408,7 @@ struct MorningCardView: View {
                 withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
                 return
             }
-            pageIn = true   // under the welcome: its ring lands on this one, then the words come in
+            pageIn = true   // under the welcome: its ring lands on the circle, then the words come in
         }
         .task {
             guard !shown else { return }
@@ -417,14 +421,16 @@ struct MorningCardView: View {
         .onDisappear { CircleCover.set("morningCard", false) }
     }
 
-    /// The words and the page fade from round the ring, which stays: what's left is the Salah
-    /// circle in the same place (the welcome's landing, backwards).
+    /// The words go — the card's and the circle's (its morning face goes out, then the prayer comes in: a swap) — and the
+    /// page fades from round the ring, which stays.
     private func finish(then go: @escaping () -> Void) {
-        // The words and the sage ring first, then the page: the prayer comes in on an empty circle — together, "3 /
-        // Freestyle" sat over "Isha / ends …" mid-fade (Sami's audit, finding 5), as the welcome already avoids.
         withAnimation(.easeOut(duration: 0.22)) { shown = false }
-        withAnimation(.easeInOut(duration: 0.4).delay(0.18)) { pageIn = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) { go() }
+        CircleStage.shared.morning = nil
+        withAnimation(.easeInOut(duration: 0.3).delay(0.15)) { pageIn = false }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.5))
+            go()
+        }
     }
 
     private func tile(_ value: String, _ caption: String) -> some View {

@@ -18,6 +18,16 @@ enum CircleFace: Equatable {
     case prayer(PrayerModel)
     /// The day: today's score with the list open, the next Fajr with it closed (`summaryCircle`).
     case summary
+    /// The morning after a sleep finish (step 3): the session's count and zikr in the ring (`MorningFace`), the page
+    /// round it the morning card's (`MorningCurtain`).
+    case morning(SessionDataModel)
+}
+
+/// What the Salah page asks its circle to show beyond the prayers (step 3). Set by PrayerTimesView, read by the circle.
+@MainActor @Observable final class CircleStage {
+    static let shared = CircleStage()
+    /// The morning after a sleep finish, while its card is up.
+    var morning: SessionDataModel?
 }
 
 /// The moments the circle plays.
@@ -34,6 +44,9 @@ enum CircleMomentKind: Equatable {
 enum CircleMomentTiming {
     static let out: Double = 0.2
     static let `in`: Double = 0.35
+    /// How long a moment waits for the words to be gone before it changes the face: the fade starts a frame or two
+    /// after it's asked for, and swapping at exactly `out` cut it at ~60 % (the morning's count popped off).
+    static let outDone: Double = out + 0.08
 }
 
 @MainActor enum CircleGate {
@@ -77,8 +90,9 @@ struct CircleWordsAway: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(away ? 0 : 1)
-            // The animation lives with the change (rule 6): out quick, in a little slower. A withAnimation from the
+            // The animation lives with the change (rule 6): out quick, in a little slower; ease-out both ways, so the fade
+            // shows from its first frame (an ease-in out sat still, then hurried). A withAnimation from the
             // runner was swallowed when the face had just been swapped quietly (the words popped back on).
-            .animation(away ? .easeIn(duration: CircleMomentTiming.out) : .easeOut(duration: CircleMomentTiming.in), value: away)
+            .animation(.easeOut(duration: away ? CircleMomentTiming.out : CircleMomentTiming.in), value: away)
     }
 }

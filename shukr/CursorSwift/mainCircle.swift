@@ -12,6 +12,10 @@ import SwiftData
     static func set(_ key: String, _ on: Bool) {
         if on { active.insert(key) } else { active.remove(key) }
     }
+    /// The morning card is a cover for prompts (they wait for it) but not over the circle: its page has a hole there,
+    /// and the circle shows the morning itself (circle step 3).
+    static let besideCircle: Set<String> = ["morningCard"]
+    static var nothingOverCircle: Bool { active.subtracting(besideCircle).isEmpty }
 }
 
 struct MainCircleView: View {
@@ -49,12 +53,21 @@ struct MainCircleView: View {
     @State private var momentSettle: (() -> Void)?
     /// ▶︎ Prayer begins with every prayer done: today's Fajr row, held on the circle for the preview.
     @State private var heldPrayer: PrayerModel?
-    /// What the circle shows at rest, from the data: the prayer on the circle, or the day's summary (none; or the next
-    /// prayer is tomorrow's Fajr).
+    /// What the circle shows at rest, from the data: the morning card's session while it's up, else the prayers'.
     private var derivedFace: CircleFace {
+        if let session = CircleStage.shared.morning { return .morning(session) }
+        return prayersFace
+    }
+    /// The prayer on the circle, or the day's summary (none; or the next prayer is tomorrow's Fajr).
+    private var prayersFace: CircleFace {
         _ = currentTime
         guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else { return .summary }
         return .prayer(p)
+    }
+    /// The morning card's session, while the circle shows it.
+    private var morningShown: SessionDataModel? {
+        if case .morning(let session) = displayedFace ?? derivedFace { return session }
+        return nil
     }
     /// The prayer the circle draws, if its face is a prayer.
     private var shownPrayer: PrayerModel? {
@@ -128,6 +141,11 @@ struct MainCircleView: View {
                         .shadow(color: Color.green.opacity(0.3), radius: 10)
                         .shadow(color: Color.green.opacity(0.2), radius: 15)
                         .background(Color.clear) // Ensures the inside remains transparent
+                }
+                else if let session = morningShown {
+                    // The morning after a sleep finish: the session in the ring, the card's page round it (SleepMode).
+                    MorningFace(session: session)
+                        .transition(.opacity)
                 }
                 else if let prayer = shownPrayer, preview != nil || !(prayer.status() == .upcoming && prayer.name == "Fajr") {
                     // The real state, or the dev preview's.
@@ -312,7 +330,7 @@ struct MainCircleView: View {
             
             
 
-            if sharedState.bottomTabPosition != .zikr {
+            if sharedState.bottomTabPosition != .zikr && morningShown == nil {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: { showQiblaMap = true })
@@ -437,9 +455,12 @@ struct MainCircleView: View {
         if flourish != nil && !flourishOut { return true }   // fading out: the next state may come in
         if let preview { return preview != .upcoming }
         // The face shown, not the data: the ring changes while the words are out, never before them.
-        switch displayedFace ?? derivedFace {
+        var face = displayedFace ?? derivedFace
+        if case .morning = face { face = prayersFace }   // the morning keeps the track it will leave behind
+        switch face {
         case .summary: return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
         case .prayer(let p): return p.status() != .upcoming
+        case .morning: return true
         }
     }
 
@@ -447,7 +468,7 @@ struct MainCircleView: View {
     /// does the track animate; otherwise it just is what it should be.
     private var circleOnScreen: Bool {
         scenePhase == .active && sharedState.horizontalPage == .main && WelcomeTarget.canLand
-            && CircleCover.active.isEmpty && (Uptime.now - appearedAt) > 0.6
+            && CircleCover.nothingOverCircle && (Uptime.now - appearedAt) > 0.6
     }
 
     /// A moment may play: the circle is seen and settled — the app active, the Salah page with the pager still,
@@ -455,7 +476,7 @@ struct MainCircleView: View {
     /// (marks are made from it).
     private var canPlay: Bool {
         UIApplication.shared.applicationState == .active && sharedState.horizontalPage == .main
-            && !(live?.pagerPhase.isScrolling ?? false) && CircleCover.active.isEmpty
+            && !(live?.pagerPhase.isScrolling ?? false) && CircleCover.nothingOverCircle
             && WelcomeTarget.canLand && !WelcomeTarget.playing && (Uptime.now - appearedAt) > 0.6
     }
 
@@ -494,12 +515,17 @@ struct MainCircleView: View {
     /// the new words come in. A mark or a preview syncs the face itself at its end.
     private func faceChanged() {
         guard momentKind == nil, displayedFace != nil, displayedFace != derivedFace else { return }
+        // The morning goes up under the welcome (its ring lands on this one): there at once, nothing to play.
+        if case .morning = derivedFace, WelcomeTarget.playing || WelcomeGate.curtainUp || !canPlay {
+            quietly { displayedFace = derivedFace }
+            return
+        }
         run(.swap, settle: {
             displayedFace = derivedFace
             faceAway = false
         }) {
             faceAway = true
-            guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+            guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }
             quietly { displayedFace = derivedFace }
             guard await CircleGate.nextFrame() else { return }
             faceAway = false
@@ -554,7 +580,7 @@ struct MainCircleView: View {
             if let held {
                 // From the summary to Fajr: out, then in, like any face change.
                 faceAway = true
-                guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+                guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }
                 quietly { heldPrayer = held; preview = .upcoming }
                 guard await CircleGate.nextFrame() else { return }
                 faceAway = false
@@ -567,7 +593,7 @@ struct MainCircleView: View {
             guard await CircleGate.pause(1.4) else { return }
             if held != nil {
                 faceAway = true
-                guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+                guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }
                 quietly { preview = nil; heldPrayer = nil; displayedFace = derivedFace }
                 guard await CircleGate.nextFrame() else { return }
                 faceAway = false
@@ -599,14 +625,6 @@ struct MainCircleView: View {
         }
     }
 
-    /// The circle shows a prayer (vs the day summary — e.g. before Fajr, or all done).
-    private var showsPrayer: Bool {
-        _ = currentTime
-        if preview != nil { return true }
-        guard let p = shownPrayer else { return false }
-        return !(p.status() == .upcoming && p.name == "Fajr")
-    }
-
     /// "Asr|next" / "Asr|now" for the prayer on the circle (re-read every tick via currentTime).
     private var circleStateKey: String {
         _ = currentTime
@@ -628,6 +646,7 @@ struct MainCircleView: View {
     }
     
     private func handleTap() {
+        guard morningShown == nil else { return }
         if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an
@@ -813,7 +832,7 @@ struct summaryCircle: View{
             swapTask?.cancel()
             swapTask = Task { @MainActor in
                 shownSide = .neither
-                guard await CircleGate.pause(CircleMomentTiming.out) else { return }   // toggled again: the newer swap wins
+                guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }   // toggled again: the newer swap wins
                 shownSide = score ? .score : .fajr
             }
         }

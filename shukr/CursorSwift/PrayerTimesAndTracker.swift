@@ -646,6 +646,10 @@ struct PrayerTimesView: View {
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
         }
         .onAppear { showMorningCardWhenClear() }
+        // The circle shows the morning while its card is up (circle step 3); the card clears it as it leaves.
+        .onChange(of: morningSession) { _, session in
+            if session != nil || CircleStage.shared.morning != nil { CircleStage.shared.morning = session }
+        }
         // The palette's Play → Good morning (SalahLook.swift): the welcome from black onto the card, with the latest
         // session — read only; Done just closes it.
         .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.morning)) { _ in
@@ -661,7 +665,7 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in goToSalahForMorningCard() }
         .overlay {
             if let morningSession {
-                MorningCardView(session: morningSession, onDone: {
+                MorningCurtain(session: morningSession, onDone: {
                     SleepMorning.clear()
                     self.morningSession = nil
                 }, onHistory: {
