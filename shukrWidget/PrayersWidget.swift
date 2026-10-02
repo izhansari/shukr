@@ -399,28 +399,28 @@ struct PrayersWidgetView: View {
     let prayerOrder = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
     @Environment(\.widgetFamily) private var family
 
-    /// No animation between states (owner, 2026-10-01: "we dont need any fancy transitions"): a reload or a
-    /// new entry swaps the picture at once — no crossfade between ring and list, no text morphing, no dip
-    /// in the live ring.
+    /// The home screen widget crossfades, simply (owner, 2026-10-02: "put the simple crossfade transition on our main
+    /// prayer widget btw. i miss that"): ring ⇄ times list and changed text fade one into the other — no number
+    /// morphing, nothing fancier (owner, 2026-10-01: "we dont need any fancy transitions"). The live ring's arc keeps
+    /// its own identity (LiveArc: crossfaded, it dipped). The Lock Screen still swaps at once.
     var body: some View {
-        Group {
-            switch family {
-            case .accessoryCircular, .accessoryRectangular, .accessoryInline:
-                PrayerLockScreenView(entry: entry, family: family)
-            default:
-                homeScreen
-            }
+        switch family {
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            PrayerLockScreenView(entry: entry, family: family)
+                .transaction { $0.animation = nil; $0.disablesAnimations = true }
+                .contentTransition(.identity)
+        default:
+            homeScreen
+                .contentTransition(.opacity)
         }
-        .transaction { $0.animation = nil; $0.disablesAnimations = true }
-        .contentTransition(.identity)
     }
 
     private var homeScreen: some View {
         ZStack {
             if entry.toggleShowAllTImes {
-                TimesListView(entry: entry).transition(.identity)
+                TimesListView(entry: entry).transition(.opacity)
             } else {
-                WidgetPrayerCircleView(entry: entry).transition(.identity)
+                WidgetPrayerCircleView(entry: entry).transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
