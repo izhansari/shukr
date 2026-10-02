@@ -1324,9 +1324,13 @@ struct PrayerTimesView: View {
                             .allowsHitTesting(zikrness > 0.5)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available {
-                            SalahLookSwitcher()
-                                .opacity(Double(1 - zikrness))
-                                .allowsHitTesting(zikrness < 0.5)
+                            HStack(spacing: 0) {
+                                SalahPlayButton()
+                                SalahLookSwitcher()
+                            }
+                            .padding(.trailing, 8)
+                            .opacity(Double(1 - zikrness))
+                            .allowsHitTesting(zikrness < 0.5)
                         }
                         }
                     }

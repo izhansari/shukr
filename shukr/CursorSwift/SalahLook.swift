@@ -350,8 +350,6 @@ struct NeuRingTrack: View {
 /// Top right on the Salah page while the owner tries the looks: the list look, the soft ring, the colours and
 /// how rows come and go.
 struct SalahLookSwitcher: View {
-    @EnvironmentObject private var sharedState: SharedStateClass
-    @EnvironmentObject private var location: EnvLocationManager
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = false
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
@@ -373,31 +371,39 @@ struct SalahLookSwitcher: View {
                 ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
-            Menu("Play") {
-                Button("Marking a prayer") { post(SalahLookPlay.mark) }
-                Button("Prayer begins") { post(PrayerStartPreview.request) }
-                Button("Opening") { post(SalahLookPlay.welcome, false) }
-                Button("Good morning (after sleep)") { post(SalahLookPlay.morning) }
-                Button("No location") { after { location.playLostPreview() } }
-                Button("Perfect day") { playPerfectDay() }
-                Button("Streaks") {
-                    post(.prayerStreakContinued, 12)
-                    post(.onTimeStreakContinued, 5)
-                }
-            }
         } label: {
-            Image(systemName: "paintpalette")
-                .frame(width: 24, height: 24)
-                .font(.system(size: 18))
-                .fontWeight(.light)
-                .foregroundColor(.gray.opacity(0.8))
-                .padding()
-                .contentShape(Rectangle())
+            ChromeIcon(systemName: "paintpalette")
         }
         .accessibilityLabel("Salah page look")
+    }
+}
+
+/// Top right on the Salah page, beside the palette, while the owner judges the looks: each animation replayed on
+/// the spot, one tap away (owner, 2026-10-01: "make a new button for play in the top right. i hate the nested
+/// selection"). Visual only — nothing marked, moved or saved (SalahLookPlay).
+struct SalahPlayButton: View {
+    @EnvironmentObject private var sharedState: SharedStateClass
+    @EnvironmentObject private var location: EnvLocationManager
+
+    var body: some View {
+        Menu {
+            Button("Marking a prayer", systemImage: "checkmark.circle") { post(SalahLookPlay.mark) }
+            Button("Prayer begins", systemImage: "sunrise") { post(PrayerStartPreview.request) }
+            Button("Opening", systemImage: "sparkles") { post(SalahLookPlay.welcome, false) }
+            Button("Good morning (after sleep)", systemImage: "moon.zzz") { post(SalahLookPlay.morning) }
+            Button("No location", systemImage: "location.slash") { after { location.playLostPreview() } }
+            Button("Perfect day", systemImage: "star") { playPerfectDay() }
+            Button("Streaks", systemImage: "flame") {
+                post(.prayerStreakContinued, 12)
+                post(.onTimeStreakContinued, 5)
+            }
+        } label: {
+            ChromeIcon(systemName: "play.circle")
+        }
+        .accessibilityLabel("Play an animation")
         #if DEBUG
-        // `-salahPlay mark|begins|welcome|morning|perfect|streaks`: that Play item, 4 s after launch (checking them in
-        // the simulator, whose simulated taps can't open a Menu).
+        // `-salahPlay mark|begins|welcome|morning|lost|perfect|streaks`: that item, 4 s after launch (checking them
+        // in the simulator, whose simulated taps can't open a Menu).
         .task {
             guard let which = UserDefaults.standard.string(forKey: "salahPlay") else { return }
             try? await Task.sleep(for: .seconds(4))
@@ -438,5 +444,20 @@ struct SalahLookSwitcher: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
             NotificationCenter.default.post(name: name, object: object)
         }
+    }
+}
+
+/// The top bar's icon look (the ☰'s grey, light weight).
+private struct ChromeIcon: View {
+    let systemName: String
+    var body: some View {
+        Image(systemName: systemName)
+            .frame(width: 24, height: 24)
+            .font(.system(size: 18))
+            .fontWeight(.light)
+            .foregroundColor(.gray.opacity(0.8))
+            .padding(.vertical)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
     }
 }
