@@ -99,6 +99,56 @@ enum RowMotion: String, CaseIterable, Identifiable {
     }
 }
 
+extension RowMotion {
+    static var current: RowMotion { RowMotion(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .today }
+}
+
+/// The prayer list's fold, shared so the soft looks' "N done" can live in the chrome — a fixed spot just above
+/// the bottom bar, fading with it, not moving with the card (owner, 2026-10-01). TodaysPrayerListView owns the
+/// rule (which rows show) and publishes the footer's count; Today's look keeps its footer in the card.
+@Observable final class PrayerListFold {
+    static let shared = PrayerListFold()
+    /// "N done" tapped: the done prayers are shown too.
+    var showDone = false
+    /// The soft footer's count, or nil when there's no footer.
+    var softFooterCount: Int? = nil
+}
+
+/// The soft looks' "N done", above the bottom bar (PagerChromeView). The chevron points to where the rows
+/// appear: up while folded, down once they're shown (owner: "switch chevron directions for done and hide").
+struct SoftDoneFooter: View {
+    private var fold = PrayerListFold.shared
+
+    var body: some View {
+        if let count = fold.softFooterCount {
+            Button {
+                triggerSomeVibration(type: .light)
+                withAnimation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) {
+                    fold.showDone.toggle()
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle")
+                    Text("\(count) done")
+                    Image(systemName: "chevron.up")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(fold.showDone ? 180 : 0))
+                }
+                .font(.footnote)
+                .fontDesign(.rounded)
+                .fontWeight(.light)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .transition(.opacity)
+        }
+    }
+}
+
 /// The soft looks' colours: a surface, a shadow down-right and a light up-left, each with a light- and a
 /// dark-mode value (owner, 2026-10-01: "darker for dark mode. not this grayblue … my shadows arent perfect").
 enum SalahPalette: String, CaseIterable, Identifiable {

@@ -1148,7 +1148,9 @@ struct PrayerTimesView: View {
                     Spacer()
                 }
 
-                Color.clear.frame(height: showBottom ? bottomChromeHeight : closedBottomReserve)
+                // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
+                Color.clear.frame(height: showBottom ? bottomChromeHeight + (SalahLook.tinted(lookRaw, softRing: softRing) ? 30 : 0)
+                                                     : closedBottomReserve)
             }
         }
     }
@@ -1343,10 +1345,16 @@ struct PrayerTimesView: View {
                     .opacity(Double((1 - sheetP) * (1 - zikrness)))
                     .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
 
-                    // Bottom bar: Salah with the sheet up, and always on Zikr.
-                    CustomBottomBar()
-                        .opacity(Double(max(sheetP, zikrness)))
-                        .allowsHitTesting(max(sheetP, zikrness) > 0.5)
+                    // Bottom bar: Salah with the sheet up, and always on Zikr. Above it, the soft looks' "N done"
+                    // (SoftDoneFooter): a fixed spot, fading with the bar on Salah, not moving with the card.
+                    VStack(spacing: 0) {
+                        SoftDoneFooter()
+                            .opacity(Double(sheetP * (1 - zikrness)))
+                            .allowsHitTesting(sheetP > 0.5 && zikrness < 0.5)
+                        CustomBottomBar()
+                            .opacity(Double(max(sheetP, zikrness)))
+                            .allowsHitTesting(max(sheetP, zikrness) > 0.5)
+                    }
                 }
             }
             // Just prayed: the post-salah pill, always under the top bar — the same spot with the prayer
@@ -1640,7 +1648,12 @@ struct TodaysPrayerListView: View {
     /// the day is complete. A prayer just marked lingers ~1 s so its dot can pop first.
     @State private var lingering: Set<String> = []
     /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
-    @State private var showDone = false
+    /// "N done" tapped (shared with the soft looks' footer in the chrome, SoftDoneFooter).
+    private var fold = PrayerListFold.shared
+    private var showDone: Bool {
+        get { fold.showDone }
+        nonmutating set { fold.showDone = newValue }
+    }
     /// Perfect day: bumps to bounce the footer's sparkles; `demoPerfect` shows the footer
     /// for the DEBUG "Test Perfect Day" row even when today isn't one.
     @State private var perfectPulse = 0
@@ -1764,11 +1777,13 @@ struct TodaysPrayerListView: View {
                 .modifier(SalahLookCard())
             }
             if outside {
-                doneFooter(done: done.count, foldedCount: foldedCount, allDone: allDone,
-                           visibleIsEmpty: visible.isEmpty, divider: false)
-                    .padding(.top, visible.isEmpty ? 0 : 8)
+                // "N done" lives in the chrome above the bottom bar (SoftDoneFooter); only its count is set here.
                 perfectLine(perfect: perfect)
             }
+        }
+        .onChange(of: outside && (foldedCount > 0 || showDone) && (!allDone || !lingering.isEmpty) ? done.count : -1,
+                  initial: true) { _, count in
+            fold.softFooterCount = count >= 0 ? count : nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { note in
             if note.object as? Bool == true {
