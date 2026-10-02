@@ -98,6 +98,15 @@ enum SoftSessionEntry {
     /// How long the session's leaving takes before the host may remove the cover (set by the session as it opens).
     static var leaveDelay: Double = 0.32
 
+    /// One ring (decision zikr-ring-progress B, owner 2026-10-02: "do B"): the arc never crossfades into another length.
+    /// Opening, the wheel's arc stays (Continue) or rewinds to empty (Start over, freestyle) as the label sinks, so the
+    /// count rises into a ring that already says where it starts; closing, the session's arc moves to where the
+    /// wheel's will stand, and only then does the wheel's take over. This is the task's share done today before the
+    /// session (freestyle: 1, its full ring), set by the wheel as it opens; nil = not opened from the wheel.
+    static var landingBase: Double?
+    /// How long the arc takes to rewind or to land.
+    static let arcMove: Double = 0.4
+
     /// Run `work` once the session has gone: after its soft close (so a reset doesn't change what's still fading — the
     /// pause card collapsed when its zikr was cleared mid-fade), else now. Call before setting `isPresented = false`.
     static func afterClose(_ work: @escaping () -> Void) {
@@ -166,6 +175,8 @@ struct SessionAppear: ViewModifier {
 extension EnvironmentValues {
     /// The Zikr wheel's centred ring is opening into its session: its label goes (SessionAppear), the ring stays.
     @Entry var zikrFaceContentAway: Bool = false
+    /// …and its arc has rewound to empty, the session starting from nothing (SoftSessionEntry.landingBase).
+    @Entry var zikrFaceArcRewound: Bool = false
 }
 
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried

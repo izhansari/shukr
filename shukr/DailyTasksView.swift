@@ -170,6 +170,8 @@ struct ZikrCircleWheel: View {
     /// Under the soft look, a session opens out of the tapped ring (SoftSessionEntry): everything but that ring
     /// fades while it does, and back in as the session closes.
     @State private var openingSoft = false
+    /// The centred ring's arc rewound for a session that starts from nothing (SoftSessionEntry.landingBase).
+    @State private var arcRewound = false
     @State private var openingStyle: SessionOpening = .current
     /// Each circle's place on screen, kept outside state (written on every scroll frame; read only on a tap).
     @State private var circleFrames = CircleFrames()
@@ -330,6 +332,7 @@ struct ZikrCircleWheel: View {
                             // way (sink / focus / fade); the centred one keeps its ring and lets its label go.
                             .modifier(SessionAppear(shown: !away, style: openingStyle))
                             .environment(\.zikrFaceContentAway, openingSoft && item.id == centered)
+                            .environment(\.zikrFaceArcRewound, arcRewound && item.id == centered)
                             .frame(maxWidth: .infinity)
                             .frame(height: itemHeight)
                             .contentShape(Rectangle())
@@ -396,9 +399,12 @@ struct ZikrCircleWheel: View {
         // Back after the session's page has begun to go: the ring's label and the other circles return.
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
             withAnimation(.easeOut(duration: 0.45).delay(openingStyle == .fade ? 0 : 0.25)) { openingSoft = false }
+            // The session's arc has landed where this one stands by then: it comes back under it, unseen.
+            DispatchQueue.main.asyncAfter(deadline: .now() + SoftSessionEntry.arcMove) { arcBack() }
         }
         .onChange(of: showTasbeehPage) { _, showing in
             if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
+            if !showing { arcBack() }
             guard !showing, let finished = sessionTaskID else { return }
             sessionTaskID = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { landAfterSession(finished) }
@@ -572,21 +578,42 @@ struct ZikrCircleWheel: View {
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
         sharedState.resumeSeconds = resume && !task.isCountMode ? p.seconds : 0
-        openSession(from: task.id.uuidString)
+        openSession(from: task.id.uuidString, base: fraction(task), rewind: !resume)
+    }
+
+    /// The task's share done today, as its ring shows it.
+    private func fraction(_ task: TaskModel) -> Double {
+        let p = progress(task)
+        let f = task.isCountMode ? Double(p.count) / Double(max(task.goal, 1)) : p.seconds / Double(max(task.goal * 60, 1))
+        return min(f, 1)
+    }
+
+    private func arcBack() {
+        guard arcRewound else { return }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { arcRewound = false }
     }
 
     /// The session's cover: under the soft look, out of the centred ring (SoftSessionEntry) — the rest fades, the
     /// cover comes up with no animation and the session takes it from the ring's place; otherwise the usual sheet.
-    private func openSession(from id: String) {
+    /// `base`: the ring's share as it stands; `rewind`: the session starts from nothing, so the arc rewinds to empty
+    /// first (decision zikr-ring-progress B).
+    private func openSession(from id: String, base: Double, rewind: Bool) {
         guard SoftSessionEntry.enabled, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
               UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
+            SoftSessionEntry.landingBase = nil
             showTasbeehPage = true
             return
         }
         SoftSessionEntry.fromFrame = frame
         SoftSessionEntry.coverIsSoft = true
         openingStyle = reduceMotion ? .fade : SessionOpening.current
+        SoftSessionEntry.landingBase = openingStyle == .fade ? nil : base
         withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.4)) { openingSoft = true }
+        if rewind && openingStyle != .fade {
+            withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { arcRewound = true }
+        }
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { showTasbeehPage = true }
@@ -610,7 +637,7 @@ struct ZikrCircleWheel: View {
             sharedState.mantraForSession = nil
             sharedState.selectedMinutes = 0
             sharedState.selectedMode = 0
-            openSession(from: item.id)
+            openSession(from: item.id, base: 1, rewind: true)   // its full ring empties into a fresh count
         case .task(let task):
             let p = progress(task)
             if !isDone(task) && (p.count > 0 || p.seconds >= 1) {
@@ -724,6 +751,7 @@ struct ZikrCircleFace: View {
     private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRing) }
     /// Opening into its session (the wheel, SoftSessionEntry): the label goes, the ring stays for the counter's.
     @Environment(\.zikrFaceContentAway) private var contentAway
+    @Environment(\.zikrFaceArcRewound) private var arcRewound
 
     var body: some View {
         ZStack {
@@ -735,9 +763,9 @@ struct ZikrCircleFace: View {
             }
             switch ring {
             case .full:
-                glow(Circle())
+                glow(Circle().trim(from: 0, to: arcRewound ? 0 : 1).rotation(.degrees(-90)))
             case .progress(let fraction):
-                glow(Circle().trim(from: 0, to: max(fraction, 0.001)).rotation(.degrees(-90)))
+                glow(Circle().trim(from: 0, to: arcRewound ? 0 : max(fraction, 0.001)).rotation(.degrees(-90)))
                     .opacity(fraction > 0 ? 1 : 0)
                     .animation(.spring(response: 0.6, dampingFraction: 0.85), value: fraction)
             case .dashed:

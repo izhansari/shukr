@@ -76,6 +76,11 @@ struct tasbeehView: View {
     @State private var timePassedAtPauseString: String = ""
     @State private var secsPassedAtPause: TimeInterval = 0
     @State private var progressFraction: CGFloat = 0
+    /// One ring (SoftSessionEntry.landingBase): where the ring started, where it stood when the session stopped (the
+    /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
+    @State private var startFraction: CGFloat = 0
+    @State private var ringAtStop: CGFloat?
+    @State private var ringHeld = false
     @State private var offsetY: CGFloat = 0
     @State private var highestPoint: CGFloat = 0 // Track highest point during drag
     @State private var lowestPoint: CGFloat = 0 // Track lowest point during drag
@@ -270,7 +275,7 @@ struct tasbeehView: View {
         guard let from = entryFrom, !pageIn, frame.width > 0 else { return }
         entryFrom = nil
         openingStyle = reduceMotion ? .fade : SessionOpening.current
-        SoftSessionEntry.leaveDelay = openingStyle == .fade ? 0.32 : 0.6
+        SoftSessionEntry.leaveDelay = openingStyle == .fade ? 0.32 : 0.62   // the ring lands (0.4) and fades (0.2)
         // Normally nothing to glide (both rings at the screen's true centre); a phone where they differ still lands.
         entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
         DispatchQueue.main.async {
@@ -351,7 +356,7 @@ struct tasbeehView: View {
                     // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { placeEntry(at: $0) }
                     .offset(entryOffset)
-                    .opacity(pageIn ? 1 : 0)
+                    .opacity(pageIn || ringHeld ? 1 : 0)
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -557,6 +562,7 @@ struct tasbeehView: View {
         .opacity(leaving && openingStyle == .fade ? 0 : 1)
         .allowsHitTesting(!leaving)   // no stray count while it goes
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
+            landRing()
             if openingStyle == .fade {
                 withAnimation(.easeIn(duration: 0.3)) { leaving = true }
             } else if paused || savedSession != nil {
@@ -679,6 +685,7 @@ struct tasbeehView: View {
         }
         .onDisappear {
             CircleCover.set("tasbeeh", false)
+            SoftSessionEntry.landingBase = nil   // this session's; the next opening sets its own
             if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
             sharedState.isDoingPostNamazZikr = false
             UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
@@ -763,6 +770,13 @@ struct tasbeehView: View {
         sharedState.resumeCount = 0
         sharedState.resumeSeconds = 0
         tasbeeh = countOffset
+        // The ring starts where the session does, at once (a timed Continue swept up from empty on the first tick).
+        refreshCountProgress()
+        if sharedState.selectedMode == 1 && totalTime > 0 {
+            progressFraction = CGFloat(Int(timeOffset)) / TimeInterval(totalTime)
+        }
+        startFraction = progressFraction
+        ringAtStop = nil
         
         savedSession = nil
         startTime = Date()
@@ -944,6 +958,7 @@ struct tasbeehView: View {
         // Stop and invalidate the timer
         timerbb?.invalidate()
         timerbb = nil
+        ringAtStop = progressFraction   // the resets below empty the ring; the soft close lands it from here
 
         // Nothing counted, opened out of a Zikr ring (soft close, the app on screen): close while the pause screen is
         // still exactly as seen, and reset the rest once it's gone — reset first, the ring emptied, the pause screen
@@ -982,6 +997,23 @@ struct tasbeehView: View {
             isPresented = false
 //            sharedState.showingOtherPages = false
             resetSharedState()
+        }
+    }
+
+    /// Closing softly out of a wheel ring: the ring stays while the rest goes and its arc moves to where the wheel's
+    /// will stand — today's share before the session plus what this one added (a Start over's count joins the earlier
+    /// one, freestyle fills back up) — then fades over the wheel's identical one (decision zikr-ring-progress B).
+    private func landRing() {
+        guard let base = SoftSessionEntry.landingBase, openingStyle != .fade, !reduceMotion else { return }
+        SoftSessionEntry.landingBase = nil
+        let stood = ringAtStop ?? progressFraction
+        let landing = min(max(CGFloat(base) + stood - startFraction, 0), 1)
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { progressFraction = stood; ringHeld = true }
+        withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { progressFraction = landing }
+        DispatchQueue.main.asyncAfter(deadline: .now() + SoftSessionEntry.arcMove) {
+            withAnimation(.easeOut(duration: 0.2)) { ringHeld = false }
         }
     }
 
