@@ -1061,8 +1061,27 @@ struct PrayerTimesView: View {
             )
         }
         .fullScreenCover(isPresented: $showTasbeehPage) {
-            tasbeehView(isPresented: $showTasbeehPage)
-
+            // A session opened out of a Zikr ring under the soft look leaves the same way: it fades over the wheel,
+            // then the cover goes with no animation (SoftSessionEntry). In the background (a sleep finish closes it
+            // there, and the morning flow needs it gone in that turn) — and every other session — at once, as before.
+            tasbeehView(isPresented: Binding(
+                get: { showTasbeehPage },
+                set: { up in
+                    guard !up, SoftSessionEntry.coverIsSoft, UIApplication.shared.applicationState == .active else {
+                        if !up { SoftSessionEntry.coverIsSoft = false }
+                        showTasbeehPage = up
+                        return
+                    }
+                    SoftSessionEntry.coverIsSoft = false
+                    NotificationCenter.default.post(name: SoftSessionEntry.leave, object: nil)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                        var quiet = Transaction()
+                        quiet.disablesAnimations = true
+                        withTransaction(quiet) { showTasbeehPage = false }
+                    }
+                }))
+            // The session draws its own page; clear behind it so the soft entry can fade it in over the wheel.
+            .presentationBackground(.clear)
         }
         
         .edgesIgnoringSafeArea(.bottom)

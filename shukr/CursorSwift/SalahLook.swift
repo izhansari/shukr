@@ -73,6 +73,37 @@ enum SalahLookPlay {
     static let morning = Notification.Name("salahLookPlay.morning")
 }
 
+/// Opening a tasbeeh session from the Zikr wheel under the soft look (owner, 2026-10-01: "clicking on a zikr task
+/// ring … everything else fades out and that ring becomes the same counter as in our tasbeeh session … no sheet
+/// popping over"). The wheel records the tapped ring's place, fades the rest and opens the session with no
+/// animation over a clear presentation background; the session's counter ring starts on that place and glides to
+/// its own (a few points apart on most phones) while its page fades in. Closing fades the session away over the
+/// wheel. Every other way into a session, and Today's look, keep the usual sheet.
+enum SoftSessionEntry {
+    /// The tapped ring's frame (global), read by the session as it opens; cleared once it has.
+    static var fromFrame: CGRect? {
+        didSet { fromFrameAt = fromFrame == nil ? nil : Date() }
+    }
+    private static var fromFrameAt: Date?
+    /// `fromFrame` if it was set for this opening (within a second) — a stale one (an opening that never
+    /// happened) must not move the next session's ring, opened some other way.
+    static var freshFrame: CGRect? {
+        guard let at = fromFrameAt, Date().timeIntervalSince(at) < 1 else { return nil }
+        return fromFrame
+    }
+    /// The open session came in this way, so it leaves this way (the host's binding, PrayerTimesView).
+    static var coverIsSoft = false
+    /// Close it softly: the session fades out (then the host dismisses with no animation).
+    static let leave = Notification.Name("softSessionEntry.leave")
+
+    /// The soft look is on (the wheel's rings are the tasbeeh ring then).
+    static var enabled: Bool {
+        let d = UserDefaults.standard
+        return SalahLook.tinted(d.string(forKey: SalahLook.key) ?? SalahLook.today.rawValue,
+                                softRing: d.bool(forKey: SalahLook.softRingKey))
+    }
+}
+
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
 /// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
 enum RowMotion: String, CaseIterable, Identifiable {

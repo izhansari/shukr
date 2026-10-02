@@ -17,6 +17,14 @@ struct tasbeehView: View {
     
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @Environment(\.scenePhase) var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Opened out of a Zikr ring under the soft look (SoftSessionEntry): the counter ring starts on that ring's
+    /// place and glides to its own while the page, the count and the buttons fade in; nil = the usual sheet.
+    @State private var entryFrom: CGRect? = SoftSessionEntry.freshFrame
+    @State private var entryOffset: CGSize = .zero
+    @State private var entryShown = SoftSessionEntry.freshFrame == nil
+    /// Closing softly: everything fades over the wheel before the cover goes.
+    @State private var leaving = false
     @Environment(\.modelContext) private var context
     @EnvironmentObject var sharedState: SharedStateClass
     
@@ -245,6 +253,18 @@ struct tasbeehView: View {
     
     //--------------------------------------view--------------------------------------
     
+    /// The soft entry (SoftSessionEntry): once the counter ring is laid out, put it on the tapped Zikr ring, then
+    /// let it glide home (Reduce Motion: in place) as the page, the count and the buttons fade in.
+    private func placeEntry(at frame: CGRect) {
+        guard let from = entryFrom, !entryShown, frame.width > 0 else { return }
+        entryFrom = nil
+        entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
+        DispatchQueue.main.async {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { entryOffset = .zero }
+            withAnimation(.easeInOut(duration: 0.35)) { entryShown = true }
+        }
+    }
+
     var body: some View {
         ZStack {
             
@@ -252,6 +272,8 @@ struct tasbeehView: View {
             ZStack {
                 // the circle's inside (picker or count)
                 TasbeehCountView(tasbeeh: tasbeeh)
+                    .offset(entryOffset)
+                    .opacity(entryShown ? 1 : 0)
                 
                 GeometryReader { geometry in
                     VStack {
@@ -304,6 +326,10 @@ struct tasbeehView: View {
                 // the circles we see
                 NeuCircularProgressView(progress: (progressFraction))
                     .allowsHitTesting(false) //so taps dont get intercepted.
+                    // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { placeEntry(at: $0) }
+                    .offset(entryOffset)
+                    .opacity(entryShown ? 1 : 0)
             }
             
             // Pause Screen (background overlay, stats & settings)
@@ -375,6 +401,7 @@ struct tasbeehView: View {
                 }
                 .animation(paused ? .easeOut : .easeIn, value: paused)
                 .padding()
+                .opacity(entryShown ? 1 : 0)
                 
                 // Debug Updating Text In View
                 if(debug){
@@ -495,10 +522,23 @@ struct tasbeehView: View {
         .frame(maxWidth: .infinity) // expand to be the whole page (to make it tappable)
         .background(
             Color.init("bgColor") // Dynamic color for dark or light mode
+                .opacity(entryShown ? 1 : 0)   // the soft entry fades the page in over the wheel
                 .edgesIgnoringSafeArea(.all)
         )
+        .opacity(leaving ? 0 : 1)
+        .allowsHitTesting(!leaving)   // no stray count while it fades away
+        .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
+            withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+        }
         
         .onAppear {
+            SoftSessionEntry.fromFrame = nil   // read (entryFrom); the next session opens as it should
+            if entryFrom != nil {
+                // Belt and braces: if the ring's place never came, show the session anyway.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    if !entryShown { withAnimation(.easeInOut(duration: 0.3)) { entryOffset = .zero; entryShown = true } }
+                }
+            }
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark

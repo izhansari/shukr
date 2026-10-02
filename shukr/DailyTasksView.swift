@@ -167,6 +167,13 @@ struct ZikrCircleWheel: View {
     @State private var scrubbing = false
     /// The task a session was started from here, so coming back can move past it once it's done.
     @State private var sessionTaskID: UUID?
+    /// Under the soft look, a session opens out of the tapped ring (SoftSessionEntry): everything but that ring
+    /// fades while it does, and back in as the session closes.
+    @State private var openingSoft = false
+    /// Each circle's place on screen, kept outside state (written on every scroll frame; read only on a tap).
+    @State private var circleFrames = CircleFrames()
+    final class CircleFrames { var byID: [String: CGRect] = [:] }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(showTasbeehPage: Binding<Bool>) {
         self._showTasbeehPage = showTasbeehPage
@@ -217,6 +224,8 @@ struct ZikrCircleWheel: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Shows all your tasks")
                 .padding(.bottom, 100)
+                .opacity(openingSoft ? 0 : 1)
+                .allowsHitTesting(!openingSoft)
             }
             .sheet(item: $tasksSheetOn) { task in
                 NavigationStack {
@@ -312,6 +321,10 @@ struct ZikrCircleWheel: View {
                 LazyVStack(spacing: 0) {
                     ForEach(items) { item in
                         circle(for: item)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                                circleFrames.byID[item.id] = frame
+                            }
+                            .opacity(openingSoft && item.id != centered ? 0 : 1)
                             .frame(maxWidth: .infinity)
                             .frame(height: itemHeight)
                             .contentShape(Rectangle())
@@ -336,7 +349,9 @@ struct ZikrCircleWheel: View {
                                        .init(color: .black, location: 0.8), .init(color: .clear, location: 0.94)],
                                startPoint: .top, endPoint: .bottom)
             )
-            .overlay(alignment: .leading) { scrubber(items) }   // left edge (owner)
+            .overlay(alignment: .leading) {   // left edge (owner)
+                scrubber(items).opacity(openingSoft ? 0 : 1).allowsHitTesting(!openingSoft)
+            }
             // Centre the focused circle on the SCREEN (owner): the page starts under the status
             // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
@@ -372,7 +387,12 @@ struct ZikrCircleWheel: View {
         // Back from a task's session: once it's done, land on the next task — after it in your
         // order, the first not done yet (wrapping), else freestyle (owner, 2026-09-28). The done
         // task stays where it is (2026-09-29).
+        // Back in round the ring as the session closes (it fades first: SoftSessionEntry.leave), or when it's gone.
+        .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
+            withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false }
+        }
         .onChange(of: showTasbeehPage) { _, showing in
+            if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
             guard !showing, let finished = sessionTaskID else { return }
             sessionTaskID = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { landAfterSession(finished) }
@@ -546,7 +566,23 @@ struct ZikrCircleWheel: View {
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
         sharedState.resumeSeconds = resume && !task.isCountMode ? p.seconds : 0
-        showTasbeehPage = true
+        openSession(from: task.id.uuidString)
+    }
+
+    /// The session's cover: under the soft look, out of the centred ring (SoftSessionEntry) — the rest fades, the
+    /// cover comes up with no animation and the session takes it from the ring's place; otherwise the usual sheet.
+    private func openSession(from id: String) {
+        guard SoftSessionEntry.enabled, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
+              UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
+            showTasbeehPage = true
+            return
+        }
+        SoftSessionEntry.fromFrame = frame
+        SoftSessionEntry.coverIsSoft = true
+        withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.22)) { openingSoft = true }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { showTasbeehPage = true }
     }
 
     private func resumeLabel(_ task: TaskModel) -> String {
@@ -567,7 +603,7 @@ struct ZikrCircleWheel: View {
             sharedState.mantraForSession = nil
             sharedState.selectedMinutes = 0
             sharedState.selectedMode = 0
-            showTasbeehPage = true
+            openSession(from: item.id)
         case .task(let task):
             let p = progress(task)
             if !isDone(task) && (p.count > 0 || p.seconds >= 1) {
