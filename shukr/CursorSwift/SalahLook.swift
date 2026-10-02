@@ -431,16 +431,21 @@ struct SalahLookCard: ViewModifier {
 /// The ring's soft track, drawn like the tasbeeh counter's ring (NeuCircularProgressView, "fine"): a 6 pt
 /// band at 200 pt, a dark shadow (4, +2) and a light one (6, −2), under the arc.
 struct NeuRingTrack: View {
+    /// 1 = the raised band; down to 0 it narrows and settles into the surface, as the dashed "not started" ring comes
+    /// in (MainCircleView's trackSolid) — the grey band's own narrowing, in this material.
+    var solid: CGFloat = 1
     @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
 
     var body: some View {
         let p = SalahPalette(rawValue: paletteRaw) ?? .charcoal
+        let lift = Double(min(max(solid, 0), 1))
         Circle()
-            .stroke(lineWidth: AliveRingTuning.fine.band)
+            .stroke(lineWidth: max(AliveRingTuning.fine.band * solid, 0.5))
             .frame(width: 200, height: 200)
             .foregroundStyle(p.surface)
-            .shadow(color: p.shade, radius: 4, x: 2, y: 2)
-            .shadow(color: p.light, radius: 6, x: -2, y: -2)
+            .shadow(color: p.shade.opacity(lift), radius: 4, x: 2, y: 2)
+            .shadow(color: p.light.opacity(lift), radius: 6, x: -2, y: -2)
+            .opacity(solid > 0.02 ? 1 : 0)
             .allowsHitTesting(false)
     }
 }

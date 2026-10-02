@@ -136,8 +136,10 @@ struct CompletionFlourish: View {
             withAnimation(.easeOut(duration: 0.35).delay(0.1)) { showText = true }
             withAnimation(.easeOut(duration: 0.3).delay(0.5)) { glow = 1 }
             withAnimation(.easeInOut(duration: 0.8).delay(0.85)) { glow = 0 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration - 0.45) {
-                withAnimation(.easeIn(duration: 0.4)) { showText = false }
+            // Gone just as the next state starts in (MainCircleView, at `duration`): earlier, the circle sat empty
+            // for a beat between "✓ Maghrib" and "NEXT Isha" (owner, 2026-10-02).
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration - (softRing ? 0.24 : 0.45)) {
+                withAnimation(.easeIn(duration: softRing ? 0.26 : 0.4)) { showText = false }
             }
         }
         .allowsHitTesting(false)

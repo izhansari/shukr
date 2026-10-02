@@ -81,7 +81,7 @@ struct MainCircleView: View {
             // the content above) and is there for the day's score too; it fades in as the dashes go when a prayer
             // starts, like the grey band grew (SalahLook.swift).
             if softRing && sharedState.bottomTabPosition != .zikr {
-                NeuRingTrack().opacity(Double(trackSolid))
+                NeuRingTrack(solid: trackSolid)
             }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
@@ -259,7 +259,8 @@ struct MainCircleView: View {
             // blinks), back in as it fades.
             .opacity(contentHidden ? 0 : 1)
             .blur(radius: contentHidden ? 4 : 0)
-            .animation(contentHidden ? .easeOut(duration: 0.25) : .easeInOut(duration: 0.45), value: contentHidden)
+            .animation(contentHidden ? .easeOut(duration: 0.25) : (softRing ? .easeOut(duration: 0.4) : .easeInOut(duration: 0.45)),
+                       value: contentHidden)
 
             if let flourish {
                 CompletionFlourish(event: flourish)
@@ -440,7 +441,7 @@ struct MainCircleView: View {
     /// mark the track shrinks back only once the sweep is done.
     private var trackWantsSolid: Bool {
         _ = currentTime
-        if flourish != nil { return true }
+        if flourish != nil && !flourishOut { return true }   // fading out: the next state may come in
         if let preview { return preview != .upcoming }
         guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else {
             return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
@@ -463,9 +464,11 @@ struct MainCircleView: View {
             // Expand like the welcome's ring into the track; shrink a touch quicker. Right after a
             // completion the shrink waits until the green sweep has faded, or it happens hidden
             // under it.
-            let afterSweep = !solid && (flourishEndedAt.map { Date().timeIntervalSince($0) < 1 } ?? false)
+            // Soft ring: no wait — its band narrows into the dashes in the same fade as the sweep, one move (it
+            // lingered under "NEXT" and then went: two steps — owner, 2026-10-02).
+            let afterSweep = !softRing && !solid && (flourishEndedAt.map { Date().timeIntervalSince($0) < 1 } ?? false)
             let animation: Animation = reduceMotion ? .easeInOut(duration: 0.35)
-                : solid ? .spring(response: 0.75, dampingFraction: 0.9) : .easeInOut(duration: 0.6)
+                : solid ? .spring(response: 0.75, dampingFraction: 0.9) : .easeInOut(duration: softRing ? 0.5 : 0.6)
             withAnimation(afterSweep ? animation.delay(0.45) : animation) { trackSolid = target }
         } else {
             var quiet = Transaction()
