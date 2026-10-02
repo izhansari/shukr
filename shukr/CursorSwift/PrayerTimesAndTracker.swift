@@ -1168,9 +1168,12 @@ struct PrayerTimesView: View {
                         showTasbeehPage: $showTasbeehPage
                     )
                     .opacity(1 - Double(live.pull / 90))
-                    // Slides up from the bottom and fades, in every look (owner, 2026-10-01: "i liked our initial
-                    // transition better" — the soft looks' fade-in-place, e445f71, is gone).
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
+                    // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
+                    // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
+                    .transition(SalahLook.tinted(lookRaw, softRing: softRing)
+                                ? .offset(y: 36).combined(with: .opacity)
+                                : .move(edge: .bottom).combined(with: .opacity))
                     Spacer()
                 }
 
