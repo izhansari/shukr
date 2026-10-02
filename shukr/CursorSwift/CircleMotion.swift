@@ -1,0 +1,87 @@
+//
+//  CircleMotion.swift
+//  shukr
+//
+//  The circle system's motion vocabulary (rule 8, shukrGit/board/circle-system.md; decision circle-system A,
+//  2026-10-02): three speeds, one ease, one spring. A moment that needs something new changes this file, not one
+//  screen. Motion never depends on the theme (CircleTheme.swift). Also how prayer rows come and go (RowMotion).
+//
+
+import SwiftUI
+
+enum CircleMotion {
+    /// A small thing changing: a chevron, a label's last word.
+    static let quick: Double = 0.2
+    /// Most changes: a row, the list, a text out or in.
+    static let standard: Double = 0.35
+    /// The circle's own changes: a ring filling, a state handing over.
+    static let slow: Double = 0.6
+
+    /// The one ease.
+    static func ease(_ duration: Double = standard) -> Animation { .easeInOut(duration: duration) }
+    /// The one spring: settles without a bounce you'd notice.
+    static let spring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+}
+
+/// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
+/// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
+enum RowMotion: String, CaseIterable, Identifiable {
+    /// The others move first, then the new row fades in; a leaving row fades out quickly before they close
+    /// up. With a plain fade a row came in at its final place while its neighbours were still sliding, so
+    /// two names sat on top of each other for a few frames (owner's recording, 2026-10-01: "still no good").
+    case room
+    /// The motion before: in sliding down from the top, out shrinking to the left, on a spring.
+    case today
+    /// Opacity only, a short ease.
+    case fade
+    /// A small drop: fading in from a few points above, out the same way.
+    case drop
+    /// The system's blur-replace: soft focus in and out.
+    case blur
+    /// Instant: rows appear and go with no motion.
+    case none
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .room: "Make room, then fade"
+        case .today: "Today's motion"
+        case .fade: "Fade"
+        case .drop: "Drop"
+        case .blur: "Blur"
+        case .none: "No motion"
+        }
+    }
+
+    static let key = "salahLook.rowMotion"
+
+    var transition: AnyTransition {
+        switch self {
+        case .room:
+            // Sami's audit timings: in after 0.15 s (0.24 read as a lag, the empty well growing first), out over
+            // 0.12 s (0.08 read as a blink).
+            .asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.18).delay(0.15)),
+                        removal: .opacity.animation(.easeOut(duration: 0.12)))
+        case .today:
+            .asymmetric(insertion: .opacity.combined(with: .move(edge: .top)),
+                        removal: .opacity.combined(with: .scale(scale: 0.92, anchor: .leading)))
+        case .fade: .opacity
+        case .drop: .opacity.combined(with: .offset(y: -10))
+        case .blur: AnyTransition(.blurReplace)
+        case .none: .identity
+        }
+    }
+
+    /// The animation for a row change; `springy` is what today's motion used at that spot.
+    func animation(springy: Animation) -> Animation? {
+        switch self {
+        case .today: springy
+        case .room, .fade, .drop, .blur: .easeInOut(duration: 0.3)
+        case .none: nil
+        }
+    }
+}
+
+extension RowMotion {
+    static var current: RowMotion { RowMotion(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .today }
+}

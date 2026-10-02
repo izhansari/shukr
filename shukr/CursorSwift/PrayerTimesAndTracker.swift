@@ -1083,9 +1083,11 @@ struct PrayerTimesView: View {
             // The session draws its own page; clear behind it only for the soft entry (it fades in over the wheel) —
             // otherwise the usual opaque cover, so the page under it isn't kept drawing (Sami's audit).
             .presentationBackground(SoftSessionEntry.coverIsSoft ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemBackground)))
+            .circleThemeRoot()   // the look, set again on the cover's root (CircleTheme.swift)
         }
         
         .edgesIgnoringSafeArea(.bottom)
+        .circleThemeRoot()       // the look as one value for everything on the pages (CircleTheme.swift)
     }
 
     
@@ -1116,8 +1118,7 @@ struct PrayerTimesView: View {
     struct SalahPageContent: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @EnvironmentObject var viewModel: PrayerViewModel
-        @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-        @AppStorage(SalahLook.softRingKey) private var softRing = false
+        @Environment(\.circleTheme) private var theme
         var live: PagerLiveState
         @Binding var showQiblaMap: Bool
         @Binding var showTasbeehPage: Bool
@@ -1171,14 +1172,14 @@ struct PrayerTimesView: View {
                     // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
                     // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
                     // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
-                    .transition(SalahLook.tinted(lookRaw, softRing: softRing)
+                    .transition(theme.soft
                                 ? .offset(y: 36).combined(with: .opacity)
                                 : .move(edge: .bottom).combined(with: .opacity))
                     Spacer()
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
-                Color.clear.frame(height: showBottom ? bottomChromeHeight + (SalahLook.tinted(lookRaw, softRing: softRing) ? 44 : 0)
+                Color.clear.frame(height: showBottom ? bottomChromeHeight + (theme.soft ? 44 : 0)
                                                      : closedBottomReserve)
             }
             // "N done" toggled (in the list, or the soft looks' footer up in the chrome): the page animates the
@@ -1557,10 +1558,9 @@ struct PrayerTimesView: View {
     
     struct CustomBottomBar: View {
         @EnvironmentObject var sharedState: SharedStateClass
-        @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-        @AppStorage(SalahLook.softRingKey) private var softRing = false
-        /// The Salah look prototype tints the bar with the page (Salah and Zikr).
-        private var softSalah: Bool { SalahLook.tinted(lookRaw, softRing: softRing) && sharedState.horizontalPage != .settings }
+        @Environment(\.circleTheme) private var theme
+        /// The soft look tints the bar with the page (Salah and Zikr).
+        private var softSalah: Bool { theme.soft && sharedState.horizontalPage != .settings }
 
         var body: some View {
             VStack(spacing: 0){
@@ -1674,12 +1674,10 @@ struct TodaysPrayerListView: View {
 
     @EnvironmentObject var viewModel: PrayerViewModel
     @Binding var showDailyAyahView: Bool
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    private var look: SalahLook { SalahLook(rawValue: lookRaw) ?? .today }
+    @Environment(\.circleTheme) private var theme
     /// Pills stand apart; the other looks keep their rows close with dividers.
-    private var spacing: CGFloat { look == .pills ? 12 : 6 }
-    @AppStorage(SalahLook.linesKey) private var lines = true
-    private var showsDividers: Bool { look == .today || ((look == .card || look == .well) && lines) }
+    private var spacing: CGFloat { theme.rowSpacing }
+    private var showsDividers: Bool { theme.showsRowDividers }
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
     private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
 
@@ -1782,7 +1780,7 @@ struct TodaysPrayerListView: View {
         // Today's look: the "N done" footer and "perfect day" sit inside the bordered card, as before. The soft
         // looks (SalahLook.swift) draw the card round the rows only, with those two lines under it (owner,
         // 2026-10-01: "move "done" text outside of the prayer list card").
-        let outside = look != .today
+        let outside = theme.listFooterOutside
         VStack(spacing: 0) {
             if !(outside && visible.isEmpty) {
                 VStack(spacing: 0) {  // Change spacing to 0 to control dividers manually
@@ -1932,8 +1930,7 @@ struct PrayerButton: View {
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
     @State private var completionPulse = 0
     @AppStorage(PrayerDotStyle.key) private var dotStyleRaw = PrayerDotStyle.muted.rawValue
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
+    @Environment(\.circleTheme) private var theme
     @State private var showMarkIncompleteAlert = false // State for showing alert
     @State private var isMarkingIncomplete = false // Track if we are marking incomplete
     @State private var showTimePicker = false
@@ -2002,7 +1999,7 @@ struct PrayerButton: View {
         else { return name }
     }
     
-    private var look: SalahLook { SalahLook(rawValue: lookRaw) ?? .today }
+    private var look: SalahLook { theme.list }
     /// On now: started, not marked, not over.
     private var isCurrentPrayer: Bool { !isFuturePrayer && !prayerObject.isCompleted && prayerObject.endTime > Date() }
 
@@ -2014,7 +2011,7 @@ struct PrayerButton: View {
         switch look {
         case .today:
             // On a tinted page (Soft ring with Today's look) the plain fill drew black slabs: see-through then.
-            RoundedRectangle(cornerRadius: 13).fill(SalahLook.tinted(lookRaw, softRing: softRingOn) ? Color.clear : backgroundColor)
+            RoundedRectangle(cornerRadius: 13).fill(theme.soft ? Color.clear : backgroundColor)
         case .pills:
             if isCurrentPrayer { NeuPressed(shape: shape) }
             else if prayerObject.isCompleted && !isFuturePrayer { Color.clear }
@@ -2180,7 +2177,7 @@ struct PrayerButton: View {
                 Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
                     .font(.callout) //.callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
-                    .foregroundStyle(look != .today && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
+                    .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
                     .fontDesign(.rounded)
                     .fontWeight(.light)
                 // Prayed at a masjid: a small mosque mark by the name.
@@ -2195,7 +2192,7 @@ struct PrayerButton: View {
                 timeColumn
             }
             .padding(.horizontal)
-            .padding(.vertical, look == .well ? 8 : 12)   // the well's rows a bit shorter (owner, 2026-10-01)
+            .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
             .contentShape(Rectangle())
             .coordinateSpace(.named(PrayerButton.rowSpace))
             .gesture(rowGesture)
@@ -2376,8 +2373,7 @@ struct ChevronTap2: View {
 struct PagerBackdrop: View {
     let live: PagerLiveState
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    @Environment(\.circleTheme) private var theme
 
     var body: some View {
         GeometryReader { geo in
@@ -2385,12 +2381,12 @@ struct PagerBackdrop: View {
             HStack(spacing: 0) {
                 // Zikr and Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
                 Group {
-                    if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+                    if theme.soft { NeuSurface() } else { Color(.systemBackground) }
                 }
                 .frame(width: width)
                 // Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
                 Group {
-                    if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+                    if theme.soft { NeuSurface() } else { Color(.systemBackground) }
                 }
                 .frame(width: width)
                 Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)

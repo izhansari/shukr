@@ -623,14 +623,11 @@ struct NeuCircularProgressView: View {
     @AppStorage(AliveRingTuning.key) private var tuningRaw = ""
     /// The Salah look prototype (SalahLook.swift): under the soft look the band takes the picked palette, so it's
     /// the same material as the Salah and Zikr rings it opens out of (owner: "match the stone color pallete").
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
-    @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
+    @Environment(\.circleTheme) private var theme
 
     var body: some View {
         let style = forceAlive ? .alive : (TasbeehRingStyle(rawValue: styleRaw) ?? .fine)
-        let palette: SalahPalette = SalahLook.tinted(lookRaw, softRing: softRingOn)
-            ? (SalahPalette(rawValue: paletteRaw) ?? .charcoal) : .tasbeeh
+        let palette = theme.ringPalette
         // "fine" is the alive fill with a fixed preset; "alive" follows the playground.
         let tuning = style == .fine ? AliveRingTuning.fine : AliveRingTuning.decode(tuningRaw)
         let band: CGFloat = (style == .alive || style == .fine) ? tuning.band : 24

@@ -177,6 +177,7 @@ struct ZikrCircleWheel: View {
     @State private var circleFrames = CircleFrames()
     final class CircleFrames { var byID: [String: CGRect] = [:] }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.circleTheme) private var theme
 
     init(showTasbeehPage: Binding<Bool>) {
         self._showTasbeehPage = showTasbeehPage
@@ -600,7 +601,7 @@ struct ZikrCircleWheel: View {
     /// `base`: the ring's share as it stands; `rewind`: the session starts from nothing, so the arc rewinds to empty
     /// first (decision zikr-ring-progress B).
     private func openSession(from id: String, base: Double, rewind: Bool) {
-        guard SoftSessionEntry.enabled, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
+        guard theme.soft, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
               UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
             SoftSessionEntry.landingBase = nil
             showTasbeehPage = true
@@ -746,9 +747,8 @@ struct ZikrCircleFace: View {
     /// The Salah look prototype (SalahLook.swift): any soft look gives the wheel the tasbeeh ring — the soft
     /// band and a 6 pt round arc with a glow (owner, 2026-10-01: "make the zikr tab also use the neumorphic
     /// style. and the task rings too").
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
-    private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRing) }
+    @Environment(\.circleTheme) private var theme
+    private var soft: Bool { theme.soft }
     /// Opening into its session (the wheel, SoftSessionEntry): the label goes, the ring stays for the counter's.
     @Environment(\.zikrFaceContentAway) private var contentAway
     @Environment(\.zikrFaceArcRewound) private var arcRewound

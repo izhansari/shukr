@@ -6,7 +6,8 @@
 #   scripts/circle-check.sh shots <base> <new> [options]
 #       Every fixed state (looks × modes × states), first with <base>, then with <new> (each a commit or a .app),
 #       compared pixel by pixel → build/circle-check/shots-<time>/report.txt, plus a base | new | diff sheet per
-#       state that differs. Exit 1 if anything differs.
+#       state that differs. Exit 1 if anything differs. A difference of at most 4 levels (of 255) is reported as
+#       noise and passes: the soft shadows' dither shifts when the view tree around them changes.
 #   scripts/circle-check.sh strip <moment> [app|commit] [options]
 #       Records one moment: a Play item (mark begins welcome morning lost perfect streaks) or `launch` (a cold
 #       launch). Re-timed to 60 fps → an overview strip, a 30 fps strip of the moment, and the one-frame jumps
@@ -188,7 +189,7 @@ shoot_pairs() { # shoot_pairs <base app> <new app> <run dir>
         else shoot $base $run/base/$n.png $look $mode $state; shoot $new $run/new/$n.png $look $mode $state; fi
         if (( first )); then   # stability: the same build, the same state, again
           shoot $base $run/base-again.png $look $mode $state
-          [[ $(compare $run/base/$n.png $run/base-again.png) == same ]] \
+          [[ $(compare $run/base/$n.png $run/base-again.png) == same* ]] \
             || print "UNSTABLE: $n differs from itself with the same build — fix the fixtures before trusting this run" >> $run/report.txt
           first=0
         fi
@@ -203,6 +204,7 @@ compare() {     # compare <a.png> <b.png> → "same" or "max box"
     -f null - 2>&1)
   local max=$(print -r -- $stats | sed -nE 's/.*YMAX=([0-9]+).*/\1/p' | head -1)
   if [[ ${max:-0} == 0 ]]; then print same
+  elif (( max <= 4 )); then print "same (noise: max $max — shadow dither, invisible)"
   else print "differs (max $max, box $(print -r -- $stats | sed -nE 's/.*x1:([0-9]+) x2:([0-9]+) y1:([0-9]+) y2:([0-9]+).*/x \1–\2, y \3–\4/p' | head -1))"; fi
 }
 cmd_shots() {
@@ -221,7 +223,7 @@ cmd_shots() {
   for f in $run/base/*.png; do
     local n=${f:t:r} verdict=$(compare $f $run/new/${f:t})
     printf "%-22s %s\n" $n $verdict >> $run/report.txt
-    if [[ $verdict != same ]]; then
+    if [[ $verdict != same* ]]; then
       bad=1
       ffmpeg -v error -y -i $f -i $run/new/${f:t} -filter_complex \
         "[0][1]blend=all_mode=difference,format=gray,lutyuv=y=val*8,format=rgb24[d];[0][1][d]hstack=3,scale=900:-1" \

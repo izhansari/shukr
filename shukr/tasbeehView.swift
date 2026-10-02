@@ -33,9 +33,8 @@ struct tasbeehView: View {
     /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
     /// centre — where the Zikr wheel's and the Salah page's circles are — not the safe area's (≈14 pt lower: the
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
-    private var softLook: Bool { SalahLook.tinted(lookRaw, softRing: softRingOn) }
+    @Environment(\.circleTheme) private var theme
+    private var softLook: Bool { theme.soft }
     @Environment(\.modelContext) private var context
     @EnvironmentObject var sharedState: SharedStateClass
     
