@@ -455,6 +455,9 @@ struct LostLocationView: View {
     /// A warm entry fades the whole page in over the Salah page (still there under it) once the app
     /// is really on screen — the change arrives while iOS still shows the app's snapshot.
     @State private var pageIn = true
+    /// The Salah look prototype (SalahLook.swift): the soft page, and the ring landing as the soft band.
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
 
     init() {
         // Read before this page reports its own circle: where the Salah circle is right now, if it's on
@@ -498,9 +501,11 @@ struct LostLocationView: View {
                     // hand-off leaves it where the Salah page's own track is.
                     // `WelcomeRing`, with the welcome's own sizes, widths and colours: the 12 pt grey track;
                     // snug = the welcome's starting hairline; then grown back into the track (or dashes).
-                    WelcomeRing(width: snug ? 1.2 : (landDashed ? 1 : 12))
-                        .fill(snug ? Color.sage.opacity(0.6) : (landDashed ? Color.clear : Color(.secondarySystemFill)))
+                    WelcomeRing(width: snug ? 1.2 : (landDashed ? 1 : (softRing ? AliveRingTuning.fine.band : 12)))
+                        .fill(snug ? Color.sage.opacity(0.6) : (landDashed ? Color.clear : (softRing ? Neu.surface : Color(.secondarySystemFill))))
                         .shadow(color: Color.sage.opacity(snug ? 0.45 : 0), radius: 8)
+                        .shadow(color: softRing && !snug && !landDashed ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
+                        .shadow(color: softRing && !snug && !landDashed ? Neu.light : .clear, radius: 6, x: -2, y: -2)
                         .frame(width: snug ? 150 : 200, height: snug ? 150 : 200)
                     Circle()
                         .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
@@ -556,8 +561,14 @@ struct LostLocationView: View {
             .allowsHitTesting(comeback == nil)
         }
         .fontDesign(.rounded)
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .background {
+            Group {
+                if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+            }
+            .ignoresSafeArea()
+        }
         .opacity(handedOff || !pageIn ? 0 : 1)
+        .allowsHitTesting(!location.lostPreview)   // the Play preview: look only
         .onAppear { WelcomeTarget.canLand = true; WelcomeTarget.trackDashed = false }
         // Where the circle is drawn right now (centred during the opening, then in its place).
         .onChange(of: groupFrame, initial: true) { _, _ in reportCircle() }

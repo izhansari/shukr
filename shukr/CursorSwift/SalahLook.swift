@@ -350,6 +350,8 @@ struct NeuRingTrack: View {
 /// Top right on the Salah page while the owner tries the looks: the list look, the soft ring, the colours and
 /// how rows come and go.
 struct SalahLookSwitcher: View {
+    @EnvironmentObject private var sharedState: SharedStateClass
+    @EnvironmentObject private var location: EnvLocationManager
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = false
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
@@ -376,7 +378,8 @@ struct SalahLookSwitcher: View {
                 Button("Prayer begins") { post(PrayerStartPreview.request) }
                 Button("Opening") { post(SalahLookPlay.welcome, false) }
                 Button("Good morning (after sleep)") { post(SalahLookPlay.morning) }
-                Button("Perfect day") { post(.perfectDay, true) }
+                Button("No location") { after { location.playLostPreview() } }
+                Button("Perfect day") { playPerfectDay() }
                 Button("Streaks") {
                     post(.prayerStreakContinued, 12)
                     post(.onTimeStreakContinued, 5)
@@ -403,12 +406,31 @@ struct SalahLookSwitcher: View {
             case "begins": post(PrayerStartPreview.request)
             case "welcome": post(SalahLookPlay.welcome, false)
             case "morning": post(SalahLookPlay.morning)
-            case "perfect": post(.perfectDay, true)
+            case "perfect": playPerfectDay()
+            case "lost": after { location.playLostPreview() }
             case "streaks": post(.prayerStreakContinued, 12); post(.onTimeStreakContinued, 5)
             default: break
             }
         }
         #endif
+    }
+
+    /// Perfect day plays in the prayer list (the dots pop, "perfect day" under it): open it first.
+    private func playPerfectDay() {
+        let open = sharedState.navPosition == .bottom
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                sharedState.horizontalPage = .main
+                sharedState.navPosition = .bottom
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (open ? 0.35 : 1.0)) {
+            NotificationCenter.default.post(name: .perfectDay, object: true)
+        }
+    }
+
+    private func after(_ go: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: go)
     }
 
     private func post(_ name: Notification.Name, _ object: Any? = nil) {

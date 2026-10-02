@@ -207,7 +207,7 @@ struct shukrApp: App {
                 // "shukr lost your location", with a circle the opening lands on — not the whole setup
                 // again. An overlay over the root, so when location (or a city) comes back it stays up,
                 // the same view, to acknowledge it and hand off to the Salah page appearing under it.
-                if !setupShowing && (environmentLocationManager.comeback != nil
+                if !setupShowing && (environmentLocationManager.comeback != nil || environmentLocationManager.lostPreview
                     || (environmentLocationManager.locationLost
                         && !(environmentLocationManager.isAuthorized || environmentLocationManager.hasManualLocation))) {
                     // Fades in over the Salah page blurring out (location lost while the app was open):

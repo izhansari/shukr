@@ -312,7 +312,10 @@ struct MorningCardView: View {
                 if WelcomeTarget.trackDashed {
                     Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
                 } else if softRing {
-                    NeuRingTrack()
+                    // Fades with the page: the circle's own band and arc are right under it. Opaque to the end, it
+                    // covered the prayer's arc, which then popped in when the card went (owner: "doesnt bring in
+                    // the prayer progress right").
+                    NeuRingTrack().opacity(pageIn ? 1 : 0)
                 } else {
                     Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
                 }

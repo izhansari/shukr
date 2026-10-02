@@ -176,7 +176,23 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
     /// to acknowledge it and hand off to the Salah circle (LostLocationView); it clears this.
     enum Comeback: Equatable { case always, whileUsing, city(String) }
     @Published private(set) var comeback: Comeback?
-    func clearComeback() { if comeback != nil { comeback = nil } }
+    func clearComeback() {
+        if comeback != nil { comeback = nil }
+        if lostPreview { lostPreview = false }
+    }
+
+    /// The palette's Play → No location (SalahLook.swift): "shukr lost your location" over the Salah page, then
+    /// location coming back and the hand-off — `locationLost`, the authorisation and the saved city are never
+    /// touched (the page is not interactive meanwhile).
+    @Published private(set) var lostPreview = false
+    func playLostPreview() {
+        guard !lostPreview, comeback == nil, !locationLost else { return }
+        lostPreview = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { [weak self] in
+            guard let self, self.lostPreview else { return }
+            self.comeback = .whileUsing
+        }
+    }
 
     /// Location lost while the app is open: the root keeps the Salah page a moment under the lost
     /// page fading in over it (one ring; a branch swap there doesn't animate). Set in the same update
