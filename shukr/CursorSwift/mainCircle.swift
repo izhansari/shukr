@@ -66,7 +66,7 @@ struct MainCircleView: View {
     var body: some View {
         ZStack {
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
-            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion)
+            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
             

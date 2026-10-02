@@ -193,6 +193,9 @@ struct CompletionDotPop: ViewModifier {
 struct CircleTrack: View {
     var solid: CGFloat
     var reduceMotion = false
+    /// False under the Salah look prototype's soft ring (SalahLook.swift): its raised band is the track, and
+    /// this grey band showed through as a dark ring under the arc (owner, 2026-10-01).
+    var band = true
     static let size: CGFloat = 200
 
     var body: some View {
@@ -202,7 +205,7 @@ struct CircleTrack: View {
                 .opacity(Double(1 - solid))
             TrackBand(width: reduceMotion ? 12 : max(12 * solid, 0.001))
                 .fill(Color(.secondarySystemFill))
-                .opacity(reduceMotion ? Double(solid) : (solid > 0.001 ? 1 : 0))
+                .opacity(band ? (reduceMotion ? Double(solid) : (solid > 0.001 ? 1 : 0)) : 0)
         }
         .frame(width: Self.size, height: Self.size)
         .allowsHitTesting(false)
