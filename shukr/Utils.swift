@@ -747,7 +747,7 @@ struct AliveRingTuning: Codable, Equatable {
     var encoded: String { (try? String(data: JSONEncoder().encode(self), encoding: .utf8)) ?? "" }
 }
 
-private struct AliveRingFill: View {
+struct AliveRingFill: View {   // also the Salah ring's Perfect window under the soft ring (mainCircle)
     let dark: Bool
     var tuning = AliveRingTuning()
 

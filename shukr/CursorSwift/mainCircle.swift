@@ -131,6 +131,25 @@ struct MainCircleView: View {
                         // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
                         // dimming crossfade (2026-09-27).
                         if softRing { NeuRingTrack() }
+                        // In the Perfect (green) window under the soft ring, the arc is the tasbeeh ring's living fill
+                        // (AliveRingFill, "fine") cut to the arc — "it deserves it … we want to beautify when we are in
+                        // that period of prayer" (owner, 2026-10-01). Yellow / red stay the solid arc below.
+                        let perfectNow = softRing && progress < 1 && PrayerScoring.grade(for: PrayerScoring.score(
+                            start: prayer.startTime, end: prayer.endTime, markedAt: currentTime)) == .perfect
+                        if perfectNow {
+                            AliveRingFill(dark: colorScheme == .dark, tuning: .fine)
+                                .frame(width: 230, height: 230)
+                                .mask {
+                                    Circle()
+                                        .trim(from: 0, to: progress)
+                                        .stroke(style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
+                                        .rotationEffect(.degrees(-90))
+                                        .frame(width: 200, height: 200)
+                                        .animation(animationStyle, value: currentTime)
+                                }
+                                .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 6)
+                                .allowsHitTesting(false)
+                        }
                         // progress arc. Under the soft ring it takes the tasbeeh arc's shape (NeuCircularProgressView,
                         // "fine"): as wide as the band, round ends, a soft glow in its own colour (owner, 2026-10-01).
                         Circle()
@@ -141,6 +160,7 @@ struct MainCircleView: View {
                             .rotationEffect(.degrees(-90))
                             .frame(width: 200, height: 200)
                             .shadow(color: softRing ? progressColor.opacity(AliveRingTuning.fine.glow) : .clear, radius: 6)
+                            .opacity(perfectNow ? 0 : 1)
                             .animation(animationStyle, value: currentTime/*progress*/)
                             .animation(animationStyle, value: prayer.name)
                     

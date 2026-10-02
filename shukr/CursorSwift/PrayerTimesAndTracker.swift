@@ -955,7 +955,11 @@ struct PrayerTimesView: View {
                     p.isCompleted = false
                     let i = order.firstIndex(of: p.name) ?? 0
                     if i < target { p.startTime = now.addingTimeInterval(-3600); p.endTime = now.addingTimeInterval(-60); p.isCompleted = true }
-                    else if i == target { p.startTime = now.addingTimeInterval(6); p.endTime = now.addingTimeInterval(1800) }
+                    // `-demoPrayerStartAgo <s>`: already that far into its window instead of starting in 6 s.
+                    else if i == target {
+                        let ago = UserDefaults.standard.double(forKey: "demoPrayerStartAgo")
+                        p.startTime = now.addingTimeInterval(ago > 0 ? -ago : 6); p.endTime = p.startTime.addingTimeInterval(1800)
+                    }
                     else { p.startTime = now.addingTimeInterval(3600 * Double(i - target)); p.endTime = p.startTime.addingTimeInterval(1800) }
                 }
                 viewModel.objectWillChange.send()
