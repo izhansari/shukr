@@ -646,6 +646,18 @@ struct PrayerTimesView: View {
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
         }
         .onAppear { showMorningCardWhenClear() }
+        // The palette's Play → Good morning (SalahLook.swift): the welcome from black onto the card, with the latest
+        // session — read only; Done just closes it.
+        .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.morning)) { _ in
+            var latest = FetchDescriptor<SessionDataModel>(sortBy: [SortDescriptor(\.startTime, order: .reverse)])
+            latest.fetchLimit = 1
+            guard morningSession == nil, let session = try? context.fetch(latest).first else { return }
+            NotificationCenter.default.post(name: SalahLookPlay.welcome, object: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                var quiet = Transaction(); quiet.disablesAnimations = true
+                withTransaction(quiet) { morningSession = session }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in goToSalahForMorningCard() }
         .overlay {
             if let morningSession {

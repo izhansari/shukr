@@ -69,6 +69,12 @@ struct MainCircleView: View {
             CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { WelcomeTarget.circleFrame = $0 }
+            // The soft ring's raised band, under everything — it stays through the completion flourish (which hides
+            // the content above) and is there for the day's score too; it fades in as the dashes go when a prayer
+            // starts, like the grey band grew (SalahLook.swift).
+            if softRing && sharedState.bottomTabPosition != .zikr {
+                NeuRingTrack().opacity(Double(trackSolid))
+            }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
             Group {
@@ -130,7 +136,6 @@ struct MainCircleView: View {
                     ZStack{
                         // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
                         // dimming crossfade (2026-09-27).
-                        if softRing { NeuRingTrack() }
                         // In the Perfect (green) window under the soft ring, the arc is the tasbeeh ring's living fill
                         // (AliveRingFill, "fine") cut to the arc — "it deserves it … we want to beautify when we are in
                         // that period of prayer" (owner, 2026-10-01). Yellow / red stay the solid arc below.
@@ -308,6 +313,18 @@ struct MainCircleView: View {
                 // Date() is tomorrow's rows, so today's score was never set and read 0 %.
                 viewModel.calculateDayScore(for: PrayerDay.date())
             }
+        }
+        // The palette's Play → Marking a prayer: the flourish for the prayer on the circle, at today's score — a
+        // made-up event, nothing marked (SalahLook.swift).
+        .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.mark)) { _ in
+            guard let p = shownPrayer ?? viewModel.relevantPrayer else { return }
+            let now = Date()
+            let window = max(p.endTime.timeIntervalSince(p.startTime), 1)
+            let event = PrayerCompletionEvent(name: p.name,
+                                              score: PrayerScoring.score(start: p.startTime, end: p.endTime, markedAt: now),
+                                              progress: min(max(now.timeIntervalSince(p.startTime) / window, 0), 1),
+                                              prayerName: p.name)
+            NotificationCenter.default.post(name: .prayerCompleted, object: event)
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }

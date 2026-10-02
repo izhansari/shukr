@@ -76,6 +76,12 @@ struct WelcomeGate: ViewModifier {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in raise() }
+            // The palette's Play → Opening / Good morning (SalahLook.swift): the welcome again, in place.
+            .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.welcome)) { note in
+                guard !showing, !curtain else { return }
+                var quiet = Transaction(); quiet.disablesAnimations = true
+                withTransaction(quiet) { fromBlack = (note.object as? Bool) ?? false; showing = true }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background, SleepMorning.pendingID != nil { raise() }
                 if phase == .active, curtain {
@@ -144,6 +150,10 @@ struct WelcomeOverlay: View {
     /// dashes used to appear at full size the moment the ring began to grow, while the ring itself
     /// faded inside them — it never reached the circle's edge; owner, 6F3BCE52.)
     @State private var dashesIn = false
+    /// The Salah look prototype (SalahLook.swift): over a soft page the welcome fades in from that surface and
+    /// lands as the soft ring's raised band, the same as what's under it.
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
 
     private let word = Array("shukr")
     /// The Salah page's circle: 200 pt with a 12 pt track centred on it (mainCircle.swift).
@@ -159,13 +169,18 @@ struct WelcomeOverlay: View {
         // offset from the screen's centre to the circle's (global) centre.
         let screen = UIScreen.main.bounds
         let shift = target.map { CGSize(width: $0.x - screen.midX, height: $0.y - screen.midY) } ?? .zero
+        let softBand = softRing && !dashedTarget
         ZStack {
-            Color(.systemBackground)
+            if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
             ZStack {
-                // The ring: drawn as a hairline, then grown into the circle's track.
-                WelcomeRing(width: grow ? (dashedTarget ? UpcomingTrack.style.lineWidth : 12) : 1.2)
-                    .fill(grow ? (dashedTarget ? Color.secondary.opacity(UpcomingTrack.opacity) : Color(.secondarySystemFill))
+                // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft
+                // ring: its width, surface and lift).
+                WelcomeRing(width: grow ? (dashedTarget ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
+                    .fill(grow ? (dashedTarget ? Color.secondary.opacity(UpcomingTrack.opacity)
+                                               : (softBand ? Neu.surface : Color(.secondarySystemFill)))
                                : Color.sage.opacity(0.6))
+                    .shadow(color: softBand && grow ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
+                    .shadow(color: softBand && grow ? Neu.light : .clear, radius: 6, x: -2, y: -2)
                     .mask {
                         Circle()
                             .trim(from: 0, to: ringDrawn || reduceMotion || startDrawn ? 1 : 0)

@@ -283,6 +283,9 @@ struct MorningCardView: View {
     /// The page (opaque at once under the welcome, which lands on this ring) and, after, its words.
     @State private var pageIn = false
     @State private var shown = false
+    /// The Salah look prototype (SalahLook.swift): the soft page and band, like the circle it leaves behind.
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
 
     /// The last tap's clock time (stored when it ended); older builds' sessions: start + active time.
     private var ended: Date { SleepMorning.endedAt ?? session.startTime.addingTimeInterval(session.secondsPassed) }
@@ -297,7 +300,9 @@ struct MorningCardView: View {
         let circle = WelcomeTarget.circleFrame
             ?? CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
         ZStack(alignment: .topLeading) {
-            Color(.systemBackground)
+            Group {
+                if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+            }
                 .opacity(pageIn ? 1 : 0)
                 .contentShape(Rectangle())
             // The Salah circle's own ring, with the count in it.
@@ -306,6 +311,8 @@ struct MorningCardView: View {
                 // come), so the page leaves exactly that circle behind.
                 if WelcomeTarget.trackDashed {
                     Circle().stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
+                } else if softRing {
+                    NeuRingTrack()
                 } else {
                     Circle().stroke(Color(.secondarySystemFill), lineWidth: 12)
                 }

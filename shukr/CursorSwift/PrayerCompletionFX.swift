@@ -97,6 +97,8 @@ struct CompletionFlourish: View {
     @State private var sweep: Double = 0
     @State private var glow: Double = 0
     @State private var showText = false
+    /// Under the soft ring (SalahLook.swift) the arc is the soft one's: 6 pt.
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
 
     private var color: Color { PrayerScoring.color(for: event.score) }
 
@@ -105,7 +107,7 @@ struct CompletionFlourish: View {
             // The arc closes from where the prayer was to a full ring.
             Circle()
                 .trim(from: 0, to: sweep)
-                .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: softRing ? AliveRingTuning.fine.band : 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .frame(width: 200, height: 200)
                 .shadow(color: color.opacity(0.6 * glow), radius: 12 * glow)

@@ -61,6 +61,18 @@ extension SalahLook {
 }
 #endif
 
+/// The palette's Play menu (owner, 2026-10-01: "idk what a good way is for you to allow me to be able to play them
+/// in the sim and judge it"): each animation on the Salah page replayed on the spot, visual only — nothing is
+/// marked, moved or saved.
+enum SalahLookPlay {
+    /// The completion flourish (and the post-salah pill after it) for the prayer on the circle, at today's score.
+    static let mark = Notification.Name("salahLookPlay.mark")
+    /// The opening welcome; object: true = from black (the sleep morning's open).
+    static let welcome = Notification.Name("salahLookPlay.welcome")
+    /// The good-morning card after a sleep-mode session, over the welcome from black, with the latest session.
+    static let morning = Notification.Name("salahLookPlay.morning")
+}
+
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
 /// from the same palette menu (owner, 2026-10-01: "fix the transitions of show hiding the prayer items").
 enum RowMotion: String, CaseIterable, Identifiable {
@@ -359,6 +371,17 @@ struct SalahLookSwitcher: View {
                 ForEach(RowMotion.allCases) { Text($0.title).tag($0.rawValue) }
             }
             .pickerStyle(.menu)
+            Menu("Play") {
+                Button("Marking a prayer") { post(SalahLookPlay.mark) }
+                Button("Prayer begins") { post(PrayerStartPreview.request) }
+                Button("Opening") { post(SalahLookPlay.welcome, false) }
+                Button("Good morning (after sleep)") { post(SalahLookPlay.morning) }
+                Button("Perfect day") { post(.perfectDay, true) }
+                Button("Streaks") {
+                    post(.prayerStreakContinued, 12)
+                    post(.onTimeStreakContinued, 5)
+                }
+            }
         } label: {
             Image(systemName: "paintpalette")
                 .frame(width: 24, height: 24)
@@ -369,5 +392,29 @@ struct SalahLookSwitcher: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel("Salah page look")
+        #if DEBUG
+        // `-salahPlay mark|begins|welcome|morning|perfect|streaks`: that Play item, 4 s after launch (checking them in
+        // the simulator, whose simulated taps can't open a Menu).
+        .task {
+            guard let which = UserDefaults.standard.string(forKey: "salahPlay") else { return }
+            try? await Task.sleep(for: .seconds(4))
+            switch which {
+            case "mark": post(SalahLookPlay.mark)
+            case "begins": post(PrayerStartPreview.request)
+            case "welcome": post(SalahLookPlay.welcome, false)
+            case "morning": post(SalahLookPlay.morning)
+            case "perfect": post(.perfectDay, true)
+            case "streaks": post(.prayerStreakContinued, 12); post(.onTimeStreakContinued, 5)
+            default: break
+            }
+        }
+        #endif
+    }
+
+    private func post(_ name: Notification.Name, _ object: Any? = nil) {
+        // After the menu has closed, so the animation plays on a clear page.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+            NotificationCenter.default.post(name: name, object: object)
+        }
     }
 }
