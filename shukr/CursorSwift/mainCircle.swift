@@ -37,24 +37,42 @@ struct MainCircleView: View {
     /// blink at the end of every mark (Sami's audit, 2026-10-02, finding 1; his verified fix).
     @State private var flourishOut = false
     private var contentHidden: Bool { flourish != nil && !flourishOut }
-    /// The prayer just marked, still drawn under the flourish until it ends. Marking updates the row
-    /// at once, so without this the circle swapped to the next prayer / the day summary in the
-    /// frame the flourish began, and the swap showed through its fade (owner, 2026-09-27: "not the
-    /// same quality as it was").
+    /// The face the circle is showing (CircleMoments.swift): changed only by a moment, so the data changing (a mark,
+    /// an unmark, a window ending) never swaps the words in place — they go out, then the new ones come in. nil = not
+    /// shown yet (the derived face).
+    @State private var displayedFace: CircleFace?
+    /// The words are out between two faces (a swap).
+    @State private var faceAway = false
+    /// The running moment, its task, and how it snaps to its end if a newer one takes over (`run`).
+    @State private var momentKind: CircleMomentKind?
+    @State private var momentTask: Task<Void, Never>?
+    @State private var momentSettle: (() -> Void)?
+    /// ▶︎ Prayer begins with every prayer done: today's Fajr row, held on the circle for the preview.
     @State private var heldPrayer: PrayerModel?
-    /// What the circle draws: the held prayer during a completion, else the relevant one.
-    private var shownPrayer: PrayerModel? { heldPrayer ?? viewModel.relevantPrayer }
+    /// What the circle shows at rest, from the data: the prayer on the circle, or the day's summary (none; or the next
+    /// prayer is tomorrow's Fajr).
+    private var derivedFace: CircleFace {
+        _ = currentTime
+        guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else { return .summary }
+        return .prayer(p)
+    }
+    /// The prayer the circle draws, if its face is a prayer.
+    private var shownPrayer: PrayerModel? {
+        if let heldPrayer { return heldPrayer }
+        if case .prayer(let p) = displayedFace ?? derivedFace { return p }
+        return nil
+    }
     /// The prayer on the circle just came into its window, on screen: the moment plays once.
     /// The track: 0 = dashed (a prayer that hasn't started), 1 = the solid band (`CircleTrack`).
     @State private var trackSolid: CGFloat = 1
     /// When the last completion sweep faded: the track's shrink waits for it to be gone.
-    @State private var flourishEndedAt: Date?
+    @State private var flourishEndedAt: TimeInterval?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Settings → My Dev Stuff → Preview (`PrayerStartPreview`): the circle draws its prayer in this
     /// state instead of the real one — "next", then "now" as the moment plays. Visual only.
     @State private var preview: PrayerModel.prayerStatus?
     /// When the circle last appeared: a flip in the first moments (launch, coming back) doesn't play.
-    @State private var appearedAt = Date()
+    @State private var appearedAt = Uptime.now
     @Environment(\.scenePhase) private var scenePhase
     /// The pager's live state — the bottom nudge lives in the chrome and reads it.
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
@@ -254,9 +272,9 @@ struct MainCircleView: View {
                         .transition(.opacity)
                 }
             }
-            // The day summary ↔ a prayer crossfades (e.g. at Fajr the summary circle — the day's
-            // score / next Fajr — becomes Fajr's ring as the prayer begins, 2026-09-27).
-            .animation(.easeInOut(duration: 0.7), value: showsPrayer)
+            // Between two faces (the summary ↔ a prayer, one prayer → the next) the words go out, then the new ones come
+            // in (a swap moment) — they crossfaded through each other.
+            .modifier(CircleWordsAway(away: faceAway))
             // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
             // blinks), back in as it fades.
             .opacity(contentHidden ? 0 : 1)
@@ -321,7 +339,7 @@ struct MainCircleView: View {
                 live?.postSalahNudge = "Asr"
             }
             #endif
-            appearedAt = Date()
+            appearedAt = Uptime.now
             settleTrack(trackWantsSolid)
             locationManager.startUpdating() // Start location updates
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -347,33 +365,10 @@ struct MainCircleView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }
-            flourishID += 1
-            let id = flourishID
-            // Keep drawing the prayer just marked until the flourish is done (a replay — Jumu'ah
-            // found after the mark — keeps the hold it has).
-            let name = event.prayerName ?? event.name
-            heldPrayer = viewModel.todaysPrayers.first { $0.name == name } ?? heldPrayer
-            flourishOut = false
-            withAnimation(.easeOut(duration: 0.25)) { flourish = event }
-            DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
-                guard flourishID == id else { return }   // a newer completion took over
-                flourishEndedAt = Date()
-                // The next prayer / the summary goes in while the content is still hidden, with no
-                // animation (the name and icon morphed Maghrib → Isha as they faded in), then fades in.
-                var swap = Transaction()
-                swap.disablesAnimations = true
-                withTransaction(swap) { heldPrayer = nil }
-                flourishOut = true                    // fades on its own (implicit), content fades in
-                withAnimation(.easeInOut(duration: 0.45)) {
-                    live?.postSalahNudge = event.name   // the post-salah pill under the top bar
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    guard flourishID == id else { return }
-                    var quiet = Transaction(); quiet.disablesAnimations = true
-                    withTransaction(quiet) { flourish = nil; flourishOut = false }
-                }
-            }
+            playMarking(event)
         }
+        // The data moved the face (an unmark, a window ending, Fajr beginning from the summary…): out, then in.
+        .onChange(of: derivedFace) { _, _ in faceChanged() }
         // The offer goes once the next prayer has begun (its moment has passed).
         .onChange(of: viewModel.relevantPrayer?.name) { _, name in
             if let offered = live?.postSalahNudge, let name, name != offered,
@@ -390,9 +385,9 @@ struct MainCircleView: View {
         .onChange(of: circleStateKey) { old, new in
             guard old.hasSuffix("|next"), new.hasSuffix("|now"),
                   old.dropLast(5) == new.dropLast(4),                // same prayer, next → now
-                  scenePhase == .active, Date().timeIntervalSince(appearedAt) > 2,
+                  scenePhase == .active, (Uptime.now - appearedAt) > 2,
                   sharedState.horizontalPage == .main, WelcomeTarget.canLand,
-                  flourish == nil else { return }
+                  momentKind == nil, flourish == nil else { return }
             playStartMoment()
             print("🌅 prayer begins moment played (\(new))")
         }
@@ -400,44 +395,21 @@ struct MainCircleView: View {
         // transition exactly as the real one plays it (haptic included). Visual only — no prayer
         // rows, test times or notifications are touched.
         .onReceive(NotificationCenter.default.publisher(for: PrayerStartPreview.request)) { _ in
-            guard flourish == nil else { return }
-            // All done: Fajr beginning, today's row held on the circle for the preview (nothing written).
-            var held: PrayerModel?
-            if viewModel.relevantPrayer == nil {
-                guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return }
-                held = fajr
-            }
-            let onSalah = sharedState.horizontalPage == .main && sharedState.navPosition == .main
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                sharedState.navPosition = .main
-                sharedState.horizontalPage = .main
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + (onSalah ? 0.1 : 0.8)) {
-                var snap = Transaction()
-                snap.disablesAnimations = true
-                withTransaction(snap) {
-                    if let held { heldPrayer = held }
-                    preview = .upcoming                             // straight into "next"
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                    preview = .current                              // …and it begins
-                    playStartMoment()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-                        var back = Transaction()
-                        back.disablesAnimations = held != nil       // the summary comes back as it was
-                        withTransaction(back) {
-                            preview = nil                           // back to the real state
-                            if held != nil { heldPrayer = nil }
-                        }
-                    }
-                }
-            }
+            playBeginsPreview()
         }
         .onChange(of: trackWantsSolid) { _, solid in settleTrack(solid) }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { currentTime = Date(); appearedAt = Date(); settleTrack(trackWantsSolid) }
+            if phase == .active {
+                currentTime = Date(); appearedAt = Uptime.now
+                // What changed while away is shown as it is, not played (the moment's cause was long ago).
+                if momentKind == nil, displayedFace != derivedFace { quietly { displayedFace = derivedFace } }
+                settleTrack(trackWantsSolid)
+            }
         }
-        .onAppear { currentTime = Date() }
+        .onAppear {
+            currentTime = Date()
+            if momentKind == nil { displayedFace = derivedFace }
+        }
         // One timer for the view's lifetime. It was created inline in `body`, so every re-render made a
         // new one — and this view re-rendered on every compass update then (QiblaArrow has its own now), so the
         // timer was replaced before it ever fired: `currentTime` froze and a prayer that had started
@@ -460,19 +432,150 @@ struct MainCircleView: View {
     /// mark the track shrinks back only once the sweep is done.
     private var trackWantsSolid: Bool {
         _ = currentTime
+        // A mark: solid from the moment it's made (before the flourish's first frame) until the flourish fades.
+        if momentKind == .marking && !flourishOut { return true }
         if flourish != nil && !flourishOut { return true }   // fading out: the next state may come in
         if let preview { return preview != .upcoming }
-        guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else {
-            return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
+        // The face shown, not the data: the ring changes while the words are out, never before them.
+        switch displayedFace ?? derivedFace {
+        case .summary: return sharedState.navPosition == .bottom   // summary: score solid, next Fajr dashed
+        case .prayer(let p): return p.status() != .upcoming
         }
-        return p.status() != .upcoming
     }
 
     /// The circle can be seen (the Salah page, nothing over it, app active, settled) — only then
     /// does the track animate; otherwise it just is what it should be.
     private var circleOnScreen: Bool {
         scenePhase == .active && sharedState.horizontalPage == .main && WelcomeTarget.canLand
-            && CircleCover.active.isEmpty && Date().timeIntervalSince(appearedAt) > 0.6
+            && CircleCover.active.isEmpty && (Uptime.now - appearedAt) > 0.6
+    }
+
+    /// A moment may play: the circle is seen and settled — the app active, the Salah page with the pager still,
+    /// nothing over it, no welcome playing, at least 0.6 s since it appeared. The list being open doesn't matter
+    /// (marks are made from it).
+    private var canPlay: Bool {
+        UIApplication.shared.applicationState == .active && sharedState.horizontalPage == .main
+            && !(live?.pagerPhase.isScrolling ?? false) && CircleCover.active.isEmpty
+            && WelcomeTarget.canLand && !WelcomeTarget.playing && (Uptime.now - appearedAt) > 0.6
+    }
+
+    private func quietly(_ change: () -> Void) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet, change)
+    }
+
+    /// Runs a moment (CircleMoments.swift): cancels the running one (snapped to its end first — a mark replacing a
+    /// mark keeps its flourish up, the new one takes over), waits for `canPlay` up to the gate's deadline (else
+    /// just `settle`s), plays `phases`, settles, and if the data moved on meanwhile, swaps once more.
+    private func run(_ kind: CircleMomentKind, settle: @escaping () -> Void, _ phases: @escaping () async -> Void) {
+        momentTask?.cancel()
+        if let old = momentSettle, !(kind == .marking && momentKind == .marking) { quietly(old) }
+        momentKind = kind
+        momentSettle = settle
+        momentTask = Task { @MainActor in
+            let play = await CircleGate.wait({ canPlay })
+            #if DEBUG
+            if !play && !Task.isCancelled {
+                NSLog("⭕️ circle \(kind) not played: active \(UIApplication.shared.applicationState == .active) · salah \(sharedState.horizontalPage == .main) · pager \(live?.pagerPhase.isScrolling ?? false ? "scrolling" : "still") · covers \(CircleCover.active) · canLand \(WelcomeTarget.canLand) · welcome \(WelcomeTarget.playing) · appeared \((Uptime.now - appearedAt))s")
+            }
+            #endif
+            if play { await phases() }
+            guard !Task.isCancelled else { return }
+            quietly(settle)
+            momentKind = nil
+            momentSettle = nil
+            momentTask = nil
+            faceChanged()
+        }
+    }
+
+    /// The face from the data differs from the one shown: the words go out, the face (and with it the ring) changes,
+    /// the new words come in. A mark or a preview syncs the face itself at its end.
+    private func faceChanged() {
+        guard momentKind == nil, displayedFace != nil, displayedFace != derivedFace else { return }
+        run(.swap, settle: {
+            displayedFace = derivedFace
+            faceAway = false
+        }) {
+            faceAway = true
+            guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+            quietly { displayedFace = derivedFace }
+            guard await CircleGate.nextFrame() else { return }
+            faceAway = false
+            _ = await CircleGate.pause(CircleMomentTiming.in)
+        }
+    }
+
+    /// A prayer was marked (or ▶︎ Marking a prayer): the flourish over the circle, the face it was showing kept under it
+    /// until the flourish ends, then the next face goes in while the words are still hidden, and they come back.
+    private func playMarking(_ event: PrayerCompletionEvent) {
+        run(.marking, settle: {
+            flourish = nil
+            flourishOut = false
+            displayedFace = derivedFace
+        }) {
+            flourishID += 1
+            flourishOut = false
+            withAnimation(.easeOut(duration: 0.25)) { flourish = event }
+            guard await CircleGate.pause(CompletionFlourish.duration) else { return }
+            flourishEndedAt = Uptime.now
+            // The next prayer / the summary goes in while the words are still hidden, with no animation (the name and
+            // icon morphed Maghrib → Isha as they faded in), then fades in.
+            quietly { displayedFace = derivedFace }
+            flourishOut = true                    // fades on its own (implicit), the words fade in
+            withAnimation(.easeInOut(duration: 0.45)) {
+                live?.postSalahNudge = event.name   // the post-salah pill under the top bar
+            }
+            guard await CircleGate.pause(0.5) else { return }
+            quietly { flourish = nil; flourishOut = false }
+        }
+    }
+
+    /// ▶︎ Prayer begins (Settings → My Dev Stuff → Preview too): the Salah page, the prayer as "next" for a moment, then
+    /// it begins as a real start does (haptic included), then back. With every prayer done, today's Fajr row is held on
+    /// the circle for it. Visual only: no rows, times or notifications are touched.
+    private func playBeginsPreview() {
+        var held: PrayerModel?
+        if viewModel.relevantPrayer == nil {
+            guard let fajr = viewModel.todaysPrayers.first(where: { $0.name == "Fajr" }) else { return }
+            held = fajr
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            sharedState.navPosition = .main
+            sharedState.horizontalPage = .main
+        }
+        run(.begins, settle: {
+            preview = nil
+            heldPrayer = nil
+            faceAway = false
+            displayedFace = derivedFace
+        }) {
+            if let held {
+                // From the summary to Fajr: out, then in, like any face change.
+                faceAway = true
+                guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+                quietly { heldPrayer = held; preview = .upcoming }
+                guard await CircleGate.nextFrame() else { return }
+                faceAway = false
+            } else {
+                quietly { preview = .upcoming }                      // straight into "next"
+            }
+            guard await CircleGate.pause(1.4) else { return }
+            preview = .current                                      // …and it begins
+            playStartMoment()
+            guard await CircleGate.pause(1.4) else { return }
+            if held != nil {
+                faceAway = true
+                guard await CircleGate.pause(CircleMomentTiming.out) else { return }
+                quietly { preview = nil; heldPrayer = nil; displayedFace = derivedFace }
+                guard await CircleGate.nextFrame() else { return }
+                faceAway = false
+                _ = await CircleGate.pause(CircleMomentTiming.in)
+            } else {
+                preview = nil                                       // back to the real state
+            }
+        }
     }
 
     private func settleTrack(_ solid: Bool) {
@@ -485,7 +588,7 @@ struct MainCircleView: View {
             // under it.
             // Soft ring: no wait — its band narrows into the dashes in the same fade as the sweep, one move (it
             // lingered under "NEXT" and then went: two steps — owner, 2026-10-02).
-            let afterSweep = !softRing && !solid && (flourishEndedAt.map { Date().timeIntervalSince($0) < 1 } ?? false)
+            let afterSweep = !softRing && !solid && (flourishEndedAt.map { Uptime.now - $0 < 1 } ?? false)
             let animation: Animation = reduceMotion ? .easeInOut(duration: 0.35)
                 : solid ? .spring(response: 0.75, dampingFraction: 0.9) : .easeInOut(duration: softRing ? 0.5 : 0.6)
             withAnimation(afterSweep ? animation.delay(0.45) : animation) { trackSolid = target }
@@ -569,14 +672,21 @@ struct summaryCircle: View{
     @Binding var ogText: Bool  // to control the toggle text in the middle
     @State private var animationBool: Bool = false
     @State private var nextFajr: (start: Date, end: Date)?
-    /// The Salah look prototype (SalahLook.swift): under a soft look the score and next Fajr don't crossfade through
-    /// each other — one sinks out, then the other rises in (owner, 2026-10-02: "today score to next upcoming fajr …
-    /// i don't see the transition"; mid-swap "100.0" sat on "Fajr"). nil = between the two.
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRingOn = false
-    @State private var showingScore: Bool? = nil
-    @State private var swapToken = 0
-    private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRingOn) }
+    /// The score and next Fajr never crossfade through each other — one goes out, then the other comes in (owner,
+    /// 2026-10-02: "today score to next upcoming fajr … i don't see the transition"; mid-swap "100.0" sat on "Fajr";
+    /// every look since circle step 2). `.neither` = between the two; nil only before it first appears (the side the
+    /// sheet asks for — nothing fades in then).
+    @State private var shownSide: SummarySideShown?
+    private enum SummarySideShown { case score, fajr, neither }
+    private var showingScore: Bool? {
+        switch shownSide ?? (wantsScore ? .score : .fajr) {
+        case .score: true
+        case .fajr: false
+        case .neither: nil
+        }
+    }
+    /// The swap's one task (the circle system's rule: one runner per moment; a newer toggle cancels it).
+    @State private var swapTask: Task<Void, Never>?
     private var wantsScore: Bool { sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah }
 //    @State private var summaryInfo: [String : Double?] = [:]
 //    @State private var todaysScore : Double = 0.0
@@ -636,10 +746,8 @@ struct summaryCircle: View{
     var body: some View{
 
                         
-        // Score ↔ next-Fajr content crossfades (opacity + a little scale) inside the same
-        // animation that opens the sheet, instead of the old hard switch.
-        let p: CGFloat = sharedState.navPosition == .bottom ? 1 : 0
-        let scoreness: CGFloat = sharedState.bottomTabPosition == .salah ? min(max((p - 0.35) / 0.3, 0), 1) : 0
+        // Score ↔ next Fajr take turns — one goes out, then the other comes in (CircleMoments.swift), in every look;
+        // Today's look crossfaded them inside the sheet's animation, "100.0" over "Fajr" mid-swap.
         ZStack{
             // The Summary Score
             // Same type as the Insights ring: a large light number over a thin caption.
@@ -658,7 +766,7 @@ struct summaryCircle: View{
                     .fontDesign(.rounded)
                     .padding(.top, 2)
             }
-            .modifier(SummarySide(soft: soft, staged: showingScore == true, linear: scoreness))
+            .modifier(CircleWordsAway(away: showingScore != true))
 
             // Fajr Icon, Title, Time — a prayer that hasn't started, so the future look (NEXT over
             // a dimmed name, the dashed track), keeping its own time text: "in 4 hr" ⇄ its window.
@@ -698,23 +806,22 @@ struct summaryCircle: View{
                     .transition(.blurReplace)
                 }
             }
-            .modifier(SummarySide(soft: soft, staged: showingScore == false, linear: 1 - scoreness))
+            .modifier(CircleWordsAway(away: showingScore != false))
         }
         .transition(.opacity)
         .onChange(of: wantsScore) { _, score in
-            guard soft else { showingScore = score; return }
-            swapToken += 1
-            let token = swapToken
-            withAnimation(.easeIn(duration: 0.18)) { showingScore = nil }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                guard swapToken == token else { return }   // toggled again meanwhile: the newer swap wins
-                withAnimation(.easeOut(duration: 0.34)) { showingScore = score }
+            swapTask?.cancel()
+            swapTask = Task { @MainActor in
+                shownSide = .neither
+                guard await CircleGate.pause(CircleMomentTiming.out) else { return }   // toggled again: the newer swap wins
+                shownSide = score ? .score : .fajr
             }
         }
 
 
         .onAppear {
-            showingScore = wantsScore
+            // Pinned to the side it shows now (unchanged, so nothing animates): a later sheet change then swaps from it.
+            if shownSide == nil { shownSide = wantsScore ? .score : .fajr }
             getTheNextFajrTime()
 //            getTheSummaryInfo()
         }
@@ -904,23 +1011,5 @@ private struct DashedChevron: Shape {
         path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         return path
-    }
-}
-
-/// One side of the summary circle (the day's score / next Fajr). Today's look: the old crossfade that follows the sheet
-/// (`linear`, 0…1, opacity + a little scale). Soft looks: in or out the sink way, staged by summaryCircle.
-private struct SummarySide: ViewModifier {
-    let soft: Bool
-    let staged: Bool
-    let linear: CGFloat
-
-    func body(content: Content) -> some View {
-        if soft {
-            content.modifier(SessionAppear(shown: staged, style: .sink))
-        } else {
-            content
-                .opacity(Double(linear))
-                .scaleEffect(0.9 + 0.1 * linear)
-        }
     }
 }
