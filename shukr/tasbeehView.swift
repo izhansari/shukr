@@ -87,6 +87,9 @@ struct tasbeehView: View {
     /// (circle rule 3, out then in — it showed through them as they faded, its arc sweeping over the tiles; Sami's
     /// step-5 check, 2026-10-02).
     @State private var ringOut = false
+    /// The results are in: they come once the counter under them (its ring, count and buttons) has gone — out, then in
+    /// (owner, 2026-10-02: "from ring to completion page" — the "11" ring showed through the cards as they faded in).
+    @State private var resultsIn = false
     /// That close's steps: the cards go (CircleMomentTiming.out, eased out: eased in, its last faint frame dropped to
     /// nothing at once), the ring waits for them to be gone (`outDone`), the arc lands (SoftSessionEntry.arcMove), the
     /// page goes (0.25), then the ring fades over the wheel's (0.15) — only once the page has gone, so the wheel's ring
@@ -548,9 +551,8 @@ struct tasbeehView: View {
             // One piece: faded leaf by leaf, the results' dim was half on while the page was half in
             // (a brief brighter frame on a sleep finish).
             .compositingGroup()
-            .opacity(savedSession == nil ? 0 : 1)
+            .opacity(resultsIn ? 1 : 0)
             .disabled(savedSession == nil)
-            .animation(.easeOut(duration: 0.25), value: savedSession != nil)
             .modifier(SessionAppear(shown: !leaving, style: openingStyle))   // a soft close from the results
 
             // After a while it goes black — he's most likely asleep and not looking (owner): OLED pixels
@@ -583,6 +585,25 @@ struct tasbeehView: View {
         .allowsHitTesting(!leaving)   // no stray count while it goes
         // The host reads the close's length as it asks for it (before the leave below runs): kept current here, so the
         // cover isn't removed mid-fade (it cut the wheel's label in at once — Sami's step-5 strip).
+        // Out, then in (circle rule 3): the counter goes, then the results come; Keep counting, the other way round.
+        .onChange(of: savedSession != nil) { _, results in
+            if results {
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = true; countIn = false; chromeIn = false }
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
+                    guard savedSession != nil else { return }
+                    withAnimation(.easeOut(duration: 0.25)) { resultsIn = true }
+                }
+            } else if resultsIn {
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { resultsIn = false }
+                guard !leaving else { return }   // a close: the leave below runs the rest
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
+                    guard savedSession == nil, !leaving else { return }
+                    withAnimation(.easeOut(duration: CircleMomentTiming.in)) { ringOut = false; countIn = true; chromeIn = true }
+                }
+            }
+        }
         .onChange(of: paused || savedSession != nil) { _, onCards in
             guard SoftSessionEntry.coverIsSoft, openingStyle != .fade else { return }
             SoftSessionEntry.leaveDelay = onCards ? Self.softLeaveFromCards : Self.softLeaveFromCounter
@@ -649,6 +670,15 @@ struct tasbeehView: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 simulateTasbeehClicks(times: 45)
             }
+            #if DEBUG
+            // `-demoAutoCount N`: N counts a beat after any session opens (however it was opened — the wheel's
+            // rings included), to reach a goal on the simulator.
+            let auto = UserDefaults.standard.integer(forKey: "demoAutoCount")
+            if auto > 0 {
+                try? await Task.sleep(for: .seconds(1.5))
+                simulateTasbeehClicks(times: auto)
+            }
+            #endif
             // `-demoTasbeehCount N [-demoTasbeehTaps M]`: jump to N, then M more taps (watch comparison shots).
             if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
                 try? await Task.sleep(for: .seconds(1))
@@ -1014,7 +1044,8 @@ struct tasbeehView: View {
         // Reset all state variables to clean up the session
         endTime = nil
         startTime = nil
-        progressFraction = 0
+        // The ring stays where it stood: it goes out under the results as they come (emptied here, its arc wound back
+        // as it faded — owner's "from ring to completion page"); a soft close lands it from here (`ringAtStop`).
         sharedState.targetCount = ""
         noteModalText = ""
         

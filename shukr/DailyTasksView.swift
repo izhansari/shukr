@@ -167,6 +167,10 @@ struct ZikrCircleWheel: View {
     @State private var scrubbing = false
     /// The task a session was started from here, so coming back can move past it once it's done.
     @State private var sessionTaskID: UUID?
+    /// The task a session just finished stays on the wheel until the session's ring has landed on it (full), then the wheel
+    /// moves on and it leaves (owner, 2026-10-02: "from completion page back" — it left at once, and the full ring landed
+    /// on the next task's).
+    @State private var heldTaskID: UUID?
     /// Under the soft look, a session opens out of the tapped ring (SoftSessionEntry): everything but that ring
     /// fades while it does, and back in as the session closes.
     @State private var openingSoft = false
@@ -207,7 +211,7 @@ struct ZikrCircleWheel: View {
     /// any tasks that are finished"); the summary under the wheel opens the Tasks sheet with all of
     /// them. Coming back from a session centres the next one still to do (`landAfterSession`).
     private var items: [Item] {
-        [.freestyle] + tasks.filter { !isDone($0) }.map { .task($0) } + [.add]
+        [.freestyle] + tasks.filter { !isDone($0) || $0.id == heldTaskID }.map { .task($0) } + [.add]
     }
     /// The summary's tap: Your tasks, the whole list, finished ones included (a page).
     @State private var showTasksPage = false
@@ -406,7 +410,7 @@ struct ZikrCircleWheel: View {
         .onChange(of: showTasbeehPage) { _, showing in
             if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
             if !showing { arcBack() }
-            guard !showing, let finished = sessionTaskID else { return }
+            guard !showing, let finished = sessionTaskID else { if !showing { heldTaskID = nil }; return }
             sessionTaskID = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { landAfterSession(finished) }
         }
@@ -561,8 +565,13 @@ struct ZikrCircleWheel: View {
 
     /// Back from a session of `finished`: once it's done, centre what comes next.
     private func landAfterSession(_ finished: UUID) {
-        guard let task = tasks.first(where: { $0.id == finished }), isDone(task) else { return }
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = nextFocus(after: task) }
+        guard let task = tasks.first(where: { $0.id == finished }), isDone(task) else { heldTaskID = nil; return }
+        // The ring has landed on it (held till now): it leaves and the wheel moves on, in one move — dropped after the
+        // wheel had moved, the scroll kept its offset and the item after the next one came to the middle.
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+            heldTaskID = nil
+            centered = nextFocus(after: task)
+        }
     }
 
     /// The next task to do after `task` in the user's order (wrapping), or freestyle when all are done.
@@ -575,6 +584,7 @@ struct ZikrCircleWheel: View {
     /// `resume`: begin with today's progress on the ring (only new counts are saved).
     private func start(_ task: TaskModel, resume: Bool = false) {
         sessionTaskID = task.id
+        heldTaskID = task.id
         sharedState.selectedTask = task   // its didSet loads the mode / goal / mantra
         let p = progress(task)
         sharedState.resumeCount = resume && task.isCountMode ? p.count : 0
