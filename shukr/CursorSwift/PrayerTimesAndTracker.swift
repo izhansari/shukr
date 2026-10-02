@@ -1499,8 +1499,8 @@ struct PrayerTimesView: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
         @AppStorage(SalahLook.softRingKey) private var softRing = false
-        /// The Salah look prototype tints the bar with the page (only on Salah).
-        private var softSalah: Bool { SalahLook.tinted(lookRaw, softRing: softRing) && sharedState.horizontalPage == .main }
+        /// The Salah look prototype tints the bar with the page (Salah and Zikr).
+        private var softSalah: Bool { SalahLook.tinted(lookRaw, softRing: softRing) && sharedState.horizontalPage != .settings }
 
         var body: some View {
             VStack(spacing: 0){
@@ -2281,7 +2281,11 @@ struct PagerBackdrop: View {
         GeometryReader { geo in
             let width = geo.size.width
             HStack(spacing: 0) {
-                Color(.systemBackground).frame(width: width)
+                // Zikr and Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
+                Group {
+                    if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+                }
+                .frame(width: width)
                 // Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
                 Group {
                     if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }

@@ -673,11 +673,21 @@ struct ZikrCircleFace: View {
     var mantraLine: String? = nil
     /// A third, quieter line: roughly how long what's left takes ("~4 min").
     var note: String? = nil
+    /// The Salah look prototype (SalahLook.swift): any soft look gives the wheel the tasbeeh ring — the soft
+    /// band and a 6 pt round arc with a glow (owner, 2026-10-01: "make the zikr tab also use the neumorphic
+    /// style. and the task rings too").
+    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRing) }
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(Color(.secondarySystemFill), lineWidth: 12)
+            if soft {
+                if case .dashed = ring {} else { NeuRingTrack() }
+            } else {
+                Circle()
+                    .stroke(Color(.secondarySystemFill), lineWidth: 12)
+            }
             switch ring {
             case .full:
                 glow(Circle())
@@ -732,12 +742,19 @@ struct ZikrCircleFace: View {
         .frame(width: 200, height: 200)
     }
 
-    private func glow<S: Shape>(_ shape: S) -> some View {
-        shape
-            .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-            .shadow(color: Color.green.opacity(0.5), radius: 5)
-            .shadow(color: Color.green.opacity(0.3), radius: 10)
-            .shadow(color: Color.green.opacity(0.2), radius: 15)
+    @ViewBuilder private func glow<S: Shape>(_ shape: S) -> some View {
+        if soft {
+            // The tasbeeh arc (NeuCircularProgressView, "fine"): as wide as the band, round ends, a soft glow.
+            shape
+                .stroke(Color.green, style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
+                .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 6)
+        } else {
+            shape
+                .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .shadow(color: Color.green.opacity(0.5), radius: 5)
+                .shadow(color: Color.green.opacity(0.3), radius: 10)
+                .shadow(color: Color.green.opacity(0.2), radius: 15)
+        }
     }
 }
 
