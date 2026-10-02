@@ -1173,6 +1173,9 @@ struct PrayerTimesView: View {
                         showTasbeehPage: $showTasbeehPage
                     )
                     .opacity(1 - Double(live.pull / 90))
+                    // The opening on the Salah circle (circle step 4): the list waits, then fades in as the ring lands.
+                    .opacity(CircleStage.shared.openingHidesPage ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.openingHidesPage)
                     // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
                     // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
                     // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
@@ -1428,6 +1431,9 @@ struct PrayerTimesView: View {
             .visualEffect { [settingsness] content, proxy in
                 content.offset(x: -settingsness * proxy.size.width)
             }
+            // The opening on the Salah circle (circle step 4): the chrome waits, then fades in as the ring lands.
+            .opacity(CircleStage.shared.openingHidesPage ? 0 : 1)
+            .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.openingHidesPage)
         }
     }
 

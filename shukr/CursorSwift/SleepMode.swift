@@ -408,7 +408,9 @@ struct MorningCurtain: View {
                 withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
                 return
             }
-            pageIn = true   // under the welcome: its ring lands on the circle, then the words come in
+            // Under the welcome: its ring lands on the circle, then the words come in. The page eases in (it goes up a
+            // beat after the welcome starts, over the page or a fading black: at once, it was a step).
+            withAnimation(.easeOut(duration: 0.3)) { pageIn = true }
         }
         .task {
             guard !shown else { return }

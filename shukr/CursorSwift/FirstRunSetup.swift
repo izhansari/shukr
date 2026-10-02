@@ -637,6 +637,7 @@ struct LostLocationView: View {
         // After a comeback the Salah page's own circle reports itself (the hand-off lands on it).
         guard comeback == nil, let g = groupFrame else { return }
         WelcomeTarget.circleFrame = CGRect(x: g.midX - 100, y: g.maxY - 200 + lift, width: 200, height: 200)
+        WelcomeTarget.landsOnSalah = false   // the welcome lands on this page's own ring (its overlay draws it)
     }
 
     private func intro() async {

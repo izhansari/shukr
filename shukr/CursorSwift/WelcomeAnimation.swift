@@ -36,6 +36,9 @@ enum WelcomeTarget {
     static var playing = false
     /// The ring has landed and the page is fading in round it (the morning card's words start here).
     static var landed = false
+    /// `circleFrame` is the Salah circle's (MainCircleView wrote it last), not the lost page's: only then can the circle
+    /// play the opening itself (circle step 4).
+    static var landsOnSalah = false
 }
 
 struct WelcomeGate: ViewModifier {
@@ -128,104 +131,90 @@ struct WelcomeRing: Shape {
 /// The welcome itself: letters fade up out of a blur one after another while a thin sage ring
 /// draws round them, a light sweeps the word, it holds — then the ring thickens into the Salah
 /// circle's track and dissolves onto it as the rest lifts away.
-struct WelcomeOverlay: View {
-    /// Handed off from a ring already on screen in the same place (the first-run setup's ring,
-    /// OnboardingMockups): the ring is there from the first frame, only the letters write in.
-    var startDrawn = false
-    /// Opening from the sleep curtain: starts black and fades to the page colour as the word writes in.
-    var fromBlack = false
-    let onFinish: () -> Void
-    @State private var blackOn = true
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var lettersIn = false
-    @State private var ringDrawn = false
-    @State private var shine = false
-    @State private var grow = false      // the small ring grows into the circle
-    @State private var morph = false     // then the page fades in around it
-    /// Opening onto a page with no Salah circle (Daily Ayah, 99 Names, the map from a widget): the
-    /// ring opens out past the edges like a doorway instead of landing on a circle.
-    @State private var portal = false
-    @State private var target: CGPoint? = WelcomeOverlay.handoffTarget
+/// The welcome's ring and word, as they stand (circle step 4): one object the welcome's `play()` moves, drawn either by
+/// the welcome's overlay (a landing elsewhere — the portal — or the first-run setup's hand-off) or, on a Salah landing,
+/// by the Salah circle itself (`CircleStage.opening`), so the ring that grows into the track *is* the circle's.
+@MainActor @Observable final class WelcomeMarkState {
+    var lettersIn = false
+    var ringDrawn = false
+    var shine = false
+    /// The small ring grows into the circle.
+    var grow = false
+    /// Opening onto a page with no Salah circle: the ring opens out past the edges like a doorway.
+    var portal = false
     /// Landing on a dashed track (a prayer that hasn't started): grow to it and become the dashes.
-    @State private var dashedTarget = false
-    /// Over a dashed track, once the grown ring is there: it breaks into the dashes in place. (The
-    /// dashes used to appear at full size the moment the ring began to grow, while the ring itself
-    /// faded inside them — it never reached the circle's edge; owner, 6F3BCE52.)
-    @State private var dashesIn = false
-    /// The Salah look prototype (SalahLook.swift): over a soft page the welcome fades in from that surface and
-    /// lands as the soft ring's raised band, the same as what's under it.
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    var dashedTarget = false
+    /// Over a dashed track, once the grown ring is there: it breaks into the dashes in place (owner, 6F3BCE52).
+    var dashesIn = false
+    /// Handed off from a ring already on screen (the setup's): drawn from the first frame.
+    var startDrawn = false
+    /// The Salah circle draws the mark and the page waits round it; the overlay draws only the black (fromBlack).
+    var inCircle = false
+    /// The ring is the circle's track now: the circle's own track and words come back, the page fades in.
+    var landed = false
+}
+
+/// The ring and the word (`WelcomeMarkState`), centred where it's drawn.
+struct WelcomeMark: View {
+    let state: WelcomeMarkState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.circleTheme) private var theme
 
     private let word = Array("shukr")
     /// The Salah page's circle: 200 pt with a 12 pt track centred on it (mainCircle.swift).
-    private let ringSize: CGFloat = 200
+    static let ringSize: CGFloat = 200
     /// The ring's size round the word, before it grows.
-    private let startSize: CGFloat = 150
+    static let startSize: CGFloat = 150
     /// Past every corner of the screen.
     private var portalSize: CGFloat { max(UIScreen.main.bounds.height, UIScreen.main.bounds.width) * 1.4 }
 
     var body: some View {
-        // No GeometryReader here: one in this overlay left the whole app laid out off screen
-        // (blank page) after the welcome — so the overlay fills the screen and the ring is
-        // offset from the screen's centre to the circle's (global) centre.
-        let screen = UIScreen.main.bounds
-        let shift = target.map { CGSize(width: $0.x - screen.midX, height: $0.y - screen.midY) } ?? .zero
         // Under the soft ring the band is there for a prayer still to come too, the dashes drawn in it (owner,
         // 2026-10-02), so the ring grows into the band either way.
-        let softBand = softRing
-        let toDashes = dashedTarget && !softBand
+        let softBand = theme.softRing
+        let toDashes = state.dashedTarget && !softBand
+        let grow = state.grow, portal = state.portal
+        let size = portal ? portalSize : (grow ? Self.ringSize : Self.startSize)
         ZStack {
-            if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
-            ZStack {
-                // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft
-                // ring: its width, surface and lift).
-                WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
-                    .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity)
-                                               : (softBand ? Neu.surface : Color(.secondarySystemFill)))
-                               : Color.sage.opacity(0.6))
-                    .shadow(color: softBand && grow ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
-                    .shadow(color: softBand && grow ? Neu.light : .clear, radius: 6, x: -2, y: -2)
-                    .mask {
-                        Circle()
-                            .trim(from: 0, to: ringDrawn || reduceMotion || startDrawn ? 1 : 0)
-                            .stroke(style: StrokeStyle(lineWidth: 16, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                    }
-                    .shadow(color: Color.sage.opacity((ringDrawn || startDrawn) && !grow ? 0.45 : 0), radius: 8)
-                    // Starts snug round the word, grows to the circle (frame, not scale, so the
-                    // line keeps its own width).
-                    .frame(width: portal ? portalSize : (grow ? ringSize : startSize),
-                           height: portal ? portalSize : (grow ? ringSize : startSize))
-                    .opacity(reduceMotion || portal || (dashesIn && !softBand) ? 0 : 1)
-                // The dashed track, when that's what the circle is showing: in once the ring is there.
-                Circle()
-                    .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
-                    .frame(width: ringSize, height: ringSize)
-                    .opacity(dashesIn && !portal ? 1 : 0)
-                wordmark
-                    .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
-                    .blur(radius: grow || portal ? 4 : 0)
-                    .opacity(grow || portal ? 0 : 1)
-            }
-            .offset(shift)
-            Color.black.opacity(fromBlack && blackOn ? 1 : 0).allowsHitTesting(false)
+            // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft ring: its
+            // width, surface and lift).
+            WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
+                .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity)
+                                       : (softBand ? Neu.surface : Color(.secondarySystemFill)))
+                           : Color.sage.opacity(0.6))
+                .shadow(color: softBand && grow ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
+                .shadow(color: softBand && grow ? Neu.light : .clear, radius: 6, x: -2, y: -2)
+                .mask {
+                    Circle()
+                        .trim(from: 0, to: state.ringDrawn || reduceMotion || state.startDrawn ? 1 : 0)
+                        .stroke(style: StrokeStyle(lineWidth: 16, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .shadow(color: Color.sage.opacity((state.ringDrawn || state.startDrawn) && !grow ? 0.45 : 0), radius: 8)
+                // Starts snug round the word, grows to the circle (frame, not scale, so the line keeps its own width).
+                .frame(width: size, height: size)
+                .opacity(reduceMotion || portal || (state.dashesIn && !softBand) ? 0 : 1)
+            // The dashed track, when that's what the circle is showing: in once the ring is there.
+            Circle()
+                .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)
+                .frame(width: Self.ringSize, height: Self.ringSize)
+                .opacity(state.dashesIn && !portal ? 1 : 0)
+            wordmark
+                .scaleEffect(grow ? 0.9 : (portal ? 1.15 : 1))
+                .blur(radius: grow || portal ? 4 : 0)
+                .opacity(grow || portal ? 0 : 1)
         }
-        .ignoresSafeArea()
-        .opacity(morph ? 0 : 1)
-        .allowsHitTesting(!morph)
-        .task { await play() }
+        .allowsHitTesting(false)
     }
 
     private var wordmark: some View {
         HStack(spacing: 0) {
             ForEach(self.word.indices, id: \.self) { i in
                 Text(String(self.word[i]))
-                    .opacity(lettersIn ? 1 : 0)
-                    .blur(radius: lettersIn || reduceMotion ? 0 : 6)
-                    .offset(y: lettersIn || reduceMotion ? 0 : 8)
-                    .animation(.easeOut(duration: 0.5).delay(0.08 * Double(i)), value: lettersIn)
+                    .opacity(state.lettersIn ? 1 : 0)
+                    .blur(radius: state.lettersIn || reduceMotion ? 0 : 6)
+                    .offset(y: state.lettersIn || reduceMotion ? 0 : 8)
+                    .animation(.easeOut(duration: 0.5).delay(0.08 * Double(i)), value: state.lettersIn)
             }
         }
         .font(.system(size: 44, weight: .thin, design: .rounded))
@@ -236,7 +225,7 @@ struct WelcomeOverlay: View {
                 LinearGradient(colors: [.clear, Color.sage.opacity(0.9), .clear],
                                startPoint: .leading, endPoint: .trailing)
                     .frame(width: geo.size.width * 0.5)
-                    .offset(x: shine ? geo.size.width * 1.1 : -geo.size.width * 0.6)
+                    .offset(x: state.shine ? geo.size.width * 1.1 : -geo.size.width * 0.6)
             }
             .mask {
                 HStack(spacing: 0) {
@@ -246,6 +235,47 @@ struct WelcomeOverlay: View {
             }
             .opacity(reduceMotion ? 0 : 1)
         }
+    }
+}
+
+struct WelcomeOverlay: View {
+    /// Handed off from a ring already on screen in the same place (the first-run setup's ring,
+    /// OnboardingMockups): the ring is there from the first frame, only the letters write in.
+    var startDrawn = false
+    /// Opening from the sleep curtain: starts black and fades to the page colour as the word writes in.
+    var fromBlack = false
+    let onFinish: () -> Void
+    @State private var blackOn = true
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.circleTheme) private var theme
+    /// The ring and the word; the Salah circle draws them on a Salah landing (`mark.inCircle`).
+    @State private var mark = WelcomeMarkState()
+    @State private var morph = false     // then the page fades in around it
+    @State private var target: CGPoint? = WelcomeOverlay.handoffTarget
+
+    var body: some View {
+        // No GeometryReader here: one in this overlay left the whole app laid out off screen
+        // (blank page) after the welcome — so the overlay fills the screen and the ring is
+        // offset from the screen's centre to the circle's (global) centre.
+        let screen = UIScreen.main.bounds
+        let shift = target.map { CGSize(width: $0.x - screen.midX, height: $0.y - screen.midY) } ?? .zero
+        ZStack {
+            // The page, until the Salah circle takes the opening over (then the real page is there, waiting round it).
+            if !mark.inCircle {
+                if theme.soft { NeuSurface() } else { Color(.systemBackground) }
+                WelcomeMark(state: mark)
+                    .offset(shift)
+            } else {
+                Color.clear.contentShape(Rectangle())   // nothing under it takes a tap meanwhile
+            }
+            Color.black.opacity(fromBlack && blackOn ? 1 : 0).allowsHitTesting(false)
+        }
+        .ignoresSafeArea()
+        .opacity(morph ? 0 : 1)
+        .allowsHitTesting(!morph)
+        .task { await play() }
+        .onDisappear { if CircleStage.shared.opening === mark { CircleStage.shared.opening = nil } }
     }
 
     /// Where a hand-off ring already sits: the Salah circle's centre (so the first frame isn't at
@@ -275,27 +305,44 @@ struct WelcomeOverlay: View {
             try? await Task.sleep(for: .milliseconds(50))
         }
         target = circleCentre()
-        if startDrawn { ringDrawn = true }
+        mark.startDrawn = startDrawn
+        // On the Salah circle (circle step 4): the circle draws the ring and the word, and the page waits round it —
+        // one ring, nothing lined up by measured frames. The setup's hand-off (a ring already on screen) and landings
+        // elsewhere keep this overlay.
+        if target != nil, !startDrawn, WelcomeTarget.landsOnSalah {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) {
+                mark.inCircle = true
+                CircleStage.shared.opening = mark
+            }
+        }
         WelcomeTarget.landed = false
         if fromBlack { withAnimation(.easeInOut(duration: 0.7)) { blackOn = false } }
-        lettersIn = true
-        withAnimation(.easeInOut(duration: 0.9).delay(0.1)) { ringDrawn = true }
+        mark.lettersIn = true
+        withAnimation(.easeInOut(duration: 0.9).delay(0.1)) { mark.ringDrawn = true }
 
         try? await Task.sleep(for: .milliseconds(560))
         soft.impactOccurred(intensity: 0.55)          // lub…
-        withAnimation(.easeInOut(duration: 0.6)) { shine = true }
+        withAnimation(.easeInOut(duration: 0.6)) { mark.shine = true }
         try? await Task.sleep(for: .milliseconds(170))
         soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
 
         try? await Task.sleep(for: .milliseconds(500))
-        if let c = circleCentre(), c != target {
+        if !mark.inCircle, let c = circleCentre(), c != target {
             withAnimation(.easeInOut(duration: 0.5)) { target = c }
         }
         try? await Task.sleep(for: .milliseconds(450))
         if !WelcomeTarget.canLand {
+            if mark.inCircle {
+                // Something came over the circle meanwhile (a widget's page): the circle is as it is under it.
+                land()
+                onFinish()
+                return
+            }
             // Nothing to land on: the ring opens out like a doorway (thin, fading) and the word
             // and page go with it, onto whatever page was opened.
-            withAnimation(.easeIn(duration: 0.7)) { portal = true; grow = false }
+            withAnimation(.easeIn(duration: 0.7)) { mark.portal = true; mark.grow = false }
             withAnimation(.easeInOut(duration: 0.6).delay(0.15)) { morph = true }
             try? await Task.sleep(for: .milliseconds(760))
             onFinish()
@@ -304,22 +351,35 @@ struct WelcomeOverlay: View {
         // Become the circle: the word lets go and the ring grows out to the Salah circle,
         // thickening into its gray track — or, over a prayer that hasn't started, turning into its
         // dashed ring…
-        dashedTarget = WelcomeTarget.trackDashed
-        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { grow = true }
-        if dashedTarget {
+        mark.dashedTarget = WelcomeTarget.trackDashed
+        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { mark.grow = true }
+        if mark.dashedTarget {
             // The thin ring reaches the circle's edge first, then becomes its dashes.
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 560))
-            withAnimation(.easeInOut(duration: 0.3)) { dashesIn = true }
+            withAnimation(.easeInOut(duration: 0.3)) { mark.dashesIn = true }
             try? await Task.sleep(for: .milliseconds(320))
         } else {
             try? await Task.sleep(for: .milliseconds(650))
         }
         // …and once it's there, the page fades in around it. The welcome's ring and the real track
         // are the same shape in the same place, so only the page appears.
+        if mark.inCircle {
+            land()
+            try? await Task.sleep(for: .milliseconds(470))
+            onFinish()
+            return
+        }
         WelcomeTarget.landed = true
         withAnimation(.easeInOut(duration: 0.45)) { morph = true }
         try? await Task.sleep(for: .milliseconds(470))
         onFinish()
+    }
+
+    /// The opening on the Salah circle has landed: the circle's own track and words come back, the page fades in round
+    /// it (each on its own animation, in MainCircleView and the chrome).
+    private func land() {
+        WelcomeTarget.landed = true
+        mark.landed = true
     }
 }
 

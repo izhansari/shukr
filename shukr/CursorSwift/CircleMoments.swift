@@ -28,6 +28,14 @@ enum CircleFace: Equatable {
     static let shared = CircleStage()
     /// The morning after a sleep finish, while its card is up.
     var morning: SessionDataModel?
+    /// The opening (the welcome) on a Salah landing (step 4): the circle draws its ring and word, its own track and words
+    /// wait until it lands, and the page round it (the chrome, the list) waits too. Set and cleared by the welcome.
+    var opening: WelcomeMarkState?
+    /// The page round the circle waits for the opening to land.
+    var openingHidesPage: Bool {
+        guard let opening, opening.inCircle else { return false }
+        return !opening.landed
+    }
 }
 
 /// The moments the circle plays.

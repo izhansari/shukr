@@ -65,6 +65,11 @@ struct MainCircleView: View {
         guard let p = viewModel.relevantPrayer, !(p.status() == .upcoming && p.name == "Fajr") else { return .summary }
         return .prayer(p)
     }
+    /// The opening is playing on this circle and hasn't landed: its own track and words wait.
+    private var openingHides: Bool {
+        guard let opening = CircleStage.shared.opening, opening.inCircle else { return false }
+        return !opening.landed
+    }
     /// The morning card's session, while the circle shows it.
     private var morningShown: SessionDataModel? {
         if case .morning(let session) = displayedFace ?? derivedFace { return session }
@@ -108,12 +113,15 @@ struct MainCircleView: View {
             // score (SalahLook.swift).
             if softRing && sharedState.bottomTabPosition != .zikr {
                 NeuRingTrack()
+                    .opacity(openingHides ? 0 : 1)
             }
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
             CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
+                .opacity(openingHides ? 0 : 1)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     WelcomeTarget.circleFrame = $0
+                    WelcomeTarget.landsOnSalah = true
                     WelcomeTarget.salahCircleFrame = $0   // only this circle writes it (the lost page lands on it)
                 }
             
@@ -293,13 +301,21 @@ struct MainCircleView: View {
             }
             // Between two faces (the summary ↔ a prayer, one prayer → the next) the words go out, then the new ones come
             // in (a swap moment) — they crossfaded through each other.
-            .modifier(CircleWordsAway(away: faceAway))
+            .modifier(CircleWordsAway(away: faceAway || openingHides))
             // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
             // blinks), back in as it fades.
             .opacity(contentHidden ? 0 : 1)
             .blur(radius: contentHidden ? 4 : 0)
             .animation(contentHidden ? .easeOut(duration: 0.25) : (softRing ? .easeOut(duration: 0.4) : .easeInOut(duration: 0.45)),
                        value: contentHidden)
+
+            // The opening on a Salah landing (step 4): the welcome's ring and word, drawn here — it grows into this
+            // track, then fades as the track and words come back (one ring).
+            if let opening = CircleStage.shared.opening, opening.inCircle {
+                WelcomeMark(state: opening)
+                    .opacity(opening.landed ? 0 : 1)
+                    .animation(.easeOut(duration: 0.25), value: opening.landed)
+            }
 
             if let flourish {
                 CompletionFlourish(event: flourish)
@@ -331,7 +347,7 @@ struct MainCircleView: View {
             
             
 
-            if sharedState.bottomTabPosition != .zikr && morningShown == nil {
+            if sharedState.bottomTabPosition != .zikr && morningShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: { showQiblaMap = true })
