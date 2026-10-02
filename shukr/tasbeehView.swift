@@ -559,9 +559,13 @@ struct tasbeehView: View {
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
             if openingStyle == .fade {
                 withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+            } else if paused || savedSession != nil {
+                // From the pause screen or the results: all of it in one step straight onto the wheel (in steps, the
+                // counter's page showed through as a second layer between them).
+                withAnimation(.easeInOut(duration: 0.4)) { leaving = true; countIn = false; chromeIn = false; pageIn = false }
             } else {
-                // Backwards: the count, the buttons and whatever's up (results, pause screen) go the opening's way,
-                // then the page and ring, so the wheel's ring and label come back in their place.
+                // From the counter: backwards — the count and the buttons go the opening's way, then the page and
+                // ring, so the wheel's ring and label come back in their place.
                 withAnimation(.easeIn(duration: 0.25)) { leaving = true; countIn = false; chromeIn = false }
                 withAnimation(.easeInOut(duration: 0.35).delay(0.18)) { pageIn = false }
             }
@@ -940,6 +944,17 @@ struct tasbeehView: View {
         // Stop and invalidate the timer
         timerbb?.invalidate()
         timerbb = nil
+
+        // Nothing counted, opened out of a Zikr ring (soft close, the app on screen): close while the pause screen is
+        // still exactly as seen, and reset the rest once it's gone — reset first, the ring emptied, the pause screen
+        // went and the counter showed through mid-fade (owner's recording, 2026-10-02).
+        if sessionCount <= 0 && SoftSessionEntry.coverIsSoft && UIApplication.shared.applicationState == .active {
+            inactivityTimerHandler(run: "stop")
+            if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff { triggerSomeVibration(type: .vibrate) }
+            SoftSessionEntry.afterClose { finishStopReset() }
+            isPresented = false
+            return
+        }
         
         // Reset all state variables to clean up the session
         endTime = nil
@@ -968,6 +983,23 @@ struct tasbeehView: View {
 //            sharedState.showingOtherPages = false
             resetSharedState()
         }
+    }
+
+    /// completeStopTimer's resets, after a soft close with nothing counted (the cover is gone by then).
+    private func finishStopReset() {
+        endTime = nil
+        startTime = nil
+        progressFraction = 0
+        sharedState.targetCount = ""
+        noteModalText = ""
+        stoppedDueToInactivity = false
+        endedAsleep = false
+        toggleInactivityTimer = false
+        paused = false
+        sleepResumeReady = sleepResume != nil
+        goalFinishArmed = false
+        resumeWanted = false
+        resetSharedState()
     }
     
     /// The running session as a draft (audit A7): written on pause, on going inactive / background and every few
@@ -1253,9 +1285,13 @@ struct tasbeehView: View {
 
                     Button {
                         triggerSomeVibration(type: .success)
+                        // Cleared once the session has gone: under a soft close the results are still fading (their
+                        // title would read "Untitled" mid-fade).
+                        SoftSessionEntry.afterClose {
+                            sharedState.titleForSession = ""
+                            sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
+                        }
                         isPresented = false
-                        sharedState.titleForSession = ""
-                        sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
                     } label: {
                         Text("Done")
                             .fontWeight(.semibold)

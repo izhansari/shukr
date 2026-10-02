@@ -98,6 +98,16 @@ enum SoftSessionEntry {
     /// How long the session's leaving takes before the host may remove the cover (set by the session as it opens).
     static var leaveDelay: Double = 0.32
 
+    /// Run `work` once the session has gone: after its soft close (so a reset doesn't change what's still fading — the
+    /// pause card collapsed when its zikr was cleared mid-fade), else now. Call before setting `isPresented = false`.
+    static func afterClose(_ work: @escaping () -> Void) {
+        if coverIsSoft && UIApplication.shared.applicationState == .active {
+            DispatchQueue.main.asyncAfter(deadline: .now() + leaveDelay + 0.05, execute: work)
+        } else {
+            work()
+        }
+    }
+
     /// The soft look is on (the wheel's rings are the tasbeeh ring then).
     static var enabled: Bool {
         let d = UserDefaults.standard
