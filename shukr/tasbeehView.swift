@@ -22,21 +22,14 @@ struct tasbeehView: View {
     /// place and glides to its own while the page, the count and the buttons fade in; nil = the usual sheet.
     @State private var entryFrom: CGRect? = SoftSessionEntry.freshFrame
     @State private var entryOffset: CGSize = .zero
-    @State private var entryShown = SoftSessionEntry.freshFrame == nil
-    /// Closing softly: everything fades over the wheel before the cover goes.
+    /// The soft entry in steps (SessionOpening): the page and the ring, then the count (where the Zikr ring's label
+    /// was), then the buttons; all on at once for the usual sheet.
+    @State private var pageIn = SoftSessionEntry.freshFrame == nil
+    @State private var countIn = SoftSessionEntry.freshFrame == nil
+    @State private var chromeIn = SoftSessionEntry.freshFrame == nil
+    @State private var openingStyle: SessionOpening = .current
+    /// Closing softly: the same steps backwards over the wheel before the cover goes.
     @State private var leaving = false
-    /// The iris (SessionOpening.iris): the whole session seen through a circle round the ring's centre that widens
-    /// from nothing to past the screen's corners as it opens, and closes back into the ring as it leaves. The ring sits
-    /// exactly on the Zikr ring, so the circle passes through the same ring and only the page changes. The mask is on
-    /// only while it moves.
-    @State private var irisOn = false
-    @State private var irisRadius: CGFloat = 0
-    @State private var irisCentre: CGPoint = .zero
-    @State private var openedByIris = false
-    private var irisFull: CGFloat {
-        let b = UIScreen.main.bounds
-        return hypot(b.width, b.height)   // past every corner from anywhere on screen
-    }
     /// The Salah look prototype (SalahLook.swift): under the soft look the counter ring sits at the screen's true
     /// centre — where the Zikr wheel's and the Salah page's circles are — not the safe area's (≈14 pt lower: the
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
@@ -274,48 +267,24 @@ struct tasbeehView: View {
     /// The soft entry (SoftSessionEntry): once the counter ring is laid out, put it on the tapped Zikr ring, then
     /// let it glide home (Reduce Motion: in place) as the page, the count and the buttons fade in.
     private func placeEntry(at frame: CGRect) {
-        guard let from = entryFrom, !entryShown, frame.width > 0 else { return }
+        guard let from = entryFrom, !pageIn, frame.width > 0 else { return }
         entryFrom = nil
-        if SessionOpening.current == .iris && !reduceMotion {
-            // Everything on at once but seen through a circle of nothing at the ring's centre (no animation), then the
-            // circle widens past the corners.
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                irisCentre = CGPoint(x: frame.midX, y: frame.midY)
-                irisRadius = 0
-                irisOn = true
-                openedByIris = true
-                entryShown = true
-            }
-            SoftSessionEntry.leaveDelay = 0.55
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.6)) { irisRadius = irisFull }
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { irisOn = false }   // fully open: no mask
-            }
-            return
-        }
-        SoftSessionEntry.leaveDelay = 0.32
+        openingStyle = reduceMotion ? .fade : SessionOpening.current
+        SoftSessionEntry.leaveDelay = openingStyle == .fade ? 0.32 : 0.6
+        // Normally nothing to glide (both rings at the screen's true centre); a phone where they differ still lands.
         entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
         DispatchQueue.main.async {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { entryOffset = .zero }
-            withAnimation(.easeInOut(duration: 0.35)) { entryShown = true }
+            if openingStyle == .fade {
+                withAnimation(.easeInOut(duration: 0.35)) { pageIn = true; countIn = true; chromeIn = true }
+            } else {
+                // While the wheel's label and the other circles go (0.4 s): the page and ring come up behind, then
+                // the count where the label was, then the buttons.
+                withAnimation(.easeInOut(duration: 0.45).delay(0.15)) { pageIn = true }
+                withAnimation(.easeOut(duration: 0.45).delay(0.35)) { countIn = true }
+                withAnimation(.easeOut(duration: 0.45).delay(0.5)) { chromeIn = true }
+            }
         }
-    }
-
-    /// The iris's circle, in the session's own coordinates (its centre is a global point: the ring's).
-    private var irisMask: some View {
-        GeometryReader { geo in
-            let origin = geo.frame(in: .global).origin
-            Circle()
-                .frame(width: irisRadius * 2, height: irisRadius * 2)
-                .position(x: irisCentre.x - origin.x, y: irisCentre.y - origin.y)
-        }
-        .ignoresSafeArea()
     }
 
     var body: some View {
@@ -326,7 +295,7 @@ struct tasbeehView: View {
                 // the circle's inside (picker or count)
                 TasbeehCountView(tasbeeh: tasbeeh)
                     .offset(entryOffset)
-                    .opacity(entryShown ? 1 : 0)
+                    .modifier(SessionAppear(shown: countIn, style: openingStyle))
                 
                 GeometryReader { geometry in
                     VStack {
@@ -382,7 +351,7 @@ struct tasbeehView: View {
                     // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { placeEntry(at: $0) }
                     .offset(entryOffset)
-                    .opacity(entryShown ? 1 : 0)
+                    .opacity(pageIn ? 1 : 0)
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -410,6 +379,7 @@ struct tasbeehView: View {
                 )
             }
             .animation(.easeInOut, value: paused)
+            .modifier(SessionAppear(shown: !leaving, style: openingStyle))   // a soft close from the pause screen
             
             // Settings & Start/Stop
             VStack {
@@ -456,7 +426,7 @@ struct tasbeehView: View {
                 }
                 .animation(paused ? .easeOut : .easeIn, value: paused)
                 .padding()
-                .opacity(entryShown ? 1 : 0)
+                .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
                 
                 // Debug Updating Text In View
                 if(debug){
@@ -556,6 +526,7 @@ struct tasbeehView: View {
             .opacity(savedSession == nil ? 0 : 1)
             .disabled(savedSession == nil)
             .animation(.easeOut(duration: 0.25), value: savedSession != nil)
+            .modifier(SessionAppear(shown: !leaving, style: openingStyle))   // a soft close from the results
 
             // After a while it goes black — he's most likely asleep and not looking (owner): OLED pixels
             // off, and black is the curtain the next open's welcome starts from. A tap brings it back.
@@ -580,26 +551,19 @@ struct tasbeehView: View {
                 // Soft look: the picked palette's surface, the Zikr page's own (owner: "match the stone color pallete").
                 if softLook { NeuSurface() } else { Color.init("bgColor") } // Dynamic color for dark or light mode
             }
-                .opacity(entryShown ? 1 : 0)   // the soft entry fades the page in over the wheel
+                .opacity(pageIn ? 1 : 0)   // the soft entry brings the page in over the wheel
                 .edgesIgnoringSafeArea(.all)
         )
-        .mask {
-            // Off: a mask far larger than any screen, so nothing is ever clipped (Today's look included).
-            if irisOn { irisMask } else { Rectangle().frame(width: 6000, height: 6000) }
-        }
-        .opacity(leaving && !openedByIris ? 0 : 1)
+        .opacity(leaving && openingStyle == .fade ? 0 : 1)
         .allowsHitTesting(!leaving)   // no stray count while it goes
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            if openedByIris && !reduceMotion {
-                // Closes back into the ring: the circle narrows to nothing at its centre.
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { irisRadius = irisFull; irisOn = true; leaving = true }
-                DispatchQueue.main.async {
-                    withAnimation(.easeInOut(duration: 0.5)) { irisRadius = 0 }
-                }
-            } else {
+            if openingStyle == .fade {
                 withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+            } else {
+                // Backwards: the count, the buttons and whatever's up (results, pause screen) go the opening's way,
+                // then the page and ring, so the wheel's ring and label come back in their place.
+                withAnimation(.easeIn(duration: 0.25)) { leaving = true; countIn = false; chromeIn = false }
+                withAnimation(.easeInOut(duration: 0.35).delay(0.18)) { pageIn = false }
             }
         }
         
@@ -608,7 +572,9 @@ struct tasbeehView: View {
             if entryFrom != nil {
                 // Belt and braces: if the ring's place never came, show the session anyway.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    if !entryShown { withAnimation(.easeInOut(duration: 0.3)) { entryOffset = .zero; entryShown = true } }
+                    if !pageIn {
+                        withAnimation(.easeInOut(duration: 0.3)) { entryOffset = .zero; pageIn = true; countIn = true; chromeIn = true }
+                    }
                 }
             }
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")

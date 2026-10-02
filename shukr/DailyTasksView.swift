@@ -170,6 +170,7 @@ struct ZikrCircleWheel: View {
     /// Under the soft look, a session opens out of the tapped ring (SoftSessionEntry): everything but that ring
     /// fades while it does, and back in as the session closes.
     @State private var openingSoft = false
+    @State private var openingStyle: SessionOpening = .current
     /// Each circle's place on screen, kept outside state (written on every scroll frame; read only on a tap).
     @State private var circleFrames = CircleFrames()
     final class CircleFrames { var byID: [String: CGRect] = [:] }
@@ -319,15 +320,16 @@ struct ZikrCircleWheel: View {
         return GeometryReader { geo in
             ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 0) {
-                    let centreIndex = items.firstIndex { $0.id == centered } ?? 0
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                    ForEach(items) { item in
                         let away = openingSoft && item.id != centered
                         circle(for: item)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 circleFrames.byID[item.id] = frame
                             }
-                            .opacity(away ? 0 : 1)
-                            .blur(radius: away ? 6 : 0)
+                            // Opening a session out of the centred ring (SoftSessionEntry): the others go the opening's
+                            // way (sink / focus / fade); the centred one keeps its ring and lets its label go.
+                            .modifier(SessionAppear(shown: !away, style: openingStyle))
+                            .environment(\.zikrFaceContentAway, openingSoft && item.id == centered)
                             .frame(maxWidth: .infinity)
                             .frame(height: itemHeight)
                             .contentShape(Rectangle())
@@ -339,9 +341,6 @@ struct ZikrCircleWheel: View {
                             // 0.38×. Neighbours are pulled in so shrinking doesn't open gaps.
                             .modifier(WheelFalloff(itemHeight: itemHeight,
                                                    style: ZikrWheelStyle(rawValue: wheelStyleRaw) ?? .gentle))
-                            // Opening a session out of the centred ring: the others drift away from it (up above,
-                            // down below) as they fade, and back as it closes (SoftSessionEntry).
-                            .offset(y: away ? (index < centreIndex ? -56 : 56) : 0)
                     }
                 }
                 .scrollTargetLayout()
@@ -394,8 +393,9 @@ struct ZikrCircleWheel: View {
         // order, the first not done yet (wrapping), else freestyle (owner, 2026-09-28). The done
         // task stays where it is (2026-09-29).
         // Back in round the ring as the session closes (it fades first: SoftSessionEntry.leave), or when it's gone.
+        // Back after the session's page has begun to go: the ring's label and the other circles return.
         .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            withAnimation(.easeInOut(duration: 0.5)) { openingSoft = false }
+            withAnimation(.easeOut(duration: 0.45).delay(openingStyle == .fade ? 0 : 0.25)) { openingSoft = false }
         }
         .onChange(of: showTasbeehPage) { _, showing in
             if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
@@ -585,6 +585,7 @@ struct ZikrCircleWheel: View {
         }
         SoftSessionEntry.fromFrame = frame
         SoftSessionEntry.coverIsSoft = true
+        openingStyle = reduceMotion ? .fade : SessionOpening.current
         withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.4)) { openingSoft = true }
         var quiet = Transaction()
         quiet.disablesAnimations = true
@@ -721,6 +722,8 @@ struct ZikrCircleFace: View {
     @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = false
     private var soft: Bool { SalahLook.tinted(lookRaw, softRing: softRing) }
+    /// Opening into its session (the wheel, SoftSessionEntry): the label goes, the ring stays for the counter's.
+    @Environment(\.zikrFaceContentAway) private var contentAway
 
     var body: some View {
         ZStack {
@@ -780,6 +783,7 @@ struct ZikrCircleFace: View {
                 }
             }
             .fontDesign(.rounded)
+            .modifier(SessionAppear(shown: !contentAway))
         }
         .frame(width: 200, height: 200)
     }

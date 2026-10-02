@@ -106,18 +106,56 @@ enum SoftSessionEntry {
     }
 }
 
-/// How a session opens out of a Zikr ring (SoftSessionEntry), picked in the palette (owner, 2026-10-01: "too simple
-/// of a crossfade... something elegant but simple").
+/// How a session opens out of a Zikr ring (SoftSessionEntry), picked in the palette (owner, 2026-10-01, decision
+/// zikr-ring-transition: "go with E or D. but account for the content in the ring and that it transitions to the
+/// counter text properly"; the iris was "a looney tunes cartoon"). The ring itself never moves; its label goes and the
+/// counter's text comes in its place, then the buttons, a beat apart.
 enum SessionOpening: String, CaseIterable, Identifiable {
-    /// The session's page opens out from the ring's centre in a widening circle (and closes back into it); the wheel's
-    /// other circles drift away as they fade.
-    case iris
+    /// E: the other circles and the ring's label sink into the surface (a little smaller, a touch lower, gone); the
+    /// session's count and buttons rise out of it.
+    case sink
+    /// D: everything but the ring goes soft-focus as it fades; the session's count and buttons come into focus.
+    case focus
     /// Everything crossfades in place.
     case fade
     var id: String { rawValue }
-    var title: String { self == .iris ? "Iris" : "Crossfade" }
+    var title: String {
+        switch self {
+        case .sink: "Sink and rise"
+        case .focus: "Focus"
+        case .fade: "Crossfade"
+        }
+    }
     static let key = "salahLook.opening"
-    static var current: SessionOpening { SessionOpening(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .iris }
+    static var current: SessionOpening { SessionOpening(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .sink }
+}
+
+/// Something in or out the way the opening style moves it: sink = smaller, lower, faded (rising back); focus =
+/// blurred, faded; fade = faded.
+struct SessionAppear: ViewModifier {
+    let shown: Bool
+    var style: SessionOpening = .current
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .sink:
+            content
+                .opacity(shown ? 1 : 0)
+                .scaleEffect(shown ? 1 : 0.94)
+                .offset(y: shown ? 0 : 5)
+        case .focus:
+            content
+                .opacity(shown ? 1 : 0)
+                .blur(radius: shown ? 0 : 8)
+        case .fade:
+            content.opacity(shown ? 1 : 0)
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// The Zikr wheel's centred ring is opening into its session: its label goes (SessionAppear), the ring stays.
+    @Entry var zikrFaceContentAway: Bool = false
 }
 
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
@@ -402,7 +440,7 @@ struct SalahLookSwitcher: View {
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
     @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
     @AppStorage(SalahLook.linesKey) private var lines = true
-    @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.iris.rawValue
+    @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
 
     var body: some View {
         Menu {
