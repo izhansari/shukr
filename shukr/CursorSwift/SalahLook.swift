@@ -5,7 +5,7 @@
 //  Prototype (owner, 2026-10-01, decision prayer-list-look): soft (neumorphic) looks for the Salah page in
 //  the tasbeeh page's material, switched from the top right while he lives with them. Owner only
 //  (`WhatsNewAccess.available`); everyone else keeps `.today`. Any soft look tints the whole Salah page —
-//  backdrop, top and bottom bars — in `Neu.surface` (the tasbeeh ring's colour, with a dark-mode twin).
+//  backdrop, top and bottom bars — in the theme's surface (CircleTheme.swift).
 //
 
 import SwiftUI
@@ -39,10 +39,7 @@ enum SalahLook: String, CaseIterable, Identifiable {
     /// don't have those separator lines"); Today's look always keeps them.
     static let linesKey = "salahLook.lines"
 
-    /// The Salah page wears the soft material: any look but today's, or the soft ring alone.
-    static func tinted(_ raw: String, softRing: Bool) -> Bool {
-        (SalahLook(rawValue: raw) ?? .today) != .today || softRing
-    }
+    // Whether the page wears the soft material is the theme's `soft` (CircleTheme.swift).
 }
 
 #if DEBUG
@@ -267,11 +264,11 @@ struct SalahLookCard: ViewModifier {
 /// Top right on the Salah page while the owner tries the looks: the list look, the soft ring, the colours and
 /// how rows come and go.
 struct SalahLookSwitcher: View {
-    @AppStorage(SalahLook.key) private var lookRaw = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
+    @AppStorage(SalahLook.key) private var lookRaw = CircleTheme.standard.list.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
-    @AppStorage(SalahPalette.key) private var paletteRaw = SalahPalette.charcoal.rawValue
-    @AppStorage(SalahLook.linesKey) private var lines = true
+    @AppStorage(SalahPalette.key) private var paletteRaw = CircleTheme.standard.palette.rawValue
+    @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
 
     var body: some View {

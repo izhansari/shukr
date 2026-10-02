@@ -180,10 +180,10 @@ struct WelcomeMark: View {
             // width, surface and lift).
             WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
                 .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity)
-                                       : (softBand ? Neu.surface : Color(.secondarySystemFill)))
+                                       : (softBand ? theme.surface : Color(.secondarySystemFill)))
                            : Color.sage.opacity(0.6))
-                .shadow(color: softBand && grow ? Neu.dark : .clear, radius: 4, x: 2, y: 2)
-                .shadow(color: softBand && grow ? Neu.light : .clear, radius: 6, x: -2, y: -2)
+                .shadow(color: softBand && grow ? theme.shade : .clear, radius: 4, x: 2, y: 2)
+                .shadow(color: softBand && grow ? theme.light : .clear, radius: 6, x: -2, y: -2)
                 .mask {
                     Circle()
                         .trim(from: 0, to: state.ringDrawn || reduceMotion || state.startDrawn ? 1 : 0)

@@ -22,14 +22,18 @@ struct CircleTheme: Equatable {
 
     /// The look before the prototype.
     static let today = CircleTheme()
+    /// **The look everyone gets until they pick one** (the palette menu is the owner's; DEBUG builds seed Sunken well).
+    /// The one line that ships a look: `.today` now; a soft one only on Izhan's word (circle step 6).
+    static let standard: CircleTheme = .today
 
     /// The palette menu's stored picks (DEBUG launch arguments override them for a run).
     static var stored: CircleTheme {
         let d = UserDefaults.standard
-        return CircleTheme(list: SalahLook(rawValue: d.string(forKey: SalahLook.key) ?? "") ?? .today,
-                           softRing: d.bool(forKey: SalahLook.softRingKey),
-                           palette: SalahPalette(rawValue: d.string(forKey: SalahPalette.key) ?? "") ?? .charcoal,
-                           lines: d.object(forKey: SalahLook.linesKey) == nil ? true : d.bool(forKey: SalahLook.linesKey))
+        let s = standard
+        return CircleTheme(list: SalahLook(rawValue: d.string(forKey: SalahLook.key) ?? "") ?? s.list,
+                           softRing: d.object(forKey: SalahLook.softRingKey) == nil ? s.softRing : d.bool(forKey: SalahLook.softRingKey),
+                           palette: SalahPalette(rawValue: d.string(forKey: SalahPalette.key) ?? "") ?? s.palette,
+                           lines: d.object(forKey: SalahLook.linesKey) == nil ? s.lines : d.bool(forKey: SalahLook.linesKey))
     }
 
     // MARK: What views ask
@@ -72,15 +76,15 @@ extension EnvironmentValues {
 /// Sets the theme from the palette menu's picks and keeps it current as they change. On PrayerTimesView's root and on
 /// each cover's root (the environment isn't trusted to cross a presentation).
 struct CircleThemeRoot: ViewModifier {
-    @AppStorage(SalahLook.key) private var list = SalahLook.today.rawValue
-    @AppStorage(SalahLook.softRingKey) private var softRing = false
-    @AppStorage(SalahPalette.key) private var palette = SalahPalette.charcoal.rawValue
-    @AppStorage(SalahLook.linesKey) private var lines = true
+    @AppStorage(SalahLook.key) private var list = CircleTheme.standard.list.rawValue
+    @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
+    @AppStorage(SalahPalette.key) private var palette = CircleTheme.standard.palette.rawValue
+    @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
 
     func body(content: Content) -> some View {
-        content.environment(\.circleTheme, CircleTheme(list: SalahLook(rawValue: list) ?? .today,
+        content.environment(\.circleTheme, CircleTheme(list: SalahLook(rawValue: list) ?? CircleTheme.standard.list,
                                                        softRing: softRing,
-                                                       palette: SalahPalette(rawValue: palette) ?? .charcoal,
+                                                       palette: SalahPalette(rawValue: palette) ?? CircleTheme.standard.palette,
                                                        lines: lines))
     }
 }
@@ -111,7 +115,6 @@ enum SalahPalette: String, CaseIterable, Identifiable {
     }
 
     static let key = "salahLook.palette"
-    static var current: SalahPalette { CircleTheme.stored.palette }
 
     private static func dynamic(light: UIColor, dark: UIColor) -> Color {
         Color(UIColor { $0.userInterfaceStyle == .dark ? dark : light })
@@ -143,14 +146,6 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .tasbeeh: Color("NeuLightShad")
         }
     }
-}
-
-/// The stored palette's colours, for code outside a view (still used by the welcome and the lost page's rings until
-/// they read the theme — circle steps 3–4).
-enum Neu {
-    static var surface: Color { SalahPalette.current.surface }
-    static var dark: Color { SalahPalette.current.shade }
-    static var light: Color { SalahPalette.current.light }
 }
 
 /// Lifted off the page. Blur twice the offset, both shadows the same distance — the soft, even lift.
