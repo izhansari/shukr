@@ -1573,7 +1573,7 @@ struct PrayerTimesView: View {
 //                    .background(Color("bgColor"))
                 
             }
-            .background(softSalah ? Neu.surface : Color(UIColor.systemBackground))
+            .background { if softSalah { NeuSurface() } else { Color(UIColor.systemBackground) } }
         }
         
     }
@@ -2283,7 +2283,10 @@ struct PagerBackdrop: View {
             HStack(spacing: 0) {
                 Color(.systemBackground).frame(width: width)
                 // Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
-                (SalahLook.tinted(lookRaw, softRing: softRing) ? Neu.surface : Color(.systemBackground)).frame(width: width)
+                Group {
+                    if SalahLook.tinted(lookRaw, softRing: softRing) { NeuSurface() } else { Color(.systemBackground) }
+                }
+                .frame(width: width)
                 Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)
             }
             .frame(width: width * 3, alignment: .leading)
