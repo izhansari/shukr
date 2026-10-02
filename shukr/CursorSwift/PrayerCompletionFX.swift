@@ -127,6 +127,12 @@ struct CompletionFlourish: View {
                         .fontDesign(.rounded)
                         .fontWeight(.thin)
                         .foregroundStyle(color)
+                        // Inside the ring: "Jumu'ah at Islamic Center of Morrisville" ran out past both sides of it
+                        // (owner, 2026-10-02). Two centred lines at most, a touch smaller if it must.
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: 150)
                 }
                 .transition(.blurReplace)
             }

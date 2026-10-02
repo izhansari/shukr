@@ -2748,6 +2748,9 @@ struct ExternalToggleText: View {
     let fontDesign: Font.Design?
     let fontWeight: Font.Weight?
     let hapticFeedback: Bool
+    /// Fit the room it's given: one line, cut short with "…" (a prayer row's time column — a long Jumu'ah line pushed
+    /// the row wider than its card, owner 2026-10-02). Otherwise it takes its full width, as before.
+    let fits: Bool
     
 //        originalText: "ends \(shortTimePM(prayer.endTime))",
 //        toggledText: timeLeftString,
@@ -2767,8 +2770,10 @@ struct ExternalToggleText: View {
         font: Font? = nil,
         fontDesign: Font.Design? = .rounded,
         fontWeight: Font.Weight? = .thin,
-        hapticFeedback: Bool = true
+        hapticFeedback: Bool = true,
+        fits: Bool = false
     ) {
+        self.fits = fits
         self.originalText = originalText
         self.toggledText = toggledText
         self._externalTrigger = externalTrigger
@@ -2780,7 +2785,10 @@ struct ExternalToggleText: View {
     
     var body: some View {
         Text(showOriginal ? originalText : toggledText)
-            .fixedSize(horizontal: true, vertical: false)
+            .fixedSize(horizontal: !fits, vertical: false)
+            .lineLimit(fits ? 1 : nil)
+            .truncationMode(.tail)
+            .minimumScaleFactor(fits ? 0.8 : 1)
             .font(font)
             .fontDesign(fontDesign)
             .fontWeight(fontWeight)

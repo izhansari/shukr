@@ -2133,7 +2133,10 @@ struct PrayerButton: View {
 
     /// "On time · 88" (PrayerScoring); a Jumu'ah names its masjid instead.
     private var completedTimeAndScore: String {
-        prayerObject.scoreSummary ?? "Missed"
+        // A Jumu'ah: its masjid (the row already says "Jumu'ah", with the masjid mark) — "Jumu'ah at Islamic Center of
+        // Morrisville" pushed the row out of its card, the name squeezed to a letter a line (owner, 2026-10-02).
+        if prayerObject.isJumuah { return prayerObject.mosqueName ?? "at a masjid" }
+        return prayerObject.scoreSummary ?? "Missed"
     }
     
     
@@ -2199,6 +2202,9 @@ struct PrayerButton: View {
 
                 // Prayer Name Label
                 Text(prayerObject.displayName)   // "Jumu'ah" when Friday's Dhuhr was at a masjid
+                    // Never squeezed by a long time column (it broke a letter a line and the row grew tall).
+                    .fixedSize()
+                    .layoutPriority(1)
                     .font(.callout) //.callout
                     // Today's look: exactly the old Color.secondary (the hierarchical .secondary differed a hair).
                     .foregroundStyle(theme.emphasisesCurrentRow && isCurrentPrayer ? AnyShapeStyle(Color.primary) : AnyShapeStyle(Color.secondary.opacity(statusBasedOpacity))) //1
@@ -2292,7 +2298,8 @@ struct PrayerButton: View {
                             font: timeFontSize,
                             fontDesign: .rounded,
                             fontWeight: .light,
-                            hapticFeedback: true
+                            hapticFeedback: true,
+                            fits: true
                         )
                             .font(timeFontSize)
                             .foregroundColor(.secondary.opacity(statusBasedOpacity))
