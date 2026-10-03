@@ -95,6 +95,8 @@ struct PrayerTimesView: View {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) {
+            // The pager too: its onChange springs any page change it scrolls itself (audit D, bug 7).
+            scrollPage = .main
             sharedState.horizontalPage = .main
             sharedState.navPosition = .main
         }
@@ -103,7 +105,7 @@ struct PrayerTimesView: View {
     private func showMorningCardWhenClear(tries: Int = 0) {
         guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
         // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
-        if showTasbeehPage || somethingCovers || FirstRunSetup.showingAtLaunch || scenePhase != .active {
+        if showTasbeehPage || somethingCovers || FirstRunSetup.isShowing || scenePhase != .active {   // the live flag: the launch one stayed true after a setup (audit B)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showMorningCardWhenClear(tries: tries + 1) }
             return
         }
@@ -111,6 +113,8 @@ struct PrayerTimesView: View {
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) {
+            // The pager too: its onChange springs any page change it scrolls itself (audit D, bug 7).
+            scrollPage = .main
             sharedState.horizontalPage = .main
             sharedState.navPosition = .main
         }
@@ -1875,7 +1879,7 @@ struct TodaysPrayerListView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
-            guard let event = note.object as? PrayerCompletionEvent else { return }
+            guard let event = note.object as? PrayerCompletionEvent, !event.isCorrection else { return }   // a Jumu'ah correction isn't a new mark (audit A)
             // The row stays (and a completed day's other rows stay folded) until the circle's
             // flourish is done: the list changing height moved the circle mid-sweep (owner, 2026-09-27).
             let name = event.prayerName ?? event.name   // the row's name ("Dhuhr" for a Jumu'ah)

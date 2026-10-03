@@ -33,7 +33,11 @@ struct MainCircleView: View {
     
     @State private var currentTime = Date()
     @State private var timer: Timer?
-    @State private var ogText = true  // to control the toggle text in the middle
+    @State private var ogText = true  // the summary circle's side (its own state and its own 3 s timer)
+    /// A prayer's time line flips itself (ExternalToggleText: the buzz, the flip, back after 3 s); a tap only nudges
+    /// it. It read `ogText` too, whose own 3 s timer then nudged it again — a buzz with no touch, and sometimes a second
+    /// flip (audit A, bug 1).
+    @State private var timeFlipPulse = false
     /// A prayer was just marked done: the flourish plays over the circle, then clears.
     @State private var flourish: PrayerCompletionEvent?
     @State private var flourishID = 0
@@ -196,17 +200,6 @@ struct MainCircleView: View {
                         if preview == .current { return .green }   // the preview's start (a held row is long past)
                         return PrayerScoring.color(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: currentTime))
                     }
-                    var timeText: Text{
-                        switch status {
-                        case .current:
-                            return Text(prayer.endTime, style: ogText ? .relative : .time)
-                        case .upcoming:
-                            if ogText { return Text("in \(prayer.startTime, style: .relative)") }
-                            else { return Text("at \(prayer.startTime, style: .time)") }
-                        default :
-                            return Text("Missed")
-                        }
-                    }
                     let upcoming = status == .upcoming
                     ZStack{
                         // "Next" → "now": the track expands (trackSolid) while NEXT and the name's
@@ -271,7 +264,7 @@ struct MainCircleView: View {
                                     ExternalToggleText(
                                         originalText: "ends \(shortTimePM(prayer.endTime))",
                                         toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
-                                        externalTrigger: $ogText,  // Pass the binding
+                                        externalTrigger: $timeFlipPulse,
                                         font: .subheadline,
                                         fontDesign: .rounded,
                                         fontWeight: .thin,
@@ -283,7 +276,7 @@ struct MainCircleView: View {
                                     ExternalToggleText(
                                         originalText: "at \(shortTimePM(prayer.startTime))",
                                         toggledText: timeUntilStart(prayer.startTime),
-                                        externalTrigger: $ogText,  // Pass the binding
+                                        externalTrigger: $timeFlipPulse,
                                         font: .subheadline,
                                         fontDesign: .rounded,
                                         fontWeight: .thin,
@@ -423,6 +416,13 @@ struct MainCircleView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }
+            if event.isCorrection {
+                // Still on the circle: the new words in place. Gone: nothing to correct.
+                if let shown = flourish, shown.prayerName == event.prayerName, !flourishOut {
+                    withAnimation(.easeOut(duration: 0.25)) { flourish = event }
+                }
+                return
+            }
             playMarking(event)
         }
         // The data moved the face (an unmark, a window ending, Fajr beginning from the summary…): out, then in.
@@ -706,8 +706,12 @@ struct MainCircleView: View {
             guard !(sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah) else { return }
             flipsOwnText = false
         }
+        if flipsOwnText {
+            timeFlipPulse.toggle()   // it buzzes, flips and comes back by itself
+            return
+        }
         timer?.invalidate()
-        if !flipsOwnText { triggerSomeVibration(type: .light) }
+        triggerSomeVibration(type: .light)
         withAnimation{ ogText.toggle() }
         guard !ogText else {return}
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in

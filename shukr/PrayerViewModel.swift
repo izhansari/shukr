@@ -532,10 +532,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     if !days.isEmpty {
                         pushCompletionsToWidget()
                         objectWillChange.send()
-                        // It turned out to be Jumu'ah: replay the moment with the right name and score.
+                        // It turned out to be Jumu'ah: the moment, corrected (the right name and score), not replayed.
+                        let window = prayer.endTime.timeIntervalSince(prayer.startTime)
+                        let markedAt = prayer.timeAtComplete ?? Date()
+                        let progress = window > 0 ? markedAt.timeIntervalSince(prayer.startTime) / window : 1
                         NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
-                            name: prayer.displayName, score: prayer.numberScore ?? 1, progress: 0,
-                            summary: prayer.scoreSummary, prayerName: prayer.name))
+                            name: prayer.displayName, score: prayer.numberScore ?? 1, progress: min(max(progress, 0), 1),
+                            summary: prayer.scoreSummary, prayerName: prayer.name, isCorrection: true))
                     }
                 }
             }

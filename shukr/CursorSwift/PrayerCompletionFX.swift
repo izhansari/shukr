@@ -35,6 +35,9 @@ struct PrayerCompletionEvent {
     var summary: String? = nil
     /// The row's own name ("Dhuhr" for a Jumu'ah): the circle holds that prayer while the flourish plays.
     var prayerName: String? = nil
+    /// The same mark, corrected (it turned out to be Jumu'ah): not a new moment. A flourish still up takes the new
+    /// words in place; once it's over, nothing replays — it swept from empty and brought the folded row back (audit A).
+    var isCorrection = false
 }
 
 extension Notification.Name {
