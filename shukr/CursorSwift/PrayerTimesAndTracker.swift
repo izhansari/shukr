@@ -323,6 +323,7 @@ struct PrayerTimesView: View {
         #endif
     }
 
+    // (CircleCover's closers: see the extension at the end of this file.)
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
@@ -343,8 +344,11 @@ struct PrayerTimesView: View {
     /// tasbeeh session is never closed from a widget tap.
     private func clearCovers(then go: @escaping () -> Void) {
         guard !showTasbeehPage else { return }
-        if somethingCovers {
+        // The covers the flags above can't see (the ☰ popover, What's new, calibration, a row's time edit) close too:
+        // a widget open pushed its page under them (transitions audit, bug 4).
+        if somethingCovers || CircleCover.closable {
             dismissCovers()
+            CircleCover.closeAll()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { go() }
         } else {
             go()
@@ -1337,7 +1341,8 @@ struct PrayerTimesView: View {
                             .presentationCompactAdaptation(.popover)
                         }
                         .onChange(of: showMenu) { _, open in
-                            CircleCover.set("menu", open)
+                            let menu = $showMenu
+                            CircleCover.set("menu", open, close: { menu.wrappedValue = false })
                             // Run the chosen action once the popover is away, so the push isn't
                             // attempted while a presentation is still dismissing.
                             guard !open, let action = pendingMenuAction else { return }
@@ -1345,9 +1350,15 @@ struct PrayerTimesView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
                         }
                         .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
-                        .onChange(of: showWhatsNew) { _, open in CircleCover.set("whatsNew", open) }
+                        .onChange(of: showWhatsNew) { _, open in
+                            let sheet = $showWhatsNew
+                            CircleCover.set("whatsNew", open, close: { sheet.wrappedValue = false })
+                        }
                         .fullScreenCover(isPresented: $showCalibration) { CompassCalibrationSheet() }
-                        .onChange(of: showCalibration) { _, open in CircleCover.set("compassCalibration", open) }
+                        .onChange(of: showCalibration) { _, open in
+                            let cover = $showCalibration
+                            CircleCover.set("compassCalibration", open, close: { cover.wrappedValue = false })
+                        }
                         .onReceive(NotificationCenter.default.publisher(for: CompassHealth.openSheet)) { _ in
                             showCalibration = true
                         }
@@ -2257,7 +2268,11 @@ struct PrayerButton: View {
                             secondaryButton: .cancel()
                         )
                     }
-            .onChange(of: showTimePicker) { _, open in CircleCover.set("timeEdit.\(prayerObject.name)", open) }
+            .onChange(of: showTimePicker) { _, open in
+                // Closed by a widget open: like Cancel (the sheet keeps its edits in a local draft).
+                let sheet = $showTimePicker
+                CircleCover.set("timeEdit.\(prayerObject.name)", open, close: { sheet.wrappedValue = false })
+            }
             .sheet(isPresented: $showTimePicker) {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
@@ -2500,5 +2515,25 @@ struct WidgetUnmarkRequest: Identifiable {
         window?.isHidden = true
         window = nil
         appWindow?.makeKey()
+    }
+}
+
+/// Covers that PrayerTimesView's own flags can't see (the ☰ popover, What's new, compass calibration, a prayer row's time
+/// edit) register how to close themselves, so a widget / alarm / control open closes them too instead of pushing its page
+/// under them (transitions audit 2026-10-03, bug 4). Frank's foundation (tr-foundation) folds this into the stage's typed
+/// covers.
+extension CircleCover {
+    private(set) static var closers: [String: () -> Void] = [:]
+    /// The cover is up (`on`) or gone, and how to close it while it's up.
+    static func set(_ key: String, _ on: Bool, close: @escaping () -> Void) {
+        set(key, on)
+        closers[key] = on ? close : nil
+    }
+    static var closable: Bool { !closers.isEmpty }
+    /// Closes every registered cover (each one's `set(…, false, …)` then forgets it).
+    static func closeAll() {
+        let all = Array(closers.values)
+        closers = [:]
+        all.forEach { $0() }
     }
 }

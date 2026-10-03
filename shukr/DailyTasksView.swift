@@ -761,6 +761,7 @@ struct ZikrCircleFace: View {
     private var soft: Bool { theme.soft }
     /// Opening into its session (the wheel, SoftSessionEntry): the label goes, the ring stays for the counter's.
     @Environment(\.zikrFaceContentAway) private var contentAway
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.zikrFaceArcRewound) private var arcRewound
 
     var body: some View {
@@ -821,7 +822,9 @@ struct ZikrCircleFace: View {
                 }
             }
             .fontDesign(.rounded)
-            .modifier(SessionAppear(shown: !contentAway))
+            // The wheel's own choice (`openSession`): a plain fade under Reduce Motion — it shrank and dropped here while
+            // the other circles faded (transitions audit, bug 6).
+            .modifier(SessionAppear(shown: !contentAway, style: reduceMotion ? .fade : .current))
         }
         .frame(width: 200, height: 200)
     }
