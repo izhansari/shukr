@@ -1880,15 +1880,13 @@ struct TodaysPrayerListView: View {
         // The cascade (the stage starts it once the mark's moment is over): a light tap per dot as they pop
         // (PrayerButton, on the same count), then the sparkles bounce.
         .task(id: CircleStage.shared.perfectCascade) {
-            guard CircleStage.shared.perfectCascade > 0 else { return }
-            try? await Task.sleep(for: .seconds(CircleMotion.perfectBeatDuration))
+            guard CircleStage.shared.perfectCascade > 0,
+                  await CircleGate.pause(CircleMotion.perfectBeatDuration) else { return }
             for i in 0..<5 {
-                guard !Task.isCancelled else { return }
                 UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5 + 0.1 * Double(i))
-                try? await Task.sleep(for: .seconds(CircleMotion.perfectStepDuration))
+                guard await CircleGate.pause(CircleMotion.perfectStepDuration) else { return }
             }
-            try? await Task.sleep(for: .seconds(CircleMotion.perfectStepDuration * 1.8))
-            guard !Task.isCancelled else { return }
+            guard await CircleGate.pause(CircleMotion.perfectStepDuration * 1.8) else { return }
             perfectPulse += 1
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
@@ -2257,10 +2255,9 @@ struct PrayerButton: View {
             // Perfect day: the five dots pop one after another, from the stage's cascade (once the last mark's moment is
             // over and all five rows are back).
             .task(id: CircleStage.shared.perfectCascade) {
-                guard CircleStage.shared.perfectCascade > 0 else { return }
                 let index = Double(viewModel.orderedPrayerNames.firstIndex(of: name) ?? 0)
-                try? await Task.sleep(for: .seconds(CircleMotion.perfectBeatDuration + CircleMotion.perfectStepDuration * index))
-                guard !Task.isCancelled else { return }
+                guard CircleStage.shared.perfectCascade > 0,
+                      await CircleGate.pause(CircleMotion.perfectBeatDuration + CircleMotion.perfectStepDuration * index) else { return }
                 completionPulse += 1
             }
             .alert(isPresented: $showMarkIncompleteAlert) {

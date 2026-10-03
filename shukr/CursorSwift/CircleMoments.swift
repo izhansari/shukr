@@ -52,6 +52,10 @@ enum CircleFace: Equatable {
     /// The app is in the foreground (MainCircleView keeps it from its scene phase). A moment's runner holds a copy of
     /// the view, whose `scenePhase` goes stale; this doesn't (audit A).
     var sceneActive = true
+    /// The Salah circle has been on screen a moment (`CircleMomentTiming.settleAfterAppear` since it appeared or the app
+    /// came back): what changed before then is shown as it is, not played. Kept by MainCircleView, observable, so the
+    /// gate wakes when it turns true instead of polling the clock.
+    var circleSettled = false
 
     /// The row the prayer list keeps while the circle's marking moment runs: set as the mark comes in, released when the
     /// flourish goes (or the moment isn't played). The list folds it then — it kept a copy of the flourish's length on
@@ -155,6 +159,8 @@ enum CircleMomentKind: Equatable {
     /// A prayer begins (next → now): a swap with the start's haptic, its ring expanding while the words are out. The
     /// real start and ▶︎ Prayer begins both play it.
     case begins
+    /// The summary's two sides (the day's score with the sheet open ⇄ the next Fajr): out, the side and its track, in.
+    case summaryFlip
 }
 
 // CircleMomentTiming lives in CircleMotion.swift (one motion vocabulary, rule 8).
@@ -167,9 +173,9 @@ enum CircleMomentKind: Equatable {
     /// Waits until `canPlay` is true (true: play it) or the deadline passes (false: show its end at once). On the
     /// stage: it wakes when what `canPlay` reads changes.
     static func wait(_ canPlay: @escaping @MainActor () -> Bool) async -> Bool {
-        // canPlay still reads statics (WelcomeTarget, the app state): re-checked at the old poll's rate until they move
-        // onto the stage (tr-moments, tr-opening).
-        await CircleStage.shared.until(deadline: deadline, recheck: 0.1, canPlay)
+        // canPlay reads only observables now (the stage — `circleSettled` included —, WelcomeTarget.state,
+        // PagerLiveState): it wakes on their changes, no re-check.
+        await CircleStage.shared.until(deadline: deadline, canPlay)
     }
 
     /// One frame: a change set quietly (the new face) is drawn before the next animation starts — in the same update the
@@ -217,13 +223,13 @@ struct CircleWordsAway: ViewModifier {
         stage.cover("selfTest", true)
         Task { try? await Task.sleep(for: .seconds(0.3)); stage.cover("selfTest", false) }
         var t = Uptime.now
-        let cleared = await stage.until(deadline: 2, recheck: 5) { !stage.covers.contains("selfTest") }
+        let cleared = await stage.until(deadline: 2) { !stage.covers.contains("selfTest") }
         print("🧪 cover cleared: \(cleared) after \(String(format: "%.3f", Uptime.now - t)) s (≈0.30 expected)")
         // 2. An @Observable model elsewhere wakes it too.
         let probe = Probe()
         Task { try? await Task.sleep(for: .seconds(0.2)); probe.value = 1 }
         t = Uptime.now
-        let changed = await stage.until(deadline: 2, recheck: 5) { probe.value == 1 }
+        let changed = await stage.until(deadline: 2) { probe.value == 1 }
         print("🧪 observable change: \(changed) after \(String(format: "%.3f", Uptime.now - t)) s (≈0.20 expected)")
         // 3. The deadline.
         t = Uptime.now

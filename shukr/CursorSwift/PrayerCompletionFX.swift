@@ -89,35 +89,42 @@ enum PrayerCompletionHaptics {
 
 // MARK: - Main circle flourish
 
-/// Drawn over the main circle for ~1.8 s after a completion. Underneath, `MainCircleView` keeps
-/// showing the prayer just marked (`heldPrayer`) and fades it out as this comes in — the arcs are
-/// the same size and colour, so the sweep carries on from where the prayer's arc was. The next
-/// prayer / the day summary only comes in as this fades.
+/// Drawn over the main circle for `duration` after a completion. Underneath, `MainCircleView` keeps showing the face it
+/// had (the prayer just marked) and fades its words out as this comes in — the arcs are the same size and colour, so the
+/// sweep carries on from where the prayer's arc was. The next face comes in as this fades (the runner, `playMarking`).
+/// One keyframe animation from its appearance (the sweep, the words, the glow): it was three delayed animations and a
+/// timer, with look-dependent timings (audit A).
 struct CompletionFlourish: View {
     let event: PrayerCompletionEvent
     static let duration: Double = 1.8
 
-    @State private var sweep: Double = 0
-    @State private var glow: Double = 0
-    @State private var showText = false
-    /// Under the soft ring (SalahLook.swift) the arc is the soft one's: 6 pt.
+    /// The arc's width is the theme's (`theme.arc`: the soft ring's 6 pt, Today's 4) — a look, not a timing.
     @Environment(\.circleTheme) private var theme
-    private var softRing: Bool { theme.softRing }
-
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var color: Color { PrayerScoring.color(for: event.score) }
 
-    var body: some View {
-        ZStack {
-            // The arc closes from where the prayer was to a full ring.
-            Circle()
-                .trim(from: 0, to: sweep)
-                .stroke(color, style: StrokeStyle(lineWidth: softRing ? AliveRingTuning.fine.band : 4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .frame(width: 200, height: 200)
-                .shadow(color: color.opacity(0.6 * glow), radius: 12 * glow)
-                .shadow(color: color.opacity(0.35 * glow), radius: 24 * glow)
+    private struct Frame {
+        var sweep: Double
+        var glow: Double = 0
+        var words: Double = 0
+    }
+    /// Flipped as it appears: the keyframes play from it (`KeyframeAnimator(repeating: false)` drew their end at once).
+    @State private var started = false
 
-            if showText {
+    var body: some View {
+        let start = min(max(event.progress, 0.02), 1)
+        ZStack {}
+        .keyframeAnimator(initialValue: Frame(sweep: start), trigger: started) { _, f in
+            ZStack {
+                // The arc closes from where the prayer was to a full ring.
+                Circle()
+                    .trim(from: 0, to: f.sweep)
+                    .stroke(color, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 200, height: 200)
+                    .shadow(color: color.opacity(0.6 * f.glow), radius: 12 * f.glow)
+                    .shadow(color: color.opacity(0.35 * f.glow), radius: 24 * f.glow)
+
                 VStack(spacing: 4) {
                     HStack(alignment: .center, spacing: 8) {
                         Image(systemName: "checkmark")
@@ -137,23 +144,44 @@ struct CompletionFlourish: View {
                         .minimumScaleFactor(0.8)
                         .frame(maxWidth: 150)
                 }
-                .transition(.blurReplace)
+                .opacity(f.words)
+                .blur(radius: reduceMotion ? 0 : 4 * (1 - f.words))
+            }
+        } keyframes: { _ in
+            KeyframeTrack(\.sweep) {
+                CubicKeyframe(1, duration: Self.sweepDuration)
+            }
+            // In just after the sweep starts; out so it's gone just as the next face starts in (at `duration`):
+            // earlier, the circle sat empty for a beat between "✓ Maghrib" and "NEXT Isha" (owner, 2026-10-02).
+            KeyframeTrack(\.words) {
+                LinearKeyframe(0, duration: Self.wordsInDelay)
+                CubicKeyframe(1, duration: Self.wordsInDuration)
+                LinearKeyframe(1, duration: Self.duration - Self.wordsInDelay - Self.wordsInDuration - Self.wordsOutLead)
+                CubicKeyframe(0, duration: Self.wordsOutDuration)
+            }
+            KeyframeTrack(\.glow) {
+                LinearKeyframe(0, duration: Self.glowDelay)
+                CubicKeyframe(1, duration: Self.glowInDuration)
+                LinearKeyframe(1, duration: Self.glowHold)
+                CubicKeyframe(0, duration: Self.glowOutDuration)
             }
         }
-        .onAppear {
-            sweep = min(max(event.progress, 0.02), 1)
-            withAnimation(.easeInOut(duration: 0.55)) { sweep = 1 }
-            withAnimation(.easeOut(duration: 0.35).delay(0.1)) { showText = true }
-            withAnimation(.easeOut(duration: 0.3).delay(0.5)) { glow = 1 }
-            withAnimation(.easeInOut(duration: 0.8).delay(0.85)) { glow = 0 }
-            // Gone just as the next state starts in (MainCircleView, at `duration`): earlier, the circle sat empty
-            // for a beat between "✓ Maghrib" and "NEXT Isha" (owner, 2026-10-02).
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.duration - (softRing ? 0.24 : 0.45)) {
-                withAnimation(.easeIn(duration: softRing ? 0.26 : 0.4)) { showText = false }
-            }
-        }
+        .onAppear { started = true }
         .allowsHitTesting(false)
     }
+
+    // Its phases (the same in every look).
+    private static let sweepDuration: Double = 0.55
+    /// In once the circle's own words have gone (CircleMotion.flourishCoverDuration): never two texts at once (rule 3).
+    private static let wordsInDelay: Double = CircleMotion.flourishCoverDuration
+    private static let wordsInDuration: Double = 0.3
+    /// The words start going this long before `duration`, over `wordsOutDuration`.
+    private static let wordsOutLead: Double = 0.24
+    private static let wordsOutDuration: Double = 0.26
+    private static let glowDelay: Double = 0.5
+    private static let glowInDuration: Double = 0.3
+    private static let glowHold: Double = 0.05
+    private static let glowOutDuration: Double = 0.8
 }
 
 // MARK: - Row dot pop
@@ -360,11 +388,10 @@ struct FlickAway: ViewModifier {
                         let t = value.predictedEndTranslation
                         if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
                             triggerSomeVibration(type: .light)
-                            withAnimation(.easeOut(duration: 0.18)) { gone = true }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                                var quiet = Transaction()
-                                quiet.disablesAnimations = true
-                                withTransaction(quiet) { onDismiss() }
+                            // Fades where it is, then goes with no animation of its own (when the fade is done).
+                            Task { @MainActor in
+                                await CircleMotion.animate(.easeOut(duration: CircleMotion.flickAwayDuration)) { gone = true }
+                                await CircleMotion.animate(nil) { onDismiss() }
                             }
                         } else {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { drag = .zero }
@@ -509,11 +536,9 @@ struct PostSalahNudge: View {
 
     /// Time's up: fade where it is, then go without an animation of its own (as a flick does).
     private func expire() {
-        withAnimation(.easeOut(duration: 0.4)) { expiring = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) { onDismiss() }
+        Task { @MainActor in
+            await CircleMotion.animate(.easeOut(duration: CircleMotion.pillDuration)) { expiring = true }
+            await CircleMotion.animate(nil) { onDismiss() }
         }
     }
 }

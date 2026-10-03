@@ -61,6 +61,24 @@ enum CircleMotion {
     static let perfectStepDuration: Double = 0.13
     /// The post-salah pill arriving under the top bar, or going.
     static let pillDuration: Double = 0.4
+    /// A pill flicked away: it fades where the finger left it.
+    static let flickAwayDuration: Double = 0.18
+
+    // MARK: The circle's own (the same in every look — rule 9: motion never depends on the theme)
+
+    /// The words under a mark's flourish going (quick) and coming back as it fades.
+    static let flourishCoverDuration: Double = 0.25
+    static let flourishUncoverDuration: Double = 0.4
+    /// The flourish fading off the circle once the next face is in.
+    static let flourishOutDuration: Double = 0.45
+    /// The track: the dashes expanding into the band (a prayer begins), and narrowing back.
+    static let trackExpand = Animation.spring(response: 0.75, dampingFraction: 0.9)
+    static let trackNarrowDuration: Double = 0.5
+    /// ▶︎ Opening over the page as it is: the track fading out first; the welcome's mark fading once it's landed.
+    static let openingTrackOutDuration: Double = 0.2
+    static let openingMarkOutDuration: Double = 0.25
+    /// The qibla arrow snapping to straight up as it lines up.
+    static let arrowSnap = Animation.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0.1)
 
     // MARK: Reduce Motion
 
