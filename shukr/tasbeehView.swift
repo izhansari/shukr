@@ -535,6 +535,7 @@ struct tasbeehView: View {
                     appLookDark: appLookDark,
                     goalReached: goalReached,
                     currentVibrationMode: $currentVibrationMode,
+                    countingInSets: $countingInSets,
                     ringAbove: ringAbove,
                     timeOffset: timeOffset,
                     results: ringAbove ? savedSession.map { session in
@@ -1724,6 +1725,12 @@ struct tasbeehView: View {
     struct pauseScreen_StatsSettingsBG: View {
         /// Sleep mode's one-time intro (owner, decision sleep-intro): shown until "Turn on" once.
         @AppStorage(SleepMorning.introConfirmedKey) private var sleepIntroConfirmed = false
+        /// The set size: the zikr's own (`quickAddStep`), or this for sessions with no zikr.
+        @AppStorage(QuickAddSteps.noMantraKey) private var noMantraSetStep = 0
+        @Environment(\.modelContext) private var setsContext
+        @State private var showSetsPage = false
+        /// The page was opened by a tap with no size set: Done with a size turns sets on (owner, sets-tap).
+        @State private var setsPageTurnsOn = false
         @State private var showSleepIntro = false
         @State private var showGoalIntro = false
         @EnvironmentObject var sharedState: SharedStateClass
@@ -1744,6 +1751,8 @@ struct tasbeehView: View {
         /// Past the goal on "continuous": the chip is locked and Finish isn't "early".
         let goalReached: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
+        /// Count in sets, this session (the counter's +N turns it on and off too).
+        @Binding var countingInSets: Bool
         /// The ring-above layout (decision session-flow-build A): the counter's ring stays on screen, raised, and these
         /// cards sit round it; the same cards carry the results, the ring centred. Classic (Today's) keeps `todayBody`.
         /// The surfaces come from the theme's material (ThemedRaised / ThemedPressed).
@@ -1774,6 +1783,8 @@ struct tasbeehView: View {
         @State private var showHistory = false
         @State private var wellRoom: CGFloat = 148
         @State private var bottomInset: CGFloat = 0
+        /// The page's height inside the safe area: how much room the gaps get (`airScale`).
+        @State private var pageHeight: CGFloat = 900
         /// The rate tile's side: per count, or per tasbeeh (a tap flips it).
         @State private var showingPerTasbeeh = false
         @State private var finishArmed = false
@@ -1954,7 +1965,7 @@ struct tasbeehView: View {
                     .onTapGesture {}
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
-                    Self.gap(20)
+                    gap(20)
                     softBottom
                 }
                 .frame(maxWidth: 420)
@@ -1963,6 +1974,7 @@ struct tasbeehView: View {
                 .padding(.bottom, bottomInset > 0 ? 0 : 6)
             }
             .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
             .fontDesign(.rounded)
             .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // fixed slots: past this the tiles and chips truncated
             .onChange(of: chosenMantraName) {
@@ -2066,16 +2078,8 @@ struct tasbeehView: View {
                 .scrollBounceBehavior(.basedOnSize)
                 .defaultScrollAnchor(.center, for: .alignment)   // a short zikr sits in the middle of the well
                 .defaultScrollAnchor(.top, for: .initialOffset)  // a long one starts at its top
-                if !sharedState.isDoingPostNamazZikr {
-                    Rectangle()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 14)
-                    QuickAddStepRow(mantra: mantra)
-                        .font(.subheadline)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                }
+                // (Count in sets is a switch under the tiles now — decision sets-place A: the well keeps its room
+                // for the zikr's text and notes, so they show on a 6.1" phone too.)
             }
             .background(ThemedPressed(shape: shape))
             .clipShape(shape)
@@ -2190,14 +2194,14 @@ struct tasbeehView: View {
                 // "3m 15s left · you'll finish around 3:14 PM": one sentence, not two time tiles (owner). Its room is kept
                 // through the results (Done stays put); a session with no goal has none.
                 if hasFinishLine {
-                    Self.gap(16)
+                    gap(16)
                     finishLine
                         .frame(height: 22)
                         .modifier(SoftCardsFade(shown: !finished, delay: 0))
                 }
 
                 // The chips while paused; after a sleep finish, Keep counting in their place.
-                Self.gap(20)
+                gap(20)
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
@@ -2221,7 +2225,7 @@ struct tasbeehView: View {
                 }
                 .frame(height: Self.switchHeight)
 
-                Self.gap(20)
+                gap(20)
 
                 // Resume ⇄ Done in one capsule that stays put; only its words change.
                 Button {
@@ -2281,15 +2285,19 @@ struct tasbeehView: View {
         }
 
         private static let statTileHeight: CGFloat = 52
-        /// The well shows once its text has room beside Count in sets (lower, the zikr's first line was cut off).
-        private static let wellShowsAt: CGFloat = 110
+        /// The well shows once its first line of text has room (lower, it was cut off).
+        private static let wellShowsAt: CGFloat = 64
 
-        /// Room between the page's parts (owner: "enough room to breathe"), fixed: on a phone too short for it and the
-        /// zikr's well, the well gives way (`wellShowsAt`) — flexible gaps shared the room with the space above the
-        /// ring and ended up at their least everywhere.
-        static func gap(_ height: CGFloat) -> some View {
-            Color.clear.frame(height: height)
+        /// Room between the page's parts (owner: "enough room to breathe"): the full gap on a tall phone (his 6.7"),
+        /// down to 60 % on a 6.1" one, so the zikr's text and notes still show there (owner: "even for the small phones").
+        /// Set from the page's height, not shared out by the stack: flexible gaps shared the room with the space above
+        /// the ring and ended up at their least everywhere.
+        private func gap(_ height: CGFloat) -> some View {
+            Color.clear.frame(height: (height * airScale).rounded())
         }
+
+        /// 0.6 at a page 760 pt tall or less (a 6.1" phone's is ~778), 1 at 830 or more (a 6.7"'s is ~840).
+        private var airScale: CGFloat { 0.6 + 0.4 * min(max((pageHeight - 760) / 70, 0), 1) }
         /// The switches' row: a 50 pt circle and its word.
         private static let switchHeight: CGFloat = 72
 
@@ -2488,16 +2496,11 @@ struct tasbeehView: View {
                         .font(.footnote)
                     }
                 } else if title.isEmpty {
-                    Text("its full text, notes and sets show up here")
+                    Text("its full text and notes show up here")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
 
-                Rectangle()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 0.5)
-                QuickAddStepRow(mantra: mantra)
-                    .font(.subheadline)
             }
             .padding(16)
             .background(cardShape.fill(.ultraThinMaterial))
@@ -2587,7 +2590,7 @@ struct tasbeehView: View {
                     // One name, lit when on (decision chip-continuous A, owner): continuous = it keeps counting past the
                     // goal; plain = it stops at the goal — like the sleep and haptics chips beside it.
                     chip("continuous", icon: "arrow.clockwise", on: !autoStop, locked: goalReached,
-                         info: ("About continuous", { showGoalIntro = true })) { autoStop.toggle() }
+                         info: ("About continuous", { showGoalIntro = true }), onHold: { showGoalIntro = true }) { autoStop.toggle() }
                     .fullScreenCover(isPresented: $showGoalIntro) {
                         GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
                                       subtitle: goalSubtitle) { showGoalIntro = false }
@@ -2596,7 +2599,8 @@ struct tasbeehView: View {
                 // Where its circle is, for the dim to leave it uncovered (always findable to turn sleep off — owner);
                 // (i) by it: the intro again, any time (owner).
                 chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer,
-                     info: ("About sleep mode", { showSleepIntro = true }), circleFrame: onSleepChipFrame) {
+                     info: ("About sleep mode", { showSleepIntro = true }), onHold: { showSleepIntro = true },
+                     circleFrame: onSleepChipFrame) {
                     // The first time (until confirmed once): the intro, which turns it on.
                     if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
                     toggleInactivityTimer.toggle()
@@ -2612,7 +2616,55 @@ struct tasbeehView: View {
                     }, onNotNow: { showSleepIntro = false })
                     .interactiveDismissDisabled()
                 }
+                setsChip
                 hapticsChip
+            }
+        }
+
+        private var setStep: Int { mantra?.quickAddStep ?? noMantraSetStep }
+
+        private var setStepBinding: Binding<Int> {
+            Binding(get: { setStep }, set: { newValue in
+                if let mantra {
+                    mantra.quickAddStep = newValue
+                    try? setsContext.save()
+                } else {
+                    noMantraSetStep = newValue
+                }
+                if newValue <= 1 { countingInSets = false }
+            })
+        }
+
+        /// Count in sets (decisions sets-place A, sets-tap): with a size set a tap turns it on or off, as the counter's
+        /// +N does; with none, a tap opens its page to pick one (Done then turns it on). A hold opens the page any time.
+        private var setsChip: some View {
+            let size = setStep
+            return roundSwitch(size > 1 ? "sets of \(size)" : "count in sets", on: countingInSets && size > 1,
+                               onHold: { setsPageTurnsOn = false; showSetsPage = true }, action: {
+                if size > 1 {
+                    countingInSets.toggle()
+                } else {
+                    setsPageTurnsOn = true
+                    showSetsPage = true
+                }
+            }) {
+                if size > 1 {
+                    Text("+\(size)")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .padding(.horizontal, 6)
+                } else {
+                    Image(systemName: "square.stack")
+                        .font(.system(size: 19, weight: .light))
+                }
+            }
+            .fullScreenCover(isPresented: $showSetsPage) {
+                CountInSetsPage(step: setStepBinding, zikrName: mantra?.name) {
+                    if setsPageTurnsOn && setStep > 1 { countingInSets = true }
+                    showSetsPage = false
+                }
             }
         }
 
@@ -2683,9 +2735,9 @@ struct tasbeehView: View {
         }
 
         private func chip(_ title: String, icon: String, on: Bool, locked: Bool = false,
-                          info: (label: String, open: () -> Void)? = nil,
+                          info: (label: String, open: () -> Void)? = nil, onHold: (() -> Void)? = nil,
                           circleFrame: ((CGRect) -> Void)? = nil, action: @escaping () -> Void) -> some View {
-            roundSwitch(title, on: on, locked: locked, info: info, circleFrame: circleFrame, action: action) {
+            roundSwitch(title, on: on, locked: locked, info: info, onHold: onHold, circleFrame: circleFrame, action: action) {
                 Image(systemName: icon)
                     .font(.system(size: 19, weight: .light))
                     .contentTransition(.symbolEffect(.replace))
@@ -2693,49 +2745,62 @@ struct tasbeehView: View {
         }
 
         /// A session switch: a circle with its symbol, its word under it (decision stats-weight A — never the stat tiles'
-        /// shape, so a switch never reads as a number). Sage while on. The button is the circle and the word, no wider:
-        /// the page round it still resumes. Its (i), when it has one, sits on the circle's shoulder, its own tap.
+        /// shape, so a switch never reads as a number). Sage while on. It's the circle and the word, no wider: the page
+        /// round it still resumes. Its (i), when it has one, sits on the circle's shoulder, its own tap. A hold opens its
+        /// page when it has one (owner, sets-tap: "on any of them that open a sheet … long pressing it opens that sheet").
         private func roundSwitch<Icon: View>(_ title: String, on: Bool, faded: Bool = false, locked: Bool = false,
                                              info: (label: String, open: () -> Void)? = nil,
+                                             onHold: (() -> Void)? = nil,
                                              circleFrame: ((CGRect) -> Void)? = nil,
                                              action: @escaping () -> Void, @ViewBuilder icon: () -> Icon) -> some View {
-            Button {
+            let tap = {
                 guard !locked else { return }
                 triggerSomeVibration(type: .light)
                 withAnimation(.snappy(duration: CircleMotion.quick)) { action() }
-            } label: {
-                VStack(spacing: 7) {
-                    icon()
-                        .foregroundStyle(on ? Color.sage : Color.primary.opacity(faded ? 0.45 : 0.75))
-                        .frame(width: Self.switchCircle, height: Self.switchCircle)
-                        .background {
-                            if on {
-                                Circle().fill(Color.sage.opacity(0.16))
-                            } else if ringAbove {
-                                ThemedRaised(shape: Circle(), radius: 5, offset: 2.5)
-                            } else {
-                                Circle().fill(Color.primary.opacity(0.06))
-                            }
-                        }
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { circleFrame?($0) }
-                    Text(title)
-                        .font(.caption2)
-                        .foregroundStyle(on ? Color.sage : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .contentTransition(.opacity)
-                }
-                .contentShape(Rectangle())
-                .opacity(locked ? 0.45 : 1)
             }
-            .buttonStyle(.plain)
+            // A tap and a hold on one view (not a Button with a hold beside it: a Button still fires on the hold's release).
+            return VStack(spacing: 7) {
+                icon()
+                    .foregroundStyle(on ? Color.sage : Color.primary.opacity(faded ? 0.45 : 0.75))
+                    .frame(width: Self.switchCircle, height: Self.switchCircle)
+                    .background {
+                        if on {
+                            Circle().fill(Color.sage.opacity(0.16))
+                        } else if ringAbove {
+                            ThemedRaised(shape: Circle(), radius: 5, offset: 2.5)
+                        } else {
+                            Circle().fill(Color.primary.opacity(0.06))
+                        }
+                    }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { circleFrame?($0) }
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(on ? Color.sage : Color.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .contentTransition(.opacity)
+            }
+            .contentShape(Rectangle())
+            .opacity(locked ? 0.45 : 1)
+            .onTapGesture(perform: tap)
+            .onLongPressGesture(minimumDuration: 0.4) {
+                if let onHold {
+                    triggerSomeVibration(type: .medium)
+                    onHold()
+                } else {
+                    tap()
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction(.default, tap)
+            .accessibilityHint(locked ? "Locked once the goal is reached" : "")
             .overlay(alignment: .top) {
                 if let info {
                     infoButton(info.label, on: on, action: info.open)
                         .offset(x: Self.switchCircle / 2 + 4, y: -9)
                 }
             }
-            .accessibilityHint(locked ? "Locked once the goal is reached" : "")
             .frame(maxWidth: .infinity)
         }
 
