@@ -183,7 +183,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - **TestFlight** (only after Izhan says go; Frank confirms first): `scripts/testflight.sh` bumps `CURRENT_PROJECT_VERSION` (12 places), archives Release with the watch, uploads (system PATH: Homebrew rsync breaks export), records the build (`whatsnew.py build`); commit the bump. Notes: `whatsnew.py testflight --since last` → `TestFlightNotes-<ver>.<build>.md` with a "What to Test (paste this)" block, **≤ 4000 chars, no emoji** (Apple rejects non-BMP). `scripts/asc.py builds` → VALID; `scripts/asc.py release <build> <notes.txt>` sets What to Test, adds every external group ("test" = public link https://testflight.apple.com/join/GW5j85jk), submits for beta review (`IN_BETA_TESTING` = testers have it). App id `6743040873`, team `7R387XZ2Y7`.
 - **App Store archive:** `SHUKR_APPSTORE=1 scripts/testflight.sh` leaves out the What's new shots; check `ls build/shukr-*.xcarchive/Products/Applications/shukr.app | grep -c wn-` → 0.
 - **Default upload = internal only (owner, 2026-10-01):** a new build goes to the internal group **"Newest builds"** (his wife only; automatic distribution) and to NO external group / public link — don't run `asc.py release` (it adds every external group); set What to Test only. "Push to everyone" from him = `asc.py release <n>` as before.
-- Latest: 2.0 (15) from 5e5a8e8, 2026-10-01, internal only (notes TestFlightNotes-2.0.15.md); 2.0 (14) from c5bbcaa is the latest on the public link.
+- Latest: 2.0 (17) from fab58df, 2026-10-03, to everyone: the public link and every group (notes TestFlightNotes-2.0.17.md). 2.0 (16) on App Store Connect came from release/2.0.
 
 ## Architecture rules and traps
 
