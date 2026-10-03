@@ -67,7 +67,7 @@ enum SleepMorning {
 
 // MARK: - The intro
 
-/// The pause screen's explainer pages (sleep mode, stops at goal): one layout, so an (i) always
+/// The pause screen's explainer pages (sleep mode, continuous): one layout, so an (i) always
 /// opens the same kind of page (owner, goal-info B: "keep that pattern").
 struct ChipIntroPage: View {
     struct Point: Identifiable {
@@ -164,6 +164,9 @@ struct ChipIntroPage: View {
 struct SleepIntroView: View {
     /// Opened from the chip's (i) with sleep already on: just "Done".
     var isOn = false
+    /// How dark the counter gets (decision sleep-dimmer-place A: here, with a live preview — it sat at the top of the
+    /// pause screen). Nil: no dimmer on the page.
+    var dimmer: Binding<Double>? = nil
     let onTurnOn: () -> Void
     let onNotNow: () -> Void
 
@@ -172,7 +175,7 @@ struct SleepIntroView: View {
             symbol: "moon.zzz.fill", title: "Sleep mode", subtitle: "for counting in bed",
             points: [
                 .init(symbol: "sun.min", title: "The screen dims",
-                      line: "Gentle in the dark. Drag the dimmer on the pause screen."),
+                      line: "Gentle in the dark. Set how dark below; the sleep button stays bright on the pause screen."),
                 .init(symbol: "hand.tap", title: "Fall asleep counting?",
                       line: "After 45 seconds without a tap, a quiet 10-second countdown — then shukr saves the session, ending at your last tap."),
                 .init(symbol: "lock", title: "Your phone locks as usual",
@@ -181,18 +184,52 @@ struct SleepIntroView: View {
                       line: "shukr shows what you counted and about when you fell asleep."),
             ],
             primary: isOn ? "Done" : "Turn on sleep mode", onPrimary: isOn ? onNotNow : onTurnOn,
-            secondary: isOn ? nil : "Not now", onSecondary: onNotNow)
+            secondary: isOn ? nil : "Not now", onSecondary: onNotNow,
+            extra: dimmer.map { AnyView(SleepDimmerPreview(dimmer: $0)) })
     }
 }
 
-/// The "stops at goal" chip's (i) (owner: "the flexibility to read more than the task at hand, so
+/// How dark the counter gets under sleep mode: a little counter, dimmed as the session will be, over the slider.
+private struct SleepDimmerPreview: View {
+    @Binding var dimmer: Double
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Text("How dark the counter gets")
+                .font(.subheadline.weight(.medium)).fontDesign(.rounded)
+                .foregroundStyle(.secondary)
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(white: 0.1))
+                ZStack {
+                    Circle().stroke(Color.white.opacity(0.12), lineWidth: 5).frame(width: 84, height: 84)
+                    Circle().trim(from: 0, to: 0.62)
+                        .stroke(Color.green, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                        .rotationEffect(.degrees(-90)).frame(width: 84, height: 84)
+                    Text("21").font(.system(size: 28, weight: .thin, design: .rounded)).foregroundStyle(.white)
+                }
+                // The session's own dim: the same formula as the counter's.
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color.black.opacity((1 - dimmer) * 0.9))
+            }
+            .frame(height: 140)
+            HStack(spacing: 10) {
+                Image(systemName: "moon.fill").font(.caption)
+                Slider(value: $dimmer, in: 0...1.0).tint(Color.sage)
+                Image(systemName: "sun.max.fill").font(.caption)
+            }
+            .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// The "continuous" chip's (i) (owner: "the flexibility to read more than the task at hand, so
 /// they don't get stopped at the goal and have to start a new session"). Made from this session:
 /// its goal and where it stands, and the two settings as cards side by side — the current one
 /// picked, tap the other to switch — each saying how this session would go (owner: no generic
 /// lines that could alarm on the default).
 struct GoalIntroView: View {
     @Binding var autoStop: Bool
-    /// Past the goal on keeps going: switching back is locked (it would end the session at once).
+    /// Past the goal on continuous: switching back is locked (it would end the session at once).
     let locked: Bool
     /// "33" or "10 min" (in the cards' lines; the subtitle carries it too).
     let goal: String
@@ -201,8 +238,9 @@ struct GoalIntroView: View {
     let onDone: () -> Void
 
     var body: some View {
+        // Named as its chip (decision chip-continuous A: "change the sheet to match").
         ChipIntroPage(
-            symbol: "flag.checkered", title: "How should this session end?", subtitle: subtitle,
+            symbol: "arrow.clockwise", title: "Continuous", subtitle: subtitle,
             points: [],
             primary: "Done", onPrimary: onDone,
             extra: AnyView(cards))
@@ -213,7 +251,7 @@ struct GoalIntroView: View {
             HStack(alignment: .top, spacing: 12) {
                 card(stops: true, symbol: "flag.checkered", title: "Stops at goal", kind: "Auto stop",
                      line: "Ends and saves by itself at \(goal).")
-                card(stops: false, symbol: "arrow.clockwise", title: "Keeps going", kind: "Manual stop",
+                card(stops: false, symbol: "arrow.clockwise", title: "Continuous", kind: "Manual stop",
                      line: "Carries on past \(goal) — finish with \u{201C}goal reached\u{201D} at the bottom.")
             }
             Text(locked

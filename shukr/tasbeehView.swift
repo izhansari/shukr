@@ -120,6 +120,8 @@ struct tasbeehView: View {
     @State private var ringLift: CGFloat = 0
     /// The ring's move in flight (a wait for the cards, Reduce Motion's fade): a newer move cancels it.
     @State private var ringMoveTask: Task<Void, Never>?
+    /// The pause screen's sleep chip (global): the sleep dim has a hole there while paused.
+    @State private var sleepChipFrame: CGRect = .zero
     /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
     @State private var ringDimmed = false
     /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
@@ -217,7 +219,7 @@ struct tasbeehView: View {
     }
     
     /// A count or time goal session has reached its goal (Tasbih Fatimah ends at its 100 itself).
-    /// On "keeps going" the session carries on: the chip locks and "goal reached" shows at the bottom.
+    /// On "continuous" the session carries on: the chip locks and "goal reached" shows at the bottom.
     private var goalReached: Bool {
         (sharedState.selectedMode == 1 || sharedState.selectedMode == 2) && !sharedState.isDoingPostNamazZikr
             && timerIsActive && progressFraction >= 1
@@ -541,7 +543,8 @@ struct tasbeehView: View {
                     onRingSlot: { if $0.height > 0 { pauseSlot = $0 } },
                     // Frozen once finished: re-reported as the block's words changed, it moved the ring's target
                     // mid-move (the ring held, then jumped ~85 pt; Sami's B1).
-                    onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } }
+                    onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } },
+                    onSleepChipFrame: { sleepChipFrame = $0 }
                 )
             }
             .animation(.easeInOut, value: paused)
@@ -619,6 +622,21 @@ struct tasbeehView: View {
                 // one darkness — it faded out while they faded in and the screen brightened (owner).
                 Color.black.opacity(toggleInactivityTimer || (resultsDimmed && savedSession != nil)
                                     ? ((1-inactivityDimmer) * 0.9) : 0)
+                    // Paused under sleep mode, the sleep chip is never dimmed: it's how sleep goes off again, and at
+                    // the darkest setting nothing could be seen (owner, decision sleep-dimmer-place: "the sleep button
+                    // is always visible when pausing"). A hole in the dim, the chip's shape.
+                    .mask {
+                        Rectangle()
+                            .overlay {
+                                if paused && toggleInactivityTimer && sleepChipFrame.width > 0 {
+                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                        .frame(width: sleepChipFrame.width, height: sleepChipFrame.height)
+                                        .position(x: sleepChipFrame.midX, y: sleepChipFrame.midY)
+                                        .blendMode(.destinationOut)
+                                }
+                            }
+                            .compositingGroup()
+                    }
                     .allowsHitTesting(false)
                     .edgesIgnoringSafeArea(.all)
                 
@@ -1708,7 +1726,7 @@ struct tasbeehView: View {
         @Binding var autoStop: Bool
         @Binding var tasbeehColorMode: Bool
         let appLookDark: Bool
-        /// Past the goal on "keeps going": the chip is locked and Finish isn't "early".
+        /// Past the goal on "continuous": the chip is locked and Finish isn't "early".
         let goalReached: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
         /// The ring-above layout (decision session-flow-build A): the counter's ring stays on screen, raised, and these
@@ -1727,6 +1745,8 @@ struct tasbeehView: View {
         /// Where the ring stands while paused (global), and the bottom block's top (global): the session moves its ring.
         var onRingSlot: (CGRect) -> Void = { _ in }
         var onBottomTop: (CGFloat) -> Void = { _ in }
+        /// The sleep chip's place (global): the sleep dim leaves it uncovered while paused.
+        var onSleepChipFrame: (CGRect) -> Void = { _ in }
 
         /// What the soft cards need of a finished session.
         struct SoftResults {
@@ -1961,16 +1981,8 @@ struct tasbeehView: View {
 
         /// "paused · 100 count session"; with sleep on, its dimmer in the same place (nothing else moves).
         @ViewBuilder private var softHeader: some View {
-            if toggleInactivityTimer {
-                HStack(spacing: 10) {
-                    Image(systemName: "moon.fill").font(.caption)
-                    Slider(value: $inactivityDimmer, in: 0...1.0)
-                        .tint(Color.sage)
-                    Image(systemName: "sun.max.fill").font(.caption)
-                }
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 28)
-            } else {
+            // (The dimmer lives on the sleep page now — decision sleep-dimmer-place A; it sat here, at the top.)
+            do {
                 HStack(spacing: 6) {
                     Image(systemName: "pause.fill").font(.caption2)
                     Text(sharedState.isDoingPostNamazZikr ? "paused · Tasbih Fatimah" : "paused · \(sessionLabel)")
@@ -2419,18 +2431,7 @@ struct tasbeehView: View {
 
         private var controls: some View {
             VStack(spacing: 14) {
-                if toggleInactivityTimer {
-                    // Sleep mode's dimmer.
-                    HStack(spacing: 10) {
-                        Image(systemName: "moon.fill").font(.caption)
-                        Slider(value: $inactivityDimmer, in: 0...1.0)
-                            .tint(Color.sage)
-                        Image(systemName: "sun.max.fill").font(.caption)
-                    }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-                }
+                // (The dimmer lives on the sleep page now — decision sleep-dimmer-place A.)
                 // Tasbih Fatimah: just Finish / Resume (owner: none of the settings chips).
                 if !sharedState.isDoingPostNamazZikr {
                     chipsRow
@@ -2500,16 +2501,16 @@ struct tasbeehView: View {
             }
         }
 
-        /// stops at goal / keeps going, sleep, haptics — each a chip, the first two with an (i).
+        /// continuous (lit) / stops at goal (plain), sleep, haptics — each a chip, the first two with an (i).
         private var chipsRow: some View {
             HStack(spacing: 8) {
                 if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
                     // Locked once the goal is passed (owner): switching back ended the session the
                     // moment it resumed.
-                    chip(autoStop ? "stops at goal" : "keeps going",
-                         icon: autoStop ? "flag.checkered" : "arrow.clockwise",
-                         on: !autoStop, locked: goalReached) { autoStop.toggle() }
-                    .overlay(alignment: .topTrailing) { infoButton("About stops at goal", on: !autoStop) { showGoalIntro = true } }
+                    // One name, lit when on (decision chip-continuous A, owner): continuous = it keeps counting past the
+                    // goal; plain = it stops at the goal — like the sleep and haptics chips beside it.
+                    chip("continuous", icon: "arrow.clockwise", on: !autoStop, locked: goalReached) { autoStop.toggle() }
+                    .overlay(alignment: .topTrailing) { infoButton("About continuous", on: !autoStop) { showGoalIntro = true } }
                     .fullScreenCover(isPresented: $showGoalIntro) {
                         GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
                                       subtitle: goalSubtitle) { showGoalIntro = false }
@@ -2522,10 +2523,12 @@ struct tasbeehView: View {
                     // On: dark. Off: back to the app's own look (there's no light / dark chip).
                     tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
                 }
+                // Where it is, for the dim to leave it uncovered (always findable to turn sleep off — owner).
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onSleepChipFrame($0) }
                 // (i) in the chip's corner: the intro again, any time (owner).
                 .overlay(alignment: .topTrailing) { infoButton("About sleep mode", on: toggleInactivityTimer) { showSleepIntro = true } }
                 .fullScreenCover(isPresented: $showSleepIntro) {
-                    SleepIntroView(isOn: toggleInactivityTimer, onTurnOn: {
+                    SleepIntroView(isOn: toggleInactivityTimer, dimmer: $inactivityDimmer, onTurnOn: {
                         sleepIntroConfirmed = true
                         toggleInactivityTimer = true
                         tasbeehColorMode = true
