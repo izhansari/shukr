@@ -1483,53 +1483,114 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 
 // MARK: - Settings page
 
+/// The watch's Settings (owner, decision watch-settings-tidy B: "that page just looks really stupid right now … so
+/// much damn text"): one screen — each setting one line, its value on the right; a tap steps to the next value. How
+/// counting works lives behind the ⓘ.
 struct WatchSettingsPage: View {
+    @AppStorage(WatchCrownDirection.key) private var crown = WatchCrownDirection.auto.rawValue
+    @AppStorage(WatchDoubleTapTarget.key) private var doubleTap = WatchDoubleTapTarget.scroll.rawValue
+    @State private var showHelp = false
 
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("Settings")
                     .font(.system(size: 18, weight: .light, design: .rounded))
-                Text("counting")
-                    .font(.system(size: 10, design: .rounded))
-                    .tracking(1.2)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Tap anywhere, or drag down", systemImage: "hand.tap")
-                    Label("Pinch finger and thumb (Double Tap)", systemImage: "hand.pinch")
-                    Label("Turn the Digital Crown a step to count, a step back to get the next one ready", systemImage: "digitalcrown.arrow.clockwise")
+                HStack {
+                    Text("counting")
+                        .font(.system(size: 10, design: .rounded))
+                        .tracking(1.2)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button { showHelp = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("How counting works")
                 }
-                .font(.system(size: 12, design: .rounded))
-                Text("Tap and pinch count together. Turning the Crown switches that session to the Crown alone; tap its badge to switch back.")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
-                WatchCrownDirectionPicker()
-                if WatchBeta.on { WatchDoubleTapPicker() }
-                // Each count is a soft tap, each 100 a stronger one (no choice; owner). watchOS pairs
-                // its haptics with a soft tone unless the watch is silenced; apps can't play the tap alone.
-                Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
-                Text("Double Tap needs Apple Watch Series 9 or Ultra 2 or later. The crown doesn't count while your wrist is down.")
-                    .font(.system(size: 10, design: .rounded))
-                    .foregroundStyle(.secondary)
+                .padding(.top, 4)
+                row("Crown counts", (WatchCrownDirection(rawValue: crown) ?? .auto).short) {
+                    crown = (WatchCrownDirection(rawValue: crown) ?? .auto).next.rawValue
+                }
+                if WatchBeta.on {
+                    row("Double Tap", (WatchDoubleTapTarget(rawValue: doubleTap) ?? .scroll).short) {
+                        doubleTap = (WatchDoubleTapTarget(rawValue: doubleTap) ?? .scroll).next.rawValue
+                    }
+                }
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
                     .font(.system(size: 9, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 8)
+                    .padding(.top, 10)
                     .id("bottom")
             }
             .padding(.horizontal, 4)
         }
         #if DEBUG
-        .onAppear { if ProcessInfo.processInfo.arguments.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) } }
+        .onAppear {
+            let args = ProcessInfo.processInfo.arguments
+            if args.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) }
+            if args.contains("-watchSettingsHelp") { showHelp = true }
+        }
         #endif
+        }
+        .sheet(isPresented: $showHelp) { WatchCountingHelp() }
+    }
+
+    /// One line: the setting, its value on the right; a tap steps to the next value.
+    private func row(_ title: String, _ value: String, next: @escaping () -> Void) -> some View {
+        Button {
+            WKInterfaceDevice.current().play(.click)
+            next()
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 15, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 6)
+                Text(value)
+                    .font(.system(size: 15, design: .rounded))
+                    .foregroundStyle(Color.green)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(value)
+    }
+}
+
+/// Settings' ⓘ: how counting works, and what each setting does — everything the page used to say, short.
+struct WatchCountingHelp: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Tap anywhere, or drag down", systemImage: "hand.tap")
+                Label("Pinch (Double Tap) — Series 9, Ultra 2 or later", systemImage: "hand.pinch")
+                Label("Turn the Crown a step to count; a step back gets the next one ready", systemImage: "digitalcrown.arrow.clockwise")
+                Group {
+                    Text("Turning the Crown pauses screen taps for that session; tap its badge to switch back. It doesn't count with your wrist down.")
+                    Text("Crown counts: Auto — your first turn picks the way.")
+                    if WatchBeta.on {
+                        Text("Double Tap: Scroll — no zoom; Button — a small zoom on the count.")
+                    }
+                    Text("For silent counting, turn on Silent Mode in Control Center.")
+                }
+                .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 12, design: .rounded))
+            .padding(.horizontal, 4)
         }
     }
 }
@@ -1548,42 +1609,11 @@ enum WatchCrownDirection: String, CaseIterable {
         case .backward: "Backward"
         }
     }
+    /// Settings' one-line value.
+    var short: String { self == .auto ? "Auto" : label }
+    var next: Self { Self.allCases[(Self.allCases.firstIndex(of: self)! + 1) % Self.allCases.count] }
 }
 
-/// Settings: the Crown's counting direction — rows like the haptics picker's.
-struct WatchCrownDirectionPicker: View {
-    @AppStorage(WatchCrownDirection.key) private var raw = WatchCrownDirection.auto.rawValue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Crown counts")
-                .font(.system(size: 13, design: .rounded))
-                .padding(.top, 4)
-            ForEach(WatchCrownDirection.allCases, id: \.rawValue) { option in
-                Button {
-                    WKInterfaceDevice.current().play(.click)
-                    raw = option.rawValue
-                } label: {
-                    HStack {
-                        Text(option.label).font(.system(size: 15, design: .rounded))
-                        Spacer()
-                        if raw == option.rawValue {
-                            Image(systemName: "checkmark").foregroundStyle(Color.green)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 10)
-                    .background(RoundedRectangle(cornerRadius: 12)
-                        .fill(raw == option.rawValue ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-            }
-            Text("The other way gets the next count ready. Whichever way I start: a session's first turn picks.")
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
 
 /// The phone's post-salah zikr (PostSalahTasbeeh): Subhanallah 33 · Alhamdulillah 33 ·
 /// Allahu Akbar 34, saved once under "Tasbih Fatimah".
@@ -2067,6 +2097,9 @@ enum WatchDoubleTapTarget: String, CaseIterable {
     /// A small disc where the count is: the zoom is that disc's, not the display's.
     case count
     static let key = "watch.doubleTapTarget"
+    /// Settings' one-line value.
+    var short: String { self == .scroll ? "Scroll" : "Button" }
+    var next: Self { self == .scroll ? .count : .scroll }
     var label: String {
         switch self {
         case .scroll: "Scroll (no zoom)"
@@ -2162,37 +2195,3 @@ struct WatchDoubleTapScroller: View {
     }
 }
 
-/// Settings (beta): which Double Tap to use — rows like the Crown's.
-struct WatchDoubleTapPicker: View {
-    @AppStorage(WatchDoubleTapTarget.key) private var raw = WatchDoubleTapTarget.scroll.rawValue
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Double Tap (beta)")
-                .font(.system(size: 13, design: .rounded))
-                .padding(.top, 4)
-            ForEach(WatchDoubleTapTarget.allCases, id: \.rawValue) { option in
-                Button {
-                    WKInterfaceDevice.current().play(.click)
-                    raw = option.rawValue
-                } label: {
-                    HStack {
-                        Text(option.label).font(.system(size: 15, design: .rounded))
-                        Spacer()
-                        if raw == option.rawValue {
-                            Image(systemName: "checkmark").foregroundStyle(Color.green)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 10)
-                    .background(RoundedRectangle(cornerRadius: 12)
-                        .fill(raw == option.rawValue ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
-                }
-                .buttonStyle(.plain)
-            }
-            Text("Try 33 pinches with each: which counts the moment you pinch, and does any pinch go missing or count twice?")
-                .font(.system(size: 10, design: .rounded))
-                .foregroundStyle(.secondary)
-        }
-    }
-}
