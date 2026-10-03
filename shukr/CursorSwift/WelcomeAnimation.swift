@@ -499,6 +499,8 @@ extension CircleMotion {
         /// The page round it fading in (CircleMotion.pageRevealDuration, the chrome's and the list's), and the overlay
         /// going on a landing that isn't the circle's.
         static let overlayAway = Animation.easeInOut(duration: CircleMotion.pageRevealDuration)
+        /// Landed on a prayer that's on: its arc sweeps from the start out to where it stands.
+        static let arcSweep = Animation.easeInOut(duration: 0.9)
         static let pageInDuration: Double = CircleMotion.pageRevealDuration + 0.02
     }
 }

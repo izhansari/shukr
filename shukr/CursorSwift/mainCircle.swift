@@ -69,6 +69,11 @@ struct MainCircleView: View {
     private var summaryWantsScore: Bool { sharedState.navPosition == .bottom }
     /// ▶︎ Prayer begins' script (it changes the preview's data; the circle plays the moments that follow).
     @State private var previewTask: Task<Void, Never>?
+    /// The opening's arc: from nothing to where the prayer stands as the ring lands (nil = where it stands). Owner:
+    /// "I want it to animate from the beginning to its position … instead of just appearing and fading in the whole
+    /// thing at 70%" (ask opening-ring-fill).
+    @State private var arcSweep: Double?
+    @State private var arcSweepTask: Task<Void, Never>?
     /// What the circle shows at rest, from the data: the morning card's session while it's up, else the prayers'.
     private var derivedFace: CircleFace {
         if let lost = CircleStage.shared.lost, !lost.landed { return .lost }
@@ -207,7 +212,7 @@ struct MainCircleView: View {
                                 .frame(width: 230, height: 230)
                                 .mask {
                                     Circle()
-                                        .trim(from: 0, to: progress)
+                                        .trim(from: 0, to: progress * (arcSweep ?? 1))
                                         .stroke(style: StrokeStyle(lineWidth: AliveRingTuning.fine.band, lineCap: .round))
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: 200, height: 200)
@@ -219,7 +224,7 @@ struct MainCircleView: View {
                         // progress arc. Under the soft ring it takes the tasbeeh arc's shape (NeuCircularProgressView,
                         // "fine"): as wide as the band, round ends, a soft glow in its own colour (owner, 2026-10-01).
                         Circle()
-                            .trim(from: 0, to: progress) // Adjust progress value (0 to 1)
+                            .trim(from: 0, to: progress * (arcSweep ?? 1)) // Adjust progress value (0 to 1)
                             .stroke(progressColor, style: StrokeStyle(lineWidth: theme.arc.width, lineCap: theme.arc.cap))
                             .rotationEffect(.degrees(-90))
                             .frame(width: 200, height: 200)
@@ -422,6 +427,22 @@ struct MainCircleView: View {
             faceChanged()
         }
         .onChange(of: summaryWantsScore) { _, score in flipSummary(to: score) }
+        // The welcome on this circle: its arc waits at nothing under the mark (it's hidden then, so this is unseen),
+        // and sweeps out from the start as the words come in on the landing.
+        .onChange(of: openingHidesWords) { _, hidden in
+            guard hidden, !reduceMotion else { return }
+            // ▶︎ Opening in place: once the circle's words and arc have faded out (it vanished in a frame otherwise).
+            let inPlace = CircleStage.shared.opening?.inPlace == true
+            arcSweepTask?.cancel()
+            arcSweepTask = Task { @MainActor in
+                if inPlace { guard await CircleGate.pause(CircleMomentTiming.outDone) else { return } }
+                quietly { arcSweep = 0 }
+            }
+        }
+        .onChange(of: CircleStage.shared.opening?.landed == true) { _, landed in
+            guard landed, CircleStage.shared.opening?.hidesWords == true else { return }
+            sweepArcIn()
+        }
         // The opening / the lost page's comeback, handed over to be played here like the circle's own moments.
         .onChange(of: CircleStage.shared.momentRequests) { _, _ in
             guard let moment = CircleStage.shared.takeMoment() else { return }
@@ -561,6 +582,21 @@ struct MainCircleView: View {
             guard await CircleGate.nextFrame() else { return }
             summaryAway = false
             _ = await CircleGate.pause(CircleMomentTiming.in)
+        }
+    }
+
+    /// The opening's arc sweep (`arcSweep`): at nothing while the mark covers the circle, then out to where the prayer
+    /// stands, in the prayer's final colour (a colour changing green → yellow → red in under a second read as a flicker).
+    /// A prayer to come stays dashed; Reduce Motion: it's just there, as before.
+    private func sweepArcIn() {
+        arcSweepTask?.cancel()
+        guard arcSweep != nil, shownStatus == .current, !shownIsPreview else { quietly { arcSweep = nil }; return }
+        arcSweepTask = Task { @MainActor in
+            defer { quietly { arcSweep = nil } }
+            // The words in first, round an empty ring; then the arc (sweeping under their fade-in, it was most of the
+            // way out before it could be seen).
+            guard await CircleGate.pause(CircleMomentTiming.in) else { return }
+            await CircleMotion.animate(CircleMotion.Opening.arcSweep) { arcSweep = 1 }
         }
     }
 
