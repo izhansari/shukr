@@ -67,6 +67,23 @@ struct CircleTheme: Equatable {
     var surface: Color { palette.surface }
     var shade: Color { palette.shade }
     var light: Color { palette.light }
+
+    // MARK: Surfaces (views draw these instead of asking "soft?" — audit F, U3)
+
+    /// The page behind the circle: the Salah and Zikr pages, the bottom bar, the welcome, the morning card.
+    var backdrop: Color { soft ? surface : Color(.systemBackground) }
+
+    /// The prayer arc's stroke: a fine round band with a glow on the soft ring; 4 pt, butt caps, no glow otherwise.
+    struct Arc: Equatable {
+        var width: CGFloat
+        var cap: CGLineCap
+        /// The arc's colour at this opacity, as its shadow.
+        var glow: Double
+    }
+    var arc: Arc {
+        softRing ? Arc(width: AliveRingTuning.fine.band, cap: .round, glow: AliveRingTuning.fine.glow)
+                 : Arc(width: 4, cap: .butt, glow: 0)
+    }
 }
 
 private struct CircleThemeKey: EnvironmentKey {

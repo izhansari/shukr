@@ -84,11 +84,6 @@ struct PrayerTimesView: View {
     @State private var demoScheduled = false
     #endif
 
-    /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
-    /// first-run setup is up — the flags stay set and this runs again once it's done
-    /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
-    /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
-    /// open the morning card on its circle — under the welcome while it plays, which lands on the card.
     /// A morning card is waiting: be on the Salah page (circle showing) while the app is away, so the
     /// next open's welcome and the card draw on the real circle from the first frame. Left on the Zikr
     /// page (where the session started), the circle's last frame was off screen and the welcome
@@ -101,6 +96,8 @@ struct PrayerTimesView: View {
         withTransaction(quiet) { sharedState.navPosition = .main }
     }
 
+    /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
+    /// open the morning card on its circle — under the welcome while it plays, which lands on the card.
     private func showMorningCardWhenClear(tries: Int = 0) {
         guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
         // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
@@ -121,6 +118,9 @@ struct PrayerTimesView: View {
         }
     }
 
+    /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
+    /// first-run setup is up — the flags stay set and this runs again once it's done
+    /// (`FirstRunSetup.finished`), so its hand-off always lands on this page's circle.
     private func openFromWidgetFlags() {
         guard !FirstRunSetup.isShowing else { return }
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
@@ -128,7 +128,7 @@ struct PrayerTimesView: View {
             let openTasbeehFromWidget   = store.bool(forKey: "widgetTasbeeh")
             if FirstRunSetup.deepLinkFlags.contains(where: { store.object(forKey: $0) != nil && store.bool(forKey: $0) })
                 || store.string(forKey: "widgetZikrTask") != nil {
-                lastDeepLinkAt = Date()   // no reminders card over where a widget just sent you
+                lastDeepLinkAt = Uptime.now   // no reminders card over where a widget just sent you
             }
             // Clear only when set: every write to the group suite invalidates every
             // @AppStorage bound to it and re-renders Settings.
@@ -145,12 +145,12 @@ struct PrayerTimesView: View {
             // The Fajr alarm's "I'm up — open Fajr" (AlarmKit): the Salah page, nothing over it.
             if store.bool(forKey: "alarmOpenSalah") {
                 store.set(false, forKey: "alarmOpenSalah")
-                lastDeepLinkAt = Date()
+                lastDeepLinkAt = Uptime.now
                 clearCovers { sharedState.horizontalPage = .main }
             }
             // A marked row in the widget's times list: ask here, never unmark there.
             if store.string(forKey: WidgetListMarks.unmarkKey) != nil {
-                lastDeepLinkAt = Date()
+                lastDeepLinkAt = Uptime.now
                 widgetUnmarkToken += 1
                 showWidgetUnmarkWhenClear(token: widgetUnmarkToken)
             }
@@ -281,7 +281,7 @@ struct PrayerTimesView: View {
     /// Set by the card's onAppear; bumped per attempt so an older check can't clear a newer card.
     @State private var healthCardAppeared = false
     @State private var healthCardToken = 0
-    @State private var lastDeepLinkAt = Date.distantPast
+    @State private var lastDeepLinkAt: TimeInterval = -.infinity   // Uptime, never the wall clock (audit F, F6)
 
     /// A moment after the app comes forward: the card, if one's due (at most every few days per
     /// kind) and nothing else is going on — not over a tasbeeh session, a cover, the setup, or a
@@ -302,7 +302,7 @@ struct PrayerTimesView: View {
                       sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil, !demoSheetUp,
                       // The morning card (sleep mode) comes first; this card waits for another open.
                       morningSession == nil, !(SleepMorning.pendingID != nil && SleepMorning.isArmed),
-                      Date().timeIntervalSince(lastDeepLinkAt) > 10,
+                      Uptime.now - lastDeepLinkAt > 10,
                       let issue = health.cardIssue, health.cardDue(for: issue) else { return }
                 healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
                 healthCardAppeared = false
@@ -633,7 +633,7 @@ struct PrayerTimesView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
             guard let taskID = note.object as? String, scenePhase == .active else { return }
-            lastDeepLinkAt = Date()   // no reminders card over the zikr it opened
+            lastDeepLinkAt = Uptime.now   // no reminders card over the zikr it opened
             let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
             store?.removeObject(forKey: "widgetZikrTask")
             store?.setValue(false, forKey: "widgetTasbeeh")
@@ -1689,7 +1689,7 @@ struct PrayerTimesView: View {
 //                    .background(Color("bgColor"))
                 
             }
-            .background { if softSalah { NeuSurface() } else { Color(UIColor.systemBackground) } }
+            .background(sharedState.horizontalPage == .settings ? Color(.systemBackground) : theme.backdrop)
         }
         
     }
@@ -2416,13 +2416,9 @@ struct ChevronTap2: View {
     var pull: CGFloat = 0
     /// The pager's scroll phase; programmatic page changes only scroll it when it's idle.
     var pagerPhase: ScrollPhase = .idle
-    /// The Zikr page's task strip, in global coordinates (written by DailyTasksView); touches
-    /// that start inside it hold the pager.
-    var stripFrame: CGRect = .zero
     /// The pager is `.scrollDisabled` while this is set. Set by the pager's own drag gesture
     /// once a drag is decided vertical (so sideways drift can't turn into a page swipe) and by
-    /// the Zikr page's task strip while a finger is on it (so a drag past the strip's last
-    /// card can't chain into a page turn). Cleared on release.
+    /// the post-salah pill while a finger is on it. Cleared on release.
     var pagerLocked = false
 }
 
@@ -2439,16 +2435,9 @@ struct PagerBackdrop: View {
         GeometryReader { geo in
             let width = geo.size.width
             HStack(spacing: 0) {
-                // Zikr and Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
-                Group {
-                    if theme.soft { NeuSurface() } else { Color(.systemBackground) }
-                }
-                .frame(width: width)
-                // Salah: the soft looks' surface (SalahLook.swift), status-bar strip included.
-                Group {
-                    if theme.soft { NeuSurface() } else { Color(.systemBackground) }
-                }
-                .frame(width: width)
+                // Zikr and Salah: the theme's page, status-bar strip included.
+                theme.backdrop.frame(width: width)
+                theme.backdrop.frame(width: width)
                 Color(colorScheme == .light ? .secondarySystemBackground : .systemBackground).frame(width: width)
             }
             .frame(width: width * 3, alignment: .leading)

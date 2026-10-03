@@ -201,9 +201,11 @@ shoot_pairs() { # shoot_pairs <base app> <new app> <run dir>
     done
   done
 }
-compare() {     # compare <a.png> <b.png> → "same" or "max box"
+# The status bar (top 6.5 %) and the home indicator (bottom 2 %) are left out: both are iOS's, and the indicator re-tints
+# itself a beat after the content under it changes, so it differed between launches of the same build.
+compare() {     # compare <a.png> <b.png> → "same" or "max box" (box y in the cropped image: + 6.5 % of the height)
   local stats=$(ffmpeg -hide_banner -nostats -v info -i $1 -i $2 -filter_complex \
-    "[0]crop=iw:ih-ih*0.065:0:ih*0.065[a];[1]crop=iw:ih-ih*0.065:0:ih*0.065[b];[a][b]blend=all_mode=difference,format=gray,signalstats,metadata=print:key=lavfi.signalstats.YMAX:file=-,bbox=min_val=1" \
+    "[0]crop=iw:ih*0.915:0:ih*0.065[a];[1]crop=iw:ih*0.915:0:ih*0.065[b];[a][b]blend=all_mode=difference,format=gray,signalstats,metadata=print:key=lavfi.signalstats.YMAX:file=-,bbox=min_val=1" \
     -f null - 2>&1)
   local max=$(print -r -- $stats | sed -nE 's/.*YMAX=([0-9]+).*/\1/p' | head -1)
   if [[ ${max:-0} == 0 ]]; then print same

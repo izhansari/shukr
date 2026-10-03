@@ -324,7 +324,7 @@ struct WelcomeOverlay: View {
         ZStack {
             // The page, until the Salah circle takes the opening over (then the real page is there, waiting round it).
             if !mark.inCircle {
-                if theme.soft { NeuSurface() } else { Color(.systemBackground) }
+                theme.backdrop
                 WelcomeMark(state: mark)
                     .offset(shift)
             } else {

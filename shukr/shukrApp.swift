@@ -217,6 +217,9 @@ struct shukrApp: App {
                 }
             }
             .welcomeOnLaunch()   // "shukr" + a ring + two soft taps; cold launch (not under the setup: it ends in it)
+            // The look for the root's overlays too (the setup, the welcome): they read the stored picks per access, not
+            // reactively, without it (audit F, U5).
+            .circleThemeRoot()
             .task { StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
                 // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.

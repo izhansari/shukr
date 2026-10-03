@@ -7,10 +7,10 @@
 //    "Turn on sleep mode" turns it on and never shows the sheet again, "Not now" leaves it off and
 //    shows it again next time (decision sleep-intro A). The sleep chip's (i) opens it any time (owner,
 //    2026-09-30); with sleep already on it has just "Done".
-//  - `MorningCardView`: when sleep mode ended a session, the next open plays the welcome (from black
-//    after a warm lock — `WelcomeGate`'s curtain) and its ring lands on the card's ring, drawn on the
-//    Salah circle; "Good morning" fades the page away round it, leaving the Salah page (decisions
-//    sleep-morning-card A, sleep-morning-open).
+//  - `MorningCurtain`: when sleep mode ended a session, the next open plays the welcome (from black after
+//    a warm lock — `WelcomeGate`'s curtain) and its ring lands on the Salah circle, which shows the session
+//    (`MorningFace`) inside the card's page; "Good morning" fades the page away round it, leaving the Salah
+//    page (decisions sleep-morning-card A, sleep-morning-open).
 //
 
 import SwiftUI
@@ -279,8 +279,6 @@ struct GoalIntroView: View {
 
 // MARK: - The morning card
 
-/// Drawn over the whole screen (ignoring the safe area, so its coordinates are the screen's): the
-/// ring sits exactly on the Salah circle (`WelcomeTarget.circleFrame`), the words above and below it.
 /// The morning card's session in the Salah circle (circle step 3): its count and zikr inside the ring, a thin sage ring
 /// just inside the track. The circle shows it while `CircleStage.morning` is set; the page round it is `MorningCurtain`.
 struct MorningFace: View {
@@ -325,9 +323,7 @@ struct MorningCurtain: View {
         let circle = WelcomeTarget.salahCircleFrame ?? WelcomeTarget.circleFrame
             ?? CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
         ZStack(alignment: .topLeading) {
-            Group {
-                if theme.soft { NeuSurface() } else { Color(.systemBackground) }
-            }
+            theme.backdrop
                 .mask {
                     Rectangle()
                         .overlay {
