@@ -1186,7 +1186,7 @@ struct PrayerTimesView: View {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         /// The look prototype's row motion, read as state so a change redraws the page (it was read from
         /// UserDefaults in the body: audit D, finding 11).
-        @AppStorage(RowMotion.key) private var rowMotionRaw = RowMotion.today.rawValue
+        @AppStorage(RowMotion.key) private var rowMotionRaw = RowMotion.standard.rawValue
         var live: PagerLiveState
         @Binding var showQiblaMap: Bool
         @Binding var showTasbeehPage: Bool
@@ -1265,7 +1265,7 @@ struct PrayerTimesView: View {
             // "N done" toggled (in the list, or the soft looks' footer up in the chrome): the page animates the
             // re-centring itself — the chrome's transaction didn't always reach it, so the fold sometimes snapped, the
             // circle jumping ~70 pt (Sami's audit, finding 2).
-            .animation((RowMotion(rawValue: rowMotionRaw) ?? .today).animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)),
+            .animation(RowMotion.resolved(rowMotionRaw).animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)),
                        value: PrayerListFold.shared.showDone)
         }
     }
@@ -1768,9 +1768,9 @@ struct TodaysPrayerListView: View {
     /// Pills stand apart; the other looks keep their rows close with dividers.
     private var spacing: CGFloat { theme.rowSpacing }
     private var showsDividers: Bool { theme.showsRowDividers }
-    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
+    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.standard.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
+    private var motion: RowMotion { RowMotion.resolved(motionRaw) }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
     /// the day is complete. A prayer just marked stays while the circle's marking moment runs (the stage's `heldRow`:

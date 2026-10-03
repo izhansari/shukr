@@ -47,7 +47,7 @@ extension SalahLook {
     /// Dev builds (the owner's phone and the simulators) start the look exploration on Sunken well with no lines
     /// between prayers (owner, 2026-10-01: "default to no lines with sunken card for this exploring aesthetic
     /// testing stuff"). Once per install, so a later pick in the palette menu stays. TestFlight / App Store
-    /// builds aren't touched: everyone else keeps Today's look.
+    /// builds are locked to `CircleTheme.standard` (the public look) and never read these keys.
     static func seedExploringDefaults() {
         let d = UserDefaults.standard
         guard !d.bool(forKey: "salahLook.seeded.v1") else { return }
@@ -185,7 +185,14 @@ enum SessionOpening: String, CaseIterable, Identifiable {
         }
     }
     static let key = "salahLook.opening"
-    static var current: SessionOpening { SessionOpening(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .sink }
+    /// A stored pick in DEBUG builds; public builds are locked to sink and rise (decision public-style-lock A).
+    static var current: SessionOpening {
+        #if DEBUG
+        SessionOpening(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .sink
+        #else
+        .sink
+        #endif
+    }
 }
 
 /// Something in or out the way the opening style moves it: sink = smaller, lower, faded (rising back); focus =
@@ -312,7 +319,7 @@ struct SalahLookCard: ViewModifier {
 struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.key) private var lookRaw = CircleTheme.standard.list.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
-    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
+    @AppStorage(RowMotion.key) private var motionRaw = RowMotion.standard.rawValue
     @AppStorage(SalahPalette.key) private var paletteRaw = CircleTheme.standard.palette.rawValue
     @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue

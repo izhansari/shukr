@@ -23,14 +23,22 @@ struct CircleTheme: Equatable {
     /// follows the material (`sessionLayout`).
     var sessionLayoutPick: SessionLayout? = nil
 
-    /// The look before the prototype.
+    /// The look before the prototype (DEBUG builds can still pick it in the palette menu; circle-check's "today").
     static let today = CircleTheme()
-    /// **The look everyone gets until they pick one** (the palette menu is the owner's; DEBUG builds seed Sunken well).
-    /// The one line that ships a look: `.today` now; a soft one only on Izhan's word (circle step 6).
-    static let standard: CircleTheme = .today
+    /// The public look (decision public-style-lock A, owner: "sunken well · soft ring · no lines between prayers ·
+    /// light mode in grey-blue style but dark mode in charcoal"; rows make room then fade — RowMotion.standard —
+    /// and a zikr ring opens in sink and rise — SessionOpening).
+    static let publicLook = CircleTheme(list: .well, softRing: true, palette: .greyBlue, lines: false)
+    /// **The look that ships.** Public builds (TestFlight, App Store) are locked to it: they read none of the palette
+    /// menu's keys, so an old pick can't linger. DEBUG builds start from it and the palette menu overrides it.
+    static let standard: CircleTheme = .publicLook
 
-    /// The palette menu's stored picks (DEBUG launch arguments override them for a run).
+    /// The palette menu's stored picks in DEBUG builds (launch arguments override them for a run); `standard` in
+    /// public ones.
     static var stored: CircleTheme {
+        #if !DEBUG
+        return standard
+        #endif
         let d = UserDefaults.standard
         let s = standard
         return CircleTheme(list: SalahLook(rawValue: d.string(forKey: SalahLook.key) ?? "") ?? s.list,
@@ -127,6 +135,7 @@ extension EnvironmentValues {
 /// Sets the theme from the palette menu's picks and keeps it current as they change. On PrayerTimesView's root and on
 /// each cover's root (the environment isn't trusted to cross a presentation).
 struct CircleThemeRoot: ViewModifier {
+    #if DEBUG
     @AppStorage(SalahLook.key) private var list = CircleTheme.standard.list.rawValue
     @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
     @AppStorage(SalahPalette.key) private var palette = CircleTheme.standard.palette.rawValue
@@ -140,6 +149,12 @@ struct CircleThemeRoot: ViewModifier {
                                                        lines: lines,
                                                        sessionLayoutPick: SessionLayout(rawValue: sessionLayout)))
     }
+    #else
+    /// Public builds: the locked look, whatever the stored keys say (decision public-style-lock A).
+    func body(content: Content) -> some View {
+        content.environment(\.circleTheme, CircleTheme.standard)
+    }
+    #endif
 }
 
 extension View {
@@ -157,6 +172,9 @@ enum SalahPalette: String, CaseIterable, Identifiable {
     case stone
     /// The tasbeeh page's own (NeuRing / NeuDarkShad / NeuLightShad): the grey-blue.
     case tasbeeh
+    /// The public look's (owner, public-style-lock: "light mode in grey-blue style but dark mode in charcoal"): the
+    /// tasbeeh grey-blue in light mode, charcoal in dark.
+    case greyBlue
 
     var id: String { rawValue }
     var title: String {
@@ -164,6 +182,7 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .charcoal: "Charcoal"
         case .stone: "Stone"
         case .tasbeeh: "Tasbeeh's (grey-blue)"
+        case .greyBlue: "Grey-blue light, charcoal dark"
         }
     }
 
@@ -179,6 +198,7 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .stone: Self.dynamic(light: UIColor(red: 0.937, green: 0.929, blue: 0.914, alpha: 1),
                                   dark: UIColor(red: 0.118, green: 0.112, blue: 0.104, alpha: 1))
         case .tasbeeh: Color("NeuRing")
+        case .greyBlue: Self.lightOf(.tasbeeh, \.surface, darkFrom: .charcoal)
         }
     }
 
@@ -188,6 +208,7 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .stone: Self.dynamic(light: UIColor(red: 0.42, green: 0.36, blue: 0.28, alpha: 0.24),
                                   dark: UIColor(white: 0, alpha: 0.72))
         case .tasbeeh: Color("NeuDarkShad")
+        case .greyBlue: Self.lightOf(.tasbeeh, \.shade, darkFrom: .charcoal)
         }
     }
 
@@ -197,7 +218,19 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .stone: Self.dynamic(light: UIColor(white: 1, alpha: 0.9),
                                   dark: UIColor(red: 1, green: 0.95, blue: 0.85, alpha: 0.06))
         case .tasbeeh: Color("NeuLightShad")
+        case .greyBlue: Self.lightOf(.tasbeeh, \.light, darkFrom: .charcoal)
         }
+    }
+
+    /// One palette's light-mode colour with another's dark-mode one.
+    private static func lightOf(_ lightPalette: SalahPalette, _ part: KeyPath<SalahPalette, Color>,
+                                darkFrom darkPalette: SalahPalette) -> Color {
+        let light = UIColor(lightPalette[keyPath: part]), dark = UIColor(darkPalette[keyPath: part])
+        return Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? dark.resolvedColor(with: traits)
+                : light.resolvedColor(with: UITraitCollection(traitsFrom: [traits, UITraitCollection(userInterfaceStyle: .light)]))
+        })
     }
 }
 

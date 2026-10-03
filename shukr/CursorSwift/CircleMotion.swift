@@ -239,5 +239,15 @@ enum RowMotion: String, CaseIterable, Identifiable {
 }
 
 extension RowMotion {
-    static var current: RowMotion { RowMotion(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .today }
+    /// The public look's (decision public-style-lock A, owner: "rows come and go in make room then fade").
+    static let standard: RowMotion = .room
+    /// A stored pick in DEBUG builds; public builds are locked to `standard`.
+    static func resolved(_ raw: String?) -> RowMotion {
+        #if DEBUG
+        RowMotion(rawValue: raw ?? "") ?? standard
+        #else
+        standard
+        #endif
+    }
+    static var current: RowMotion { resolved(UserDefaults.standard.string(forKey: key)) }
 }
