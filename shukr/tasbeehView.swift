@@ -172,6 +172,8 @@ struct tasbeehView: View {
     @State private var resultsDimmed = false
     /// The stop's cleanup has run, so resuming can't be undone by it.
     @State private var sleepResumeReady = false
+    /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
+    @State private var stopCleanupPending = false
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -751,11 +753,12 @@ struct tasbeehView: View {
                 // The counter's words out, then (once that fade is done, not a guess of it) the results in.
                 resultsTask?.cancel()
                 resultsTask = Task { @MainActor in
+                    defer { finishStopCleanup() }   // once they're in (or this was cut short), never a guess of it
                     await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) {
                         ringOut = !ringAbove; countIn = false; chromeIn = false
                     }
                     guard !Task.isCancelled, savedSession != nil else { return }
-                    withAnimation(.easeOut(duration: CircleMotion.resultsInDuration)) { resultsIn = true }
+                    await CircleMotion.animate(.easeOut(duration: CircleMotion.resultsInDuration)) { resultsIn = true }
                 }
             } else if resultsIn {
                 resultsTask?.cancel()
@@ -881,6 +884,7 @@ struct tasbeehView: View {
             // Sent away mid-close: no frames, so no completions — the close is cut short (its defer ends it) rather
             // than left waiting for the app to come back.
             if newScenePhase == .background, leaving { sequence?.cancel() }
+            if newScenePhase == .background { finishStopCleanup() }   // no frames, so the results' fade won't end
             // Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
             // finish and save, ending at the last tap (he woke up on the pause screen before:
             // pausing stopped the inactivity timer).
@@ -907,6 +911,7 @@ struct tasbeehView: View {
             }
         }
         .onDisappear {
+            finishStopCleanup()
             CircleCover.set("tasbeeh", false)
             if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
             sharedState.isDoingPostNamazZikr = false
@@ -1057,19 +1062,25 @@ struct tasbeehView: View {
             // Shared-state writes re-render the whole home screen under this cover, so they wait
             // until the results screen is up (completeStopTimer, after its fade) instead of
             // landing in the same frame as it — part of the "lag before the completion page"
-            // (owner, 2026-09-25).
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                self.sharedState.selectedTask = nil
-                self.completeStopTimer()
-                // The Zikr widget reads the shared store: save, then let it redraw.
-                try? self.context.save()
-                WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
-            }
+            // (owner, 2026-09-25). In the background nothing animates: at once.
+            stopCleanupPending = true
+            if UIApplication.shared.applicationState == .background { finishStopCleanup() }
         } else {
             completeStopTimer()
         }
     }
 
+
+    /// A saved stop's cleanup, once: the results' fade-in ends it (`resultsTask`), or the app leaving / the cover closing.
+    private func finishStopCleanup() {
+        guard stopCleanupPending else { return }
+        stopCleanupPending = false
+        sharedState.selectedTask = nil
+        completeStopTimer()
+        // The Zikr widget reads the shared store: save, then let it redraw.
+        try? context.save()
+        WidgetCenter.shared.reloadTimelines(ofKind: WidgetKinds.zikr)
+    }
 
     /// Sleep mode ended the session (no tap for a while, or the app left while counting): saved now
     /// — the app may be suspended any moment — ending at the last tap, marked `endedAsleep`.
@@ -1611,8 +1622,10 @@ struct tasbeehView: View {
                 }
                 .fontDesign(.rounded)
             }
-            .onAppear {
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.6).delay(0.15)) { checkShown = true }
+            .task {
+                // A beat after the card, then the ✓'s spring: the wait is a pause, never `.delay` on a spring.
+                guard await CircleGate.pause(CircleMotion.resultsCheckBeat) else { return }
+                withAnimation(CircleMotion.resultsCheck) { checkShown = true }
             }
             .onChange(of: chosenMantraName) {
                 guard let newName = chosenMantraName, !newName.isEmpty else { return }

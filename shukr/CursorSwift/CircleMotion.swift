@@ -90,6 +90,9 @@ enum CircleMotion {
     static let sessionCountOutDuration: Double = 0.25
     /// The results coming in once the counter's words have gone.
     static let resultsInDuration: Double = 0.25
+    /// The results' ✓: a beat after the card, then a spring with a little bounce.
+    static let resultsCheckBeat: Double = 0.15
+    static let resultsCheck = Animation.spring(response: 0.45, dampingFraction: 0.6)
     /// The soft session cards' words going (out quick, so the next ones come in clean).
     static let cardsOutDuration: Double = 0.12
     static let sessionRingOverDuration: Double = 0.15
