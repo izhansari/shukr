@@ -44,6 +44,13 @@ def main():
         for t in range(cols, rows * cols):                          # row 0 is the status bar: skipped
             d, before, after = diffs[i][t], diffs[i - 1][t], diffs[i + 1][t]
             if d >= threshold and before < d * 0.2 and after < d * 0.2:
+                # The recorder sometimes captures at ~30 Hz: re-timed to 60, a smooth move changes every other frame
+                # (change, still, change). Already moving two frames before = that cadence (its last step included), not
+                # a cut: a cut comes out of stillness (B1, a ring holding then leaping, had nothing moving before it).
+                # A cut in the middle of a 30 Hz move can't be told from the move itself — look at the strip there.
+                around = diffs[i - 2][t] if i >= 2 and diffs[i - 2] else 0
+                if around >= d * 0.3:
+                    continue
                 hits.setdefault(i, []).append((t, d))
     # A thin arc sweeping fast changes the one tile its head crosses in one frame: not a cut. A real cut moves
     # several tiles at once (the flourish's ring: 6), or one by a lot (a pop: Δ44).
