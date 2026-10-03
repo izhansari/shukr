@@ -21,6 +21,12 @@ enum CircleMotion {
     static func ease(_ duration: Double = standard) -> Animation { .easeInOut(duration: duration) }
     /// The one spring: settles without a bounce you'd notice.
     static let spring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+    /// The ring changing place (the session's ring rising for the pause screen, coming down for the results; decision
+    /// session-flow-build A): a spring with no bounce, so a change of mind mid-move (Resume while it rises) carries its
+    /// speed into the way back instead of stopping and starting again (WWDC23 "Animate with springs").
+    static let ringMove = Animation.smooth(duration: 0.5)
+    /// Coming down to finish or close, the ring waits this long for the cards below it to go first (out, then in).
+    static let ringMoveDownDelay: Double = 0.1
 }
 
 /// A circle moment's words out and in (Frank, step 2; moved here from CircleMoments.swift).

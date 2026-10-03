@@ -35,6 +35,18 @@ struct tasbeehView: View {
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
     @Environment(\.circleTheme) private var theme
     private var softLook: Bool { theme.soft }
+    /// Where the soft look's ring should stand, as a lift from its laid-out place: raised to the pause cards' slot while
+    /// paused; once finished, centred (as the Zikr wheel will hold it), only raised if the bottom block needs the room
+    /// (a short phone); home for the counter and for a close.
+    private var ringLiftTarget: CGFloat {
+        guard softLook, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
+        if savedSession != nil {
+            guard cardsBottomTop > 0 else { return 0 }
+            return min(0, cardsBottomTop - 26 - (ringHomeMid.y + ringSize.height / 2))
+        }
+        if paused && pauseSlot.height > 0 { return pauseSlot.midY - ringHomeMid.y }
+        return 0
+    }
     @Environment(\.modelContext) private var context
     @EnvironmentObject var sharedState: SharedStateClass
     
@@ -90,6 +102,19 @@ struct tasbeehView: View {
     /// The results are in: they come once the counter under them (its ring, count and buttons) has gone — out, then in
     /// (owner, 2026-10-02: "from ring to completion page" — the "11" ring showed through the cards as they faded in).
     @State private var resultsIn = false
+    /// The soft look's one ring through pause and finish (decision session-flow-build A): where it's laid out (global,
+    /// the screen's centre, and its size), where the pause cards want it, the cards' bottom block's top, and how far it's lifted now.
+    @State private var ringSize: CGSize = .zero
+    @State private var ringHomeMid: CGPoint = .zero
+    @State private var pauseSlot: CGRect = .zero
+    @State private var cardsBottomTop: CGFloat = 0
+    @State private var ringLift: CGFloat = 0
+    /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
+    @State private var ringDimmed = false
+    /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
+    @State private var cardsStay = false
+    /// A soft close from the pause screen or the results: the ring comes home to the centre before it lands.
+    @State private var ringToCentre = false
     /// That close's steps: the cards go (CircleMomentTiming.out, eased out: eased in, its last faint frame dropped to
     /// nothing at once), the ring waits for them to be gone (`outDone`), the arc lands (SoftSessionEntry.arcMove), the
     /// page goes (0.25), then the ring fades over the wheel's (0.15) — only once the page has gone, so the wheel's ring
@@ -321,6 +346,7 @@ struct tasbeehView: View {
                 TasbeehCountView(tasbeeh: tasbeeh)
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
+                    .modifier(RingLift(lift: softLook ? ringLift : nil, dimmed: ringDimmed))
                 
                 GeometryReader { geometry in
                     VStack {
@@ -374,12 +400,33 @@ struct tasbeehView: View {
                 NeuCircularProgressView(progress: (progressFraction), settled: arcSettled)
                     .allowsHitTesting(false) //so taps dont get intercepted.
                     // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { placeEntry(at: $0) }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        // Its home: this frame moves with the entry's glide and the lift (their model values), so take
+                        // them back off — read as it is, the lift chased its own frame back to nothing.
+                        if frame.width > 0 {
+                            ringSize = frame.size
+                            ringHomeMid = CGPoint(x: frame.midX - entryOffset.width,
+                                                  y: frame.midY - entryOffset.height - (softLook ? ringLift : 0))
+                        }
+                        placeEntry(at: frame)
+                    }
+                    // Finished (soft look): the task's title in the ring, "Saved to your history" over it, after the
+                    // count has gone (out, then in). On the ring itself, so it is wherever the ring is mid-move (a view
+                    // added beside it took the move's end at once). Not under the ring's allowsHitTesting(false): a free
+                    // session's name opens the picker.
+                    .overlay {
+                        if softLook, let session = savedSession {
+                            SessionDoneFace(session: session)
+                                .modifier(SoftCardsFade(shown: resultsIn && !leaving))
+                                .allowsHitTesting(resultsIn && !leaving)
+                        }
+                    }
                     .offset(entryOffset)
                     // One piece: faded layer by layer, its half-clear track darkened the wheel's identical arc under it
                     // as it handed over (a 2-frame dip, circle-ring-handover).
                     .compositingGroup()
                     .opacity((pageIn || ringHeld) && !ringOut ? 1 : 0)
+                    .modifier(RingLift(lift: softLook ? ringLift : nil, dimmed: ringDimmed))
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -403,7 +450,18 @@ struct tasbeehView: View {
                     tasbeehColorMode: $tasbeehColorMode,
                     appLookDark: appLookDark,
                     goalReached: goalReached,
-                    currentVibrationMode: $currentVibrationMode
+                    currentVibrationMode: $currentVibrationMode,
+                    soft: softLook,
+                    timeOffset: timeOffset,
+                    results: softLook ? savedSession.map { session in
+                        .init(session: session,
+                              keepCounting: sleptSaved && sleepResume != nil ? { requestKeepCounting() } : nil,
+                              done: { finishFromResults() })
+                    } : nil,
+                    cardsShown: paused || resultsIn || (savedSession != nil && cardsStay),
+                    resultsIn: resultsIn,
+                    onRingSlot: { if $0.height > 0 { pauseSlot = $0 } },
+                    onBottomTop: { cardsBottomTop = $0 }
                 )
             }
             .animation(.easeInOut, value: paused)
@@ -452,9 +510,11 @@ struct tasbeehView: View {
                         .opacity(paused ? 0 : 1)
                         .allowsHitTesting(!paused)   // a disabled button still swallowed the pause screen's taps
                 }
-                .animation(paused ? .easeOut : .easeIn, value: paused)
+                .animation(paused ? .easeOut(duration: softLook ? 0.15 : 0.35) : .easeIn, value: paused)
                 .padding()
                 .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
+                // Finished: the soft results sit under this layer (the ring's, not a cover) — no stray ⏸ over Done.
+                .allowsHitTesting(savedSession == nil)
                 
                 // Debug Updating Text In View
                 if(debug){
@@ -528,7 +588,7 @@ struct tasbeehView: View {
             
             // results page
             ZStack{
-                if /*!inMiddleOfSequence, */let session = savedSession{
+                if !softLook, let session = savedSession {   // the soft look's results are the pause cards' (above)
                     ResultsView(
                         isPresented: $isPresented,
                         savedSession: session, // Pass the saved session
@@ -541,7 +601,7 @@ struct tasbeehView: View {
                 // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep
                 // (owner). On the results layer itself, so on Keep counting it fades out with them over
                 // the counter's own dim (already on) — the same darkness throughout, no bright flash.
-                if resultsDimmed {
+                if resultsDimmed && !softLook {   // soft: the counter's own dim is over its results already
                     Color.black.opacity((1 - inactivityDimmer) * 0.9)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
@@ -588,7 +648,9 @@ struct tasbeehView: View {
         // Out, then in (circle rule 3): the counter goes, then the results come; Keep counting, the other way round.
         .onChange(of: savedSession != nil) { _, results in
             if results {
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = true; countIn = false; chromeIn = false }
+                cardsStay = paused
+                // Soft look: the ring stays — it comes down from the pause cards (or stays put) and takes the task's title.
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = !softLook; countIn = false; chromeIn = false }
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
                     guard savedSession != nil else { return }
@@ -604,6 +666,12 @@ struct tasbeehView: View {
                 }
             }
         }
+        // One ring, moved by a spring (CircleMotion.ringMove): interrupted (Resume while it rises), it turns back with the
+        // speed it has. Coming down to finish or to close it waits a beat for the cards under it to go first; Resume
+        // moves it at once (its cards go quicker).
+        .onChange(of: ringLiftTarget) { old, new in
+            moveRing(to: new, waitForCards: new > old && (savedSession != nil || ringToCentre))
+        }
         .onChange(of: paused || savedSession != nil) { _, onCards in
             guard SoftSessionEntry.coverIsSoft, openingStyle != .fade else { return }
             SoftSessionEntry.leaveDelay = onCards ? Self.softLeaveFromCards : Self.softLeaveFromCounter
@@ -612,6 +680,16 @@ struct tasbeehView: View {
             if !(openingStyle != .fade && (paused || savedSession != nil)) { landRing(fadeAfter: 0.53) }   // that close lands it later
             if openingStyle == .fade {
                 withAnimation(.easeIn(duration: 0.3)) { leaving = true }
+            } else if softLook && (paused || savedSession != nil) {
+                // Soft look: the ring is already on screen with the cards — they go, the ring comes home to the centre
+                // (where the wheel's is) as they do, then its arc lands and the page goes.
+                ringToCentre = true
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true; countIn = false; chromeIn = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.cardsOut) {
+                    landRing(fadeAfter: SoftSessionEntry.arcMove + Self.pageOut)
+                    withAnimation(.easeInOut(duration: Self.pageOut).delay(SoftSessionEntry.arcMove)) { pageIn = false }
+                }
+                return
             } else if paused || savedSession != nil {
                 // From the pause screen or the results: out, then in (circle rule 3). Their cards go first over the
                 // page (the ring under them held hidden, not showing through); then the ring comes back where it
@@ -698,6 +776,14 @@ struct tasbeehView: View {
                 simulateTasbeehClicks(times: clicks)
                 try? await Task.sleep(for: .seconds(1))
                 if !args.contains("-demoNoPause") { togglePause() }
+                // -demoPauseCycle: resume, pause, then Resume a quarter second into the rise (the spring turning back
+                // mid-move), and pause again — the soft ring's moves without taps.
+                if args.contains("-demoPauseCycle") {
+                    for wait in [1.5, 1.2, 0.25, 1.2] {
+                        try? await Task.sleep(for: .seconds(wait))
+                        togglePause()
+                    }
+                }
                 if ProcessInfo.processInfo.arguments.contains("-demoResults") {
                     try? await Task.sleep(for: .seconds(1))
                     stopTimer()
@@ -1088,6 +1174,33 @@ struct tasbeehView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + fadeAfter) {
             withAnimation(.easeOut(duration: Self.ringOver)) { ringHeld = false }
         }
+    }
+
+    /// The soft look's ring to its place (`ringLiftTarget`): a spring, or under Reduce Motion out, there, in.
+    private func moveRing(to target: CGFloat, waitForCards: Bool) {
+        if reduceMotion {
+            withAnimation(.easeOut(duration: 0.15)) { ringDimmed = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.17) {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { ringLift = ringLiftTarget }
+                withAnimation(.easeIn(duration: 0.2)) { ringDimmed = false }
+            }
+            return
+        }
+        withAnimation(waitForCards ? CircleMotion.ringMove.delay(CircleMotion.ringMoveDownDelay) : CircleMotion.ringMove) {
+            ringLift = target
+        }
+    }
+
+    /// Done on the soft results (ResultsView's Done).
+    private func finishFromResults() {
+        // Cleared once the session has gone: under a soft close the results are still fading.
+        SoftSessionEntry.afterClose {
+            sharedState.titleForSession = ""
+            sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
+        }
+        isPresented = false
     }
 
     /// completeStopTimer's resets, after a soft close with nothing counted (the cover is gone by then).
@@ -1544,8 +1657,32 @@ struct tasbeehView: View {
         /// Past the goal on "keeps going": the chip is locked and Finish isn't "early".
         let goalReached: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
+        /// The soft look (decision session-flow-build A): the counter's ring stays on screen, raised, and these cards sit
+        /// round it; the same cards carry the results, the ring centred. Today's look keeps `todayBody`.
+        var soft = false
+        /// Seconds already done today when continuing a timed task (the "left" tile counts them).
+        var timeOffset: TimeInterval = 0
+        /// The finished session, under the soft look.
+        var results: SoftResults? = nil
+        /// The tiles and buttons are up: paused, the results in, or finishing from the pause screen (they hold still
+        /// through it — only the ring moves).
+        var cardsShown = false
+        /// The results' words are in (after the counter's have gone).
+        var resultsIn = false
+        /// Where the ring stands while paused (global), and the bottom block's top (global): the session moves its ring.
+        var onRingSlot: (CGRect) -> Void = { _ in }
+        var onBottomTop: (CGFloat) -> Void = { _ in }
+
+        /// What the soft cards need of a finished session.
+        struct SoftResults {
+            let session: SessionDataModel
+            var keepCounting: (() -> Void)?
+            let done: () -> Void
+        }
 
         // UI state
+        @State private var showHistory = false
+        @State private var showingFinishTime = false
         @State private var finishArmed = false
         @State private var finishArmToken = 0
         @State private var showMantraPicker = false
@@ -1603,6 +1740,10 @@ struct tasbeehView: View {
         @State private var scrollHeight: CGFloat = 0
 
         var body: some View {
+            if soft { softBody } else { todayBody }
+        }
+
+        @ViewBuilder private var todayBody: some View {
             Color("pauseColor")
                 .edgesIgnoringSafeArea(.all)
                 .animation(.easeOut(duration: 0.3), value: paused)
@@ -1669,6 +1810,416 @@ struct tasbeehView: View {
                     presentation: [.large]
                 )
             }
+        }
+
+        // MARK: soft look (decision session-flow-build A)
+
+        /// Paused, not finished: the pause screen's own words (header, name, text well, chips) are up.
+        private var pauseShown: Bool { paused && results == nil }
+
+        /// The soft pause screen and results, one layout: the counter's ring stays on screen — raised while paused
+        /// (`onRingSlot`), centred once finished — and the tiles and buttons at the bottom are the same on both, so
+        /// finishing from the pause screen moves only the ring. The page doesn't scroll: a long zikr scrolls inside
+        /// its fixed well.
+        @ViewBuilder private var softBody: some View {
+            ZStack {
+                // The empty page resumes (as the dimmed background did).
+                Color.clear
+                    .contentShape(Rectangle())
+                    .ignoresSafeArea()
+                    .onTapGesture { togglePause() }
+                    .allowsHitTesting(pauseShown)
+
+                VStack(spacing: 0) {
+                    Spacer(minLength: 4)
+                    softHeader
+                        .frame(height: 22)
+                        .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                        .padding(.bottom, 50)   // clear of the hundreds' beads round the ring's top
+                    // Where the ring stands while paused: as low as the cards under it allow, so it travels as little
+                    // as it can (owner: "so then the ring doesn't have to travel so far up the page").
+                    Color.clear
+                        .frame(width: 206, height: 206)
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onRingSlot($0) }
+                    VStack(spacing: 10) {
+                        softNameRow
+                        softWell
+                            .frame(minHeight: 92, maxHeight: 148)
+                            .layoutPriority(1)   // it takes its height before the space above the ring does
+                    }
+                    .padding(.top, 12)
+                    .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                    .allowsHitTesting(pauseShown)
+                    softBottom
+                        .padding(.top, 14)
+                }
+                .frame(maxWidth: 420)
+                .padding(.horizontal, 20)
+            }
+            .fontDesign(.rounded)
+            .onChange(of: chosenMantraName) {
+                if let newSetMantra = chosenMantraName, !newSetMantra.isEmpty {
+                    withAnimation {
+                        sharedState.mantraForSession = chosenMantraObject
+                        sharedState.titleForSession = newSetMantra
+                    }
+                }
+            }
+            .sheet(isPresented: $showMantraPicker) {
+                MantraPickerView(
+                    isPresented: $showMantraPicker,
+                    selectedMantra: $chosenMantraName,
+                    selectedMantraObject: $chosenMantraObject,
+                    presentation: [.large]
+                )
+            }
+            .sheet(isPresented: $showHistory) {
+                NavigationStack {
+                    HistoryPageView()
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showHistory = false }
+                            }
+                        }
+                }
+            }
+        }
+
+        /// "paused · 100 count session"; with sleep on, its dimmer in the same place (nothing else moves).
+        @ViewBuilder private var softHeader: some View {
+            if toggleInactivityTimer {
+                HStack(spacing: 10) {
+                    Image(systemName: "moon.fill").font(.caption)
+                    Slider(value: $inactivityDimmer, in: 0...1.0)
+                        .tint(Color.sage)
+                    Image(systemName: "sun.max.fill").font(.caption)
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 28)
+            } else {
+                HStack(spacing: 6) {
+                    Image(systemName: "pause.fill").font(.caption2)
+                    Text(sharedState.isDoingPostNamazZikr ? "paused · Tasbih Fatimah" : "paused · \(sessionLabel)")
+                }
+                .font(.subheadline.weight(.light))
+                .foregroundStyle(.secondary)
+            }
+        }
+
+        /// Under the ring: the zikr's name (→ the picker on a free session), "from your task", its memo and photo.
+        private var softNameRow: some View {
+            let title = sharedState.isDoingPostNamazZikr ? PostSalahTasbeeh.mantraName : sharedState.titleForSession
+            return VStack(spacing: 2) {
+                Button { showMantraPicker = true } label: {
+                    HStack(spacing: 6) {
+                        Text(title.isEmpty ? "choose a zikr" : title)
+                            .font(.system(size: 24, weight: .light, design: .rounded))
+                            .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        if !mantraLocked {
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .allowsHitTesting(!mantraLocked)   // not .disabled: that grayed the name out
+                HStack(spacing: 12) {
+                    if sharedState.isDoingPostNamazZikr {
+                        Text("33 · 33 · 34 after salah")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if isTaskSession {
+                        Label("from your task", systemImage: "checklist")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let mantra, !sharedState.isDoingPostNamazZikr {
+                        ZikrMediaStrip(mantra: mantra, paused: paused, compact: true)
+                    }
+                }
+                .frame(minHeight: 24)
+            }
+        }
+
+        /// The zikr's full text and notes in a well pressed into the page, a fixed height: long ones scroll inside it.
+        /// Count in sets is its last row, as it was the card's.
+        private var softWell: some View {
+            let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+            return VStack(spacing: 0) {
+                ScrollView {
+                    Group {
+                        if sharedState.isDoingPostNamazZikr {
+                            PostSalahPauseCard(count: tasbeeh, bare: true)
+                        } else {
+                            softWellText
+                                .padding(.vertical, 12)
+                                .padding(.horizontal, 14)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .scrollIndicators(.automatic)
+                .scrollBounceBehavior(.basedOnSize)
+                .defaultScrollAnchor(.center, for: .alignment)   // a short zikr sits in the middle of the well
+                .defaultScrollAnchor(.top, for: .initialOffset)  // a long one starts at its top
+                if !sharedState.isDoingPostNamazZikr {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.08))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 14)
+                    QuickAddStepRow(mantra: mantra)
+                        .font(.subheadline)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+            }
+            .background(NeuPressed(shape: shape))
+            .clipShape(shape)
+        }
+
+        @ViewBuilder private var softWellText: some View {
+            if let mantra {
+                let full = mantra.fullText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let notes = mantra.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+                VStack(spacing: 10) {
+                    if !full.isEmpty {
+                        // Arabic lines in the Uthmani face, the rest (transliteration, meaning) in the light rounded type.
+                        VStack(spacing: 6) {
+                            ForEach(Array(full.components(separatedBy: .newlines).enumerated()), id: \.offset) { _, line in
+                                let text = line.trimmingCharacters(in: .whitespaces)
+                                if !text.isEmpty {
+                                    let arabic = text.unicodeScalars.contains { (0x0600...0x06FF).contains($0.value) }
+                                    Text(text)
+                                        .font(arabic ? .custom("KFGQPCUthmanTahaNaskh", size: 26) : .system(size: 15, weight: .light, design: .rounded))
+                                        .foregroundStyle(arabic ? .primary : .secondary)
+                                        .lineSpacing(arabic ? 8 : 2)
+                                        .multilineTextAlignment(.center)
+                                }
+                            }
+                        }
+                    }
+                    if !notes.isEmpty {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Image(systemName: "doc.text")
+                                .foregroundStyle(.tertiary)
+                            Text(notes)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.footnote)
+                    }
+                    if full.isEmpty && notes.isEmpty {
+                        Text("no full text or notes yet — add them on its page")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            } else {
+                Text(sharedState.titleForSession.isEmpty ? "its full text, notes and sets show up here" : "")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+
+        // MARK: soft bottom block — the same on the pause screen and the results
+
+        /// The finished session's values once it's saved, else the running session's.
+        private var shownSeconds: TimeInterval { results?.session.secondsPassed ?? secsToReport }
+        private var shownPerCount: Double { results?.session.avgTimePerClick ?? newAvrgTPC }
+        private var shownUsualPace: Double? {
+            if let s = results?.session { return s.mantra?.secondsPerCount(excluding: s) }
+            return mantra?.secondsPerCount
+        }
+
+        /// The third tile while paused: what's left (a count goal: time left ⇄ the finish time; a time goal: time left
+        /// ⇄ when it ends), else the pace per tasbeeh (freestyle, Tasbih Fatimah, past the goal).
+        private enum ThirdTile { case left(TimeInterval, Date), toGo(Int), perTasbeeh }
+        private var thirdTile: ThirdTile {
+            if !sharedState.isDoingPostNamazZikr && !goalReached {
+                if sharedState.selectedMode == 2 && remainingCount > 0 {
+                    return tasbeeh > 0 && newAvrgTPC > 0 ? .left(timeLeft, finishTime) : .toGo(remainingCount)
+                }
+                if sharedState.selectedMode == 1 {
+                    let left = max(0, Double(sharedState.selectedMinutes * 60) - secsToReport - timeOffset)
+                    if left > 0 { return .left(left, Date().addingTimeInterval(left)) }
+                }
+            }
+            return .perTasbeeh
+        }
+
+        private var softBottom: some View {
+            let finished = results != nil
+            let pace = ZikrBento.paceComparison(secondsPerCount: shownPerCount, usual: shownUsualPace, perCount: true)
+            return VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    softTile("time") { softValue(timerStyle(shownSeconds)) }
+                    softTile("per count") { softValue(String(format: "%.2fs", shownPerCount)) }
+                    ZStack {
+                        softThirdTile
+                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                        softTile("counted") { softValue((results?.session.totalCount ?? 0).formatted()) }
+                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                    }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
+                // Under the per-count tile, as it sits under the rate today: how this compares with your usual pace.
+                HStack(spacing: 10) {
+                    Color.clear.frame(maxWidth: .infinity)
+                    Group {
+                        if let pace {
+                            Text(pace.text)
+                                .font(.system(size: 12, weight: pace.faster == true ? .medium : .regular, design: .rounded))
+                                .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .contentTransition(.opacity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    Color.clear.frame(maxWidth: .infinity)
+                }
+                .frame(height: 22)
+
+                // The chips while paused; after a sleep finish, Keep counting in their place.
+                ZStack {
+                    if !sharedState.isDoingPostNamazZikr {
+                        chipsRow
+                            .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
+                            .allowsHitTesting(pauseShown)
+                    }
+                    if let keepCounting = results?.keepCounting {
+                        Button(action: keepCounting) {
+                            Label("Keep counting", systemImage: "play.fill")
+                                .fontWeight(.semibold)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .foregroundStyle(Color.sage)
+                                .background(Capsule().fill(Color.sage.opacity(0.06)))
+                                .overlay(Capsule().stroke(Color.sage.opacity(0.6), lineWidth: 1))
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .modifier(SoftCardsFade(shown: resultsIn, delay: 0))
+                    }
+                }
+                .frame(height: 62)
+                .padding(.top, 6)
+
+                // Resume ⇄ Done in one capsule that stays put; only its words change.
+                Button {
+                    if let results {
+                        triggerSomeVibration(type: .success)
+                        results.done()
+                    } else {
+                        togglePause()
+                    }
+                } label: {
+                    ZStack {
+                        Label("Resume", systemImage: "play.fill")
+                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                        Text("Done")
+                            .fontWeight(.semibold)
+                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                    }
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                    .frame(width: 210, height: 52)
+                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 14)
+                .allowsHitTesting(pauseShown || (finished && resultsIn))
+
+                // Finish early ⇄ View zikr history, low, clear of the edge.
+                Button {
+                    if finished {
+                        triggerSomeVibration(type: .light)
+                        showHistory = true
+                    } else {
+                        finishTap()
+                    }
+                } label: {
+                    ZStack {
+                        finishLabel
+                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                        Label("View zikr history", systemImage: "clock.arrow.circlepath")
+                            .foregroundStyle(.secondary)
+                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                    }
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                    .animation(.easeInOut(duration: 0.3), value: finishArmed)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+                .allowsHitTesting(pauseShown || (finished && resultsIn))
+            }
+            .modifier(SoftCardsFade(shown: cardsShown, delay: 0.12))
+            .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
+        }
+
+        @ViewBuilder private var softThirdTile: some View {
+            switch thirdTile {
+            case .left(let left, let at):
+                Button {
+                    triggerSomeVibration(type: .medium)
+                    withAnimation(.easeInOut(duration: 0.3)) { showingFinishTime.toggle() }
+                } label: {
+                    softTile(showingFinishTime ? "finish" : "left", flips: true) {
+                        ZStack {
+                            softValue(String(inMinSecStyle2(from: left).dropFirst(3)))
+                                .opacity(showingFinishTime ? 0 : 1)
+                            softValue(shortTime(at))
+                                .opacity(showingFinishTime ? 1 : 0)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            case .toGo(let n):
+                softTile("to go") { softValue(n.formatted()) }
+            case .perTasbeeh:
+                softTile("per tasbeeh") { softValue(tasbeehRate) }
+            }
+        }
+
+        /// A tile raised off the page: its caption over its value.
+        private func softTile<Content: View>(_ caption: String, flips: Bool = false,
+                                             @ViewBuilder value: () -> Content) -> some View {
+            VStack(spacing: 3) {
+                HStack(spacing: 4) {
+                    Text(caption)
+                        .contentTransition(.opacity)
+                    if flips {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 8, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                value()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 62)
+            .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 6, offset: 3))
+            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+
+        private func softValue(_ text: String) -> some View {
+            Text(text)
+                .font(.system(size: 22, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .padding(.horizontal, 8)
         }
 
         // MARK: mantra card
@@ -1786,39 +2337,7 @@ struct tasbeehView: View {
                 }
                 // Tasbih Fatimah: just Finish / Resume (owner: none of the settings chips).
                 if !sharedState.isDoingPostNamazZikr {
-                HStack(spacing: 8) {
-                    if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
-                        // Locked once the goal is passed (owner): switching back ended the session the
-                        // moment it resumed.
-                        chip(autoStop ? "stops at goal" : "keeps going",
-                             icon: autoStop ? "flag.checkered" : "arrow.clockwise",
-                             on: !autoStop, locked: goalReached) { autoStop.toggle() }
-                        .overlay(alignment: .topTrailing) { infoButton("About stops at goal", on: !autoStop) { showGoalIntro = true } }
-                        .fullScreenCover(isPresented: $showGoalIntro) {
-                            GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
-                                          subtitle: goalSubtitle) { showGoalIntro = false }
-                        }
-                    }
-                    chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
-                        // The first time (until confirmed once): the intro, which turns it on.
-                        if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
-                        toggleInactivityTimer.toggle()
-                        // On: dark. Off: back to the app's own look (there's no light / dark chip).
-                        tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
-                    }
-                    // (i) in the chip's corner: the intro again, any time (owner).
-                    .overlay(alignment: .topTrailing) { infoButton("About sleep mode", on: toggleInactivityTimer) { showSleepIntro = true } }
-                    .fullScreenCover(isPresented: $showSleepIntro) {
-                        SleepIntroView(isOn: toggleInactivityTimer, onTurnOn: {
-                            sleepIntroConfirmed = true
-                            toggleInactivityTimer = true
-                            tasbeehColorMode = true
-                            showSleepIntro = false
-                        }, onNotNow: { showSleepIntro = false })
-                        .interactiveDismissDisabled()
-                    }
-                hapticsChip
-                }
+                    chipsRow
                 }
                 // One button: Resume (owner, 2026-09-26: two big buttons side by side made the
                 // coloured one feel like "end" — he was scared to press it). Finishing is a small
@@ -1836,31 +2355,8 @@ struct tasbeehView: View {
                             .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
                             .contentShape(Capsule())
                     }
-                    Button {
-                        if finishArmed {
-                            triggerSomeVibration(type: .medium)
-                            finishArmed = false
-                            stopTimer()
-                        } else {
-                            triggerSomeVibration(type: .light)
-                            finishArmToken += 1
-                            let token = finishArmToken
-                            finishArmed = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                if token == finishArmToken { finishArmed = false }
-                            }
-                        }
-                    } label: {
-                        ZStack {
-                            Text(goalReached ? "Finish" : "Finish early")   // past the goal it isn't early
-                                .foregroundStyle(.secondary)
-                                .opacity(finishArmed ? 0 : 1)
-                                .blur(radius: finishArmed ? 3 : 0)
-                            Text("Tap again to finish")
-                                .foregroundStyle(Color.green)
-                                .opacity(finishArmed ? 1 : 0)
-                                .blur(radius: finishArmed ? 0 : 3)
-                        }
+                    Button { finishTap() } label: {
+                        finishLabel
                         .font(.system(size: 14, weight: .regular, design: .rounded))
                         // Just round its words: the empty sides of the bottom resume (owner), and a
                         // stray tap there mustn't arm Finish.
@@ -1876,6 +2372,73 @@ struct tasbeehView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
             .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
+        }
+
+        /// Finish early: the first tap turns it green, "Tap again to finish"; the second finishes; it disarms after 3 s.
+        private func finishTap() {
+            if finishArmed {
+                triggerSomeVibration(type: .medium)
+                finishArmed = false
+                stopTimer()
+            } else {
+                triggerSomeVibration(type: .light)
+                finishArmToken += 1
+                let token = finishArmToken
+                finishArmed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    if token == finishArmToken { finishArmed = false }
+                }
+            }
+        }
+
+        private var finishLabel: some View {
+            ZStack {
+                Text(goalReached ? "Finish" : "Finish early")   // past the goal it isn't early
+                    .foregroundStyle(.secondary)
+                    .opacity(finishArmed ? 0 : 1)
+                    .blur(radius: finishArmed ? 3 : 0)
+                Text("Tap again to finish")
+                    .foregroundStyle(Color.green)
+                    .opacity(finishArmed ? 1 : 0)
+                    .blur(radius: finishArmed ? 0 : 3)
+            }
+        }
+
+        /// stops at goal / keeps going, sleep, haptics — each a chip, the first two with an (i).
+        private var chipsRow: some View {
+            HStack(spacing: 8) {
+                if sharedState.selectedMode != 0 {   // freestyle has no goal to stop at
+                    // Locked once the goal is passed (owner): switching back ended the session the
+                    // moment it resumed.
+                    chip(autoStop ? "stops at goal" : "keeps going",
+                         icon: autoStop ? "flag.checkered" : "arrow.clockwise",
+                         on: !autoStop, locked: goalReached) { autoStop.toggle() }
+                    .overlay(alignment: .topTrailing) { infoButton("About stops at goal", on: !autoStop) { showGoalIntro = true } }
+                    .fullScreenCover(isPresented: $showGoalIntro) {
+                        GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
+                                      subtitle: goalSubtitle) { showGoalIntro = false }
+                    }
+                }
+                chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
+                    // The first time (until confirmed once): the intro, which turns it on.
+                    if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
+                    toggleInactivityTimer.toggle()
+                    // On: dark. Off: back to the app's own look (there's no light / dark chip).
+                    tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
+                }
+                // (i) in the chip's corner: the intro again, any time (owner).
+                .overlay(alignment: .topTrailing) { infoButton("About sleep mode", on: toggleInactivityTimer) { showSleepIntro = true } }
+                .fullScreenCover(isPresented: $showSleepIntro) {
+                    SleepIntroView(isOn: toggleInactivityTimer, onTurnOn: {
+                        sleepIntroConfirmed = true
+                        toggleInactivityTimer = true
+                        tasbeehColorMode = true
+                        showSleepIntro = false
+                    }, onNotNow: { showSleepIntro = false })
+                    .interactiveDismissDisabled()
+                }
+                hapticsChip
+            }
         }
 
         /// The phone with waves either side: one wave lit for light taps, two for medium, all
@@ -1916,7 +2479,13 @@ struct tasbeehView: View {
                 .foregroundStyle(Color.primary.opacity(currentVibrationMode == .off ? 0.45 : 0.75))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06)))
+                .background {
+                    if soft {
+                        NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
+                    } else {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06))
+                    }
+                }
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -1979,10 +2548,14 @@ struct tasbeehView: View {
                 .foregroundStyle(on ? Color.sage : Color.primary.opacity(0.75))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
-                )
+                .background {
+                    if soft && !on {
+                        NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
+                    } else {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
+                    }
+                }
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .opacity(locked ? 0.45 : 1)
             }
@@ -2229,12 +2802,27 @@ struct PostSalahReminder: View {
 /// (nothing to edit here; owner: "it's a special one").
 struct PostSalahPauseCard: View {
     let count: Int
+    /// Inside the soft pause screen's text well: no name (the name row has it) and no card of its own.
+    var bare = false
 
     var body: some View {
+        if bare {
+            content.padding(12)
+        } else {
+            content
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+        }
+    }
+
+    private var content: some View {
         let now = PostSalahTasbeeh.phase(at: count)
-        VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 14) {
+            if !bare {
             Text(PostSalahTasbeeh.mantraName)
                 .font(.system(size: 24, weight: .light, design: .rounded))
+            }
             VStack(spacing: 8) {
                 ForEach(Array(PostSalahTasbeeh.phases.enumerated()), id: \.offset) { i, phrase in
                     let done = i < now.index || (i == now.index && now.done >= now.of)
@@ -2272,9 +2860,6 @@ struct PostSalahPauseCard: View {
                 .foregroundStyle(.tertiary)
                 .frame(maxWidth: .infinity, alignment: .center)
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(.ultraThinMaterial))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
     }
 }
 
@@ -2323,6 +2908,187 @@ struct PostSalahPhaseStrip: View {
 /// the left, rate on the right — tap it to flip per count ↔ per tasbeeh. With `finish` (a count goal in progress) a full-width tile underneath says when
 /// you'll be done — "in 1m 20s", tap → "6:42 PM" — a tile so it reads as something to tap
 /// (owner, 2026-09-25; it used to be loose caption text under the boxes).
+/// The soft look's session ring (and its count) lifted to where the session wants it (decision session-flow-build A);
+/// nil = untouched — Today's look gets no offset at all, so its pixels can't move.
+struct RingLift: ViewModifier {
+    let lift: CGFloat?
+    var dimmed = false
+
+    func body(content: Content) -> some View {
+        if let lift {
+            content.offset(y: lift).opacity(dimmed ? 0 : 1)
+        } else {
+            content
+        }
+    }
+}
+
+/// The soft session cards' words going and coming (decision session-flow-build A): out quick, in a little slower and,
+/// where they'd meet the moving ring, a beat late — out, then in.
+struct SoftCardsFade: ViewModifier {
+    let shown: Bool
+    var delay: Double = 0
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .animation(shown ? .easeOut(duration: CircleMomentTiming.in).delay(delay) : .easeOut(duration: 0.12), value: shown)
+    }
+}
+
+/// The finished session in the soft look's centred ring, as the Zikr wheel will show it (decision session-flow-build A,
+/// owner: "content inside of the circle could instead be the title of the task"): the task's title and "done today" /
+/// where it stands; a free session's zikr with ⌄ (the picker moves the saved session). Above the ring, "Saved to your
+/// history" and, after the session that kept it, the streak.
+struct SessionDoneFace: View {
+    @Environment(\.modelContext) private var context
+    @EnvironmentObject var sharedState: SharedStateClass
+    let session: SessionDataModel
+
+    @State private var showMantraPicker = false
+    @State private var chosenMantraName: String? = ""
+    @State private var chosenMantraObject: MantraModel? = nil
+
+    private var isTasbihFatimah: Bool { (session.mantra?.name ?? session.title) == PostSalahTasbeeh.mantraName }
+    private var locked: Bool { session.task != nil || isTasbihFatimah }
+
+    /// Today's progress on the session's task, this session included.
+    private var taskProgress: TaskProgress? {
+        guard let task = session.task else { return nil }
+        let mine = task.sessions.filter { $0.startTime >= PrayerDay.sessionDayStart() }
+        return TaskProgress(count: mine.reduce(0) { $0 + $1.totalCount },
+                            seconds: mine.reduce(0) { $0 + $1.secondsPassed })
+    }
+
+    /// The streak, only after the session that finished the task's goal for today (as the results' hero).
+    private var finishedStreak: TaskStreak? {
+        guard let task = session.task, let p = taskProgress, task.isCompleted(with: p),
+              session.startTime >= PrayerDay.sessionDayStart() else { return nil }
+        let before = TaskProgress(count: p.count - session.totalCount, seconds: p.seconds - session.secondsPassed)
+        guard !task.isCompleted(with: before) else { return nil }
+        let streak = task.streak()
+        return streak.current > 0 ? streak : nil
+    }
+
+    /// The task's own name, else the zikr's; a free session with none picked ("Untitled") asks for one.
+    private var title: String {
+        if let task = session.task { return task.title }
+        if let name = session.mantra?.name { return name }
+        return session.title == "Untitled" ? "" : session.title
+    }
+
+    var body: some View {
+        face
+            .frame(width: 200, height: 200)
+            // Above the ring, its bottom 22 pt over the ring's top: it moves with the ring.
+            .overlay(alignment: .top) {
+                header
+                    .fixedSize()
+                    .alignmentGuide(.top) { $0[.bottom] + 22 }
+            }
+            .onChange(of: chosenMantraName) {
+                guard let newName = chosenMantraName, !newName.isEmpty else { return }
+                withAnimation {
+                    sharedState.titleForSession = newName
+                    sharedState.mantraForSession = chosenMantraObject
+                    session.title = newName   // the saved session moves to that zikr
+                    session.mantra = chosenMantraObject
+                    do { try context.save() } catch { print("Error saving context: \(error)") }
+                }
+            }
+            .sheet(isPresented: $showMantraPicker) {
+                MantraPickerView(
+                    isPresented: $showMantraPicker,
+                    selectedMantra: $chosenMantraName,
+                    selectedMantraObject: $chosenMantraObject,
+                    presentation: [.large]
+                )
+            }
+    }
+
+    /// The wheel's face (ZikrCircleFace): the title, the zikr under a task's own name, then where it stands.
+    private var face: some View {
+        VStack(spacing: 4) {
+            Button { showMantraPicker = true } label: {
+                HStack(spacing: 6) {
+                    Text(title.isEmpty ? "choose a zikr" : title)
+                        .font(.system(size: 30, weight: .light, design: .rounded))
+                        .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.55)
+                    if !locked {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: 150)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .allowsHitTesting(!locked)
+            if let task = session.task, let line = task.mantraLine {
+                Text(line)
+                    .font(.system(size: 15, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: 150)
+                    .padding(.top, -3)
+            }
+            subtitle
+                .font(.subheadline)
+                .fontWeight(.thin)
+                .monospacedDigit()
+        }
+        .fontDesign(.rounded)
+    }
+
+    @ViewBuilder private var subtitle: some View {
+        if let task = session.task, let p = taskProgress {
+            if task.isCompleted(with: p) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                    Text("done today")
+                }
+                .foregroundStyle(Color.sage)
+            } else {
+                Text(task.isCountMode ? "\(p.count) of \(task.goal)" : "\(Int(p.seconds / 60)) of \(task.goal) min")
+                    .foregroundStyle(.secondary)
+            }
+        } else if isTasbihFatimah {
+            Text("33 · 33 · 34 after salah").foregroundStyle(.secondary)
+        } else {
+            Text(session.sessionMode == 1 ? "\(session.targetMin) min session"
+                 : session.sessionMode == 2 ? "\(session.targetCount) count session" : "freestyle")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var header: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Saved to your history")
+                    .font(.system(size: 19, weight: .light, design: .rounded))
+            }
+            .foregroundStyle(Color.sage)
+            if let streak = finishedStreak {
+                HStack(spacing: 4) {
+                    Image(systemName: "flame.fill")
+                        .foregroundStyle(Color.sage)
+                    Text(streak.current >= streak.best ? "Day \(streak.current) · your best yet"
+                                                       : "Day \(streak.current) · your best is \(streak.best)")
+                        .foregroundStyle(.secondary)
+                }
+                .font(.system(size: 13, weight: .regular, design: .rounded))
+            }
+        }
+    }
+}
+
 struct ZikrBento: View {
     let count: Int
     let seconds: TimeInterval
@@ -2428,7 +3194,12 @@ struct ZikrBento: View {
     /// This session against your usual pace, per count or per tasbeeh (100 counts, like the rate):
     /// "0.7s faster", "1m 10s slower", "about your usual" within 5 %. Nil without a usual pace.
     private func paceComparison(perCount: Bool) -> (text: String, faster: Bool?)? {
-        guard let usual = usualSecondsPerCount, usual > 0, secondsPerCount > 0 else { return nil }
+        Self.paceComparison(secondsPerCount: secondsPerCount, usual: usualSecondsPerCount, perCount: perCount)
+    }
+
+    /// The same line for the soft session's per-count tile (decision session-flow-build A).
+    static func paceComparison(secondsPerCount: Double, usual: Double?, perCount: Bool) -> (text: String, faster: Bool?)? {
+        guard let usual, usual > 0, secondsPerCount > 0 else { return nil }
         let diff = secondsPerCount - usual
         if abs(diff) / usual < 0.05 { return ("about your usual", nil) }
         let amount = abs(diff) * (perCount ? 1 : 100)
