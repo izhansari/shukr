@@ -1194,6 +1194,9 @@ struct PrayerTimesView: View {
                 // inserting / removing one twitched the circle at the hand-off).
                 .padding(.top, lost.map { $0.risen ? $0.titleHeight + 28 : 0 } ?? 0)
                 .padding(.bottom, lost.map { $0.risen ? 28 + $0.reasonsHeight : 0 } ?? 0)
+                // The lost page's rise and the glide back down: the page animates them itself (a transaction from the
+                // lost page's runner had to cross into the pager — audit B).
+                .animation(lost.map { $0.risen ? CircleMotion.Lost.rise : CircleMotion.Lost.down }, value: lost?.risen)
                 .zIndex(3)
 
                 Spacer()

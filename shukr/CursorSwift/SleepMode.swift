@@ -405,20 +405,20 @@ struct MorningCurtain: View {
         .onAppear {
             CircleCover.set("morningCard", true)
             guard WelcomeTarget.playing || WelcomeGate.curtainUp else {
-                withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
+                withAnimation(CircleMotion.Morning.wordsIn) { pageIn = true; shown = true }
                 return
             }
             // Under the welcome: its ring lands on the circle, then the words come in. The page eases in (it goes up a
             // beat after the welcome starts, over the page or a fading black: at once, it was a step).
-            withAnimation(.easeOut(duration: 0.3)) { pageIn = true }
+            withAnimation(CircleMotion.Morning.pageUnderWelcome) { pageIn = true }
         }
         .task {
             guard !shown else { return }
-            // From the moment the welcome's ring lands: its page fades out as the words fade in.
-            while (WelcomeTarget.playing && !WelcomeTarget.landed) || WelcomeGate.curtainUp {
-                try? await Task.sleep(for: .milliseconds(50))
-            }
-            withAnimation(.easeOut(duration: 0.5)) { pageIn = true; shown = true }
+            // From the moment the welcome's ring lands: its page fades out as the words fade in. It wakes when the
+            // welcome's state changes (it polled every 50 ms, and spun once cancelled — audit B).
+            let welcome = WelcomeTarget.state
+            guard await CircleStage.shared.until({ !((welcome.playing && !welcome.landed) || welcome.curtainUp) }) else { return }
+            withAnimation(CircleMotion.Morning.wordsIn) { pageIn = true; shown = true }
         }
         .onDisappear { CircleCover.set("morningCard", false) }
     }
@@ -426,11 +426,13 @@ struct MorningCurtain: View {
     /// The words go — the card's and the circle's (its morning face goes out, then the prayer comes in: a swap) — and the
     /// page fades from round the ring, which stays.
     private func finish(then go: @escaping () -> Void) {
-        withAnimation(.easeOut(duration: 0.22)) { shown = false }
+        typealias T = CircleMotion.Morning
+        withAnimation(T.wordsOut) { shown = false }
         CircleStage.shared.morning = nil
-        withAnimation(.easeInOut(duration: 0.3).delay(0.15)) { pageIn = false }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.5))
+            // The page fades once the words are on their way, and the card goes when it has (it was a guessed 0.5 s).
+            _ = await CircleGate.pause(T.pageAfterWordsDuration)
+            await CircleMotion.animate(T.pageAway) { pageIn = false }
             go()
         }
     }
@@ -443,5 +445,19 @@ struct MorningCurtain: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.05)))
+    }
+}
+
+extension CircleMotion {
+    /// The morning card round the circle (MorningCurtain).
+    enum Morning {
+        /// Its words (and, with no welcome playing, the page) coming in.
+        static let wordsIn = Animation.easeOut(duration: 0.5)
+        /// The page going up under the welcome, before the ring lands.
+        static let pageUnderWelcome = Animation.easeOut(duration: 0.3)
+        /// Good morning / View in History: the words go, then the page round the ring.
+        static let wordsOut = Animation.easeOut(duration: 0.22)
+        static let pageAfterWordsDuration: Double = 0.15
+        static let pageAway = Animation.easeInOut(duration: 0.3)
     }
 }

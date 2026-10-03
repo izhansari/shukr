@@ -347,11 +347,13 @@ struct FirstRunSetupView: View {
     /// The opening has drained to the plain page: the first step comes in piece by piece — the ring
     /// (it draws itself as it appears), the title, the rows, then Begin.
     private func finishOpening() {
+        typealias T = CircleMotion.Setup
         opening = false
-        let beat = reduceMotion ? 0.15 : 0.35
-        for stage in 1...4 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05 + beat * Double(stage - 1)) {
-                withAnimation(.easeOut(duration: reduceMotion ? 0.3 : 0.55)) { reveal = stage }
+        Task { @MainActor in
+            guard await CircleGate.pause(T.revealStartDuration) else { return }
+            for stage in 1...4 {
+                withAnimation(reduceMotion ? T.revealReduced : T.reveal) { reveal = stage }
+                guard stage < 4, await CircleGate.pause(reduceMotion ? T.revealBeatReducedDuration : T.revealBeatDuration) else { return }
             }
         }
     }
@@ -397,14 +399,17 @@ struct FirstRunSetupView: View {
         WidgetCenter.shared.reloadAllTimelines()
         WatchSync.shared.send()
         UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.8)
-        if reduceMotion {
-            withAnimation(.easeInOut(duration: 0.35)) { leaving = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { welcome = true }
-            return
-        }
-        // The page lets go; the ring glides onto the circle and thins into the welcome's hairline.
-        withAnimation(.easeOut(duration: 0.35)) { leaving = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.95) {
+        typealias T = CircleMotion.Setup
+        Task { @MainActor in
+            if reduceMotion {
+                await CircleMotion.animate(T.leavingReduced) { leaving = true }
+                welcome = true
+                return
+            }
+            // The page lets go; the ring glides onto the circle and thins into the welcome's hairline (SetupRing's own
+            // spring, `T.ringGlide`), and the welcome takes over once it's there.
+            withAnimation(T.leaving) { leaving = true }
+            guard await CircleGate.pause(T.ringGlideDuration) else { return }
             var t = Transaction(); t.disablesAnimations = true
             withTransaction(t) { welcome = true }   // same ring, same place: only the letters appear
         }
@@ -431,6 +436,8 @@ struct FirstRunSetupView: View {
     var symbolIn = true
     /// Location's back (or a city): the symbol turns on, the title says so.
     var acknowledged = false
+    /// The ring's words and the title out while they change to the acknowledgement (out, then in: rule 3).
+    var wordsAway = false
     var comeback: EnvLocationManager.Comeback?
     /// The hand-off: the words, reasons and buttons go…
     var clearing = false
@@ -450,7 +457,7 @@ struct FirstRunSetupView: View {
     private var measured = false
     func measure(_ change: () -> Void) {
         if measured && stage >= 1 {
-            withAnimation(.snappy(duration: 0.45), change)
+            withAnimation(CircleMotion.Lost.room, change)
         } else {
             change()
         }
@@ -491,7 +498,6 @@ struct LostFace: View {
             Image(systemName: stage.acknowledged ? stage.onSymbol : "location.slash")
                 .font(.system(size: 26, weight: .light))
                 .foregroundStyle(stage.acknowledged ? Color.sage : Color.secondary)
-                .contentTransition(.symbolEffect(.replace))
             Text(stage.acknowledged ? stage.onCaption : "location is off")
                 .font(.system(.subheadline, design: .rounded, weight: .thin))
                 .foregroundStyle(.secondary)
@@ -499,8 +505,9 @@ struct LostFace: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .frame(maxWidth: 112)
-                .contentTransition(.opacity)
         }
+        // Off → on: out, then in, like the circle's own words (they cross-faded — audit B).
+        .modifier(CircleWordsAway(away: stage.wordsAway))
         // Leaves like the welcome's word as the ring grows (scale 0.9, blur 4).
         .scaleEffect(stage.symbolIn ? 1 : 0.9)
         .opacity(stage.symbolIn ? 1 : 0)
@@ -525,6 +532,7 @@ struct LostWords: View {
                     .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in stage.measure { stage.titleHeight = h } }
                     .opacity(stage.titleShown ? 1 : 0)
                     .blur(radius: stage.titleShown ? 0 : 6)
+                    .modifier(CircleWordsAway(away: stage.wordsAway))   // "Uh oh" → "Location's back": out, then in
                     .alignmentGuide(.top) { $0[.bottom] + 28 }
             }
             .overlay(alignment: .bottom) {
@@ -556,7 +564,6 @@ struct LostWords: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            .transition(.blurReplace)
         } else {
             VStack(spacing: 6) {
                 Text("Uh oh,")
@@ -566,7 +573,6 @@ struct LostWords: View {
                     .font(.system(.title, design: .rounded, weight: .light))
                     .multilineTextAlignment(.center)
             }
-            .transition(.blurReplace)
         }
     }
 }
@@ -627,47 +633,43 @@ struct LostPageLayer: View {
     /// above it, both rise to their place, the reasons and buttons fill in. While the app is open: the page round the
     /// circle fades, its prayer goes out and the symbol comes in, the circle rises, then the title, then the rest.
     private func enter() async {
+        typealias T = CircleMotion.Lost
         guard CircleStage.shared.lost == nil else { return }
-        try? await Task.sleep(for: .milliseconds(60))   // a launch: the welcome is up by now
+        guard await CircleGate.pause(T.launchSettleDuration) else { return }   // a launch: the welcome is up by now
         guard isLost, CircleStage.shared.lost == nil else { return }
         let stage = LostStage()
         stage.preview = location.lostPreview
         CircleCover.set("lost", true)   // no reminders card / qibla buzz meanwhile (not over the circle: CircleCover)
-        if WelcomeTarget.playing || reduceMotion || UIApplication.shared.applicationState != .active {
-            quietly {
-                sharedState.horizontalPage = .main
-                sharedState.navPosition = .main
-            }
+        if WelcomeTarget.playing || reduceMotion || !CircleStage.shared.sceneActive {
+            quietly { sharedState.navPosition = .main }
+            sharedState.go(to: .main, animated: false)
         } else if sharedState.horizontalPage != .main || sharedState.navPosition != .main {
-            // Open on another page or with the list up: back to the circle the usual way first.
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                sharedState.horizontalPage = .main
-                sharedState.navPosition = .main
-            }
-            try? await Task.sleep(for: .milliseconds(450))
+            // Open on another page or with the list up: back to the circle the usual way first, and on once it's there
+            // (it was a guessed 0.45 s).
+            async let page = sharedState.navigate(to: .main)
+            await CircleMotion.animate(CircleMotion.page) { sharedState.navPosition = .main }
+            _ = await page
+            guard !Task.isCancelled else { return }
         }
         if reduceMotion {
             stage.stage = 3
-            withAnimation(.easeInOut(duration: 0.35)) { CircleStage.shared.lost = stage }
+            withAnimation(T.reduced) { CircleStage.shared.lost = stage }
             location.endSalahLinger()
             return
         }
+        // Each step returns if this run was cancelled (location back, or the page gone): the comeback takes it from
+        // where it is — the rest of the steps used to fire at once (audit B).
         if WelcomeTarget.playing {
             // Under the welcome (it lands on this circle, solid, the lost ring).
             quietly { CircleStage.shared.lost = stage }
-            while WelcomeTarget.playing {
-                if Task.isCancelled { return }
-                try? await Task.sleep(for: .milliseconds(100))
-            }
-            try? await Task.sleep(for: .milliseconds(150))
-            guard stage.comeback == nil else { return }
-            withAnimation(.easeOut(duration: 0.5)) { stage.stage = 1 }
-            try? await Task.sleep(for: .milliseconds(750))
-            guard stage.comeback == nil else { return }
-            withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { stage.stage = 2 }
-            try? await Task.sleep(for: .milliseconds(450))
-            guard stage.comeback == nil else { return }
-            withAnimation(.easeOut(duration: 0.5)) { stage.stage = 3 }
+            let welcome = WelcomeTarget.state
+            guard await CircleStage.shared.until({ !welcome.playing }) else { return }   // it polled every 100 ms
+            guard await CircleGate.pause(T.afterWelcomeDuration), stage.comeback == nil else { return }
+            withAnimation(T.titleIn) { stage.stage = 1 }
+            guard await CircleGate.pause(T.titleDuration), stage.comeback == nil else { return }
+            withAnimation(T.rise) { stage.stage = 2 }
+            guard await CircleGate.pause(T.riseDuration), stage.comeback == nil else { return }
+            withAnimation(T.restIn) { stage.stage = 3 }
             #if DEBUG
             // `-demoLostCity London`: pick that city 2 s after the page settles (the city sheet's path).
             if let city = UserDefaults.standard.string(forKey: "demoLostCity") {
@@ -678,54 +680,64 @@ struct LostPageLayer: View {
             return
         }
         // While the app is open. Only once it's really on screen (not under iOS's snapshot as it comes back).
-        for _ in 0..<60 where UIApplication.shared.applicationState != .active {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        try? await Task.sleep(for: .milliseconds(250))
+        _ = await CircleStage.shared.until(deadline: T.onScreenDeadline) { CircleStage.shared.sceneActive }
+        guard await CircleGate.pause(T.warmSettleDuration) else { return }
         stage.symbolIn = false
         stage.titleHeld = true
         stage.stage = 1
         // The page round the circle fades (its own animations); the circle's prayer goes out, its ring stays.
         CircleStage.shared.lost = stage
         location.endSalahLinger()
-        try? await Task.sleep(for: .milliseconds(600))
-        guard stage.comeback == nil else { return }
-        withAnimation(.spring(response: 0.7, dampingFraction: 0.9)) { stage.stage = 2 }
-        withAnimation(.easeOut(duration: 0.4).delay(0.08)) { stage.symbolIn = true }
-        try? await Task.sleep(for: .milliseconds(550))
-        guard stage.comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { stage.titleHeld = false }
-        try? await Task.sleep(for: .milliseconds(450))
-        guard stage.comeback == nil else { return }
-        withAnimation(.easeOut(duration: 0.5)) { stage.stage = 3 }
+        guard await CircleGate.pause(T.pageAwayDuration), stage.comeback == nil else { return }
+        withAnimation(T.rise) { stage.stage = 2 }
+        withAnimation(T.symbolIn) { stage.symbolIn = true }
+        guard await CircleGate.pause(T.warmRiseDuration), stage.comeback == nil else { return }
+        withAnimation(T.titleIn) { stage.titleHeld = false }
+        guard await CircleGate.pause(T.titleAfterRiseDuration), stage.comeback == nil else { return }
+        withAnimation(T.restIn) { stage.stage = 3 }
     }
 
     /// Location's back (or a city): the symbol turns on with a soft success, the title says so; then the words go while
     /// the circle glides back to its place and draws in to the welcome's starting ring round the symbol; it rests, then
     /// does the welcome's own landing — grows into the track (or the dashes) as the symbol lets go — and the prayer and
-    /// the page come in round it. Reduce Motion: the acknowledgement, a fade.
+    /// the page come in round it. Reduce Motion: the acknowledgement, a fade. Cancelled (a newer comeback), it stops
+    /// where it is and the newer one carries on from there.
     private func acknowledge() async {
+        typealias T = CircleMotion.Lost
+        typealias Landing = CircleMotion.Opening
         guard let stage = CircleStage.shared.lost, let comeback = location.comeback else {
             // Nothing up to acknowledge it (it came back before the page did): just go on.
             if CircleStage.shared.lost == nil { location.clearComeback() }
             return
         }
+        defer { if stage.wordsAway { stage.wordsAway = false } }   // stopped while the words were out: they come back
         pickingCity = false
-        stage.comeback = comeback
+        // Already saying it's back (a newer comeback: a city after "while using"): its words change out, then in, below.
+        let newWords = stage.acknowledged && stage.comeback != comeback
+        if !newWords { stage.comeback = comeback }
         if stage.stage < 3 || stage.titleHeld || !stage.symbolIn {
-            withAnimation(.easeOut(duration: 0.3)) { stage.stage = 3; stage.titleHeld = false; stage.symbolIn = true }
+            withAnimation(T.catchUp) { stage.stage = 3; stage.titleHeld = false; stage.symbolIn = true }
         }
         // On screen first (Settings → back: the change lands while iOS still shows the snapshot).
-        for _ in 0..<60 where UIApplication.shared.applicationState != .active {
-            try? await Task.sleep(for: .milliseconds(50))
+        _ = await CircleStage.shared.until(deadline: T.onScreenDeadline) { CircleStage.shared.sceneActive }
+        guard await CircleGate.pause(T.backInAppDuration) else { return }   // back in the app / the city sheet gone
+        // Off → on: the words out, changed while they're away, then in with the success (they cross-faded — audit B).
+        if !stage.acknowledged || newWords {
+            stage.wordsAway = true
+            guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }
+            // Quietly, while they're out (under an animation the two titles cross-faded back in); the title's measured
+            // room eases on its own (`LostStage.measure`).
+            quietly {
+                stage.acknowledged = true
+                stage.comeback = comeback
+            }
+            guard await CircleGate.nextFrame() else { return }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            stage.wordsAway = false
         }
-        try? await Task.sleep(for: .milliseconds(450))   // back in the app / the city sheet gone
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
-        withAnimation(.snappy(duration: 0.45)) { stage.acknowledged = true }
-        try? await Task.sleep(for: .milliseconds(comeback == .whileUsing ? 2000 : 1500))
+        guard await CircleGate.pause(comeback == .whileUsing ? T.readLongDuration : T.readDuration) else { return }
         if reduceMotion {
-            withAnimation(.easeInOut(duration: 0.5)) { stage.clearing = true; stage.down = true; stage.landed = true }
-            try? await Task.sleep(for: .milliseconds(520))
+            await CircleMotion.animate(T.reduced) { stage.clearing = true; stage.down = true; stage.landed = true }
             finish()
             return
         }
@@ -746,27 +758,27 @@ struct LostPageLayer: View {
         mark.hidesWords = false   // the symbol stays in the ring
         quietly { CircleStage.shared.opening = mark }
         // The words go while the circle glides back to its place and draws in to the starting ring round the symbol.
-        withAnimation(.easeOut(duration: 0.3)) { stage.clearing = true }
-        withAnimation(.spring(response: 0.7, dampingFraction: 1)) { stage.down = true }   // no overshoot
-        withAnimation(.easeInOut(duration: 0.6)) { mark.grow = false }
-        try? await Task.sleep(for: .milliseconds(750))      // back in place, snug
-        try? await Task.sleep(for: .milliseconds(350))      // rests, like the welcome before it grows
+        withAnimation(T.clear) { stage.clearing = true }
+        withAnimation(T.down) { stage.down = true }   // no overshoot
+        withAnimation(T.snug) { mark.grow = false }
+        guard await CircleGate.pause(T.downDuration) else { return }   // back in place, snug
+        guard await CircleGate.pause(T.restDuration) else { return }   // rests, like the welcome before it grows
         mark.dashedTarget = dashed
-        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) {
+        withAnimation(Landing.grow) {
             mark.grow = true
             stage.symbolIn = false
         }
         if dashed {
-            try? await Task.sleep(for: .milliseconds(560))
-            withAnimation(.easeInOut(duration: 0.3)) { mark.dashesIn = true }
-            try? await Task.sleep(for: .milliseconds(320))
+            guard await CircleGate.pause(Landing.toDashesDuration) else { return }
+            withAnimation(Landing.dashes) { mark.dashesIn = true }
+            guard await CircleGate.pause(Landing.dashesDuration) else { return }
         } else {
-            try? await Task.sleep(for: .milliseconds(650))
+            guard await CircleGate.pause(Landing.toBandDuration) else { return }
         }
         // Landed: the track is back under the ring, the prayer comes in on it and the page round it.
         mark.landed = true
         stage.landed = true
-        try? await Task.sleep(for: .milliseconds(600))
+        guard await CircleGate.pause(T.landedDuration) else { return }
         finish()
     }
 
@@ -862,17 +874,21 @@ private struct SetupOpening: View {
     }
 
     private func open() async {
-        func step(_ n: Int, after seconds: Double, _ animation: Animation) async {
-            try? await Task.sleep(for: .seconds(seconds))
+        typealias T = CircleMotion.Setup
+        /// One piece in; false once the opening has gone (a tap mid-way: `advance` takes it from there).
+        func step(_ n: Int, after seconds: Double, _ animation: Animation) async -> Bool {
+            guard await CircleGate.pause(seconds) else { return false }
             withAnimation(animation) { stage = max(stage, n) }
+            return true
         }
-        await step(1, after: 0.6, .easeInOut(duration: reduceMotion ? 0.6 : 1.4))   // a moment of blank page first
+        // A moment of blank page first.
+        guard await step(1, after: T.gradientAfterDuration, reduceMotion ? T.gradientReduced : T.gradient) else { return }
         if !reduceMotion {
-            withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { grain = 0.3 }
+            withAnimation(T.grain) { grain = 0.3 }
         }
-        await step(2, after: reduceMotion ? 0.5 : 1.1, .easeOut(duration: 0.8))
-        await step(3, after: 0.6, .easeOut(duration: 0.7))
-        await step(4, after: 0.8, .easeOut(duration: 0.7))
+        guard await step(2, after: reduceMotion ? T.circleAfterReducedDuration : T.circleAfterDuration, T.circleIn),
+              await step(3, after: T.wordsAfterDuration, T.wordsIn),
+              await step(4, after: T.hintAfterDuration, T.wordsIn) else { return }
         #if DEBUG
         // `-setupOpeningTap <seconds>`: tap by itself that long after "tap to continue" (recordings).
         let auto = UserDefaults.standard.double(forKey: "setupOpeningTap")
@@ -888,10 +904,11 @@ private struct SetupOpening: View {
         guard stage >= 2, !leaving else { return }
         stage = 4
         triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.45)) { leaving = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            withAnimation(.easeInOut(duration: reduceMotion ? 0.6 : Self.drain)) { draining = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.6 : Self.drain) + 0.1) { onDone() }
+        typealias T = CircleMotion.Setup
+        Task { @MainActor in
+            await CircleMotion.animate(T.openingAway) { leaving = true }
+            await CircleMotion.animate(.easeInOut(duration: reduceMotion ? T.drainReducedDuration : Self.drain)) { draining = true }
+            onDone()
         }
     }
 }
@@ -2061,5 +2078,84 @@ private struct BismillahCapsule: View {
             withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: true)) { noiseOpacity = 0.3 }
         }
         .accessibilityLabel("Bismillah, begin")
+    }
+}
+
+extension CircleMotion {
+    /// The lost page (LostPageLayer): going in — on a launch under the welcome, or while the app is open — and the
+    /// comeback. Its landing is the opening's (`CircleMotion.Opening`).
+    enum Lost {
+        /// A launch: the welcome is up by then.
+        static let launchSettleDuration: Double = 0.06
+        /// Coming back from Settings: how long to wait for the app to be on screen before going on anyway.
+        static let onScreenDeadline: Double = 3
+        /// Reduce Motion: the page and the comeback, a fade.
+        static let reduced = Animation.easeInOut(duration: 0.5)
+
+        // Under the welcome
+        static let afterWelcomeDuration: Double = 0.15
+        static let titleIn = Animation.easeOut(duration: 0.5)
+        static let titleDuration: Double = 0.75
+        /// The circle rising to the lost page's place (on a launch and while open); the Salah page animates it itself.
+        static let rise = Animation.spring(response: 0.75, dampingFraction: 0.9)
+        static let riseDuration: Double = 0.45
+        /// The reasons and the buttons.
+        static let restIn = Animation.easeOut(duration: 0.5)
+
+        // While the app is open
+        static let warmSettleDuration: Double = 0.25
+        /// The page round the circle and its prayer going.
+        static let pageAwayDuration: Double = 0.6
+        static let symbolIn = Animation.easeOut(duration: 0.4).delay(0.08)
+        static let warmRiseDuration: Double = 0.55
+        static let titleAfterRiseDuration: Double = 0.45
+
+        // The comeback
+        /// A comeback before the page had finished going in: the rest of it at once.
+        static let catchUp = Animation.easeOut(duration: 0.3)
+        static let backInAppDuration: Double = 0.45
+        /// A measured room changing once the page is up (the title saying location's back is taller).
+        static let room = Animation.snappy(duration: 0.45)
+        /// Time to read "Location's back" (longer for "Choose Always in Settings…").
+        static let readDuration: Double = 1.5
+        static let readLongDuration: Double = 2
+        /// The words go while the circle glides back down and draws in snug round the symbol.
+        static let clear = Animation.easeOut(duration: 0.3)
+        static let down = Animation.spring(response: 0.7, dampingFraction: 1)
+        static let snug = Animation.easeInOut(duration: 0.6)
+        static let downDuration: Double = 0.75
+        static let restDuration: Double = 0.35
+        static let landedDuration: Double = 0.6
+    }
+}
+
+extension CircleMotion {
+    /// The first-run setup: its opening page, the first step coming in, and Bismillah's hand-off to the welcome.
+    enum Setup {
+        // The opening page (the gradient, the glass circle, "welcome to shukr", "tap to continue")
+        static let gradientAfterDuration: Double = 0.6
+        static let gradient = Animation.easeInOut(duration: 1.4)
+        static let gradientReduced = Animation.easeInOut(duration: 0.6)
+        static let grain = Animation.easeInOut(duration: 2.5).repeatForever(autoreverses: true)
+        static let circleAfterDuration: Double = 1.1
+        static let circleAfterReducedDuration: Double = 0.5
+        static let circleIn = Animation.easeOut(duration: 0.8)
+        static let wordsAfterDuration: Double = 0.6
+        static let hintAfterDuration: Double = 0.8
+        static let wordsIn = Animation.easeOut(duration: 0.7)
+        /// A tap: the circle and words go, then the gradient drains (`SetupOpening.drain`).
+        static let openingAway = Animation.easeOut(duration: 0.45)
+        static let drainReducedDuration: Double = 0.6
+        // The first step coming in: the ring, the title, the rows, then Begin.
+        static let revealStartDuration: Double = 0.05
+        static let reveal = Animation.easeOut(duration: 0.55)
+        static let revealReduced = Animation.easeOut(duration: 0.3)
+        static let revealBeatDuration: Double = 0.35
+        static let revealBeatReducedDuration: Double = 0.15
+        // Bismillah
+        static let leaving = Animation.easeOut(duration: 0.35)
+        static let leavingReduced = Animation.easeInOut(duration: 0.35)
+        /// SetupRing's glide onto the circle (its implicit spring, response 0.8, damping 0.9) has arrived by then.
+        static let ringGlideDuration: Double = 0.95
     }
 }

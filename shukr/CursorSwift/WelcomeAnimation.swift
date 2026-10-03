@@ -23,22 +23,63 @@ extension View {
 /// Where the Salah page's main circle is on screen (global coordinates), written by
 /// MainCircleView; and whether the welcome may land on it (PrayerTimesView says no while a tasbeeh
 /// session covers the app).
-enum WelcomeTarget {
-    static var circleFrame: CGRect?
+@MainActor enum WelcomeTarget {
+    /// The values, observable: what waits on them (the morning card, the lost page, the circle's gate) wakes when they
+    /// change instead of polling (circle rule 5; tr-opening). Each is written only when it changes.
+    static let state = WelcomeTargetState()
+
+    static var circleFrame: CGRect? {
+        get { state.circleFrame }
+        set { if state.circleFrame != newValue { state.circleFrame = newValue } }
+    }
     /// The Salah page's circle alone (MainCircleView): `circleFrame` is also written by the lost page's own ring, so
     /// its comeback aimed at itself and two rings crossfaded (Sami's audit, finding 4).
-    static var salahCircleFrame: CGRect?
-    static var canLand = true
+    static var salahCircleFrame: CGRect? {
+        get { state.salahCircleFrame }
+        set { if state.salahCircleFrame != newValue { state.salahCircleFrame = newValue } }
+    }
+    static var canLand: Bool {
+        get { state.canLand }
+        set { if state.canLand != newValue { state.canLand = newValue } }
+    }
     /// The circle's track is the dashed "hasn't started" ring right now (MainCircleView): the
     /// welcome lands as that instead of the solid band.
-    static var trackDashed = false
-    /// The welcome is on screen (sheets — e.g. the reminders card — wait for it to finish).
-    static var playing = false
+    static var trackDashed: Bool {
+        get { state.trackDashed }
+        set { if state.trackDashed != newValue { state.trackDashed = newValue } }
+    }
+    /// The welcome is on screen (sheets — e.g. the reminders card — wait for it to finish). A new one hasn't landed yet
+    /// (`landed` read stale true from the last one until its play() got going — audit B).
+    static var playing: Bool {
+        get { state.playing }
+        set {
+            if newValue, !state.playing, state.landed { state.landed = false }
+            if state.playing != newValue { state.playing = newValue }
+        }
+    }
     /// The ring has landed and the page is fading in round it (the morning card's words start here).
-    static var landed = false
+    static var landed: Bool {
+        get { state.landed }
+        set { if state.landed != newValue { state.landed = newValue } }
+    }
     /// `circleFrame` is the Salah circle's (MainCircleView wrote it last), not the lost page's: only then can the circle
     /// play the opening itself (circle step 4).
-    static var landsOnSalah = false
+    static var landsOnSalah: Bool {
+        get { state.landsOnSalah }
+        set { if state.landsOnSalah != newValue { state.landsOnSalah = newValue } }
+    }
+}
+
+@MainActor @Observable final class WelcomeTargetState {
+    fileprivate(set) var circleFrame: CGRect?
+    fileprivate(set) var salahCircleFrame: CGRect?
+    fileprivate(set) var canLand = true
+    fileprivate(set) var trackDashed = false
+    fileprivate(set) var playing = false
+    fileprivate(set) var landed = false
+    fileprivate(set) var landsOnSalah = false
+    /// The sleep curtain is up or the welcome is about to replay (`WelcomeGate.curtainUp`).
+    fileprivate(set) var curtainUp = false
 }
 
 struct WelcomeGate: ViewModifier {
@@ -52,8 +93,11 @@ struct WelcomeGate: ViewModifier {
     /// ▶︎ Opening: the welcome replayed over the page as it is (not a launch).
     @State private var inPlace = false
     @Environment(\.scenePhase) private var scenePhase
-    /// The curtain is up or the welcome is about to replay (the morning card waits under it).
-    static var curtainUp = false
+    /// The curtain is up or the welcome is about to replay (the morning card waits under it). Observable (WelcomeTarget).
+    @MainActor static var curtainUp: Bool {
+        get { WelcomeTarget.state.curtainUp }
+        set { if WelcomeTarget.state.curtainUp != newValue { WelcomeTarget.state.curtainUp = newValue } }
+    }
     /// Sleep mode just saved a session in the background (`finishAsleep` / the lock after it): black at
     /// once, in this turn — iOS takes its picture of the app right after the background handlers, and
     /// one turn later it had already caught the tasbeeh cover being torn down.
@@ -79,6 +123,8 @@ struct WelcomeGate: ViewModifier {
                     }
                         .transition(.identity)
                         .onAppear { WelcomeTarget.playing = true; WelcomeGate.curtainUp = false }
+                        // Gone some other way than its end (its steps return when cancelled): not playing.
+                        .onDisappear { WelcomeTarget.playing = false }
                 } else if curtain {
                     Color.black.ignoresSafeArea().transition(.identity)
                 }
@@ -289,7 +335,7 @@ struct WelcomeOverlay: View {
         .ignoresSafeArea()
         .opacity(morph || (inPlace && !shownIn) ? 0 : 1)
         .allowsHitTesting(!morph)
-        .onAppear { if inPlace { withAnimation(.easeOut(duration: 0.2)) { shownIn = true } } }
+        .onAppear { if inPlace { withAnimation(CircleMotion.Opening.inPlaceIn) { shownIn = true } } }
         .task { await play() }
         .onDisappear { if CircleStage.shared.opening === mark { CircleStage.shared.opening = nil } }
     }
@@ -312,14 +358,13 @@ struct WelcomeOverlay: View {
     }
 
     private func play() async {
+        typealias T = CircleMotion.Opening
         let soft = UIImpactFeedbackGenerator(style: .soft)
         soft.prepare()
         // Sit on the circle from the start: on a cold launch it lays out a beat after the welcome
-        // appears, so wait for it (up to ~0.4 s, the page is blank anyway); if it's still not
+        // appears, so wait for it (the page is blank anyway; it wakes as the frame is reported); if it's still not
         // there, start centred and glide the few points onto it later.
-        for _ in 0..<8 where circleCentre() == nil {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
+        _ = await CircleStage.shared.until(deadline: T.findCircleDuration) { circleCentre() != nil }
         target = circleCentre()
         mark.startDrawn = startDrawn
         // On the Salah circle (circle step 4): the circle draws the ring and the word, and the page waits round it —
@@ -335,27 +380,25 @@ struct WelcomeOverlay: View {
                 mark.inCircle = true
                 CircleStage.shared.opening = mark
             }
-            if inPlace {
-                // The circle's track and words fade out first (MainCircleView), then the word writes in.
-                try? await Task.sleep(for: .milliseconds(240))
-            }
+            // In place: the circle's track and words fade out first (MainCircleView), then the word writes in.
+            if inPlace { guard await CircleGate.pause(CircleMomentTiming.outDone) else { return } }
         }
         WelcomeTarget.landed = false
-        if fromBlack { withAnimation(.easeInOut(duration: 0.7)) { blackOn = false } }
+        if fromBlack { withAnimation(T.blackAway) { blackOn = false } }
         mark.lettersIn = true
-        withAnimation(.easeInOut(duration: 0.9).delay(0.1)) { mark.ringDrawn = true }
+        withAnimation(T.ringDraw) { mark.ringDrawn = true }
 
-        try? await Task.sleep(for: .milliseconds(560))
+        guard await CircleGate.pause(T.firstBeatDuration) else { return }
         soft.impactOccurred(intensity: 0.55)          // lub…
-        withAnimation(.easeInOut(duration: 0.6)) { mark.shine = true }
-        try? await Task.sleep(for: .milliseconds(170))
+        withAnimation(T.shine) { mark.shine = true }
+        guard await CircleGate.pause(T.secondBeatDuration) else { return }
         soft.impactOccurred(intensity: 1.0)           // …dub, as the ring closes
 
-        try? await Task.sleep(for: .milliseconds(500))
+        guard await CircleGate.pause(T.holdDuration) else { return }
         if !mark.inCircle, let c = circleCentre(), c != target {
-            withAnimation(.easeInOut(duration: 0.5)) { target = c }
+            withAnimation(T.glide) { target = c }
         }
-        try? await Task.sleep(for: .milliseconds(450))
+        guard await CircleGate.pause(T.beforeGrowDuration) else { return }
         if !WelcomeTarget.canLand {
             if mark.inCircle {
                 // Something came over the circle meanwhile (a widget's page): the circle is as it is under it.
@@ -365,9 +408,9 @@ struct WelcomeOverlay: View {
             }
             // Nothing to land on: the ring opens out like a doorway (thin, fading) and the word
             // and page go with it, onto whatever page was opened.
-            withAnimation(.easeIn(duration: 0.7)) { mark.portal = true; mark.grow = false }
-            withAnimation(.easeInOut(duration: 0.6).delay(0.15)) { morph = true }
-            try? await Task.sleep(for: .milliseconds(760))
+            withAnimation(T.portal) { mark.portal = true; mark.grow = false }
+            withAnimation(T.portalPage) { morph = true }
+            guard await CircleGate.pause(T.portalDuration) else { return }
             onFinish()
             return
         }
@@ -375,26 +418,26 @@ struct WelcomeOverlay: View {
         // thickening into its gray track — or, over a prayer that hasn't started, turning into its
         // dashed ring…
         mark.dashedTarget = WelcomeTarget.trackDashed
-        withAnimation(.spring(response: 0.75, dampingFraction: 0.9)) { mark.grow = true }
+        withAnimation(T.grow) { mark.grow = true }
         if mark.dashedTarget {
             // The thin ring reaches the circle's edge first, then becomes its dashes.
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 0 : 560))
-            withAnimation(.easeInOut(duration: 0.3)) { mark.dashesIn = true }
-            try? await Task.sleep(for: .milliseconds(320))
+            guard await CircleGate.pause(reduceMotion ? 0 : T.toDashesDuration) else { return }
+            withAnimation(T.dashes) { mark.dashesIn = true }
+            guard await CircleGate.pause(T.dashesDuration) else { return }
         } else {
-            try? await Task.sleep(for: .milliseconds(650))
+            guard await CircleGate.pause(T.toBandDuration) else { return }
         }
         // …and once it's there, the page fades in around it. The welcome's ring and the real track
         // are the same shape in the same place, so only the page appears.
         if mark.inCircle {
             land()
-            try? await Task.sleep(for: .milliseconds(470))
+            guard await CircleGate.pause(T.pageInDuration) else { return }
             onFinish()
             return
         }
         WelcomeTarget.landed = true
-        withAnimation(.easeInOut(duration: 0.45)) { morph = true }
-        try? await Task.sleep(for: .milliseconds(470))
+        withAnimation(T.overlayAway) { morph = true }
+        guard await CircleGate.pause(T.pageInDuration) else { return }
         onFinish()
     }
 
@@ -408,4 +451,46 @@ struct WelcomeOverlay: View {
 
 #Preview {
     WelcomeOverlay {}
+}
+
+extension CircleMotion {
+    /// The opening (WelcomeOverlay) and the lost page's comeback, which lands the same way: every step's timing, written
+    /// once (they were ms literals in both places — audit B).
+    enum Opening {
+        /// A cold launch: how long the welcome waits for the circle to report where it is.
+        static let findCircleDuration: Double = 0.4
+        /// ▶︎ Opening in place: the overlay comes in over the page.
+        static let inPlaceIn = Animation.easeOut(duration: CircleMotion.quick)
+        /// From the sleep curtain: the black lifts as the word writes in.
+        static let blackAway = Animation.easeInOut(duration: 0.7)
+        /// The ring drawing itself round the word, just after the letters start.
+        static let ringDraw = Animation.easeInOut(duration: 0.9).delay(0.1)
+        /// The heartbeat: lub…
+        static let firstBeatDuration: Double = 0.56
+        /// …the ring shining as it closes…
+        static let shine = Animation.easeInOut(duration: 0.6)
+        /// …dub.
+        static let secondBeatDuration: Double = 0.17
+        /// The word held in its ring.
+        static let holdDuration: Double = 0.5
+        /// A few points onto a circle that reported late.
+        static let glide = Animation.easeInOut(duration: 0.5)
+        static let beforeGrowDuration: Double = 0.45
+        /// Nothing to land on: the ring opens out like a doorway, the page going with it.
+        static let portal = Animation.easeIn(duration: 0.7)
+        static let portalPage = Animation.easeInOut(duration: 0.6).delay(0.15)
+        static let portalDuration: Double = 0.76
+        /// The landing: the ring grows out into the circle's track…
+        static let grow = Animation.spring(response: 0.75, dampingFraction: 0.9)
+        /// …into the band…
+        static let toBandDuration: Double = 0.65
+        /// …or, for a prayer that hasn't started, its edge first, then the dashes.
+        static let toDashesDuration: Double = 0.56
+        static let dashes = Animation.easeInOut(duration: 0.3)
+        static let dashesDuration: Double = 0.32
+        /// The page round it fading in (CircleMotion.pageRevealDuration, the chrome's and the list's), and the overlay
+        /// going on a landing that isn't the circle's.
+        static let overlayAway = Animation.easeInOut(duration: CircleMotion.pageRevealDuration)
+        static let pageInDuration: Double = CircleMotion.pageRevealDuration + 0.02
+    }
 }
