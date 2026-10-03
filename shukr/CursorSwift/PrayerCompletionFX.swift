@@ -468,7 +468,8 @@ struct PostSalahNudge: View {
                 .overlay {
                     // Time left: full at the start, its end running back to 12 o'clock as it empties. Redrawn every
                     // frame only while it runs.
-                    TimelineView(.animation(paused: runningSince == nil)) { _ in
+                    // 30 frames a second is plenty for a 32 pt ring over 15 s (Sami's review of 1e8dc17).
+                    TimelineView(.periodic(from: .now, by: 1.0 / 30)) { _ in
                         let now = Uptime.now
                         ZStack {
                             Circle().stroke(Color.sage.opacity(0.18), lineWidth: 2)
