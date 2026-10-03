@@ -893,11 +893,11 @@ struct MantraEditorView: View {
                     // Its tasks as the same rows as Your tasks (the Zikr tab reorganisation): tap → "Start?",
                     // hold → the task's options; + Add task opens the steps on the goal.
                     MantraTaskRows(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
-                        // Close this page, then the Zikr page starts it.
+                        // Close this page; the host waits until what covers the pager has really gone, goes to the
+                        // Zikr page, and its wheel starts it (it was a guessed 0.35 s — audit E5).
                         ZikrAudio.stopAll()
                         dismiss()
-                        let id = task.id.uuidString
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { ZikrFocus.start(id, resume: resume) }
+                        ZikrFocus.start(task.id.uuidString, resume: resume)
                     }
                     MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions,
                                           sessionToOpen: $sessionToOpen, sessionToDelete: $sessionToDelete)

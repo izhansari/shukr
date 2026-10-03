@@ -1086,30 +1086,33 @@ struct PrayerTimesView: View {
             )
             .stageCover("mantraPicker")
         }
-        .fullScreenCover(isPresented: $showTasbeehPage) {
-            // A session opened out of a Zikr ring under the soft look leaves the same way: it fades over the wheel,
-            // then the cover goes with no animation (SoftSessionEntry). In the background (a sleep finish closes it
-            // there, and the morning flow needs it gone in that turn) — and every other session — at once, as before.
+        .fullScreenCover(isPresented: $showTasbeehPage, onDismiss: { SessionHandoff.shared.coverGone() }) {
+            // A session opened out of a Zikr ring under the soft look leaves the same way: it plays its close over the
+            // wheel (SessionHandoff), then the cover goes with no animation (below, on `.done`). In the background (a
+            // sleep finish closes it there, and the morning flow needs it gone in that turn) — and every other
+            // session — at once, as before. Nothing here guesses how long the close takes.
             tasbeehView(isPresented: Binding(
                 get: { showTasbeehPage },
                 set: { up in
-                    guard !up, SoftSessionEntry.coverIsSoft, UIApplication.shared.applicationState == .active else {
-                        if !up { SoftSessionEntry.coverIsSoft = false }
+                    let handoff = SessionHandoff.shared
+                    if !up, handoff.shouldPlayClose(appActive: UIApplication.shared.applicationState == .active) {
+                        handoff.requestClose()
+                    } else {
                         showTasbeehPage = up
-                        return
-                    }
-                    SoftSessionEntry.coverIsSoft = false
-                    NotificationCenter.default.post(name: SoftSessionEntry.leave, object: nil)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + SoftSessionEntry.leaveDelay) {
-                        var quiet = Transaction()
-                        quiet.disablesAnimations = true
-                        withTransaction(quiet) { showTasbeehPage = false }
                     }
                 }))
             // The session draws its own page; clear behind it only for the soft entry (it fades in over the wheel) —
-            // otherwise the usual opaque cover, so the page under it isn't kept drawing (Sami's audit).
-            .presentationBackground(SoftSessionEntry.coverIsSoft ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemBackground)))
+            // otherwise the usual opaque cover, so the page under it isn't kept drawing (Sami's audit). Read live
+            // (observable) until the cover has really gone.
+            .presentationBackground(SessionHandoff.shared.soft ? AnyShapeStyle(Color.clear) : AnyShapeStyle(Color(.systemBackground)))
             .circleThemeRoot()   // the look, set again on the cover's root (CircleTheme.swift)
+        }
+        // The session's close has played: the cover goes, with no animation of its own.
+        .onChange(of: SessionHandoff.shared.phase == .done) { _, done in
+            guard done else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { showTasbeehPage = false }
         }
         
         .edgesIgnoringSafeArea(.bottom)

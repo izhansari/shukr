@@ -112,7 +112,7 @@ struct YourTasksPage: View {
         let id = task.id.uuidString
         let resume = task.progress(in: sessions).count > 0 || task.progress(in: sessions).seconds >= 1
         dismiss()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { ZikrFocus.start(id, resume: resume) }
+        ZikrFocus.start(id, resume: resume)   // the host waits for the pop to finish (it was a guessed 0.35 s)
     }
 
     private func move(from source: IndexSet, to destination: Int) {

@@ -128,14 +128,18 @@ struct TaskStreakBadge: View {
     /// false = up (it comes down from the top).
     var movedDown = true
 
-    /// Set from the wheel. The direction lands one turn before the item, so the label on its way
-    /// out already knows which way to leave.
-    func centre(_ key: String?, from old: String?, in order: [String]) {
+    /// Set from the wheel. The direction lands a frame before the item, so the label on its way out has been drawn
+    /// with it and leaves the right way. The latest call wins: a quick second centre cancels the first's item, so no
+    /// stale write can land in between (audit E8 — it was a bare `DispatchQueue.main.async`).
+    @ObservationIgnored private var pendingItem: Task<Void, Never>?
+    @MainActor func centre(_ key: String?, from old: String?, in order: [String]) {
         let k = key ?? "freestyle"
         if let o = old, let a = order.firstIndex(of: o), let b = order.firstIndex(of: k), a != b {
             movedDown = b > a
         }
-        DispatchQueue.main.async {
+        pendingItem?.cancel()
+        pendingItem = Task { @MainActor in
+            guard await CircleGate.nextFrame() else { return }
             self.key = k
             self.taskID = UUID(uuidString: k)
         }

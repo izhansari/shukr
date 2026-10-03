@@ -18,15 +18,19 @@ struct tasbeehView: View {
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     @Environment(\.scenePhase) var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Opened out of a Zikr ring under the soft look (SoftSessionEntry): the counter ring starts on that ring's
+    /// Opened out of a Zikr ring under the soft look (SessionHandoff): the counter ring starts on that ring's
     /// place and glides to its own while the page, the count and the buttons fade in; nil = the usual sheet.
-    @State private var entryFrom: CGRect? = SoftSessionEntry.freshFrame
+    @State private var entryFrom: CGRect? = SessionHandoff.shared.freshEntry?.frame
+    /// The task's share before the session (the ring's arc lands there as it closes); nil = a plain close.
+    @State private var landingBase: Double? = SessionHandoff.shared.freshEntry?.landingBase
     @State private var entryOffset: CGSize = .zero
     /// The soft entry in steps (SessionOpening): the page and the ring, then the count (where the Zikr ring's label
     /// was), then the buttons; all on at once for the usual sheet.
-    @State private var pageIn = SoftSessionEntry.freshFrame == nil
-    @State private var countIn = SoftSessionEntry.freshFrame == nil
-    @State private var chromeIn = SoftSessionEntry.freshFrame == nil
+    @State private var pageIn = SessionHandoff.shared.freshEntry == nil
+    @State private var countIn = SessionHandoff.shared.freshEntry == nil
+    @State private var chromeIn = SessionHandoff.shared.freshEntry == nil
+    /// The opening's and the close's sequences (one at a time; a close cancels an opening still playing).
+    @State private var sequence: Task<Void, Never>?
     @State private var openingStyle: SessionOpening = .current
     /// Closing softly: the same steps backwards over the wheel before the cover goes.
     @State private var leaving = false
@@ -90,7 +94,7 @@ struct tasbeehView: View {
     @State private var timePassedAtPauseString: String = ""
     @State private var secsPassedAtPause: TimeInterval = 0
     @State private var progressFraction: CGFloat = 0
-    /// One ring (SoftSessionEntry.landingBase): where the ring started, where it stood when the session stopped (the
+    /// One ring (SessionHandoff's landing base): where the ring started, where it stood when the session stopped (the
     /// stop empties it), and the ring kept up while the session goes, until its arc has landed.
     @State private var startFraction: CGFloat = 0
     @State private var ringAtStop: CGFloat?
@@ -120,17 +124,10 @@ struct tasbeehView: View {
     @State private var cardsStay = false
     /// A soft close from the pause screen or the results: the ring comes home to the centre before it lands.
     @State private var ringToCentre = false
-    /// That close's steps: the cards go (CircleMomentTiming.out, eased out: eased in, its last faint frame dropped to
-    /// nothing at once), the ring waits for them to be gone (`outDone`), the arc lands (SoftSessionEntry.arcMove), the
-    /// page goes (0.25), then the ring fades over the wheel's (0.15) — only once the page has gone, so the wheel's ring
-    /// is whole under it (the two differ a touch in glow: removed at once it stepped; faded while the page still was,
-    /// it dimmed).
-    private static let cardsOut = CircleMomentTiming.outDone
-    private static let pageOut = 0.25
-    private static let ringOver = 0.15
-    private static let softLeaveFromCards = cardsOut + SoftSessionEntry.arcMove + pageOut + ringOver + 0.03
-    /// From the counter: the count and buttons go (0.25), the page from 0.18 (0.35), then the ring (0.15).
-    private static let softLeaveFromCounter = 0.53 + ringOver + 0.03
+    /// The close's steps (`playClose`), each awaited to its end — no step is timed off another's guessed length: the
+    /// cards (or the count and buttons) go, the arc lands where the wheel's stands, the page goes, then the ring fades
+    /// over the wheel's — only once the page has gone, so the wheel's ring is whole under it (the two differ a touch in
+    /// glow: removed at once it stepped; faded while the page still was, it dimmed).
     @State private var offsetY: CGFloat = 0
     @State private var highestPoint: CGFloat = 0 // Track highest point during drag
     @State private var lowestPoint: CGFloat = 0 // Track lowest point during drag
@@ -319,28 +316,96 @@ struct tasbeehView: View {
     
     //--------------------------------------view--------------------------------------
     
-    /// The soft entry (SoftSessionEntry): once the counter ring is laid out, put it on the tapped Zikr ring, then
+    /// The soft entry (SessionHandoff): once the counter ring is laid out, put it on the tapped Zikr ring, then
     /// let it glide home (Reduce Motion: in place) as the page, the count and the buttons fade in.
     private func placeEntry(at frame: CGRect) {
         guard let from = entryFrom, !pageIn, frame.width > 0 else { return }
         entryFrom = nil
         openingStyle = reduceMotion ? .fade : SessionOpening.current
-        SoftSessionEntry.leaveDelay = openingStyle == .fade ? 0.32 : Self.softLeaveFromCounter   // the ring lands (0.4) and fades (0.2)
         // Normally nothing to glide (both rings at the screen's true centre); a phone where they differ still lands.
-        entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
-        DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { entryOffset = .zero }
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            entryOffset = reduceMotion ? .zero : CGSize(width: from.midX - frame.midX, height: from.midY - frame.midY)
+        }
+        sequence?.cancel()
+        sequence = Task { @MainActor in
+            guard await CircleGate.nextFrame() else { return }   // the offset drawn before it glides home
+            withAnimation(Self.entryGlide) { entryOffset = .zero }
             if openingStyle == .fade {
-                withAnimation(.easeInOut(duration: 0.35)) { pageIn = true; countIn = true; chromeIn = true }
-            } else {
-                // While the wheel's label and the other circles go (0.4 s): the page and ring come up behind, then
-                // the count where the label was, then the buttons.
-                withAnimation(.easeInOut(duration: 0.45).delay(0.15)) { pageIn = true }
-                withAnimation(.easeOut(duration: 0.45).delay(0.35)) { countIn = true }
-                withAnimation(.easeOut(duration: 0.45).delay(0.5)) { chromeIn = true }
+                withAnimation(.easeInOut(duration: Self.entryFadeDuration)) { pageIn = true; countIn = true; chromeIn = true }
+                return
             }
+            // While the wheel's label and the other circles go: the page and ring come up behind, then the count where
+            // the label was, then the buttons — one choreography, its starts a beat apart.
+            guard await CircleGate.pause(Self.entryPageAfter) else { return }
+            withAnimation(.easeInOut(duration: Self.entryStepDuration)) { pageIn = true }
+            guard await CircleGate.pause(Self.entryCountAfter - Self.entryPageAfter) else { return }
+            withAnimation(.easeOut(duration: Self.entryStepDuration)) { countIn = true }
+            guard await CircleGate.pause(Self.entryChromeAfter - Self.entryCountAfter) else { return }
+            withAnimation(.easeOut(duration: Self.entryStepDuration)) { chromeIn = true }
         }
     }
+
+    // The opening's choreography (its own, one place).
+    private static let entryGlide = Animation.spring(response: 0.5, dampingFraction: 0.9)
+    private static let entryFadeDuration: Double = 0.35
+    private static let entryStepDuration: Double = 0.45
+    private static let entryPageAfter: Double = 0.15
+    private static let entryCountAfter: Double = 0.35
+    private static let entryChromeAfter: Double = 0.5
+    private static let entryFallbackAfter: Double = 0.6
+
+    /// Closing softly onto the wheel (the host asked: SessionHandoff `.leaving`): the same steps backwards, each
+    /// awaited to its end, then `.done` — the host removes the cover. One sequence: the host, the session and the wheel
+    /// kept time off a hand-summed `leaveDelay` before (audit E3).
+    private func playClose() {
+        sequence?.cancel()
+        sequence = Task { @MainActor in
+            // Whatever happens (cancelled, the app sent away mid-close: completions stop), the cover still goes.
+            defer { SessionHandoff.shared.finishClose() }
+            let handoff = SessionHandoff.shared
+            if openingStyle == .fade {
+                withAnimation(.easeIn(duration: Self.fadeCloseDuration)) { leaving = true }
+                guard await CircleGate.pause(Self.fadeCloseDuration) else { return }
+                handoff.reveal()
+                return
+            }
+            var arc: Task<Void, Never>?   // the counter's close lands the arc alongside its other steps
+            if paused || savedSession != nil {
+                if ringAbove {
+                    // The ring is on screen with the cards: they go, it comes home to the centre (where the wheel's is).
+                    ringToCentre = true
+                    await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) {
+                        leaving = true; countIn = false; chromeIn = false
+                    }
+                } else {
+                    // Their cards go first over the page, the ring under them held hidden (not showing through), and the
+                    // counter under them goes at once ("3" showed under "1.61s"); then the ring comes back where it stood.
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { ringOut = true; countIn = false; chromeIn = false }
+                    await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) { leaving = true }
+                    withAnimation(.easeOut(duration: CircleMotion.sessionRingOverDuration)) { ringOut = false }
+                }
+                guard !Task.isCancelled else { return }
+                await landRing()                                   // its arc to where the wheel's stands
+            } else {
+                // From the counter: backwards — the count and the buttons go the opening's way while the arc lands.
+                arc = Task { @MainActor in await landRing() }
+                await CircleMotion.animate(.easeIn(duration: CircleMotion.sessionCountOutDuration)) {
+                    leaving = true; countIn = false; chromeIn = false
+                }
+            }
+            guard !Task.isCancelled else { return }
+            handoff.reveal()                                       // the wheel's label and arc back, under the page
+            await CircleMotion.animate(.easeInOut(duration: CircleMotion.sessionPageOutDuration)) { pageIn = false }
+            await arc?.value                                       // landed before it fades over the wheel's
+            guard !Task.isCancelled else { return }
+            await CircleMotion.animate(.easeOut(duration: CircleMotion.sessionRingOverDuration)) { ringHeld = false }
+        }
+    }
+    private static let fadeCloseDuration: Double = 0.3
 
     var body: some View {
         ZStack {
@@ -685,60 +750,20 @@ struct tasbeehView: View {
         .onChange(of: ringLiftTarget) { old, new in
             moveRing(to: new, waitForCards: new > old && (savedSession != nil || ringToCentre))
         }
-        .onChange(of: paused || savedSession != nil) { _, onCards in
-            guard SoftSessionEntry.coverIsSoft, openingStyle != .fade else { return }
-            SoftSessionEntry.leaveDelay = onCards ? Self.softLeaveFromCards : Self.softLeaveFromCounter
+        // The host asked for the soft close (SessionHandoff): play it, then say it's done.
+        .onChange(of: SessionHandoff.shared.phase == .leaving) { _, leavingNow in
+            if leavingNow { playClose() }
         }
-        .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            if !(openingStyle != .fade && (paused || savedSession != nil)) { landRing(fadeAfter: 0.53) }   // that close lands it later
-            if openingStyle == .fade {
-                withAnimation(.easeIn(duration: 0.3)) { leaving = true }
-            } else if ringAbove && (paused || savedSession != nil) {
-                // Soft look: the ring is already on screen with the cards — they go, the ring comes home to the centre
-                // (where the wheel's is) as they do, then its arc lands and the page goes.
-                ringToCentre = true
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true; countIn = false; chromeIn = false }
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.cardsOut) {
-                    landRing(fadeAfter: SoftSessionEntry.arcMove + Self.pageOut)
-                    withAnimation(.easeInOut(duration: Self.pageOut).delay(SoftSessionEntry.arcMove)) { pageIn = false }
-                }
-                return
-            } else if paused || savedSession != nil {
-                // From the pause screen or the results: out, then in (circle rule 3). Their cards go first over the
-                // page (the ring under them held hidden, not showing through); then the ring comes back where it
-                // stood and its arc lands where the wheel's will stand; then the page goes, onto the wheel. In one
-                // step the ring swept over the cards while they faded.
-                let cardsOut = Self.cardsOut
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                // The counter under the cards (its count, its buttons) goes at once too: it showed through them as they
-                // faded ("3" under "1.61s").
-                withTransaction(quiet) { ringOut = true; countIn = false; chromeIn = false }
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { leaving = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + cardsOut) {
-                    withAnimation(.easeOut(duration: 0.15)) { ringOut = false }
-                    landRing(fadeAfter: SoftSessionEntry.arcMove + Self.pageOut)
-                    withAnimation(.easeInOut(duration: Self.pageOut).delay(SoftSessionEntry.arcMove)) { pageIn = false }
-                }
-                return
-            } else {
-                // From the counter: backwards — the count and the buttons go the opening's way, then the page and
-                // ring, so the wheel's ring and label come back in their place.
-                withAnimation(.easeIn(duration: 0.25)) { leaving = true; countIn = false; chromeIn = false }
-                withAnimation(.easeInOut(duration: 0.35).delay(0.18)) { pageIn = false }
+
+        // Belt and braces: if the ring's place never came (the entry never placed), show the session anyway.
+        .task {
+            guard entryFrom != nil, await CircleGate.pause(Self.entryFallbackAfter), !pageIn else { return }
+            withAnimation(.easeInOut(duration: Self.entryFadeDuration)) {
+                entryOffset = .zero; pageIn = true; countIn = true; chromeIn = true
             }
         }
-        
         .onAppear {
-            SoftSessionEntry.fromFrame = nil   // read (entryFrom); the next session opens as it should
-            if entryFrom != nil {
-                // Belt and braces: if the ring's place never came, show the session anyway.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    if !pageIn {
-                        withAnimation(.easeInOut(duration: 0.3)) { entryOffset = .zero; pageIn = true; countIn = true; chromeIn = true }
-                    }
-                }
-            }
+            _ = SessionHandoff.shared.takeEntry()   // read (entryFrom, landingBase); the next session opens as it should
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
@@ -827,6 +852,9 @@ struct tasbeehView: View {
             if !paused { togglePause() }
         }
         .onChange(of: scenePhase) {_, newScenePhase in
+            // Sent away mid-close: no frames, so no completions — the close is cut short (its defer ends it) rather
+            // than left waiting for the app to come back.
+            if newScenePhase == .background, leaving { sequence?.cancel() }
             // Sleep mode on and counting: the phone locking or leaving the app means he's asleep —
             // finish and save, ending at the last tap (he woke up on the pause screen before:
             // pausing stopped the inactivity timer).
@@ -854,7 +882,6 @@ struct tasbeehView: View {
         }
         .onDisappear {
             CircleCover.set("tasbeeh", false)
-            SoftSessionEntry.landingBase = nil   // this session's; the next opening sets its own
             if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
             sharedState.isDoingPostNamazZikr = false
             UIApplication.shared.isIdleTimerDisabled = false // never leave this on after the cover closes
@@ -1132,10 +1159,10 @@ struct tasbeehView: View {
         // Nothing counted, opened out of a Zikr ring (soft close, the app on screen): close while the pause screen is
         // still exactly as seen, and reset the rest once it's gone — reset first, the ring emptied, the pause screen
         // went and the counter showed through mid-fade (owner's recording, 2026-10-02).
-        if sessionCount <= 0 && SoftSessionEntry.coverIsSoft && UIApplication.shared.applicationState == .active {
+        if sessionCount <= 0 && SessionHandoff.shared.soft && UIApplication.shared.applicationState == .active {
             inactivityTimerHandler(run: "stop")
             if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff { triggerSomeVibration(type: .vibrate) }
-            SoftSessionEntry.afterClose { finishStopReset() }
+            SessionHandoff.shared.afterClose { finishStopReset() }
             isPresented = false
             return
         }
@@ -1174,18 +1201,17 @@ struct tasbeehView: View {
     /// will stand — today's share before the session plus what this one added (a Start over's count joins the earlier
     /// one, freestyle fills back up) — then, once the page has gone, fades over the wheel's identical one (decision
     /// zikr-ring-progress B).
-    private func landRing(fadeAfter: Double) {
-        guard let base = SoftSessionEntry.landingBase, openingStyle != .fade, !reduceMotion else { return }
-        SoftSessionEntry.landingBase = nil
+    private func landRing() async {
+        guard let base = landingBase, openingStyle != .fade, !reduceMotion else { return }
+        landingBase = nil
         let stood = ringAtStop ?? progressFraction
         let landing = min(max(CGFloat(base) + stood - startFraction, 0), 1)
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { progressFraction = stood; ringHeld = true }
-        withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { progressFraction = landing; arcSettled = true }
-        // Over the wheel's ring once the page has gone (`fadeAfter`), not while it's still going (Sami's step-5 strip).
-        DispatchQueue.main.asyncAfter(deadline: .now() + fadeAfter) {
-            withAnimation(.easeOut(duration: Self.ringOver)) { ringHeld = false }
+        await CircleMotion.animate(.easeInOut(duration: CircleMotion.arcMoveDuration)) {
+            progressFraction = landing
+            arcSettled = true
         }
     }
 
@@ -1216,7 +1242,7 @@ struct tasbeehView: View {
     /// Done on the soft results (ResultsView's Done).
     private func finishFromResults() {
         // Cleared once the session has gone: under a soft close the results are still fading.
-        SoftSessionEntry.afterClose {
+        SessionHandoff.shared.afterClose {
             sharedState.titleForSession = ""
             sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
         }
@@ -1525,7 +1551,7 @@ struct tasbeehView: View {
                         triggerSomeVibration(type: .success)
                         // Cleared once the session has gone: under a soft close the results are still fading (their
                         // title would read "Untitled" mid-fade).
-                        SoftSessionEntry.afterClose {
+                        SessionHandoff.shared.afterClose {
                             sharedState.titleForSession = ""
                             sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
                         }

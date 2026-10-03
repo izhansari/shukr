@@ -76,49 +76,95 @@ enum SalahLookPlay {
 /// animation over a clear presentation background; the session's counter ring starts on that place and glides to
 /// its own (a few points apart on most phones) while its page fades in. Closing fades the session away over the
 /// wheel. Every other way into a session, and Today's look, keep the usual sheet.
-enum SoftSessionEntry {
-    /// The tapped ring's frame (global), read by the session as it opens; cleared once it has.
-    static var fromFrame: CGRect? {
-        didSet { fromFrameAt = fromFrame == nil ? nil : Date() }
-    }
-    private static var fromFrameAt: Date?
-    /// `fromFrame` if it was set for this opening (within a second) — a stale one (an opening that never
-    /// happened) must not move the next session's ring, opened some other way.
-    static var freshFrame: CGRect? {
-        guard let at = fromFrameAt, Date().timeIntervalSince(at) < 1 else { return nil }
-        return fromFrame
-    }
-    /// The open session came in this way, so it leaves this way (the host's binding, PrayerTimesView).
-    static var coverIsSoft = false
-    /// Close it softly: the session fades out (then the host dismisses with no animation).
-    static let leave = Notification.Name("softSessionEntry.leave")
-    /// How long the session's leaving takes before the host may remove the cover (set by the session as it opens).
-    static var leaveDelay: Double = 0.32
+///
+/// One observable object the wheel, the host (PrayerTimesView's cover) and the session share (the transitions cleanup,
+/// audit E): it replaced `SoftSessionEntry`'s statics — a frame handed through a static with a wall-clock freshness
+/// check, and a close timed three times (host, session, wheel) off a hand-summed `leaveDelay`. Now the session plays
+/// its close and says so; the host and the wheel follow its phases.
+@MainActor @Observable final class SessionHandoff {
+    static let shared = SessionHandoff()
 
-    /// One ring (decision zikr-ring-progress B, owner 2026-10-02: "do B"): the arc never crossfades into another length.
-    /// Opening, the wheel's arc stays (Continue) or rewinds to empty (Start over, freestyle) as the label sinks, so the
-    /// count rises into a ring that already says where it starts; closing, the session's arc moves to where the
-    /// wheel's will stand, and only then does the wheel's take over. This is the task's share done today before the
-    /// session (freestyle: 1, its full ring), set by the wheel as it opens; nil = not opened from the wheel.
-    static var landingBase: Double?
-    /// How long the arc takes to rewind or to land.
-    static let arcMove: Double = 0.4
+    // MARK: Opening
 
-    /// Run `work` once the session has gone: after its soft close (so a reset doesn't change what's still fading — the
-    /// pause card collapsed when its zikr was cleared mid-fade), else now. Call before setting `isPresented = false`.
-    static func afterClose(_ work: @escaping () -> Void) {
-        if coverIsSoft && UIApplication.shared.applicationState == .active {
-            DispatchQueue.main.asyncAfter(deadline: .now() + leaveDelay + 0.05, execute: work)
+    /// What the wheel hands the session as it opens out of a ring: the ring's place (global) and the task's share
+    /// before the session (decision zikr-ring-progress B: the arc lands there as it closes; nil = a plain close).
+    struct Entry {
+        let frame: CGRect
+        let landingBase: Double?
+        let at: TimeInterval
+    }
+    @ObservationIgnored private var entry: Entry?
+    /// The entry if it was handed over for this opening (within a second, by `Uptime`, never the wall clock — circle-check
+    /// pins it): a stale one (an opening that never happened) must not move the next session's ring.
+    var freshEntry: Entry? {
+        guard let entry, Uptime.now - entry.at < Self.entryFreshness else { return nil }
+        return entry
+    }
+    /// The session takes the entry as it opens (and keeps its own copy).
+    func takeEntry() -> Entry? {
+        defer { entry = nil }
+        return freshEntry
+    }
+    private static let entryFreshness: Double = 1
+
+    /// The wheel opens a session out of a ring: the cover comes up clear (the session fades in over the wheel).
+    func open(from frame: CGRect, landingBase: Double?) {
+        entry = Entry(frame: frame, landingBase: landingBase, at: Uptime.now)
+        soft = true
+        phase = .open
+    }
+
+    // MARK: The cover
+
+    /// The cover is clear behind the session (it opened out of a ring), from the opening until the cover has really
+    /// gone (`coverGone`). Observed by the host's `.presentationBackground`: cleared at the close's start, a re-render
+    /// mid-close would have made it opaque over the wheel (audit E2).
+    private(set) var soft = false
+
+    enum Phase {
+        /// No soft session (or a plain one).
+        case closed
+        case open
+        /// The host asked it to close: the session plays its close (tasbeehView), then says `.done`.
+        case leaving
+        /// Its page is about to go: the wheel puts its ring's label and arc back under it (still opaque).
+        case revealing
+        /// The close has played: the host removes the cover, with no animation.
+        case done
+    }
+    private(set) var phase: Phase = .closed
+
+    /// The host's binding was set to false: a soft cover on screen closes by its session's own close; anything else
+    /// (a plain sheet, the app in the background — a sleep finish needs it gone in that turn) closes at once.
+    func shouldPlayClose(appActive: Bool) -> Bool { soft && appActive && phase == .open }
+    func requestClose() { phase = .leaving }
+    func reveal() { if phase == .leaving { phase = .revealing } }
+    func finishClose() { if phase == .leaving || phase == .revealing { phase = .done } }
+
+    /// The cover has gone (its `onDismiss`): the rest of the app may change what the session showed.
+    func coverGone() {
+        soft = false
+        phase = .closed
+        entry = nil
+        let work = afterCloseWork
+        afterCloseWork = []
+        work.forEach { $0() }
+    }
+
+    @ObservationIgnored private var afterCloseWork: [() -> Void] = []
+    /// Runs `work` once the session's cover has gone — after a soft close (so a reset doesn't change what's still
+    /// fading: the pause card collapsed when its zikr was cleared mid-fade), else now. Was a guess of the close's
+    /// length plus 0.05 s.
+    func afterClose(_ work: @escaping () -> Void) {
+        if soft && UIApplication.shared.applicationState == .active {
+            afterCloseWork.append(work)
         } else {
             work()
         }
     }
-
-    /// The soft look is on (the wheel's rings are the tasbeeh ring then).
-    static var enabled: Bool { CircleTheme.stored.soft }
 }
 
-/// How a session opens out of a Zikr ring (SoftSessionEntry), picked in the palette (owner, 2026-10-01, decision
+/// How a session opens out of a Zikr ring (SessionHandoff), picked in the palette (owner, 2026-10-01, decision
 /// zikr-ring-transition: "go with E or D. but account for the content in the ring and that it transitions to the
 /// counter text properly"; the iris was "a looney tunes cartoon"). The ring itself never moves; its label goes and the
 /// counter's text comes in its place, then the buttons, a beat apart.

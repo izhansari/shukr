@@ -64,6 +64,24 @@ enum CircleMotion {
     /// A pill flicked away: it fades where the finger left it.
     static let flickAwayDuration: Double = 0.18
 
+    // MARK: The Zikr wheel and its session (audit E)
+
+    /// The wheel centring a circle (a scrub, a start from elsewhere, landing after a session).
+    static let wheelCentre = Animation.spring(response: 0.5, dampingFraction: 0.85)
+    /// A tap on a circle that isn't centred: it comes to the middle.
+    static let wheelStep = Animation.snappy
+    /// The scrubber under a finger: each circle it passes, quickly.
+    static let wheelScrub = Animation.snappy(duration: 0.18)
+    /// Opening a session out of a ring: the other circles and the ring's label going.
+    static let wheelOpenDuration: Double = 0.4
+    /// A ring's arc rewinding to empty as its session opens, or the session's arc landing where the wheel's stands.
+    static let arcMoveDuration: Double = 0.4
+    /// Closing onto the wheel: the session's page going, then its ring fading over the wheel's identical one.
+    static let sessionPageOutDuration: Double = 0.25
+    /// Closing from the counter: its count and buttons going first.
+    static let sessionCountOutDuration: Double = 0.25
+    static let sessionRingOverDuration: Double = 0.15
+
     // MARK: The circle's own (the same in every look — rule 9: motion never depends on the theme)
 
     /// The words under a mark's flourish going (quick) and coming back as it fades.

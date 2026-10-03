@@ -31,6 +31,9 @@ struct NewTaskFlow: View {
     @State private var mantra: MantraModel?
     @State private var step = 1
     @State private var forward = true
+    /// The step whose slide-in has finished (the placer scrolls its new row into view only then).
+    @State private var arrivedStep = 1
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var countMode = true
     @State private var goal = 33
     @State private var name = ""
@@ -94,7 +97,8 @@ struct NewTaskFlow: View {
     }
 
     private var slide: AnyTransition {
-        .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+        // Under Reduce Motion the steps cross-fade in place (Apple: fades, not slides — audit E11).
+        reduceMotion ? .opacity : .asymmetric(insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
                     removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity))
     }
     /// The steps this time: Where should it go? (3) only when there are tasks already (owner: a
@@ -112,8 +116,12 @@ struct NewTaskFlow: View {
     }
     private func go(_ to: Int) {
         forward = to > step
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.9)) { step = to }
+        Task { @MainActor in
+            await CircleMotion.animate(CircleMotion.movement(Self.stepMotion, reduced: reduceMotion)) { step = to }
+            arrivedStep = to
+        }
     }
+    private static let stepMotion = Animation.spring(response: 0.42, dampingFraction: 0.9)
 
     // MARK: the top: back / close, and three small steps
 
@@ -354,7 +362,8 @@ struct NewTaskFlow: View {
             NewTaskPlacer(rows: existingTasks.map { .init(title: $0.title, kind: $0.isCountMode ? "\($0.goal.formatted()) count" : "\($0.goal) min") },
                           newTitle: previewTitle, newKind: countMode ? "\(goal.formatted()) count" : "\(goal) min",
                           position: Binding(get: { insertAt ?? existingTasks.count },
-                                            set: { insertAt = $0 }))
+                                            set: { insertAt = $0 }),
+                          arrived: arrivedStep == 3)
                 .padding(.top, 16)
             primary("Continue") { next() }
         }
@@ -485,6 +494,7 @@ private struct NewZikrCard: View {
     @Binding var isPresented: Bool
     let initialName: String
     let onCreate: (MantraModel) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.modelContext) private var context
     @Query private var allMantras: [MantraModel]
 
@@ -524,7 +534,7 @@ private struct NewZikrCard: View {
                         .strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
                     .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
                     .padding(.horizontal, 16)
-                    .scaleEffect(shown ? 1 : 0.94)
+                    .scaleEffect(shown || reduceMotion ? 1 : 0.94)
                     .opacity(shown ? 1 : 0)
                 Spacer(minLength: 60)
             }
@@ -569,8 +579,10 @@ private struct NewZikrCard: View {
 
     private func dismiss() {
         ZikrAudio.stopAll()
-        withAnimation(.easeOut(duration: 0.2)) { shown = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { isPresented = false }
+        Task { @MainActor in
+            await CircleMotion.animate(.easeOut(duration: CircleMotion.quick)) { shown = false }   // then the cover goes
+            isPresented = false
+        }
     }
 
     private func save() {
@@ -585,8 +597,8 @@ private struct NewZikrCard: View {
         context.insert(new)
         try? context.save()
         triggerSomeVibration(type: .success)
-        withAnimation(.easeOut(duration: 0.2)) { shown = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        Task { @MainActor in
+            await CircleMotion.animate(.easeOut(duration: CircleMotion.quick)) { shown = false }   // then the cover goes
             isPresented = false
             onCreate(new)
         }
@@ -658,6 +670,8 @@ struct NewTaskPlacer: View {
     let newTitle: String
     let newKind: String
     @Binding var position: Int
+    /// Its step has finished sliding in: then the new row is scrolled into view (it waited a guessed 350 ms).
+    var arrived = true
     @State private var order: [Int?] = []      // nil = the new task
 
     var body: some View {
@@ -686,9 +700,9 @@ struct NewTaskPlacer: View {
                 o.insert(nil, at: min(position, o.count))
                 order = o
             }
-            .task {
-                // After the sheet and the slide-in settle; earlier, the row landed half under the list's edge.
-                try? await Task.sleep(for: .milliseconds(350))
+            .task(id: arrived) {
+                // Once the slide-in has finished; earlier, the row landed half under the list's edge.
+                guard arrived else { return }
                 withAnimation(.snappy) { proxy.scrollTo(-1, anchor: position >= rows.count ? .bottom : .center) }   // centring the last row overshot, leaving it half under the edge
             }
         }

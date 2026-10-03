@@ -80,11 +80,14 @@ struct ZikrCircleWheel: View {
     /// moves on and it leaves (owner, 2026-10-02: "from completion page back" — it left at once, and the full ring landed
     /// on the next task's).
     @State private var heldTaskID: UUID?
-    /// Under the soft look, a session opens out of the tapped ring (SoftSessionEntry): everything but that ring
+    /// Under the soft look, a session opens out of the tapped ring (SessionHandoff): everything but that ring
     /// fades while it does, and back in as the session closes.
     @State private var openingSoft = false
-    /// The centred ring's arc rewound for a session that starts from nothing (SoftSessionEntry.landingBase).
+    /// The centred ring's arc rewound for a session that starts from nothing (SessionHandoff, its landing base).
     @State private var arcRewound = false
+    /// The wheel's own sequences (a start from elsewhere, a focus, landing after a session): one at a time, the latest
+    /// cancelling the last (a landing left running cleared a new session's held task — audit E7).
+    @State private var wheelTask: Task<Void, Never>?
     @State private var openingStyle: SessionOpening = .current
     /// Each circle's place on screen, kept outside state (written on every scroll frame; read only on a tap).
     @State private var circleFrames = CircleFrames()
@@ -152,7 +155,12 @@ struct ZikrCircleWheel: View {
                 }
             }
             .navigationDestination(isPresented: $showTasksPage) { YourTasksPage() }
-            .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0) }
+            // The wheel's own pages say how to close them, so a reminder / widget / a start from elsewhere closes them
+            // and waits until they've gone (the host's clearCovers) — it centred the task under Your tasks (audit E6).
+            .onChange(of: showTasksPage) { _, open in
+                CircleCover.set("yourTasks", open, close: { showTasksPage = false })
+            }
+            .sheet(item: $wheelOpenZikr) { MantraEditorView(mantra: $0).stageCover("wheelZikrPage") }
             .alert(wheelDelete.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "",
                    isPresented: Binding(get: { wheelDelete != nil }, set: { if !$0 { wheelDelete = nil } }),
                    presenting: wheelDelete) { task in
@@ -168,7 +176,7 @@ struct ZikrCircleWheel: View {
             // next one still to do rather than on a gap.
             .onChange(of: items.map(\.id)) { _, ids in
                 if let c = centered, !ids.contains(c) {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+                    withAnimation(CircleMotion.wheelCentre) {
                         centered = tasks.first(where: { $0.id.uuidString == c }).map { nextFocus(after: $0) } ?? Item.freestyle.id
                     }
                 }
@@ -193,10 +201,16 @@ struct ZikrCircleWheel: View {
         guard let request = ZikrFocus.pendingStart,
               let task = tasks.first(where: { $0.id.uuidString == request.id }) else { return }
         _ = ZikrFocus.takeStart()
-        if !isDone(task) {   // a finished task isn't on the wheel: start it without centring
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = request.id }
+        wheelTask?.cancel()
+        wheelTask = Task { @MainActor in
+            // Centred first (a finished task isn't on the wheel: started without centring), then started once the
+            // wheel has got there — it read the ring's place 0.45 s into the spring, a guess (audit E5).
+            if !isDone(task) {
+                await CircleMotion.animate(CircleMotion.wheelCentre) { centered = request.id }
+            }
+            guard !Task.isCancelled else { return }
+            start(task, resume: request.resume)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { start(task, resume: request.resume) }
     }
 
     /// Scroll a widget-requested task to the middle (after the page has come in).
@@ -204,8 +218,12 @@ struct ZikrCircleWheel: View {
         guard let id = ZikrFocus.pending, let task = tasks.first(where: { $0.id.uuidString == id }) else { return }
         guard !isDone(task) else { _ = ZikrFocus.take(); return }   // finished: not on the wheel
         _ = ZikrFocus.take()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) { centered = id }
+        wheelTask?.cancel()
+        wheelTask = Task { @MainActor in
+            // Once the Zikr page has come in (it was a guessed 0.35 s).
+            _ = await CircleStage.shared.until(deadline: 2) { CircleStage.shared.restingPage == .zikr }
+            guard !Task.isCancelled else { return }
+            withAnimation(CircleMotion.wheelCentre) { centered = id }
         }
     }
 
@@ -242,7 +260,7 @@ struct ZikrCircleWheel: View {
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 circleFrames.byID[item.id] = frame
                             }
-                            // Opening a session out of the centred ring (SoftSessionEntry): the others go the opening's
+                            // Opening a session out of the centred ring (SessionHandoff): the others go the opening's
                             // way (sink / focus / fade); the centred one keeps its ring and lets its label go.
                             .modifier(SessionAppear(shown: !away, style: openingStyle))
                             .environment(\.zikrFaceContentAway, openingSoft && item.id == centered)
@@ -283,7 +301,10 @@ struct ZikrCircleWheel: View {
             triggerSomeVibration(type: .light)
             ZikrWheelFocus.shared.centre(id, from: old, in: items.map(\.id))   // the top bar's title
         }
-        .onAppear { ZikrWheelFocus.shared.centre(centered, from: nil, in: items.map(\.id)) }
+        .onAppear {
+            ZikrWheelFocus.shared.centre(centered, from: nil, in: items.map(\.id))
+            startPending()   // a start asked for before the wheel was there (it waited for the next notification)
+        }
         #if DEBUG
         .task { TaskStreakDebug.log(tasks) }
         .fullScreenCover(isPresented: .constant(StreakHeroDemo.streak != nil)) {
@@ -304,24 +325,40 @@ struct ZikrCircleWheel: View {
         }
         #endif
         .onChange(of: newTaskScrollTarget) { _, id in
-            if let id { withAnimation { centered = id.uuidString } }
+            if let id { withAnimation(CircleMotion.wheelCentre) { centered = id.uuidString } }
         }
         // Back from a task's session: once it's done, land on the next task — after it in your
         // order, the first not done yet (wrapping), else freestyle (owner, 2026-09-28). The done
         // task stays where it is (2026-09-29).
-        // Back in round the ring as the session closes (it fades first: SoftSessionEntry.leave), or when it's gone.
-        // Back after the session's page has begun to go: the ring's label and the other circles return.
-        .onReceive(NotificationCenter.default.publisher(for: SoftSessionEntry.leave)) { _ in
-            withAnimation(.easeOut(duration: 0.45).delay(openingStyle == .fade ? 0 : 0.25)) { openingSoft = false }
-            // The session's arc has landed where this one stands by then: it comes back under it, unseen.
-            DispatchQueue.main.asyncAfter(deadline: .now() + SoftSessionEntry.arcMove) { arcBack() }
+        // The session's close says when its page is about to go (SessionHandoff `.revealing`): the ring's label and the
+        // other circles come back under it — at once under the still-opaque page, or fading with a crossfading
+        // session (Reduce Motion) — and its arc, where the session's has just landed. They ran on their own copy of
+        // the session's timings (0.25 s, 0.45 s, `arcMove`) before (audit E3).
+        .onChange(of: SessionHandoff.shared.phase == .revealing) { _, revealing in
+            guard revealing else { return }
+            if openingStyle == .fade {
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { openingSoft = false }
+            } else {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { openingSoft = false }
+            }
+            arcBack()
         }
+        // The cover has gone (or a plain sheet is going): back, if the close didn't bring it already; then land on the
+        // next task once the session's cover has really gone (it was a guessed 0.3 s).
         .onChange(of: showTasbeehPage) { _, showing in
-            if !showing, openingSoft { withAnimation(.easeInOut(duration: 0.3)) { openingSoft = false } }
-            if !showing { arcBack() }
-            guard !showing, let finished = sessionTaskID else { if !showing { heldTaskID = nil }; return }
+            guard !showing else { return }
+            if openingSoft { withAnimation(.easeInOut(duration: CircleMotion.quick)) { openingSoft = false } }
+            arcBack()
+            guard let finished = sessionTaskID else { heldTaskID = nil; return }
             sessionTaskID = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { landAfterSession(finished) }
+            wheelTask?.cancel()
+            wheelTask = Task { @MainActor in
+                _ = await CircleStage.shared.until(deadline: 2) { !CircleStage.shared.covers.contains("tasbeeh") }
+                guard !Task.isCancelled else { return }
+                landAfterSession(finished)
+            }
         }
         #if DEBUG
         // `-demoFinishTask N` (with -demoZikrPage): centre task N, save a session that completes it,
@@ -450,15 +487,15 @@ struct ZikrCircleWheel: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    if !scrubbing { withAnimation(.snappy(duration: 0.2)) { scrubbing = true } }
+                    if !scrubbing { withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = true } }
                     let index = min(max(Int((value.location.y - scrubberPad) / dotSlot), 0), items.count - 1)
                     if centered != items[index].id {
-                        withAnimation(.snappy(duration: 0.18)) { centered = items[index].id }
+                        withAnimation(CircleMotion.wheelScrub) { centered = items[index].id }
                     }
                 }
-                .onEnded { _ in withAnimation(.snappy(duration: 0.25)) { scrubbing = false } }
+                .onEnded { _ in withAnimation(.snappy(duration: CircleMotion.quick)) { scrubbing = false } }
         )
-        .animation(.snappy(duration: 0.2), value: centered)
+        .animation(.snappy(duration: CircleMotion.quick), value: centered)
         .padding(.leading, 8)
     }
 
@@ -477,7 +514,7 @@ struct ZikrCircleWheel: View {
         guard let task = tasks.first(where: { $0.id == finished }), isDone(task) else { heldTaskID = nil; return }
         // The ring has landed on it (held till now): it leaves and the wheel moves on, in one move — dropped after the
         // wheel had moved, the scroll kept its offset and the item after the next one came to the middle.
-        withAnimation(.spring(response: 0.5, dampingFraction: 0.85)) {
+        withAnimation(CircleMotion.wheelCentre) {
             heldTaskID = nil
             centered = nextFocus(after: task)
         }
@@ -492,6 +529,7 @@ struct ZikrCircleWheel: View {
 
     /// `resume`: begin with today's progress on the ring (only new counts are saved).
     private func start(_ task: TaskModel, resume: Bool = false) {
+        wheelTask?.cancel()   // a landing still waiting must not clear this session's held task
         sessionTaskID = task.id
         heldTaskID = task.id
         sharedState.selectedTask = task   // its didSet loads the mode / goal / mantra
@@ -515,24 +553,21 @@ struct ZikrCircleWheel: View {
         withTransaction(quiet) { arcRewound = false }
     }
 
-    /// The session's cover: under the soft look, out of the centred ring (SoftSessionEntry) — the rest fades, the
+    /// The session's cover: under the soft look, out of the centred ring (SessionHandoff) — the rest fades, the
     /// cover comes up with no animation and the session takes it from the ring's place; otherwise the usual sheet.
     /// `base`: the ring's share as it stands; `rewind`: the session starts from nothing, so the arc rewinds to empty
     /// first (decision zikr-ring-progress B).
     private func openSession(from id: String, base: Double, rewind: Bool) {
-        guard theme.soft, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
+        guard theme.sessionLayout == .ringAbove, id == centered, let frame = circleFrames.byID[id], frame.width > 100,
               UIScreen.main.bounds.insetBy(dx: -1, dy: -1).contains(frame) else {
-            SoftSessionEntry.landingBase = nil
             showTasbeehPage = true
             return
         }
-        SoftSessionEntry.fromFrame = frame
-        SoftSessionEntry.coverIsSoft = true
         openingStyle = reduceMotion ? .fade : SessionOpening.current
-        SoftSessionEntry.landingBase = openingStyle == .fade ? nil : base
-        withAnimation(.easeOut(duration: reduceMotion ? 0.15 : 0.4)) { openingSoft = true }
+        SessionHandoff.shared.open(from: frame, landingBase: openingStyle == .fade ? nil : base)
+        withAnimation(.easeOut(duration: reduceMotion ? CircleMotion.quick : CircleMotion.wheelOpenDuration)) { openingSoft = true }
         if rewind && openingStyle != .fade {
-            withAnimation(.easeInOut(duration: SoftSessionEntry.arcMove)) { arcRewound = true }
+            withAnimation(.easeInOut(duration: CircleMotion.arcMoveDuration)) { arcRewound = true }
         }
         var quiet = Transaction()
         quiet.disablesAnimations = true
@@ -546,7 +581,7 @@ struct ZikrCircleWheel: View {
 
     private func tapped(_ item: Item) {
         guard centered == item.id else {
-            withAnimation(.snappy) { centered = item.id }
+            withAnimation(CircleMotion.wheelStep) { centered = item.id }
             return
         }
         triggerSomeVibration(type: .light)
@@ -668,7 +703,7 @@ struct ZikrCircleFace: View {
     /// style. and the task rings too").
     @Environment(\.circleTheme) private var theme
     private var soft: Bool { theme.soft }
-    /// Opening into its session (the wheel, SoftSessionEntry): the label goes, the ring stays for the counter's.
+    /// Opening into its session (the wheel, SessionHandoff): the label goes, the ring stays for the counter's.
     @Environment(\.zikrFaceContentAway) private var contentAway
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.zikrFaceArcRewound) private var arcRewound
