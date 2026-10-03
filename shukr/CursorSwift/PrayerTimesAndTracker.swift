@@ -787,6 +787,22 @@ struct PrayerTimesView: View {
                 NSLog("MASJIDCHECK after: \(atMasjid.displayName) score=\(atMasjid.numberScore ?? -1) masjid=\(atMasjid.mosqueName ?? "nil") | away masjid=\(away.mosqueName ?? "nil") rescoredDays=\(days.count)")
                 context.delete(atMasjid); context.delete(away); try? context.save()
             }
+            // `-demoJumuahRow <masjid>` (with circle-check's clock on a Friday): today's Dhuhr marked at that masjid, the
+            // list open, and its row's masjid line (decision jumuah-name-render B).
+            if let masjid = UserDefaults.standard.string(forKey: "demoJumuahRow") {
+                try? await Task.sleep(for: .seconds(2))
+                guard let dhuhr = viewModel.todaysPrayers.first(where: { $0.name == "Dhuhr" }) else { return }
+                dhuhr.mosqueName = masjid
+                if !dhuhr.isCompleted {
+                    dhuhr.isCompleted = true
+                    dhuhr.timeAtComplete = dhuhr.startTime.addingTimeInterval(20 * 60)
+                }
+                try? context.save()
+                sharedState.navPosition = .bottom
+                PrayerListFold.shared.showDone = true
+                try? await Task.sleep(for: .seconds(3))
+                NotificationCenter.default.post(name: PrayerButton.demoMasjidLine, object: nil)
+            }
             // What a Zikr-widget row tap does, without the widget: Zikr page, last task centred.
             if ProcessInfo.processInfo.arguments.contains("-demoZikrFocus") {
                 try? await Task.sleep(for: .seconds(1.5))
@@ -1997,6 +2013,16 @@ struct PrayerButton: View {
 
     
     @State private var toggledText: Bool = false
+    /// A Jumu'ah row's tap: "at <masjid>" in a line under the name for a few seconds (decision jumuah-name-render B).
+    @State private var masjidLine = false
+    @State private var masjidLineTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The masjid line's height (a caption line, with the text size), so it hangs just under the row's name.
+    @ScaledMetric(relativeTo: .caption) private var masjidLineHeight: CGFloat = 16
+    #if DEBUG
+    /// `-demoJumuahRow <masjid>`: the Jumu'ah row opens its masjid's line (screenshots).
+    static let demoMasjidLine = Notification.Name("PrayerButton.demoMasjidLine")
+    #endif
     /// The dot's centre in the row (`rowSpace`), for `rowGesture`.
     @State private var dotCenter = CGPoint(x: 23, y: 22)
     /// Bumps when this prayer is marked done, popping the dot (CompletionDotPop).
@@ -2179,20 +2205,39 @@ struct PrayerButton: View {
         return prayerObject.startTime...max(prayerObject.startTime, latest)
     }
 
-    /// "On time · 88" (PrayerScoring); a Jumu'ah names its masjid instead.
+    /// "On time · 88" (PrayerScoring).
     private var completedTimeAndScore: String {
-        // A Jumu'ah: its masjid (the row already says "Jumu'ah", with the masjid mark) — "Jumu'ah at Islamic Center of
-        // Morrisville" pushed the row out of its card, the name squeezed to a letter a line (owner, 2026-10-02).
-        if prayerObject.isJumuah { return prayerObject.mosqueName ?? "at a masjid" }
-        return prayerObject.scoreSummary ?? "Missed"
+        prayerObject.scoreSummary ?? "Missed"
     }
-    
-    
-    /// A tap on the time: flip its text (a started prayer's time doesn't flip).
+
+    /// A tap on the time: flip its text (a started prayer's time doesn't flip). A Jumu'ah shows its masjid instead.
     private func timeTap() {
         guard isFuturePrayer || prayerObject.isCompleted else { return }
+        if prayerObject.isJumuah && prayerObject.isCompleted {
+            showMasjidLine(!masjidLine)
+            return
+        }
         withAnimation { toggledText.toggle() }   // ExternalToggleText flips (and flips back after 3 s)
     }
+
+    /// The masjid's line under a Jumu'ah row, then back after `masjidLineDuration` (as the time's flip comes back). It
+    /// opens inside the row's own height — the name lifts, the line fills the space below — so the list never grows
+    /// and the circle never moves (owner, decision jumuah-name-render B: "Islamic Center of" was all the time's
+    /// column could show).
+    private func showMasjidLine(_ shown: Bool) {
+        masjidLineTask?.cancel()
+        withAnimation(CircleMotion.movement(CircleMotion.ease(), reduced: reduceMotion)) { masjidLine = shown }
+        guard shown else { return }
+        masjidLineTask = Task { @MainActor in
+            guard await CircleGate.pause(Self.masjidLineDuration) else { return }
+            withAnimation(CircleMotion.movement(CircleMotion.ease(), reduced: reduceMotion)) { masjidLine = false }
+        }
+    }
+    private static let masjidLineDuration: Double = 3
+    /// How far the name rises for the masjid's line: the two lines centred in the row.
+    private static let masjidLift: CGFloat = 7
+    /// Under the name: the dot's 24 pt and the row's spacing.
+    private static let masjidLineIndent: CGFloat = 32
 
     /// A tap round the dot: mark / unmark (a prayer that hasn't started can't be marked).
     private func markTap() {
@@ -2269,6 +2314,29 @@ struct PrayerButton: View {
 
                 timeColumn
             }
+            // A Jumu'ah's masjid, under the name, inside the row's height (showMasjidLine): drawn over the row, so
+            // nothing below it moves.
+            .overlay(alignment: .bottomLeading) {
+                if prayerObject.isJumuah, let masjid = prayerObject.mosqueName {
+                    Text("at \(masjid)")
+                        .font(.caption)
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
+                        .foregroundStyle(Color.sage)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.leading, Self.masjidLineIndent)
+                        .offset(y: masjidLineHeight)   // its top just under the name
+                        .opacity(masjidLine ? 1 : 0)
+                        .allowsHitTesting(false)
+                }
+            }
+            .offset(y: masjidLine ? -Self.masjidLift : 0)
+            #if DEBUG
+            .onReceive(NotificationCenter.default.publisher(for: Self.demoMasjidLine)) { _ in
+                if prayerObject.isJumuah { showMasjidLine(true) }
+            }
+            #endif
             .padding(.horizontal)
             .padding(.vertical, theme.rowVerticalPadding)   // the well's rows a bit shorter (owner, 2026-10-01)
             .contentShape(Rectangle())
@@ -2337,6 +2405,13 @@ struct PrayerButton: View {
                     .foregroundColor(.secondary.opacity(statusBasedOpacity))
                     .allowsHitTesting(false)
 
+                } else if prayerObject.isCompleted && prayerObject.isJumuah {
+                    // A Jumu'ah: its time stays; a tap opens the masjid's line under the name (showMasjidLine).
+                    Text(shortTimePM(calcStartTime))
+                        .font(timeFontSize)
+                        .foregroundColor(.secondary.opacity(statusBasedOpacity))
+                        .fontDesign(.rounded)
+                        .fontWeight(.light)
                 } else if prayerObject.isCompleted {
                     // Completed Prayer: Show Completion Time
                     if prayerObject.timeAtComplete != nil {
