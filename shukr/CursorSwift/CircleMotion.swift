@@ -15,6 +15,9 @@
 //    (CircleMoments.swift): it wakes when what it read changes, never polls.
 //  - Never `.delay` on a spring that may be retargeted (a delayed spring doesn't carry its speed); wait, then animate.
 //  - Reduce Motion is answered here (`reduced`, `movement`): a move becomes a short fade, in place.
+//  - Completions don't arrive while the app is in the background (no frames are drawn): a step that must happen there
+//    (the sleep finish closing its cover, the curtain) uses `animate(nil)` or checks the scene first (Sami's review).
+//  - Names: an `Animation` is named for what moves (`page`); a number of seconds ends in `Duration`.
 //
 
 import SwiftUI
@@ -45,7 +48,7 @@ enum CircleMotion {
     static let page = Animation.spring(response: 0.35, dampingFraction: 0.85)
     /// The page round the circle (the chrome, the list) coming back after the opening or the lost page; the welcome's
     /// own morph runs the same length so the two meet.
-    static let pageReveal: Double = 0.45
+    static let pageRevealDuration: Double = 0.45
 
     // MARK: Reduce Motion
 

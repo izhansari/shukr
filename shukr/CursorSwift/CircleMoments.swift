@@ -67,35 +67,47 @@ enum CircleFace: Equatable {
     }
 
     /// Waits until `condition` holds. It wakes when an observable value the condition read changes (this stage, any
-    /// `@Observable` model) — no polling — and, while some inputs are still plain statics being moved here, re-checks
-    /// every `recheck` seconds as well. true: it holds; false: `deadline` passed, or the task was cancelled.
-    func until(deadline: Double? = nil, recheck: Double = 0.1,
+    /// `@Observable` model) — no polling. A condition that still reads a plain static (one not moved here yet) passes
+    /// `recheck` and is looked at that often as well: `grep "recheck:"` lists what's left to move (Sami's review of
+    /// ac0fd16). true: it holds; false: `deadline` passed, or the task was cancelled.
+    func until(deadline: Double? = nil, recheck: Double? = nil,
                _ condition: @escaping @MainActor () -> Bool) async -> Bool {
         let end = deadline.map { Uptime.now + $0 }
         while !Task.isCancelled {
             if condition() { return true }
             if let end, Uptime.now >= end { return false }
-            let wait = min(recheck, end.map { max($0 - Uptime.now, 0) } ?? recheck)
+            let left = end.map { max($0 - Uptime.now, 0) }
+            let wait: Double? = switch (recheck, left) {
+            case let (r?, l?): min(r, l)
+            case let (r?, nil): r
+            case let (nil, l?): l
+            case (nil, nil): nil
+            }
             await Self.change(in: condition, orAfter: wait)
         }
         return false
     }
 
-    /// Returns when something `condition` reads changes, after `seconds`, or on cancellation — whichever is first.
-    private static func change(in condition: @escaping @MainActor () -> Bool, orAfter seconds: Double) async {
+    /// Returns when something `condition` reads changes, after `seconds` (nil: no timer), or on cancellation — whichever
+    /// is first. The timer is cancelled when something else wakes it (they piled up at 10 Hz — Sami's review).
+    private static func change(in condition: @escaping @MainActor () -> Bool, orAfter seconds: Double?) async {
         let woke = ResumeOnce()
+        var timer: Task<Void, Never>?
         await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 woke.set(continuation)
                 withObservationTracking { _ = condition() } onChange: { Task { @MainActor in woke.resume() } }
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(seconds))
-                    woke.resume()
+                if let seconds {
+                    timer = Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(seconds))
+                        woke.resume()
+                    }
                 }
             }
         } onCancel: {
             Task { @MainActor in woke.resume() }
         }
+        timer?.cancel()
     }
 }
 
@@ -119,7 +131,9 @@ enum CircleMomentKind: Equatable {
     /// Waits until `canPlay` is true (true: play it) or the deadline passes (false: show its end at once). On the
     /// stage: it wakes when what `canPlay` reads changes.
     static func wait(_ canPlay: @escaping @MainActor () -> Bool) async -> Bool {
-        await CircleStage.shared.until(deadline: deadline, canPlay)
+        // canPlay still reads statics (WelcomeTarget, the app state): re-checked at the old poll's rate until they move
+        // onto the stage (tr-moments, tr-opening).
+        await CircleStage.shared.until(deadline: deadline, recheck: 0.1, canPlay)
     }
 
     /// One frame: a change set quietly (the new face) is drawn before the next animation starts — in the same update the
@@ -161,6 +175,7 @@ struct CircleWordsAway: ViewModifier {
     @Observable final class Probe { var value = 0 }
 
     static func run() async {
+        try? await Task.sleep(for: .seconds(2))   // after launch: it measured the busy launch, not the stage (Sami)
         let stage = CircleStage.shared
         // 1. A cover going wakes a waiter at once (observable), not on the next re-check.
         stage.cover("selfTest", true)
