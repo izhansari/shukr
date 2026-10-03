@@ -5,8 +5,8 @@
 #
 #   scripts/testflight.sh          # next build number
 #   scripts/testflight.sh 12       # a specific build number
-#   SHUKR_APPSTORE=1 scripts/testflight.sh   # the App Store build: leaves out the "What's new"
-#                                            # screenshots (shukr/WhatsNewShots/wn-*.jpg)
+#   SHUKR_APPSTORE=1 scripts/testflight.sh   # the App Store build (same as TestFlight now: neither carries
+#                                            # the "What's new" — see below)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -28,9 +28,11 @@ rm -rf "$ARCHIVE" "build/export-$NEXT"
 # Which commit this is, shown under the hamburger menu / Settings (BuildInfo.swift). "+" = the
 # build bump (and anything else) wasn't committed yet.
 STAMP="$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- . ':!*.xcuserstate' ':!*xcschememanagement.plist' || echo +)"
-# TestFlight and the App Store get the same binary, so the screenshots are left out only on request.
-EXTRA=()
-[[ "${SHUKR_APPSTORE:-}" == 1 ]] && EXTRA=(EXCLUDED_SOURCE_FILE_NAMES='wn-*.jpg') && echo "→ App Store build: no What's new screenshots"
+# No upload carries What's new (decision testflight-unlock B: the page is the dev install's alone): its change log
+# and screenshots stay out of every archive. Check: `ls build/shukr-*.xcarchive/Products/Applications/shukr.app |
+# grep -c 'wn-\|WhatsNew.jsonl'` → 0.
+EXTRA=(EXCLUDED_SOURCE_FILE_NAMES='wn-*.jpg WhatsNew.jsonl')
+echo "→ no What's new in the upload (change log + screenshots left out)"
 xcodebuild -project shukr.xcodeproj -scheme shukr -configuration Release -destination 'generic/platform=iOS' \
   -archivePath "$ARCHIVE" "${AUTH[@]}" SHUKR_BUILD_STAMP="$STAMP" "${EXTRA[@]}" archive | tail -3
 
