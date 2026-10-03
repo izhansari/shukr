@@ -753,6 +753,8 @@ struct WatchCounterView: View {
     /// off (owner: tap and pinch together, or the Crown alone — no setting for all three).
     @State private var crownMode = false
     @State private var crownNote = false
+    @AppStorage(WatchDoubleTapTarget.key) private var doubleTapRaw = WatchDoubleTapTarget.scroll.rawValue
+    private var doubleTapTarget: WatchDoubleTapTarget { WatchDoubleTapTarget(rawValue: doubleTapRaw) ?? .scroll }
     /// The pause screen's page: 0 the card, 1 haptics. Back to the card on every pause.
     @State private var pausePage = 0
     @State private var draftToken = 0
@@ -805,16 +807,18 @@ struct WatchCounterView: View {
                     // band and inset beads only read on it (owner: no fade at the edges). Black with
                     // the wrist down, like the rest of watchOS's always-on screens.
                     //
-                    // Double Tap's button (Series 9+ / Ultra 2) is this background: a real, full-size, visible
-                    // control, so watchOS finds and presses it at once — the 2 × 2 pt, near-invisible one it had was
-                    // pressed ~2 s late, after a dim (owner; Sami's review, decision watch-extra-fixes A). The counter
-                    // above takes every touch, so only a pinch reaches it; it counts like a tap, not in crown mode
-                    // (owner: tap and pinch together, or the Crown on its own).
-                    Button { increment() } label: { wristDown ? Color.black : WatchNeu.bg }
-                        .buttonStyle(WatchStillButtonStyle())
-                        .handGestureShortcut(.primaryAction, isEnabled: !paused && finished == nil && !crownMode)
-                        .accessibilityLabel("Count")
+                    (wristDown ? Color.black : WatchNeu.bg)
                         .ignoresSafeArea()
+                        .opacity(paused ? 0 : 1)
+                    // Double Tap (Series 9+ / Ultra 2), under the counter: the counter above takes every touch, so
+                    // only a pinch reaches it; it counts like a tap, not in crown mode (owner: tap and pinch together,
+                    // or the Crown on its own). It was this whole background as a button, and watchOS zooms the
+                    // button a Double Tap presses before pressing it — the whole display (owner). Two ways to compare
+                    // on the wrist, Settings → Double Tap (decision watch-double-tap-target C).
+                    WatchDoubleTapLayer(target: doubleTapTarget,
+                                        enabled: !paused && finished == nil && !crownMode,
+                                        fill: wristDown ? Color.black : WatchNeu.bg,
+                                        onCount: increment)
                         .opacity(paused ? 0 : 1)
                     counter
                     if paused {
@@ -1503,6 +1507,7 @@ struct WatchSettingsPage: View {
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(.secondary)
                 WatchCrownDirectionPicker()
+                if WatchBeta.on { WatchDoubleTapPicker() }
                 // Each count is a soft tap, each 100 a stronger one (no choice; owner). watchOS pairs
                 // its haptics with a soft tone unless the watch is silenced; apps can't play the tap alone.
                 Label("For silent counting (in a masjid), turn on Silent Mode in Control Center.", systemImage: "bell.slash")
@@ -2038,3 +2043,156 @@ struct WatchPauseSettings: View {
     }
 }
 
+
+
+// MARK: - Double Tap (decision watch-double-tap-target C)
+
+/// TestFlight or a DEBUG build (the phone's `WhatsNewAccess.beta`): beta-only settings show.
+enum WatchBeta {
+    static let on: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        #endif
+    }()
+}
+
+/// What a Double Tap presses in a session. watchOS zooms and outlines the control a Double Tap presses before it acts;
+/// the session's whole background was that control (owner: "it zooms the whole display inwards with a white border,
+/// holds it for a bit, then the press occurs"). Beta: both, to compare on the wrist; the owner keeps one.
+enum WatchDoubleTapTarget: String, CaseIterable {
+    /// An invisible page-by-page scroll view under the counter: Double Tap scrolls it, each page counts — no zoom.
+    case scroll
+    /// A small disc where the count is: the zoom is that disc's, not the display's.
+    case count
+    static let key = "watch.doubleTapTarget"
+    var label: String {
+        switch self {
+        case .scroll: "Scroll (no zoom)"
+        case .count: "Count button"
+        }
+    }
+}
+
+/// Under the counter (which takes every touch): what Double Tap acts on.
+struct WatchDoubleTapLayer: View {
+    let target: WatchDoubleTapTarget
+    let enabled: Bool
+    /// The page's colour (a real, visible control: an invisible 2 pt one was pressed ~2 s late).
+    let fill: Color
+    let onCount: () -> Void
+
+    var body: some View {
+        switch target {
+        case .count:
+            Button(action: onCount) {
+                Circle().fill(fill).frame(width: Self.discSize, height: Self.discSize)
+            }
+            .buttonStyle(WatchStillButtonStyle())
+            .handGestureShortcut(.primaryAction, isEnabled: enabled)
+            .accessibilityLabel("Count")
+        case .scroll:
+            WatchDoubleTapScroller(enabled: enabled, onCount: onCount)
+                .accessibilityHidden(true)
+        }
+    }
+    private static var discSize: CGFloat { WatchScreen.width * 0.42 }
+}
+
+/// Pages of nothing, one screen each, that Double Tap scrolls (watchOS 11: Double Tap scrolls the scroll view that
+/// carries the primary-action shortcut). Every page it moves is a count; a finger can't reach it (the counter is on
+/// top) and the Crown stays with the counter (its focus); a scroll a finger did make isn't counted. Back to the middle,
+/// quietly, whenever it rests far from it, so it never runs out.
+struct WatchDoubleTapScroller: View {
+    let enabled: Bool
+    let onCount: () -> Void
+    private static let pages = 2_000
+    private static let middle = 1_000
+    @State private var position: Int? = WatchDoubleTapScroller.middle
+    @State private var touched = false
+    @State private var recentring = false
+
+    var body: some View {
+        ScrollView(.vertical) {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<Self.pages, id: \.self) { page in
+                    Color.clear
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(page)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $position)
+        .handGestureShortcut(.primaryAction, isEnabled: enabled)
+        .ignoresSafeArea()
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting { touched = true }
+            guard phase == .idle else { return }
+            touched = false
+            recentre()
+        }
+        .onChange(of: position) { old, new in
+            guard let old, let new, new != old else { return }
+            if recentring { recentring = false; return }
+            guard enabled, !touched else { return }
+            for _ in 0..<min(abs(new - old), 3) { onCount() }
+        }
+        #if DEBUG
+        // `-demoWatchDoubleTapScroll`: a page a second, as a Double Tap would (the simulator has no Double Tap).
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                withAnimation { position = (position ?? Self.middle) + 1 }
+            }
+        }
+        #endif
+    }
+
+    private func recentre() {
+        guard let position, abs(position - Self.middle) > Self.middle / 2 else { return }
+        recentring = true
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { self.position = Self.middle }
+    }
+}
+
+/// Settings (beta): which Double Tap to use — rows like the Crown's.
+struct WatchDoubleTapPicker: View {
+    @AppStorage(WatchDoubleTapTarget.key) private var raw = WatchDoubleTapTarget.scroll.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Double Tap (beta)")
+                .font(.system(size: 13, design: .rounded))
+                .padding(.top, 4)
+            ForEach(WatchDoubleTapTarget.allCases, id: \.rawValue) { option in
+                Button {
+                    WKInterfaceDevice.current().play(.click)
+                    raw = option.rawValue
+                } label: {
+                    HStack {
+                        Text(option.label).font(.system(size: 15, design: .rounded))
+                        Spacer()
+                        if raw == option.rawValue {
+                            Image(systemName: "checkmark").foregroundStyle(Color.green)
+                        }
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .background(RoundedRectangle(cornerRadius: 12)
+                        .fill(raw == option.rawValue ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Try 33 pinches with each: which counts the moment you pinch, and does any pinch go missing or count twice?")
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
