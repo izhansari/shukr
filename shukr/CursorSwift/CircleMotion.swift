@@ -53,6 +53,14 @@ enum CircleMotion {
     static let label = Animation.spring
     /// A popover fading away (the ☰ menu): what a row it closed waits before it runs.
     static let popoverAwayDuration: Double = 0.25
+    /// A done prayer's row folding out of the list once its mark's flourish has gone (Today's own; the soft looks pick a
+    /// RowMotion in the palette).
+    static let rowFold = Animation.spring(response: 0.5, dampingFraction: 0.85)
+    /// The perfect day's cascade: a beat after the last row has folded back, then a dot every `perfectStep`.
+    static let perfectBeatDuration: Double = 0.3
+    static let perfectStepDuration: Double = 0.13
+    /// The post-salah pill arriving under the top bar, or going.
+    static let pillDuration: Double = 0.4
 
     // MARK: Reduce Motion
 

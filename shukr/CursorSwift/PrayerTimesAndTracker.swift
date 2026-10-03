@@ -1440,10 +1440,15 @@ struct PrayerTimesView: View {
                         showTasbeehPage = true
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)
                 }
             }
             // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
             .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
+            // The pill comes and goes the same way whoever sets it (rule 6); a flick and the timer fade it themselves
+            // first, then remove it with no animation.
+            .animation(CircleMotion.movement(.easeInOut(duration: CircleMotion.pillDuration), reduced: reduceMotion),
+                       value: live.postSalahNudge)
             .ignoresSafeArea(edges: .bottom)
             .modifier(ChromeLeaves(live: live))
             // The opening on the Salah circle (circle step 4): the chrome waits, then fades in as the ring lands.
@@ -1730,8 +1735,9 @@ struct TodaysPrayerListView: View {
     private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
-    /// the day is complete. A prayer just marked lingers ~1 s so its dot can pop first.
-    @State private var lingering: Set<String> = []
+    /// the day is complete. A prayer just marked stays while the circle's marking moment runs (the stage's `heldRow`:
+    /// one clock, the moment's).
+    private var lingering: Set<String> { CircleStage.shared.heldRow.map { [$0] } ?? [] }
     /// "3 done" row tapped: show the done ones too (to check a score or unmark one).
     /// "N done" tapped (shared with the soft looks' footer in the chrome, SoftDoneFooter).
     private var fold = PrayerListFold.shared
@@ -1743,9 +1749,6 @@ struct TodaysPrayerListView: View {
     /// for the DEBUG "Test Perfect Day" row even when today isn't one.
     @State private var perfectPulse = 0
     @State private var demoPerfect = false
-    /// When the perfect-day cascade starts after the notification: after the circle's flourish,
-    /// once all five rows have come back (they wait for it).
-    static let perfectDayCascadeStart: Double = CompletionFlourish.duration + 0.3
 
     @ViewBuilder private func doneFooter(done: Int, foldedCount: Int, allDone: Bool, visibleIsEmpty: Bool,
                                          divider: Bool) -> some View {
@@ -1872,34 +1875,30 @@ struct TodaysPrayerListView: View {
             fold.softFooterCount = count >= 0 ? count : nil
         }
         .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { note in
+            // ▶︎ / DEBUG: the footer shows a while even when today isn't a perfect day.
             if note.object as? Bool == true {
                 withAnimation { demoPerfect = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 6) { withAnimation { demoPerfect = false } }
             }
-            // A light tap per dot as they pop (PrayerButton), then the sparkles bounce.
-            let start = Self.perfectDayCascadeStart
+        }
+        // The cascade (the stage starts it once the mark's moment is over): a light tap per dot as they pop
+        // (PrayerButton, on the same count), then the sparkles bounce.
+        .task(id: CircleStage.shared.perfectCascade) {
+            guard CircleStage.shared.perfectCascade > 0 else { return }
+            try? await Task.sleep(for: .seconds(CircleMotion.perfectBeatDuration))
             for i in 0..<5 {
-                DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.13 * Double(i)) {
-                    UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5 + 0.1 * Double(i))
-                }
+                guard !Task.isCancelled else { return }
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5 + 0.1 * Double(i))
+                try? await Task.sleep(for: .seconds(CircleMotion.perfectStepDuration))
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + start + 0.75) {
-                perfectPulse += 1
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            }
+            try? await Task.sleep(for: .seconds(CircleMotion.perfectStepDuration * 1.8))
+            guard !Task.isCancelled else { return }
+            perfectPulse += 1
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
-            guard let event = note.object as? PrayerCompletionEvent, !event.isCorrection else { return }   // a Jumu'ah correction isn't a new mark (audit A)
-            // The row stays (and a completed day's other rows stay folded) until the circle's
-            // flourish is done: the list changing height moved the circle mid-sweep (owner, 2026-09-27).
-            let name = event.prayerName ?? event.name   // the row's name ("Dhuhr" for a Jumu'ah)
-            lingering.insert(name)
-            DispatchQueue.main.asyncAfter(deadline: .now() + CompletionFlourish.duration) {
-                withAnimation(motion.animation(springy: .spring(response: 0.5, dampingFraction: 0.85))) {
-                    _ = lingering.remove(name)
-                }
-            }
-        }
+        // A marked row folds when the circle's moment releases it.
+        .animation(motion.animation(springy: CircleMotion.rowFold).map { CircleMotion.movement($0, reduced: reduceMotion) },
+                   value: CircleStage.shared.heldRow)
         .onChange(of: allDone) { _, isDone in
             if isDone { showDone = false }   // the day's complete: everything's back anyway
         }
@@ -2259,13 +2258,14 @@ struct PrayerButton: View {
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if done { completionPulse += 1 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { _ in
-                // Perfect day: the five dots pop one after another, once the list has all
-                // five back (TodaysPrayerListView brings them back ~1 s after the last mark).
+            // Perfect day: the five dots pop one after another, from the stage's cascade (once the last mark's moment is
+            // over and all five rows are back).
+            .task(id: CircleStage.shared.perfectCascade) {
+                guard CircleStage.shared.perfectCascade > 0 else { return }
                 let index = Double(viewModel.orderedPrayerNames.firstIndex(of: name) ?? 0)
-                DispatchQueue.main.asyncAfter(deadline: .now() + TodaysPrayerListView.perfectDayCascadeStart + 0.13 * index) {
-                    completionPulse += 1
-                }
+                try? await Task.sleep(for: .seconds(CircleMotion.perfectBeatDuration + CircleMotion.perfectStepDuration * index))
+                guard !Task.isCancelled else { return }
+                completionPulse += 1
             }
             .alert(isPresented: $showMarkIncompleteAlert) {
                         Alert(

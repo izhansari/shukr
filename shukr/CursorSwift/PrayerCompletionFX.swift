@@ -442,7 +442,7 @@ struct PostSalahNudge: View {
         .overlay(alignment: .topTrailing) {
             Button {
                 triggerSomeVibration(type: .light)
-                withAnimation(.easeInOut(duration: 0.25)) { onDismiss() }
+                onDismiss()   // the host animates the pill's going
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .bold))
@@ -486,14 +486,14 @@ struct PostSalahNudge: View {
         let freeze = UserDefaults.standard.double(forKey: "postSalahTimerFreeze")
         if freeze > 0 { elapsed = freeze; return }
         #endif
-        var last = Date()
+        var last = Uptime.now   // never the wall clock: circle-check pins it, and the user can change it (audit A)
         var wasVisible = true
         while !Task.isCancelled && !expiring {
             try? await Task.sleep(for: .milliseconds(33))
-            let now = Date()
+            let now = Uptime.now
             // A split second at most: time the app spent frozen (background, a stall) mustn't land in
             // one tick and skip the comeback minimum.
-            let dt = min(now.timeIntervalSince(last), 0.1)
+            let dt = min(now - last, 0.1)
             last = now
             let visible = hostShown && appActive && WelcomeTarget.canLand
                 && CircleCover.active.subtracting(Self.seeThroughCovers).isEmpty

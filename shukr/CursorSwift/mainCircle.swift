@@ -411,15 +411,10 @@ struct MainCircleView: View {
             }
             playMarking(event)
         }
+        // The day just became perfect (all five Early): the list's cascade, once this mark's moment is over.
+        .onReceive(NotificationCenter.default.publisher(for: .perfectDay)) { _ in CircleStage.shared.perfectDayReached() }
         // The data moved the face (an unmark, a window ending, Fajr beginning from the summary…): out, then in.
         .onChange(of: derivedFace) { _, _ in faceChanged() }
-        // The offer goes once the next prayer has begun (its moment has passed).
-        .onChange(of: viewModel.relevantPrayer?.name) { _, name in
-            if let offered = live?.postSalahNudge, let name, name != offered,
-               viewModel.relevantPrayer?.status() == .current {
-                withAnimation(.easeInOut(duration: 0.3)) { live?.postSalahNudge = nil }
-            }
-        }
         // Dev preview: the Salah page, then this prayer as "next" for a moment, then the look's
         // transition exactly as the real one plays it (haptic included). Visual only — no prayer
         // rows, test times or notifications are touched.
@@ -487,8 +482,8 @@ struct MainCircleView: View {
     /// track's own animation, the qibla buzz and the real "prayer begins" ask this — they were five checks that had
     /// drifted (audit A). The list being open doesn't matter (marks are made from it).
     private var canPlay: Bool {
-        CircleStage.shared.sceneActive && sharedState.horizontalPage == .main
-            && !(live?.pagerPhase.isScrolling ?? false) && CircleCover.nothingOverCircle
+        CircleStage.shared.sceneActive && CircleStage.shared.restingPage == .main   // nil while the pager moves
+            && CircleCover.nothingOverCircle
             && WelcomeTarget.canLand && !WelcomeTarget.playing
             && (Uptime.now - appearedAt) > CircleMomentTiming.settleAfterAppear
     }
@@ -553,8 +548,13 @@ struct MainCircleView: View {
             return
         }
         let begins: Bool = {
-            guard case .prayer(let was, .upcoming, _)? = displayedFace, case .prayer(let now, .current, _) = derivedFace else { return false }
-            return was == now
+            guard case .prayer(let now, .current, _) = derivedFace else { return false }
+            switch displayedFace {
+            case .prayer(let was, .upcoming, _)?: return was == now
+            // Before Fajr the circle shows the summary's next Fajr: Fajr beginning comes from there (Sami's review).
+            case .summary?: return now.name == "Fajr"
+            default: return false
+            }
         }()
         run(begins ? .begins : .swap, settle: {
             displayedFace = derivedFace
@@ -565,7 +565,10 @@ struct MainCircleView: View {
             // The new face while the words are out: its ring follows (trackWantsSolid reads the shown face) — a start's
             // dashes expand into the band from here.
             quietly { displayedFace = derivedFace }
-            if begins { playStartMoment() }
+            if begins {
+                playStartMoment()
+                live?.postSalahNudge = nil   // the last prayer's offer: its moment has passed (the pill animates itself)
+            }
             guard await CircleGate.nextFrame() else { return }
             faceAway = false
             _ = await CircleGate.pause(CircleMomentTiming.in)
@@ -575,10 +578,13 @@ struct MainCircleView: View {
     /// A prayer was marked (or ▶︎ Marking a prayer): the flourish over the circle, the face it was showing kept under it
     /// until the flourish ends, then the next face goes in while the words are still hidden, and they come back.
     private func playMarking(_ event: PrayerCompletionEvent) {
+        // The list keeps the row until the flourish goes (one clock: this moment's).
+        CircleStage.shared.holdRow(event.prayerName ?? event.name)
         run(.marking, settle: {
             flourish = nil
             flourishOut = false
             displayedFace = derivedFace
+            CircleStage.shared.holdRow(nil)
         }) {
             flourishID += 1
             flourishOut = false
@@ -589,11 +595,10 @@ struct MainCircleView: View {
             // icon morphed Maghrib → Isha as they faded in), then fades in.
             quietly { displayedFace = derivedFace }
             flourishOut = true                    // fades on its own (implicit), the words fade in
-            withAnimation(.easeInOut(duration: 0.45)) {
-                // The post-salah pill under the top bar. The original event's name even after a Jumu'ah correction
-                // ("Dhuhr"): the pill's dismissal compares it with the row's name (Sami's review of 98eeedf).
-                live?.postSalahNudge = event.name
-            }
+            CircleStage.shared.holdRow(nil)       // the list folds the row now (it animates itself)
+            // The post-salah pill under the top bar (it animates its own arrival). The original event's name even after
+            // a Jumu'ah correction ("Dhuhr"), as the row's (Sami's review of 98eeedf).
+            live?.postSalahNudge = event.name
             guard await CircleGate.pause(0.5) else { return }
             quietly { flourish = nil; flourishOut = false }
         }
@@ -611,12 +616,11 @@ struct MainCircleView: View {
             held = fajr
         }
         previewTask?.cancel()
-        withAnimation(CircleMotion.page) {
-            sharedState.navPosition = .main
-            sharedState.horizontalPage = .main
-        }
+        withAnimation(CircleMotion.page) { sharedState.navPosition = .main }
         previewTask = Task { @MainActor in
-            // The page arriving first (the gate needs the pager still).
+            // Not played through (the circle never came into view): back to the real data, not stuck on the preview's.
+            defer { if !Task.isCancelled { preview = nil; heldPrayer = nil } }
+            await sharedState.navigate(to: .main)   // returns once the pager rests there
             guard await CircleStage.shared.until(deadline: CircleGate.deadline, recheck: 0.1, { canPlay }) else { return }
             heldPrayer = held
             preview = .upcoming                                       // → into "next"

@@ -53,6 +53,28 @@ enum CircleFace: Equatable {
     /// the view, whose `scenePhase` goes stale; this doesn't (audit A).
     var sceneActive = true
 
+    /// The row the prayer list keeps while the circle's marking moment runs: set as the mark comes in, released when the
+    /// flourish goes (or the moment isn't played). The list folds it then — it kept a copy of the flourish's length on
+    /// its own timer, and a flourish held by the gate folded mid-sweep (audit A).
+    private(set) var heldRow: String?
+    /// Bumped when the perfect day's cascade starts (the rows' dots pop in turn, the sparkles bounce): once the marking
+    /// moment that made the day perfect has ended, or at once for ▶︎ perfect day.
+    private(set) var perfectCascade = 0
+    @ObservationIgnored private var perfectWaiting = false
+
+    func holdRow(_ name: String?) {
+        heldRow = name
+        if name == nil, perfectWaiting {
+            perfectWaiting = false
+            perfectCascade += 1
+        }
+    }
+
+    /// The day just became perfect: the cascade once the mark's moment is over.
+    func perfectDayReached() {
+        if heldRow == nil { perfectCascade += 1 } else { perfectWaiting = true }
+    }
+
     /// What's presented over the page, by name ("menu", "whatsNew", "tasbeeh", "morningCard"…). `CircleCover` writes
     /// it; anything that must wait for a clear screen reads it.
     private(set) var covers = Set<String>()
