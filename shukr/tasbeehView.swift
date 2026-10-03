@@ -2344,12 +2344,19 @@ struct tasbeehView: View {
         }
 
         private func softStatLines(_ value: String, _ caption: String) -> some View {
+            // The number and its word start at the same edge, the number where it stood (owner: the word takes the
+            // number's lead, not the other way round).
             VStack(alignment: .leading, spacing: 0) {
-                softValue(value)
+                Text(value)
+                    .font(.system(size: 22, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.55)
                 Text(caption)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+            .padding(.leading, 8)
         }
 
         /// The tall tile: "rate", the pace big, per count / per tasbeeh, and how it compares with your usual.
@@ -2398,15 +2405,6 @@ struct tasbeehView: View {
                 }
             }
             .padding(.horizontal, 8)
-        }
-
-        private func softValue(_ text: String) -> some View {
-            Text(text)
-                .font(.system(size: 22, weight: .light, design: .rounded))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.55)
-                .padding(.horizontal, 8)
         }
 
         // MARK: mantra card
