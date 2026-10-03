@@ -21,7 +21,19 @@ import SwiftUI
 /// 2026-09-28: "hard to see … still subtle, but not that invisible" (was secondary 0.35 at 1 pt).
 enum UpcomingTrack {
     static let opacity = 0.58
-    static let style = StrokeStyle(lineWidth: 1.3, dash: [3, 5])
+    /// The circle's ring (200 pt: the circle, the welcome's landing, the NEXT playground).
+    static let style = style(diameter: CircleTrack.size)
+
+    /// The dashes (3 on, 5 off) fitted to a ring of this diameter: a whole number of them round it, so the last one
+    /// doesn't run into the first where the stroke starts, at 3 o'clock (owner: "on the right side, there's a small
+    /// overlap where the pattern doesn't match"). 200 pt: 79 of 7.95 pt instead of 78.5 of 8.
+    static func style(diameter: CGFloat) -> StrokeStyle {
+        let period: CGFloat = 8
+        let dashShare: CGFloat = 3 / 8
+        let circumference = CGFloat.pi * diameter
+        let fitted = circumference / max((circumference / period).rounded(), 1)
+        return StrokeStyle(lineWidth: 1.3, dash: [fitted * dashShare, fitted * (1 - dashShare)])
+    }
 }
 import CoreHaptics
 import UIKit
