@@ -722,7 +722,7 @@ struct ZikrCircleFace: View {
             case .progress(let fraction):
                 glow(Circle().trim(from: 0, to: arcRewound ? 0 : max(fraction, 0.001)).rotation(.degrees(-90)))
                     .opacity(fraction > 0 ? 1 : 0)
-                    .animation(.spring(response: 0.6, dampingFraction: 0.85), value: fraction)
+                    .animation(CircleMotion.arcFill, value: fraction)
             case .dashed:
                 Circle()
                     .stroke(Color.sage.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [4, 6]))

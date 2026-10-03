@@ -31,6 +31,8 @@ struct tasbeehView: View {
     @State private var chromeIn = SessionHandoff.shared.freshEntry == nil
     /// The opening's and the close's sequences (one at a time; a close cancels an opening still playing).
     @State private var sequence: Task<Void, Never>?
+    /// The counter ⇄ results hand-over (out, then in), cancelled by a newer one.
+    @State private var resultsTask: Task<Void, Never>?
     @State private var openingStyle: SessionOpening = .current
     /// Closing softly: the same steps backwards over the wheel before the cover goes.
     @State private var leaving = false
@@ -562,7 +564,7 @@ struct tasbeehView: View {
                                 TopOfSessionButton( // Count in sets: switches every tap to +N
                                     text: "+\(secondaryStep)", actionToDo: {
                                         triggerSomeVibration(type: .light)
-                                        withAnimation(.easeInOut(duration: 0.2)) { countingInSets.toggle() }
+                                        withAnimation(.easeInOut(duration: CircleMotion.quick)) { countingInSets.toggle() }
                                     },
                                     paused: paused, togglePause: togglePause, active: countingInSets)
                                 .accessibilityLabel(countingInSets ? "Counting in sets of \(secondaryStep), on" : "Count in sets of \(secondaryStep)")
@@ -728,18 +730,24 @@ struct tasbeehView: View {
             if results {
                 cardsStay = paused
                 // Soft look: the ring stays — it comes down from the pause cards (or stays put) and takes the task's title.
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = !ringAbove; countIn = false; chromeIn = false }
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
-                    guard savedSession != nil else { return }
-                    withAnimation(.easeOut(duration: 0.25)) { resultsIn = true }
+                // The counter's words out, then (once that fade is done, not a guess of it) the results in.
+                resultsTask?.cancel()
+                resultsTask = Task { @MainActor in
+                    await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) {
+                        ringOut = !ringAbove; countIn = false; chromeIn = false
+                    }
+                    guard !Task.isCancelled, savedSession != nil else { return }
+                    withAnimation(.easeOut(duration: CircleMotion.resultsInDuration)) { resultsIn = true }
                 }
             } else if resultsIn {
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { resultsIn = false }
-                guard !leaving else { return }   // a close: the leave below runs the rest
-                Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
-                    guard savedSession == nil, !leaving else { return }
+                resultsTask?.cancel()
+                guard !leaving else {   // a close: the close sequence runs the rest
+                    withAnimation(.easeOut(duration: CircleMomentTiming.out)) { resultsIn = false }
+                    return
+                }
+                resultsTask = Task { @MainActor in
+                    await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) { resultsIn = false }
+                    guard !Task.isCancelled, savedSession == nil, !leaving else { return }
                     withAnimation(.easeOut(duration: CircleMomentTiming.in)) { ringOut = false; countIn = true; chromeIn = true }
                 }
             }
@@ -1116,7 +1124,11 @@ struct tasbeehView: View {
         let toDelete = savedSession
         savedSession = nil   // audit A9: the results card is still on screen for its fade; it must not read a deleted row
         if let toDelete {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { SessionDeletion.delete([toDelete], in: context) }
+            // Once the results (which read it) have faded off — then it can go.
+            Task { @MainActor in
+                _ = await CircleGate.pause(CircleMomentTiming.outDone + CircleMotion.quick)
+                SessionDeletion.delete([toDelete], in: context)
+            }
         }
         SleepMorning.clear()
         let doze = Date().timeIntervalSince(r.lastTapAt ?? Date())
@@ -1222,18 +1234,14 @@ struct tasbeehView: View {
         ringMoveTask?.cancel()
         ringMoveTask = Task { @MainActor in
             if reduceMotion {
-                withAnimation(.easeOut(duration: 0.15)) { ringDimmed = true }
-                try? await Task.sleep(for: .seconds(0.17))
+                await CircleMotion.animate(.easeOut(duration: CircleMotion.quick)) { ringDimmed = true }
                 guard !Task.isCancelled else { return }
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { ringLift = ringLiftTarget }
-                withAnimation(.easeIn(duration: 0.2)) { ringDimmed = false }
+                await CircleMotion.animate(nil) { ringLift = ringLiftTarget }
+                withAnimation(.easeIn(duration: CircleMotion.quick)) { ringDimmed = false }
                 return
             }
             if waitForCards {
-                try? await Task.sleep(for: .seconds(CircleMotion.ringMoveDownDelay))
-                guard !Task.isCancelled else { return }
+                guard await CircleGate.pause(CircleMotion.ringMoveDownDelay) else { return }
             }
             withAnimation(CircleMotion.ringMove) { ringLift = ringLiftTarget }
         }
@@ -2514,7 +2522,7 @@ struct tasbeehView: View {
             default: 0.5
             }
             return Button {
-                withAnimation(.snappy(duration: 0.2)) { cycleHaptics() }
+                withAnimation(.snappy(duration: CircleMotion.quick)) { cycleHaptics() }
             } label: {
                 VStack(spacing: 6) {
                     // Our own "iphone.radiowaves": the phone between two three-wave symbols
@@ -2593,7 +2601,7 @@ struct tasbeehView: View {
             Button {
                 guard !locked else { return }
                 triggerSomeVibration(type: .light)
-                withAnimation(.snappy(duration: 0.2)) { action() }
+                withAnimation(.snappy(duration: CircleMotion.quick)) { action() }
             } label: {
                 VStack(spacing: 6) {
                     Image(systemName: icon)
@@ -2992,7 +3000,8 @@ struct SoftCardsFade: ViewModifier {
     func body(content: Content) -> some View {
         content
             .opacity(shown ? 1 : 0)
-            .animation(shown ? .easeOut(duration: CircleMomentTiming.in).delay(delay) : .easeOut(duration: 0.12), value: shown)
+            .animation(shown ? .easeOut(duration: CircleMomentTiming.in).delay(delay) : .easeOut(duration: CircleMotion.cardsOutDuration),
+                       value: shown)
     }
 }
 

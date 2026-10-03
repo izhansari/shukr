@@ -302,7 +302,7 @@ struct PrayerStatusDot: View {
     var body: some View {
         indicator
             .frame(width: 14, height: 14)
-            .animation(.easeInOut(duration: 0.2), value: done)
+            .animation(.easeInOut(duration: CircleMotion.quick), value: done)
     }
 
     @ViewBuilder private var indicator: some View {
@@ -394,7 +394,7 @@ struct FlickAway: ViewModifier {
                                 await CircleMotion.animate(nil) { onDismiss() }
                             }
                         } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { drag = .zero }
+                            withAnimation(CircleMotion.flickBack) { drag = .zero }
                         }
                     }
             )
@@ -433,15 +433,32 @@ struct PostSalahNudge: View {
     static let seeThroughCovers: Set<String> = ["menu"]
 
     @State private var pressed = false
-    @State private var elapsed: Double = 0
     @State private var holding = false
     @State private var expiring = false
-    /// Mirrors of `shown` / the scene phase the clock's loop can read (a task holds a copy of self).
-    @State private var hostShown = true
-    @State private var appActive = true
     @Environment(\.scenePhase) private var scenePhase
+    /// The clock: seconds counted before the current run, and when (Uptime) the current run began — nil while it's
+    /// stopped (not in sight, or held). The ring draws itself from these (a TimelineView); one task waits out what's
+    /// left. It was a 33 ms loop writing state 30 times a second for 15 s, on the wall clock (audit A / F3).
+    @State private var spent: Double = 0
+    @State private var runningSince: TimeInterval?
 
-    private var left: Double { max(0, 1 - elapsed / Self.lifetime) }
+    /// The pill can be seen: its page is showing, the app is up, nothing covers it but the ☰ (all observable).
+    private var visible: Bool {
+        shown && scenePhase == .active && WelcomeTarget.canLand
+            && CircleCover.active.subtracting(Self.seeThroughCovers).isEmpty
+    }
+    private var running: Bool { visible && !holding && !expiring && !frozen }
+    private func left(at now: TimeInterval) -> Double {
+        let elapsed = spent + (runningSince.map { now - $0 } ?? 0)
+        return max(0, 1 - elapsed / Self.lifetime)
+    }
+    #if DEBUG
+    /// `-postSalahTimerFreeze <seconds>`: the bar stopped at that point (screenshots).
+    private static let freezeAt = UserDefaults.standard.double(forKey: "postSalahTimerFreeze")
+    private var frozen: Bool { Self.freezeAt > 0 }
+    #else
+    private var frozen: Bool { false }
+    #endif
 
     var body: some View {
         HStack(spacing: 10) {
@@ -449,14 +466,18 @@ struct PostSalahNudge: View {
                 .font(.system(size: 18, weight: .light))
                 .foregroundStyle(Color.green)
                 .overlay {
-                    // Time left: full at the start, its end running back to 12 o'clock as it empties.
-                    ZStack {
-                        Circle().stroke(Color.sage.opacity(0.18), lineWidth: 2)
-                        Circle().trim(from: 0, to: left)
-                            .stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
+                    // Time left: full at the start, its end running back to 12 o'clock as it empties. Redrawn every
+                    // frame only while it runs.
+                    TimelineView(.animation(paused: runningSince == nil)) { _ in
+                        let now = Uptime.now
+                        ZStack {
+                            Circle().stroke(Color.sage.opacity(0.18), lineWidth: 2)
+                            Circle().trim(from: 0, to: left(at: now))
+                                .stroke(Color.sage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                                .rotationEffect(.degrees(-90))
+                        }
+                        .frame(width: 32, height: 32)   // redrawn each frame by the timeline; the clock is Uptime
                     }
-                    .frame(width: 32, height: 32)
                 }
                 .padding(.horizontal, 4)
             Text("Post-salah tasbih?")
@@ -490,48 +511,35 @@ struct PostSalahNudge: View {
         .padding(.vertical, 12)
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { pressed = true }
             triggerSomeVibration(type: .success)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            Task { @MainActor in
+                await CircleMotion.animate(CircleMotion.pillPress) { pressed = true }   // the press is felt, then it opens
                 pressed = false
                 onOpen()
             }
         }
         .flickAway(onHold: { holding = $0 }, onDismiss: onDismiss)
         .opacity(expiring ? 0 : 1)
-        .onChange(of: shown, initial: true) { _, v in hostShown = v }
-        .onChange(of: scenePhase, initial: true) { _, p in appActive = p == .active }
-        .task { await runClock() }
+        // Back in sight after being away: a moment to see it (at least `comebackMinimum` left).
+        .onChange(of: visible) { _, nowVisible in
+            if nowVisible { spent = min(spent, Self.lifetime - Self.comebackMinimum) }
+        }
+        // The clock starts and stops with `running`; while it runs, one wait for what's left, then it goes.
+        .task(id: running) {
+            if running {
+                runningSince = Uptime.now
+                guard await CircleGate.pause(max(Self.lifetime - spent, 0)) else { return }
+                expire()
+            } else if let since = runningSince {
+                spent += Uptime.now - since
+                runningSince = nil
+            }
+        }
+        #if DEBUG
+        .onAppear { if frozen { spent = Self.freezeAt } }
+        #endif
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Post-salah tasbih")
-    }
-
-    /// Counts up while the pill can be seen and isn't held; at `lifetime` it fades and goes.
-    private func runClock() async {
-        #if DEBUG
-        // `-postSalahTimerFreeze <seconds>`: stop the bar at that point (screenshots).
-        let freeze = UserDefaults.standard.double(forKey: "postSalahTimerFreeze")
-        if freeze > 0 { elapsed = freeze; return }
-        #endif
-        var last = Uptime.now   // never the wall clock: circle-check pins it, and the user can change it (audit A)
-        var wasVisible = true
-        while !Task.isCancelled && !expiring {
-            try? await Task.sleep(for: .milliseconds(33))
-            let now = Uptime.now
-            // A split second at most: time the app spent frozen (background, a stall) mustn't land in
-            // one tick and skip the comeback minimum.
-            let dt = min(now - last, 0.1)
-            last = now
-            let visible = hostShown && appActive && WelcomeTarget.canLand
-                && CircleCover.active.subtracting(Self.seeThroughCovers).isEmpty
-            if visible && !wasVisible {
-                elapsed = min(elapsed, Self.lifetime - Self.comebackMinimum)   // back: a moment to see it
-            }
-            wasVisible = visible
-            guard visible && !holding else { continue }
-            elapsed += dt
-            if elapsed >= Self.lifetime { expire() }
-        }
     }
 
     /// Time's up: fade where it is, then go without an animation of its own (as a flick does).

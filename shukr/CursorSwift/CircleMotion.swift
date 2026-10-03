@@ -53,6 +53,8 @@ enum CircleMotion {
     static let label = Animation.spring
     /// A popover fading away (the ☰ menu): what a row it closed waits before it runs.
     static let popoverAwayDuration: Double = 0.25
+    /// A SwiftUI Menu closing (the palette's ▶︎ Play): it reports nothing when it's gone.
+    static let menuAwayDuration: Double = 0.35
     /// A done prayer's row folding out of the list once its mark's flourish has gone (Today's own; the soft looks pick a
     /// RowMotion in the palette).
     static let rowFold = Animation.spring(response: 0.5, dampingFraction: 0.85)
@@ -63,6 +65,10 @@ enum CircleMotion {
     static let pillDuration: Double = 0.4
     /// A pill flicked away: it fades where the finger left it.
     static let flickAwayDuration: Double = 0.18
+    /// A pill pulled short and let go: it springs back.
+    static let flickBack = Animation.spring(response: 0.3, dampingFraction: 0.75)
+    /// The pill pressed before it opens.
+    static let pillPress = Animation.spring(response: 0.25, dampingFraction: 0.6)
 
     // MARK: The Zikr wheel and its session (audit E)
 
@@ -76,10 +82,16 @@ enum CircleMotion {
     static let wheelOpenDuration: Double = 0.4
     /// A ring's arc rewinding to empty as its session opens, or the session's arc landing where the wheel's stands.
     static let arcMoveDuration: Double = 0.4
+    /// A wheel ring's arc growing as its task's share changes (a session added to it).
+    static let arcFill = Animation.spring(response: 0.6, dampingFraction: 0.85)
     /// Closing onto the wheel: the session's page going, then its ring fading over the wheel's identical one.
     static let sessionPageOutDuration: Double = 0.25
     /// Closing from the counter: its count and buttons going first.
     static let sessionCountOutDuration: Double = 0.25
+    /// The results coming in once the counter's words have gone.
+    static let resultsInDuration: Double = 0.25
+    /// The soft session cards' words going (out quick, so the next ones come in clean).
+    static let cardsOutDuration: Double = 0.12
     static let sessionRingOverDuration: Double = 0.15
 
     // MARK: The circle's own (the same in every look — rule 9: motion never depends on the theme)

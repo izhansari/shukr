@@ -240,7 +240,7 @@ struct SoftDoneFooter: View {
         if let count = fold.softFooterCount {
             Button {
                 triggerSomeVibration(type: .light)
-                withAnimation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) {
+                withAnimation(RowMotion.current.animation(springy: CircleMotion.spring)) {
                     fold.showDone.toggle()
                 }
             } label: {
@@ -391,32 +391,30 @@ struct SalahPlayButton: View {
     /// Perfect day plays in the prayer list (the dots pop, "perfect day" under it): open it first, with the done
     /// prayers unfolded (else only the one left popped, under a lone row — Sami's audit, finding 10).
     private func playPerfectDay() {
-        let open = sharedState.navPosition == .bottom
-        DispatchQueue.main.asyncAfter(deadline: .now() + (open ? 0.1 : 0.7)) {
-            withAnimation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) {
+        // A script, each step awaited: the menu gone, the Salah page, the list up, its done rows out, then the cascade
+        // (a chain of asyncAfters guessed each step's length — audit F).
+        Task { @MainActor in
+            guard await CircleGate.pause(CircleMotion.menuAwayDuration) else { return }
+            await sharedState.navigate(to: .main)
+            await CircleMotion.animate(CircleMotion.page) { sharedState.navPosition = .bottom }
+            await CircleMotion.animate(RowMotion.current.animation(springy: CircleMotion.spring)) {
                 PrayerListFold.shared.showDone = true
             }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                sharedState.horizontalPage = .main
-                sharedState.navPosition = .bottom
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (open ? 0.35 : 1.0)) {
             NotificationCenter.default.post(name: .perfectDay, object: true)
         }
     }
 
+    /// After the Play menu has closed, so the animation plays on a clear page. A SwiftUI menu says nothing when it has
+    /// gone, so this is the one named wait.
     private func after(_ go: @escaping () -> Void) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: go)
+        Task { @MainActor in
+            guard await CircleGate.pause(CircleMotion.menuAwayDuration) else { return }
+            go()
+        }
     }
 
     private func post(_ name: Notification.Name, _ object: Any? = nil) {
-        // After the menu has closed, so the animation plays on a clear page.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            NotificationCenter.default.post(name: name, object: object)
-        }
+        after { NotificationCenter.default.post(name: name, object: object) }
     }
 }
 

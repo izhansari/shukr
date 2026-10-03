@@ -290,6 +290,8 @@ struct MainCircleView: View {
             // Between two faces (the summary ↔ a prayer, one prayer → the next) the words go out, then the new ones come
             // in (a swap moment) — they crossfaded through each other.
             .modifier(CircleWordsAway(away: faceAway || openingHidesWords))
+            // Inside the ring: past this the words outgrew it ("missed" filled the ring at the largest size).
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
             // Out quickly under the flourish (its arc sits on the prayer's own, so the ring never
             // blinks), back in as it fades.
             .opacity(contentHidden ? 0 : 1)
@@ -374,11 +376,12 @@ struct MainCircleView: View {
             appearedAt = Uptime.now
             settleTrack(trackWantsSolid)
             locationManager.startUpdating() // Start location updates
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                // The prayer day, not the calendar date: after midnight (before the rollover)
-                // Date() is tomorrow's rows, so today's score was never set and read 0 %.
-                viewModel.calculateDayScore(for: PrayerDay.date())
-            }
+        }
+        // The prayer day, not the calendar date: after midnight (before the rollover) Date() is tomorrow's rows, so
+        // today's score was never set and read 0 %. A beat after appearing, once today's rows have loaded.
+        .task {
+            guard await CircleGate.pause(Self.dayScoreAfterAppear) else { return }
+            viewModel.calculateDayScore(for: PrayerDay.date())
         }
         // The palette's Play → Marking a prayer: the flourish for the prayer on the circle, at today's score — a
         // made-up event, nothing marked (SalahLook.swift).
@@ -460,6 +463,8 @@ struct MainCircleView: View {
 //            prayer = viewModel.relevantPrayer
         }
     }
+
+    private static let dayScoreAfterAppear: Double = 0.5
 
     /// The moment's haptic (the expanding track does the rest; the real start and the dev preview
     /// share it).
