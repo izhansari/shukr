@@ -32,12 +32,6 @@ extension View {
         get { state.circleFrame }
         set { if state.circleFrame != newValue { state.circleFrame = newValue } }
     }
-    /// The Salah page's circle alone (MainCircleView): `circleFrame` is also written by the lost page's own ring, so
-    /// its comeback aimed at itself and two rings crossfaded (Sami's audit, finding 4).
-    static var salahCircleFrame: CGRect? {
-        get { state.salahCircleFrame }
-        set { if state.salahCircleFrame != newValue { state.salahCircleFrame = newValue } }
-    }
     static var canLand: Bool {
         get { state.canLand }
         set { if state.canLand != newValue { state.canLand = newValue } }
@@ -62,22 +56,14 @@ extension View {
         get { state.landed }
         set { if state.landed != newValue { state.landed = newValue } }
     }
-    /// `circleFrame` is the Salah circle's (MainCircleView wrote it last), not the lost page's: only then can the circle
-    /// play the opening itself (circle step 4).
-    static var landsOnSalah: Bool {
-        get { state.landsOnSalah }
-        set { if state.landsOnSalah != newValue { state.landsOnSalah = newValue } }
-    }
 }
 
 @MainActor @Observable final class WelcomeTargetState {
     fileprivate(set) var circleFrame: CGRect?
-    fileprivate(set) var salahCircleFrame: CGRect?
     fileprivate(set) var canLand = true
     fileprivate(set) var trackDashed = false
     fileprivate(set) var playing = false
     fileprivate(set) var landed = false
-    fileprivate(set) var landsOnSalah = false
     /// The sleep curtain is up or the welcome is about to replay (`WelcomeGate.curtainUp`).
     fileprivate(set) var curtainUp = false
 }
@@ -367,11 +353,13 @@ struct WelcomeOverlay: View {
         target = circleCentre()
         mark.startDrawn = startDrawn
         // On the Salah circle (circle step 4): the circle draws the ring and the word, and the page waits round it —
-        // one ring, nothing lined up by measured frames. The setup's hand-off (a ring already on screen) and landings
-        // elsewhere keep this overlay.
-        if target != nil, !startDrawn, WelcomeTarget.landsOnSalah {
-            // A launch: at once (nothing's there yet). In place: animations allowed, so the circle's track and words and
-            // the page fade out (each on its own implicit animation).
+        // one ring, nothing lined up by measured frames — and plays it as one of its moments (audit B). The setup's
+        // hand-off (a ring already on screen) and landings elsewhere keep this overlay.
+        if target != nil, !startDrawn {
+            // Claimed in this turn, the mark and the hidden page together. A launch: at once (nothing's there yet). In
+            // place: animations allowed, so the circle's track and words and the page fade out (each on its own
+            // implicit animation).
+            let mark = mark
             var quiet = Transaction()
             quiet.disablesAnimations = !inPlace
             withTransaction(quiet) {
@@ -379,9 +367,28 @@ struct WelcomeOverlay: View {
                 mark.inCircle = true
                 CircleStage.shared.opening = mark
             }
-            // In place: the circle's track and words fade out first (MainCircleView), then the word writes in.
-            if inPlace { guard await CircleGate.pause(CircleMomentTiming.outDone) else { return } }
+            CircleStage.shared.play(CircleMomentRequest(kind: .opening, phases: {
+                // In place: the circle's track and words fade out first (MainCircleView), then the word writes in.
+                if inPlace { guard await CircleGate.pause(CircleMomentTiming.outDone) else { return } }
+                await steps(soft)
+            }, settle: {
+                // Done, or snapped by a newer moment: landed, the page in round it, the overlay gone.
+                if !mark.landed {
+                    mark.lettersIn = true
+                    mark.ringDrawn = true
+                    mark.grow = true
+                    land()
+                }
+                onFinish()
+            }))
+            return
         }
+        await steps(soft)
+    }
+
+    /// The opening's steps, on the circle (its moment) or in this overlay.
+    private func steps(_ soft: UIImpactFeedbackGenerator) async {
+        typealias T = CircleMotion.Opening
         WelcomeTarget.landed = false
         if fromBlack { withAnimation(T.blackAway) { blackOn = false } }
         mark.lettersIn = true
@@ -400,9 +407,9 @@ struct WelcomeOverlay: View {
         guard await CircleGate.pause(T.beforeGrowDuration) else { return }
         if !WelcomeTarget.canLand {
             if mark.inCircle {
-                // Something came over the circle meanwhile (a widget's page): the circle is as it is under it.
+                // Something came over the circle meanwhile (a widget's page): the circle is as it is under it (the
+                // moment's settle finishes it).
                 land()
-                onFinish()
                 return
             }
             // Nothing to land on: the ring opens out like a doorway (thin, fading) and the word
@@ -430,8 +437,7 @@ struct WelcomeOverlay: View {
         // are the same shape in the same place, so only the page appears.
         if mark.inCircle {
             land()
-            guard await CircleGate.pause(T.pageInDuration) else { return }
-            onFinish()
+            _ = await CircleGate.pause(T.pageInDuration)   // the page fading in; the moment's settle finishes it
             return
         }
         WelcomeTarget.landed = true

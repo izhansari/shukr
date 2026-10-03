@@ -56,6 +56,9 @@ enum CircleFace: Equatable {
     /// came back): what changed before then is shown as it is, not played. Kept by MainCircleView, observable, so the
     /// gate wakes when it turns true instead of polling the clock.
     var circleSettled = false
+    /// A moment handed to the circle (`play(_:)`): the counter is what MainCircleView watches.
+    @ObservationIgnored fileprivate(set) var pendingMoment: CircleMomentRequest?
+    fileprivate(set) var momentRequests = 0
 
     /// The row the prayer list keeps while the circle's marking moment runs: set as the mark comes in, released when the
     /// flourish goes (or the moment isn't played). The list folds it then — it kept a copy of the flourish's length on
@@ -161,6 +164,34 @@ enum CircleMomentKind: Equatable {
     case begins
     /// The summary's two sides (the day's score with the sheet open ⇄ the next Fajr): out, the side and its track, in.
     case summaryFlip
+    /// The welcome on the Salah circle (WelcomeOverlay hands it over): it plays at once, ungated — it is the launch.
+    case opening
+    /// The lost page's ring landing back on the Salah track (LostPageLayer hands it over), once the circle can be seen.
+    case comeback
+}
+
+/// A moment another view drives but the circle plays: the opening and the lost page's comeback go through
+/// MainCircleView's runner, so only one plays at a time and a newer one snaps it to its end like any other moment
+/// (they ran their own sleep chains, and the two wrote `CircleStage.opening` — the last write won; audit B).
+struct CircleMomentRequest {
+    let kind: CircleMomentKind
+    /// The steps, on the mark they drive (the runner stops at the first cancelled pause).
+    let phases: @MainActor () async -> Void
+    /// Where it ends: run after the steps, or at once when snapped or never played.
+    let settle: @MainActor () -> Void
+}
+
+extension CircleStage {
+    /// Hands a moment to the circle (it runs on the next update). A newer request replaces one not yet taken.
+    func play(_ request: CircleMomentRequest) {
+        pendingMoment = request
+        momentRequests &+= 1
+    }
+    /// The circle takes the waiting request.
+    func takeMoment() -> CircleMomentRequest? {
+        defer { pendingMoment = nil }
+        return pendingMoment
+    }
 }
 
 // CircleMomentTiming lives in CircleMotion.swift (one motion vocabulary, rule 8).

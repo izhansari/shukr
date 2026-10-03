@@ -29,7 +29,6 @@ struct MainCircleView: View {
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     /// The soft ring (the theme, CircleTheme.swift).
     @Environment(\.circleTheme) private var theme
-    private var softRing: Bool { theme.softRing }
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
@@ -143,22 +142,20 @@ struct MainCircleView: View {
             // the dashes drawn in it (owner, 2026-10-02: "make the future ring also soft… dashed ring inside the
             // track"). It stays through the completion flourish (which hides the content above) and for the day's
             // score (SalahLook.swift).
-            if softRing {
+            if theme.track.lifted {
                 NeuRingTrack()
                     .opacity(openingHides ? 0 : 1)
                     // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
                     .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: CircleMotion.openingTrackOutDuration) : nil, value: openingHides)
             }
             // main outer circle: dashed for a prayer that hasn't started, the solid band otherwise
-            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !softRing)
+            CircleTrack(solid: trackSolid, reduceMotion: reduceMotion, band: !theme.track.lifted)
                 .opacity(openingHides ? 0 : 1)
                     // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
                     .animation(CircleStage.shared.opening?.inPlace == true ? .easeOut(duration: CircleMotion.openingTrackOutDuration) : nil, value: openingHides)
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
-                    WelcomeTarget.circleFrame = $0
-                    WelcomeTarget.landsOnSalah = true
-                    WelcomeTarget.salahCircleFrame = $0   // only this circle writes it (the lost page lands on it)
+                    WelcomeTarget.circleFrame = $0   // only this circle writes it
                 }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
@@ -203,7 +200,7 @@ struct MainCircleView: View {
                         // In the Perfect (green) window under the soft ring, the arc is the tasbeeh ring's living fill
                         // (AliveRingFill, "fine") cut to the arc — "it deserves it … we want to beautify when we are in
                         // that period of prayer" (owner, 2026-10-01). Yellow / red stay the solid arc below.
-                        let perfectNow = softRing && progress < 1 && PrayerScoring.grade(for: PrayerScoring.score(
+                        let perfectNow = theme.arc.alivePerfect && progress < 1 && PrayerScoring.grade(for: PrayerScoring.score(
                             start: prayer.startTime, end: prayer.endTime, markedAt: currentTime)) == .perfect
                         if perfectNow {
                             AliveRingFill(dark: colorScheme == .dark, tuning: .fine)
@@ -420,6 +417,11 @@ struct MainCircleView: View {
             faceChanged()
         }
         .onChange(of: summaryWantsScore) { _, score in flipSummary(to: score) }
+        // The opening / the lost page's comeback, handed over to be played here like the circle's own moments.
+        .onChange(of: CircleStage.shared.momentRequests) { _, _ in
+            guard let moment = CircleStage.shared.takeMoment() else { return }
+            run(moment.kind, gated: moment.kind != .opening, settle: moment.settle, moment.phases)
+        }
         // Settled a moment after it appears (or the app comes back): the gate's input, observable.
         .task(id: appearedAt) {
             CircleStage.shared.circleSettled = false
@@ -509,13 +511,15 @@ struct MainCircleView: View {
     /// Runs a moment (CircleMoments.swift): cancels the running one (snapped to its end first — a mark replacing a
     /// mark keeps its flourish up, the new one takes over), waits for `canPlay` up to the gate's deadline (else
     /// just `settle`s), plays `phases`, settles, and if the data moved on meanwhile, swaps once more.
-    private func run(_ kind: CircleMomentKind, settle: @escaping () -> Void, _ phases: @escaping () async -> Void) {
+    private func run(_ kind: CircleMomentKind, gated: Bool = true, settle: @escaping () -> Void,
+                     _ phases: @escaping () async -> Void) {
         momentTask?.cancel()
         if let old = momentSettle, !(kind == .marking && momentKind == .marking) { quietly(old) }
         momentKind = kind
         momentSettle = settle
         momentTask = Task { @MainActor in
-            let play = await CircleGate.wait({ canPlay })
+            // The opening plays at once (it is the launch); everything else waits until the circle can be seen.
+            let play = gated ? await CircleGate.wait({ canPlay }) : true
             #if DEBUG
             if !play && !Task.isCancelled {
                 NSLog("⭕️ circle \(kind) not played: active \(CircleStage.shared.sceneActive) · salah \(sharedState.horizontalPage == .main) · pager \(live?.pagerPhase.isScrolling ?? false ? "scrolling" : "still") · covers \(CircleCover.active) · canLand \(WelcomeTarget.canLand) · welcome \(WelcomeTarget.playing) · appeared \((Uptime.now - appearedAt))s")
@@ -534,7 +538,9 @@ struct MainCircleView: View {
     /// The sheet opened or closed over the summary: its words go out, the side (and its track) changes, they come in.
     /// Not the summary on the circle, or not on screen: the side is just set.
     private func flipSummary(to score: Bool) {
-        guard case .summary = displayedFace ?? derivedFace, summaryShowsScore != nil else {
+        // During a mark (the last prayer's: its face is the summary for the run's last half second) the side is just
+        // pinned — a run here would cancel the mark and snap its flourish off (Sami's review of 15f71d5).
+        guard case .summary = displayedFace ?? derivedFace, summaryShowsScore != nil, momentKind != .marking else {
             quietly { summaryShowsScore = score; summaryAway = false }
             return
         }
@@ -575,15 +581,21 @@ struct MainCircleView: View {
     /// is this too, with the start's haptic: the real start and ▶︎ Prayer begins play the same moment. Not on screen
     /// (the gate), it's just shown as it is — no haptic.
     private func faceChanged() {
-        guard momentKind == nil, displayedFace != nil, displayedFace != derivedFace else { return }
+        guard displayedFace != nil, displayedFace != derivedFace else { return }
+        // Under the opening the circle's words wait under its mark: the face is just set (the data arriving on a launch,
+        // the morning card going up under it — its ring lands on that face, and its track).
+        if momentKind == .opening {
+            quietly { displayedFace = derivedFace }
+            return
+        }
+        guard momentKind == nil else { return }
+        let isState: Bool = { switch derivedFace { case .morning, .lost: true; default: false } }()
         // Just appeared (a launch: the data arriving a beat after the circle): shown as it is, like anything that
         // changed while away — played, its waits stretched on the busy launch and the circle sat empty ~1 s.
         if !CircleStage.shared.circleSettled {
             quietly { displayedFace = derivedFace }
             return
         }
-        // The morning / the lost page go up under the welcome (its ring lands on this one): there at once, nothing to play.
-        let isState: Bool = { switch derivedFace { case .morning, .lost: true; default: false } }()
         if isState, WelcomeTarget.playing || WelcomeGate.curtainUp || !canPlay {
             quietly { displayedFace = derivedFace }
             return

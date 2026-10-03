@@ -320,7 +320,7 @@ struct MorningCurtain: View {
     var body: some View {
         let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds
             ?? CGRect(x: 0, y: 0, width: 393, height: 852)
-        let circle = WelcomeTarget.salahCircleFrame ?? WelcomeTarget.circleFrame
+        let circle = WelcomeTarget.circleFrame
             ?? CGRect(x: screen.midX - 100, y: screen.midY - 100, width: 200, height: 200)
         ZStack(alignment: .topLeading) {
             theme.backdrop

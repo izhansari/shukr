@@ -79,10 +79,12 @@ struct CircleTheme: Equatable {
         var cap: CGLineCap
         /// The arc's colour at this opacity, as its shadow.
         var glow: Double
+        /// In a prayer's Perfect window the arc comes alive (the drifting fill).
+        var alivePerfect: Bool
     }
     var arc: Arc {
-        softRing ? Arc(width: AliveRingTuning.fine.band, cap: .round, glow: AliveRingTuning.fine.glow)
-                 : Arc(width: 4, cap: .butt, glow: 0)
+        softRing ? Arc(width: AliveRingTuning.fine.band, cap: .round, glow: AliveRingTuning.fine.glow, alivePerfect: true)
+                 : Arc(width: 4, cap: .butt, glow: 0, alivePerfect: false)
     }
 
     /// The circle's track under the arc: the soft ring's raised band (its surface, lifted), or Today's 12 pt grey band.

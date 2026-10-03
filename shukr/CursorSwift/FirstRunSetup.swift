@@ -748,37 +748,48 @@ struct LostPageLayer: View {
             }
             return p.status() == .upcoming
         }()
-        // The ring becomes the welcome's mark — the same band, in the same place, so nothing changes yet — and the
-        // circle's own track waits under it.
+        // The landing is the circle's moment (audit B): played once it can be seen, snapped to landed by a newer one,
+        // landed at once if it can't play in time. The ring becomes the welcome's mark — the same band, in the same
+        // place, so nothing changes yet — and the circle's own track waits under it.
         let mark = WelcomeMarkState()
         mark.inCircle = true
         mark.ringDrawn = true
         mark.startDrawn = true
         mark.grow = true
         mark.hidesWords = false   // the symbol stays in the ring
-        quietly { CircleStage.shared.opening = mark }
-        // The words go while the circle glides back to its place and draws in to the starting ring round the symbol.
-        withAnimation(T.clear) { stage.clearing = true }
-        withAnimation(T.down) { stage.down = true }   // no overshoot
-        withAnimation(T.snug) { mark.grow = false }
-        guard await CircleGate.pause(T.downDuration) else { return }   // back in place, snug
-        guard await CircleGate.pause(T.restDuration) else { return }   // rests, like the welcome before it grows
-        mark.dashedTarget = dashed
-        withAnimation(Landing.grow) {
-            mark.grow = true
+        CircleStage.shared.play(CircleMomentRequest(kind: .comeback, phases: {
+            quietly { CircleStage.shared.opening = mark }
+            // The words go while the circle glides back to its place and draws in to the starting ring round the symbol.
+            withAnimation(T.clear) { stage.clearing = true }
+            withAnimation(T.down) { stage.down = true }   // no overshoot
+            withAnimation(T.snug) { mark.grow = false }
+            guard await CircleGate.pause(T.downDuration) else { return }   // back in place, snug
+            guard await CircleGate.pause(T.restDuration) else { return }   // rests, like the welcome before it grows
+            mark.dashedTarget = dashed
+            withAnimation(Landing.grow) {
+                mark.grow = true
+                stage.symbolIn = false
+            }
+            if dashed {
+                guard await CircleGate.pause(Landing.toDashesDuration) else { return }
+                withAnimation(Landing.dashes) { mark.dashesIn = true }
+                guard await CircleGate.pause(Landing.dashesDuration) else { return }
+            } else {
+                guard await CircleGate.pause(Landing.toBandDuration) else { return }
+            }
+        }, settle: {
+            // Landed (or snapped there): the track is back under the ring, the prayer comes in on it (the circle plays
+            // that as the face changes) and the page round it.
+            stage.clearing = true
+            stage.down = true
             stage.symbolIn = false
-        }
-        if dashed {
-            guard await CircleGate.pause(Landing.toDashesDuration) else { return }
-            withAnimation(Landing.dashes) { mark.dashesIn = true }
-            guard await CircleGate.pause(Landing.dashesDuration) else { return }
-        } else {
-            guard await CircleGate.pause(Landing.toBandDuration) else { return }
-        }
-        // Landed: the track is back under the ring, the prayer comes in on it and the page round it.
-        mark.landed = true
-        stage.landed = true
-        guard await CircleGate.pause(T.landedDuration) else { return }
+            mark.dashedTarget = dashed
+            mark.grow = true
+            mark.dashesIn = dashed
+            mark.landed = true
+            stage.landed = true
+        }))
+        guard await CircleStage.shared.until({ stage.landed }), await CircleGate.pause(T.landedDuration) else { return }
         finish()
     }
 
