@@ -154,7 +154,7 @@ struct ReminderHealthCard: View {
             if issue == .off {
                 VStack(alignment: .leading, spacing: 8) {
                     line("bell", "each prayer as it begins")
-                    line("bell.badge", "a nudge 30 min in and with 30 min left")
+                    line("bell.badge", "a nudge halfway and with 30 min left")
                     line("sunrise", "Fajr, before it's too late")
                     line("circle.hexagonpath", "your zikr reminders")
                 }
@@ -306,7 +306,7 @@ struct YourRemindersView: View {
         var label: String {
             switch self {
             case .start: "starts"
-            case .halfway: "30 min in"   // the "Mid" nudge: 30 min after the start (was halfway)
+            case .halfway: "halfway"   // the "Mid" nudge: halfway through the window (owner, 2026-10-03; 30 min in for a day)
             case .endingSoon: "30 min left"
             case .zikr: "zikr reminder"
             case .zikrLater: "zikr, later"
@@ -323,7 +323,7 @@ struct YourRemindersView: View {
     // system tints, which adapt to light / dark; free slots a clear system grey.
 
     private static let startColor = Color(.systemGreen)                                // starts
-    private static let halfColor = Color(.systemYellow)                                // 30 min in (the 🟡 nudge)
+    private static let halfColor = Color(.systemYellow)                                // halfway (the 🟡 nudge)
     private static let endColor = Color(.systemRed)                                    // 30 min left
     private static let zikrColor = Color(.systemBlue)                                  // zikr
     private static let laterColor = Color(.systemPurple)                               // later
@@ -476,7 +476,7 @@ struct YourRemindersView: View {
         let present = Set(pending.map(\.kind))
         var list: [(label: String, color: Color)] = []
         if present.contains(.start) { list.append(("starts", Self.startColor)) }
-        if present.contains(.halfway) { list.append(("30 min in", Self.halfColor)) }
+        if present.contains(.halfway) { list.append(("halfway", Self.halfColor)) }
         if present.contains(.endingSoon) { list.append(("30 min", Self.endColor)) }
         if present.contains(.zikr) || present.contains(.zikrLater) { list.append(("zikr", Self.zikrColor)) }
         if present.contains(.snooze) { list.append(("later", Self.laterColor)) }
@@ -911,14 +911,15 @@ struct YourRemindersView: View {
             let key = PrayerNotificationID.dayKey(day)
             let windows = NotificationScheduler.windows(for: day)
             for (name, h, m) in times {
-                // The real window when there's a location (as the scheduler: 🟡 30 min in, 🔴 30 min before
-                // the end, no 🟡 under 75 min); else a 2.5 h stand-in.
+                // The real window when there's a location (as the scheduler: 🟡 halfway, 🔴 30 min before the end,
+                // no 🟡 under 90 min); else a 2.5 h stand-in.
                 let start = windows?[name]?.start ?? Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: day)
                 let end = windows?[name]?.end ?? start?.addingTimeInterval(9000)
                 items.append(Item(id: "\(key).\(name)Start", date: start, dayKey: key, kind: .start, prayer: name, title: name))
                 if d < 2, let start, let end {
-                    if end.timeIntervalSince(start) >= 75 * 60 {
-                        items.append(Item(id: "\(key).\(name)Mid", date: start.addingTimeInterval(1800), dayKey: key, kind: .halfway, prayer: name, title: name))
+                    let length = end.timeIntervalSince(start)
+                    if length >= NotificationScheduler.halfwayMinimumWindow {
+                        items.append(Item(id: "\(key).\(name)Mid", date: start.addingTimeInterval(length / 2), dayKey: key, kind: .halfway, prayer: name, title: name))
                     }
                     items.append(Item(id: "\(key).\(name)End", date: end.addingTimeInterval(-1800), dayKey: key, kind: .endingSoon, prayer: name, title: name))
                 }

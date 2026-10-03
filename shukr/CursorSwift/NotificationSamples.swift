@@ -29,7 +29,7 @@ enum NotificationSamples {
     /// repeat the notification's subtitle ("Pray by 6:48 PM").
     private static let current: [Sample] = [
         Sample(title: "Asr 🟢", subtitle: "Pray by 6:48 PM", body: "Asr has started", category: "SampleRound1"),
-        Sample(title: "Asr 🟡", subtitle: "Pray by 6:48 PM", body: "30 min since Asr started", category: "SampleRound1"),
+        Sample(title: "Asr 🟡", subtitle: "Pray by 6:48 PM", body: "Halfway through Asr", category: "SampleRound1"),
         Sample(title: "Asr 🔴", subtitle: "Pray by 6:48 PM", body: "Only 30 minutes left", category: "SampleRound1"),
         Sample(title: "It's been 5 minutes", body: "Pray by 6:48 PM", category: "SampleRound2"),
         Sample(title: "😑 Are you being serious? Another 5 minutes?", body: "Pray by 6:48 PM", category: "SampleConfirm"),

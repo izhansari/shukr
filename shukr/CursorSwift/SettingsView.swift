@@ -811,8 +811,8 @@ struct NotificationDropdownInfo: View {
             
             HStack{
                 Image(systemName: "bell.badge.fill")
-                // What NotificationScheduler sends: Mid = 30 min after the start, End = 30 min before it ends.
-                Text("Nudge: If you haven't marked the prayer yet, you also get a notification 30 minutes after it starts and with 30 minutes left.")
+                // What NotificationScheduler sends: Mid = halfway through the window, End = 30 min before it ends.
+                Text("Nudge: If you haven't marked the prayer yet, you also get a notification halfway through its time and with 30 minutes left.")
                     .font(.caption)
             }
             .foregroundColor(.gray)
@@ -849,7 +849,7 @@ struct NotificationDropdownInfo: View {
 
                     let randPrayerName = viewModel.orderedPrayerNames.randomElement()!
                     let randNudge = [
-                        (title: "\(randPrayerName) 🟡", body: "30 min since \(randPrayerName) started"),
+                        (title: "\(randPrayerName) 🟡", body: "Halfway through \(randPrayerName)"),
                         (title: "\(randPrayerName) 🔴", body: "Only 30 minutes left")
                     ]
                         .randomElement()!

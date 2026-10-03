@@ -259,9 +259,9 @@ enum NotificationScheduler {
 
     /// The prayer notifications (owner, 2026-10-01, decision prayer-notif-wording — don't change the wording
     /// without him): the prayer and its colour, "Pray by 6:48 PM" always first, a second line that changes.
-    /// 🟢 at the start · 🟡 30 min in (when the ring turns from green to yellow; it used to be halfway) ·
-    /// 🔴 with 30 min left (owner: kept there, though the ring turns red earlier). A window under 75 min gets no
-    /// 🟡 (it would land within 15 min of the 🔴).
+    /// 🟢 at the start · 🟡 halfway through the window (owner, 2026-10-03: "i liked it better with the halfway
+    /// notifications instead of 30 min in" — it was 30 min in for a day) · 🔴 with 30 min left (owner: kept there,
+    /// though the ring turns red earlier). A window under 90 min gets no 🟡 (halfway would land within 15 min of the 🔴).
     static func prayerNotification(_ kind: String, prayer: String,
                                    window: (start: Date, end: Date, window: TimeInterval)) -> (Date, UNNotificationContent)? {
         let endTime = window.end
@@ -273,12 +273,13 @@ enum NotificationScheduler {
             date = window.start
             content.title = "\(prayer) 🟢"
             content.body = "\(prayer) has started"
-        case "Mid":   // the id keeps "Mid"; it's 30 min in now
-            date = window.start.addingTimeInterval(30 * 60)
-            // At least 15 min before the 🔴 (30 min before the end): a window of 75 min or more.
-            guard endTime.timeIntervalSince(window.start) >= 75 * 60 else { return nil }
+        case "Mid":   // halfway through the window
+            let length = endTime.timeIntervalSince(window.start)
+            // At least 15 min before the 🔴 (30 min before the end): length / 2 ≤ length − 45 min, a window of 90 min+.
+            guard length >= Self.halfwayMinimumWindow else { return nil }
+            date = window.start.addingTimeInterval(length / 2)
             content.title = "\(prayer) 🟡"
-            content.body = "30 min since \(prayer) started"
+            content.body = "Halfway through \(prayer)"
         case "End":
             date = endTime.addingTimeInterval(-30 * 60)
             content.title = "\(prayer) 🔴"
@@ -297,6 +298,9 @@ enum NotificationScheduler {
         ]
         return (date, content)
     }
+
+    /// The shortest window that gets a halfway 🟡: halfway lands at least 15 min before the 🔴 (30 min before the end).
+    static let halfwayMinimumWindow: TimeInterval = 90 * 60
 
     // MARK: Background top-up
 
