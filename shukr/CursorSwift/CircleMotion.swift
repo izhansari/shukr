@@ -112,6 +112,8 @@ enum CircleMomentTiming {
     /// The circle plays nothing for this long after it appears (a launch, coming back to the app): what changed while
     /// it was away is shown as it is.
     static let settleAfterAppear: Double = 0.6
+    /// A swap from start to end: the words out, a frame, the words in.
+    static let swapDuration: Double = outDone + 1.0 / 60 + `in`
 }
 
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried

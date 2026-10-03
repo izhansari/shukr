@@ -14,8 +14,11 @@ import SwiftUI
 
 /// What the Salah circle shows at rest.
 enum CircleFace: Equatable {
-    /// A prayer: next (dashed, "NEXT") or now (the band and its arc).
-    case prayer(PrayerModel)
+    /// A prayer, in the state the circle shows it: next (dashed, "NEXT"), now (the band and its arc) or missed. The state
+    /// is part of the face, so a prayer beginning or its window ending is a face change the circle plays — words out,
+    /// the ring changes, words in — not a status read live that swapped its line in one frame (audit A, bug 2).
+    /// `preview`: ▶︎ Prayer begins is drawing it (its "just begun" arc), so the preview ending is a face change too.
+    case prayer(PrayerModel, PrayerModel.prayerStatus, preview: Bool = false)
     /// The day: today's score with the list open, the next Fajr with it closed (`summaryCircle`).
     case summary
     /// The morning after a sleep finish (step 3): the session's count and zikr in the ring (`MorningFace`), the page
@@ -121,7 +124,8 @@ enum CircleMomentKind: Equatable {
     case marking
     /// The face changed (unmarking, a prayer's window ending, Fajr starting from the summary…): out, then in.
     case swap
-    /// ▶︎ Prayer begins: the prayer as next, then it begins, then back.
+    /// A prayer begins (next → now): a swap with the start's haptic, its ring expanding while the words are out. The
+    /// real start and ▶︎ Prayer begins both play it.
     case begins
 }
 
