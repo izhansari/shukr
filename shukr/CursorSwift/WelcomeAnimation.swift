@@ -256,7 +256,7 @@ struct WelcomeMark: View {
                     .opacity(state.lettersIn ? 1 : 0)
                     .blur(radius: state.lettersIn || reduceMotion ? 0 : 6)
                     .offset(y: state.lettersIn || reduceMotion ? 0 : 8)
-                    .animation(.easeOut(duration: 0.5).delay(0.08 * Double(i)), value: state.lettersIn)
+                    .animation(CircleMotion.Opening.letter.delay(CircleMotion.Opening.letterStepDuration * Double(i)), value: state.lettersIn)
             }
         }
         .font(.system(size: 44, weight: .thin, design: .rounded))
@@ -468,6 +468,9 @@ extension CircleMotion {
         static let inPlaceIn = Animation.easeOut(duration: CircleMotion.quick)
         /// From the sleep curtain: the black lifts as the word writes in.
         static let blackAway = Animation.easeInOut(duration: 0.7)
+        /// "shukr" writing itself: each letter fades in, one step after the last.
+        static let letter = Animation.easeOut(duration: 0.5)
+        static let letterStepDuration: Double = 0.08
         /// The ring drawing itself round the word, just after the letters start.
         static let ringDraw = Animation.easeInOut(duration: 0.9).delay(0.1)
         /// The heartbeat: lub…

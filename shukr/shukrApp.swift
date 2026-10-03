@@ -220,12 +220,12 @@ struct shukrApp: App {
             // The look for the root's overlays too (the setup, the welcome): they read the stored picks per access, not
             // reactively, without it (audit F, U5).
             .circleThemeRoot()
-            .task { StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
+            .task { await StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
                 // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.
                 sharedState.horizontalPage = .main
                 sharedState.navPosition = .main
-                withAnimation(.easeInOut(duration: 0.35)) { setupShowing = true }
+                withAnimation(CircleMotion.ease()) { setupShowing = true }   // 0.35 s, CircleMotion.standard
             }
             .onChange(of: setupShowing, initial: true) { _, showing in
                 FirstRunSetup.isShowing = showing
@@ -624,14 +624,13 @@ enum StoreFallback {
     struct Forced: Error {}
     private static var alerted = false
 
-    /// A plain alert, once per launch, when the app is on screen (retries while another alert or no active
-    /// scene is in the way — e.g. during the welcome).
-    @MainActor static func alertOnce(attempt: Int = 0) {
-        guard active, !alerted, attempt < 40 else { return }
-        guard OverlayAlert.canShow, attempt >= 3 else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { alertOnce(attempt: attempt + 1) }
-            return
-        }
+    /// A plain alert, once per launch, when the app is on screen: a moment in, after the welcome, waiting on the stage
+    /// (it retried every 0.5 s, 40 times — tr-final).
+    @MainActor static func alertOnce() async {
+        guard active, !alerted, await CircleGate.pause(1.5) else { return }
+        let welcome = WelcomeTarget.state
+        guard await CircleStage.shared.until(deadline: 20, { CircleStage.shared.sceneActive && !welcome.playing }),
+              !alerted, OverlayAlert.canShow else { return }
         alerted = true
         let alert = UIAlertController(
             title: "Couldn't open your saved data",

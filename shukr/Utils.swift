@@ -3072,7 +3072,9 @@ struct StreakLabel: View {
 
     private enum Mode { case streak, onTime, max }
     @State private var mode: Mode = .streak
-    @State private var revert: DispatchWorkItem?
+    @State private var revert: Task<Void, Never>?
+    @State private var streakRun: Task<Void, Never>?
+    @State private var onTimeRun: Task<Void, Never>?
     @State private var shownStreak: Int?
     @State private var shownOnTime: Int?
     @State private var celebrating = false
@@ -3114,10 +3116,13 @@ struct StreakLabel: View {
             let next: Mode = mode == .streak ? .onTime : mode == .onTime ? .max : .streak
             show(next, for: next == .streak ? nil : 3)
         }
-        .onChange(of: celebration) { _, _ in celebrateStreak() }
+        .onChange(of: celebration) { _, _ in celebrate { await celebrateStreak() } }
         .onChange(of: onTimeCelebration) { _, _ in
             // Just after the streak's own beat when both fire together (they usually do).
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.secondBeatDelay) { celebrateOnTime() }
+            celebrate(onTime: true) {
+                guard await CircleGate.pause(Self.secondBeatDelay) else { return }
+                await celebrateOnTime()
+            }
         }
     }
 
@@ -3129,46 +3134,51 @@ struct StreakLabel: View {
         .transition(.blurReplace)
     }
 
-    /// Switch mode; `seconds` = come back to the streak after that long.
+    /// Switch mode; `seconds` = come back to the streak after that long (a newer switch replaces the wait).
     private func show(_ newMode: Mode, for seconds: Double?) {
         revert?.cancel()
         withAnimation { mode = newMode }
         guard let seconds else { return }
-        let work = DispatchWorkItem { withAnimation { mode = .streak } }
-        revert = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        revert = Task { @MainActor in
+            guard await CircleGate.pause(seconds) else { return }
+            withAnimation { mode = .streak }
+        }
     }
 
-    private func celebrateStreak() {
+    /// One sequence per celebration (they were `asyncAfter` chains, never cancelled — tr-final): a newer one of the
+    /// same kind replaces it, ended where it stands.
+    private func celebrate(onTime: Bool = false, _ steps: @escaping @MainActor () async -> Void) {
+        if onTime { onTimeRun?.cancel() } else { streakRun?.cancel() }
+        let run = Task { @MainActor in await steps() }
+        if onTime { onTimeRun = run } else { streakRun = run }
+    }
+
+    private func celebrateStreak() async {
+        typealias T = CircleMotion.Streak
         show(.streak, for: nil)
         shownStreak = max(streak - 1, 0)          // start from yesterday's count…
-        withAnimation(.easeOut(duration: 0.25)) { celebrating = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            heartBurst += 1
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
-                shownStreak = streak               // …and roll up to today's
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-            withAnimation(.easeInOut(duration: 0.6)) { celebrating = false }
-            shownStreak = nil
-        }
+        defer { shownStreak = nil }
+        withAnimation(T.lightUp) { celebrating = true }
+        guard await CircleGate.pause(T.rollAfterDuration) else { celebrating = false; return }
+        heartBurst += 1
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(T.roll) { shownStreak = streak }   // …and roll up to today's
+        _ = await CircleGate.pause(T.heldDuration - T.rollAfterDuration)
+        withAnimation(T.settle) { celebrating = false }
     }
 
-    private func celebrateOnTime() {
+    private func celebrateOnTime() async {
+        typealias T = CircleMotion.Streak
         shownOnTime = max(onTimeStreak - 1, 0)
-        show(.onTime, for: 3.2)
-        withAnimation(.easeOut(duration: 0.25)) { celebrating = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            sparkleBurst += 1
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) { shownOnTime = onTimeStreak }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
-            withAnimation(.easeInOut(duration: 0.6)) { celebrating = false }
-            shownOnTime = nil
-        }
+        defer { shownOnTime = nil }
+        show(.onTime, for: T.heldDuration)
+        withAnimation(T.lightUp) { celebrating = true }
+        guard await CircleGate.pause(T.onTimeRollAfterDuration) else { celebrating = false; return }
+        sparkleBurst += 1
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(T.roll) { shownOnTime = onTimeStreak }
+        _ = await CircleGate.pause(T.heldDuration - T.onTimeRollAfterDuration)
+        withAnimation(T.settle) { celebrating = false }
     }
 }
 
@@ -3224,7 +3234,7 @@ struct TopBar: View {
     /// Tapping the city swaps it for the streak for a few seconds (same slide + fade the streak
     /// label used before it was parked). A continued streak shows it too, with a celebration.
     @State private var showStreak = false
-    @State private var hideStreakWork: DispatchWorkItem?
+    @State private var hideStreakWork: Task<Void, Never>?
     @State private var streakCelebration = 0
     /// DEBUG only: the "Test Streak Celebration" menu row / -demoStreakCelebration post a fake
     /// streak (the notification's object) so the roll-up is visible; the real one is untouched.
@@ -3245,9 +3255,10 @@ struct TopBar: View {
     private func revealStreak(for seconds: Double) {
         hideStreakWork?.cancel()
         withAnimation(CircleMotion.label) { showStreak = true }
-        let work = DispatchWorkItem { withAnimation(CircleMotion.label) { showStreak = false } }
-        hideStreakWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+        hideStreakWork = Task { @MainActor in
+            guard await CircleGate.pause(seconds) else { return }   // a newer reveal keeps it up
+            withAnimation(CircleMotion.label) { showStreak = false }
+        }
     }
 
     var body: some View {
@@ -3389,4 +3400,17 @@ func showTemporaryMessage(
     
     // Update the workItem reference
     workItem = newWorkItem
+}
+
+extension CircleMotion {
+    /// The top bar's streak celebration (StreakLabel): it lights up, the count rolls up from yesterday's, it settles.
+    enum Streak {
+        static let lightUp = Animation.easeOut(duration: 0.25)
+        static let rollAfterDuration: Double = 0.45
+        static let onTimeRollAfterDuration: Double = 0.5
+        static let roll = Animation.spring(response: 0.45, dampingFraction: 0.7)
+        /// Lit, from its start to settling (the in-time days show this long too).
+        static let heldDuration: Double = 3.2
+        static let settle = Animation.easeInOut(duration: 0.6)
+    }
 }

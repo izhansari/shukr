@@ -365,7 +365,9 @@ struct MainCircleView: View {
         }
         .transition(.opacity)
         .fullScreenCover(isPresented: $showQiblaMap) {
-            LocationMapContentView()
+            // A cover on the stage: a widget open closes it and waits until it's gone (it pushed its page under the
+            // closing map — tr-final), and moments wait for it.
+            LocationMapContentView().stageCover("map")
         }
         .onAppear {
             #if DEBUG

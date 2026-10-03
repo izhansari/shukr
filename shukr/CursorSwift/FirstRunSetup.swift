@@ -372,7 +372,7 @@ struct FirstRunSetupView: View {
     }
 
     private func go(_ s: SetupStep) {
-        withAnimation(reduceMotion ? .easeInOut(duration: 0.2) : .smooth(duration: 0.45)) { step = s }
+        withAnimation(reduceMotion ? CircleMotion.Setup.stepReduced : CircleMotion.Setup.step) { step = s }
     }
 
     /// From the ring's place to the Salah circle's centre (the screen's centre if it isn't there).
@@ -957,9 +957,9 @@ struct SetupRing: View {
             .opacity(handoff && reduceMotion ? 0 : 1)
         }
         .frame(width: 76, height: 76)
-        .animation(.spring(response: 0.8, dampingFraction: 0.9), value: handoff)
-        .onAppear { withAnimation(.easeInOut(duration: 0.9).delay(0.15)) { drawn = true } }
-        .animation(.easeInOut(duration: 0.7), value: progress)
+        .animation(CircleMotion.Setup.ringGlide, value: handoff)
+        .onAppear { withAnimation(CircleMotion.Setup.ringDraw) { drawn = true } }
+        .animation(CircleMotion.Setup.ringProgress, value: progress)
         .accessibilityHidden(true)
     }
 }
@@ -2166,7 +2166,14 @@ extension CircleMotion {
         // Bismillah
         static let leaving = Animation.easeOut(duration: 0.35)
         static let leavingReduced = Animation.easeInOut(duration: 0.35)
-        /// SetupRing's glide onto the circle (its implicit spring, response 0.8, damping 0.9) has arrived by then.
+        /// SetupRing gliding onto the circle and growing round the word; it has arrived by `ringGlideDuration`.
+        static let ringGlide = Animation.spring(response: 0.8, dampingFraction: 0.9)
         static let ringGlideDuration: Double = 0.95
+        /// SetupRing drawing itself in, and its progress round the steps.
+        static let ringDraw = Animation.easeInOut(duration: 0.9).delay(0.15)
+        static let ringProgress = Animation.easeInOut(duration: 0.7)
+        /// One step of the setup to the next.
+        static let step = Animation.smooth(duration: 0.45)
+        static let stepReduced = Animation.easeInOut(duration: 0.2)
     }
 }

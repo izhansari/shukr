@@ -97,26 +97,32 @@ struct PrayerTimesView: View {
     }
 
     /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
-    /// open the morning card on its circle — under the welcome while it plays, which lands on the card.
-    private func showMorningCardWhenClear(tries: Int = 0) {
-        guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed, tries < 40 else { return }
+    /// open the morning card on its circle — under the welcome while it plays, which lands on the card. It waits on the
+    /// stage (the app active; no cover — the session, a pushed page, a sheet, the setup, the map), waking when that
+    /// changes: it retried every 0.5 s, 40 times (tr-final).
+    private func showMorningCardWhenClear() {
+        guard morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed else { return }
+        morningWait?.cancel()
+        morningWait = Task { await showMorningCard() }
+    }
+
+    private func showMorningCard() async {
+        let stage = CircleStage.shared
         // Not waiting for the welcome: the card goes up under it, so the welcome lands on its ring.
-        if showTasbeehPage || somethingCovers || FirstRunSetup.isShowing || scenePhase != .active {   // the live flag: the launch one stayed true after a setup (audit B)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showMorningCardWhenClear(tries: tries + 1) }
-            return
-        }
-        guard let session = SleepMorning.pending(in: context) else { return }
+        guard await stage.until(deadline: Self.morningCardDeadline, { stage.sceneActive && CircleCover.nothingOverCircle }),
+              morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed,
+              let session = SleepMorning.pending(in: context) else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { sharedState.navPosition = .main }
         // The card draws round the circle's frame: mount it once the pager rests on Salah (at once — the page change
         // is quiet — but measured, not guessed: audit D, finding 2).
-        Task {
-            await sharedState.navigate(to: .main, animated: false)
-            guard morningSession == nil, SleepMorning.pendingID != nil else { return }
-            morningSession = session
-        }
+        await sharedState.navigate(to: .main, animated: false)
+        guard !Task.isCancelled, morningSession == nil, SleepMorning.pendingID != nil else { return }
+        morningSession = session
     }
+    @State private var morningWait: Task<Void, Never>?
+    private static let morningCardDeadline: Double = 20
 
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
     /// first-run setup is up — the flags stay set and this runs again once it's done
@@ -228,31 +234,35 @@ struct PrayerTimesView: View {
     /// map, a sheet or the ☰ popover — with no navigating (owner, CBBBBD1D: it only came up on the Salah
     /// page). It's a UIKit alert in its own window above the app (`OverlayAlert`), so no sheet, popover
     /// or cover can hide it (presented from the root it sat under a sheet SwiftUI had presented from a
-    /// nested controller). It waits during the first-run setup and the opening, while the app
-    /// isn't active and during a tasbeeh session (taps there count; it comes up once the session closes).
-    /// Until then the request stays in the app group and this retries every second for a while; the next
-    /// activation picks it up again.
-    private func showWidgetUnmarkWhenClear(token: Int, attempt: Int = 0, sessionPaused: Bool = false) {
+    /// nested controller). It waits during the first-run setup and the opening and while the app isn't active; a
+    /// tasbeeh session is paused first. Until then the request stays in the app group; the next activation picks it
+    /// up again.
+    private func showWidgetUnmarkWhenClear(token: Int) {
+        unmarkWait?.cancel()
+        unmarkWait = Task { await showWidgetUnmark(token: token) }
+    }
+
+    /// Waits on the stage — the app active, no setup, no welcome — waking when that changes (it retried every second,
+    /// 90 times: tr-final); the request stays in the app group meanwhile, and the next activation tries again.
+    private func showWidgetUnmark(token: Int) async {
+        let stage = CircleStage.shared
+        let welcome = WelcomeTarget.state
         guard token == widgetUnmarkToken, widgetUnmark == nil,
               let store = UserDefaults(suiteName: SharedStore.appGroup),
-              let raw = store.string(forKey: WidgetListMarks.unmarkKey) else { return }
-        guard let request = WidgetUnmarkRequest(raw) else { store.removeObject(forKey: WidgetListMarks.unmarkKey); return }
-        func later() {
-            guard attempt < 90 else { return }   // the request stays: the next activation tries again
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1) }
-        }
-        let blocked = FirstRunSetup.isShowing || WelcomeTarget.playing || UIApplication.shared.applicationState != .active
-        guard !blocked, OverlayAlert.canShow else { later(); return }
+              store.string(forKey: WidgetListMarks.unmarkKey) != nil,
+              await stage.until(deadline: Self.unmarkDeadline, {
+                  stage.sceneActive && !welcome.playing && !stage.covers.contains("firstRunSetup")
+              }),
+              token == widgetUnmarkToken, OverlayAlert.canShow else { return }
         // A tasbeeh session up: it goes into its pause state first, then the prompt shows over it (owner,
         // CA197AE2 — it used to wait until the session closed). `CircleCover` "tasbeeh" is set by the session
         // itself: this closure's own view copy can read a stale `showTasbeehPage`.
-        if !sessionPaused, showTasbeehPage || CircleCover.active.contains("tasbeeh") {
+        if showTasbeehPage || stage.covers.contains("tasbeeh") {
             NotificationCenter.default.post(name: TasbeehSession.pauseRequest, object: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                showWidgetUnmarkWhenClear(token: token, attempt: attempt + 1, sessionPaused: true)
-            }
-            return
+            guard await CircleGate.pause(Self.sessionPausesDuration), token == widgetUnmarkToken else { return }
         }
+        guard let raw = store.string(forKey: WidgetListMarks.unmarkKey) else { return }
+        guard let request = WidgetUnmarkRequest(raw) else { store.removeObject(forKey: WidgetListMarks.unmarkKey); return }
         // Still wanted (not already unmarked meanwhile): show it, and only then take the request.
         store.removeObject(forKey: WidgetListMarks.unmarkKey)
         let rows = completedRows(request)
@@ -276,6 +286,12 @@ struct PrayerTimesView: View {
     }
 
     /// Everything that can cover the pager: the map, a pushed page, the mantra sheet.
+    @State private var unmarkWait: Task<Void, Never>?
+    private static let unmarkDeadline: Double = 90
+    /// A paused session's pause screen coming in before the prompt goes over it (an observable "paused" from the
+    /// session would replace this wait).
+    private static let sessionPausesDuration: Double = 0.4
+
     /// The reminders card (NotificationHealth): notifications off, or held for the Scheduled Summary.
     @State private var healthCard: NotificationHealth.Issue?
     /// Set by the card's onAppear; bumped per attempt so an older check can't clear a newer card.
@@ -286,36 +302,39 @@ struct PrayerTimesView: View {
     /// A moment after the app comes forward: the card, if one's due (at most every few days per
     /// kind) and nothing else is going on — not over a tasbeeh session, a cover, the setup, or a
     /// widget's destination.
-    private func maybeShowHealthCard(attempt: Int = 0) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            Task { @MainActor in
-                // Not while the opening plays (a sheet over it left the page blank): try again.
-                if WelcomeTarget.playing {
-                    if attempt < 5 { maybeShowHealthCard(attempt: attempt + 1) }
-                    return
-                }
-                let health = NotificationHealth.shared
-                await health.refresh()
-                // Only on the Salah page with nothing else open: sheets inside the Zikr and Settings
-                // pages (task sheets, the city picker, What's new…) aren't in `somethingCovers`.
-                guard FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
-                      sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil, !demoSheetUp,
-                      // The morning card (sleep mode) comes first; this card waits for another open.
-                      morningSession == nil, !(SleepMorning.pendingID != nil && SleepMorning.isArmed),
-                      Uptime.now - lastDeepLinkAt > 10,
-                      let issue = health.cardIssue, health.cardDue(for: issue) else { return }
-                healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
-                healthCardAppeared = false
-                healthCardToken += 1
-                let token = healthCardToken
-                // Something the guards can't see (a prayer row's unmark alert…) can keep the sheet
-                // from presenting. Don't leave it pending — it would block every later card and
-                // could pop up at a random moment: drop it if it isn't up within a second.
-                try? await Task.sleep(for: .seconds(1.2))
-                if token == healthCardToken, !healthCardAppeared, healthCard == issue { healthCard = nil }
-            }
+    private func maybeShowHealthCard() {
+        healthWait?.cancel()
+        healthWait = Task {
+            // A moment after the app comes forward (not on its first frame), and not while the opening plays (a sheet
+            // over it left the page blank): it waits for that on the stage (it retried every 2 s).
+            guard await CircleGate.pause(Self.healthCardAfterDuration) else { return }
+            let welcome = WelcomeTarget.state
+            guard await CircleStage.shared.until(deadline: Self.healthCardDeadline, { !welcome.playing }) else { return }
+            let health = NotificationHealth.shared
+            await health.refresh()
+            // Only on the Salah page with nothing else open: sheets inside the Zikr and Settings
+            // pages (task sheets, the city picker, What's new…) aren't in `somethingCovers`.
+            guard !Task.isCancelled, FirstRunSetup.isDone, !FirstRunSetup.isShowing, !showTasbeehPage, !somethingCovers,
+                  sharedState.horizontalPage == .main, CircleCover.active.isEmpty, healthCard == nil, !demoSheetUp,
+                  // The morning card (sleep mode) comes first; this card waits for another open.
+                  morningSession == nil, !(SleepMorning.pendingID != nil && SleepMorning.isArmed),
+                  Uptime.now - lastDeepLinkAt > 10,
+                  let issue = health.cardIssue, health.cardDue(for: issue) else { return }
+            healthCard = issue   // marked shown, and a CircleCover, only once it's actually up (the card's onAppear)
+            healthCardAppeared = false
+            healthCardToken += 1
+            let token = healthCardToken
+            // Something the guards can't see (a prayer row's unmark alert…) can keep the sheet
+            // from presenting. Don't leave it pending — it would block every later card and
+            // could pop up at a random moment: drop it if it isn't up in time.
+            try? await Task.sleep(for: .seconds(Self.healthCardUpDeadline))
+            if token == healthCardToken, !healthCardAppeared, healthCard == issue { healthCard = nil }
         }
     }
+    @State private var healthWait: Task<Void, Never>?
+    private static let healthCardAfterDuration: Double = 2
+    private static let healthCardDeadline: Double = 10
+    private static let healthCardUpDeadline: Double = 1.2
 
     /// DEBUG screenshot sheets the card mustn't cover.
     private var demoSheetUp: Bool {
@@ -1609,6 +1628,10 @@ struct PrayerTimesView: View {
         var body: some View {
             VStack {
                 TodaysPrayerListView(showDailyAyahView: $showDailyAyahView)
+                    // The card is a fixed width: at the accessibility text sizes a name filled a row, its time wrapped
+                    // a character a line or was cut to "7:…", "3 done" broke in two (Frank's largest-text pass). The
+                    // list stops growing at the largest standard size, as the circle's words do.
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .modifier(SalahLookListFrame())   // the look prototype; today's = 260 pt in FlatBorder
             }
         }
@@ -1960,6 +1983,10 @@ enum HitAreaDebug {
 
 import MapKit
 struct PrayerButton: View {
+    /// The row's dot answering a mark.
+    private static let dotPress = Animation.spring(response: 0.1, dampingFraction: 0.7)
+    /// An unmark from the row's alert: the page settles back (score → prayer, the list's rows) in one ease.
+    private static let unmarkFade = Animation.easeInOut(duration: 0.4)
     @EnvironmentObject var sharedState: SharedStateClass
     @EnvironmentObject var viewModel: PrayerViewModel
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
@@ -2251,7 +2278,7 @@ struct PrayerButton: View {
             .accessibilityAction(named: prayerObject.isCompleted ? "Mark not prayed" : "Mark prayed") { markTap() }
             // Background Effects Container
             .background { rowBackground }
-            .animation(.spring(response: 0.1, dampingFraction: 0.7), value: prayerObject.isCompleted)
+            .animation(Self.dotPress, value: prayerObject.isCompleted)
             .onChange(of: prayerObject.isCompleted) { _, done in
                 if done { completionPulse += 1 }
             }
@@ -2271,7 +2298,7 @@ struct PrayerButton: View {
                                 isMarkingIncomplete = true
                                 // A 0.1 s spring snapped the whole page (score → prayer, the list 5 rows → 1); an
                                 // ease lets it settle (Sami's audit, finding 7; his verified fix).
-                                withAnimation(.easeInOut(duration: 0.4)) {
+                                withAnimation(Self.unmarkFade) {
                                     viewModel.togglePrayerCompletion(for: prayerObject)
                                 }
                             },
