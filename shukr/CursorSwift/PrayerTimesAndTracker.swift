@@ -1212,14 +1212,12 @@ struct PrayerTimesView: View {
                     // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
                     // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
                     // Reduce Motion: a fade in place.
-                    .transition(reduceMotion ? .opacity
-                                : theme.soft ? .offset(y: 36).combined(with: .opacity)
-                                : .move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : theme.listEntrance)
                     Spacer()
                 }
 
                 // Soft looks: room for "N done" above the bottom bar (SoftDoneFooter, in the chrome).
-                Color.clear.frame(height: (showBottom ? bottomChromeHeight + (theme.soft ? 44 : 0)
+                Color.clear.frame(height: (showBottom ? bottomChromeHeight + theme.listFooterRoom
                                                       : closedBottomReserve)
                                           + (lost.map { $0.risen ? $0.buttonsHeight : 0 } ?? 0))   // the lost page's buttons
             }
@@ -1617,17 +1615,12 @@ struct PrayerTimesView: View {
     struct CustomBottomBar: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @Environment(\.circleTheme) private var theme
-        /// The soft look tints the bar with the page (Salah and Zikr).
-        private var softSalah: Bool { theme.soft && sharedState.horizontalPage != .settings }
 
         var body: some View {
             VStack(spacing: 0){
 
-                    Divider()
-                    .frame(height: 2)
-                    .background(Color(.secondarySystemBackground))
-                    .opacity(softSalah ? 0 : 1)
-                    .overlay(alignment: .top) { if softSalah { NeuGroove() } }
+                    // The bar wears the page (Salah and Zikr); Settings keeps the system look.
+                    ThemedBarDivider(plain: sharedState.horizontalPage == .settings)
 
                     
                     HStack {
@@ -2062,7 +2055,7 @@ struct PrayerButton: View {
         switch look {
         case .today:
             // On a tinted page (Soft ring with Today's look) the plain fill drew black slabs: see-through then.
-            RoundedRectangle(cornerRadius: 13).fill(theme.soft ? Color.clear : backgroundColor)
+            RoundedRectangle(cornerRadius: 13).fill(theme.rowFill(backgroundColor))
         case .pills:
             if isCurrentPrayer { NeuPressed(shape: shape) }
             else if prayerObject.isCompleted && !isFuturePrayer { Color.clear }

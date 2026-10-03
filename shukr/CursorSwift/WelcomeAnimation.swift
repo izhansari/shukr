@@ -228,19 +228,18 @@ struct WelcomeMark: View {
     var body: some View {
         // Under the soft ring the band is there for a prayer still to come too, the dashes drawn in it (owner,
         // 2026-10-02), so the ring grows into the band either way.
-        let softBand = theme.softRing
-        let toDashes = state.dashedTarget && !softBand
+        let track = theme.track
+        let toDashes = state.dashedTarget && !track.dashesInBand
         let grow = state.grow, portal = state.portal
         let size = portal ? portalSize : (grow ? Self.ringSize : Self.startSize)
         ZStack {
             // The ring: drawn as a hairline, then grown into the circle's track (the soft band under the soft ring: its
             // width, surface and lift).
-            WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : (softBand ? AliveRingTuning.fine.band : 12)) : 1.2)
-                .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity)
-                                       : (softBand ? theme.surface : Color(.secondarySystemFill)))
+            WelcomeRing(width: grow ? (toDashes ? UpcomingTrack.style.lineWidth : track.width) : 1.2)
+                .fill(grow ? (toDashes ? Color.secondary.opacity(UpcomingTrack.opacity) : track.fill)
                            : Color.sage.opacity(0.6))
-                .shadow(color: softBand && grow ? theme.shade : .clear, radius: 4, x: 2, y: 2)
-                .shadow(color: softBand && grow ? theme.light : .clear, radius: 6, x: -2, y: -2)
+                .shadow(color: track.lifted && grow ? theme.shade : .clear, radius: 4, x: 2, y: 2)
+                .shadow(color: track.lifted && grow ? theme.light : .clear, radius: 6, x: -2, y: -2)
                 .mask {
                     Circle()
                         .trim(from: 0, to: state.ringDrawn || reduceMotion || state.startDrawn ? 1 : 0)
@@ -250,7 +249,7 @@ struct WelcomeMark: View {
                 .shadow(color: Color.sage.opacity((state.ringDrawn || state.startDrawn) && !grow ? 0.45 : 0), radius: 8)
                 // Starts snug round the word, grows to the circle (frame, not scale, so the line keeps its own width).
                 .frame(width: size, height: size)
-                .opacity(reduceMotion || portal || (state.dashesIn && !softBand) ? 0 : 1)
+                .opacity(reduceMotion || portal || (state.dashesIn && !track.dashesInBand) ? 0 : 1)
             // The dashed track, when that's what the circle is showing: in once the ring is there.
             Circle()
                 .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: UpcomingTrack.style)

@@ -84,6 +84,30 @@ struct CircleTheme: Equatable {
         softRing ? Arc(width: AliveRingTuning.fine.band, cap: .round, glow: AliveRingTuning.fine.glow)
                  : Arc(width: 4, cap: .butt, glow: 0)
     }
+
+    /// The circle's track under the arc: the soft ring's raised band (its surface, lifted), or Today's 12 pt grey band.
+    struct Track: Equatable {
+        var width: CGFloat
+        var fill: Color
+        /// The soft lift's shadows (down-right shade, up-left light), or none.
+        var lifted: Bool
+        /// A prayer still to come draws its dashes inside the band (the soft ring), not instead of it.
+        var dashesInBand: Bool
+    }
+    var track: Track {
+        softRing ? Track(width: AliveRingTuning.fine.band, fill: surface, lifted: true, dashesInBand: true)
+                 : Track(width: 12, fill: Color(.secondarySystemFill), lifted: false, dashesInBand: false)
+    }
+
+    /// The prayer list's way in under the circle: Today's slides up from the bottom; the soft looks rise 36 pt from just
+    /// under their place, so they never cross the fixed "N done" line or the bar (decision list-reveal-rise A).
+    var listEntrance: AnyTransition {
+        soft ? .offset(y: 36).combined(with: .opacity) : .move(edge: .bottom).combined(with: .opacity)
+    }
+    /// Room under the open list for the soft looks' "N done" line, which sits in the chrome above the bar.
+    var listFooterRoom: CGFloat { soft ? 44 : 0 }
+    /// Today's row fill: see-through on a tinted page (the soft ring with Today's list drew black slabs).
+    func rowFill(_ plain: Color) -> Color { soft ? .clear : plain }
 }
 
 private struct CircleThemeKey: EnvironmentKey {
@@ -282,5 +306,21 @@ struct NeuRingTrack: View {
             .shadow(color: theme.light.opacity(lift), radius: 6, x: -2, y: -2)
             .opacity(solid > 0.02 ? 1 : 0)
             .allowsHitTesting(false)
+    }
+}
+
+/// The line between the page and the bottom bar: a groove pressed into the soft surface, else the plain divider.
+/// `plain`: the plain one regardless (the Settings page keeps the system look).
+struct ThemedBarDivider: View {
+    var plain = false
+    @Environment(\.circleTheme) private var theme
+
+    var body: some View {
+        let groove = theme.soft && !plain
+        Divider()
+            .frame(height: 2)
+            .background(Color(.secondarySystemBackground))
+            .opacity(groove ? 0 : 1)
+            .overlay(alignment: .top) { if groove { NeuGroove() } }
     }
 }
