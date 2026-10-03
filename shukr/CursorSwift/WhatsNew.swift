@@ -768,41 +768,28 @@ extension View {
 
 // MARK: - Who sees it
 
-/// `available`: What's new itself — DEBUG, or a TestFlight install the owner unlocked (hold the build line
-/// 3 s; it stays unlocked through updates). Testers never see it.
+/// `available`: What's new itself — DEBUG (dev) installs only, i.e. the owner's 13 Pro Max. A TestFlight install
+/// never has it (decision testflight-unlock B, owner: "lock it or even better get rid of it for them"): the build
+/// line's 3 s unlock is gone, and testflight.sh leaves the change log and its screenshots out of the upload.
 /// `beta`: extras testers do get — DEBUG or any TestFlight install (Your reminders' link and Details).
 @MainActor final class WhatsNewAccess: ObservableObject {
     static let shared = WhatsNewAccess()
-    static let unlockKey = "whatsNew.unlocked"
     #if DEBUG
-    @Published private(set) var available = true
+    let available = true
     @Published private(set) var beta = true
     #else
-    @Published private(set) var available = false
+    let available = false
     @Published private(set) var beta = false
     #endif
-    /// A TestFlight install that isn't unlocked yet (the build line takes the long press).
-    @Published private(set) var canUnlock = false
 
     private init() {
         #if !DEBUG
         Task { @MainActor in
             if case .verified(let transaction) = try? await AppTransaction.shared, transaction.environment != .production {
                 beta = true
-                let unlocked = UserDefaults.standard.bool(forKey: Self.unlockKey)
-                available = unlocked
-                canUnlock = !unlocked
-                if unlocked { WhatsNew.writeState() }
             }
         }
         #endif
-    }
-
-    func unlock() {
-        UserDefaults.standard.set(true, forKey: Self.unlockKey)
-        available = true
-        canUnlock = false
-        WhatsNew.writeState()
     }
 }
 
@@ -821,12 +808,6 @@ struct BuildLineButton: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("What's new in this build")
-        } else if access.canUnlock {
-            Text(BuildInfo.line)
-                .onLongPressGesture(minimumDuration: 3) {
-                    triggerSomeVibration(type: .success)
-                    access.unlock()
-                }
         } else {
             Text(BuildInfo.line)
         }
