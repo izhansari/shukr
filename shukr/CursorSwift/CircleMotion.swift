@@ -49,6 +49,10 @@ enum CircleMotion {
     /// The page round the circle (the chrome, the list) coming back after the opening or the lost page; the welcome's
     /// own morph runs the same length so the two meet.
     static let pageRevealDuration: Double = 0.45
+    /// A label swapping in place: the top bar's city ⇄ streak, the Zikr page's title (SwiftUI's own `.spring`).
+    static let label = Animation.spring
+    /// A popover fading away (the ☰ menu): what a row it closed waits before it runs.
+    static let popoverAwayDuration: Double = 0.25
 
     // MARK: Reduce Motion
 

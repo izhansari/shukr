@@ -66,12 +66,18 @@ enum CircleFace: Equatable {
     }
     /// Some cover up can be closed from here.
     var closable: Bool { !closers.isEmpty }
-    /// Closes every cover that can close itself (each then reports itself gone).
-    func closeAll() {
-        let all = Array(closers.values)
+    /// Closes every cover that can close itself (each then reports itself gone); returns their keys, so a caller can
+    /// wait until they've gone (`clearCovers`).
+    @discardableResult func closeAll() -> Set<String> {
+        let all = closers
         closers = [:]
-        all.forEach { $0() }
+        all.values.forEach { $0() }
+        return Set(all.keys)
     }
+
+    /// The page the pager rests on; nil while it moves (written by the pager, only on change). `navigate(to:)` and the
+    /// circle wait on it (tr-pager).
+    var restingPage: SharedStateClass.HorizontalPage? = .main
 
     /// Waits until `condition` holds. It wakes when an observable value the condition read changes (this stage, any
     /// `@Observable` model) — no polling. A condition that still reads a plain static (one not moved here yet) passes

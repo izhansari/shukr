@@ -56,7 +56,10 @@ struct PrayerTimesView: View {
     // swipes flow the other way via onScrollPhaseChange once the scroll settles.
     typealias NavPage = SharedStateClass.HorizontalPage
     @State private var scrollPage: NavPage? = .main
-    private let pageSpring = Animation.spring(response: 0.35, dampingFraction: 0.85)
+    /// One widget / alarm / What's new open at a time: closing the covers, waiting for them to go, then going. A newer
+    /// open replaces one still waiting (`clearCovers`).
+    @State private var pendingOpen: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // Menu destinations (native Menu on the hamburger; pushes on the root NavigationStack)
     @State private var showMapPage = false
@@ -92,14 +95,10 @@ struct PrayerTimesView: View {
     /// started half off the screen (owner, sleep morning). Behind the black curtain, so unseen.
     private func goToSalahForMorningCard() {
         guard SleepMorning.pendingID != nil else { return }
+        sharedState.go(to: .main, animated: false)   // in this turn: the curtain's snapshot is next
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) {
-            // The pager too: its onChange springs any page change it scrolls itself (audit D, bug 7).
-            scrollPage = .main
-            sharedState.horizontalPage = .main
-            sharedState.navPosition = .main
-        }
+        withTransaction(quiet) { sharedState.navPosition = .main }
     }
 
     private func showMorningCardWhenClear(tries: Int = 0) {
@@ -112,14 +111,14 @@ struct PrayerTimesView: View {
         guard let session = SleepMorning.pending(in: context) else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) {
-            // The pager too: its onChange springs any page change it scrolls itself (audit D, bug 7).
-            scrollPage = .main
-            sharedState.horizontalPage = .main
-            sharedState.navPosition = .main
+        withTransaction(quiet) { sharedState.navPosition = .main }
+        // The card draws round the circle's frame: mount it once the pager rests on Salah (at once — the page change
+        // is quiet — but measured, not guessed: audit D, finding 2).
+        Task {
+            await sharedState.navigate(to: .main, animated: false)
+            guard morningSession == nil, SleepMorning.pendingID != nil else { return }
+            morningSession = session
         }
-        // Let the circle settle where it lives (its frame is what the card draws round).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { morningSession = session }
     }
 
     private func openFromWidgetFlags() {
@@ -343,33 +342,38 @@ struct PrayerTimesView: View {
         healthCard = nil
     }
 
-    /// A widget / control is taking the user somewhere: close what's covering the page first, then
-    /// go (after the dismissal, so the new page isn't pushed under the leaving one). A running
+    /// A widget / control / What's new is taking the user somewhere: close what's covering the page, wait until it has
+    /// gone (each cover reports itself gone once its dismissal has finished — `stageCover`, the pushed pages below), then
+    /// go, so the new page isn't pushed under the leaving one. One open at a time: a newer one replaces this. A running
     /// tasbeeh session is never closed from a widget tap.
-    private func clearCovers(then go: @escaping () -> Void) {
+    private func clearCovers(then go: @escaping @MainActor () async -> Void) {
         guard !showTasbeehPage else { return }
-        // The covers the flags above can't see (the ☰ popover, What's new, calibration, a row's time edit) close too:
-        // a widget open pushed its page under them (transitions audit, bug 4).
-        if somethingCovers || CircleCover.closable {
-            dismissCovers()
-            CircleCover.closeAll()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { go() }
-        } else {
-            go()
+        pendingOpen?.cancel()
+        pendingOpen = Task {
+            let stage = CircleStage.shared
+            let closing = stage.closeAll()   // the ☰ popover, What's new, calibration, a row's time edit, pushed pages
+            dismissCovers()                  // and any page asked for that hasn't appeared yet
+            if !closing.isEmpty {
+                // A cover that never reports goes after the deadline anyway (the old fixed wait was 0.55 s).
+                _ = await stage.until(deadline: 1.5) { stage.covers.isDisjoint(with: closing) }
+            }
+            guard !Task.isCancelled else { return }
+            await go()
         }
     }
 //    var showTop: Bool { sharedState.navPosition == .top }
     var showMain: Bool { sharedState.navPosition == .main }
     var showBottom: Bool { sharedState.navPosition == .bottom }
-        
-    private var switchToSalahDoubleTapSGesture: some Gesture{
-        TapGesture(count: 2)
-            .onEnded {
-                // left this incase we want to use it for an action.
-                print("Double tap: no action assigned yet...")
-            }
+
+    /// The page the pager rests on, for the stage (`restingPage`; `navigate(to:)` and the circle's gate wait on it): a
+    /// page once it's idle on one, nil while it moves. Written only on change.
+    private func noteRestingPage(progress: CGFloat, phase: ScrollPhase) {
+        let index = progress.rounded()
+        let resting: NavPage? = phase == .idle && abs(progress - index) < 0.01
+            ? (index <= 0 ? .zikr : index >= 2 ? .settings : .main) : nil
+        if CircleStage.shared.restingPage != resting { CircleStage.shared.restingPage = resting }
     }
-    
+
     // MARK: - Salah sheet: swipe up / down (the pop)
     // The finger doesn't drag the sheet. A vertical swipe past `threshold` flips it with a
     // spring, the way it always did; while the finger is down only the chevron nudges
@@ -391,11 +395,6 @@ struct PrayerTimesView: View {
 
         return DragGesture(minimumDistance: 5, coordinateSpace: .global)
             .onChanged { value in
-                // A touch that starts on the Zikr page's task strip belongs to the strip: hold
-                // the pager from the first move so a drag past the strip's last card can't chain
-                // into a page turn. (The strip's own touch-down lock isn't always early enough
-                // on device; this gesture sits on the pager itself and always is.)
-                if !live.pagerLocked, live.stripFrame.contains(value.startLocation) { live.pagerLocked = true }
                 if isDraggingVertically == nil { // decide the axis once per drag
                     let t = value.translation
                     guard abs(t.width) > decideAt || abs(t.height) > decideAt else { return }
@@ -423,14 +422,15 @@ struct PrayerTimesView: View {
                 let vertical = isDraggingVertically == true
                 isDraggingVertically = nil
                 live.pagerLocked = false
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                // The sheet's own move is the page's and the chrome's implicit animation (rule 6); this one is the
+                // chevron's nudge settling.
+                withAnimation(CircleMotion.page) {
                     live.pull = 0
                     guard vertical, sharedState.horizontalPage == .main else { return }
                     let draggedDown = value.translation.height > threshold
                     let draggedUp = value.translation.height < -threshold
                     switch sharedState.navPosition {
                     case .main:
-                        sharedState.bottomTabPosition = .salah
                         if draggedUp { sharedState.navPosition = .bottom; triggerSomeVibration(type: .light) }
                         if draggedDown { viewModel.refreshCityAndPrayerTimes(); triggerSomeVibration(type: .light) }
                     case .bottom:
@@ -502,6 +502,7 @@ struct PrayerTimesView: View {
             } action: { _, v in
                 let progress = v.height
                 live.scrollProgress = progress
+                if v.width >= 2.5 { noteRestingPage(progress: progress, phase: live.pagerPhase) }
                 // Commit the page at the detent — the moment the nearest page changes — not when
                 // the scroll lands. A slow drag commits as it crosses the midpoint; a flick a few
                 // frames into the coast. Landing then confirms a state that's already true, so
@@ -526,10 +527,13 @@ struct PrayerTimesView: View {
                     }
                 }
             }
-            .simultaneousGesture(switchToSalahDoubleTapSGesture)
             .simultaneousGesture(abstractedDragGesture)
             .onScrollPhaseChange { _, phase, context in
                 live.pagerPhase = phase
+                let geometry = context.geometry
+                if geometry.containerSize.width > 0, geometry.contentSize.width >= geometry.containerSize.width * 2.5 {
+                    noteRestingPage(progress: geometry.contentOffset.x / geometry.containerSize.width, phase: phase)
+                }
                 // Settled after a user scroll: bring the scrollPosition binding to the page we
                 // actually landed on (the user-driven commit above skips it while moving). Left
                 // stale, SwiftUI re-applies the old value whenever it re-lays the pager out —
@@ -545,19 +549,20 @@ struct PrayerTimesView: View {
                 }
             }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
-                // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match.
+                // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match, quietly when the
+                // change asked for it (`go(to:animated: false)` — this used to spring every change: audit D, bug 7).
                 // Not while the finger or the coast owns the pager: that commit came from the
                 // scroll itself and it's already heading there.
+                let quiet = sharedState.takeQuietPageChange()
                 guard live.pagerPhase == .idle || live.pagerPhase == .animating else { return }
-                if scrollPage != wanted { withAnimation(pageSpring) { scrollPage = wanted } }
+                guard scrollPage != wanted else { return }
+                if quiet {
+                    var t = Transaction(); t.disablesAnimations = true
+                    withTransaction(t) { scrollPage = wanted }
+                } else {
+                    withAnimation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion)) { scrollPage = wanted }
+                }
             }
-            
-            // MARK: - (Parked) Duas page — used to live at .left. Kept in case we bring it back.
-            // VStack{
-            //     DuaPageView()
-            // }
-            // .background(Color(.systemBackground))
-            // .padding()
             // .transition(.move(edge: .leading).combined(with: .opacity))
 
             // Fixed chrome: top bar (menu + location / page title) and bottom bar, over the
@@ -588,22 +593,20 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: WhatsNew.go)) { note in
             guard let link = note.object as? String else { return }
             if link == "map" && showQiblaMap { return }     // already there: don't close and reopen it
-            // Well after the sheet has gone: pushing the library while it was still closing
+            // After the sheet has gone (clearCovers waits for it): pushing the library while it was still closing
             // left a second search field in its bottom bar.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                clearCovers {
-                    switch link {
-                    case "salah": sharedState.horizontalPage = .main
-                    case "zikr": sharedState.horizontalPage = .zikr
-                    case "settings": sharedState.horizontalPage = .settings
-                    case "history": showZikrHistory = true
-                    case "azkar": showMantrasPage = true
-                    case "map": sharedState.horizontalPage = .main; showQiblaMap = true
-                    case "names": showNamesPage = true
-                    case "ayah": showDailyAyahPage = true
-                    case "insights": showInsightsPage = true
-                    default: break
-                    }
+            clearCovers {
+                switch link {
+                case "salah": sharedState.horizontalPage = .main
+                case "zikr": sharedState.horizontalPage = .zikr
+                case "settings": sharedState.horizontalPage = .settings
+                case "history": showZikrHistory = true
+                case "azkar": showMantrasPage = true
+                case "map": sharedState.horizontalPage = .main; showQiblaMap = true
+                case "names": showNamesPage = true
+                case "ayah": showDailyAyahPage = true
+                case "insights": showInsightsPage = true
+                default: break
                 }
             }
         }
@@ -623,10 +626,9 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.startNotification)) { _ in
             guard !showTasbeehPage else { return }
             clearCovers {
-                sharedState.horizontalPage = .zikr
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    NotificationCenter.default.post(name: ZikrFocus.wheelStartNotification, object: nil)
-                }
+                // The wheel starts it once the Zikr page has arrived (it was a guessed 0.35 s).
+                guard await sharedState.navigate(to: .zikr) else { return }
+                NotificationCenter.default.post(name: ZikrFocus.wheelStartNotification, object: nil)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: ZikrReminders.openTask)) { note in
@@ -646,9 +648,8 @@ struct PrayerTimesView: View {
                 .onAppear {
                     healthCardAppeared = true
                     NotificationHealth.shared.markCardShown(issue)
-                    CircleCover.set("healthCard", true)
                 }
-                .onDisappear { CircleCover.set("healthCard", false) }
+                .stageCover("healthCard")
         }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
@@ -659,6 +660,13 @@ struct PrayerTimesView: View {
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
         }
         .onAppear { showMorningCardWhenClear() }
+        // A page pushed over the pager (☰'s destinations, a widget's page, Settings' pushes) is a cover until the pager is
+        // back on screen with the pop finished — UIKit's did-appear (SwiftUI's onAppear comes as the pop starts). Popping
+        // closes it (any depth: the flags).
+        .background {
+            AppearanceProbe(didAppear: { CircleCover.set("pushedPage", false) },
+                            didDisappear: { CircleCover.set("pushedPage", true, close: { dismissCovers() }) })
+        }
         // The circle shows the morning while its card is up (circle step 3); the card clears it as it leaves.
         .onChange(of: morningSession) { _, session in
             if session != nil || CircleStage.shared.morning != nil { CircleStage.shared.morning = session }
@@ -956,13 +964,13 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoPrayerListOpen") {
                 // The prayer list up (to tap its rows); with `-demoPrayerStart`, its prayers to come too.
                 try? await Task.sleep(for: .seconds(1.5))
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
                 if !ProcessInfo.processInfo.arguments.contains("-demoPrayerStart") { return }
             }
             if ProcessInfo.processInfo.arguments.contains("-demoDayMilestones") {
                 // Streak (fake 12) + on-time streak (fake 5) in the top bar, perfect day in the list.
                 try? await Task.sleep(for: .seconds(1.5))
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
                 try? await Task.sleep(for: .seconds(1.5))
                 NotificationCenter.default.post(name: .prayerStreakContinued, object: 12)
                 NotificationCenter.default.post(name: .onTimeStreakContinued, object: 5)
@@ -999,7 +1007,7 @@ struct PrayerTimesView: View {
                     // Isha then completes the day).
                     if ProcessInfo.processInfo.arguments.contains("-demoPrayerStartSheetOpen") {
                         try? await Task.sleep(for: .seconds(2))
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+                        withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
                         try? await Task.sleep(for: .seconds(8))
                     } else {
                         try? await Task.sleep(for: .seconds(10))
@@ -1020,7 +1028,7 @@ struct PrayerTimesView: View {
             viewModel.useTestPrayers = true
             viewModel.fetchPrayerTimes(cameFrom: "demoPrayerCompletion")
             viewModel.loadTodaysPrayerObjects()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { sharedState.navPosition = .bottom }
+            withAnimation(CircleMotion.page) { sharedState.navPosition = .bottom }
             for name in ["Asr", "Dhuhr", "Fajr"] {
                 try? await Task.sleep(for: .seconds(3))
                 if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }), !prayer.isCompleted {
@@ -1076,6 +1084,7 @@ struct PrayerTimesView: View {
                 selectedMantraObject: $chosenMantraObject,
                 presentation: [.height(400)]
             )
+            .stageCover("mantraPicker")
         }
         .fullScreenCover(isPresented: $showTasbeehPage) {
             // A session opened out of a Zikr ring under the soft look leaves the same way: it fades over the wheel,
@@ -1128,14 +1137,18 @@ struct PrayerTimesView: View {
 
     /// The Salah page body: the main circle over the salah sheet, laid out with Spacers the
     /// way it always was. Opening inserts the sheet (move-from-bottom + fade) and the Spacers
-    /// carry the circle up; all of it animates from the `withAnimation` around the
-    /// `navPosition` change (swipe, chevron, bottom bar). The finger never drags the sheet: the
+    /// carry the circle up; the page animates that itself, whoever changed `navPosition` (swipe,
+    /// chevron, a widget — rule 6). The finger never drags the sheet: the
     /// owner tried follow-the-finger versions (a custom gesture, then a native ScrollView) and
     /// asked for this pop back (2026-09-24). `live.pull` is the resisted drag nudge.
     struct SalahPageContent: View {
         @EnvironmentObject var sharedState: SharedStateClass
         @EnvironmentObject var viewModel: PrayerViewModel
         @Environment(\.circleTheme) private var theme
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        /// The look prototype's row motion, read as state so a change redraws the page (it was read from
+        /// UserDefaults in the body: audit D, finding 11).
+        @AppStorage(RowMotion.key) private var rowMotionRaw = RowMotion.today.rawValue
         var live: PagerLiveState
         @Binding var showQiblaMap: Bool
         @Binding var showTasbeehPage: Bool
@@ -1176,7 +1189,6 @@ struct PrayerTimesView: View {
                             viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
                         }
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
                 // The lost page (circle step 3b): room for its title above and what sharing location gives below, as
                 // padding — a height that animates; zero otherwise (an extra view in this stack added its spacing, and
                 // inserting / removing one twitched the circle at the hand-off).
@@ -1188,20 +1200,17 @@ struct PrayerTimesView: View {
 
                 if showBottom {
                     Spacer()
-                    BottomSharedView(
-                        showDailyAyahView: $showDailyAyahView,
-                        showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                        showTasbeehPage: $showTasbeehPage
-                    )
-                    .opacity(1 - Double(live.pull / 90))
+                    BottomSharedView(showDailyAyahView: $showDailyAyahView)
+                    .modifier(PullFade(live: live))
                     // The opening on the Salah circle (circle step 4): the list waits, then fades in as the ring lands.
                     .opacity(CircleStage.shared.pageHidden ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.pageHidden)
+                    .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
                     // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
                     // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
                     // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
-                    .transition(theme.soft
-                                ? .offset(y: 36).combined(with: .opacity)
+                    // Reduce Motion: a fade in place.
+                    .transition(reduceMotion ? .opacity
+                                : theme.soft ? .offset(y: 36).combined(with: .opacity)
                                 : .move(edge: .bottom).combined(with: .opacity))
                     Spacer()
                 }
@@ -1211,12 +1220,22 @@ struct PrayerTimesView: View {
                                                       : closedBottomReserve)
                                           + (lost.map { $0.risen ? $0.buttonsHeight : 0 } ?? 0))   // the lost page's buttons
             }
+            // The sheet popping up or down: the page animates it itself, whoever changed it — a transaction from the
+            // chrome didn't always reach into the pager (audit D, finding 3).
+            .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
             // "N done" toggled (in the list, or the soft looks' footer up in the chrome): the page animates the
             // re-centring itself — the chrome's transaction didn't always reach it, so the fold sometimes snapped, the
             // circle jumping ~70 pt (Sami's audit, finding 2).
-            .animation(RowMotion.current.animation(springy: .spring(response: 0.45, dampingFraction: 0.85)),
+            .animation((RowMotion(rawValue: rowMotionRaw) ?? .today).animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)),
                        value: PrayerListFold.shared.showDone)
         }
+    }
+
+    /// The open sheet fades a little with the drag nudge. Its own modifier, so a drag re-renders only this, not the page
+    /// and its circle (audit D, finding 7).
+    private struct PullFade: ViewModifier {
+        let live: PagerLiveState
+        func body(content: Content) -> some View { content.opacity(1 - Double(live.pull / 90)) }
     }
 
     /// Top bar (menu + TopBar on Salah, "Zikr" title on Zikr) and the chevron / bottom bar,
@@ -1261,13 +1280,12 @@ struct PrayerTimesView: View {
         }
 
         private var showBottom: Bool { sharedState.navPosition == .bottom }
-        /// How far onto the Zikr / Settings page we are, 0...1 each, live from the scroll offset.
-        private var zikrness: CGFloat { min(max(1 - live.scrollProgress, 0), 1) }
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
         /// How far a top-bar title travels as the pager moves between Salah and Zikr.
         static let titlePush: CGFloat = 150
-        private var settingsness: CGFloat { min(max(live.scrollProgress - 1, 0), 1) }
-        /// Sheet open-progress on the Salah page, 0...1.
-        private var sheetP: CGFloat { showBottom ? 1 : 0 }
+        /// What follows the live scroll does it in `ChromeFollow` / `ChromeLeaves`: this body reads none of it, so it
+        /// isn't re-run on every frame of a swipe (audit D, finding 7).
+        private func follow(_ role: ChromeFollow.Role) -> ChromeFollow { ChromeFollow(live: live, role: role) }
 
         var body: some View {
             VStack(spacing: 0) {
@@ -1278,13 +1296,9 @@ struct PrayerTimesView: View {
                     // offsets read the live scroll — the titles' own bodies don't.
                     ZStack(alignment: .top) {
                         TopBar()
-                            .offset(x: zikrness * Self.titlePush)
-                            .opacity(Double(1 - zikrness))
-                            .allowsHitTesting(zikrness < 0.5)
+                            .modifier(follow(.salah(push: Self.titlePush)))
                         ZikrPageTitle()
-                            .offset(x: -(1 - zikrness) * Self.titlePush)
-                            .opacity(Double(zikrness))
-                            .allowsHitTesting(zikrness > 0.5)
+                            .modifier(follow(.zikr(push: Self.titlePush)))
                     }
 
                     // Menu button: a native Menu instead of the hand-rolled drawer, which
@@ -1295,8 +1309,7 @@ struct PrayerTimesView: View {
                         ZStack {
                         // Zikr page, top left: History (the Zikr tab reorganisation; symbols only, 2026-10-01).
                         ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
-                            .opacity(Double(zikrness))
-                            .allowsHitTesting(zikrness > 0.5)
+                            .modifier(follow(.zikr(push: 0)))
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
@@ -1343,25 +1356,22 @@ struct PrayerTimesView: View {
                             .padding(.bottom, 8)
                             .frame(width: 250)
                             .presentationCompactAdaptation(.popover)
+                            .stageCover("menu")
                         }
                         .onChange(of: showMenu) { _, open in
-                            let menu = $showMenu
-                            CircleCover.set("menu", open, close: { menu.wrappedValue = false })
-                            // Run the chosen action once the popover is away, so the push isn't
-                            // attempted while a presentation is still dismissing.
+                            // The chosen row runs once the popover has faded (its push isn't attempted while the
+                            // presentation is still going). Not at its onDisappear: that comes ~0.4 s after it's gone
+                            // from the screen, and the row felt slow (sim, tr-pager).
                             guard !open, let action = pendingMenuAction else { return }
                             pendingMenuAction = nil
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: action)
+                            Task {
+                                try? await Task.sleep(for: .seconds(CircleMotion.popoverAwayDuration))
+                                action()
+                            }
                         }
-                        .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
-                        .onChange(of: showWhatsNew) { _, open in
-                            let sheet = $showWhatsNew
-                            CircleCover.set("whatsNew", open, close: { sheet.wrappedValue = false })
-                        }
-                        .fullScreenCover(isPresented: $showCalibration) { CompassCalibrationSheet() }
-                        .onChange(of: showCalibration) { _, open in
-                            let cover = $showCalibration
-                            CircleCover.set("compassCalibration", open, close: { cover.wrappedValue = false })
+                        .sheet(isPresented: $showWhatsNew) { WhatsNewView().stageCover("whatsNew") }
+                        .fullScreenCover(isPresented: $showCalibration) {
+                            CompassCalibrationSheet().stageCover("compassCalibration")
                         }
                         .onReceive(NotificationCenter.default.publisher(for: CompassHealth.openSheet)) { _ in
                             showCalibration = true
@@ -1378,15 +1388,13 @@ struct PrayerTimesView: View {
                             showCalibration = true
                         }
                         #endif
-                        .opacity(Double(1 - zikrness))
-                        .allowsHitTesting(zikrness < 0.5)
+                        .modifier(follow(.salah(push: 0)))
                         }
                         Spacer()
                         ZStack(alignment: .trailing) {   // the Azkar door keeps its place beside the Play / palette pair
                         // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
-                            .opacity(Double(zikrness))
-                            .allowsHitTesting(zikrness > 0.5)
+                            .modifier(follow(.zikr(push: 0)))
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available {
                             HStack(spacing: 0) {
@@ -1394,8 +1402,7 @@ struct PrayerTimesView: View {
                                 SalahLookSwitcher()
                             }
                             .padding(.trailing, 8)
-                            .opacity(Double(1 - zikrness))
-                            .allowsHitTesting(zikrness < 0.5)
+                            .modifier(follow(.salah(push: 0)))
                         }
                         }
                     }
@@ -1406,29 +1413,19 @@ struct PrayerTimesView: View {
                 ZStack(alignment: .bottom) {
                     // Chevron hint: Salah page, sheet closed. Follows the pull-to-refresh nudge.
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            sharedState.navPosition = showBottom ? .main : .bottom
-                        }
+                        sharedState.navPosition = showBottom ? .main : .bottom   // the page and the chrome animate it
                     } label: {
-                        Image(systemName: "chevron.up")
-                            .font(.title3)
-                            .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
-                            .padding(.bottom, 30)
-                            .padding()
-                            .offset(y: live.pull)
+                        ChevronHint(live: live)
                     }
-                    .opacity(Double((1 - sheetP) * (1 - zikrness)))
-                    .allowsHitTesting(sheetP < 0.5 && zikrness < 0.5)
+                    .modifier(follow(.chevron(sheetOpen: showBottom)))
 
                     // Bottom bar: Salah with the sheet up, and always on Zikr. Above it, the soft looks' "N done"
                     // (SoftDoneFooter): a fixed spot, fading with the bar on Salah, not moving with the card.
                     VStack(spacing: 0) {
                         SoftDoneFooter()
-                            .opacity(Double(sheetP * (1 - zikrness)))
-                            .allowsHitTesting(sheetP > 0.5 && zikrness < 0.5)
+                            .modifier(follow(.doneFooter(sheetOpen: showBottom)))
                         CustomBottomBar()
-                            .opacity(Double(max(sheetP, zikrness)))
-                            .allowsHitTesting(max(sheetP, zikrness) > 0.5)
+                            .modifier(follow(.bottomBar(sheetOpen: showBottom)))
                     }
                 }
             }
@@ -1437,32 +1434,97 @@ struct PrayerTimesView: View {
             // post-salah-pill-place C). Chrome, above the pager: dragging it never moves a page.
             .overlay(alignment: .top) {
                 if live.postSalahNudge != nil {
-                    PostSalahNudge(
-                        onOpen: {
-                            live.postSalahNudge = nil
-                            sharedState.isDoingPostNamazZikr = true
-                            showTasbeehPage = true
-                        },
-                        onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
-                        shown: zikrness < 0.5 && settingsness < 0.5
-                    )
-                    .padding(.top, 64)
-                    .opacity(Double(1 - zikrness))
-                    .allowsHitTesting(zikrness < 0.5)
+                    PostSalahNudgeOnPage(live: live) {
+                        live.postSalahNudge = nil
+                        sharedState.isDoingPostNamazZikr = true
+                        showTasbeehPage = true
+                    }
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
             }
-            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: showBottom)
-            .allowsHitTesting(settingsness < 0.5)
+            // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
+            .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
             .ignoresSafeArea(edges: .bottom)
-            // Toward Settings the chrome leaves WITH the Salah page, so Settings slides over
-            // empty space instead of under a fading top bar (owner, 2026-09-25).
-            .visualEffect { [settingsness] content, proxy in
-                content.offset(x: -settingsness * proxy.size.width)
-            }
+            .modifier(ChromeLeaves(live: live))
             // The opening on the Salah circle (circle step 4): the chrome waits, then fades in as the ring lands.
             .opacity(CircleStage.shared.pageHidden ? 0 : 1)
-            .animation(.easeInOut(duration: 0.45), value: CircleStage.shared.pageHidden)
+            .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
+        }
+    }
+
+    /// A piece of the chrome following the live scroll: its fade, its push and whether it takes taps. Only this
+    /// re-renders per frame of a swipe (audit D, finding 7).
+    struct ChromeFollow: ViewModifier {
+        enum Role {
+            /// The Salah page's chrome: gone toward Zikr, pushed right by `push`.
+            case salah(push: CGFloat)
+            /// The Zikr page's chrome: in from the left by `push`.
+            case zikr(push: CGFloat)
+            /// The chevron: Salah with the sheet closed.
+            case chevron(sheetOpen: Bool)
+            /// The soft looks' "N done": Salah with the sheet open.
+            case doneFooter(sheetOpen: Bool)
+            /// The bottom bar: Salah with the sheet open, and always on Zikr.
+            case bottomBar(sheetOpen: Bool)
+        }
+        let live: PagerLiveState
+        let role: Role
+
+        func body(content: Content) -> some View {
+            /// How far onto the Zikr page we are, 0...1, live from the scroll offset.
+            let zikr = min(max(1 - live.scrollProgress, 0), 1)
+            let (opacity, push, taps): (CGFloat, CGFloat, Bool) = switch role {
+            case .salah(let push): (1 - zikr, zikr * push, zikr < 0.5)
+            case .zikr(let push): (zikr, -(1 - zikr) * push, zikr > 0.5)
+            case .chevron(let open): (open ? 0 : 1 - zikr, 0, !open && zikr < 0.5)
+            case .doneFooter(let open): (open ? 1 - zikr : 0, 0, open && zikr < 0.5)
+            case .bottomBar(let open): (open ? 1 : zikr, 0, open || zikr > 0.5)
+            }
+            content
+                .offset(x: push)
+                .opacity(Double(opacity))
+                .allowsHitTesting(taps)
+        }
+    }
+
+    /// Toward Settings the chrome leaves WITH the Salah page, so Settings slides over empty space instead of under a
+    /// fading top bar (owner, 2026-09-25); it takes no taps past halfway.
+    private struct ChromeLeaves: ViewModifier {
+        let live: PagerLiveState
+        func body(content: Content) -> some View {
+            let settings = min(max(live.scrollProgress - 1, 0), 1)
+            content
+                .allowsHitTesting(settings < 0.5)
+                .visualEffect { content, proxy in content.offset(x: -settings * proxy.size.width) }
+        }
+    }
+
+    /// The chevron hint, nudged by the pull-to-refresh drag.
+    private struct ChevronHint: View {
+        let live: PagerLiveState
+        var body: some View {
+            Image(systemName: "chevron.up")
+                .font(.title3)
+                .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                .padding(.bottom, 30)
+                .padding()
+                .offset(y: live.pull)
+        }
+    }
+
+    /// The post-salah pill under the top bar, on the Salah page only.
+    private struct PostSalahNudgeOnPage: View {
+        let live: PagerLiveState
+        let onOpen: () -> Void
+        var body: some View {
+            let zikr = min(max(1 - live.scrollProgress, 0), 1)
+            let settings = min(max(live.scrollProgress - 1, 0), 1)
+            PostSalahNudge(onOpen: onOpen,
+                           onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
+                           shown: zikr < 0.5 && settings < 0.5)
+                .padding(.top, 64)
+                .opacity(Double(1 - zikr))
+                .allowsHitTesting(zikr < 0.5)
         }
     }
 
@@ -1477,24 +1539,27 @@ struct PrayerTimesView: View {
         @State private var showBest = false
         private let focus = ZikrWheelFocus.shared
         private static let travel: CGFloat = 12
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
             let task = focus.taskID.flatMap { id in tasks.first { $0.id == id } }
             let down = focus.movedDown
             // Same metrics as TopBar's location row so the title sits where the city does.
             ZStack {
+                // Reduce Motion: the labels fade in place.
+                let travel = reduceMotion ? 0 : Self.travel
                 label(task)
                     .id(focus.key)
                     .transition(.asymmetric(
-                        insertion: .offset(y: down ? Self.travel : -Self.travel).combined(with: .opacity),
-                        removal: .offset(y: down ? -Self.travel : Self.travel).combined(with: .opacity)))
+                        insertion: .offset(y: down ? travel : -travel).combined(with: .opacity),
+                        removal: .offset(y: down ? -travel : travel).combined(with: .opacity)))
             }
             .padding()
             .frame(height: 24, alignment: .center)
             .font(.caption)
             .fontDesign(.rounded)
             .fontWeight(.thin)
-            .animation(.spring, value: focus.key)
+            .animation(CircleMotion.label, value: focus.key)
             .onChange(of: focus.key) { _, _ in showBest = false }
             .padding()
         }
@@ -1528,69 +1593,15 @@ struct PrayerTimesView: View {
             }
         }
     }
+    /// The Salah sheet's list (the old Salah | Zikr tab under the circle is gone: the Zikr page has its own wheel).
     struct BottomSharedView: View {
-        @EnvironmentObject var sharedState: SharedStateClass
-        
-        // Bindings coming from the parent view
         @Binding var showDailyAyahView: Bool
-        @Binding var showMantraSheetFromHomePage: Bool
-        @Binding var showTasbeehPage: Bool
-        @State private var selectedDate: Date = Date()
-        @State private var someIndex: Int = 0
-        // Generate dates for a year (adjust as needed)
-        let days: [Date] = [Date(), Date().addingTimeInterval(-86400), Date().addingTimeInterval(-172800)]
-        
-        // Add a property to receive the gesture
 
-
-        // DateFormatter for M/d format
-        private let dateFormatter: DateFormatter = {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "M/d"
-            return formatter
-        }()
-        
         var body: some View {
             VStack {
-                // Shared container for both views
-//                ZStack {
-                if sharedState.bottomTabPosition == .salah {
-                    TodaysPrayerListView(
-                        showDailyAyahView: $showDailyAyahView
-                    )
-                    
-                    
-                    /*
-                    InfiniteDaysScrollView(selectedDate: $selectedDate)
-                        .frame(height: 30)
-                        .frame(width: 260) // Same width as PrayerListView
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-
-                    SomedaysPrayerListView(
-                        showDailyAyahView: $showDailyAyahView,
-                        selectedDate: selectedDate
-                    )
-                    */
-                    .transition(.opacity)
+                TodaysPrayerListView(showDailyAyahView: $showDailyAyahView)
                     .modifier(SalahLookListFrame())   // the look prototype; today's = 260 pt in FlatBorder
-                
-                } else if sharedState.bottomTabPosition == .zikr{
-                    DailyTasksView(
-                        showMantraSheetFromHomePage: $showMantraSheetFromHomePage,
-                        showTasbeehPage: $showTasbeehPage
-                    )
-                    .transition(.opacity)
-                    .frame(width: 260)  // Same width as PrayerListView
-                    .background(FlatBorder())
-                    .padding(.bottom, 30)
-                }
             }
-//            .transition(.opacity)
-//            .frame(width: 260)  // Same width as PrayerListView
-//            .background(FlatBorder())
-
-            .animation(.easeOut, value: sharedState.bottomTabPosition)
         }
     }
 
@@ -1632,10 +1643,7 @@ struct PrayerTimesView: View {
                         Spacer()
                         
                         Button(action: {
-                            withAnimation(.spring()) {
-                                sharedState.bottomTabPosition = .salah
-                                sharedState.horizontalPage = .main
-                            }
+                            sharedState.horizontalPage = .main   // the pager scrolls itself, like its siblings
                         }) {
                             VStack(spacing: 6) {
                                 Image(systemName: "rectangle.portrait")
@@ -1718,6 +1726,7 @@ struct TodaysPrayerListView: View {
     private var spacing: CGFloat { theme.rowSpacing }
     private var showsDividers: Bool { theme.showsRowDividers }
     @AppStorage(RowMotion.key) private var motionRaw = RowMotion.today.rawValue
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var motion: RowMotion { RowMotion(rawValue: motionRaw) ?? .today }
 
     /// Done prayers fold out of the list so it only shows what's left; all five come back once
@@ -1755,7 +1764,7 @@ struct TodaysPrayerListView: View {
                         }
                         Button {
                             triggerSomeVibration(type: .light)
-                            withAnimation(motion.animation(springy: .spring(response: 0.45, dampingFraction: 0.85))) { showDone.toggle() }
+                            showDone.toggle()   // the page animates the fold itself (SalahPageContent)
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.circle")
@@ -1839,7 +1848,8 @@ struct TodaysPrayerListView: View {
                                 .padding(.horizontal, 25)
                         }
                     }
-                    .transition(motion.transition)   // RowMotion (the look prototype); today's = slide in, shrink out
+                    // RowMotion (the look prototype); today's = slide in, shrink out. Reduce Motion: a fade.
+                    .transition(reduceMotion ? .opacity : motion.transition)
                 }
 
                     if !outside {
@@ -2272,11 +2282,6 @@ struct PrayerButton: View {
                             secondaryButton: .cancel()
                         )
                     }
-            .onChange(of: showTimePicker) { _, open in
-                // Closed by a widget open: like Cancel (the sheet keeps its edits in a local draft).
-                let sheet = $showTimePicker
-                CircleCover.set("timeEdit.\(prayerObject.name)", open, close: { sheet.wrappedValue = false })
-            }
             .sheet(isPresented: $showTimePicker) {
                 PrayerTimeEditSheet(prayer: prayerObject, time: $selectedEditTimeDate, range: editTimeRange,
                                     onCancel: { showTimePicker = false },
@@ -2287,6 +2292,8 @@ struct PrayerButton: View {
                                         if let spot { viewModel.movePrayer(prayerObject, to: spot) }
                                         showTimePicker = false
                                     })
+                // Closed by a widget open: like Cancel (the sheet keeps its edits in a local draft).
+                .stageCover("timeEdit.\(prayerObject.name)")
             }
     }
 
@@ -2522,3 +2529,83 @@ struct WidgetUnmarkRequest: Identifiable {
     }
 }
 
+
+/// Something presented over the page (a sheet, a full-screen cover, a popover) registers on the stage while it's on
+/// screen: from its appearance until its dismissal has finished (onDisappear comes after it has slid away), with how to
+/// close it. So a widget / alarm / What's new open closes it and waits until it's really gone (`clearCovers`), and a
+/// moment waits for a clear circle (audit D, finding 10 — the waits were guesses: 0.55 s, 0.9 s, 0.25 s).
+struct StageCover: ViewModifier {
+    let key: String
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                let dismiss = dismiss
+                CircleCover.set(key, true, close: { dismiss() })
+            }
+            .onDisappear { CircleCover.set(key, false) }
+    }
+}
+
+extension View {
+    /// On the root of what's presented (see StageCover).
+    func stageCover(_ key: String) -> some View { modifier(StageCover(key: key)) }
+}
+
+extension SharedStateClass {
+    /// Goes to `page` and returns once the pager rests there (true) — or false: a swipe took it elsewhere, it didn't
+    /// arrive in time, or the task was cancelled. What waits for a page waits for this, not for a guessed time (audit D).
+    @MainActor @discardableResult
+    func navigate(to page: HorizontalPage, animated: Bool = true) async -> Bool {
+        go(to: page, animated: animated)
+        return await CircleStage.shared.until(deadline: 1.5) { CircleStage.shared.restingPage == page }
+    }
+
+    /// The page change now, in this turn (a caller that can't wait: the curtain's snapshot is next). `animated: false`
+    /// scrolls the pager at once too.
+    @MainActor func go(to page: HorizontalPage, animated: Bool = true) {
+        guard horizontalPage != page else { return }
+        quietPageChange = !animated
+        guard !animated else { horizontalPage = page; return }
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet) { horizontalPage = page }
+    }
+
+    /// The pager asks how to scroll to a changed page (once per change).
+    func takeQuietPageChange() -> Bool {
+        defer { quietPageChange = false }
+        return quietPageChange
+    }
+}
+
+/// UIKit's appearance callbacks for the page it sits in: did-appear once a pop back to it has finished, did-disappear once
+/// something pushed or presented full-screen over it has arrived. (SwiftUI's onAppear comes as a pop starts.)
+struct AppearanceProbe: UIViewControllerRepresentable {
+    var didAppear: () -> Void
+    var didDisappear: () -> Void
+
+    func makeUIViewController(context: Context) -> Probe { Probe() }
+    func updateUIViewController(_ probe: Probe, context: Context) {
+        probe.didAppear = didAppear
+        probe.didDisappear = didDisappear
+    }
+
+    final class Probe: UIViewController {
+        var didAppear: () -> Void = {}
+        var didDisappear: () -> Void = {}
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+            view.isHidden = true   // shown, even empty and clear, it turned the home indicator white on light pages
+        }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            didAppear()
+        }
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            didDisappear()
+        }
+    }
+}

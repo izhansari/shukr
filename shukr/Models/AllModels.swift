@@ -13,9 +13,6 @@ import WidgetKit
 import UserNotifications
 
 class SharedStateClass: ObservableObject {
-    enum bottomTabEnum {
-        case salah, zikr
-    }
     enum ViewPosition {
         case top
         case main
@@ -24,7 +21,6 @@ class SharedStateClass: ObservableObject {
         case right
     }
     @Published var selectedMode: Int = 1
-    @Published var bottomTabPosition: bottomTabEnum = .salah
     
     @Published var titleForSession: String = ""
     @Published var selectedMinutes: Int = 0
@@ -38,12 +34,13 @@ class SharedStateClass: ObservableObject {
     /// as it was left. (.left / .right / .top are legacy and no longer set.)
     @Published var navPosition: ViewPosition = .main
     @Published var cameFromNavPosition: ViewPosition = .main // legacy, unused
-    @Published var showSideMenu: Bool = false                  // legacy, unused (menu is a native Menu now)
 
     /// Which page of the horizontal pager is showing. Written by the pager when a swipe
     /// settles, and by anything that wants to navigate (bottom bar, widget deep link, menu).
     enum HorizontalPage: Hashable { case zikr, main, settings }
     @Published var horizontalPage: HorizontalPage = .main
+    /// The next `horizontalPage` change scrolls the pager at once (`go(to:animated: false)`); the pager resets it.
+    var quietPageChange = false
     
     /// The mantra object behind `titleForSession`, so a saved session can link to it.
     /// Nil when the title came from somewhere without a row (post-salah sequence); `saveSession`

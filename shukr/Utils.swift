@@ -3054,91 +3054,6 @@ struct TimeProgressViewWithSmoothColorTransition_Previews: PreviewProvider {
 
 // MARK: - Prayer Views
 
-struct sideMenu: View {
-    @EnvironmentObject var viewModel: PrayerViewModel
-    @EnvironmentObject var sharedState: SharedStateClass
-    @State private var showWIP: Bool = false
-
-    var viewState: SharedStateClass.ViewPosition
-    private var showBottom: Bool { sharedState.navPosition == .bottom }
-
-    var body: some View {
-        
-        ZStack(alignment: .topLeading) {
-            Color(UIColor.systemGray6).ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 20) {
-                Text("shukr")
-                    .font(.largeTitle)
-                    .fontWeight(.thin)
-                    .fontDesign(.rounded)
-//                        .foregroundColor(.white.opacity(0.8))
-
-                Divider()
-
-                // Sample menu items
-                VStack(alignment: .leading, spacing: 16){
-                    
-                    NavigationLink(destination: LocationMapContentView()) {
-                        Label("Map", systemImage: "map")
-                    }
-                    
-                    NavigationLink(destination: DailyAyahView()) {
-                        Label("Daily Ayah", systemImage: "book")
-                    }
-                    
-                    NavigationLink(destination: MantrasView()) {
-                        Label("Azkar", systemImage: "text.quote")
-                    }
-                    
-                    NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
-                        Label("Settings", systemImage: "gear")
-                    }
-                    
-                    Spacer()
-                    if showWIP{
-                        VStack(alignment: .leading, spacing: 16){
-                            NavigationLink(destination: SimpleDailyScoreView()) {
-                                Label("Salah History (V1)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                            }
-                            
-                            NavigationLink(destination: PrayerEditorView()) {
-                                Label("Salah History (V2)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                            }
-                            
-                            NavigationLink(destination: HistoryPageView()) {
-                                Label("Zikr History (V1)", systemImage: "clock")
-                            }
-                        }
-                        .padding(.leading)
-                    }
-
-                    Button(action: {
-                        withAnimation { showWIP.toggle()}
-                    }) {
-                        Label("Dev's WIP", systemImage: !showWIP ? "hammer" : "hammer.fill")
-                    }
-                    
-                }
-                .font(.system(size: 18))
-                .fontWeight(.light)
-                .fontDesign(.rounded)
-                .foregroundColor(.primary /*.gray.opacity(0.8)*/)
-
-                Spacer()
-            }
-            .padding(.horizontal, 20)
-        }
-        .onChange(of: sharedState.navPosition){_, new in
-            if new != .bottom {
-                sharedState.showSideMenu = false
-                showWIP = false
-            }
-        }
-    }
-
-}
-
-
 // MARK: - Streak label
 /// "♥ 12 Day Streak" in the top bar. A tap steps it to "✦ 4 In-Time Days" (all five prayed
 /// within their windows — no Qaza), then "Max 20 Days", then back; it returns to the streak on its own after 3 s.
@@ -3298,7 +3213,6 @@ private struct FloatingSymbols: View {
 }
 
 struct TopBar: View {
-    @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var sharedState: SharedStateClass
     @Environment(\.modelContext) private var context
@@ -3307,7 +3221,6 @@ struct TopBar: View {
     @AppStorage("maxPrayerStreak") var maxPrayerStreak: Int = 0
     @AppStorage("onTimeStreak") var onTimeStreak: Int = 0
 
-    @State private var showMaxStreakToggle: Bool = false
     /// Tapping the city swaps it for the streak for a few seconds (same slide + fade the streak
     /// label used before it was parked). A continued streak shows it too, with a celebration.
     @State private var showStreak = false
@@ -3319,7 +3232,7 @@ struct TopBar: View {
     @State private var onTimeCelebration = 0
     @State private var demoOnTime: Int?
 
-    var viewState: SharedStateClass.ViewPosition { sharedState.navPosition }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The day's done: the circle shows the day's score (MainCircleView's summary condition),
     /// and the top bar shows the streak for good instead of the city.
@@ -3331,113 +3244,16 @@ struct TopBar: View {
 
     private func revealStreak(for seconds: Double) {
         hideStreakWork?.cancel()
-        withAnimation(.spring) { showStreak = true }
-        let work = DispatchWorkItem { withAnimation(.spring) { showStreak = false } }
+        withAnimation(CircleMotion.label) { showStreak = true }
+        let work = DispatchWorkItem { withAnimation(CircleMotion.label) { showStreak = false } }
         hideStreakWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
     }
 
-    private var showZikr: Bool {
-        sharedState.bottomTabPosition == .zikr
-    }
-    private var showMain: Bool {
-        sharedState.navPosition == .main
-    }
-    private var showSalahList: Bool {
-        sharedState.bottomTabPosition == .salah/* && sharedState.navPosition == .bottom*/
-    }
-    
-    static var descriptor: FetchDescriptor<SessionDataModel> {
-        let calendar = Calendar.current
-        let today = PrayerDay.sessionDayStart()   // the prayer day, rollover included
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today)!
-        
-        let predicate = #Predicate<SessionDataModel> { session in
-            session.startTime >= today && session.startTime < tomorrow
-        }
-        
-        let descriptor = FetchDescriptor<SessionDataModel>(
-            predicate: predicate,
-            sortBy: [SortDescriptor(\.startTime, order: .reverse)]
-        )
-        return descriptor
-    }
-
-    @Query(descriptor) var todaySessions: [SessionDataModel]
-    
-    @State private var dailyStatBool: Bool = true
-//    @Binding var dateToCheck: Date
-    private var dailyStats: (Count: Int, Time: TimeInterval) { //not sure if this works with modelContainer / persistent data yet...
-        var runningCount = 0
-        var runningTime = 0.0
-
-        for session in todaySessions {
-            runningCount += session.totalCount
-            runningTime += session.secondsPassed
-        }
-        return (runningCount, runningTime)
-    }
-    
-    private var tasbeehModeName: String {
-        switch sharedState.selectedMode{
-        case 0: return "Freestyle"
-        case 1: return "Time Goal"
-        case 2: return "Count Goal"
-        default: return "Error on page name switch"
-        }
-    }
-
-    
     var body: some View {
         ZStack(alignment: .top){
             VStack{
                 if let cityName = viewModel.cityName {
-                    /*
-                     ZStack{
-                        // location label
-                        HStack{
-                            Image(systemName: "location.fill")
-                                .foregroundColor(.secondary)
-                            Text(cityName)
-                        }
-                        .opacity(showMain ? 1 : 0)
-                        .offset(y: showZikr || showMain ? 0 : -10) // move up
-                        .offset(y: showSalahList || showMain ? 0 : 10) // move left
-
-                        ZStack{
-                            // streak label //prayerstreak_flag
-                            HStack(alignment: .center) {
-                                Image(systemName: "heart.fill")
-                                    .foregroundColor(.secondary)
-                                ExternalToggleText(
-                                    originalText: "\(prayerStreak) Day Streak",
-                                    toggledText: "Max \(maxPrayerStreak) Days",
-                                    externalTrigger: $showMaxStreakToggle,  // Pass the binding
-                                    font: .caption,  // this doesnt take on the parent group's font modifiers. so we define again inside
-                                    fontDesign: .rounded,
-                                    fontWeight: .thin,
-                                    hapticFeedback: true
-                                )
-                            }
-                            .opacity(showSalahList  ? 1 : 0)
-//                            .offset(y: showSalahList  ? 0 : 10) // move down
-                            .offset(x: showSalahList || showMain ? 0 : -10) // move left
-                            // tasbeeh label
-                            HStack{
-                                Image(systemName: "circle.hexagonpath")
-                                    .foregroundColor(.secondary)
-                                Text("Tasbeeh")
-    //                            Text("\(tasbeehModeName)")
-                                
-                            }
-                            .opacity(showZikr ? 1 : 0)
-                            .offset(x: showZikr ? 0 : 10) // move right
-                        }
-                        .opacity(sharedState.navPosition == .bottom  ? 1 : 0)
-                        .offset(y: sharedState.navPosition == .bottom  ? 0 : 10) // move down
-
-                    }
-                     */
                     ZStack{
                         // location label — tap for the streak
                         HStack{
@@ -3450,10 +3266,9 @@ struct TopBar: View {
                             triggerSomeVibration(type: .light)
                             revealStreak(for: 5)
                         }
-                        .opacity(showSalahList && !streakShowing ? 1 : 0)
-                        .offset(x: showSalahList || showMain ? 0 : -10) // move left
-                        .offset(y: streakShowing ? -10 : 0)             // up and out for the streak
-                        .allowsHitTesting(showSalahList && !streakShowing)
+                        .opacity(streakShowing ? 0 : 1)
+                        .offset(y: streakShowing && !reduceMotion ? -10 : 0)   // up and out for the streak (Reduce Motion: a fade)
+                        .allowsHitTesting(!streakShowing)
 
                         // streak label //prayerstreak_flag
                         StreakLabel(streak: demoStreak ?? max(prayerStreak, 0), maxStreak: max(maxPrayerStreak, demoStreak ?? 0),
@@ -3461,42 +3276,32 @@ struct TopBar: View {
                                     celebration: streakCelebration, onTimeCelebration: onTimeCelebration) {
                             revealStreak(for: 5)   // a tap on it keeps it up a little longer
                         }
-                        .opacity(showSalahList && streakShowing ? 1 : 0)
-                        .offset(y: streakShowing ? 0 : 10)              // in from below
-                        .allowsHitTesting(showSalahList && streakShowing)
-                        
-                        HStack{
-                            Image(systemName: dailyStatBool ? "circle.hexagonpath" : "clock")
-                                .foregroundColor(.secondary)
-                            Text("Tasbeeh")
-//                            Text(dailyStatBool ? dailyStats.Count != 0 ? "\(dailyStats.Count)" : "0 Zikr Today" : "\(timerStyle(dailyStats.Time/60))")
-                        }
-                        .opacity(showZikr ? 1 : 0)
-                        .offset(x: showZikr ? 0 : 10) // move right
-                        .onTapGesture {
-                            dailyStatBool.toggle()
-                        }
+                        .opacity(streakShowing ? 1 : 0)
+                        .offset(y: streakShowing || reduceMotion ? 0 : 10)     // in from below
+                        .allowsHitTesting(streakShowing)
 
                     }
                     .padding()
                     .frame(height: 24, alignment: .center)
-                    .animation(.spring, value: viewState)
-                    .animation(.spring, value: dayIsDone)
+                    .animation(CircleMotion.label, value: dayIsDone)
                     .onReceive(NotificationCenter.default.publisher(for: .prayerStreakContinued)) { note in
                         demoStreak = note.object as? Int
                         streakCelebration += 1
                         revealStreak(for: 5)
-                        if demoStreak != nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { demoStreak = nil }
-                        }
                     }
                     .onReceive(NotificationCenter.default.publisher(for: .onTimeStreakContinued)) { note in
                         demoOnTime = note.object as? Int
                         onTimeCelebration += 1
                         revealStreak(for: 8)   // long enough for both beats
-                        if demoOnTime != nil {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 8) { demoOnTime = nil }
-                        }
+                    }
+                    // A fake streak (DEBUG's celebration) goes after 8 s; a newer one restarts the wait (it was an
+                    // un-cancelled timer: audit D, finding 14).
+                    .task(id: [streakCelebration, onTimeCelebration]) {
+                        guard demoStreak != nil || demoOnTime != nil else { return }
+                        try? await Task.sleep(for: .seconds(8))
+                        guard !Task.isCancelled else { return }
+                        demoStreak = nil
+                        demoOnTime = nil
                     }
                     #if DEBUG
                     .task {
@@ -3520,312 +3325,8 @@ struct TopBar: View {
             .fontDesign(.rounded)
             .fontWeight(.thin)
             .padding()
-            
-//            topButtons(viewState: viewState)
-            
-//            HStack{
-//                    Button(action: {
-//                        withAnimation { sharedState.showSideMenu.toggle()}
-//                    }) {
-//                        Image(systemName: "line.3.horizontal")
-//                            .background(.white.opacity(0.01))
-////                            .padding()
-//                            .frame(width: 24, height: 24)
-//                            .font(.system(size: 20))
-//                            .fontWeight(.light)
-//                            .fontDesign(.rounded)
-//                            .foregroundColor(.gray.opacity(0.8))
-//                            .padding()
-//                    }
-//                Spacer()
-//            }
-//            
-//            HStack{
-//                sideMenu(viewState: viewState)
-//                    .frame(width: 200)
-//                    .offset(x: sharedState.showSideMenu ? 0 : -220)
-//                    .animation(.spring, value: sharedState.showSideMenu)
-//                Spacer()
-//            }
-        }
-    }
-    
-//    struct sideMenu: View {
-//        @EnvironmentObject var viewModel: PrayerViewModel
-//        @EnvironmentObject var sharedState: SharedStateClass
-//        @State private var showWIP: Bool = false
-//
-//        var viewState: SharedStateClass.ViewPosition
-//        private var showBottom: Bool { sharedState.navPosition == .bottom }
-//
-//        var body: some View {
-//            
-//            ZStack(alignment: .topLeading) {
-//                Color(UIColor.systemGray6).ignoresSafeArea()
-//                VStack(alignment: .leading, spacing: 20) {
-//                    Text("shukr")
-//                        .font(.largeTitle)
-//                        .fontWeight(.thin)
-//                        .fontDesign(.rounded)
-////                        .foregroundColor(.white.opacity(0.8))
-//
-//                    Divider()
-//
-//                    // Sample menu items
-//                    VStack(alignment: .leading, spacing: 16){
-//                        
-//                        NavigationLink(destination: LocationMapContentView().onDisappear{ sharedState.allowQiblaHaptics = true }) {
-//                            Label("Map", systemImage: "map")
-//                        }
-//                        
-//                        NavigationLink(destination: DailyAyahView()) {
-//                            Label("Daily Ayah", systemImage: "book")
-//                        }
-//
-//                        
-//                        NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
-//                            Label("Settings", systemImage: "gear")
-//                        }
-//                        
-//                        Spacer()
-//                        if showWIP{
-//                            VStack(alignment: .leading, spacing: 16){
-//                                NavigationLink(destination: SimpleDailyScoreView()) {
-//                                    Label("Salah History (V1)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-//                                }
-//                                
-//                                NavigationLink(destination: PrayerEditorView()) {
-//                                    Label("Salah History (V2)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-//                                }
-//                                
-//                                NavigationLink(destination: HistoryPageView()) {
-//                                    Label("Zikr History (V1)", systemImage: "clock")
-//                                }
-//                            }
-//                            .padding(.leading)
-//                        }
-//
-//                        Button(action: {
-//                            withAnimation { showWIP.toggle()}
-//                        }) {
-//                            if !showWIP {
-//                                Label("Dev's WIP", systemImage: "hammer")
-//                            } else {
-//                                Label("Hide Dev's WIP", systemImage: "hammer.fill")
-//                            }
-//                        }
-//                        
-//                    }
-//                    .font(.system(size: 18))
-//                    .fontWeight(.light)
-//                    .fontDesign(.rounded)
-//                    .foregroundColor(.primary /*.gray.opacity(0.8)*/)
-//
-//                    Spacer()
-//                }
-//                .padding(.horizontal, 20)
-//    //            .padding(.top, 20)
-//            }
-//            
-////            HStack{
-////                
-////                VStack(alignment: .leading, spacing: 14){
-////                    
-////                    if sharedState.showSideMenu{
-////                        
-////                        NavigationLink(destination: DailyAyahView()) {
-////                            Label("Random Ayah", systemImage: "book")
-////                        }
-////                        
-////                        NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
-////                            Label("Settings", systemImage: "gear")
-////                        }
-////                        
-////                        Button(action: {
-////                            withAnimation { showWIP.toggle()}
-////                        }) {
-////                            if !showWIP {
-////                                Label("See WIP", systemImage: "hammer")
-////                            } else {
-////                                Label("Hide WIP", systemImage: "hammer.fill")
-////                            }
-////                        }
-////                        if showWIP{
-////                            VStack(alignment: .leading, spacing: 14){
-////                                NavigationLink(destination: SimpleDailyScoreView()) {
-////                                    Label("Salah History (V1)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-////                                }
-////                                
-////                                NavigationLink(destination: PrayerEditorView()) {
-////                                    Label("Salah History (V2)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-////                                }
-////                                
-////                                NavigationLink(destination: HistoryPageView()) {
-////                                    Label("Zikr History (V1)", systemImage: "clock")
-////                                }
-////                            }
-////                            .padding(.leading)
-////                        }
-////
-////                        
-////                    }
-////                    
-////                }
-////                .font(.system(size: 20))
-////                .fontWeight(.light)
-////                .fontDesign(.rounded)
-////                .foregroundColor(sharedState.showSideMenu ? .white.opacity(0.8) : .gray.opacity(0.8))
-////                
-////                Spacer()
-////            }
-////            .padding()
-////            .opacity(showBottom || sharedState.showSideMenu ? 1 : 0)
-//            .onChange(of: sharedState.navPosition){_, new in
-//                if new != .bottom {
-//                    sharedState.showSideMenu = false
-//                    showWIP = false
-//                }
-//            }
-//        }
-//
-//    }
-
-    
-    struct topButtons: View {
-        @EnvironmentObject var viewModel: PrayerViewModel
-        @EnvironmentObject var sharedState: SharedStateClass
-//        @State private var expandButtons: Bool = false
-        @State private var showWIP: Bool = false
-
-        var viewState: SharedStateClass.ViewPosition
-        private var showBottom: Bool { sharedState.navPosition == .bottom }
-        private var showTop: Bool { sharedState.navPosition == .top }
-        var rightDynamicDestination: AnyView { showBottom ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
-        var rightDynamicSFSymbol: String { showBottom ? "gear" : "clock" }
-//        var leftDynamicDestination: AnyView { showBottom ? AnyView(SettingsView().environmentObject(viewModel)) : AnyView(HistoryPageView()) }
-//        var leftDynamicSFSymbol: String { showBottom ? "book" : "clock" }
-
-        
-  /*
-        var body: some View {
-            HStack{
-                    
-                Button(action: {
-//                    sharedState.showSideMenu.toggle()
-                    expandButtons.toggle()
-                }) {
-                    Image(systemName: "line.3.horizontal")
-                        .font(.system(size: 24))
-                        .foregroundColor(.gray)
-                        .opacity(showBottom ? 0.7 : 0)
-                }
-                
-                NavigationLink(destination: DailyAyahView()) {
-                    Image(systemName: "book")
-                        .font(.system(size: 24))
-                        .foregroundColor(.gray)
-//                            .padding()
-                }
-                .opacity(showBottom/* || showTop*/ ? 0.7 : 0)
-                
-                    Spacer()
-
-                NavigationLink(destination: SimpleDailyScoreView()) {
-                    Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                        .font(.system(size: 24))
-                        .foregroundColor(.gray)
-//                            .padding()
-                }
-                .opacity(showBottom && sharedState.bottomTabPosition == .salah/* || showTop*/ ? 0.7 : 0)
-
-                    
-                    NavigationLink(destination: rightDynamicDestination) {
-                        Image(systemName: rightDynamicSFSymbol)
-                            .font(.system(size: 24))
-                            .foregroundColor(.gray)
-//                            .padding()
-                    }
-                    .opacity(showBottom/* || showTop*/ ? 0.7 : 0)
-                }
-            .padding()
 
         }
-*/
-        var body: some View {
-            HStack{
-                
-                VStack(alignment: .leading, spacing: 14){
-                    
-                    
-                    Button(action: {
-                        withAnimation { sharedState.showSideMenu.toggle()}
-                    }) {
-                        Image(systemName: !sharedState.showSideMenu ? "chevron.up" : "line.3.horizontal")
-                            .background(.white.opacity(0.01))
-                            .frame(width: 20, height: 20)
-                    }
-                    
-                    if sharedState.showSideMenu{
-                        
-                        NavigationLink(destination: DailyAyahView()) {
-                            Label("Random Ayah", systemImage: "book")
-                        }
-//                        NavigationLink(destination: rightDynamicDestination) {
-//                            Image(systemName: rightDynamicSFSymbol)
-//                        }
-                        
-                        NavigationLink(destination: SettingsView().environmentObject(viewModel)) {
-                            Label("Settings", systemImage: "gear")
-                        }
-                        
-                        Button(action: {
-                            withAnimation { showWIP.toggle()}
-                        }) {
-                            if !showWIP {
-                                Label("See WIP", systemImage: "hammer")
-                            } else {
-                                Label("Hide WIP", systemImage: "hammer.fill")
-                            }
-                        }
-                        if showWIP{
-                            VStack(alignment: .leading, spacing: 14){
-                                NavigationLink(destination: SimpleDailyScoreView()) {
-                                    Label("Salah History (V1)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                                }
-                                
-                                NavigationLink(destination: PrayerEditorView()) {
-                                    Label("Salah History (V2)", systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                                }
-                                
-                                NavigationLink(destination: HistoryPageView()) {
-                                    Label("Zikr History (V1)", systemImage: "clock")
-                                }
-                            }
-                            .padding(.leading)
-                        }
-
-                        
-                    }
-                    
-                }
-                .font(.system(size: 20))
-                .fontWeight(.light)
-                .fontDesign(.rounded)
-                .foregroundColor(sharedState.showSideMenu ? .white.opacity(0.8) : .gray.opacity(0.8))
-                
-                Spacer()
-            }
-            .padding()
-            .opacity(showBottom || sharedState.showSideMenu ? 1 : 0)
-            .onChange(of: sharedState.navPosition){_, new in
-                if new != .bottom {
-//                    expandButtons = false
-                    sharedState.showSideMenu = false
-                    showWIP = false
-                }
-            }
-        }
-
     }
 
 }

@@ -496,7 +496,7 @@ struct SettingsView: View {
             #endif
         }
         .sheet(isPresented: $showRingPlayground) { RingPlaygroundView() }
-        .sheet(isPresented: $showWhatsNew) { WhatsNewView() }
+        .sheet(isPresented: $showWhatsNew) { WhatsNewView().stageCover("whatsNew") }
         #if DEBUG
         .task {
             if ProcessInfo.processInfo.arguments.contains("-demoRingPlayground") {
