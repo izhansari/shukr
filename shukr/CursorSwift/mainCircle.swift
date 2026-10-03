@@ -117,17 +117,13 @@ struct MainCircleView: View {
     @Binding var showTasbeehPage: Bool
     let animationStyle: Animation = .spring
     
-//    private var prayer: PrayerModel? { viewModel.relevantPrayer }
-//    @State private var prayer: PrayerModel?
-
-    
     var body: some View {
         ZStack {
             // The soft ring's raised band, under everything and always there — for a prayer still to come too, with
             // the dashes drawn in it (owner, 2026-10-02: "make the future ring also soft… dashed ring inside the
             // track"). It stays through the completion flourish (which hides the content above) and for the day's
             // score (SalahLook.swift).
-            if softRing && sharedState.bottomTabPosition != .zikr {
+            if softRing {
                 NeuRingTrack()
                     .opacity(openingHides ? 0 : 1)
                     // ▶︎ Opening over the page as it is: the track fades out first (a launch has nothing to fade).
@@ -147,31 +143,7 @@ struct MainCircleView: View {
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
             Group {
-                //Inner Content
-                if sharedState.bottomTabPosition == .zikr {
-    //                Text("Zikr")
-                    VStack{
-                        HStack(alignment: .center){
-                            Image(systemName: "circle.hexagonpath")
-                            Text("Zikr")
-                                .fontWeight(.bold)
-                        }
-                        .font(.title)
-                        Text("click to freestyle")
-                            .font(.callout)
-                            .foregroundColor(.secondary)
-                            .fontDesign(.rounded)
-                            .fontWeight(.light)
-                    }
-                    Circle()
-                        .stroke(Color.green, lineWidth: 2) // Green outline
-                        .frame(width: 200, height: 200)
-                        .shadow(color: Color.green.opacity(0.5), radius: 5)
-                        .shadow(color: Color.green.opacity(0.3), radius: 10)
-                        .shadow(color: Color.green.opacity(0.2), radius: 15)
-                        .background(Color.clear) // Ensures the inside remains transparent
-                }
-                else if let lost = lostShown {
+                if let lost = lostShown {
                     // Location lost (step 3b): the crossed-out symbol in the ring; its words round it (LostWords).
                     LostFace(stage: lost)
                         .transition(.opacity)
@@ -239,7 +211,6 @@ struct MainCircleView: View {
                             .shadow(color: softRing ? progressColor.opacity(AliveRingTuning.fine.glow) : .clear, radius: 6)
                             .opacity(perfectNow ? 0 : 1)
                             .animation(animationStyle, value: currentTime/*progress*/)
-                            .animation(animationStyle, value: prayer.name)
                     
                         // Inner content
                         ZStack{
@@ -262,8 +233,6 @@ struct MainCircleView: View {
                                     NextTag(shown: upcoming && showNextLabel)
                                         .animation(.easeInOut(duration: 0.5), value: upcoming)
                                 }
-                                .animation(animationStyle, value: prayer.name)
-                               // Going back to the old way (want h and m with no comma. Better cleaner transition):
                                 if status == .current{
                                     ExternalToggleText(
                                         originalText: "ends \(shortTimePM(prayer.endTime))",
@@ -294,15 +263,6 @@ struct MainCircleView: View {
                                         .fontWeight(.thin)
                                         .foregroundStyle(.secondary)
                                 }
-                            
-                            
-    //                            timeText
-    ////                                .foregroundColor(.primary.opacity(0.7))
-    //                                .fontDesign(.rounded)
-    //                                .fontWeight(.thin)
-    //                                .foregroundStyle(.secondary)
-    //                                .multilineTextAlignment(.center)
-    ////                                .animation(animationStyle, value: ogText)
                             }
                         }
                     }
@@ -357,6 +317,9 @@ struct MainCircleView: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
+                            // Not while a mark's flourish is up: the circle shows the prayer just marked, but this acts
+                            // on the next one (audit A).
+                            guard momentKind != .marking, flourish == nil else { return }
                             if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 // The post-salah pill follows the flourish (.prayerCompleted).
@@ -367,7 +330,7 @@ struct MainCircleView: View {
             
             
 
-            if sharedState.bottomTabPosition != .zikr && morningShown == nil && lostShown == nil && !openingHides {
+            if morningShown == nil && lostShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: { showQiblaMap = true })
@@ -450,9 +413,7 @@ struct MainCircleView: View {
         .onChange(of: circleStateKey) { old, new in
             guard old.hasSuffix("|next"), new.hasSuffix("|now"),
                   old.dropLast(5) == new.dropLast(4),                // same prayer, next → now
-                  scenePhase == .active, (Uptime.now - appearedAt) > 2,
-                  sharedState.horizontalPage == .main, WelcomeTarget.canLand,
-                  momentKind == nil, flourish == nil else { return }
+                  canPlay, momentKind == nil, flourish == nil else { return }
             playStartMoment()
             print("🌅 prayer begins moment played (\(new))")
         }
@@ -463,7 +424,10 @@ struct MainCircleView: View {
             playBeginsPreview()
         }
         .onChange(of: trackWantsSolid) { _, solid in settleTrack(solid) }
-        .onChange(of: scenePhase) { _, phase in
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            CircleStage.shared.sceneActive = phase == .active
+            // Away mid-moment: it snaps to its end (its sleeps would otherwise fire back to back on return — audit A).
+            if phase == .background { snapMoment() }
             if phase == .active {
                 currentTime = Date(); appearedAt = Uptime.now
                 // What changed while away is shown as it is, not played (the moment's cause was long ago).
@@ -516,20 +480,15 @@ struct MainCircleView: View {
         }
     }
 
-    /// The circle can be seen (the Salah page, nothing over it, app active, settled) — only then
-    /// does the track animate; otherwise it just is what it should be.
-    private var circleOnScreen: Bool {
-        scenePhase == .active && sharedState.horizontalPage == .main && WelcomeTarget.canLand
-            && CircleCover.nothingOverCircle && (Uptime.now - appearedAt) > 0.6
-    }
-
-    /// A moment may play: the circle is seen and settled — the app active, the Salah page with the pager still,
-    /// nothing over it, no welcome playing, at least 0.6 s since it appeared. The list being open doesn't matter
-    /// (marks are made from it).
+    /// The one gate (circle rule 5): the circle can be seen and is settled — the app active, the Salah page with the
+    /// pager still, nothing over it, no welcome landing or playing, a moment since it appeared. Every moment, the
+    /// track's own animation, the qibla buzz and the real "prayer begins" ask this — they were five checks that had
+    /// drifted (audit A). The list being open doesn't matter (marks are made from it).
     private var canPlay: Bool {
-        UIApplication.shared.applicationState == .active && sharedState.horizontalPage == .main
+        CircleStage.shared.sceneActive && sharedState.horizontalPage == .main
             && !(live?.pagerPhase.isScrolling ?? false) && CircleCover.nothingOverCircle
-            && WelcomeTarget.canLand && !WelcomeTarget.playing && (Uptime.now - appearedAt) > 0.6
+            && WelcomeTarget.canLand && !WelcomeTarget.playing
+            && (Uptime.now - appearedAt) > CircleMomentTiming.settleAfterAppear
     }
 
     private func quietly(_ change: () -> Void) {
@@ -561,6 +520,16 @@ struct MainCircleView: View {
             momentTask = nil
             faceChanged()
         }
+    }
+
+    /// The running moment, cancelled and snapped to its end at once.
+    private func snapMoment() {
+        guard let task = momentTask else { return }
+        task.cancel()
+        if let settle = momentSettle { quietly(settle) }
+        momentKind = nil
+        momentSettle = nil
+        momentTask = nil
     }
 
     /// The face from the data differs from the one shown: the words go out, the face (and with it the ring) changes,
@@ -663,7 +632,7 @@ struct MainCircleView: View {
         let target: CGFloat = solid ? 1 : 0
         WelcomeTarget.trackDashed = !solid
         guard trackSolid != target else { return }
-        if circleOnScreen && preview != .upcoming {
+        if canPlay && preview != .upcoming {
             // Expand like the welcome's ring into the track; shrink a touch quicker. Right after a
             // completion the shrink waits until the green sweep has faded, or it happens hidden
             // under it.
@@ -696,13 +665,12 @@ struct MainCircleView: View {
     /// every page mounted and sheets don't fire onDisappear, so the old on/off flag stayed on
     /// (it buzzed on the Zikr page, in sheets, History…). 2026-09-27 quick fix.
     private func checkToTriggerQiblaHaptic(aligned: Bool){
-        guard aligned, circleOnScreen, !showQiblaMap else { return }
+        guard aligned, canPlay, !showQiblaMap else { return }
         triggerSomeVibration(type: .heavy)
     }
     
     private func handleTap() {
         guard morningShown == nil, lostShown == nil else { return }
-        if sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .zikr { startFreestyleTasbeehSession() }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an
         // ExternalToggleText that buzzes by itself (this used to buzz a second time).
@@ -712,7 +680,7 @@ struct MainCircleView: View {
             flipsOwnText = true
         } else {
             // Summary circle: the next-Fajr side flips; the score side (salah sheet open) doesn't.
-            guard !(sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah) else { return }
+            guard !(sharedState.navPosition == .bottom) else { return }
             flipsOwnText = false
         }
         if flipsOwnText {
@@ -725,14 +693,6 @@ struct MainCircleView: View {
         guard !ogText else {return}
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: false) { _ in
             withAnimation{ ogText = true }
-        }
-        
-        func startFreestyleTasbeehSession(){
-            sharedState.targetCount = ""
-            sharedState.titleForSession = ""
-            sharedState.selectedMinutes = 0
-            sharedState.selectedMode = 0
-            showTasbeehPage = true
         }
     }
     
@@ -765,26 +725,7 @@ struct summaryCircle: View{
     }
     /// The swap's one task (the circle system's rule: one runner per moment; a newer toggle cancels it).
     @State private var swapTask: Task<Void, Never>?
-    private var wantsScore: Bool { sharedState.navPosition == .bottom && sharedState.bottomTabPosition == .salah }
-//    @State private var summaryInfo: [String : Double?] = [:]
-//    @State private var todaysScore : Double = 0.0
-    
- 
-//    private func getTheSummaryInfo(){
-//        todaysScore = 0
-//        for name in viewModel.orderedPrayerNames {
-//            if let prayer = viewModel.todaysPrayers.first(where: { $0.name == name }){
-//                //let thisWeightedScore = prayer.weightedSummaryScoreFromEnglishScore()
-//                let thisWeightedScore = prayer.weightedSummaryScoreFromNumberScore()
-////                summaryInfo[name] = thisWeightedScore
-//                todaysScore += thisWeightedScore
-//                print("\(prayer.isCompleted ? "☑" : "☐") \(prayer.name) with score: \(thisWeightedScore)")
-//            }
-//        }
-//        
-//        todaysScore = todaysScore / 5
-//        
-//    }
+    private var wantsScore: Bool { sharedState.navPosition == .bottom }
     /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
     private func storedScore(daysBack: Int) -> Double {
         let day = Calendar.current.date(byAdding: .day, value: -daysBack, to: PrayerDay.date()) ?? PrayerDay.date()
@@ -901,7 +842,6 @@ struct summaryCircle: View{
             // Pinned to the side it shows now (unchanged, so nothing animates): a later sheet change then swaps from it.
             if shownSide == nil { shownSide = wantsScore ? .score : .fajr }
             getTheNextFajrTime()
-//            getTheSummaryInfo()
         }
     }
     
@@ -919,104 +859,6 @@ struct summaryCircle: View{
 
 
 
-/*
- class DisplayLink: ObservableObject { // updates every frame... very resource intensive... 60-120HZ
-     private var displayLink: CADisplayLink?
-     private var callback: ((Date) -> Void)?
-     
-     func start(callback: @escaping (Date) -> Void) {
-         self.callback = callback
-         displayLink = CADisplayLink(target: self, selector: #selector(update))
-         displayLink?.add(to: .main, forMode: .common)
-     }
-     
-     func stop() {
-         displayLink?.invalidate()
-         displayLink = nil
-     }
-     
-     @objc private func update(displayLink: CADisplayLink) {
-         callback?(Date())
-     }
- }
- 
- @StateObject private var displayLink = DisplayLink() // Replace Timer.publish with DisplayLink
- @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
-
- @State private var showTimeUntilText: Bool = true
- @State private var showEndTime: Bool = true  // Add this line
- @State private var isAnimating = false
- private let timeUpdateTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-
- private var progressZone: Int {
-     if progress > 0.5 { return 3 }      // Green zone
-     else if progress > 0.25 { return 2 } // Yellow zone
-     else if progress > 0 { return 1 }    // Red zone
-     else { return 0 }                    // No zone (upcoming)
- }
- 
- private var pulseRate: Double {
-     if progress > 0.5 { return 3 }
-     else if progress > 0.25 { return 2 }
-     else { return 1 }
- }
- 
-private var showingPulseView: Bool{
-    sharedState.showingPulseView
-}
-
-private func startPulseAnimation() {
-//        if isPraying {return}
-    // First, clean up existing timer
-    timer?.invalidate()
-    timer = nil
-    
-    // Only start animation for current prayer
-    if isCurrentPrayer {
-        
-        // Create new timer
-        timer = Timer.scheduledTimer(withTimeInterval: pulseRate, repeats: true) { _ in
-            triggerPulse()
-//                if !sharedState.showingOtherPages { triggerPulse() }
-        }
-    }
-}
-
-private func triggerPulse() {
-    isAnimating = false
-    if sharedState.showingPulseView && (sharedState.navPosition == .bottom || sharedState.navPosition == .main) /*sharedState.showSalahTab*/{
-        triggerSomeVibration(type: .medium)
-    }
-    print("triggerPulse: showing pulseView \(sharedState.showingPulseView) (still calling it)")
-
-    withAnimation(.easeOut(duration: pulseRate)) {
-        isAnimating = true
-    }
-}
- 
- private var timeLeftString: String {
-     let timeLeft = prayer.endTime.timeIntervalSince(currentTime)
-     return formatTimeInterval(timeLeft) + " left"
- }
- 
- private var timeUntilStartString: String {
-     let timeUntilStart = prayer.startTime.timeIntervalSince(currentTime)
-//        return "in " + formatTimeInterval(timeUntilStart)
-//        return inMinSecStyle(from: timeUntilStart)
-     return inMinSecStyle2(from: timeUntilStart)
- }
- 
- private var isMissedPrayer: Bool {
-     currentTime >= prayer.endTime && !prayer.isCompleted
- }
-
- private func formatTime(_ date: Date) -> String {
-     let formatter = DateFormatter()
-     formatter.dateFormat = "HH:mm:ss.SSS"
-     return formatter.string(from: date)
- }
-*/
 
 /// The qibla arrow on the Salah circle and the dot it lights when you face the qibla. Its own view
 /// so only it redraws with the compass (up to ~30 times a second) — the whole circle used to, which

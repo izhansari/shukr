@@ -46,6 +46,10 @@ enum CircleFace: Equatable {
     // MARK: The one stage (the transitions cleanup, step 1): what's on screen, observable, so a moment waits for it
     // instead of polling (circle rule 5). Moved here a piece at a time from the statics that held it.
 
+    /// The app is in the foreground (MainCircleView keeps it from its scene phase). A moment's runner holds a copy of
+    /// the view, whose `scenePhase` goes stale; this doesn't (audit A).
+    var sceneActive = true
+
     /// What's presented over the page, by name ("menu", "whatsNew", "tasbeeh", "morningCard"…). `CircleCover` writes
     /// it; anything that must wait for a clear screen reads it.
     private(set) var covers = Set<String>()

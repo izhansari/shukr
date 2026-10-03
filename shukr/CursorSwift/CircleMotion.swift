@@ -109,6 +109,9 @@ enum CircleMomentTiming {
     /// How long a moment waits for the words to be gone before it changes the face: the fade starts a frame or two
     /// after it's asked for, and swapping at exactly `out` cut it at ~60 % (the morning's count popped off).
     static let outDone: Double = out + 0.08
+    /// The circle plays nothing for this long after it appears (a launch, coming back to the app): what changed while
+    /// it was away is shown as it is.
+    static let settleAfterAppear: Double = 0.6
 }
 
 /// How prayer rows come and go in the list (a done one folding away, "N done" opening and closing). Tried
