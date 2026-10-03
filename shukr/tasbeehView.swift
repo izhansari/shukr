@@ -1740,6 +1740,8 @@ struct tasbeehView: View {
         @State private var wellRoom: CGFloat = 148
         @State private var bottomInset: CGFloat = 0
         @State private var showingFinishTime = false
+        /// The rate tile's side: per count, or per tasbeeh (a tap flips it).
+        @State private var showingPerTasbeeh = false
         @State private var finishArmed = false
         @State private var finishArmToken = 0
         @State private var showMantraPicker = false
@@ -1912,6 +1914,10 @@ struct tasbeehView: View {
                             .layoutPriority(1)
                     }
                     .padding(.top, 12)
+                    // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
+                    // a near-miss on ▶︎ resumed the session (owner).
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
                     softBottom
@@ -2098,6 +2104,7 @@ struct tasbeehView: View {
         /// The finished session's values once it's saved, else the running session's.
         private var shownSeconds: TimeInterval { results?.session.secondsPassed ?? secsToReport }
         private var shownPerCount: Double { results?.session.avgTimePerClick ?? newAvrgTPC }
+        private var shownPerTasbeeh: String { results?.session.tasbeehRate ?? tasbeehRate }
         private var shownUsualPace: Double? {
             if let s = results?.session { return s.mantra?.secondsPerCount(excluding: s) }
             return mantra?.secondsPerCount
@@ -2105,7 +2112,7 @@ struct tasbeehView: View {
 
         /// The third tile while paused: what's left (a count goal: time left ⇄ the finish time; a time goal: time left
         /// ⇄ when it ends), else the pace per tasbeeh (freestyle, Tasbih Fatimah, past the goal).
-        private enum ThirdTile { case left(TimeInterval, Date), toGo(Int), perTasbeeh }
+        private enum ThirdTile { case left(TimeInterval, Date), toGo(Int), counted }
         private var thirdTile: ThirdTile {
             if !sharedState.isDoingPostNamazZikr && !goalReached {
                 if sharedState.selectedMode == 2 && remainingCount > 0 {
@@ -2116,29 +2123,33 @@ struct tasbeehView: View {
                     if left > 0 { return .left(left, Date().addingTimeInterval(left)) }
                 }
             }
-            return .perTasbeeh
+            return .counted
         }
 
         private var softBottom: some View {
             let finished = results != nil
             let pace = ZikrBento.paceComparison(secondsPerCount: shownPerCount, usual: shownUsualPace, perCount: true)
+            let pacePerTasbeeh = ZikrBento.paceComparison(secondsPerCount: shownPerCount, usual: shownUsualPace, perCount: false)
             return VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     softTile("time") { softValue(timerStyle(shownSeconds)) }
                     // The rate tile says how it compares with your usual pace inside it (owner: "the comparison text …
-                    // to be in the rate tile").
-                    softTile("per count") {
-                        softValue(String(format: "%.2fs", shownPerCount))
-                        if let pace {
-                            Text(pace.text)
-                                .font(.system(size: 11, weight: pace.faster == true ? .medium : .regular, design: .rounded))
-                                .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .padding(.horizontal, 6)
-                                .contentTransition(.opacity)
+                    // to be in the rate tile"), and flips per count ⇄ per tasbeeh (100 counts) on a tap, as the old pause
+                    // screen's rate did (owner: "we lost per tasbeeh rate").
+                    Button {
+                        triggerSomeVibration(type: .medium)
+                        withAnimation(.easeInOut(duration: CircleMotion.quick)) { showingPerTasbeeh.toggle() }
+                    } label: {
+                        softTile(showingPerTasbeeh ? "per tasbeeh" : "per count", flips: true) {
+                            ZStack {
+                                rateLines(value: String(format: "%.2fs", shownPerCount), pace: pace)
+                                    .opacity(showingPerTasbeeh ? 0 : 1)
+                                rateLines(value: shownPerTasbeeh, pace: pacePerTasbeeh)
+                                    .opacity(showingPerTasbeeh ? 1 : 0)
+                            }
                         }
                     }
+                    .buttonStyle(.plain)
                     ZStack {
                         softThirdTile
                             .modifier(SoftCardsFade(shown: !finished, delay: 0))
@@ -2250,8 +2261,25 @@ struct tasbeehView: View {
                 .buttonStyle(.plain)
             case .toGo(let n):
                 softTile("to go") { softValue(n.formatted()) }
-            case .perTasbeeh:
-                softTile("per tasbeeh") { softValue(tasbeehRate) }
+            case .counted:
+                // No goal to count down to (freestyle, Tasbih Fatimah, past the goal): the session's whole count — the ring
+                // shows only the last hundred. (It was "per tasbeeh", now the rate tile's other side.)
+                softTile("counted") { softValue(tasbeeh.formatted()) }
+            }
+        }
+
+        /// The rate tile's value with the pace line under it.
+        @ViewBuilder private func rateLines(value: String, pace: (text: String, faster: Bool?)?) -> some View {
+            VStack(spacing: 3) {
+                softValue(value)
+                if let pace {
+                    Text(pace.text)
+                        .font(.system(size: 11, weight: pace.faster == true ? .medium : .regular, design: .rounded))
+                        .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .padding(.horizontal, 6)
+                }
             }
         }
 

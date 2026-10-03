@@ -822,8 +822,10 @@ struct ZikrMediaStrip: View {
                 if let audio = mantra.audioData {
                     Button { engine.togglePlay(audio) } label: {
                         RingPlayButton(playing: engine.state == .playing, progress: engine.progress, size: 34)
+                            .modifier(MinimumTouchArea())
                     }
                     .buttonStyle(.plain)
+                    .padding(-MinimumTouchArea.grow)   // the layout stays 34 pt
                     .contextMenu {
                         Toggle("Slower (0.75×)", isOn: Binding(get: { engine.slow }, set: { engine.slow = $0 }))
                         Toggle("Loop", isOn: Binding(get: { engine.loop }, set: { engine.loop = $0 }))
@@ -836,8 +838,10 @@ struct ZikrMediaStrip: View {
                             .frame(width: 34, height: 34)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Color.primary.opacity(0.08)))
+                            .modifier(MinimumTouchArea())
                     }
                     .buttonStyle(.plain)
+                    .padding(-MinimumTouchArea.grow)   // the layout stays 34 pt
                     .accessibilityLabel("Show photo")
                     .fullScreenCover(isPresented: $viewing) { ZikrPhotoViewer(image: ui) }
                 }
@@ -845,6 +849,20 @@ struct ZikrMediaStrip: View {
             .task(id: blobKey(mantra.imageData)) { thumbnail = await decodedImage(mantra.imageData) }
             .onDisappear { engine.stopPlaying() }
             .onChange(of: paused) { _, now in if !now { engine.stopPlaying() } }
+        }
+    }
+
+    /// The memo's ▶︎ and the photo are 34 pt: a finger just off them landed on the pause screen behind, which resumed
+    /// (owner: "it could be the hitbox of the play button … pressing it instead unpauses"). Apple's minimum touch
+    /// target is 44 pt: the button itself is 44 pt (its label padded, the padding touchable), and the strip takes it
+    /// back with a negative padding outside the button, so the layout doesn't move. (Growing only the label's touch
+    /// shape didn't work: a button is hit within its own frame.)
+    struct MinimumTouchArea: ViewModifier {
+        static let grow: CGFloat = 5
+        func body(content: Content) -> some View {
+            content
+                .padding(Self.grow)
+                .contentShape(Rectangle())
         }
     }
 
