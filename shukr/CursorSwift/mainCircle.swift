@@ -253,16 +253,10 @@ struct MainCircleView: View {
                                     NextTag(shown: upcoming && showNextLabel)
                                 }
                                 if status == .current{
-                                    ExternalToggleText(
-                                        originalText: "ends \(shortTimePM(prayer.endTime))",
-                                        toggledText: timeLeftString(from: prayer.endTime.timeIntervalSinceNow),
-                                        externalTrigger: $timeFlipPulse,
-                                        font: .subheadline,
-                                        fontDesign: .rounded,
-                                        fontWeight: .thin,
-                                        hapticFeedback: true
-                                    )
-                                    .foregroundStyle(.secondary)
+                                    PrayerTimeLine(end: prayer.endTime, now: currentTime,
+                                                   lastHourLeft: !prayer.isCompleted && !shownIsPreview,
+                                                   prayerKey: prayer.name, trigger: timeFlipPulse)
+                                        .foregroundStyle(.secondary)
                                 }
                                 else if status ==  .upcoming{
                                     ExternalToggleText(
@@ -990,4 +984,91 @@ private struct DashedChevron: Shape {
         path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
         return path
     }
+}
+
+
+/// A prayer that's on: "ends 11:59 PM" ⇄ the time left. In the last hour of one not yet marked it says the time left by
+/// default, live (owner, decision ring-time-left A: "when we open the app, if we haven't marked it done … it defaults
+/// that time text to show how much time is left" — like the Lock Screen widget's last hour). A tap shows the other: for
+/// 3 s outside the last hour (as before); in it, until the hour begins or the prayer changes. Every change of words is
+/// out, then in (they blurred through each other) — the time left counting down changes in place.
+struct PrayerTimeLine: View {
+    let end: Date
+    let now: Date
+    /// The last-hour default applies (an unmarked prayer, not the dev preview).
+    let lastHourLeft: Bool
+    let prayerKey: String
+    /// The circle's tap (MainCircleView's `timeFlipPulse`): each change flips.
+    let trigger: Bool
+
+    private enum Mode { case ends, left }
+    @State private var flipped = false
+    @State private var shown: Mode?
+    /// The prayer `shown` belongs to: a new prayer takes its line quietly (the circle's face swap already fades it).
+    @State private var shownFor: String?
+    /// Where a swap in progress is going (a second tap mid-swap compares with this, not with what's still shown).
+    @State private var pending: Mode?
+    @State private var away = false
+    @State private var swap: Task<Void, Never>?
+    @State private var revert: Task<Void, Never>?
+
+    private var lastHour: Bool { lastHourLeft && end.timeIntervalSince(now) <= Self.lastHourSeconds }
+    /// The last hour's default is the time left; a flip shows the other.
+    private var wanted: Mode { lastHour != flipped ? .left : .ends }
+
+    var body: some View {
+        Text((shown ?? wanted) == .left ? timeLeftString(from: end.timeIntervalSince(now)) : "ends \(shortTimePM(end))")
+            .font(.subheadline)
+            .fontDesign(.rounded)
+            .fontWeight(.thin)
+            .modifier(CircleWordsAway(away: away))
+            .onAppear { if shown == nil { shown = wanted; shownFor = prayerKey } }
+            .onChange(of: trigger) { _, _ in
+                triggerSomeVibration(type: .light)
+                flipped.toggle()
+                revert?.cancel()
+                guard flipped, !lastHour else { return }
+                revert = Task { @MainActor in
+                    guard await CircleGate.pause(Self.flipSeconds) else { return }
+                    flipped = false
+                }
+            }
+            .onChange(of: lastHour) { _, _ in revert?.cancel(); flipped = false }   // the hour begins: its default
+            .onChange(of: prayerKey) { _, key in
+                // A new prayer: its own default, at once (the face swap fades the circle's words already).
+                revert?.cancel()
+                swap?.cancel()
+                pending = nil
+                flipped = false
+                shown = lastHour ? .left : .ends
+                shownFor = key
+                away = false
+            }
+            .onChange(of: wanted) { _, mode in change(to: mode) }
+    }
+
+    private func change(to mode: Mode) {
+        guard !((pending ?? shown) == mode && shownFor == prayerKey) else { return }
+        swap?.cancel()
+        guard shownFor == prayerKey else {
+            shown = mode
+            shownFor = prayerKey
+            away = false
+            return
+        }
+        pending = mode
+        swap = Task { @MainActor in
+            away = true
+            guard await CircleGate.pause(CircleMomentTiming.outDone) else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { shown = mode }
+            pending = nil
+            guard await CircleGate.nextFrame() else { return }
+            away = false
+        }
+    }
+
+    private static let lastHourSeconds: TimeInterval = 60 * 60
+    private static let flipSeconds: Double = 3
 }
