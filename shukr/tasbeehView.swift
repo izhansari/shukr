@@ -72,6 +72,10 @@ struct tasbeehView: View {
     /// Count in sets: with the "+N" button switched on, every tap / drag (and −) is worth N
     /// (owner, 2026-09-25: it was a one-shot +N button). Per session, off at the start.
     @State private var countingInSets = false
+    /// Counting in sets right now (a size set and switched on): +N in the top bar and the line at the bottom.
+    private var setsOn: Bool { countingInSets && secondaryStep > 1 }
+    /// The counter's top bar's height (the pause screen's top row matches it).
+    @State private var topBarHeight: CGFloat = 0
     private var tapWorth: Int { countingInSets && secondaryStep > 1 ? secondaryStep : 1 }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
@@ -549,7 +553,8 @@ struct tasbeehView: View {
                     // Frozen once finished: re-reported as the block's words changed, it moved the ring's target
                     // mid-move (the ring held, then jumped ~85 pt; Sami's B1).
                     onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } },
-                    onSleepChipFrame: { sleepChipFrame = $0 }
+                    onSleepChipFrame: { sleepChipFrame = $0 },
+                    topBarHeight: topBarHeight
                 )
             }
             .animation(.easeInOut, value: paused)
@@ -558,48 +563,38 @@ struct tasbeehView: View {
             // Settings & Start/Stop
             VStack {
                 
-                // The Top Buttons During Session
+                // The Top Buttons During Session. ⏸ on the left, where the pause screen's ‹ Resume stands; − on the right,
+                // with +N beside it only while counting in sets (decision top-bar-finish A, owner: "it should only show
+                // there when we turn on that setting from the pause screen"; a tap turns sets off). Always laid out,
+                // faded out and inert while paused: removing them popped the layout on every pause / resume.
                 HStack {
-                    // Always there, faded out and inert while paused (Finish / Resume live on the
-                    // pause screen). Removing them popped the layout on every pause / resume.
-                    Group {
-                        HStack{
-                            TopOfSessionButton( // Minus Button
-                                symbol: "minus", actionToDo: decrementTasbeeh,
-                                paused: paused, togglePause: togglePause)
-                            
-                            if secondaryStep > 1 {
-                                TopOfSessionButton( // Count in sets: switches every tap to +N
-                                    text: "+\(secondaryStep)", actionToDo: {
-                                        triggerSomeVibration(type: .light)
-                                        withAnimation(.easeInOut(duration: CircleMotion.quick)) { countingInSets.toggle() }
-                                    },
-                                    paused: paused, togglePause: togglePause, active: countingInSets)
-                                .accessibilityLabel(countingInSets ? "Counting in sets of \(secondaryStep), on" : "Count in sets of \(secondaryStep)")
-                            }
-                            
-                            
-//                            TopOfSessionButton( // Add Note Button (new feature coming soon)
-//                                symbol: "note", actionToDo: {showNotesModal = true},
-//                                paused: paused, togglePause: togglePause)
-//                            .sheet(isPresented: $showNotesModal) {
-//                                NoteModalView(savedText: $noteModalText, showSheet: $showNotesModal, takingNotes: $takingNotes)
-//                            }
-                        }
-                        .opacity(paused ? 0 : 1)
-                        .allowsHitTesting(!paused)
-                    }
-                    
-                    
-                    Spacer()
-                    
-                    // dynamic pause / play button shown in active session
                     PlayPauseButton(togglePause: togglePause, paused: paused)
                         .opacity(paused ? 0 : 1)
                         .allowsHitTesting(!paused)   // a disabled button still swallowed the pause screen's taps
+
+                    Spacer()
+
+                    HStack {
+                        if setsOn {
+                            TopOfSessionButton( // Count in sets is on: every tap counts N; a tap turns it off
+                                text: "+\(secondaryStep)", actionToDo: {
+                                    triggerSomeVibration(type: .light)
+                                    withAnimation(.easeInOut(duration: CircleMotion.quick)) { countingInSets = false }
+                                },
+                                paused: paused, togglePause: togglePause, active: true)
+                            .accessibilityLabel("Counting in sets of \(secondaryStep), on. Turn off")
+                            .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                        }
+                        TopOfSessionButton( // Minus Button
+                            symbol: "minus", actionToDo: decrementTasbeeh,
+                            paused: paused, togglePause: togglePause)
+                    }
+                    .opacity(paused ? 0 : 1)
+                    .allowsHitTesting(!paused)
                 }
                 .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
                 .padding()
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topBarHeight = $0 }
                 .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
                 // Finished: the soft results sit under this layer (the ring's, not a cover) — no stray ⏸ over Done.
                 .allowsHitTesting(savedSession == nil)
@@ -670,6 +665,28 @@ struct tasbeehView: View {
                     }
                     .opacity(paused ? 0 : 1)
                     .allowsHitTesting(!paused)
+                    .transition(.opacity)
+                    .zIndex(2)
+                }
+
+                // Counting in sets: said at the bottom so it's never missed (owner: "that way you see that it's clearly
+                // turned on"); above "goal reached" when that shows too. Not a button: a tap there counts.
+                if setsOn && savedSession == nil && !showInactivityAlert {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 6) {
+                            Image(systemName: "square.stack").font(.system(size: 12, weight: .regular))
+                            Text("each tap counts \(secondaryStep) · tap +\(secondaryStep) to turn off")
+                        }
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(Color.sage.opacity(0.85))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, goalReached && !autoStop ? 48 : 14)
+                    }
+                    .opacity(paused ? 0 : 1)
+                    .allowsHitTesting(false)
                     .transition(.opacity)
                     .zIndex(2)
                 }
@@ -1771,6 +1788,8 @@ struct tasbeehView: View {
         var onBottomTop: (CGFloat) -> Void = { _ in }
         /// The sleep chip's place (global): the sleep dim leaves it uncovered while paused.
         var onSleepChipFrame: (CGRect) -> Void = { _ in }
+        /// The counter's top bar's height: the pause screen's top row matches it, so ‹ Resume lands where ⏸ was.
+        var topBarHeight: CGFloat = 0
 
         /// What the soft cards need of a finished session.
         struct SoftResults {
@@ -1856,13 +1875,7 @@ struct tasbeehView: View {
                 .allowsHitTesting(paused)
 
             VStack(spacing: 0) {
-                HStack(spacing: 6) {
-                    Image(systemName: "pause.fill").font(.caption2)
-                    Text(sharedState.isDoingPostNamazZikr ? "paused · Tasbih Fatimah" : "paused · \(sessionLabel)")
-                }
-                .font(.subheadline.weight(.light))
-                .foregroundStyle(.secondary)
-                .padding(.top, 18)
+                pauseTopRow
 
                 ScrollView {
                     VStack(spacing: 12) {
@@ -1935,10 +1948,7 @@ struct tasbeehView: View {
                     .allowsHitTesting(pauseShown)
 
                 VStack(spacing: 0) {
-                    Spacer(minLength: 4)
-                    softHeader
-                        .frame(height: 22)
-                        .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                    pauseTopRow
                     // Clear of the hundreds' beads round the ring's top where there's room; on a small phone it gives
                     // way first, so everything stays on the screen (Sami's B2 / B3: the SE pushed it under the clock).
                     Spacer(minLength: 14)
@@ -2005,17 +2015,74 @@ struct tasbeehView: View {
             }
         }
 
-        /// "paused · 100 count session"; with sleep on, its dimmer in the same place (nothing else moves).
-        @ViewBuilder private var softHeader: some View {
-            // (The dimmer lives on the sleep page now — decision sleep-dimmer-place A; it sat here, at the top.)
-            do {
-                HStack(spacing: 6) {
-                    Image(systemName: "pause.fill").font(.caption2)
-                    Text(sharedState.isDoingPostNamazZikr ? "paused · Tasbih Fatimah" : "paused · \(sessionLabel)")
+        /// The pause screen's top row, where the counter's bar is (decision top-bar-finish A, owner: "move the resume and
+        /// finish early buttons out from the bottom"): ‹ Resume in ⏸'s place, the session in the middle, Finish on the
+        /// right — two taps, as Finish early was. On the soft results, Done in Finish's place. As tall as the counter's
+        /// bar (`topBarHeight`), so ‹ Resume lands where ⏸ was.
+        private var pauseTopRow: some View {
+            let finished = results != nil
+            return HStack(spacing: 8) {
+                Button { togglePause() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                        Text("Resume").font(.system(size: 17, weight: .medium, design: .rounded))
+                    }
+                    .foregroundStyle(Color.sage)
+                    .padding(.horizontal, 14)
+                    .frame(height: 40)
+                    .background(Capsule().fill(Color.sage.opacity(0.10)))
+                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
+                    .fixedSize()
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
                 }
-                .font(.subheadline.weight(.light))
-                .foregroundStyle(.secondary)
+                .buttonStyle(.plain)
+                .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
+                .allowsHitTesting(pauseShown)
+                .accessibilityLabel("Resume")
+                Spacer(minLength: 4)
+                // The session between them (never over them: centred on the page it ran into ‹ Resume on a 6.1"
+                // phone); out of the way while Finish asks for its second tap.
+                Text(sharedState.isDoingPostNamazZikr ? "Tasbih Fatimah" : sessionLabel)
+                    .font(.subheadline.weight(.light))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .opacity(finishArmed ? 0 : 1)
+                    .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
+                    .allowsHitTesting(false)
+                    .layoutPriority(-1)
+                Spacer(minLength: 4)
+                ZStack(alignment: .trailing) {
+                    Button { finishTap() } label: { finishLabel }
+                        .buttonStyle(.plain)
+                        .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
+                        .allowsHitTesting(pauseShown)
+                    if let results {
+                        Button {
+                            triggerSomeVibration(type: .success)
+                            results.done()
+                        } label: {
+                            Text("Done")
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.sage)
+                                .padding(.horizontal, 20)
+                                .frame(height: 40)
+                                .background(Capsule().fill(Color.sage.opacity(0.10)))
+                                .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
+                                .padding(.vertical, 2)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0.1))
+                        .allowsHitTesting(finished && resultsIn)
+                    }
+                }
             }
+            .animation(.easeInOut(duration: 0.25), value: finishArmed)
+            // 16 from the screen's edges, as the counter's bar: the soft page already insets its column by 20.
+            .padding(.horizontal, ringAbove ? -4 : 16)
+            .frame(height: max(topBarHeight, 44))
         }
 
         /// Under the ring: the zikr's name (→ the picker on a free session), "from your task", its memo and photo.
@@ -2221,64 +2288,26 @@ struct tasbeehView: View {
                         }
                         .buttonStyle(.plain)
                         .modifier(SoftCardsFade(shown: resultsIn, delay: 0))
+                    } else if finished {
+                        Button {
+                            triggerSomeVibration(type: .light)
+                            showHistory = true
+                        } label: {
+                            Label("View zikr history", systemImage: "clock.arrow.circlepath")
+                                .font(.system(size: 14, weight: .regular, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .modifier(SoftCardsFade(shown: resultsIn, delay: 0.1))
+                        .allowsHitTesting(resultsIn)
                     }
                 }
                 .frame(height: Self.switchHeight)
-
-                gap(20)
-
-                // Resume ⇄ Done in one capsule that stays put; only its words change.
-                Button {
-                    if let results {
-                        triggerSomeVibration(type: .success)
-                        results.done()
-                    } else {
-                        togglePause()
-                    }
-                } label: {
-                    ZStack {
-                        Label("Resume", systemImage: "play.fill")
-                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
-                        // In as "Resume" finishes going (0.12 s): the capsule is never bare (Sami's B5).
-                        Text("Done")
-                            .fontWeight(.semibold)
-                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
-                    }
-                    .font(.system(size: 17, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.sage)
-                    .frame(width: 210, height: 52)
-                    .background(Capsule().fill(Color.sage.opacity(0.08)))
-                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .allowsHitTesting(pauseShown || (finished && resultsIn))
-
-                // Finish early ⇄ View zikr history, low, clear of the edge.
-                Button {
-                    if finished {
-                        triggerSomeVibration(type: .light)
-                        showHistory = true
-                    } else {
-                        finishTap()
-                    }
-                } label: {
-                    ZStack {
-                        finishLabel
-                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
-                        Label("View zikr history", systemImage: "clock.arrow.circlepath")
-                            .foregroundStyle(.secondary)
-                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
-                    }
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .contentShape(Rectangle())
-                    .animation(.easeInOut(duration: 0.3), value: finishArmed)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 6)
-                .allowsHitTesting(pauseShown || (finished && resultsIn))
+                // (Resume, Finish and Done are up top now, where the counter's ⏸ is — decision top-bar-finish A.)
+                gap(12)
             }
             .modifier(SoftCardsFade(shown: cardsShown, delay: 0.12))
             .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
@@ -2512,38 +2541,11 @@ struct tasbeehView: View {
         private var controls: some View {
             VStack(spacing: 14) {
                 // (The dimmer lives on the sleep page now — decision sleep-dimmer-place A.)
-                // Tasbih Fatimah: just Finish / Resume (owner: none of the settings chips).
+                // Tasbih Fatimah: no switches (owner: none of the settings chips).
                 if !sharedState.isDoingPostNamazZikr {
                     chipsRow
                 }
-                // One button: Resume (owner, 2026-09-26: two big buttons side by side made the
-                // coloured one feel like "end" — he was scared to press it). Finishing is a small
-                // secondary "Finish early" underneath, still two taps: the first turns it green,
-                // "Tap again to finish", the second finishes; it disarms after 3 s.
-                VStack(spacing: 6) {
-                    // A green edge and green text, not a filled bar (owner: the full green bar felt
-                    // heavy), centred, not edge to edge.
-                    Button { togglePause() } label: {
-                        Label("Resume", systemImage: "play.fill")
-                            .font(.system(size: 17, weight: .medium, design: .rounded))
-                            .foregroundStyle(Color.sage)
-                            .frame(width: 210, height: 52)
-                            .background(Capsule().fill(Color.sage.opacity(0.08)))
-                            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
-                            .contentShape(Capsule())
-                    }
-                    Button { finishTap() } label: {
-                        finishLabel
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                        // Just round its words: the empty sides of the bottom resume (owner), and a
-                        // stray tap there mustn't arm Finish.
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 10)
-                        .contentShape(Rectangle())
-                        .animation(.easeInOut(duration: 0.3), value: finishArmed)
-                    }
-                }
-                .buttonStyle(.plain)
+                // (Resume and Finish are in the top row now — decision top-bar-finish A.)
             }
             .frame(maxWidth: 420)
             .padding(.horizontal, 20)
@@ -2568,17 +2570,41 @@ struct tasbeehView: View {
             }
         }
 
+        /// "Finish", then (armed) "✓ Tap again to finish" on sage; back after 3 s.
         private var finishLabel: some View {
-            ZStack {
-                Text(goalReached ? "Finish" : "Finish early")   // past the goal it isn't early
-                    .foregroundStyle(.secondary)
+            // The armed words are an overlay, growing leftwards over the session's line (which steps aside): laid
+            // out, they kept their width while hidden and squeezed ‹ Resume and the line.
+            Text("Finish")
+                    .font(.system(size: 17, weight: .medium, design: .rounded))
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .padding(.horizontal, 18)
+                    .frame(height: 40)
+                    .background {
+                        if ringAbove {
+                            ThemedRaised(shape: Capsule(), radius: 4, offset: 2)
+                        } else {
+                            Capsule().fill(Color.primary.opacity(0.06))
+                        }
+                    }
                     .opacity(finishArmed ? 0 : 1)
-                    .blur(radius: finishArmed ? 3 : 0)
-                Text("Tap again to finish")
-                    .foregroundStyle(Color.green)
-                    .opacity(finishArmed ? 1 : 0)
-                    .blur(radius: finishArmed ? 0 : 3)
-            }
+                    .fixedSize()
+                    .overlay(alignment: .trailing) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
+                            Text("Tap again to finish").font(.system(size: 16, weight: .semibold, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
+                        .background(Capsule().fill(Color.sage))
+                        .fixedSize()
+                        .opacity(finishArmed ? 1 : 0)
+                        .scaleEffect(finishArmed ? 1 : 0.9, anchor: .trailing)
+                    }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
+            .animation(.snappy(duration: 0.25), value: finishArmed)
+            .accessibilityLabel(finishArmed ? "Tap again to finish" : "Finish")
         }
 
         /// continuous (lit) / stops at goal (plain), sleep, haptics — each a chip, the first two with an (i).
