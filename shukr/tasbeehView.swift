@@ -47,11 +47,13 @@ struct tasbeehView: View {
     /// Where the soft look's ring should stand, as a lift from its laid-out place: raised to the pause cards' slot while
     /// paused; once finished, centred (as the Zikr wheel will hold it), only raised if the bottom block needs the room
     /// (a short phone); home for the counter and for a close.
+    /// The finished ring's least room over the tiles (owner, stats-weight: "enough room to breathe").
+    private static let resultsRingClearance: CGFloat = 36
     private var ringLiftTarget: CGFloat {
         guard ringAbove, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
         if savedSession != nil {
             guard cardsBottomTop > 0 else { return 0 }
-            return min(0, cardsBottomTop - 26 - (ringHomeMid.y + ringSize.height / 2))
+            return min(0, cardsBottomTop - Self.resultsRingClearance - (ringHomeMid.y + ringSize.height / 2))
         }
         if paused && pauseSlot.height > 0 { return pauseSlot.midY - ringHomeMid.y }
         return 0
@@ -631,7 +633,7 @@ struct tasbeehView: View {
                         Rectangle()
                             .overlay {
                                 if paused && toggleInactivityTimer && sleepChipFrame.width > 0 {
-                                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    Circle()
                                         .frame(width: sleepChipFrame.width, height: sleepChipFrame.height)
                                         .position(x: sleepChipFrame.midX, y: sleepChipFrame.midY)
                                         .blendMode(.destinationOut)
@@ -1772,7 +1774,6 @@ struct tasbeehView: View {
         @State private var showHistory = false
         @State private var wellRoom: CGFloat = 148
         @State private var bottomInset: CGFloat = 0
-        @State private var showingFinishTime = false
         /// The rate tile's side: per count, or per tasbeeh (a tap flips it).
         @State private var showingPerTasbeeh = false
         @State private var finishArmed = false
@@ -1941,7 +1942,7 @@ struct tasbeehView: View {
                         // It takes its height before the space above the ring does; with too little room for its text
                         // (a small phone, the largest text) it stays out of sight rather than squeezed.
                         softWell
-                            .opacity(wellRoom >= 72 ? 1 : 0)
+                            .opacity(wellRoom >= Self.wellShowsAt ? 1 : 0)
                             .frame(minHeight: 0, maxHeight: 148)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
                             .layoutPriority(1)
@@ -1953,8 +1954,8 @@ struct tasbeehView: View {
                     .onTapGesture {}
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
+                    Self.gap(20)
                     softBottom
-                        .padding(.top, 14)
                 }
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
@@ -2155,36 +2156,48 @@ struct tasbeehView: View {
             let finished = results != nil
             let pace = ZikrBento.paceComparison(secondsPerCount: shownPerCount, usual: shownUsualPace, perCount: true)
             let pacePerTasbeeh = ZikrBento.paceComparison(secondsPerCount: shownPerCount, usual: shownUsualPace, perCount: false)
+            // The old pause screen's bento (decision stats-weight A): time and count small with their symbols, the rate
+            // tall beside them — the rate weighs most; the finish a sentence under them, not a tile. Room round each
+            // part (owner: "enough room to breathe … the stuff around the tiles").
             return VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    softTile("time") { softValue(timerStyle(shownSeconds)) }
-                    // The rate tile says how it compares with your usual pace inside it (owner: "the comparison text …
-                    // to be in the rate tile"), and flips per count ⇄ per tasbeeh (100 counts) on a tap, as the old pause
-                    // screen's rate did (owner: "we lost per tasbeeh rate").
+                    VStack(spacing: 10) {
+                        softStatTile(icon: "gauge.with.needle") {
+                            softStatLines(timerStyle(shownSeconds), "time")
+                        }
+                        softStatTile(icon: "circle.hexagonpath") {
+                            ZStack(alignment: .leading) {
+                                softStatLines(tasbeeh.formatted(), "count")
+                                    .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                                softStatLines((results?.session.totalCount ?? 0).formatted(), "counted")
+                                    .modifier(SoftCardsFade(shown: finished, delay: 0.1))
+                            }
+                        }
+                    }
+                    // How it compares with your usual pace inside it (owner: "the comparison text … to be in the rate
+                    // tile"); flips per count ⇄ per tasbeeh (100 counts) on a tap (owner: "we lost per tasbeeh rate").
                     Button {
                         triggerSomeVibration(type: .medium)
                         withAnimation(.easeInOut(duration: CircleMotion.quick)) { showingPerTasbeeh.toggle() }
                     } label: {
-                        softTile(showingPerTasbeeh ? "per tasbeeh" : "per count", flips: true) {
-                            ZStack {
-                                rateLines(value: String(format: "%.2fs", shownPerCount), pace: pace)
-                                    .opacity(showingPerTasbeeh ? 0 : 1)
-                                rateLines(value: shownPerTasbeeh, pace: pacePerTasbeeh)
-                                    .opacity(showingPerTasbeeh ? 1 : 0)
-                            }
-                        }
+                        softRateTile(pace: pace, pacePerTasbeeh: pacePerTasbeeh)
                     }
                     .buttonStyle(.plain)
-                    ZStack {
-                        softThirdTile
-                            .modifier(SoftCardsFade(shown: !finished, delay: 0))
-                        softTile("counted") { softValue((results?.session.totalCount ?? 0).formatted()) }
-                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
-                    }
                 }
+                .frame(height: Self.statTileHeight * 2 + 10)
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
 
+                // "3m 15s left · you'll finish around 3:14 PM": one sentence, not two time tiles (owner). Its room is kept
+                // through the results (Done stays put); a session with no goal has none.
+                if hasFinishLine {
+                    Self.gap(16)
+                    finishLine
+                        .frame(height: 22)
+                        .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                }
+
                 // The chips while paused; after a sleep finish, Keep counting in their place.
+                Self.gap(20)
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
@@ -2206,8 +2219,9 @@ struct tasbeehView: View {
                         .modifier(SoftCardsFade(shown: resultsIn, delay: 0))
                     }
                 }
-                .frame(height: 62)
-                .padding(.top, 14)
+                .frame(height: Self.switchHeight)
+
+                Self.gap(20)
 
                 // Resume ⇄ Done in one capsule that stays put; only its words change.
                 Button {
@@ -2234,7 +2248,6 @@ struct tasbeehView: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 14)
                 .allowsHitTesting(pauseShown || (finished && resultsIn))
 
                 // Finish early ⇄ View zikr history, low, clear of the edge.
@@ -2260,78 +2273,131 @@ struct tasbeehView: View {
                     .animation(.easeInOut(duration: 0.3), value: finishArmed)
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 2)
+                .padding(.top, 6)
                 .allowsHitTesting(pauseShown || (finished && resultsIn))
             }
             .modifier(SoftCardsFade(shown: cardsShown, delay: 0.12))
             .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
         }
 
-        @ViewBuilder private var softThirdTile: some View {
-            switch thirdTile {
-            case .left(let left, let at):
-                Button {
-                    triggerSomeVibration(type: .medium)
-                    withAnimation(.easeInOut(duration: 0.3)) { showingFinishTime.toggle() }
-                } label: {
-                    softTile(showingFinishTime ? "finish" : "left", flips: true) {
-                        ZStack {
-                            softValue(String(inMinSecStyle2(from: left).dropFirst(3)))
-                                .opacity(showingFinishTime ? 0 : 1)
-                            softValue(shortTime(at))
-                                .opacity(showingFinishTime ? 1 : 0)
-                        }
-                    }
+        private static let statTileHeight: CGFloat = 52
+        /// The well shows once its text has room beside Count in sets (lower, the zikr's first line was cut off).
+        private static let wellShowsAt: CGFloat = 110
+
+        /// Room between the page's parts (owner: "enough room to breathe"), fixed: on a phone too short for it and the
+        /// zikr's well, the well gives way (`wellShowsAt`) — flexible gaps shared the room with the space above the
+        /// ring and ended up at their least everywhere.
+        static func gap(_ height: CGFloat) -> some View {
+            Color.clear.frame(height: height)
+        }
+        /// The switches' row: a 50 pt circle and its word.
+        private static let switchHeight: CGFloat = 72
+
+        /// A goal to finish: the sentence under the tiles (freestyle and Tasbih Fatimah have none).
+        private var hasFinishLine: Bool { !sharedState.isDoingPostNamazZikr && sharedState.selectedMode != 0 }
+
+        @ViewBuilder private var finishLine: some View {
+            HStack(spacing: 8) {
+                switch thirdTile {
+                case .left(let left, let at):
+                    finishFlag
+                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17, weight: .medium))
+                     + Text(" left · you'll finish around ").foregroundColor(.secondary)
+                     + Text(shortTime(at)).font(.system(size: 17, weight: .medium)))
+                case .toGo(let n):
+                    finishFlag
+                    (Text(n.formatted()).font(.system(size: 17, weight: .medium))
+                     + Text(" to go").foregroundColor(.secondary))
+                case .counted:
+                    // Past the goal and keeping going: said once, quietly.
+                    Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold))
+                    Text("Goal reached · keeps going")
                 }
-                .buttonStyle(.plain)
-            case .toGo(let n):
-                softTile("to go") { softValue(n.formatted()) }
-            case .counted:
-                // No goal to count down to (freestyle, Tasbih Fatimah, past the goal): the session's whole count — the ring
-                // shows only the last hundred. (It was "per tasbeeh", now the rate tile's other side.)
-                softTile("counted") { softValue(tasbeeh.formatted()) }
+            }
+            .font(.system(size: 15))
+            .foregroundStyle(goalReached ? Color.sage : Color.primary)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+        }
+
+        private var finishFlag: some View {
+            Image(systemName: "flag.checkered")
+                .font(.system(size: 14, weight: .light))
+                .foregroundStyle(.secondary)
+        }
+
+        /// A small tile: its symbol, then the number big and the word under it.
+        private func softStatTile<Content: View>(icon: String, @ViewBuilder lines: () -> Content) -> some View {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24)
+                lines()
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.statTileHeight)
+            .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 6, offset: 3))
+        }
+
+        private func softStatLines(_ value: String, _ caption: String) -> some View {
+            VStack(alignment: .leading, spacing: 0) {
+                softValue(value)
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
 
-        /// The rate tile's value with the pace line under it.
-        @ViewBuilder private func rateLines(value: String, pace: (text: String, faster: Bool?)?) -> some View {
-            VStack(spacing: 3) {
-                softValue(value)
+        /// The tall tile: "rate", the pace big, per count / per tasbeeh, and how it compares with your usual.
+        private func softRateTile(pace: (text: String, faster: Bool?)?,
+                                  pacePerTasbeeh: (text: String, faster: Bool?)?) -> some View {
+            VStack(spacing: 2) {
+                Text("rate")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ZStack {
+                    rateLines(value: String(format: "%.2fs", shownPerCount), caption: "per count", pace: pace)
+                        .opacity(showingPerTasbeeh ? 0 : 1)
+                    rateLines(value: shownPerTasbeeh, caption: "per tasbeeh", pace: pacePerTasbeeh)
+                        .opacity(showingPerTasbeeh ? 1 : 0)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 6, offset: 3))
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(11)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+
+        /// The rate's value, its caption, and the pace line under them.
+        private func rateLines(value: String, caption: String, pace: (text: String, faster: Bool?)?) -> some View {
+            VStack(spacing: 1) {
+                Text(value)
+                    .font(.system(size: 36, weight: .light, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(caption)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                 if let pace {
                     Text(pace.text)
-                        .font(.system(size: 11, weight: pace.faster == true ? .medium : .regular, design: .rounded))
+                        .font(.system(size: 13, weight: pace.faster == true ? .medium : .regular, design: .rounded))
                         .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .padding(.horizontal, 6)
+                        .padding(.top, 6)
                 }
             }
-        }
-
-        /// A tile raised off the page: its caption over its value (the rate's comparison under it, inside). One height for
-        /// all three, with or without that line.
-        private func softTile<Content: View>(_ caption: String, flips: Bool = false,
-                                             @ViewBuilder value: () -> Content) -> some View {
-            VStack(spacing: 3) {
-                HStack(spacing: 4) {
-                    Text(caption)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .contentTransition(.opacity)
-                    if flips {
-                        Image(systemName: "arrow.left.arrow.right")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                value()
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 76)
-            .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 6, offset: 3))
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 8)
         }
 
         private func softValue(_ text: String) -> some View {
@@ -2522,24 +2588,23 @@ struct tasbeehView: View {
                     // moment it resumed.
                     // One name, lit when on (decision chip-continuous A, owner): continuous = it keeps counting past the
                     // goal; plain = it stops at the goal — like the sleep and haptics chips beside it.
-                    chip("continuous", icon: "arrow.clockwise", on: !autoStop, locked: goalReached) { autoStop.toggle() }
-                    .overlay(alignment: .topTrailing) { infoButton("About continuous", on: !autoStop) { showGoalIntro = true } }
+                    chip("continuous", icon: "arrow.clockwise", on: !autoStop, locked: goalReached,
+                         info: ("About continuous", { showGoalIntro = true })) { autoStop.toggle() }
                     .fullScreenCover(isPresented: $showGoalIntro) {
                         GoalIntroView(autoStop: $autoStop, locked: goalReached, goal: goalText,
                                       subtitle: goalSubtitle) { showGoalIntro = false }
                     }
                 }
-                chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer) {
+                // Where its circle is, for the dim to leave it uncovered (always findable to turn sleep off — owner);
+                // (i) by it: the intro again, any time (owner).
+                chip("sleep", icon: toggleInactivityTimer ? "moon.zzz.fill" : "moon.zzz", on: toggleInactivityTimer,
+                     info: ("About sleep mode", { showSleepIntro = true }), circleFrame: onSleepChipFrame) {
                     // The first time (until confirmed once): the intro, which turns it on.
                     if !toggleInactivityTimer && !sleepIntroConfirmed { showSleepIntro = true; return }
                     toggleInactivityTimer.toggle()
                     // On: dark. Off: back to the app's own look (there's no light / dark chip).
                     tasbeehColorMode = toggleInactivityTimer ? true : appLookDark
                 }
-                // Where it is, for the dim to leave it uncovered (always findable to turn sleep off — owner).
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onSleepChipFrame($0) }
-                // (i) in the chip's corner: the intro again, any time (owner).
-                .overlay(alignment: .topTrailing) { infoButton("About sleep mode", on: toggleInactivityTimer) { showSleepIntro = true } }
                 .fullScreenCover(isPresented: $showSleepIntro) {
                     SleepIntroView(isOn: toggleInactivityTimer, dimmer: $inactivityDimmer, onTurnOn: {
                         sleepIntroConfirmed = true
@@ -2565,42 +2630,20 @@ struct tasbeehView: View {
             case .heavy: 1
             default: 0.5
             }
-            return Button {
-                withAnimation(.snappy(duration: CircleMotion.quick)) { cycleHaptics() }
-            } label: {
-                VStack(spacing: 6) {
-                    // Our own "iphone.radiowaves": the phone between two three-wave symbols
-                    // (the stock one has only two waves a side, so medium = strong).
-                    HStack(spacing: 1) {
-                        Image(systemName: "wave.3.left", variableValue: level)
-                            .opacity(currentVibrationMode == .off ? 0 : 1)
-                        Image(systemName: "iphone")
-                            .font(.system(size: 17, weight: .light))
-                        Image(systemName: "wave.3.right", variableValue: level)
-                            .opacity(currentVibrationMode == .off ? 0 : 1)
-                    }
-                    .font(.system(size: 11, weight: .regular))
-                    .symbolRenderingMode(.hierarchical)
-                    .frame(height: 20)
-                    Text(hapticLabel)
-                        .font(.caption2)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                        .contentTransition(.opacity)
+            return roundSwitch(hapticLabel, on: false, faded: currentVibrationMode == .off, action: cycleHaptics) {
+                // Our own "iphone.radiowaves": the phone between two three-wave symbols
+                // (the stock one has only two waves a side, so medium = strong).
+                HStack(spacing: 1) {
+                    Image(systemName: "wave.3.left", variableValue: level)
+                        .opacity(currentVibrationMode == .off ? 0 : 1)
+                    Image(systemName: "iphone")
+                        .font(.system(size: 18, weight: .light))
+                    Image(systemName: "wave.3.right", variableValue: level)
+                        .opacity(currentVibrationMode == .off ? 0 : 1)
                 }
-                .foregroundStyle(Color.primary.opacity(currentVibrationMode == .off ? 0.45 : 0.75))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background {
-                    if ringAbove {
-                        ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
-                    } else {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06))
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .font(.system(size: 11, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
             }
-            .buttonStyle(.plain)
         }
 
         private var hapticLabel: String {
@@ -2641,39 +2684,64 @@ struct tasbeehView: View {
             .accessibilityLabel(label)
         }
 
-        private func chip(_ title: String, icon: String, on: Bool, locked: Bool = false, action: @escaping () -> Void) -> some View {
+        private func chip(_ title: String, icon: String, on: Bool, locked: Bool = false,
+                          info: (label: String, open: () -> Void)? = nil,
+                          circleFrame: ((CGRect) -> Void)? = nil, action: @escaping () -> Void) -> some View {
+            roundSwitch(title, on: on, locked: locked, info: info, circleFrame: circleFrame, action: action) {
+                Image(systemName: icon)
+                    .font(.system(size: 19, weight: .light))
+                    .contentTransition(.symbolEffect(.replace))
+            }
+        }
+
+        /// A session switch: a circle with its symbol, its word under it (decision stats-weight A — never the stat tiles'
+        /// shape, so a switch never reads as a number). Sage while on. The button is the circle and the word, no wider:
+        /// the page round it still resumes. Its (i), when it has one, sits on the circle's shoulder, its own tap.
+        private func roundSwitch<Icon: View>(_ title: String, on: Bool, faded: Bool = false, locked: Bool = false,
+                                             info: (label: String, open: () -> Void)? = nil,
+                                             circleFrame: ((CGRect) -> Void)? = nil,
+                                             action: @escaping () -> Void, @ViewBuilder icon: () -> Icon) -> some View {
             Button {
                 guard !locked else { return }
                 triggerSomeVibration(type: .light)
                 withAnimation(.snappy(duration: CircleMotion.quick)) { action() }
             } label: {
-                VStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 17, weight: .light))
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(height: 20)
+                VStack(spacing: 7) {
+                    icon()
+                        .foregroundStyle(on ? Color.sage : Color.primary.opacity(faded ? 0.45 : 0.75))
+                        .frame(width: Self.switchCircle, height: Self.switchCircle)
+                        .background {
+                            if on {
+                                Circle().fill(Color.sage.opacity(0.16))
+                            } else if ringAbove {
+                                ThemedRaised(shape: Circle(), radius: 5, offset: 2.5)
+                            } else {
+                                Circle().fill(Color.primary.opacity(0.06))
+                            }
+                        }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { circleFrame?($0) }
                     Text(title)
                         .font(.caption2)
+                        .foregroundStyle(on ? Color.sage : Color.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.75)
+                        .contentTransition(.opacity)
                 }
-                .foregroundStyle(on ? Color.sage : Color.primary.opacity(0.75))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background {
-                    if ringAbove && !on {
-                        ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
-                    } else {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
-                    }
-                }
-                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .contentShape(Rectangle())
                 .opacity(locked ? 0.45 : 1)
             }
             .buttonStyle(.plain)
+            .overlay(alignment: .top) {
+                if let info {
+                    infoButton(info.label, on: on, action: info.open)
+                        .offset(x: Self.switchCircle / 2 + 4, y: -9)
+                }
+            }
             .accessibilityHint(locked ? "Locked once the goal is reached" : "")
+            .frame(maxWidth: .infinity)
         }
+
+        private static let switchCircle: CGFloat = 50
 
     }
 
@@ -3050,7 +3118,7 @@ struct SoftCardsFade: ViewModifier {
 }
 
 /// The finished session in the soft look's centred ring, as the Zikr wheel will show it (decision session-flow-build A,
-/// owner: "content inside of the circle could instead be the title of the task"): the task's title and "done today" /
+/// owner: "content inside of the circle could instead be the title of the task"): the task's title and, part-done,
 /// where it stands; a free session's zikr with ⌄ (the picker moves the saved session). Above the ring, "Saved to your
 /// history" and, after the session that kept it, the streak.
 struct SessionDoneFace: View {
@@ -3164,13 +3232,9 @@ struct SessionDoneFace: View {
 
     @ViewBuilder private var subtitle: some View {
         if let task = session.task, let p = taskProgress {
-            if task.isCompleted(with: p) {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark")
-                    Text("done today")
-                }
-                .foregroundStyle(Color.sage)
-            } else {
+            // Done: nothing more in the ring — "Saved to your history" and the streak above it say it (owner crossed out
+            // "✓ done today", decision stats-weight).
+            if !task.isCompleted(with: p) {
                 Text(task.isCountMode ? "\(p.count) of \(task.goal)" : "\(Int(p.seconds / 60)) of \(task.goal) min")
                     .foregroundStyle(.secondary)
             }
