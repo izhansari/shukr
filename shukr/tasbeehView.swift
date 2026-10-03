@@ -2091,7 +2091,20 @@ struct tasbeehView: View {
             return VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     softTile("time") { softValue(timerStyle(shownSeconds)) }
-                    softTile("per count") { softValue(String(format: "%.2fs", shownPerCount)) }
+                    // The rate tile says how it compares with your usual pace inside it (owner: "the comparison text …
+                    // to be in the rate tile").
+                    softTile("per count") {
+                        softValue(String(format: "%.2fs", shownPerCount))
+                        if let pace {
+                            Text(pace.text)
+                                .font(.system(size: 11, weight: pace.faster == true ? .medium : .regular, design: .rounded))
+                                .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                                .padding(.horizontal, 6)
+                                .contentTransition(.opacity)
+                        }
+                    }
                     ZStack {
                         softThirdTile
                             .modifier(SoftCardsFade(shown: !finished, delay: 0))
@@ -2100,23 +2113,6 @@ struct tasbeehView: View {
                     }
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
-                // Under the per-count tile, as it sits under the rate today: how this compares with your usual pace.
-                HStack(spacing: 10) {
-                    Color.clear.frame(maxWidth: .infinity)
-                    Group {
-                        if let pace {
-                            Text(pace.text)
-                                .font(.system(size: 12, weight: pace.faster == true ? .medium : .regular, design: .rounded))
-                                .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                                .contentTransition(.opacity)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    Color.clear.frame(maxWidth: .infinity)
-                }
-                .frame(height: 22)
 
                 // The chips while paused; after a sleep finish, Keep counting in their place.
                 ZStack {
@@ -2141,7 +2137,7 @@ struct tasbeehView: View {
                     }
                 }
                 .frame(height: 62)
-                .padding(.top, 6)
+                .padding(.top, 14)
 
                 // Resume ⇄ Done in one capsule that stays put; only its words change.
                 Button {
@@ -2225,7 +2221,8 @@ struct tasbeehView: View {
             }
         }
 
-        /// A tile raised off the page: its caption over its value.
+        /// A tile raised off the page: its caption over its value (the rate's comparison under it, inside). One height for
+        /// all three, with or without that line.
         private func softTile<Content: View>(_ caption: String, flips: Bool = false,
                                              @ViewBuilder value: () -> Content) -> some View {
             VStack(spacing: 3) {
@@ -2245,7 +2242,7 @@ struct tasbeehView: View {
                 value()
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 62)
+            .frame(height: 76)
             .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 6, offset: 3))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
