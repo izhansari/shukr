@@ -327,7 +327,7 @@ struct PrayerTimesView: View {
         #endif
     }
 
-    // (CircleCover's closers: see the extension at the end of this file.)
+    // (CircleCover's closers: the stage, CircleMoments.swift.)
     private var somethingCovers: Bool {
         showQiblaMap || showMapPage || showDailyAyahPage || showMantrasPage || showSalahHistoryV1
             || showSalahHistoryV2 || showZikrHistory || showInsightsPage || showOldInsights
@@ -2522,22 +2522,3 @@ struct WidgetUnmarkRequest: Identifiable {
     }
 }
 
-/// Covers that PrayerTimesView's own flags can't see (the ☰ popover, What's new, compass calibration, a prayer row's time
-/// edit) register how to close themselves, so a widget / alarm / control open closes them too instead of pushing its page
-/// under them (transitions audit 2026-10-03, bug 4). Frank's foundation (tr-foundation) folds this into the stage's typed
-/// covers.
-extension CircleCover {
-    private(set) static var closers: [String: () -> Void] = [:]
-    /// The cover is up (`on`) or gone, and how to close it while it's up.
-    static func set(_ key: String, _ on: Bool, close: @escaping () -> Void) {
-        set(key, on)
-        closers[key] = on ? close : nil
-    }
-    static var closable: Bool { !closers.isEmpty }
-    /// Closes every registered cover (each one's `set(…, false, …)` then forgets it).
-    static func closeAll() {
-        let all = Array(closers.values)
-        closers = [:]
-        all.forEach { $0() }
-    }
-}

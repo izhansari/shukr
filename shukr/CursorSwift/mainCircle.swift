@@ -8,10 +8,14 @@ import SwiftData
 /// (the What's new sheet, the ☰ popover, a prayer row's time editor). The circle counts as not on
 /// screen while any is up — no qibla buzz, no track animation. 2026-09-27 review.
 @MainActor enum CircleCover {
-    private(set) static var active = Set<String>()
-    static func set(_ key: String, _ on: Bool) {
-        if on { active.insert(key) } else { active.remove(key) }
-    }
+    /// Kept on the stage (CircleMoments.swift), observable, so a moment waiting for a clear circle wakes when a cover
+    /// goes instead of polling.
+    static var active: Set<String> { CircleStage.shared.covers }
+    static func set(_ key: String, _ on: Bool) { CircleStage.shared.cover(key, on) }
+    /// A cover that can close itself says how (a widget open closes it rather than pushing its page underneath).
+    static func set(_ key: String, _ on: Bool, close: @escaping () -> Void) { CircleStage.shared.cover(key, on, close: close) }
+    static var closable: Bool { CircleStage.shared.closable }
+    static func closeAll() { CircleStage.shared.closeAll() }
     /// The morning card is a cover for prompts (they wait for it) but not over the circle: its page has a hole there,
     /// and the circle shows the morning itself (circle step 3).
     static let besideCircle: Set<String> = ["morningCard", "lost"]
@@ -414,6 +418,9 @@ struct MainCircleView: View {
                                               prayerName: p.name)
             NotificationCenter.default.post(name: .prayerCompleted, object: event)
         }
+        #if DEBUG
+        .task { if ProcessInfo.processInfo.arguments.contains("-selfTestStage") { await StageSelfTest.run() } }
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: .prayerCompleted)) { note in
             guard let event = note.object as? PrayerCompletionEvent else { return }
             if event.isCorrection {
@@ -597,7 +604,9 @@ struct MainCircleView: View {
             quietly { displayedFace = derivedFace }
             flourishOut = true                    // fades on its own (implicit), the words fade in
             withAnimation(.easeInOut(duration: 0.45)) {
-                live?.postSalahNudge = event.name   // the post-salah pill under the top bar
+                // The post-salah pill under the top bar. The original event's name even after a Jumu'ah correction
+                // ("Dhuhr"): the pill's dismissal compares it with the row's name (Sami's review of 98eeedf).
+                live?.postSalahNudge = event.name
             }
             guard await CircleGate.pause(0.5) else { return }
             quietly { flourish = nil; flourishOut = false }
