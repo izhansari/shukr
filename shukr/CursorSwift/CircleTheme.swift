@@ -19,6 +19,9 @@ struct CircleTheme: Equatable {
     var palette: SalahPalette = .charcoal
     /// Lines between prayers in the card / well looks (Today's look always has them).
     var lines = true
+    /// A tasbeeh session's layout when picked on its own (DEBUG `-salahLook.sessionLayout ringAbove|classic`); nil
+    /// follows the material (`sessionLayout`).
+    var sessionLayoutPick: SessionLayout? = nil
 
     /// The look before the prototype.
     static let today = CircleTheme()
@@ -33,7 +36,8 @@ struct CircleTheme: Equatable {
         return CircleTheme(list: SalahLook(rawValue: d.string(forKey: SalahLook.key) ?? "") ?? s.list,
                            softRing: d.object(forKey: SalahLook.softRingKey) == nil ? s.softRing : d.bool(forKey: SalahLook.softRingKey),
                            palette: SalahPalette(rawValue: d.string(forKey: SalahPalette.key) ?? "") ?? s.palette,
-                           lines: d.object(forKey: SalahLook.linesKey) == nil ? s.lines : d.bool(forKey: SalahLook.linesKey))
+                           lines: d.object(forKey: SalahLook.linesKey) == nil ? s.lines : d.bool(forKey: SalahLook.linesKey),
+                           sessionLayoutPick: SessionLayout(rawValue: d.string(forKey: SessionLayout.key) ?? ""))
     }
 
     // MARK: What views ask
@@ -41,6 +45,10 @@ struct CircleTheme: Equatable {
     /// The pages wear the soft material (the Salah and Zikr backdrop, the bottom bar, the tasbeeh page): any list
     /// look but today's, or the soft ring alone.
     var soft: Bool { list != .today || softRing }
+    /// How a tasbeeh session lays out round its ring — apart from the material, so the layout survives a change of
+    /// look (Sami's review of b3ed3e3; owner: "making sure our code holds up to interchangeable styling"). The soft
+    /// material brings the ring-above layout unless one is picked.
+    var sessionLayout: SessionLayout { sessionLayoutPick ?? (soft ? .ringAbove : .classic) }
     /// "N done" and "perfect day" sit under the list's card (the soft list looks); Today's look keeps them inside.
     var listFooterOutside: Bool { list != .today }
     var showsRowDividers: Bool { list == .today || ((list == .card || list == .well) && lines) }
@@ -80,12 +88,14 @@ struct CircleThemeRoot: ViewModifier {
     @AppStorage(SalahLook.softRingKey) private var softRing = CircleTheme.standard.softRing
     @AppStorage(SalahPalette.key) private var palette = CircleTheme.standard.palette.rawValue
     @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
+    @AppStorage(SessionLayout.key) private var sessionLayout = ""
 
     func body(content: Content) -> some View {
         content.environment(\.circleTheme, CircleTheme(list: SalahLook(rawValue: list) ?? CircleTheme.standard.list,
                                                        softRing: softRing,
                                                        palette: SalahPalette(rawValue: palette) ?? CircleTheme.standard.palette,
-                                                       lines: lines))
+                                                       lines: lines,
+                                                       sessionLayoutPick: SessionLayout(rawValue: sessionLayout)))
     }
 }
 
@@ -144,6 +154,47 @@ enum SalahPalette: String, CaseIterable, Identifiable {
         case .stone: Self.dynamic(light: UIColor(white: 1, alpha: 0.9),
                                   dark: UIColor(red: 1, green: 0.95, blue: 0.85, alpha: 0.06))
         case .tasbeeh: Color("NeuLightShad")
+        }
+    }
+}
+
+/// A tasbeeh session's layout (decision session-flow-build A).
+enum SessionLayout: String {
+    /// The pause screen and the results cover the counter (Today's look).
+    case classic
+    /// The counter's ring stays on screen: raised for the pause cards, centred for the results.
+    case ringAbove
+    static let key = "salahLook.sessionLayout"
+}
+
+/// A card lifted off the page in the theme's material: the soft lift, else a plain tint with a hairline. Layouts draw
+/// with these (not NeuRaised) so they hold up whichever material is picked.
+struct ThemedRaised<S: Shape>: View {
+    let shape: S
+    var radius: CGFloat = 8
+    var offset: CGFloat = 4
+    @Environment(\.circleTheme) private var theme
+
+    var body: some View {
+        if theme.soft {
+            NeuRaised(shape: shape, radius: radius, offset: offset)
+        } else {
+            shape.fill(Color.primary.opacity(0.05))
+                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+        }
+    }
+}
+
+/// A well pressed into the page in the theme's material: the soft press, else a plain tint.
+struct ThemedPressed<S: Shape>: View {
+    let shape: S
+    @Environment(\.circleTheme) private var theme
+
+    var body: some View {
+        if theme.soft {
+            NeuPressed(shape: shape)
+        } else {
+            shape.fill(Color.primary.opacity(0.04))
         }
     }
 }

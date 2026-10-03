@@ -35,11 +35,14 @@ struct tasbeehView: View {
     /// ring "shifts down ever so slightly", owner), and the page is the picked palette's surface.
     @Environment(\.circleTheme) private var theme
     private var softLook: Bool { theme.soft }
+    /// The ring-above session layout (decision session-flow-build A), apart from the material: `softLook` is the page's
+    /// surface and the wheel's soft entry, this is where things go.
+    private var ringAbove: Bool { theme.sessionLayout == .ringAbove }
     /// Where the soft look's ring should stand, as a lift from its laid-out place: raised to the pause cards' slot while
     /// paused; once finished, centred (as the Zikr wheel will hold it), only raised if the bottom block needs the room
     /// (a short phone); home for the counter and for a close.
     private var ringLiftTarget: CGFloat {
-        guard softLook, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
+        guard ringAbove, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
         if savedSession != nil {
             guard cardsBottomTop > 0 else { return 0 }
             return min(0, cardsBottomTop - 26 - (ringHomeMid.y + ringSize.height / 2))
@@ -109,6 +112,8 @@ struct tasbeehView: View {
     @State private var pauseSlot: CGRect = .zero
     @State private var cardsBottomTop: CGFloat = 0
     @State private var ringLift: CGFloat = 0
+    /// The ring's move in flight (a wait for the cards, Reduce Motion's fade): a newer move cancels it.
+    @State private var ringMoveTask: Task<Void, Never>?
     /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
     @State private var ringDimmed = false
     /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
@@ -346,7 +351,7 @@ struct tasbeehView: View {
                 TasbeehCountView(tasbeeh: tasbeeh)
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
-                    .modifier(RingLift(lift: softLook ? ringLift : nil, dimmed: ringDimmed))
+                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
                 
                 GeometryReader { geometry in
                     VStack {
@@ -396,18 +401,24 @@ struct tasbeehView: View {
                 }
                 
                 
+                // The ring's home, on something that never moves: centred like the ring, never lifted (the ring's own
+                // frame moves with its lift — measured there, the lift chased itself; Sami's review of b3ed3e3).
+                if ringAbove {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .allowsHitTesting(false)
+                        .onGeometryChange(for: CGPoint.self) { proxy in
+                            let f = proxy.frame(in: .global)
+                            return CGPoint(x: f.midX, y: f.midY)
+                        } action: { ringHomeMid = $0 }
+                }
+
                 // the circles we see
                 NeuCircularProgressView(progress: (progressFraction), settled: arcSettled)
                     .allowsHitTesting(false) //so taps dont get intercepted.
                     // Its place as laid out (measured inside the offset, which is zero then): the soft entry's start.
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
-                        // Its home: this frame moves with the entry's glide and the lift (their model values), so take
-                        // them back off — read as it is, the lift chased its own frame back to nothing.
-                        if frame.width > 0 {
-                            ringSize = frame.size
-                            ringHomeMid = CGPoint(x: frame.midX - entryOffset.width,
-                                                  y: frame.midY - entryOffset.height - (softLook ? ringLift : 0))
-                        }
+                        if frame.width > 0 { ringSize = frame.size }   // its place moves with the lift; the anchor has that
                         placeEntry(at: frame)
                     }
                     // Finished (soft look): the task's title in the ring, "Saved to your history" over it, after the
@@ -415,7 +426,7 @@ struct tasbeehView: View {
                     // added beside it took the move's end at once). Not under the ring's allowsHitTesting(false): a free
                     // session's name opens the picker.
                     .overlay {
-                        if softLook, let session = savedSession {
+                        if ringAbove, let session = savedSession {
                             SessionDoneFace(session: session)
                                 .modifier(SoftCardsFade(shown: resultsIn && !leaving))
                                 .allowsHitTesting(resultsIn && !leaving)
@@ -426,7 +437,7 @@ struct tasbeehView: View {
                     // as it handed over (a 2-frame dip, circle-ring-handover).
                     .compositingGroup()
                     .opacity((pageIn || ringHeld) && !ringOut ? 1 : 0)
-                    .modifier(RingLift(lift: softLook ? ringLift : nil, dimmed: ringDimmed))
+                    .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
             }
             // Soft look: centred on the whole screen (the circles it opens out of are), not the safe area.
             .ignoresSafeArea(.container, edges: softLook ? .all : [])
@@ -451,9 +462,9 @@ struct tasbeehView: View {
                     appLookDark: appLookDark,
                     goalReached: goalReached,
                     currentVibrationMode: $currentVibrationMode,
-                    soft: softLook,
+                    ringAbove: ringAbove,
                     timeOffset: timeOffset,
-                    results: softLook ? savedSession.map { session in
+                    results: ringAbove ? savedSession.map { session in
                         .init(session: session,
                               keepCounting: sleptSaved && sleepResume != nil ? { requestKeepCounting() } : nil,
                               done: { finishFromResults() })
@@ -461,7 +472,9 @@ struct tasbeehView: View {
                     cardsShown: paused || resultsIn || (savedSession != nil && cardsStay),
                     resultsIn: resultsIn,
                     onRingSlot: { if $0.height > 0 { pauseSlot = $0 } },
-                    onBottomTop: { cardsBottomTop = $0 }
+                    // Frozen once finished: re-reported as the block's words changed, it moved the ring's target
+                    // mid-move (the ring held, then jumped ~85 pt; Sami's B1).
+                    onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } }
                 )
             }
             .animation(.easeInOut, value: paused)
@@ -510,7 +523,7 @@ struct tasbeehView: View {
                         .opacity(paused ? 0 : 1)
                         .allowsHitTesting(!paused)   // a disabled button still swallowed the pause screen's taps
                 }
-                .animation(paused ? .easeOut(duration: softLook ? 0.15 : 0.35) : .easeIn, value: paused)
+                .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
                 .padding()
                 .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
                 // Finished: the soft results sit under this layer (the ring's, not a cover) — no stray ⏸ over Done.
@@ -549,9 +562,9 @@ struct tasbeehView: View {
                             .padding(.top, 120)
                             .allowsHitTesting(false)
                             // Fades under the pause screen with it (removing it popped; left on,
-                            // it drew through the pause screen).
-                            .opacity(paused ? 0 : 1)
-                            .animation(.easeInOut, value: paused)
+                            // it drew through the pause screen), and for the results (ring-above: they don't cover it).
+                            .opacity(paused || savedSession != nil ? 0 : 1)
+                            .animation(.easeInOut, value: paused || savedSession != nil)
                     }
                     Spacer()
                     inactivityAlert(countDownForAlert: countDownForAlert, showOn: showInactivityAlert, action: {inactivityTimerHandler(run: "restart")})
@@ -580,15 +593,15 @@ struct tasbeehView: View {
                             .padding(.bottom, 12)
                     }
                     .allowsHitTesting(false)
-                    .opacity(paused ? 0 : 1)
-                    .animation(.easeInOut, value: paused)
+                    .opacity(paused || savedSession != nil ? 0 : 1)   // ring-above results sit under it (Sami's B4)
+                    .animation(.easeInOut, value: paused || savedSession != nil)
                 }
             }
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
             
             // results page
             ZStack{
-                if !softLook, let session = savedSession {   // the soft look's results are the pause cards' (above)
+                if !ringAbove, let session = savedSession {   // ring-above: the results are the pause cards' (above)
                     ResultsView(
                         isPresented: $isPresented,
                         savedSession: session, // Pass the saved session
@@ -601,7 +614,7 @@ struct tasbeehView: View {
                 // …under sleep mode's dim, at his dimmer setting: no bright page for someone asleep
                 // (owner). On the results layer itself, so on Keep counting it fades out with them over
                 // the counter's own dim (already on) — the same darkness throughout, no bright flash.
-                if resultsDimmed && !softLook {   // soft: the counter's own dim is over its results already
+                if resultsDimmed && !ringAbove {   // ring-above: the counter's own dim is over its results already
                     Color.black.opacity((1 - inactivityDimmer) * 0.9)
                         .ignoresSafeArea()
                         .allowsHitTesting(false)
@@ -650,7 +663,7 @@ struct tasbeehView: View {
             if results {
                 cardsStay = paused
                 // Soft look: the ring stays — it comes down from the pause cards (or stays put) and takes the task's title.
-                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = !softLook; countIn = false; chromeIn = false }
+                withAnimation(.easeOut(duration: CircleMomentTiming.out)) { ringOut = !ringAbove; countIn = false; chromeIn = false }
                 Task { @MainActor in
                     try? await Task.sleep(for: .seconds(CircleMomentTiming.outDone))
                     guard savedSession != nil else { return }
@@ -680,7 +693,7 @@ struct tasbeehView: View {
             if !(openingStyle != .fade && (paused || savedSession != nil)) { landRing(fadeAfter: 0.53) }   // that close lands it later
             if openingStyle == .fade {
                 withAnimation(.easeIn(duration: 0.3)) { leaving = true }
-            } else if softLook && (paused || savedSession != nil) {
+            } else if ringAbove && (paused || savedSession != nil) {
                 // Soft look: the ring is already on screen with the cards — they go, the ring comes home to the centre
                 // (where the wheel's is) as they do, then its arc lands and the page goes.
                 ringToCentre = true
@@ -1177,19 +1190,26 @@ struct tasbeehView: View {
     }
 
     /// The soft look's ring to its place (`ringLiftTarget`): a spring, or under Reduce Motion out, there, in.
+    /// The wait is a task, never `.delay` on the spring: a delayed spring retargeted mid-move doesn't carry the move's
+    /// speed (Sami's B1). A newer move cancels this one; each moves to the target as it is then.
     private func moveRing(to target: CGFloat, waitForCards: Bool) {
-        if reduceMotion {
-            withAnimation(.easeOut(duration: 0.15)) { ringDimmed = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.17) {
+        ringMoveTask?.cancel()
+        ringMoveTask = Task { @MainActor in
+            if reduceMotion {
+                withAnimation(.easeOut(duration: 0.15)) { ringDimmed = true }
+                try? await Task.sleep(for: .seconds(0.17))
+                guard !Task.isCancelled else { return }
                 var quiet = Transaction()
                 quiet.disablesAnimations = true
                 withTransaction(quiet) { ringLift = ringLiftTarget }
                 withAnimation(.easeIn(duration: 0.2)) { ringDimmed = false }
+                return
             }
-            return
-        }
-        withAnimation(waitForCards ? CircleMotion.ringMove.delay(CircleMotion.ringMoveDownDelay) : CircleMotion.ringMove) {
-            ringLift = target
+            if waitForCards {
+                try? await Task.sleep(for: .seconds(CircleMotion.ringMoveDownDelay))
+                guard !Task.isCancelled else { return }
+            }
+            withAnimation(CircleMotion.ringMove) { ringLift = ringLiftTarget }
         }
     }
 
@@ -1657,9 +1677,10 @@ struct tasbeehView: View {
         /// Past the goal on "keeps going": the chip is locked and Finish isn't "early".
         let goalReached: Bool
         @Binding var currentVibrationMode: HapticFeedbackType
-        /// The soft look (decision session-flow-build A): the counter's ring stays on screen, raised, and these cards sit
-        /// round it; the same cards carry the results, the ring centred. Today's look keeps `todayBody`.
-        var soft = false
+        /// The ring-above layout (decision session-flow-build A): the counter's ring stays on screen, raised, and these
+        /// cards sit round it; the same cards carry the results, the ring centred. Classic (Today's) keeps `todayBody`.
+        /// The surfaces come from the theme's material (ThemedRaised / ThemedPressed).
+        var ringAbove = false
         /// Seconds already done today when continuing a timed task (the "left" tile counts them).
         var timeOffset: TimeInterval = 0
         /// The finished session, under the soft look.
@@ -1682,6 +1703,8 @@ struct tasbeehView: View {
 
         // UI state
         @State private var showHistory = false
+        @State private var wellRoom: CGFloat = 148
+        @State private var bottomInset: CGFloat = 0
         @State private var showingFinishTime = false
         @State private var finishArmed = false
         @State private var finishArmToken = 0
@@ -1740,7 +1763,7 @@ struct tasbeehView: View {
         @State private var scrollHeight: CGFloat = 0
 
         var body: some View {
-            if soft { softBody } else { todayBody }
+            if ringAbove { softBody } else { todayBody }
         }
 
         @ViewBuilder private var todayBody: some View {
@@ -1835,7 +1858,10 @@ struct tasbeehView: View {
                     softHeader
                         .frame(height: 22)
                         .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
-                        .padding(.bottom, 50)   // clear of the hundreds' beads round the ring's top
+                    // Clear of the hundreds' beads round the ring's top where there's room; on a small phone it gives
+                    // way first, so everything stays on the screen (Sami's B2 / B3: the SE pushed it under the clock).
+                    Spacer(minLength: 14)
+                        .frame(maxHeight: 50)
                     // Where the ring stands while paused: as low as the cards under it allow, so it travels as little
                     // as it can (owner: "so then the ring doesn't have to travel so far up the page").
                     Color.clear
@@ -1843,9 +1869,13 @@ struct tasbeehView: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onRingSlot($0) }
                     VStack(spacing: 10) {
                         softNameRow
+                        // It takes its height before the space above the ring does; with too little room for its text
+                        // (a small phone, the largest text) it stays out of sight rather than squeezed.
                         softWell
-                            .frame(minHeight: 92, maxHeight: 148)
-                            .layoutPriority(1)   // it takes its height before the space above the ring does
+                            .opacity(wellRoom >= 72 ? 1 : 0)
+                            .frame(minHeight: 0, maxHeight: 148)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
+                            .layoutPriority(1)
                     }
                     .padding(.top, 12)
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
@@ -1855,8 +1885,12 @@ struct tasbeehView: View {
                 }
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
+                // Finish early off the edge where there's no home indicator (an SE); elsewhere the safe area does it.
+                .padding(.bottom, bottomInset > 0 ? 0 : 6)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
             .fontDesign(.rounded)
+            .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // fixed slots: past this the tiles and chips truncated
             .onChange(of: chosenMantraName) {
                 if let newSetMantra = chosenMantraName, !newSetMantra.isEmpty {
                     withAnimation {
@@ -1977,7 +2011,7 @@ struct tasbeehView: View {
                         .padding(.vertical, 8)
                 }
             }
-            .background(NeuPressed(shape: shape))
+            .background(ThemedPressed(shape: shape))
             .clipShape(shape)
         }
 
@@ -2062,7 +2096,7 @@ struct tasbeehView: View {
                         softThirdTile
                             .modifier(SoftCardsFade(shown: !finished, delay: 0))
                         softTile("counted") { softValue((results?.session.totalCount ?? 0).formatted()) }
-                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
                     }
                 }
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
@@ -2121,9 +2155,10 @@ struct tasbeehView: View {
                     ZStack {
                         Label("Resume", systemImage: "play.fill")
                             .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                        // In as "Resume" finishes going (0.12 s): the capsule is never bare (Sami's B5).
                         Text("Done")
                             .fontWeight(.semibold)
-                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
                     }
                     .font(.system(size: 17, weight: .medium, design: .rounded))
                     .foregroundStyle(Color.sage)
@@ -2150,7 +2185,7 @@ struct tasbeehView: View {
                             .modifier(SoftCardsFade(shown: !finished, delay: 0))
                         Label("View zikr history", systemImage: "clock.arrow.circlepath")
                             .foregroundStyle(.secondary)
-                            .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0))
+                            .modifier(SoftCardsFade(shown: finished, delay: 0.1))
                     }
                     .font(.system(size: 14, weight: .regular, design: .rounded))
                     .padding(.horizontal, 24)
@@ -2196,6 +2231,8 @@ struct tasbeehView: View {
             VStack(spacing: 3) {
                 HStack(spacing: 4) {
                     Text(caption)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .contentTransition(.opacity)
                     if flips {
                         Image(systemName: "arrow.left.arrow.right")
@@ -2209,7 +2246,7 @@ struct tasbeehView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 62)
-            .background(NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 6, offset: 3))
+            .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 6, offset: 3))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
 
@@ -2480,8 +2517,8 @@ struct tasbeehView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background {
-                    if soft {
-                        NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
+                    if ringAbove {
+                        ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
                     } else {
                         RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.primary.opacity(0.06))
                     }
@@ -2549,8 +2586,8 @@ struct tasbeehView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .background {
-                    if soft && !on {
-                        NeuRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
+                    if ringAbove && !on {
+                        ThemedRaised(shape: RoundedRectangle(cornerRadius: 16, style: .continuous), radius: 5, offset: 2.5)
                     } else {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(on ? Color.sage.opacity(0.16) : Color.primary.opacity(0.06))
@@ -3041,8 +3078,12 @@ struct SessionDoneFace: View {
                 .font(.subheadline)
                 .fontWeight(.thin)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: 150)
         }
         .fontDesign(.rounded)
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)   // inside the ring: the largest sizes ran out of it (Sami's B3)
     }
 
     @ViewBuilder private var subtitle: some View {
