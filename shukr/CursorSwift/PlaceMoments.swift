@@ -40,12 +40,21 @@ final class MasjidArrival {
 
     var enabled: Bool { UserDefaults.standard.bool(forKey: Self.enabledKey) }
 
+    /// Parked (owner, settings-cleanup-1): the duas didn't come until the app was opened — on arriving and on
+    /// leaving — so the switch is gone from Settings and the setup, and anyone who had it on is turned off at
+    /// launch (no half-working duas they can't turn off). The code stays for the fix.
+    static let parked = true
+
     /// Launch (also a background relaunch for a region event): pick the monitor back up.
     /// One monitor per name per process, ever: creating a second throws ("already in use").
     func start() {
         #if DEBUG
         MasjidLog.write("start: enabled \(enabled), always \(hasAlways), monitor \(monitor != nil)")
         #endif
+        if Self.parked {
+            if enabled { setEnabled(false) }   // its monitor's conditions cleared: it watches nothing
+            return
+        }
         guard enabled else { return }
         if cancellable == nil {
             cancellable = NotificationCenter.default.publisher(for: MosqueHiding.changed)

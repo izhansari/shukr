@@ -209,7 +209,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         var moments = [prayer.start, prayer.end]
         let lastHour = prayer.end.addingTimeInterval(-PrayerLockScreenView.timeLeftFrom)
         if lastHour > prayer.start { moments.append(lastHour) }
-        if perMinute, LockTimeStyle.current != .timer {
+        if perMinute {   // "27m" is written per entry (LockTimeLeft)
             var minute = prayer.end.addingTimeInterval(-60)
             while minute > now, minute >= max(lastHour, prayer.start) {
                 moments.append(minute)
@@ -1306,16 +1306,9 @@ struct PrayerLockScreenView: View {
                         .font(.system(size: 9.5, weight: .medium))   // smaller: room for the name (owner, 2026-09-27)
                     if lastHour {
                         // The last hour (owner, 2026-09-29, ask lockscreen-time-left): the time left in
-                        // place of the name — the symbol says which prayer. "27:13" live, or "27m" /
-                        // "27min" from this entry (the timeline steps it each minute; LockTimeStyle).
-                        Group {
-                            let style = LockTimeStyle.current
-                            if style == .timer {
-                                Text(timerInterval: entry.date...prayer.end, countsDown: true, showsHours: false)
-                            } else {
-                                Text(style.text(left: prayer.end.timeIntervalSince(entry.date)))
-                            }
-                        }
+                        // place of the name — the symbol says which prayer. "27m" from this entry (the
+                        // timeline steps it each minute; LockTimeLeft).
+                        Text(LockTimeLeft.text(left: prayer.end.timeIntervalSince(entry.date)))
                         .font(.system(size: 12.5, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                         .multilineTextAlignment(.center)

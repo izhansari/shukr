@@ -1781,27 +1781,33 @@ private struct MasjidStep: View {
 
     var body: some View {
         StepScaffold(title: "Your masjid",
-                     subtitle: "Star the one you pray at. shukr can show a dua when you arrive and when you leave.") {
+                     subtitle: MasjidArrival.parked ? "Star the one you pray at."
+                        : "Star the one you pray at. shukr can show a dua when you arrive and when you leave.") {
             VStack(spacing: 18) {
                 list
-                Toggle(isOn: Binding(get: { duas }, set: { MasjidArrival.shared.setEnabled($0) ; duas = $0 })) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Label("Duas when I arrive and leave", systemImage: "hands.and.sparkles")
-                            .font(.system(.body, design: .rounded))
-                        Text("Asks for Always location. It stays on your phone.")
-                            .font(.system(.footnote, design: .rounded, weight: .light))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .tint(Color.sage)
-                .padding(16)
-                .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
+                if !MasjidArrival.parked { duasToggle }
             }
             .padding(.horizontal, 24)
         } bottom: {
             PrimaryButton(title: "Continue", action: next)
         }
         .task { await search() }
+    }
+
+    /// Parked with the feature (`MasjidArrival.parked`).
+    private var duasToggle: some View {
+        Toggle(isOn: Binding(get: { duas }, set: { MasjidArrival.shared.setEnabled($0) ; duas = $0 })) {
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Duas when I arrive and leave", systemImage: "hands.and.sparkles")
+                    .font(.system(.body, design: .rounded))
+                Text("Asks for Always location. It stays on your phone.")
+                    .font(.system(.footnote, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .tint(Color.sage)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Color(.secondarySystemBackground)))
     }
 
     @ViewBuilder private var list: some View {

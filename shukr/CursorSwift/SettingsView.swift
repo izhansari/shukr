@@ -11,7 +11,6 @@ struct SettingsView: View {
     @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
-    @AppStorage("selectedRingStyle") private var selectedRingStyle: Int = 9
     // The compass reads this from the app-group suite (QiblaSettings); writing it to the standard
     // suite here is why the stepper never changed anything.
     @AppStorage("qibla_sensitivity", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var qiblaSensitivity: Double = 3.5
@@ -44,8 +43,6 @@ struct SettingsView: View {
     @AppStorage("modeToggle") var colorModeToggle = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     
-    @AppStorage("lastLatitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLatitude: Double = 0
-    @AppStorage("lastLongitude", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var lastLongitude: Double = 0
     
     @AppStorage("prayerStreakMode") var prayerStreakMode: Int = 1 //prayerstreak_flag
     @State private var isNotifPopupVisible: Bool = false
@@ -57,23 +54,20 @@ struct SettingsView: View {
     @State private var showFloatingMessage = false // State to control visibility
     
     // For minimizing and expanding the devSection
-    /// DEBUG: tap the "Calculation Method" header, or launch with `-devStuff`.
+    /// DEBUG: tap the "Sneak Peek" header, or launch with `-devStuff`.
     @State private var showDevStuff = ProcessInfo.processInfo.arguments.contains("-devStuff")
     /// DEBUG: the compass's sources, rate and accuracy under the Salah circle (compass audit 2026-09-30).
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
+    @State private var refreshState: RefreshState = .idle
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
     @State private var showNextPlayground = false
     @AppStorage(ZikrWheelStyle.key) private var zikrWheelStyle = ZikrWheelStyle.gentle.rawValue
     @AppStorage(MosqueIconStyle.key) private var mosqueIconStyle = MosqueIconStyle.finder.rawValue
-    @AppStorage(MasjidArrival.enabledKey) private var masjidDuas = false
     /// DEBUG / TestFlight only: Run setup again (the same gate as What's new).
     @ObservedObject private var betaAccess = WhatsNewAccess.shared
-    /// The Lock Screen circle's last-hour time left: "27:13" / "27m" / "27min" (owner comparing, J2UQ).
-    @AppStorage(LockTimeStyle.key, store: UserDefaults(suiteName: SharedStore.appGroup))
-    private var lockTimeStyle = LockTimeStyle.standard.rawValue
     /// What Automatic currently resolves to (re-read when the stored country changes).
     @AppStorage(AutoMethod.countryKey, store: UserDefaults(suiteName: SharedStore.appGroup)) private var autoCountry = ""
     private var automaticLabel: String {
@@ -89,7 +83,6 @@ struct SettingsView: View {
 
     // Create an array of sneakPeekItems.
     let upcomingFeatures: [sneakPeekItem] = [
-        sneakPeekItem(image: "map", title: "Masjid Map", description: "For those times you're in another city and need to find a mosque, this will come in handy!"),
         sneakPeekItem(image: "lightbulb.max.fill", title: "Hadith Motivator", description: "Sometimes we lose sight of the intention behind our actions and just go through the motions. A daily Hadith page would be a cool way to stay reminded of our purpose in this dunya"),
         sneakPeekItem(image: "fork.knife", title: "Food Finder", description: "Finding food is hard. Finding halal food - even harder. I wanna partner with another organization for this iA (cough cough HalalEatsNC?!)"),
         sneakPeekItem(image: "character.book.closed", title: "Quranic Vocab", description: "Explore and learn common words from the Quran to make it easier to focus during prayer."),
@@ -134,6 +127,61 @@ struct SettingsView: View {
     
     
     
+    // MARK: - Refresh location
+
+    /// What Refresh Location is doing (owner, settings-cleanup-1: "make it obvious that the refresh button was pressed").
+    private enum RefreshState: Equatable { case idle, working, done, failed(String) }
+
+    /// The whole row is the button (it was only the words, and "sometimes it's not even clickable"): a light tap
+    /// buzz, a spinner while the place and times update, then "Updated just now" or what went wrong.
+    private var refreshLocationRow: some View {
+        Button {
+            guard refreshState != .working else { return }
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeInOut(duration: 0.2)) { refreshState = .working }
+            Task { @MainActor in
+                // At least a beat of spinner: a cached answer comes back at once and the tap looked like nothing.
+                async let minimum: Void = { try? await Task.sleep(for: .milliseconds(700)) }()
+                let result = await viewModel.refreshLocationNow()
+                await minimum
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    switch result {
+                    case .success: refreshState = .done
+                    case .failure(let why): refreshState = .failed(why.message)
+                    }
+                }
+                if case .success = result { triggerSomeVibration(type: .success) }
+                // Then quiet again, so "just now" never goes stale on the page.
+                try? await Task.sleep(for: .seconds(5))
+                if refreshState != .working { withAnimation(.easeInOut(duration: 0.3)) { refreshState = .idle } }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text("Refresh Location")
+                    .foregroundStyle(Color.green)
+                Spacer(minLength: 8)
+                switch refreshState {
+                case .idle:
+                    EmptyView()
+                case .working:
+                    ProgressView()
+                case .done:
+                    Label("Updated just now", systemImage: "checkmark")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                case .failed(let why):
+                    Text(why)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
         ZStack{
             VStack{
@@ -175,26 +223,9 @@ struct SettingsView: View {
                             Text("Fetching city...")
                         }
                         
-                        HStack {
-                            Image(systemName: "arrow.left.and.right.square")
-                            Text("Latitude")
-                            Spacer()
-                            Text(String(format: "%.6f", lastLatitude))
-                        }
-                        
-                        HStack {
-                            Image(systemName: "arrow.up.and.down.square")
-                            Text("Longitude")
-                            Spacer()
-                            Text(String(format: "%.6f", lastLongitude))
-                        }
-                        
+                        // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
-                            Button("Refresh Location") {
-                                viewModel.refreshCityAndPrayerTimes()
-                                viewModel.fetchPrayerTimes(cameFrom: "SettingsView Refresh Location Button")
-                            }
-                            .tint(.green)
+                            refreshLocationRow
                         } else {
                             // No location permission: prayer times come from a picked city.
                             Button("Choose City") { showCityPicker = true }
@@ -258,42 +289,11 @@ struct SettingsView: View {
 
                     
                     
-                    //MARK: - Masjid
-                    Section {
-                        Toggle(isOn: Binding(get: { masjidDuas }, set: { on in
-                            masjidDuas = on
-                            MasjidArrival.shared.setEnabled(on)
-                        })) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Duas at my masajid")
-                                Text("The dua for entering when you arrive, and for leaving when you go.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(.green)
-                        if masjidDuas {
-                            Button("Preview the notification") {
-                                MasjidArrival.notify(masjid: MosqueFavorites.all.first?.name ?? "Your masjid", entering: true)
-                            }
-                            .foregroundStyle(Color.green)
-                        }
-                    } header: {
-                        Text("Masjid")
-                    } footer: {
-                        Text(MosqueFavorites.all.isEmpty
-                             ? "Works for My masajid — star a mosque on the map first. Needs location set to \"Always\"."
-                             : "Works for your \(MosqueFavorites.all.count) saved masajid (star them on the map). Needs location set to \"Always\"; nothing leaves your phone.")
-                    }
+                    // (The Masjid section — duas when you arrive and leave — is parked: it didn't fire until the app was
+                    // opened (owner, settings-cleanup-1). `MasjidArrival.parked` turns it off for anyone who had it on.)
 
                     //MARK: - Calculation Method
-                    Section(header: Text("Calculation Method")
-                        #if DEBUG
-                        .onTapGesture {
-                            showDevStuff.toggle()
-                        }
-                        #endif
-                    ) {
+                    Section(header: Text("Calculation Method")) {
                         Picker("Method", selection: $calculationMethod) {
                             // Follows the country you're in (AutoMethod) — the setup's default.
                             Text(automaticLabel).tag(AutoMethod.automatic)
@@ -333,19 +333,7 @@ struct SettingsView: View {
                     
                     
                     if betaAccess.available {
-                        // Comparing styles before settling on one (owner, J2UQ) — then this goes.
-                        Section {
-                            Picker("Lock Screen time left", selection: $lockTimeStyle) {
-                                ForEach(LockTimeStyle.allCases) { Text($0.sample).tag($0.rawValue) }
-                            }
-                            .pickerStyle(.segmented)
-                            .onChange(of: lockTimeStyle) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
-                        } header: {
-                            Text("Lock Screen time left")
-                        } footer: {
-                            Text("Beta builds only: how the Lock Screen circle shows the time left in a prayer's last hour.")
-                        }
-                        .id("lockTime")
+                        // (Lock Screen time left is "27m" for good — owner, settings-cleanup-1; the picker is gone.)
                         Section {
                             Button {
                                 NotificationCenter.default.post(name: FirstRunSetup.rerun, object: nil)
@@ -397,6 +385,9 @@ struct SettingsView: View {
                         
                     } header: {
                         Text("Sneak Peek...")
+                            #if DEBUG
+                            .onTapGesture { withAnimation { showDevStuff.toggle() } }   // My Dev Stuff (owner)
+                            #endif
                     } footer: {
                         // Which build this is (BuildInfo), under the last section users see.
                         BuildLineButton { showWhatsNew = true }   // → What's new (DEBUG / TestFlight)
@@ -412,21 +403,23 @@ struct SettingsView: View {
                     
                     //MARK: - Dev Stuff
                     #if DEBUG
-                    if(showDevStuff){
-                        Section(header: Text("My Dev Stuff")) {
-                            Picker("Tasbeeh Ring", selection: $tasbeehRingStyle) {
+                    // My Dev Stuff, grouped (owner, settings-cleanup-1: "it's a lot of stuff in there and it's not really
+                    // ordered"). Pickers for looks already decided stay only where the app still reads them.
+                    if showDevStuff {
+                        Section {
+                            Button("Ring playground…") { showRingPlayground = true }
+                            Button("NEXT label playground…") { showNextPlayground = true }
+                            // Plays the prayer-begins moment on the Salah circle (visual only: no test
+                            // times, no prayer rows or notifications touched).
+                            Button("Preview prayer begins", systemImage: "play.circle") {
+                                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
+                            }
+                        } header: { Text("Dev · Playgrounds") }
+
+                        Section {
+                            Picker("Tasbeeh ring", selection: $tasbeehRingStyle) {
                                 ForEach(TasbeehRingStyle.allCases) { Text($0.rawValue).tag($0.rawValue) }
                             }
-                            Button("Ring playground…") { showRingPlayground = true }
-                            // Every notification shukr sends, to this phone 6 s apart (lock it to see).
-                            Button("Send notification samples") { Task { await NotificationSamples.send() } }
-                            // Prayers widget speed test: flip one, tap the home widget, feel the difference.
-                            Toggle("Widget: still ring (no live fill)", isOn: $widgetStillRing)
-                                .onChange(of: widgetStillRing) { WidgetCenter.shared.reloadAllTimelines() }
-                            Toggle("Widget: fewest updates", isOn: $widgetFewestEntries)
-                                .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
-                            Button("NEXT label playground…") { showNextPlayground = true }
-                            Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
                             Picker("Zikr wheel", selection: $zikrWheelStyle) {
                                 ForEach(ZikrWheelStyle.allCases) { Text($0.title).tag($0.rawValue) }
                             }
@@ -439,42 +432,47 @@ struct SettingsView: View {
                                 Text("Dashed ring only").tag(false)
                             }
                             .onChange(of: showNextLabel) { _, _ in WidgetCenter.shared.reloadAllTimelines() }
-                            // Plays the prayer-begins moment on the Salah circle (visual only: no test
-                            // times, no prayer rows or notifications touched).
-                            Button("Preview prayer begins", systemImage: "play.circle") {
-                                NotificationCenter.default.post(name: PrayerStartPreview.request, object: nil)
-                            }
                             Picker("Mosque icon", selection: $mosqueIconStyle) {
                                 ForEach(MosqueIconStyle.allCases) { style in
                                     Label(style.title, systemImage: style.button(on: false)).tag(style.rawValue)
                                 }
                             }
-                            Picker("Ring Style", selection: $selectedRingStyle) {
-                                ForEach(0..<10) { index in
-                                    Text("\(index)").tag(index)
-                                }
-                                
-                            }
-                            Toggle("Location Printer", isOn: $viewModel.locationPrints)
-                            Toggle("Scheduling Printer", isOn: $viewModel.schedulePrints)
-                            Toggle("Calculation Printer", isOn: $viewModel.calculationPrints)
-                            VStack{
-                                Toggle("Use Test Prayer Times", isOn: $viewModel.useTestPrayers)
-                                    .onChange(of: viewModel.useTestPrayers) { _, new in
-                                        viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
-                                    }
-                                if viewModel.useTestPrayers {
-                                    Text("Using test times with short intervals")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                }
-                            }
-                            Button("Reset Autopilot Fajr Alert"){
+                        } header: { Text("Dev · Looks (decided; still read)") }
+
+                        Section {
+                            // Every notification shukr sends, to this phone 6 s apart (lock it to see).
+                            Button("Send notification samples") { Task { await NotificationSamples.send() } }
+                            Button("Reset Autopilot Fajr Alert") {
                                 didShowAlarmSetupAlert = false
                                 alarmEnabled = false
                             }
-                        }
+                        } header: { Text("Dev · Notifications & alarm") }
 
+                        Section {
+                            // Prayers widget speed test: flip one, tap the home widget, feel the difference.
+                            Toggle("Still ring (no live fill)", isOn: $widgetStillRing)
+                                .onChange(of: widgetStillRing) { WidgetCenter.shared.reloadAllTimelines() }
+                            Toggle("Fewest updates", isOn: $widgetFewestEntries)
+                                .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
+                        } header: { Text("Dev · Widget") }
+
+                        Section {
+                            Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)
+                            Toggle("Location printer", isOn: $viewModel.locationPrints)
+                            Toggle("Scheduling printer", isOn: $viewModel.schedulePrints)
+                            Toggle("Calculation printer", isOn: $viewModel.calculationPrints)
+                        } header: { Text("Dev · Compass, location & logs") }
+
+                        Section {
+                            Toggle("Use test prayer times", isOn: $viewModel.useTestPrayers)
+                                .onChange(of: viewModel.useTestPrayers) { _, _ in
+                                    viewModel.fetchPrayerTimes(cameFrom: "toggle Use Test Prayer Times")
+                                }
+                        } header: {
+                            Text("Dev · Test data")
+                        } footer: {
+                            if viewModel.useTestPrayers { Text("Using test times with short intervals.") }
+                        }
                     }
                     #endif
                     
@@ -940,10 +938,6 @@ struct AlarmSettingsView: View {
     /// iOS 26.1+: shukr sets the alarm itself (AlarmKit); the Shortcut steps aside.
     @AppStorage(FajrAlarms.activeKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var alarmKitActive = false
     @State private var alarmKitRefused = false
-    /// Settings' "Test alarm": the time picked, a line after setting it, busy while scheduling.
-    @State private var testAlarmAt = Date().addingTimeInterval(60)
-    @State private var testAlarmMessage: String?
-    @State private var testAlarmBusy = false
     
     // ------------------------------------------
     // MARK: - Computed Helpers
@@ -978,12 +972,6 @@ struct AlarmSettingsView: View {
 //        return "\(shortTimePM(calcDate))"
     }
     
-    /// "shukr sets it · every day through Wed, Nov 26".
-    private var alarmKitStatus: String {
-        guard let through = FajrAlarms.scheduledThrough else { return "shukr sets it itself" }
-        return "shukr sets it · every day through \(through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
-    }
-
     private var fajrTimeRangeText: String {
 //        return "(Fajr is \(shortTime(nextFajrTime)) - \(shortTimePM(nextSunriseTime)))"
 //        return alarmIsFajr ? shortTimePM(nextFajrTime) : shortTimePM(nextSunriseTime)
@@ -1156,12 +1144,9 @@ struct AlarmSettingsView: View {
                     // iOS 26.1+: who sets it. shukr (AlarmKit) — how far ahead; or still the
                     // Shortcut (from before) — one tap to let shukr take over.
                     if FajrAlarms.supported && !isEditingAlarm {
-                        if alarmKitActive {
-                            Label(alarmKitStatus, systemImage: "checkmark.circle")
-                                .font(.footnote)
-                                .foregroundStyle(Color.green)   // Settings' green (owner, note C9FB37FF)
-                            testAlarmRow
-                        } else {
+                        // shukr sets it: nothing more to say here (owner, settings-cleanup-1: no "every day through …"
+                        // line, no test alarm).
+                        if !alarmKitActive {
                             Button {
                                 Task { @MainActor in
                                     if !(await FajrAlarms.enable()) { alarmKitRefused = true }
@@ -1215,7 +1200,7 @@ struct AlarmSettingsView: View {
                 Text("Had the Shortcut automation? It no longer makes an alarm while shukr sets it — no need to delete it.")
                     .font(.caption)
                     .foregroundColor(.gray)
-                Text("Where to see it: alarms an app sets (Apple's AlarmKit) don't appear in the Clock app's list — only Clock's own do. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, even on silent or in a Focus (and on your Apple Watch if it's paired). To check it works, set a test alarm below.")
+                Text("Where to see it: alarms an app sets (Apple's AlarmKit) don't appear in the Clock app's list — only Clock's own do. When it rings it takes over the Lock Screen like any alarm, with \"shukr\" under the title, even on silent or in a Focus (and on your Apple Watch if it's paired).")
                     .font(.caption)
                     .foregroundColor(.gray)
             }
@@ -1224,54 +1209,6 @@ struct AlarmSettingsView: View {
         }
     }
 
-    /// A one-off real alarm at a time you pick (default a minute from now), so you can see and hear
-    /// what the Fajr alarm does (owner, note C9FB37FF: "a test button … or a custom time even").
-    @ViewBuilder private var testAlarmRow: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                Image(systemName: "alarm")
-                    .foregroundStyle(.secondary)
-                Text("Test alarm")
-                Spacer()
-                DatePicker("Test alarm time", selection: $testAlarmAt, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                Button(testAlarmBusy ? "…" : "Set") {
-                    testAlarmBusy = true
-                    Task { @MainActor in
-                        // A time already gone today means tomorrow.
-                        var at = testAlarmAt
-                        if at <= Date() { at = Calendar.current.date(byAdding: .day, value: 1, to: at) ?? at }
-                        testAlarmMessage = await FajrAlarms.scheduleTest(at: at)
-                            ? "Test alarm set for \(shortTimePM(at)). Lock your phone and wait for it."
-                            : "Couldn't set it — allow Alarms for shukr in Settings."
-                        testAlarmBusy = false
-                    }
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(Color.green)
-                .fontWeight(.semibold)
-                .disabled(testAlarmBusy)
-            }
-            .font(.subheadline)
-            if let testAlarmMessage {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(testAlarmMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 6)
-                    if !FajrAlarms.pendingTests().isEmpty {
-                        Button("Cancel") {
-                            FajrAlarms.cancelTests()
-                            self.testAlarmMessage = nil
-                        }
-                        .buttonStyle(.borderless)
-                        .font(.caption)
-                    }
-                }
-            }
-        }
-        .onAppear { testAlarmAt = Date().addingTimeInterval(60) }
-    }
 
     /// A quick informational view about how to use the alarm feature and set up the shortcuts.
     @ViewBuilder

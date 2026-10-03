@@ -177,12 +177,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
     
     //used in 2 methods: sub_handleLocationChange() & refreshCityAndPrayerTimes()
-    private func updateCityName(for location: CLLocation) {
+    /// `done`: the city found, or nil when the lookup failed (Settings' Refresh Location says which).
+    private func updateCityName(for location: CLLocation, done: ((String?) -> Void)? = nil) {
         geocoder.reverseGeocodeLocation(location) { [weak self] placemarks, error in
             DispatchQueue.main.async {
                 if let error = error {
                     self?.locationPrinter("❌ Reverse geocoding error: \(error.localizedDescription)")
                     self?.cityName = "Error fetching city"
+                    done?(nil)
                     return
                 }
 
@@ -209,10 +211,27 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                     self?.lastCityName = newCityName
                     WidgetCenter.shared.reloadAllTimelines()
                 }
+                done?(self?.cityName)
             }
         }
     }
     
+    struct RefreshFailure: Error { let message: String }
+
+    /// Settings' Refresh Location: the place and the times again, and when it's done (or why not) — the button
+    /// says so (owner, settings-cleanup-1).
+    func refreshLocationNow() async -> Result<String, RefreshFailure> {
+        guard let location = ENV_LocationManager.effectiveLocation else {
+            return .failure(RefreshFailure(message: "No location yet"))
+        }
+        let city: String? = await withCheckedContinuation { continuation in
+            updateCityName(for: location) { continuation.resume(returning: $0) }
+        }
+        fetchPrayerTimes(cameFrom: "Settings Refresh Location")
+        guard let city else { return .failure(RefreshFailure(message: "Couldn't find your city")) }
+        return .success(city)
+    }
+
     func refreshCityAndPrayerTimes() { // used outside of viewmodel.
         guard let location = ENV_LocationManager.effectiveLocation else {
             print("Location not available")
