@@ -2051,11 +2051,14 @@ struct tasbeehView: View {
                         .frame(width: 206, height: 206)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onRingSlot($0) }
                     VStack(spacing: 10) {
-                        if !wellHoldsName { softNameRow }
+                        // Out of sight, the well can't hold the name: it sits above it then (Bradley's review of b496df7).
+                        if !wellHoldsName || !wellShows { softNameRow }
                         // It takes its height before the space above the ring does; with too little room for its text
-                        // (a small phone, the largest text) it stays out of sight rather than squeezed.
+                        // (a small phone, the largest text) it stays out of sight rather than squeezed — and takes no
+                        // taps then (its name, picker, memo and photo were hidden but still tappable).
                         softWell
-                            .opacity(wellRoom >= Self.wellShowsAt ? 1 : 0)
+                            .opacity(wellShows ? 1 : 0)
+                            .allowsHitTesting(wellShows)
                             .frame(minHeight: 0, maxHeight: 240)   // the name now inside it, not more room (owner)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
                             .layoutPriority(1)
@@ -2207,6 +2210,8 @@ struct tasbeehView: View {
         /// pause-name-in-well: "fit it INTO the already given area of the well" — the well's size is unchanged).
         /// Tasbih Fatimah keeps its own row and card.
         private var wellHoldsName: Bool { !sharedState.isDoingPostNamazZikr }
+        /// The well has room for its text (else it's out of sight and the name row sits above it).
+        private var wellShows: Bool { wellRoom >= Self.wellShowsAt }
 
         /// The well's top when it holds the name: the name (the picker on a free session), "from your task" under it,
         /// the memo and photo on the right; a rule under it. It stays put while the text scrolls.
@@ -3301,7 +3306,8 @@ enum PostSalahTasbeeh {
     static var total: Int { phases.reduce(0) { $0 + $1.count } }
 
     /// The ring at a total count: the phrase's share, in step with the big number (0…33 · 0…33 · 0…34), so it's
-    /// empty again the moment a phrase is done.
+    /// empty again the moment a phrase is done. Never 1 before 100: the session's progress is this value, and a full
+    /// ring before the end once stopped the session at 33 (a276904, Bradley).
     static func ringFraction(at count: Int) -> Double {
         let p = phase(at: count)
         return Double(p.done) / Double(p.of)
