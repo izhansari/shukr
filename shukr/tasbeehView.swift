@@ -2289,18 +2289,9 @@ struct tasbeehView: View {
                 .frame(height: Self.statTileHeight * 2 + 10)
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
 
-                // "3m 15s left · you'll finish around 3:14 PM": one sentence, not two time tiles (owner). Its room is kept
-                // through the results (Done stays put); a session with no goal has none.
-                if hasFinishLine {
-                    gap(16)
-                    finishLine
-                        .frame(height: 22)
-                        .modifier(SoftCardsFade(shown: !finished, delay: 0))
-                }
-
                 // The chips while paused; after a sleep finish, Keep counting in their place. More air above them than
                 // the other gaps (owner: "more space to breathe between time text and feature buttons").
-                gap(30)
+                gap(18)   // tighter to the tiles (owner)
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
@@ -2338,6 +2329,16 @@ struct tasbeehView: View {
                     }
                 }
                 .frame(height: Self.switchHeight)
+                // "3m 15s left · you'll finish around 3:14 PM": one sentence, not two time tiles (owner). Its room is kept
+                // through the results (Done stays put); a session with no goal has none.
+                // Under the switches, at the very bottom (owner: "lets see what it looks like if we shift it to the
+                // bottom").
+                if hasFinishLine {
+                    gap(26)   // apart from the switches (owner)
+                    finishLine
+                        .frame(height: 22)
+                        .modifier(SoftCardsFade(shown: !finished, delay: 0))
+                }
                 // (Resume, Finish and Done are up top now, where the counter's ⏸ is — decision top-bar-finish A.)
                 gap(12)
             }
@@ -2365,28 +2366,27 @@ struct tasbeehView: View {
         /// A goal to finish: the sentence under the tiles (freestyle and Tasbih Fatimah have none).
         private var hasFinishLine: Bool { !sharedState.isDoingPostNamazZikr && sharedState.selectedMode != 0 }
 
+        /// One quiet line, every word and number alike (owner: "make it all the same weight, color, size. and reduce
+        /// the weight and size"): 13 pt light, in a soft sage — not the switches' grey, so it reads as its own thing
+        /// under them (owner); full sage once the goal is passed.
         @ViewBuilder private var finishLine: some View {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 switch thirdTile {
                 case .left(let left, let at):
                     finishFlag
-                    // Not bold (owner, three times): the numbers in the words' own size and weight — only their colour
-                    // sets them apart (at 17 pt in white beside 15 pt grey words they still read as bold).
-                    (Text(String(inMinSecStyle2(from: left).dropFirst(3)))
-                     + Text(" left · you'll finish around ").foregroundColor(.secondary)
-                     + Text(shortTime(at)))
+                    Text("\(String(inMinSecStyle2(from: left).dropFirst(3))) left · you'll finish around \(shortTime(at))")
                 case .toGo(let n):
                     finishFlag
-                    (Text(n.formatted())
-                     + Text(" to go").foregroundColor(.secondary))
+                    Text("\(n.formatted()) to go")
                 case .counted:
                     // Past the goal and keeping going: said once, quietly.
-                    Image(systemName: "checkmark").font(.system(size: 13, weight: .semibold))
+                    Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold))
                     Text("Goal reached · keeps going")
                 }
             }
-            .font(.system(size: 15))
-            .foregroundStyle(goalReached ? Color.sage : Color.primary)
+            .font(.system(size: 13, weight: .light))
+            .foregroundStyle(goalReached ? Color.sage : Color.sage.opacity(0.75))
+            .symbolRenderingMode(.monochrome)
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.75)
@@ -2394,8 +2394,7 @@ struct tasbeehView: View {
 
         private var finishFlag: some View {
             Image(systemName: "flag.checkered")
-                .font(.system(size: 14, weight: .light))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .light))
         }
 
         /// A small tile: its symbol, then the number big and the word under it.
