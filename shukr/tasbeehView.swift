@@ -2241,7 +2241,7 @@ struct tasbeehView: View {
                     // tile"); flips per count ⇄ per tasbeeh (100 counts) on a tap (owner: "we lost per tasbeeh rate").
                     Button {
                         triggerSomeVibration(type: .medium)
-                        withAnimation(.easeInOut(duration: CircleMotion.rateFlip)) { showingPerTasbeeh.toggle() }
+                        withAnimation(CircleMotion.label) { showingPerTasbeeh.toggle() }
                     } label: {
                         softRateTile(pace: pace, pacePerTasbeeh: pacePerTasbeeh)
                     }
@@ -2399,18 +2399,19 @@ struct tasbeehView: View {
                     .foregroundStyle(.secondary)
                 // Only the number moves (owner): the shown one slides up and out as the other comes in from below;
                 // its caption and the pace line crossfade in place.
-                // A roll in its own slot: a full line each way, clipped, so the two never sit on each other (a 14 pt
-                // nudge left them overlapping mid-way) and neither crosses "rate" or the caption.
+                // The top bar's flip (owner: "copy the same flip transition as in the top bar. Opacity and size change
+                // too"): the Zikr title's 12 pt move and fade on its spring (CircleMotion.label), with the ⏸ / ‹ symbols'
+                // shrink to 60 %. Reduce Motion: no move.
                 ZStack {
                     rateValue(String(format: "%.2fs", shownPerCount))
                         .opacity(showingPerTasbeeh ? 0 : 1)
-                        .offset(y: showingPerTasbeeh ? -Self.rateLine : 0)
+                        .scaleEffect(showingPerTasbeeh ? 0.6 : 1)
+                        .offset(y: showingPerTasbeeh ? -rateTravel : 0)
                     rateValue(shownPerTasbeeh)
                         .opacity(showingPerTasbeeh ? 1 : 0)
-                        .offset(y: showingPerTasbeeh ? 0 : Self.rateLine)
+                        .scaleEffect(showingPerTasbeeh ? 1 : 0.6)
+                        .offset(y: showingPerTasbeeh ? 0 : rateTravel)
                 }
-                .frame(height: Self.rateLine)
-                .clipped()
                 ZStack {
                     Text("per count").opacity(showingPerTasbeeh ? 0 : 1)
                     Text("per tasbeeh").opacity(showingPerTasbeeh ? 1 : 0)
@@ -2438,8 +2439,9 @@ struct tasbeehView: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
 
-        /// The rate number's line: its slot's height and how far it rolls.
-        private static let rateLine: CGFloat = ceil(UIFont.systemFont(ofSize: 32, weight: .light).lineHeight)
+        @Environment(\.accessibilityReduceMotion) private var rateReduceMotion
+        /// How far the rate number moves as it flips: the Zikr title's 12 pt; none under Reduce Motion.
+        private var rateTravel: CGFloat { rateReduceMotion ? 0 : 12 }
 
         /// The rate's number: a little smaller than it was (36), so the tile has room for the gap above the pace line.
         private func rateValue(_ value: String) -> some View {
