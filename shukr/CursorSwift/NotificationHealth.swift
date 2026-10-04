@@ -191,7 +191,7 @@ struct NotificationHealthRows: View {
     /// The status is the way in, in every build (owner, reminders-page-way-in: a dev Release install had none; then the
     /// extra "Your reminders ›" row above it was crossed out — one row): "Reminders are on · On time · scheduled through
     /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style and opens the sheet that
-    /// explains it (Arrives on time, or Tops itself up for background refresh — owner, reminders-page-g2), with a plain
+    /// explains it (Notification settings, or Tops itself up for background refresh — owner, reminders-page-g2), with a plain
     /// button per fix under it.
     var body: some View {
         let issues = health.issues
@@ -379,11 +379,17 @@ struct YourRemindersView: View {
                     Button { whySheet = kind } label: {
                         // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
                         HStack(spacing: 12) {
-                            Image(systemName: kind.symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+                            let bad = kind.needsHand(health)
+                            Image(systemName: kind.symbol(health))
+                                .foregroundStyle(kind == .onTime ? (bad ? Color.orange : green) : Color(.secondaryLabel))
+                                .frame(width: 26)
                             Text(kind.title).foregroundStyle(Color(.label))
                             Spacer()
-                            if kind.needsHand(health) {
+                            if bad {
+                                Text("Needs a look").font(.subheadline).foregroundStyle(.orange)
                                 Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                            } else if kind == .onTime {
+                                Text("All set").font(.subheadline).foregroundStyle(Color(.secondaryLabel))
                             }
                             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
                         }
@@ -426,7 +432,7 @@ struct YourRemindersView: View {
         let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
         let subtitle = off ? "Notifications are off for shukr"
             : fine ? "On time" + (through.map { " · scheduled through " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? "")
-            : "See Arrives on time below"
+            : "See Notification settings below"
         return HStack(spacing: 14) {
             Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
                 .font(.system(size: 26, weight: .light))

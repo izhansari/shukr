@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The three explanations behind Your reminders (owner, reminders-page-g2: "I still like that information that says why
-/// only 64, the top itself up and arrives on time … items at the bottom that when clicked, open a sheet"), each a row
+/// only 64, the top itself up and arrives on time" — the last now "Notification settings" … items at the bottom that when clicked, open a sheet"), each a row
 /// at the bottom of the page with an orange ! when one of his settings is in the way. Settings → Notifications' status
 /// row opens the same sheet when something's wrong.
 enum ReminderWhy: Int, Identifiable, CaseIterable {
@@ -12,15 +12,21 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
         switch self {
         case .budget: "Why only 64?"
         case .topsUp: "Tops itself up"
-        case .onTime: "Arrives on time"
+        // Not "Arrives on time" (owner: "the initial question … would be, why wouldn't they?"): it's his settings
+        // doing their job, so it's named after them.
+        case .onTime: "Notification settings"
         }
     }
     var symbol: String {
         switch self {
         case .budget: "questionmark.circle"
         case .topsUp: "arrow.triangle.2.circlepath"
-        case .onTime: "clock.badge.checkmark"
+        case .onTime: "checkmark.shield"
         }
+    }
+    /// Notification settings' symbol follows them: a shield with a check when they let reminders through, with a ! when not.
+    @MainActor func symbol(_ health: NotificationHealth) -> String {
+        self == .onTime && needsHand(health) ? "exclamationmark.shield" : symbol
     }
 
     /// Whether one of his settings is in the way (the row's orange !).
@@ -101,7 +107,9 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
                 Point(big: "Focus", small: "Silences notifications, except apps you allow and Time Sensitive ones.", symbol: "moon", warn: false, neutral: true),
                 Point(big: "Together", small: "With the Summary on and Time Sensitive off, reminders wait for the next summary — the one setup that makes them late.", symbol: "info.circle", warn: false, neutral: true),
             ]
-            return Content(head: off ? "Notifications are off for shukr." : late ? "Yours may arrive late." : "Yours arrive on time.",
+            // Fine: credit his settings (owner: "it's doing good because of the settings that the user has granted").
+            return Content(head: off ? "Notifications are off for shukr." : late ? "Yours may arrive late."
+                                     : tsOff ? "A Focus may hold yours back." : "Your settings let shukr's reminders through on time.",
                            points: mine, explainHead: "How iOS delivers notifications", explain: explain,
                            fix: off || late || tsOff)
         }
@@ -116,7 +124,7 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
 }
 
 /// One explanation as a sheet: the headline, his settings (orange where one is in the way, with "Fix in Settings"), and
-/// for Arrives on time how iOS delivers, in grey.
+/// for Notification settings how iOS delivers, in grey.
 struct ReminderWhySheet: View {
     let kind: ReminderWhy
     var pendingCount = 0
@@ -128,8 +136,18 @@ struct ReminderWhySheet: View {
         NavigationStack {
             List {
                 Section {
-                    Text(c.head).font(.title3).padding(.vertical, 4)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .top, spacing: 14) {
+                        if kind == .onTime {
+                            // A shield: green with a check when his settings let reminders through, orange when not.
+                            let bad = kind.needsHand(health)
+                            Image(systemName: bad ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
+                                .font(.system(size: 30))
+                                .foregroundStyle(bad ? Color.orange : Color(.systemGreen))
+                        }
+                        Text(c.head).font(.title3)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
                 }
                 Section(c.explainHead == nil ? "" : "Your settings") {
                     ForEach(c.points.indices, id: \.self) { row(c.points[$0]) }
