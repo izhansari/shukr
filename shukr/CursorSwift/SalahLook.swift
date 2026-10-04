@@ -122,12 +122,15 @@ enum SalahLookPlay {
     /// stand, its page fades off the Salah page, the cover goes with no animation (post-salah-close). The host calls it
     /// before presenting (`entering`); a session that's already up calls it with `entering: false` so it still closes
     /// in place. Only from a plain state: a wheel session keeps its own way in and out.
-    func openInPlace(entering: Bool = true) {
-        guard phase == .closed else { return }
+    /// False when refused (a session's cover is still up or closing): the caller presents it the usual way then.
+    @discardableResult
+    func openInPlace(entering: Bool = true) -> Bool {
+        guard phase == .closed else { return false }
         entry = nil
         inPlace = true
         soft = entering
         phase = .open
+        return true
     }
     /// The in-place entry is still to play (read once by the session as it's made).
     var enteringInPlace: Bool { inPlace && soft && phase == .open }

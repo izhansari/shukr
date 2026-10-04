@@ -974,10 +974,13 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoPostSalah") {
                 try? await Task.sleep(for: .seconds(1))
                 sharedState.isDoingPostNamazZikr = true
-                SessionHandoff.shared.openInPlace()
-                var quiet = Transaction()
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { showTasbeehPage = true }
+                if SessionHandoff.shared.openInPlace() {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { showTasbeehPage = true }
+                } else {
+                    showTasbeehPage = true
+                }
                 return
             }
             if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
@@ -1731,10 +1734,15 @@ struct PrayerTimesView: View {
                         sharedState.isDoingPostNamazZikr = true
                         // In place (decision post-salah-entry A): the cover with no animation of its own, the session
                         // fading in over the Salah page — list open or closed, nothing measured. The sheet is left as it is.
-                        SessionHandoff.shared.openInPlace()
-                        var quiet = Transaction()
-                        quiet.disablesAnimations = true
-                        withTransaction(quiet) { showTasbeehPage = true }
+                        // Refused (another session's cover still closing — Frank's review): the usual sheet, never a cover
+                        // with neither a slide nor a fade.
+                        if SessionHandoff.shared.openInPlace() {
+                            var quiet = Transaction()
+                            quiet.disablesAnimations = true
+                            withTransaction(quiet) { showTasbeehPage = true }
+                        } else {
+                            showTasbeehPage = true
+                        }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)
