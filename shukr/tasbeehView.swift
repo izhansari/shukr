@@ -76,6 +76,9 @@ struct tasbeehView: View {
     private var setsOn: Bool { countingInSets && secondaryStep > 1 }
     /// The counter's top bar's height (the pause screen's top row matches it).
     @State private var topBarHeight: CGFloat = 0
+    /// Finish asked for its second tap (it lets go after 3 s, or on resuming).
+    @State private var finishArmed = false
+    @State private var finishArmToken = 0
     private var tapWorth: Int { countingInSets && secondaryStep > 1 ? secondaryStep : 1 }
     @AppStorage("inactivity_dimmer") private var inactivityDimmer: Double = 0.5
     @AppStorage("currentVibrationMode") private var currentVibrationMode: HapticFeedbackType = .medium
@@ -556,7 +559,8 @@ struct tasbeehView: View {
                     // mid-move (the ring held, then jumped ~85 pt; Sami's B1).
                     onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } },
                     onSleepChipFrame: { sleepChipFrame = $0 },
-                    topBarHeight: topBarHeight
+                    topBarHeight: topBarHeight,
+                    finishArmed: finishArmed
                 )
             }
             .animation(.easeInOut, value: paused)
@@ -584,13 +588,15 @@ struct tasbeehView: View {
                                 paused: paused, togglePause: togglePause, active: true)
                             .accessibilityLabel("Counting in sets of \(secondaryStep), on. Turn off")
                             .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                            .opacity(paused ? 0 : 1)
+                            .allowsHitTesting(!paused)
                         }
-                        TopOfSessionButton( // Minus Button
-                            symbol: "minus", actionToDo: decrementTasbeeh,
-                            paused: paused, togglePause: togglePause)
+                        // − while counting; paused, the same button becomes Finish (decision minus-finish-morph, owner).
+                        MinusFinishButton(paused: paused, armed: finishArmed, raised: ringAbove,
+                                          reduceMotion: reduceMotion) {
+                            if paused { finishTap() } else { decrementTasbeeh() }
+                        }
                     }
-                    .opacity(paused ? 0 : 1)
-                    .allowsHitTesting(!paused)
                 }
                 .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
                 // Right under the status bar, no padding above or below (owner: "why … so much gap at the top"); the pause
@@ -886,6 +892,9 @@ struct tasbeehView: View {
         .onChange(of: secondaryStep) { _, step in
             if step <= 1 { countingInSets = false }   // the mantra changed on the pause screen
         }
+        .onChange(of: paused) { _, nowPaused in
+            if !nowPaused { finishArmed = false }   // resumed: Finish isn't left half-armed for the next pause
+        }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
             if sharedState.isDoingPostNamazZikr {
@@ -943,6 +952,23 @@ struct tasbeehView: View {
         .preferredColorScheme(tasbeehColorMode ? .dark : .light)
     }
 //--------------------------------------functions--------------------------------------
+
+    /// Finish: the first tap arms it ("Tap again to finish"), the second finishes; it lets go after 3 s.
+    private func finishTap() {
+        if finishArmed {
+            triggerSomeVibration(type: .medium)
+            finishArmed = false
+            stopTimer()
+        } else {
+            triggerSomeVibration(type: .light)
+            finishArmToken += 1
+            let token = finishArmToken
+            finishArmed = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout, not a motion
+                if token == finishArmToken { finishArmed = false }
+            }
+        }
+    }
 
     /// "goal reached", subtle (secondary, the counter's own dim over it); a tap makes it "Tap again to
     /// finish" in green, the second tap ends the session (the Finish early pattern).
@@ -1812,8 +1838,9 @@ struct tasbeehView: View {
         /// one transaction for the whole flip gave both the spring's length, and they overlapped.
         @State private var perCountOpacity: Double = 1
         @State private var perTasbeehOpacity: Double = 0
-        @State private var finishArmed = false
-        @State private var finishArmToken = 0
+        /// Finish (the counter's −, changed in place — MinusFinishButton) is asking for its second tap: the session's
+        /// line steps aside for its words.
+        var finishArmed = false
         @State private var showMantraPicker = false
         @State private var chosenMantraName: String? = ""
         @State private var chosenMantraObject: MantraModel? = nil
@@ -2050,10 +2077,11 @@ struct tasbeehView: View {
                     .layoutPriority(-1)
                 Spacer(minLength: 4)
                 ZStack(alignment: .trailing) {
-                    Button { finishTap() } label: { finishLabel }
-                        .buttonStyle(.plain)
-                        .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
-                        .allowsHitTesting(pauseShown)
+                    // Finish itself is the counter's −, changed in place (MinusFinishButton, in the top bar over this
+                    // row); its twin here, unseen, keeps the session line clear of it.
+                    MinusFinishButton.finishLabel
+                        .hidden()
+                        .accessibilityHidden(true)
                     if let results {
                         Button {
                             triggerSomeVibration(type: .success)
@@ -2585,60 +2613,6 @@ struct tasbeehView: View {
             .animation(.snappy(duration: 0.25), value: toggleInactivityTimer)
         }
 
-        /// Finish early: the first tap turns it green, "Tap again to finish"; the second finishes; it disarms after 3 s.
-        private func finishTap() {
-            if finishArmed {
-                triggerSomeVibration(type: .medium)
-                finishArmed = false
-                stopTimer()
-            } else {
-                triggerSomeVibration(type: .light)
-                finishArmToken += 1
-                let token = finishArmToken
-                finishArmed = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    if token == finishArmToken { finishArmed = false }
-                }
-            }
-        }
-
-        /// "Finish", then (armed) "✓ Tap again to finish" on sage; back after 3 s.
-        private var finishLabel: some View {
-            // The armed words are an overlay, growing leftwards over the session's line (which steps aside): laid
-            // out, they kept their width while hidden and squeezed ‹ Resume and the line.
-            Text("Finish")
-                    .font(.system(size: 17, weight: .medium, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.75))
-                    .padding(.horizontal, 18)
-                    .frame(height: 40)
-                    .background {
-                        if ringAbove {
-                            ThemedRaised(shape: Capsule(), radius: 4, offset: 2)
-                        } else {
-                            Capsule().fill(Color.primary.opacity(0.06))
-                        }
-                    }
-                    .opacity(finishArmed ? 0 : 1)
-                    .fixedSize()
-                    .overlay(alignment: .trailing) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
-                            Text("Tap again to finish").font(.system(size: 16, weight: .semibold, design: .rounded))
-                        }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .frame(height: 40)
-                        .background(Capsule().fill(Color.sage))
-                        .fixedSize()
-                        .opacity(finishArmed ? 1 : 0)
-                        .scaleEffect(finishArmed ? 1 : 0.9, anchor: .trailing)
-                    }
-            .padding(.vertical, 2)
-            .contentShape(Rectangle())
-            .animation(.snappy(duration: 0.25), value: finishArmed)
-            .accessibilityLabel(finishArmed ? "Tap again to finish" : "Finish")
-        }
-
         /// continuous (lit) / stops at goal (plain), sleep, haptics — each a chip, the first two with an (i).
         private var chipsRow: some View {
             HStack(spacing: 8) {
@@ -2952,6 +2926,93 @@ struct tasbeehView: View {
         }
     }
     
+    /// − while counting; paused, the same button becomes Finish (decision minus-finish-morph, owner: "make the transition for
+    /// the minus button to turn into the finish button"), as ⏸ becomes ‹ Resume: one view the whole time, so the circle
+    /// stretches into the capsule while − shrinks and fades and "Finish" grows in, the grey fill crossfading to the raised
+    /// capsule. Its first tap paused arms it: "✓ Tap again to finish" grows leftwards over the session's line. Always
+    /// 56 pt tall, as the bar.
+    struct MinusFinishButton: View {
+        let paused: Bool
+        let armed: Bool
+        /// The soft look's raised capsule; else a plain tint.
+        var raised = false
+        var reduceMotion = false
+        let action: () -> Void
+
+        static let minusSize: CGFloat = 52
+        static let finishHeight: CGFloat = 40
+        static let finishPadding: CGFloat = 18
+        /// "Finish"'s own width at its font, measured.
+        static let finishTextWidth: CGFloat = {
+            let base = UIFont.systemFont(ofSize: 17, weight: .medium)
+            let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 17) } ?? base
+            return ceil(("Finish" as NSString).size(withAttributes: [.font: font]).width)
+        }()
+
+        var body: some View {
+            Button(action: action) {
+                ZStack {
+                    Image(systemName: "minus")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(Color.gray.opacity(0.3))
+                        .opacity(paused ? 0 : 1)
+                        .scaleEffect(paused ? 0.6 : 1)
+                    Text("Finish")
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .fixedSize()
+                        .opacity(paused && !armed ? 1 : 0)
+                        .scaleEffect(paused ? 1 : 0.6)
+                }
+                .frame(width: paused ? Self.finishTextWidth + 2 * Self.finishPadding : Self.minusSize,
+                       height: paused ? Self.finishHeight : Self.minusSize)
+                .background {
+                    ZStack {
+                        Capsule().fill(Color.gray.opacity(0.08))
+                            .opacity(paused ? 0 : 1)
+                        Group {
+                            if raised {
+                                ThemedRaised(shape: Capsule(), radius: 4, offset: 2)
+                            } else {
+                                Capsule().fill(Color.primary.opacity(0.06))
+                            }
+                        }
+                        .opacity(paused && !armed ? 1 : 0)
+                    }
+                }
+                // Armed: its words grow leftwards over the session's line (an overlay: no width while hidden).
+                .overlay(alignment: .trailing) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark").font(.system(size: 13, weight: .bold))
+                        Text("Tap again to finish").font(.system(size: 16, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: Self.finishHeight)
+                    .background(Capsule().fill(Color.sage))
+                    .fixedSize()
+                    .opacity(paused && armed ? 1 : 0)
+                    .scaleEffect(armed ? 1 : 0.9, anchor: .trailing)
+                    .animation(.snappy(duration: 0.25), value: armed)
+                }
+                .frame(height: PauseResumeButton.barHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .animation(CircleMotion.movement(CircleMotion.pauseMorph, reduced: reduceMotion), value: paused)
+            .accessibilityLabel(!paused ? "Minus one" : armed ? "Tap again to finish" : "Finish")
+        }
+
+        /// The paused capsule's layout alone (no fill): the pause screen keeps its room with it, unseen.
+        static var finishLabel: some View {
+            Text("Finish")
+                .font(.system(size: 17, weight: .medium, design: .rounded))
+                .fixedSize()
+                .padding(.horizontal, finishPadding)
+                .frame(height: finishHeight)
+        }
+    }
+
     /// ⏸ while counting; paused, the same button becomes ‹ Resume (decision pause-resume-morph A, owner: "ideally they
     /// are the same button"). One view the whole time — never removed, never swapped — so SwiftUI interpolates it: the
     /// grey square widens into the sage capsule, its corners round, the symbol changes in place (symbol replace) and
