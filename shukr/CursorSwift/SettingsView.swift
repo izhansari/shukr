@@ -82,6 +82,8 @@ struct SettingsView: View {
 
     // For choosing the sheet's content when clicking on the sneak peek stuff
     @State private var selectedUpcomingFeature: sneakPeekItem?
+    /// The sneak-peek sheet's one height (the longest description fits at the usual text size).
+    private static let sneakPeekHeight: CGFloat = 320
     @State private var showFeatureSheet: Bool = false
 
     // Create an array of sneakPeekItems.
@@ -549,6 +551,12 @@ struct SettingsView: View {
                 try? await Task.sleep(for: .seconds(1.5))
                 showNextPlayground = true
             }
+            // `-demoSneakPeek <0…3>` (with -demoSettings): that sneak-peek item's sheet (screenshots).
+            if UserDefaults.standard.object(forKey: "demoSneakPeek") != nil {
+                let i = UserDefaults.standard.integer(forKey: "demoSneakPeek")
+                try? await Task.sleep(for: .seconds(1.5))
+                if upcomingFeatures.indices.contains(i) { selectedUpcomingFeature = upcomingFeatures[i] }
+            }
         }
         #endif
         .sheet(item: $selectedUpcomingFeature) { feature in
@@ -579,9 +587,13 @@ struct SettingsView: View {
             }
                 
             .padding()
-            .presentationDetents([.height(300), .medium, .large])
-            .presentationDragIndicator(.visible)  // shows the grab handle at the top
             }
+            // One height for all four, fitting the longest text (owner: "food finder opens in large sheet. make it match
+            // the others" — with three detents the sheet could open at another one than the rest). The text scrolls if a
+            // large text size needs more.
+            .scrollBounceBehavior(.basedOnSize)
+            .presentationDetents([.height(Self.sneakPeekHeight)])
+            .presentationDragIndicator(.visible)  // shows the grab handle at the top
 
         }
 
