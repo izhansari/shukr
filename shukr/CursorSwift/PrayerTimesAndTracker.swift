@@ -1400,7 +1400,7 @@ struct PrayerTimesView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
-                .scrollTargetBehavior(SheetSnap(travel: travel))
+                .scrollTargetBehavior(SheetSnap(travel: travel, live: live))
                 .scrollPosition($sheetPosition)
                 .modifier(SheetLock(live: live, lost: lost != nil))
                 .onScrollGeometryChange(for: CGFloat.self) { g in g.contentOffset.y + g.contentInsets.top } action: { old, new in

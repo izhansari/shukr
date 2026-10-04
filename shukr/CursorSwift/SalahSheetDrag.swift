@@ -40,12 +40,26 @@ enum SalahSheetDrag {
     }
 }
 
-/// Rounds where the scroll would come to rest to the nearer of the two rests, like `.paging`: a flick coasts on its own
-/// speed and lands wherever it was heading. `ScrollTarget` is measured from the rest (insets applied).
+/// Where a let-go lands, like `.paging`: still moving, it goes the way the finger was going (a short swipe opens or
+/// closes, as the pop's 30 pt swipe did); a finger that stopped first lands on the nearer rest. Pulled down past the
+/// closed rest (the refresh) or pushed past the open one, it settles back on that rest. The behaviour also places code's
+/// scrolls; those keep their target. `ScrollTarget` is measured from the rest (insets applied), as `live.sheetOffset` is.
 struct SheetSnap: ScrollTargetBehavior {
     let travel: CGFloat
+    let live: PagerLiveState
+    /// Points per millisecond: slower than this at the let-go counts as stopped.
+    static let flick: CGFloat = 0.15
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        target.rect.origin.y = target.rect.origin.y > travel / 2 ? travel : 0
+        let now = live.sheetOffset
+        let v = context.velocity.dy
+        let open: Bool
+        // Not a let-go (code scrolling it — the chevron, a widget — or the content changing): the nearer rest.
+        if live.sheetPhase != .interacting { open = target.rect.origin.y > travel / 2 }
+        else if now <= 0 { open = false }
+        else if now >= travel { open = true }
+        else if abs(v) >= Self.flick { open = v > 0 }
+        else { open = target.rect.origin.y > travel / 2 }
+        target.rect.origin.y = open ? travel : 0
     }
 }
 
