@@ -595,9 +595,9 @@ struct tasbeehView: View {
                     .allowsHitTesting(!paused)
                 }
                 .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
-                // 8 off the top, not 16: the pause screen's row sits here too (owner: the empty space at the top).
+                // Right under the status bar, no padding above or below (owner: "why … so much gap at the top"); the pause
+                // screen's row is as tall as this, so ‹ Resume still lands where ⏸ is.
                 .padding(.horizontal)
-                .padding(.vertical, 8)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topBarHeight = $0 }
                 .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
                 // Finished: the soft results sit under this layer (the ring's, not a cover) — no stray ⏸ over Done.
