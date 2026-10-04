@@ -186,16 +186,29 @@ struct ReminderHealthCard: View {
 
 struct NotificationHealthRows: View {
     @ObservedObject private var health = NotificationHealth.shared
+    @State private var whySheet: ReminderWhy?
 
     /// The status is the way in, in every build (owner, reminders-page-way-in: a dev Release install had none; then the
     /// extra "Your reminders ›" row above it was crossed out — one row): "Reminders are on · On time · scheduled through
-    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style, with a plain button per
-    /// fix under it.
+    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style and opens the sheet that
+    /// explains it (Arrives on time, or Tops itself up for background refresh — owner, reminders-page-g2), with a plain
+    /// button per fix under it.
     var body: some View {
         let issues = health.issues
         Group {
             if health.checked {
-                NavigationLink { YourRemindersView() } label: { statusRow(issues) }
+                if issues.isEmpty {
+                    NavigationLink { YourRemindersView() } label: { statusRow(issues) }
+                } else {
+                    Button { whySheet = ReminderWhy.forIssues(issues) } label: {
+                        HStack {
+                            statusRow(issues)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
+                        }
+                    }
+                    .tint(Color(.label))
+                }
                 if health.authorization == .notDetermined {
                     fix("Allow notifications") { NotificationStatus.shared.request() }
                 }
@@ -210,6 +223,7 @@ struct NotificationHealthRows: View {
             }
         }
         .task { await health.refresh() }
+        .sheet(item: $whySheet) { ReminderWhySheet(kind: $0) }
     }
 
     private func statusRow(_ issues: [NotificationHealth.Issue]) -> some View {
@@ -264,7 +278,8 @@ struct YourRemindersView: View {
     /// The picked day of "This week" (0 = today) and the open "why" tile. DEBUG `-remindersDay N`,
     /// `-remindersWhy N`.
     @State private var selectedDay = Self.debugInt("remindersDay")
-    @State private var selectedWhy = Self.debugInt("remindersWhy")
+    /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
+    @State private var whySheet: ReminderWhy?
 
     private static func debugFlag(_ arg: String) -> Bool {
         #if DEBUG
@@ -308,74 +323,80 @@ struct YourRemindersView: View {
         }
     }
 
-    // MARK: colours — iOS-native (owner, 49171DB2: the muted brand tones read "dull … too android"):
-    // the accent is the toggles' green, systemGreen — no sage on this page (owner, reminders-page-look); the bead kinds use the
-    // system tints, which adapt to light / dark; free slots a clear system grey.
+    // MARK: the page (decision reminders-page-g2, owner, 2026-10-04)
+    // G's order (Sami's study) made calm: the status and the 64 as one green bar, the week, the picked day's prayers —
+    // each row says all its reminders (start, halfway, 30 min left; owner: "not clear that it's three"), the day's total
+    // in its header — zikr on their own, the three explanations as rows opening sheets (orange ! when a setting is in
+    // the way), and everything scheduled behind one row. The toggles' green only; the Salah list's grey prayer symbols;
+    // rounded type.
 
-    private static let startColor = Color(.systemGreen)                                // starts
-    private static let halfColor = Color(.systemYellow)                                // halfway (the 🟡 nudge)
-    private static let endColor = Color(.systemRed)                                    // 30 min left
-    private static let zikrColor = Color(.systemBlue)                                  // zikr
-    private static let laterColor = Color(.systemPurple)                               // later
-    private static let otherColor = Color(.systemGray)                                 // other
-    private var freeColor: Color { Color(.systemGray4) }
-    /// Tile / day switches: one spring for the content swap and the card's height.
-    private static let switchSpring = Animation.spring(response: 0.42, dampingFraction: 0.9)
-    private var okInk: Color { Color(.systemGreen) }
-    private var warnInk: Color { Color.orange.opacity(0.9) }                              // the setup's Nudge
-    private var okTint: Color { Color(.systemGreen).opacity(scheme == .dark ? 0.22 : 0.14) }
-    private var warnTint: Color { Color.orange.opacity(0.08) }
-    /// The setup's small uppercase caption ("today").
-    private func caption(_ text: String) -> some View {
-        Text(text)
-            .font(.system(.caption, design: .rounded))
-            .tracking(2)
-            .textCase(.uppercase)
-            .foregroundStyle(.secondary)
-    }
-
-    private func color(_ kind: Kind) -> Color {
-        switch kind {
-        case .start: Self.startColor
-        case .halfway: Self.halfColor
-        case .endingSoon: Self.endColor
-        case .zikr, .zikrLater: Self.zikrColor
-        case .snooze: Self.laterColor
-        case .masjid, .keepAlive, .other: Self.otherColor
-        }
-    }
+    private var green: Color { Color(.systemGreen) }
+    private var fine: Bool { health.issues.isEmpty && health.authorization != .notDetermined }
 
     var body: some View {
-        ScrollViewReader { proxy in
-        ScrollView {
-            VStack(spacing: 18) {
-                // What this page is for, before any numbers (owner, 49171DB2).
-                Text("iOS keeps up to 64 notifications per app. shukr budgets them carefully. Here\u{2019}s how.")
-                    .font(.system(.title3, design: .rounded, weight: .medium))
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 8)
-                    .padding(.top, 4)
-                hero
-                week
-                whyTiles
-                whyCard.id("whyCard")
-                detailsCard
+        let days = Array(weekDays.prefix(7))
+        let day = days.indices.contains(selectedDay) ? days[selectedDay] : PrayerDay.date()
+        let dayItems = items(on: day).sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+        let prayers = PrayerNotificationID.prayers.filter { p in dayItems.contains { $0.prayer == p && Self.prayerKinds.contains($0.kind) } }
+        let zikr = dayItems.filter { $0.kind == .zikr || $0.kind == .zikrLater }
+        let others = dayItems.filter { [.masjid, .keepAlive, .other].contains($0.kind) }
+        return List {
+            Section {
+                statusRow
+                usageBar
+            } footer: {
+                Text("iOS lets each app keep 64 notifications waiting. shukr plans a week ahead and tops them up when you open it.")
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 6)
-            .padding(.bottom, 40)
+
+            Section { weekStrip(days) } header: { Text("This week") }
+
+            Section {
+                if prayers.isEmpty && others.isEmpty {
+                    Text("Nothing scheduled").foregroundStyle(.secondary)
+                }
+                ForEach(prayers, id: \.self) { prayerRow($0, dayItems) }
+                ForEach(others) { item in
+                    plainRow(symbol: "bell", title: line(for: item), time: time(item))
+                }
+            } header: {
+                HStack {
+                    Text(dayTitle(PrayerNotificationID.dayKey(day)))
+                    Spacer()
+                    Text("\(dayItems.count) reminder\(dayItems.count == 1 ? "" : "s")")
+                }
+            }
+
+            if !zikr.isEmpty {
+                Section("Zikr") {
+                    ForEach(zikr) { item in
+                        plainRow(symbol: "circle.dotted.circle", title: item.title.isEmpty ? "Zikr reminder" : item.title, time: time(item))
+                    }
+                }
+            }
+
+            Section("About your reminders") {
+                ForEach(ReminderWhy.allCases) { kind in
+                    Button { whySheet = kind } label: {
+                        // Explicit colours: inside a Button's label the hierarchical styles took the tint (blue rows).
+                        HStack(spacing: 12) {
+                            Image(systemName: kind.symbol).foregroundStyle(Color(.secondaryLabel)).frame(width: 26)
+                            Text(kind.title).foregroundStyle(Color(.label))
+                            Spacer()
+                            if kind.needsHand(health) {
+                                Image(systemName: "exclamationmark.circle.fill").foregroundStyle(.orange)
+                            }
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
+                        }
+                    }
+                }
+            }
+
+            Section {
+                NavigationLink("All \(pending.count) scheduled") { allScheduled }
+            }
         }
-        #if DEBUG
-        // `-remindersScroll`: down to the open tile's card (screenshots).
-        .task {
-            guard ProcessInfo.processInfo.arguments.contains("-remindersScroll") else { return }
-            try? await Task.sleep(for: .seconds(1.2))
-            proxy.scrollTo("whyCard", anchor: .bottom)
-        }
-        #endif
-        }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())   // white / near-black cards on it
+        .listStyle(.insetGrouped)
+        .fontDesign(.rounded)
         .navigationTitle("Your reminders")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -383,12 +404,156 @@ struct YourRemindersView: View {
                 Text("Your reminders").font(.system(.headline, design: .rounded, weight: .regular))
             }
         }
-        .fontDesign(.rounded)
         .refreshable { await load() }
-        .task { await load() }
+        .task {
+            await load()
+            #if DEBUG
+            if let n = UserDefaults.standard.string(forKey: "remindersSheet").flatMap(Int.init),
+               let kind = ReminderWhy(rawValue: n) { whySheet = kind }
+            #endif
+        }
         .sheet(item: $previewCard) { issue in
             ReminderHealthCard(issue: issue) { previewCard = nil }
         }
+        .sheet(item: $whySheet) { ReminderWhySheet(kind: $0, pendingCount: pending.count) }
+    }
+
+    private static let prayerKinds: [Kind] = [.start, .halfway, .endingSoon, .snooze]
+
+    private var statusRow: some View {
+        let off = health.authorization == .denied
+        let title = off ? "Reminders are off" : fine ? "Reminders are on" : "Reminders need a hand"
+        let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
+        let subtitle = off ? "Notifications are off for shukr"
+            : fine ? "On time" + (through.map { " · scheduled through " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? "")
+            : "See Arrives on time below"
+        return HStack(spacing: 14) {
+            Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
+                .font(.system(size: 26, weight: .light))
+                .foregroundStyle(fine ? green : Color.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(subtitle).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// One colour: used in green, free in grey; the numbers in words.
+    private var usageBar: some View {
+        let used = min(pending.count, NotificationScheduler.limit)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("\(used) of \(NotificationScheduler.limit) in use · \(max(0, NotificationScheduler.limit - used)) free")
+                .font(.footnote).foregroundStyle(.secondary)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(.systemGray5))
+                    Capsule().fill(green).frame(width: geo.size.width * CGFloat(used) / CGFloat(NotificationScheduler.limit))
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// The Calendar's week: the picked day filled green, today's number green; a grey dot under days with nudges.
+    private func weekStrip(_ days: [Date]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(days.indices, id: \.self) { i in
+                let d = days[i]
+                let nudged = items(on: d).contains { $0.kind == .halfway || $0.kind == .endingSoon }
+                Button {
+                    triggerSomeVibration(type: .light)
+                    selectedDay = i
+                } label: {
+                    VStack(spacing: 6) {
+                        Text(d.formatted(.dateTime.weekday(.narrow))).font(.caption2).foregroundStyle(.secondary)
+                        Text(d.formatted(.dateTime.day()))
+                            .foregroundStyle(selectedDay == i ? Color.white : (i == 0 ? green : Color.primary))
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(selectedDay == i ? green : .clear))
+                        Circle().fill(nudged ? Color(.tertiaryLabel) : .clear).frame(width: 4, height: 4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// One row per prayer: its grey symbol, the name, how many reminders; under it every one of them with its time —
+    /// "Start 1:07 · Halfway 2:41 · 30 min left 3:46" — so a nudged prayer reads as three.
+    private func prayerRow(_ prayer: String, _ dayItems: [Item]) -> some View {
+        let mine = dayItems.filter { $0.prayer == prayer && Self.prayerKinds.contains($0.kind) }
+        let parts = mine.map { item -> String in
+            let label = switch item.kind {
+            case .start: "Start"
+            case .halfway: "Halfway"
+            case .endingSoon: "30 min left"
+            default: "Later"
+            }
+            return "\(label) \(Self.hm(item.date))"
+        }
+        return HStack(spacing: 12) {
+            Image(systemName: prayerSymbol(prayer)).foregroundStyle(.secondary).frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(prayer)
+                Text(parts.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            HStack(spacing: 3) {
+                Text("\(mine.count)").monospacedDigit()
+                Image(systemName: "bell").font(.caption)
+            }
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("\(mine.count) reminder\(mine.count == 1 ? "" : "s")")
+        }
+    }
+
+    private func plainRow(symbol: String, title: String, time: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 26)
+            Text(title)
+            Spacer()
+            Text(time).foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+
+    private static func hm(_ date: Date?) -> String {
+        guard let date else { return "–" }
+        return hmFormatter.string(from: date)
+    }
+    private static let hmFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "h:mm"; return f
+    }()
+
+    /// Everything waiting, by prayer day, and the raw checks (Details).
+    private var allScheduled: some View {
+        let keys = Array(Set(pending.map(\.dayKey))).sorted()
+        return List {
+            ForEach(keys, id: \.self) { key in
+                let list = pending.filter { $0.dayKey == key }.sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
+                Section {
+                    ForEach(list) { item in
+                        HStack {
+                            Text(line(for: item))
+                            Spacer()
+                            Text(time(item)).foregroundStyle(.secondary).monospacedDigit()
+                        }
+                    }
+                } header: {
+                    HStack { Text(dayTitle(key)); Spacer(); Text("\(list.count)") }
+                }
+            }
+            Section { details }
+        }
+        .listStyle(.insetGrouped)
+        .fontDesign(.rounded)
+        .navigationTitle("All scheduled")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -396,83 +561,6 @@ struct YourRemindersView: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-    }
-
-    // MARK: hero — 64 beads, one per iOS slot
-
-    /// Beads in order: starts, halfway, 30 min left, zikr, later, other, then the free slots.
-    private var beadKinds: [Kind?] {
-        let order: [Kind] = [.start, .halfway, .endingSoon, .zikr, .zikrLater, .snooze, .masjid, .other, .keepAlive]
-        var list: [Kind?] = order.flatMap { k in Array(repeating: Optional(k), count: pending.filter { $0.kind == k }.count) }
-        if list.count < NotificationScheduler.limit { list += Array(repeating: nil, count: NotificationScheduler.limit - list.count) }
-        return Array(list.prefix(NotificationScheduler.limit))
-    }
-
-    private var hero: some View {
-        let kinds = beadKinds
-        let problem: (text: String, warn: Bool) = {
-            if health.authorization == .denied { return ("reminders off", true) }
-            if health.authorization == .notDetermined { return ("not set up yet", true) }
-            if health.issues.contains(.held) { return ("may be late", true) }
-            return ("on time", false)
-        }()
-        return VStack(spacing: 10) {
-            ZStack {
-                ForEach(0..<kinds.count, id: \.self) { i in
-                    let a = -Double.pi / 2 + Double(i) / Double(kinds.count) * 2 * .pi
-                    let r: CGFloat = kinds[i] == nil ? 4 : 5.2
-                    Circle()
-                        .fill(kinds[i].map(color) ?? freeColor)
-                        .frame(width: r * 2, height: r * 2)
-                        .position(x: 132 + 118 * cos(a), y: 132 + 118 * sin(a))
-                }
-                VStack(spacing: 2) {
-                    Label(problem.text, systemImage: problem.warn ? "exclamationmark.circle" : "checkmark.circle")
-                        .font(.system(.footnote, design: .rounded, weight: .medium))
-                        .foregroundStyle(problem.warn ? warnInk : okInk)
-                    Text("\(pending.count)")
-                        .font(.system(size: 56, weight: .light, design: .rounded))
-                        .monospacedDigit()
-                    Text("of 64 waiting")
-                        .font(.system(.subheadline, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    if let through = health.scheduledThrough ?? pending.compactMap(\.date).max() {
-                        Text("through " + through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
-                            .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color(.systemGreen))
-                            .padding(.top, 6)
-                    }
-                }
-            }
-            .frame(width: 264, height: 264)
-            // The legend: the kinds that are there, and free.
-            HStack(spacing: 12) {
-                ForEach(legend, id: \.label) { item in
-                    HStack(spacing: 4) {
-                        Circle().fill(item.color).frame(width: 8, height: 8)
-                        Text(item.label)
-                    }
-                }
-            }
-            .font(.system(.caption, design: .rounded))
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var legend: [(label: String, color: Color)] {
-        let present = Set(pending.map(\.kind))
-        var list: [(label: String, color: Color)] = []
-        if present.contains(.start) { list.append(("starts", Self.startColor)) }
-        if present.contains(.halfway) { list.append(("halfway", Self.halfColor)) }
-        if present.contains(.endingSoon) { list.append(("30 min", Self.endColor)) }
-        if present.contains(.zikr) || present.contains(.zikrLater) { list.append(("zikr", Self.zikrColor)) }
-        if present.contains(.snooze) { list.append(("later", Self.laterColor)) }
-        if !present.isDisjoint(with: [.masjid, .other, .keepAlive]) { list.append(("other", Self.otherColor)) }
-        list.append(("free", freeColor))
-        return list
     }
 
     // MARK: this week
@@ -490,286 +578,6 @@ struct YourRemindersView: View {
     private func items(on day: Date) -> [Item] {
         let key = PrayerNotificationID.dayKey(day)
         return pending.filter { $0.dayKey == key }
-    }
-
-    private var week: some View {
-        let days = weekDays
-        let counts = days.map { items(on: $0).count }
-        let most = max(counts.max() ?? 1, 1)
-        let pick = min(max(selectedDay, 0), days.count - 1)
-        return VStack(alignment: .leading, spacing: 10) {
-            caption("This week")
-                .padding(.horizontal, 4)
-            HStack(spacing: 4) {
-                ForEach(days.indices, id: \.self) { i in
-                    let dayItems = items(on: days[i])
-                    let nudges = dayItems.contains { $0.kind == .halfway || $0.kind == .endingSoon }
-                    let selected = i == pick
-                    VStack(spacing: 4) {
-                        Text(days[i].formatted(.dateTime.weekday(.abbreviated)))
-                            .font(.system(.caption, design: .rounded, weight: selected ? .medium : .regular))
-                            .foregroundStyle(selected ? okInk : .secondary)
-                        ZStack {
-                            Circle().fill(selected ? okTint : .clear)
-                            Circle().stroke(Color(.systemGray5), lineWidth: 3)
-                            Circle()
-                                .trim(from: 0, to: CGFloat(counts[i]) / CGFloat(most))
-                                .stroke(nudges ? Color(.systemGreen) : Color(.systemGreen).opacity(0.55),
-                                        style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                .rotationEffect(.degrees(-90))
-                            Text("\(counts[i])")
-                                .font(.system(.subheadline, design: .rounded, weight: selected ? .semibold : .regular))
-                                .foregroundStyle(selected ? okInk : .primary)
-                                .monospacedDigit()
-                        }
-                        .frame(width: days.count > 7 ? 34 : 40, height: days.count > 7 ? 34 : 40)
-                        Circle().fill(nudges ? Color(.systemGreen) : .clear).frame(width: 5, height: 5)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        triggerSomeVibration(type: .light)
-                        withAnimation(Self.switchSpring) { selectedDay = i }
-                    }
-                }
-            }
-            dayCard(days[pick], items: items(on: days[pick]))
-        }
-    }
-
-    /// The picked day: each prayer with its times ("Dhuhr 1:07 · 3:13 · 4:49"), zikr by task, and
-    /// whether it has its nudges yet.
-    private func dayCard(_ day: Date, items: [Item]) -> some View {
-        let key = PrayerNotificationID.dayKey(day)
-        let nudges = items.contains { $0.kind == .halfway || $0.kind == .endingSoon }
-        let anyNudgeSetting = PrayerNotificationID.prayers.contains {
-            NotificationScheduler.settings($0).notify && NotificationScheduler.settings($0).nudges
-        }
-        let tag = nudges ? "with nudges"
-            : (anyNudgeSetting && items.contains { $0.kind == .start })
-                ? "starts only · nudges added \(nudgesAddedOn(key) ?? "later")" : ""
-        let title: String = {
-            let date = day.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
-            switch dayTitle(key) {
-            case "Today": return "Today · \(date)"
-            case "Tomorrow": return "Tomorrow · \(date)"
-            default: return day.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())
-            }
-        }()
-        // The card stays put; only its content crossfades, and its height follows with the same spring
-        // (owner, 49171DB2: swapping the whole card overlapped the two and jumped).
-        return card {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title).font(.system(.body, design: .rounded, weight: .medium))
-                    Spacer(minLength: 8)
-                    Text(tag).font(.system(.caption, design: .rounded)).foregroundStyle(.secondary)
-                        .lineLimit(1).minimumScaleFactor(0.8)
-                }
-                if items.isEmpty {
-                    Text(loaded ? "Nothing scheduled this day." : " ")
-                        .font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-                }
-                ForEach(dayLines(items), id: \.name) { line in
-                    HStack(spacing: 12) {
-                        Image(systemName: line.symbol)
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(Color(.systemGreen))
-                            .frame(width: 22)
-                        Text(line.name).font(.system(.subheadline, design: .rounded)).lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(line.times).font(.system(.footnote, design: .rounded)).monospacedDigit().foregroundStyle(.secondary)
-                    }
-                }
-            }
-            .id(key)
-            .transition(.sheetContent(offset: 6))   // the old goes quickly, the new comes a beat later: no ghosting
-        }
-    }
-
-    private func dayLines(_ items: [Item]) -> [(name: String, symbol: String, times: String)] {
-        var lines: [(name: String, symbol: String, times: String, first: Date)] = []
-        for prayer in PrayerNotificationID.prayers {
-            let mine = items.filter { $0.prayer == prayer && [.start, .halfway, .endingSoon].contains($0.kind) }
-            guard !mine.isEmpty else { continue }
-            lines.append((prayer, prayerSymbol(prayer), mine.map(shortTime).joined(separator: " · "), mine.compactMap(\.date).min() ?? .distantFuture))
-        }
-        for item in items where ![.start, .halfway, .endingSoon].contains(item.kind) {
-            let (name, symbol): (String, String) = {
-                switch item.kind {
-                case .zikr, .zikrLater: ("Zikr · \(item.title.isEmpty ? "reminder" : item.title)", "circle.dotted.circle")
-                case .snooze: ("Later · \(item.prayer ?? item.title)", "clock.arrow.circlepath")
-                case .keepAlive: ("Reminder to open shukr", "arrow.clockwise.circle")
-                case .masjid: (line(for: item), "building.columns")
-                default: (item.title.isEmpty ? "Reminder" : item.title, "bell")
-                }
-            }()
-            lines.append((name + (lines.contains { $0.name == name } ? " " : ""), symbol, shortTime(item), item.date ?? .distantFuture))
-        }
-        return lines.sorted { $0.first < $1.first }.map { ($0.name, $0.symbol, $0.times) }
-    }
-
-    /// "1:07", no AM / PM (the canvas's day lines).
-    private func shortTime(_ item: Item) -> String {
-        item.date.map { Self.hmFormatter.string(from: $0) } ?? "–"
-    }
-    private static let hmFormatter: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "h:mm"; return f
-    }()
-
-    // MARK: the three whys
-
-    private struct Point {
-        let big: String; let small: String; let symbol: String; let warn: Bool
-        /// Explaining, not about his settings: drawn in grey, never red.
-        var neutral = false
-    }
-
-    private var whyTiles: some View {
-        let tiles: [(String, String)] = [("Why only 64?", "questionmark.circle"), ("Tops itself up", "arrow.triangle.2.circlepath"),
-                                          ("Arrives on time", "clock.badge.checkmark")]
-        return HStack(spacing: 8) {
-            ForEach(tiles.indices, id: \.self) { i in
-                // The setup's option cards: a green tint and edge on the picked one.
-                let picked = i == selectedWhy
-                VStack(spacing: 8) {
-                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .regular)).foregroundStyle(Color(.systemGreen))
-                    Text(tiles[i].0).font(.system(.footnote, design: .rounded, weight: picked ? .medium : .regular))
-                        .foregroundStyle(picked ? Color(.systemGreen) : .primary)
-                        .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14).padding(.horizontal, 6)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(picked ? okTint : Color(.secondarySystemGroupedBackground)))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(picked ? Color(.systemGreen).opacity(0.7) : .clear, lineWidth: 1.5))
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    triggerSomeVibration(type: .light)
-                    withAnimation(Self.switchSpring) { selectedWhy = i }
-                }
-            }
-        }
-    }
-
-    private var lateCombination: Bool { health.summaryOn && health.timeSensitive != .enabled }
-
-    /// A card's headline, its points, and (Arrives on time) a separate neutral explainer under a heading.
-    private var why: (head: String, points: [Point], explainHead: String?, explain: [Point]) {
-        switch selectedWhy {
-        case 1:
-            let lastRun = UserDefaults.standard.double(forKey: NotificationHealth.lastRefreshKey)
-            let ran = lastRun == 0 ? "" : " Last ran " + Self.whenText(Date(timeIntervalSince1970: lastRun)) + "."
-            let bgOn = health.backgroundRefresh == .available
-            let keep = health.keepAliveDate.map { " (\($0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())))" } ?? ""
-            return ("Your week keeps topping itself up.", [
-                bgOn ? Point(big: "Background refresh is on", small: "iOS wakes shukr now and then to add the next days." + ran, symbol: "arrow.triangle.2.circlepath", warn: false)
-                     : Point(big: "Background refresh is off", small: "Turn it on in Settings, or open shukr every few days.", symbol: "arrow.triangle.2.circlepath", warn: true),
-                Point(big: "Opening shukr tops it up too", small: "Any time you open the app, the week refills.", symbol: "iphone", warn: false),
-                Point(big: "Never a silent stop", small: "If iOS can’t refresh, your last reminder\(keep) asks you to open shukr.", symbol: "bell.badge", warn: false),
-            ], nil, [])
-        case 2:
-            // First HIS settings and what they mean for him — red only where one is really a problem —
-            // then, separately and neutrally, how iOS delivers notifications (owner, 9E5AC5BF: the red
-            // "late" row read as his own setting being wrong).
-            let off = health.authorization == .denied
-            let ts = health.timeSensitive == .enabled
-            let tsOff = health.timeSensitive == .disabled
-            let head = off ? "Notifications are off for shukr."
-                : lateCombination ? "Yours may arrive late." : "Yours arrive on time."
-            var mine: [Point] = []
-            mine.append(off
-                ? Point(big: "Notifications: off", small: "shukr can’t remind you at all until you turn them on.", symbol: "bell.slash", warn: true)
-                : Point(big: "Notifications: on", small: "shukr can remind you.", symbol: "bell", warn: false))
-            if !off {
-                mine.append(ts
-                    ? Point(big: "Time Sensitive: on", small: "Reminders come through Focus modes and the Scheduled Summary.", symbol: "clock", warn: false)
-                    : Point(big: "Time Sensitive: \(tsOff ? "off" : "not available")", small: "A Focus mode can hold reminders back.", symbol: "clock", warn: tsOff))
-                mine.append(health.summaryOn
-                    ? Point(big: "Scheduled Summary: on", small: ts ? "Reminders still come right away (Time Sensitive lets them through)."
-                                                                       : "Reminders wait for the next summary, so they can arrive late.",
-                            symbol: "tray.full", warn: !ts)
-                    : Point(big: "Scheduled Summary: off", small: "Reminders come right away.", symbol: "checkmark.circle", warn: false))
-            }
-            let explain = [
-                Point(big: "Time Sensitive", small: "Lets a reminder through Focus modes and the Scheduled Summary. shukr marks prayer reminders Time Sensitive.", symbol: "clock", warn: false, neutral: true),
-                Point(big: "Scheduled Summary", small: "Collects notifications and delivers them at the times you choose, instead of right away.", symbol: "tray.full", warn: false, neutral: true),
-                Point(big: "Focus", small: "Silences notifications, except apps you allow and Time Sensitive ones.", symbol: "moon", warn: false, neutral: true),
-                Point(big: "Together", small: "With the Summary on and Time Sensitive off, reminders wait for the next summary — that’s the one setup that makes them late.", symbol: "info.circle", warn: false, neutral: true),
-            ]
-            return (head, mine, "How iOS delivers notifications", explain)
-        default:
-            let n = NotificationScheduler.nudgeDaysAhead
-            let free = max(NotificationScheduler.limit - pending.count, 0)
-            return ("How the 64 are spent.", [
-                Point(big: "Every start, all week", small: "Each prayer’s start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "calendar", warn: false),
-                Point(big: "Nudges for the next \(n == 2 ? "2" : "\(n)") days", small: "The 30-min-in and 30-min-left nudges (the dotted days) are added as each day comes closer.", symbol: "bell.badge", warn: false),
-                Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
-            ], nil, [])
-        }
-    }
-
-    private var whyCard: some View {
-        let why = why
-        return card {
-            VStack(alignment: .leading, spacing: 12) {
-                Text(why.head).font(.system(.title3, design: .rounded, weight: .regular))
-                    .fixedSize(horizontal: false, vertical: true)
-                if why.explainHead != nil {
-                    caption("Your settings")
-                }
-                ForEach(why.points.indices, id: \.self) { i in
-                    pointRow(why.points[i])
-                }
-                if selectedWhy == 2 && (lateCombination || health.authorization == .denied || health.timeSensitive == .disabled) {
-                    // The setup's primary button: green text on a soft green tint with a green edge.
-                    Button { SettingsLinks.notifications() } label: {
-                        Text("Fix in Settings").font(.system(.body, design: .rounded, weight: .medium))
-                            .foregroundStyle(Color(.systemGreen))
-                            .frame(maxWidth: .infinity).frame(minHeight: 48)
-                            .background(Capsule().fill(Color(.systemGreen).opacity(0.14)))
-                            .overlay(Capsule().stroke(Color(.systemGreen).opacity(0.45), lineWidth: 1))
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let explainHead = why.explainHead {
-                    Divider().padding(.vertical, 2)
-                    caption(explainHead)
-                    ForEach(why.explain.indices, id: \.self) { i in
-                        pointRow(why.explain[i])
-                    }
-                }
-            }
-            // Only the content swaps (out, then in); the card and its height follow `switchSpring`.
-            .id(selectedWhy)
-            .transition(.sheetContent(offset: 6))
-        }
-    }
-
-    /// The setup's why-row: a light symbol (green; the setup's orange when it needs a hand; grey for
-    /// the neutral explainer), a title and a light detail.
-    private func pointRow(_ p: Point) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: p.symbol)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(p.neutral ? Color.secondary : p.warn ? warnInk : okInk)
-                .frame(width: 26)
-                .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(p.big).font(.system(.body, design: .rounded))
-                    .foregroundStyle(p.warn && !p.neutral ? warnInk : .primary)
-                Text(p.small).font(.system(.subheadline, design: .rounded)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private static func whenText(_ date: Date) -> String {
-        let t = date.formatted(date: .omitted, time: .shortened)
-        if Calendar.current.isDateInToday(date) { return "today, \(t)" }
-        if Calendar.current.isDateInYesterday(date) { return "yesterday, \(t)" }
-        return date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + ", \(t)"
     }
 
     /// A notification as it reads, so it can be recognised.
@@ -803,8 +611,8 @@ struct YourRemindersView: View {
     }
 
     /// Background refresh, the raw checks and (beta) the card previews: collapsed, at the bottom.
-    private var detailsCard: some View {
-        card {
+    private var details: some View {
+        Group {
             DisclosureGroup(isExpanded: $showDetails) {
                 VStack(alignment: .leading, spacing: 10) {
                     LabeledContent("Background refresh", value: refreshStatus)
