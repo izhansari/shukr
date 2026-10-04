@@ -26,9 +26,9 @@ struct tasbeehView: View {
     @State private var entryOffset: CGSize = .zero
     /// The soft entry in steps (SessionOpening): the page and the ring, then the count (where the Zikr ring's label
     /// was), then the buttons; all on at once for the usual sheet.
-    @State private var pageIn = SessionHandoff.shared.freshEntry == nil
-    @State private var countIn = SessionHandoff.shared.freshEntry == nil
-    @State private var chromeIn = SessionHandoff.shared.freshEntry == nil
+    @State private var pageIn = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
+    @State private var countIn = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
+    @State private var chromeIn = SessionHandoff.shared.freshEntry == nil && !SessionHandoff.shared.enteringInPlace
     /// The opening's and the close's sequences (one at a time; a close cancels an opening still playing).
     @State private var sequence: Task<Void, Never>?
     /// The counter ⇄ results hand-over (out, then in), cancelled by a newer one.
@@ -124,7 +124,7 @@ struct tasbeehView: View {
     /// A soft close from the pause screen or the results: the ring under their cards waits hidden until they've gone
     /// (circle rule 3, out then in — it showed through them as they faded, its arc sweeping over the tiles; Sami's
     /// step-5 check, 2026-10-02).
-    @State private var ringOut = false
+    @State private var ringOut = SessionHandoff.shared.enteringInPlace   // an in-place entry brings the ring in after the page
     /// The results are in: they come once the counter under them (its ring, count and buttons) has gone — out, then in
     /// (owner, 2026-10-02: "from ring to completion page" — the "11" ring showed through the cards as they faded in).
     @State private var resultsIn = false
@@ -378,6 +378,29 @@ struct tasbeehView: View {
     private static let entryCountAfter: Double = 0.35
     private static let entryChromeAfter: Double = 0.5
     private static let entryFallbackAfter: Double = 0.6
+
+    /// In place on the Salah page (SessionHandoff.openInPlace, decision post-salah-entry A): the close backwards — the
+    /// page fades in over the Salah page (it goes), then the ring, the count and the buttons come in. Whatever stops it
+    /// (the app sent away), everything ends up shown and the cover opaque.
+    private func playEntryInPlace() {
+        openingStyle = reduceMotion ? .fade : SessionOpening.current
+        sequence?.cancel()
+        sequence = Task { @MainActor in
+            defer {
+                if !pageIn || !countIn || !chromeIn || ringOut {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { pageIn = true; countIn = true; chromeIn = true; ringOut = false }
+                }
+                SessionHandoff.shared.enteredInPlace()
+            }
+            await CircleMotion.animate(.easeInOut(duration: CircleMotion.sessionPageOutDuration)) { pageIn = true }
+            guard !Task.isCancelled else { return }
+            await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.in)) {
+                ringOut = false; countIn = true; chromeIn = true
+            }
+        }
+    }
 
     /// Closing softly onto the wheel (the host asked: SessionHandoff `.leaving`): the same steps backwards, each
     /// awaited to its end, then `.done` — the host removes the cover. One sequence: the host, the session and the wheel
@@ -677,8 +700,9 @@ struct tasbeehView: View {
                             .padding(.top, 120)
                             .allowsHitTesting(false)
                             // Fades under the pause screen with it (removing it popped; left on,
-                            // it drew through the pause screen), and for the results (ring-above: they don't cover it).
-                            .opacity(paused || savedSession != nil ? 0 : 1)
+                            // it drew through the pause screen), and for the results (ring-above: they don't cover it);
+                            // in with the count (an in-place entry: it showed over the Salah page before the page came).
+                            .opacity(paused || savedSession != nil || !countIn ? 0 : 1)
                             .animation(.easeInOut, value: paused || savedSession != nil)
                     }
                     Spacer()
@@ -730,7 +754,7 @@ struct tasbeehView: View {
                             .padding(.bottom, 12)
                     }
                     .allowsHitTesting(false)
-                    .opacity(paused || savedSession != nil ? 0 : 1)   // ring-above results sit under it (Sami's B4)
+                    .opacity(paused || savedSession != nil || !countIn ? 0 : 1)   // ring-above results sit under it (Sami's B4); in with the count
                     .animation(.easeInOut, value: paused || savedSession != nil)
                 }
             }
@@ -849,7 +873,9 @@ struct tasbeehView: View {
             // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).
             if !timerIsActive, sharedState.isDoingPostNamazZikr {
                 PostSalahTasbeeh.prepare(sharedState, in: context)
-                SessionHandoff.shared.openInPlace()   // on the Salah page: it closes in place (post-salah-close)
+                // On the Salah page: in and out in place. The pill opened it so (playEntryInPlace); any other way in still
+                // closes in place.
+                if SessionHandoff.shared.enteringInPlace { playEntryInPlace() } else { SessionHandoff.shared.openInPlace(entering: false) }
             }
             resolveSessionMantra()
             

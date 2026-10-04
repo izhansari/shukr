@@ -974,7 +974,10 @@ struct PrayerTimesView: View {
             if ProcessInfo.processInfo.arguments.contains("-demoPostSalah") {
                 try? await Task.sleep(for: .seconds(1))
                 sharedState.isDoingPostNamazZikr = true
-                showTasbeehPage = true
+                SessionHandoff.shared.openInPlace()
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { showTasbeehPage = true }
                 return
             }
             if UserDefaults.standard.object(forKey: "demoTasbeehCount") != nil {
@@ -1726,7 +1729,12 @@ struct PrayerTimesView: View {
                     PostSalahNudgeOnPage(live: live) {
                         live.postSalahNudge = nil
                         sharedState.isDoingPostNamazZikr = true
-                        showTasbeehPage = true
+                        // In place (decision post-salah-entry A): the cover with no animation of its own, the session
+                        // fading in over the Salah page — list open or closed, nothing measured. The sheet is left as it is.
+                        SessionHandoff.shared.openInPlace()
+                        var quiet = Transaction()
+                        quiet.disablesAnimations = true
+                        withTransaction(quiet) { showTasbeehPage = true }
                     }
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)

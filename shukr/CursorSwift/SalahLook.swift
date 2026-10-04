@@ -115,16 +115,24 @@ enum SalahLookPlay {
         phase = .open
     }
 
-    /// A session opened on the Salah page (post-salah, Tasbih Fatimah): an ordinary opaque cover while it's up, but it
-    /// closes in place — its contents go, then its page fades off the Salah page, then the cover goes with no animation
-    /// (owner, post-salah-close: the stock dismiss slid the results down over the Salah page). Only from a plain state:
-    /// a wheel session already open keeps its own close.
-    func openInPlace() {
+    /// A session opened on the Salah page (post-salah, Tasbih Fatimah; decision post-salah-entry A): one cover, out
+    /// then in, both ways, nothing measured — the same whether the list is open or closed. In: the cover comes up with
+    /// no animation over a clear background, its page fades in over the Salah page, then its contents
+    /// (`enteringInPlace`, tasbeehView); then the cover is opaque (`enteredInPlace`). Out: its contents go where they
+    /// stand, its page fades off the Salah page, the cover goes with no animation (post-salah-close). The host calls it
+    /// before presenting (`entering`); a session that's already up calls it with `entering: false` so it still closes
+    /// in place. Only from a plain state: a wheel session keeps its own way in and out.
+    func openInPlace(entering: Bool = true) {
         guard phase == .closed else { return }
         entry = nil
         inPlace = true
+        soft = entering
         phase = .open
     }
+    /// The in-place entry is still to play (read once by the session as it's made).
+    var enteringInPlace: Bool { inPlace && soft && phase == .open }
+    /// The in-place entry has played: the cover is opaque again (the page under it isn't kept drawing).
+    func enteredInPlace() { if inPlace && phase == .open { soft = false } }
     /// Opened with `openInPlace`: the close plays in place (no ring to land).
     private(set) var inPlace = false
     /// The session closes by its own fade (a wheel session, or one opened in place): resets wait for the cover to go.
