@@ -1829,6 +1829,8 @@ struct tasbeehView: View {
         // UI state
         @State private var showHistory = false
         @State private var wellRoom: CGFloat = 148
+        /// The well's scroll: at the top for a new zikr or a new height.
+        @State private var wellScroll = ScrollPosition(edge: .top)
         @State private var bottomInset: CGFloat = 0
         /// The page's height inside the safe area: how much room the gaps get (`airScale`).
         @State private var pageHeight: CGFloat = 900
@@ -1993,12 +1995,12 @@ struct tasbeehView: View {
                         .frame(width: 206, height: 206)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onRingSlot($0) }
                     VStack(spacing: 10) {
-                        softNameRow
+                        if !wellHoldsName { softNameRow }
                         // It takes its height before the space above the ring does; with too little room for its text
                         // (a small phone, the largest text) it stays out of sight rather than squeezed.
                         softWell
                             .opacity(wellRoom >= Self.wellShowsAt ? 1 : 0)
-                            .frame(minHeight: 0, maxHeight: 240)   // more for the note (owner)
+                            .frame(minHeight: 0, maxHeight: 240)   // the name now inside it, not more room (owner)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
                             .layoutPriority(1)
                     }
@@ -2148,18 +2150,75 @@ struct tasbeehView: View {
             }
         }
 
+        /// The zikr's name — with "from your task", the memo and the photo at its right — at the top of the well, the
+        /// full text and the notes under it, rules between them; no row under the ring (owner, decision
+        /// pause-name-in-well: "fit it INTO the already given area of the well" — the well's size is unchanged).
+        /// Tasbih Fatimah keeps its own row and card.
+        private var wellHoldsName: Bool { !sharedState.isDoingPostNamazZikr }
+
+        /// The well's top when it holds the name: the name (the picker on a free session), "from your task" under it,
+        /// the memo and photo on the right; a rule under it. It stays put while the text scrolls.
+        private var wellNameHeader: some View {
+            let title = sharedState.titleForSession
+            return HStack(alignment: .center, spacing: 10) {
+                Button { showMantraPicker = true } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(title.isEmpty ? "choose a zikr" : title)
+                                .font(.system(size: 19, weight: .light, design: .rounded))
+                                .foregroundStyle(title.isEmpty ? .secondary : .primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            if !mantraLocked {
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        if isTaskSession {
+                            Label("from your task", systemImage: "checklist")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .allowsHitTesting(!mantraLocked)
+                Spacer(minLength: 8)
+                if let mantra {
+                    ZikrMediaStrip(mantra: mantra, paused: paused, compact: true)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+
+        private var wellRule: some View {
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.5)
+        }
+
         /// The zikr's full text and notes in a well pressed into the page, a fixed height: long ones scroll inside it.
         /// Count in sets is its last row, as it was the card's.
         private var softWell: some View {
             let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
             return VStack(spacing: 0) {
+                if wellHoldsName {
+                    wellNameHeader
+                    wellRule.padding(.horizontal, 14)
+                }
                 ScrollView {
                     Group {
                         if sharedState.isDoingPostNamazZikr {
                             PostSalahPauseCard(count: tasbeeh, bare: true)
                         } else {
                             softWellText
-                                .padding(.vertical, 12)
+                                // More above than below: the Uthmani face's marks over the first line reach well past
+                                // its line box, and 12 pt clipped them on a long zikr.
+                                .padding(.top, 20)
+                                .padding(.bottom, 12)
                                 .padding(.horizontal, 14)
                         }
                     }
@@ -2168,7 +2227,12 @@ struct tasbeehView: View {
                 .scrollIndicators(.automatic)
                 .scrollBounceBehavior(.basedOnSize)
                 .defaultScrollAnchor(.center, for: .alignment)   // a short zikr sits in the middle of the well
-                .defaultScrollAnchor(.top, for: .initialOffset)  // a long one starts at its top
+                .defaultScrollAnchor(.top, for: .initialOffset)  // a long one starts at its top…
+                // …and is put back there whenever the well's height settles (it opened mid-zikr on a 6.1" phone: the
+                // well finds its height after the first layout, and the default anchors didn't hold through that).
+                .scrollPosition($wellScroll)
+                .onChange(of: wellRoom) { _, _ in wellScroll.scrollTo(edge: .top) }
+                .onChange(of: mantra?.id) { _, _ in wellScroll.scrollTo(edge: .top) }
                 // (Count in sets is a switch under the tiles now — decision sets-place A: the well keeps its room
                 // for the zikr's text and notes, so they show on a 6.1" phone too.)
             }
@@ -2197,6 +2261,7 @@ struct tasbeehView: View {
                             }
                         }
                     }
+                    if !notes.isEmpty && wellHoldsName && !full.isEmpty { wellRule.padding(.vertical, 4) }
                     if !notes.isEmpty {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Image(systemName: "doc.text")
@@ -2347,8 +2412,8 @@ struct tasbeehView: View {
         }
 
         private static let statTileHeight: CGFloat = 52
-        /// The well shows once its first line of text has room (lower, it was cut off).
-        private static let wellShowsAt: CGFloat = 64
+        /// The well shows once its name row and a first line of text have room (lower, the text was cut off).
+        private static let wellShowsAt: CGFloat = 100
 
         /// Room between the page's parts (owner: "enough room to breathe"): the full gap on a tall phone (his 6.7"),
         /// down to 60 % on a 6.1" one, so the zikr's text and notes still show there (owner: "even for the small phones").
