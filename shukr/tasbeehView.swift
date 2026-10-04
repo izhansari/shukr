@@ -1187,9 +1187,12 @@ struct tasbeehView: View {
     }
 
     /// The ring for a counted session: freestyle goes round every 100 (never quite full — a full
-    /// ring means the goal), a count goal fills to it. Timed sessions follow the ticker.
+    /// ring means the goal), a count goal fills to it. Timed sessions follow the ticker. Tasbih
+    /// Fatimah fills once per phrase — 33, 33, 34 — so a full ring says "next phrase" (owner).
     private func refreshCountProgress() {
-        if sharedState.selectedMode == 0 {
+        if sharedState.isDoingPostNamazZikr {
+            progressFraction = CGFloat(PostSalahTasbeeh.ringFraction(at: tasbeeh))
+        } else if sharedState.selectedMode == 0 {
             let numerator = tasbeeh != 0 && tasbeeh % 100 == 0 ? 0 : tasbeeh % 100
             progressFraction = CGFloat(numerator) / 100
         } else if sharedState.selectedMode == 2 {
@@ -3253,6 +3256,13 @@ enum PostSalahTasbeeh {
         ("Allahu Akbar", "ٱللَّٰهُ أَكْبَرُ", 34),
     ]
     static var total: Int { phases.reduce(0) { $0 + $1.count } }
+
+    /// The ring at a total count: full at the end of each phrase (33, 66, 100), then empty again for the next.
+    static func ringFraction(at count: Int) -> Double {
+        guard count > 0 else { return 0 }
+        let p = phase(at: count - 1)
+        return Double(p.done + 1) / Double(p.of)
+    }
 
     /// The phrase at a total count, and how far into it (0-based index; `done` of `of`).
     static func phase(at count: Int) -> (index: Int, done: Int, of: Int) {

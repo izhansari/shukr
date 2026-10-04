@@ -795,7 +795,12 @@ struct WatchCounterView: View {
         max(0, (pausedAt ?? date).timeIntervalSince(startedAt) - pausedTotal)
     }
     private var fraction: Double {
-        if postSalah { return Double(count) / Double(WatchPostSalah.total) }
+        // A full ring per phrase, 33 · 33 · 34, as on the phone (owner: "easier to know when we gotta switch").
+        if postSalah {
+            guard count > 0 else { return 0 }
+            let p = WatchPostSalah.phase(at: count - 1)
+            return Double(p.done + 1) / Double(p.of)
+        }
         guard let task else { return Double(count % 100) / 100 }
         return task.countMode ? Double(count) / Double(task.goal)
                               : (config.startSeconds + activeSeconds(at: now)) / Double(task.goal * 60)
