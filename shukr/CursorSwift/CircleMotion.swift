@@ -25,6 +25,8 @@ import SwiftUI
 enum CircleMotion {
     /// A small thing changing: a chevron, a label's last word.
     static let quick: Double = 0.2
+    /// The rate tile's per count ⇄ per tasbeeh flip: out the top, in from below (the old pause screen's).
+    static let rateFlip: Double = 0.3
     /// Most changes: a row, the list, a text out or in.
     static let standard: Double = 0.35
     /// The circle's own changes: a ring filling, a state handing over.

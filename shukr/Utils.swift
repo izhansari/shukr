@@ -912,6 +912,8 @@ struct NeumorphicProgressRing_Previews: PreviewProvider {
 
 struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from top down now. No numbers. Clean.
     let tasbeeh: Int
+    /// The beads and the hundreds' / thousands' marks round the number; off on the pause screen (owner).
+    var beadsShown = true
     let circleSize: CGFloat = 10 // Circle size
     let arcRadius: CGFloat = 60 // Distance of the grey circles from the number (radius of the arc)
     let purpleArcRadius: CGFloat = 40 // Distance of the purple circles from the center (larger radius)
@@ -938,6 +940,7 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
 
             // GeometryReader to help position circles
             GeometryReader { geometry in
+                Group {
                 let beadCount = tasbeeh % 100
                 let circlesCount = tasbeeh / 100
                 let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
@@ -1001,6 +1004,9 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
                         }
                     }
                 }
+                }
+                .opacity(beadsShown ? 1 : 0)
+                .animation(.easeOut(duration: 0.2), value: beadsShown)
             }
             .frame(height: 100) // Adjust frame height to ensure there's enough space
         }

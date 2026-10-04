@@ -425,7 +425,9 @@ struct tasbeehView: View {
             // the middle
             ZStack {
                 // the circle's inside (picker or count)
-                TasbeehCountView(tasbeeh: tasbeeh)
+                // The beads round the ring go while paused (owner: "we don't need to keep the 100 neumorphic beads
+                // around the edge of the circle in the pause screen"); the count stays.
+                TasbeehCountView(tasbeeh: tasbeeh, beadsShown: !paused)
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
                     .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
@@ -593,7 +595,9 @@ struct tasbeehView: View {
                     .allowsHitTesting(!paused)
                 }
                 .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
-                .padding()
+                // 8 off the top, not 16: the pause screen's row sits here too (owner: the empty space at the top).
+                .padding(.horizontal)
+                .padding(.vertical, 8)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { topBarHeight = $0 }
                 .modifier(SessionAppear(shown: chromeIn, style: openingStyle))
                 // Finished: the soft results sit under this layer (the ring's, not a cover) — no stray ⏸ over Done.
@@ -1949,10 +1953,11 @@ struct tasbeehView: View {
 
                 VStack(spacing: 0) {
                     pauseTopRow
-                    // Clear of the hundreds' beads round the ring's top where there's room; on a small phone it gives
-                    // way first, so everything stays on the screen (Sami's B2 / B3: the SE pushed it under the clock).
-                    Spacer(minLength: 14)
-                        .frame(maxHeight: 50)
+                    // A little air under the top row (the beads round the ring's top go while paused, so no room is kept
+                    // for them — owner); on a small phone it gives way first (Sami's B2 / B3: the SE pushed it under
+                    // the clock).
+                    Spacer(minLength: 8)
+                        .frame(maxHeight: 18)
                     // Where the ring stands while paused: as low as the cards under it allow, so it travels as little
                     // as it can (owner: "so then the ring doesn't have to travel so far up the page").
                     Color.clear
@@ -1964,7 +1969,7 @@ struct tasbeehView: View {
                         // (a small phone, the largest text) it stays out of sight rather than squeezed.
                         softWell
                             .opacity(wellRoom >= Self.wellShowsAt ? 1 : 0)
-                            .frame(minHeight: 0, maxHeight: 148)
+                            .frame(minHeight: 0, maxHeight: 240)   // more for the note (owner)
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { wellRoom = $0 }
                             .layoutPriority(1)
                     }
@@ -1981,7 +1986,9 @@ struct tasbeehView: View {
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
                 // Finish early off the edge where there's no home indicator (an SE); elsewhere the safe area does it.
-                .padding(.bottom, bottomInset > 0 ? 0 : 6)
+                // On a phone with a home indicator, down into its band (owner: the empty space under the switches),
+                // the switches' words staying clear of it; an SE keeps 6 pt off its edge.
+                .padding(.bottom, bottomInset > 0 ? -(bottomInset - 20) : 6)
             }
             .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
@@ -2249,7 +2256,7 @@ struct tasbeehView: View {
                     // tile"); flips per count ⇄ per tasbeeh (100 counts) on a tap (owner: "we lost per tasbeeh rate").
                     Button {
                         triggerSomeVibration(type: .medium)
-                        withAnimation(.easeInOut(duration: CircleMotion.quick)) { showingPerTasbeeh.toggle() }
+                        withAnimation(.easeInOut(duration: CircleMotion.rateFlip)) { showingPerTasbeeh.toggle() }
                     } label: {
                         softRateTile(pace: pace, pacePerTasbeeh: pacePerTasbeeh)
                     }
@@ -2267,8 +2274,9 @@ struct tasbeehView: View {
                         .modifier(SoftCardsFade(shown: !finished, delay: 0))
                 }
 
-                // The chips while paused; after a sleep finish, Keep counting in their place.
-                gap(20)
+                // The chips while paused; after a sleep finish, Keep counting in their place. More air above them than
+                // the other gaps (owner: "more space to breathe between time text and feature buttons").
+                gap(30)
                 ZStack {
                     if !sharedState.isDoingPostNamazZikr {
                         chipsRow
@@ -2338,12 +2346,13 @@ struct tasbeehView: View {
                 switch thirdTile {
                 case .left(let left, let at):
                     finishFlag
-                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17, weight: .medium))
+                    // Not bold (owner): the numbers in the regular weight, the words between them secondary.
+                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17))
                      + Text(" left · you'll finish around ").foregroundColor(.secondary)
-                     + Text(shortTime(at)).font(.system(size: 17, weight: .medium)))
+                     + Text(shortTime(at)).font(.system(size: 17)))
                 case .toGo(let n):
                     finishFlag
-                    (Text(n.formatted()).font(.system(size: 17, weight: .medium))
+                    (Text(n.formatted()).font(.system(size: 17))
                      + Text(" to go").foregroundColor(.secondary))
                 case .counted:
                     // Past the goal and keeping going: said once, quietly.
@@ -2404,10 +2413,13 @@ struct tasbeehView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 ZStack {
+                    // The shown side slides up and out as the other slides in from below (the old rate box's flip, owner).
                     rateLines(value: String(format: "%.2fs", shownPerCount), caption: "per count", pace: pace)
                         .opacity(showingPerTasbeeh ? 0 : 1)
+                        .offset(y: showingPerTasbeeh ? -16 : 0)
                     rateLines(value: shownPerTasbeeh, caption: "per tasbeeh", pace: pacePerTasbeeh)
                         .opacity(showingPerTasbeeh ? 1 : 0)
+                        .offset(y: showingPerTasbeeh ? 0 : 16)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
