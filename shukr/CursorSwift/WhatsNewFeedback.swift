@@ -395,6 +395,12 @@ final class FeedbackStore {
             try? FileManager.default.removeItem(at: to)
             if (try? FileManager.default.copyItem(at: from, to: to)) != nil { urls.append(to) }
         }
+        // The watch's pinch log, when there is one (watch-pinch-log: the only pinch watch is a TestFlight one).
+        if let log = WatchSync.pinchLog {
+            let to = dir.appendingPathComponent("watch-pinch.log")
+            try? FileManager.default.removeItem(at: to)
+            if (try? FileManager.default.copyItem(at: log, to: to)) != nil { urls.append(to) }
+        }
         return urls
     }
 

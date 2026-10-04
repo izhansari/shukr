@@ -75,16 +75,26 @@ final class WatchSync: NSObject, WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         WatchZikrSync.receive(message)
     }
-    /// The watch's pinch log (DEBUG watch builds, queue watch-pinch-log): appended to the app group's
-    /// Library/Caches/pinch.log, which the feedback pull copies. The file is gone once this returns, so it's read here.
+    /// The watch's pinch log (DEBUG and TestFlight watch builds, queue watch-pinch-log): where it's kept on the phone,
+    /// the app group's Library/Caches/pinch.log (the feedback pull copies it; What's new's Send and Settings → "Send
+    /// watch pinch log" share it).
+    nonisolated static var pinchLogFile: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")?
+            .appending(path: "Library/Caches/pinch.log")
+    }
+    /// It, when there is one.
+    nonisolated static var pinchLog: URL? {
+        guard let url = pinchLogFile, FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return url
+    }
+
+    /// The pinch log arriving: appended to `pinchLogFile`. The file is gone once this returns, so it's read here.
     func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard file.metadata?["kind"] as? String == "pinchLog",
               let text = try? String(contentsOf: file.fileURL, encoding: .utf8),
-              let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")
+              let url = Self.pinchLogFile
         else { return }
-        let dir = group.appending(path: "Library/Caches")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appending(path: "pinch.log")
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let data = Data((text.hasSuffix("\n") ? text : text + "\n").utf8)
         if let handle = try? FileHandle(forWritingTo: url) {
             handle.seekToEndOfFile()

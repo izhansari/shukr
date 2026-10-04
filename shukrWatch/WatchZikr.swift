@@ -892,9 +892,7 @@ struct WatchCounterView: View {
             count = config.startCount
             startedAt = Date()
             runtime.start()
-            #if DEBUG
             WatchPinchLog.begin("\(postSalah ? "Tasbih Fatimah" : task?.name ?? "freestyle") · Double Tap \(doubleTapTarget.rawValue)")
-            #endif
             crownFocused = crownOnCounter
             if !hintSeen {
                 hintSeen = true
@@ -1052,9 +1050,7 @@ struct WatchCounterView: View {
 
     /// A tap / pump on the screen: a count, unless counting with the Crown.
     private func screenCount() {
-        #if DEBUG
         WatchPinchLog.add("tap")
-        #endif
         guard crownMode else { increment(); return }
         // No buzz (owner): it felt like a count that didn't happen. The note says why instead.
         withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
@@ -1101,9 +1097,7 @@ struct WatchCounterView: View {
         if showHint { withAnimation(.easeIn(duration: 0.3)) { showHint = false } }
         let before = count
         count = min(count + tapWorth, 10_000)
-        #if DEBUG
         WatchPinchLog.add("total \(count)")
-        #endif
         lastCountAt = Date()
         lastCountActive = activeSeconds(at: Date())
         // One haptic per count: the stronger one replaces the count's on a milestone (watchOS drops a
@@ -1203,10 +1197,8 @@ struct WatchCounterView: View {
         clearOwnDraft()
         WatchZikrStore.shared.record(record)
         runtime.stop()
-        #if DEBUG
         WatchPinchLog.add("finish \(sessionCount)")
         WatchPinchLog.send()
-        #endif
         WatchHaptics.milestone()   // onto the results: one level above a count
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
     }
@@ -1554,13 +1546,13 @@ struct WatchSettingsPage: View {
                         doubleTap = (WatchDoubleTapTarget(rawValue: doubleTap) ?? .scroll).next.rawValue
                     }
                 }
-                #if DEBUG
-                // The pinch log to the phone now (it's also sent at each session's end; queue watch-pinch-log).
-                row("Send pinch log", pinchLogSent ?? "\(WatchPinchLog.count) lines") {
-                    let n = WatchPinchLog.send()
-                    pinchLogSent = n > 0 ? "sent \(n)" : "nothing new"
+                if WatchBeta.on {
+                    // The pinch log to the phone now (it's also sent at each session's end; queue watch-pinch-log).
+                    row("Send pinch log", pinchLogSent ?? "\(WatchPinchLog.count) lines") {
+                        let n = WatchPinchLog.send()
+                        pinchLogSent = n > 0 ? "sent \(n)" : "nothing new"
+                    }
                 }
-                #endif
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
                     .font(.system(size: 9, design: .rounded))
@@ -1584,21 +1576,30 @@ struct WatchSettingsPage: View {
     }
 
     /// One line: the setting, its value on the right; a tap steps to the next value.
+    private func rowTitle(_ title: String) -> some View {
+        Text(title).font(.system(size: 15, design: .rounded)).lineLimit(1).fixedSize()
+    }
+    private func rowValue(_ value: String) -> some View {
+        Text(value).font(.system(size: 15, design: .rounded)).foregroundStyle(Color.green).lineLimit(1).fixedSize()
+    }
+
     private func row(_ title: String, _ value: String, next: @escaping () -> Void) -> some View {
         Button {
             WKInterfaceDevice.current().play(.click)
             next()
         } label: {
-            HStack {
-                Text(title)
-                    .font(.system(size: 15, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                Spacer(minLength: 6)
-                Text(value)
-                    .font(.system(size: 15, design: .rounded))
-                    .foregroundStyle(Color.green)
-                    .lineLimit(1)
+            // Side by side when both fit; on a small watch the value goes under the title ("Scroll auto" was cut off).
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    rowTitle(title)
+                    Spacer(minLength: 6)
+                    rowValue(value)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    rowTitle(title)
+                    rowValue(value)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
@@ -2181,9 +2182,10 @@ struct WatchDoubleTapLayer: View {
     private static var discSize: CGFloat { WatchScreen.width * 0.42 }
 }
 
-#if DEBUG
 /// What the pinch scroller really does on a wrist (queue watch-pinch-log; the simulator has no Double Tap): every
-/// scroll sample, phase, count, reset, screen tap and the count's total, in uptime ms since the session opened. Sent to
+/// scroll sample, phase, count, reset, screen tap and the count's total, in uptime ms since the session opened. On in
+/// DEBUG and TestFlight builds (`WatchBeta.on`: the only pinch watch is a TestFlight one — owner); never in the App Store's.
+/// Sent to
 /// the phone at each session's end and from Settings → "Send pinch log" (the phone keeps `Library/Caches/pinch.log` in
 /// the app group). No rule reads it.
 enum WatchPinchLog {
@@ -2194,10 +2196,12 @@ enum WatchPinchLog {
     static var count: Int { lines.count }
 
     static func begin(_ what: String) {
+        guard WatchBeta.on else { return }
         origin = ProcessInfo.processInfo.systemUptime
         add("— session \(what) · \(Date().formatted(date: .abbreviated, time: .standard))")
     }
     static func add(_ line: String) {
+        guard WatchBeta.on else { return }
         let ms = Int((ProcessInfo.processInfo.systemUptime - origin) * 1000)
         lines.append("\(ms) \(line)")
         if lines.count > limit { lines.removeFirst(lines.count - limit) }
@@ -2216,7 +2220,6 @@ enum WatchPinchLog {
         return sent
     }
 }
-#endif
 
 /// A short list of screen-high pages, painted the page's own colour, that Double Tap scrolls (owner's idea,
 /// 2026-10-04: "no need to have 2,000 … as soon as that item reaches the end … show a new list"). It rests on page 0;
@@ -2276,15 +2279,11 @@ struct WatchDoubleTapScroller: View {
             return (geo.contentOffset.y + geo.contentInsets.top) / height
         } action: { _, page in
             guard let page else { return }
-            #if DEBUG
             WatchPinchLog.add(String(format: "g %.3f", page))
-            #endif
             // Forwards only: each page once, as soon as the move is a quarter of the way into it.
             while page >= Double(counted) + Self.countAt, counted < Self.pages - 1 {
                 counted += 1
-                #if DEBUG
                 WatchPinchLog.add("count page \(counted)\(enabled ? "" : " (off)")")
-                #endif
                 if enabled { onCount() }
             }
             settling?.cancel()
@@ -2298,9 +2297,9 @@ struct WatchDoubleTapScroller: View {
         }
         .onAppear { focused = enabled }
         .onChange(of: enabled) { _, on in if on { focused = true } }
-        #if DEBUG
         .onScrollPhaseChange { old, new in WatchPinchLog.add("phase \(old) → \(new)") }
         .onChange(of: focused) { _, f in WatchPinchLog.add("focus \(f)") }
+        #if DEBUG
         // `-demoWatchDoubleTapScroll`: a page a second, as a Double Tap would (the simulator has no Double Tap).
         .task {
             guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
@@ -2314,9 +2313,7 @@ struct WatchDoubleTapScroller: View {
 
     /// Page 0 again, without a frame of movement; `counted` first, so the jump back never counts.
     private func backToStart() {
-        #if DEBUG
         WatchPinchLog.add("reset (counted \(counted), position \(position ?? -1))")
-        #endif
         counted = 0
         guard position != 0 else { return }
         var quiet = Transaction()

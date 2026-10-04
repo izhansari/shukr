@@ -388,6 +388,17 @@ struct SettingsView: View {
                             Text("Beta builds only: the first-run setup, filled in with your settings.")
                         }
                     }
+                    // The watch's pinch log (watch-pinch-log), for any TestFlight install with one: the only pinch watch
+                    // is a TestFlight one, with no feedback pull.
+                    if betaAccess.beta, let log = WatchSync.pinchLog {
+                        Section {
+                            ShareLink(item: log) {
+                                Label("Send watch pinch log", systemImage: "applewatch.radiowaves.left.and.right")
+                            }
+                        } footer: {
+                            Text("Beta builds: what the watch's pinch did in your last sessions, for the team.")
+                        }
+                    }
 
                     //MARK: - Suggestions / Up and Coming
 //                    Section(header: Text("Sneak Peek...")) {
