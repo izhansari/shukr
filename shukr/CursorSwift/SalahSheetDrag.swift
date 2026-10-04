@@ -30,12 +30,13 @@ enum SalahSheetDrag {
     /// and `SheetPin` / `SheetWall` hold everything still there. Fixed, not a share of the page: the page's height
     /// changes during launch, and a dead room that moved with it moved every measured offset.
     static let dead: CGFloat = 400
-    /// Past a rest the page still gives a little, so the push registers (owner, round 3: "allow a little bit of that,
-    /// like very, very little"): a resisted move that never passes `giveMax` points.
-    static let giveMax: CGFloat = 14
-    static func give(_ excess: CGFloat) -> CGFloat {
+    /// Past a rest the page rubber-bands like any iOS scroll view (owner, round 4: "continuous dragging on the edges …
+    /// keeps the thing moving but progressively less and less"): UIKit's own curve, (1 − 1 / (x·0.55/d + 1))·d, with d
+    /// half the page — no wall; the more you push, the less it moves.
+    static func give(_ excess: CGFloat, page: CGFloat) -> CGFloat {
         guard excess > 0 else { return 0 }
-        return giveMax * (1 - 1 / (1 + excess / 80))
+        let d = max(page / 2, 1)
+        return (1 - 1 / (excess * 0.55 / d + 1)) * d
     }
     static let space = "salahSheet"
 
@@ -74,11 +75,12 @@ enum SheetRelease {
 /// The page round the circle, pinned to the viewport while the sheet's content scrolls under it, and moved from the
 /// closed rest toward the open one by the progress (`delta` = open − closed). Worked out in the render pass from the
 /// scroll position itself, so the circle never lags the finger by a frame. Past either rest the counter-move equals
-/// the scroll, but for a little give: the ring stays by its rest (round 2; the give, round 3).
+/// the scroll but for the rubber band (round 2; the band, rounds 3–4).
 ///
 /// Animatable on `delta`: when the open rest moves ("N done" folding, the list changing), the circle glides there.
 struct SheetPin: ViewModifier, Animatable {
     let travel: CGFloat
+    let page: CGFloat
     var delta: CGFloat
     var animatableData: CGFloat {
         get { delta }
@@ -88,24 +90,25 @@ struct SheetPin: ViewModifier, Animatable {
         content.visualEffect { content, proxy in
             let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
             let p = min(max(s / travel, 0), 1)
-            // Past a rest: held, but for a little give (SalahSheetDrag.give).
-            let give = SalahSheetDrag.give(-s) - SalahSheetDrag.give(s - travel)
+            // Past a rest: the rubber band (SalahSheetDrag.give).
+            let give = SalahSheetDrag.give(-s, page: page) - SalahSheetDrag.give(s - travel, page: page)
             return content.offset(y: s + delta * p + give)
         }
     }
 }
 
 /// The list's layer (one page tall, laid at the closed rest): between the rests it runs `run` points while the finger
-/// scrolls `travel` (the speed, SalahSheetDrag.speedKey), and it's held past them (but for the same little give), so
+/// scrolls `travel` (the speed, SalahSheetDrag.speedKey), and it's held past them (but for the same rubber band), so
 /// the list never runs past its open place or back up after closing.
 struct SheetWall: ViewModifier {
     let travel: CGFloat
     let run: CGFloat
+    let page: CGFloat
     func body(content: Content) -> some View {
         content.visualEffect { content, proxy in
             let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
             let p = min(max(s / travel, 0), 1)
-            let give = SalahSheetDrag.give(-s) - SalahSheetDrag.give(s - travel)
+            let give = SalahSheetDrag.give(-s, page: page) - SalahSheetDrag.give(s - travel, page: page)
             return content.offset(y: s - run * p + give)
         }
     }
@@ -176,8 +179,9 @@ final class SheetScrollHandle: NSObject {
 
     // MARK: the landing spring (owner's recording, 2026-10-04: "it like hits a snag")
     // UIKit's animated setContentOffset starts from a standstill (ease in): after a fast flick the list stopped dead for
-    // ~4 frames, then eased off. This spring starts at the finger's speed and runs the page's spring (CircleMotion.page:
-    // response 0.35, damping 0.85), stepped each frame on the scroll view itself, so a finger can take it at any frame.
+    // ~4 frames, then eased off. This spring starts at the finger's speed (response 0.35, damping 0.72: one subtle
+    // bounce past the rest, drawn through the rubber band), stepped each frame on the scroll view itself, so a finger can
+    // take it at any frame.
 
     private var link: CADisplayLink?
     private var target: CGFloat = 0     // contentOffset.y
@@ -187,7 +191,8 @@ final class SheetScrollHandle: NSObject {
     private var started: CFTimeInterval = 0
     private var onRest: (() -> Void)?
     static let response: CGFloat = 0.35
-    static let damping: CGFloat = 0.85
+    /// A touch under the page's 0.85, so a landing bounces once, subtly (owner, round 4: "should do a subtle bounce").
+    static let damping: CGFloat = 0.72
     var springing: Bool { link != nil }
 
     /// Springs the scroll by `delta` points, starting at `velocity` (points per millisecond, as `releaseVelocity`).

@@ -1404,12 +1404,12 @@ struct PrayerTimesView: View {
                                 .offset(y: rests.openListTop + run)
                                 .animation(restMotion, value: rests.openListTop)
                                 .frame(width: geo.size.width, height: height, alignment: .top)
-                                .modifier(SheetWall(travel: travel, run: run))
+                                .modifier(SheetWall(travel: travel, run: run, page: height))
                                 .padding(.top, dead)
                         }
                         closedPage(lost: lost)
                             .frame(width: geo.size.width, height: height)
-                            .modifier(SheetPin(travel: travel, delta: rests.openCircleY - rests.closedCircleY))
+                            .modifier(SheetPin(travel: travel, page: height, delta: rests.openCircleY - rests.closedCircleY))
                             .animation(restMotion, value: rests.openCircleY - rests.closedCircleY)
                             .padding(.top, dead)
                     }
@@ -1804,7 +1804,7 @@ struct PrayerTimesView: View {
     }
 
     /// The chevron hint, nudged by the pull-to-refresh drag; while the closed page is pulled down it gives way to a small
-    /// quiet line, "Keep pulling to refresh", then "Let go to refresh" (owner, round 3: "small, simple, subtle text").
+    /// quiet line, "Keep pulling to refresh", then "Let go to refresh location" (owner, round 3: "small, simple, subtle text").
     private struct ChevronHint: View {
         let live: PagerLiveState
         var body: some View {
@@ -1815,7 +1815,7 @@ struct PrayerTimesView: View {
                 .opacity(pulling ? 0 : 1)
                 // An overlay, so the chevron's place is exactly as it was.
                 .overlay {
-                    Text(live.refreshReach >= 1 ? "Let go to refresh" : "Keep pulling to refresh")
+                    Text(live.refreshReach >= 1 ? "Let go to refresh location" : "Keep pulling to refresh")
                         .font(.footnote).fontDesign(.rounded).fontWeight(.light)
                         .foregroundStyle(Color(.tertiaryLabel))   // explicit: in the Button's label .tertiary took the tint
                         .fixedSize()
