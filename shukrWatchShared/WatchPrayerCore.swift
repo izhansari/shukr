@@ -216,28 +216,10 @@ struct WatchPrayer: Hashable {
 enum WatchPrayers {
     static let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
-    /// The phone's method numbers (PrayerUtils.getCalculationParameters).
+    /// The phone's method numbers: the same function the phone uses (PrayerMethods.swift — its copy here lacked the
+    /// angles for methods 12 and 14, audit B8).
     static func parameters(method: Int, school: Int) -> CalculationParameters {
-        let calculationMethod: CalculationMethod = {
-            switch method {
-            case 1: return .karachi
-            case 2: return .northAmerica
-            case 3: return .muslimWorldLeague
-            case 4: return .ummAlQura
-            case 5: return .egyptian
-            case 7: return .tehran
-            case 8: return .dubai
-            case 9: return .kuwait
-            case 10: return .qatar
-            case 11: return .singapore
-            case 12, 14: return .other
-            case 13: return .turkey
-            default: return .northAmerica
-            }
-        }()
-        var params = calculationMethod.params
-        params.madhab = school == 1 ? .hanafi : .shafi
-        return params
+        PrayerMethods.parameters(method: method, school: school)
     }
 
     private static func times(on day: Date) -> PrayerTimes? {

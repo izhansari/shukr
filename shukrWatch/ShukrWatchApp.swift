@@ -34,8 +34,9 @@ struct ShukrWatchApp: App {
             WatchRootView()
                 .environmentObject(session)
         }
-        // Woken in the background with a new context from the phone.
-        .backgroundTask(.watchConnectivity) { }
+        // Woken in the background with a new context from the phone: held until it has been delivered and taken (an
+        // empty task let the wake end before the context was processed — audit B16).
+        .backgroundTask(.watchConnectivity) { await WatchSession.shared.receivePending() }
     }
 }
 
@@ -82,12 +83,27 @@ final class WatchSession: NSObject, ObservableObject, WCSessionDelegate {
     /// Redraw now (a prayer was marked on the watch).
     func refresh() { DispatchQueue.main.async { self.revision += 1 } }
 
+    /// A background wake for WatchConnectivity: activate if needed and wait (up to 10 s) until the delivered content has
+    /// been handed to the delegate, then let the main-queue work it queued run.
+    func receivePending() async {
+        guard WCSession.isSupported() else { return }
+        let session = WCSession.default
+        if session.activationState != .activated { session.activate() }
+        let deadline = Date().addingTimeInterval(10)
+        while session.activationState != .activated || session.hasContentPending, Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        await MainActor.run { }
+    }
+
+    /// On the main queue, all of it: `WatchStore.save` settles the watch's own pending marks, which the watch writes on
+    /// the main queue — saved here on WatchConnectivity's queue, the two raced (audit B16).
     private func take(_ context: [String: Any]) {
         guard !context.isEmpty else { return }
-        if WatchStore.save(context) {
-            WidgetCenter.shared.reloadAllTimelines()
-        }
         DispatchQueue.main.async {
+            if WatchStore.save(context) {
+                WidgetCenter.shared.reloadAllTimelines()
+            }
             WatchZikrStore.shared.take(context)   // today's zikr tasks and progress
             WatchPrayerMarker.confirm(marks: context["markIDs"] as? [String] ?? [],
                                       undos: context["unmarkIDs"] as? [String] ?? [])
@@ -596,8 +612,12 @@ final class WatchNotifications: NSObject, UNUserNotificationCenterDelegate {
         // The phone's flow (shukrApp's NotificationDelegate), same words and timings.
         switch response.actionIdentifier {
         case "MARK_PRAYED_ACTION":
-            if let prayer { DispatchQueue.main.async { WatchPrayerMarker.mark(prayer) } }
-            completionHandler()
+            // Done only once the mark is recorded and queued for the phone: done first, the watch could be suspended
+            // before it was (audit B16).
+            DispatchQueue.main.async {
+                if let prayer { WatchPrayerMarker.mark(prayer) }
+                completionHandler()
+            }
         case "SNOOZE_5_ACTION", "SNOOZE_10_ACTION":
             let minutes = response.actionIdentifier == "SNOOZE_5_ACTION" ? 5 : 10
             Self.nudge(after: Double(minutes * 60), title: "It's been \(minutes) minutes", body: subject,

@@ -37,6 +37,10 @@
 		369BE93E2CA50E32003A58B7 /* DailyTasksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */; };
 		369BE9592CB09288003A58B7 /* DuaPageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 369BE9582CB09280003A58B7 /* DuaPageView.swift */; };
 		36E0E0A72D417F17005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
+		5A7C0E000000000000000B02 /* PrayerMethods.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000B01 /* PrayerMethods.swift */; };
+		5A7C0E000000000000000B03 /* PrayerMethods.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000B01 /* PrayerMethods.swift */; };
+		5A7C0E000000000000000B04 /* PrayerMethods.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000B01 /* PrayerMethods.swift */; };
+		5A7C0E000000000000000B05 /* PrayerMethods.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A7C0E000000000000000B01 /* PrayerMethods.swift */; };
 		36E0E0A82D417F21005C62BB /* SharedTargetForIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */; };
 		36E0E0AB2D41A26C005C62BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 369A05CD2C5E8617002CD697 /* Assets.xcassets */; };
 		36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */; };
@@ -161,6 +165,7 @@
 		369BE93D2CA50E32003A58B7 /* DailyTasksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DailyTasksView.swift; sourceTree = "<group>"; };
 		369BE9582CB09280003A58B7 /* DuaPageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DuaPageView.swift; sourceTree = "<group>"; };
 		36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedTargetForIntents.swift; sourceTree = "<group>"; };
+		5A7C0E000000000000000B01 /* PrayerMethods.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerMethods.swift; sourceTree = "<group>"; };
 		36E0E0AC2D41ECEB005C62BB /* PrayersWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayersWidget.swift; sourceTree = "<group>"; };
 		36EF8C072D3AB96B008D91E7 /* PrayerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerEditorView.swift; sourceTree = "<group>"; };
 		36EF8C092D3AEE40008D91E7 /* PrayerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrayerViewModel.swift; sourceTree = "<group>"; };
@@ -343,6 +348,7 @@
 			isa = PBXGroup;
 			children = (
 				36E0E0A62D417F17005C62BB /* SharedTargetForIntents.swift */,
+				5A7C0E000000000000000B01 /* PrayerMethods.swift */,
 				369A05FE2C5E8635002CD697 /* shukrWidgetBundle.swift */,
 				369A06002C5E8635002CD697 /* shukrWidgetLiveActivity.swift */,
 				369A06022C5E8635002CD697 /* shukrWidget.swift */,
@@ -628,6 +634,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7C0E000000000000000B02 /* PrayerMethods.swift in Sources */,
 				360B85962C7112A2000385F3 /* tasbeehView.swift in Sources */,
 				369BE9242CA48B88003A58B7 /* HistoryPageView.swift in Sources */,
 				36EF8C082D3AB96B008D91E7 /* PrayerEditorView.swift in Sources */,
@@ -661,6 +668,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7C0E000000000000000B03 /* PrayerMethods.swift in Sources */,
 				36E0E0AD2D41ECEB005C62BB /* PrayersWidget.swift in Sources */,
 				A1B2C3D4E5F60718293A4B5C /* MoreWidgets.swift in Sources */,
 				369A06012C5E8635002CD697 /* shukrWidgetLiveActivity.swift in Sources */,
@@ -675,6 +683,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7C0E000000000000000B04 /* PrayerMethods.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -682,6 +691,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A7C0E000000000000000B05 /* PrayerMethods.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

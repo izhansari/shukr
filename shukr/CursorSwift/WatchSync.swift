@@ -76,5 +76,19 @@ final class WatchSync: NSObject, WCSessionDelegate {
         WatchZikrSync.receive(message)
     }
     func sessionDidBecomeInactive(_ session: WCSession) {}
-    func sessionDidDeactivate(_ session: WCSession) { WCSession.default.activate() }
+    /// A switch to another watch: the new one has none of what was sent, so forget `lastSent` (it got nothing until
+    /// something changed — audit B16) and activate; activation sends.
+    func sessionDidDeactivate(_ session: WCSession) {
+        Task { @MainActor in
+            self.lastSent = nil
+            WCSession.default.activate()
+        }
+    }
+    /// The watch app installed, or another watch paired: send it everything.
+    func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            self.lastSent = nil
+            self.sendNow()
+        }
+    }
 }
