@@ -358,8 +358,10 @@ struct YourRemindersView: View {
         let prayers = PrayerNotificationID.prayers.filter { p in
             dayItems.contains { $0.prayer == p && Self.prayerKinds.contains($0.kind) } || !isToday
         }
-        let zikr = dayItems.filter { $0.kind == .zikr || $0.kind == .zikrLater }
-        let others = dayItems.filter { [.masjid, .keepAlive, .other].contains($0.kind) }
+        // Everything else the day has (zikr reminders, a masjid dua, the "open shukr" reminder) in the same list, in time
+        // order with the prayers (owner: "move the zikr reminders into the list of notifs showing for the day").
+        let others = dayItems.filter { !Self.prayerKinds.contains($0.kind) }
+        let rows = dayRows(prayers: prayers, others: others, dayItems: dayItems, day: day)
         return List {
             Section {
                 statusRow
@@ -394,26 +396,20 @@ struct YourRemindersView: View {
             } header: { Text("Days ahead") }
 
             Section {
-                if prayers.isEmpty && others.isEmpty {
+                if rows.isEmpty {
                     Text("Nothing scheduled").foregroundStyle(.secondary)
                 }
-                ForEach(prayers, id: \.self) { prayerRow($0, dayItems, dayKey: PrayerNotificationID.dayKey(day)) }
-                ForEach(others) { item in
-                    plainRow(symbol: "bell", title: line(for: item), time: time(item))
+                ForEach(rows) { row in
+                    switch row.kind {
+                    case .prayer(let name): prayerRow(name, dayItems, dayKey: PrayerNotificationID.dayKey(day))
+                    case .other(let item): otherRow(item)
+                    }
                 }
             } header: {
                 HStack {
                     Text(dayTitle(PrayerNotificationID.dayKey(day)))
                     Spacer()
                     Text("\(dayItems.count) reminder\(dayItems.count == 1 ? "" : "s")")
-                }
-            }
-
-            if !zikr.isEmpty {
-                Section("Zikr") {
-                    ForEach(zikr) { item in
-                        plainRow(symbol: "circle.dotted.circle", title: item.title.isEmpty ? "Zikr reminder" : item.title, time: time(item))
-                    }
                 }
             }
 
@@ -588,12 +584,47 @@ struct YourRemindersView: View {
         }
     }
 
-    private func plainRow(symbol: String, title: String, time: String) -> some View {
-        HStack(spacing: 12) {
+    /// A row of the day's list: a prayer (with all its reminders) or one other reminder; ordered by time.
+    private struct DayRow: Identifiable {
+        enum Kind { case prayer(String), other(Item) }
+        let id: String
+        let kind: Kind
+        let at: Date
+    }
+
+    private func dayRows(prayers: [String], others: [Item], dayItems: [Item], day: Date) -> [DayRow] {
+        let windows = NotificationScheduler.windows(for: day)
+        var rows: [DayRow] = prayers.enumerated().map { i, name in
+            // A prayer sits at its start: its scheduled start, else today's window, else its place in the day.
+            let start = dayItems.first { $0.prayer == name && $0.kind == .start }?.date
+                ?? windows?[name]?.start
+                ?? Calendar.current.startOfDay(for: day).addingTimeInterval(Double(i + 1) * 3 * 3600)
+            return DayRow(id: "p." + name, kind: .prayer(name), at: start)
+        }
+        rows += others.map { DayRow(id: $0.id, kind: .other($0), at: $0.date ?? .distantFuture) }
+        return rows.sorted { $0.at < $1.at }
+    }
+
+    /// Any other reminder, in the prayer rows' shape: what it is, its time in the grey line, the count on the right.
+    private func otherRow(_ item: Item) -> some View {
+        let (symbol, title, what): (String, String, String) = switch item.kind {
+        case .zikr, .zikrLater: ("circle.dotted.circle", item.title.isEmpty ? "Zikr reminder" : item.title, "Zikr reminder")
+        case .masjid: ("building.columns", item.title.isEmpty ? "Masjid dua" : item.title, "Masjid dua")
+        case .keepAlive: ("arrow.clockwise.circle", "Open shukr", "Keeps your reminders coming")
+        default: ("bell", line(for: item), "Reminder")
+        }
+        return HStack(spacing: 12) {
             Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 26)
-            Text(title)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text("\(what) \(Self.hm(item.date))").font(.footnote).foregroundStyle(.secondary)
+            }
             Spacer()
-            Text(time).foregroundStyle(.secondary).monospacedDigit()
+            HStack(spacing: 3) {
+                Text("1").monospacedDigit()
+                Image(systemName: "bell").font(.caption)
+            }
+            .foregroundStyle(.secondary)
         }
     }
 
