@@ -1583,7 +1583,7 @@ struct WatchCountingHelp: View {
                     Text("Turning the Crown pauses screen taps for that session; tap its badge to switch back. It doesn't count with your wrist down.")
                     Text("Crown counts: Auto — your first turn picks the way.")
                     if WatchBeta.on {
-                        Text("Double Tap: Scroll — no zoom; Button — a small zoom on the count.")
+                        Text("Double Tap (testing): Scroll and Scroll auto — no zoom; Button — a small zoom on the count.")
                     }
                     Text("For silent counting, turn on Silent Mode in Control Center.")
                 }
@@ -2092,20 +2092,24 @@ enum WatchBeta {
 /// the session's whole background was that control (owner: "it zooms the whole display inwards with a white border,
 /// holds it for a bit, then the press occurs"). Beta: both, to compare on the wrist; the owner keeps one.
 enum WatchDoubleTapTarget: String, CaseIterable {
-    /// An invisible page-by-page scroll view under the counter: Double Tap scrolls it, each page counts — no zoom.
+    /// A page-by-page scroll view under the counter carrying the primary-action shortcut: Double Tap scrolls it, each
+    /// page counts — no zoom.
     case scroll
+    /// The same scroll view without the shortcut: watchOS 11 scrolls a scroll view with Double Tap by itself ("your app
+    /// will get this behavior automatically" — WWDC24).
+    case scrollAuto
     /// A small disc where the count is: the zoom is that disc's, not the display's.
     case count
     static let key = "watch.doubleTapTarget"
     /// Settings' one-line value.
-    var short: String { self == .scroll ? "Scroll" : "Button" }
-    var next: Self { self == .scroll ? .count : .scroll }
-    var label: String {
+    var short: String {
         switch self {
-        case .scroll: "Scroll (no zoom)"
-        case .count: "Count button"
+        case .scroll: "Scroll"
+        case .scrollAuto: "Scroll auto"
+        case .count: "Button"
         }
     }
+    var next: Self { Self.allCases[(Self.allCases.firstIndex(of: self)! + 1) % Self.allCases.count] }
 }
 
 /// Under the counter (which takes every touch): what Double Tap acts on.
@@ -2125,20 +2129,23 @@ struct WatchDoubleTapLayer: View {
             .buttonStyle(WatchStillButtonStyle())
             .handGestureShortcut(.primaryAction, isEnabled: enabled)
             .accessibilityLabel("Count")
-        case .scroll:
-            WatchDoubleTapScroller(enabled: enabled, onCount: onCount)
+        case .scroll, .scrollAuto:
+            WatchDoubleTapScroller(enabled: enabled, shortcut: target == .scroll, fill: fill, onCount: onCount)
                 .accessibilityHidden(true)
         }
     }
     private static var discSize: CGFloat { WatchScreen.width * 0.42 }
 }
 
-/// Pages of nothing, one screen each, that Double Tap scrolls (watchOS 11: Double Tap scrolls the scroll view that
-/// carries the primary-action shortcut). Every page it moves is a count; a finger can't reach it (the counter is on
+/// Pages one screen each, painted the page's own colour, that Double Tap scrolls. Every page it moves is a count; a finger can't reach it (the counter is on
 /// top) and the Crown stays with the counter (its focus); a scroll a finger did make isn't counted. Back to the middle,
 /// quietly, whenever it rests far from it, so it never runs out.
 struct WatchDoubleTapScroller: View {
     let enabled: Bool
+    /// Carries the primary-action shortcut (`scroll`); without it, watchOS's own Double Tap scrolling (`scrollAuto`).
+    let shortcut: Bool
+    /// The page's colour: clear pages had Double Tap find nothing — the gesture symbol shook at the top (owner).
+    let fill: Color
     let onCount: () -> Void
     private static let pages = 2_000
     private static let middle = 1_000
@@ -2150,7 +2157,7 @@ struct WatchDoubleTapScroller: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(0..<Self.pages, id: \.self) { page in
-                    Color.clear
+                    fill
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(page)
                 }
@@ -2160,7 +2167,7 @@ struct WatchDoubleTapScroller: View {
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
         .scrollPosition(id: $position)
-        .handGestureShortcut(.primaryAction, isEnabled: enabled)
+        .handGestureShortcut(.primaryAction, isEnabled: enabled && shortcut)
         .ignoresSafeArea()
         .onScrollPhaseChange { _, phase in
             if phase == .interacting { touched = true }
