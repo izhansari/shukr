@@ -2331,13 +2331,13 @@ struct tasbeehView: View {
                 switch thirdTile {
                 case .left(let left, let at):
                     finishFlag
-                    // Not bold (owner): the numbers in the regular weight, the words between them secondary.
-                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17))
+                    // Not bold (owner, twice): the numbers light, as the tiles' are; the words between them secondary.
+                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17, weight: .light))
                      + Text(" left · you'll finish around ").foregroundColor(.secondary)
-                     + Text(shortTime(at)).font(.system(size: 17)))
+                     + Text(shortTime(at)).font(.system(size: 17, weight: .light)))
                 case .toGo(let n):
                     finishFlag
-                    (Text(n.formatted()).font(.system(size: 17))
+                    (Text(n.formatted()).font(.system(size: 17, weight: .light))
                      + Text(" to go").foregroundColor(.secondary))
                 case .counted:
                     // Past the goal and keeping going: said once, quietly.
@@ -2397,16 +2397,36 @@ struct tasbeehView: View {
                 Text("rate")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // Only the number moves (owner): the shown one slides up and out as the other comes in from below;
+                // its caption and the pace line crossfade in place.
+                // A roll in its own slot: a full line each way, clipped, so the two never sit on each other (a 14 pt
+                // nudge left them overlapping mid-way) and neither crosses "rate" or the caption.
                 ZStack {
-                    // The shown side slides up and out as the other slides in from below (the old rate box's flip, owner).
-                    rateLines(value: String(format: "%.2fs", shownPerCount), caption: "per count", pace: pace)
+                    rateValue(String(format: "%.2fs", shownPerCount))
                         .opacity(showingPerTasbeeh ? 0 : 1)
-                        .offset(y: showingPerTasbeeh ? -16 : 0)
-                    rateLines(value: shownPerTasbeeh, caption: "per tasbeeh", pace: pacePerTasbeeh)
+                        .offset(y: showingPerTasbeeh ? -Self.rateLine : 0)
+                    rateValue(shownPerTasbeeh)
                         .opacity(showingPerTasbeeh ? 1 : 0)
-                        .offset(y: showingPerTasbeeh ? 0 : 16)
+                        .offset(y: showingPerTasbeeh ? 0 : Self.rateLine)
+                }
+                .frame(height: Self.rateLine)
+                .clipped()
+                ZStack {
+                    Text("per count").opacity(showingPerTasbeeh ? 0 : 1)
+                    Text("per tasbeeh").opacity(showingPerTasbeeh ? 1 : 0)
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                if pace != nil || pacePerTasbeeh != nil {
+                    // Its own line, apart from the number and its caption (owner: "add a gap").
+                    ZStack {
+                        paceLine(pace).opacity(showingPerTasbeeh ? 0 : 1)
+                        paceLine(pacePerTasbeeh).opacity(showingPerTasbeeh ? 1 : 0)
+                    }
+                    .padding(.top, 10)
                 }
             }
+            .padding(.horizontal, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(ThemedRaised(shape: RoundedRectangle(cornerRadius: 18, style: .continuous), radius: 6, offset: 3))
             .overlay(alignment: .topTrailing) {
@@ -2418,27 +2438,27 @@ struct tasbeehView: View {
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
 
-        /// The rate's value, its caption, and the pace line under them.
-        private func rateLines(value: String, caption: String, pace: (text: String, faster: Bool?)?) -> some View {
-            VStack(spacing: 1) {
-                Text(value)
-                    .font(.system(size: 36, weight: .light, design: .rounded))
-                    .monospacedDigit()
+        /// The rate number's line: its slot's height and how far it rolls.
+        private static let rateLine: CGFloat = ceil(UIFont.systemFont(ofSize: 32, weight: .light).lineHeight)
+
+        /// The rate's number: a little smaller than it was (36), so the tile has room for the gap above the pace line.
+        private func rateValue(_ value: String) -> some View {
+            Text(value)
+                .font(.system(size: 32, weight: .light, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+
+        /// How this session compares with your usual pace: faster in sage, else secondary.
+        @ViewBuilder private func paceLine(_ pace: (text: String, faster: Bool?)?) -> some View {
+            if let pace {
+                Text(pace.text)
+                    .font(.system(size: 13, weight: pace.faster == true ? .medium : .regular, design: .rounded))
+                    .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text(caption)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                if let pace {
-                    Text(pace.text)
-                        .font(.system(size: 13, weight: pace.faster == true ? .medium : .regular, design: .rounded))
-                        .foregroundStyle(pace.faster == true ? Color.sage : Color.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .padding(.top, 6)
-                }
+                    .minimumScaleFactor(0.7)
             }
-            .padding(.horizontal, 8)
         }
 
         // MARK: mantra card
@@ -2747,10 +2767,15 @@ struct tasbeehView: View {
                 triggerSomeVibration(type: .light)
                 action()
             } label: {
+                // A bigger target (owner: "if you miss a little then it unpauses"), grown up and outwards, away from
+                // its switch's circle: ~42 × 36 pt instead of 26, overlapping only the circle's top-right edge.
                 Image(systemName: "info.circle")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundStyle(on ? Color.sage.opacity(0.8) : Color.primary.opacity(0.4))
-                    .padding(7)
+                    .padding(.top, Self.infoReach)
+                    .padding(.trailing, Self.infoReach)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 6)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -2820,14 +2845,17 @@ struct tasbeehView: View {
             .accessibilityHint(locked ? "Locked once the goal is reached" : "")
             .overlay(alignment: .top) {
                 if let info {
+                    // The icon where it was (on the circle's shoulder); its bigger target reaches up and right.
                     infoButton(info.label, on: on, action: info.open)
-                        .offset(x: Self.switchCircle / 2 + 4, y: -9)
+                        .offset(x: Self.switchCircle / 2 + 4 + (Self.infoReach - 12) / 2, y: -9 - (Self.infoReach - 7))
                 }
             }
             .frame(maxWidth: .infinity)
         }
 
         private static let switchCircle: CGFloat = 50
+        /// How far an (i)'s target reaches above and to the right of its icon.
+        private static let infoReach: CGFloat = 18
 
     }
 
