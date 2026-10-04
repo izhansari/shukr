@@ -1247,6 +1247,7 @@ struct PrayerTimesView: View {
             .first ?? 34
 
         @AppStorage(SalahSheetDrag.key) private var follows = SalahSheetDrag.defaultOn
+        @AppStorage(SalahSheetDrag.speedKey) private var sheetSpeed = SalahSheetDrag.defaultSpeed
         /// The following sheet's measurements: the circle's and the list's sizes, and the resting places worked out
         /// from them (SheetRests). Not per-frame.
         @State private var circleSize: CGSize = .zero
@@ -1381,7 +1382,9 @@ struct PrayerTimesView: View {
             let lost = CircleStage.shared.lost
             return GeometryReader { geo in
                 let height = geo.size.height
-                let travel = max((height * SalahSheetDrag.travelShare).rounded(), 1)
+                // The list's run between the rests, and the finger's scroll for it (the run ÷ the speed).
+                let run = max((height * SalahSheetDrag.travelShare).rounded(), 1)
+                let travel = max((run / CGFloat(max(sheetSpeed, 0.5))).rounded(), 1)
                 let dead = SalahSheetDrag.dead
                 // The open rest moving (the fold, the list's rows changing) glides, after the first measure.
                 let restMotion = restsReady ? RowMotion.resolved(rowMotionRaw)
@@ -1398,10 +1401,10 @@ struct PrayerTimesView: View {
                                 .modifier(SheetListFade(live: live))
                                 .opacity(CircleStage.shared.pageHidden ? 0 : 1)
                                 .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
-                                .offset(y: rests.openListTop + travel)
+                                .offset(y: rests.openListTop + run)
                                 .animation(restMotion, value: rests.openListTop)
                                 .frame(width: geo.size.width, height: height, alignment: .top)
-                                .modifier(SheetWall(travel: travel))
+                                .modifier(SheetWall(travel: travel, run: run))
                                 .padding(.top, dead)
                         }
                         closedPage(lost: lost)
@@ -1417,6 +1420,7 @@ struct PrayerTimesView: View {
                     live.sheetOffset = new
                     if live.sheetPhase == .interacting { sheetScroll.sample(new) }
                     if live.sheetTravel != travel { live.sheetTravel = travel }
+                    if live.sheetRun != run { live.sheetRun = run }
                     // Pulled down past the closed rest (dead room: nothing moves): the chevron's resisted nudge, as the
                     // pop's drag showed it.
                     let pull = live.sheetPhase == .interacting && new < 0 ? min(-new * 0.5, 20) : 0
@@ -1770,7 +1774,7 @@ struct PrayerTimesView: View {
             }
             // "N done" rides up under the list while a finger brings the sheet (its fixed spot is the open rest).
             let rise: CGFloat = if case .doneFooter = role, sheetFollows {
-                (1 - live.sheetProgress) * live.sheetTravel
+                (1 - live.sheetProgress) * live.sheetRun
             } else { 0 }
             content
                 .offset(x: push, y: rise)
@@ -2782,6 +2786,8 @@ struct ChevronTap2: View {
     /// (the pager is locked while it moves).
     var sheetOffset: CGFloat = 0
     var sheetTravel: CGFloat = 1
+    /// How far the list runs between the rests (the finger's travel × the speed).
+    var sheetRun: CGFloat = 1
     var sheetPhase: ScrollPhase = .idle
     /// How far a pull-down on the closed page is toward refreshing, 1 = let go now (both drags). The chevron turns into
     /// "Keep pulling to refresh" (owner, round 3).

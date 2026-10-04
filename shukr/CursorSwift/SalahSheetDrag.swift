@@ -19,6 +19,12 @@ enum SalahSheetDrag {
     /// from under the page's bottom edge (a full list; a short one starts a little higher, faded out) to its open place.
     /// Fixed per page, so the range never changes under a finger or when "N done" folds.
     static let travelShare: CGFloat = 0.5
+    /// How far the list and the ring move for each point of finger (owner, 2026-10-04: "moving one to one with my finger
+    /// … I'd be better off if … the prayer list drags up by 1.5 units or maybe two"). The finger's scroll between the
+    /// rests is the list's run ÷ this; the palette menu picks it (1×, 1.5×, 2×).
+    static let speedKey = "salahSheetSpeed"
+    static let defaultSpeed: Double = 1.5
+    static let speeds: [Double] = [1, 1.5, 2]
     /// Dead scroll room past each rest (round 2, owner: "it bounces way too much at the ends … I can push the whole ring
     /// out of the page"): the rests sit inside the content, so a push past one scrolls into this room — no rubber band —
     /// and `SheetPin` / `SheetWall` hold everything still there. Fixed, not a share of the page: the page's height
@@ -89,15 +95,18 @@ struct SheetPin: ViewModifier, Animatable {
     }
 }
 
-/// The list's layer (one page tall, laid at the closed rest): it scrolls with the finger between the rests and is held
-/// past them (but for the same little give), so the list never runs past its open place or back up after closing.
+/// The list's layer (one page tall, laid at the closed rest): between the rests it runs `run` points while the finger
+/// scrolls `travel` (the speed, SalahSheetDrag.speedKey), and it's held past them (but for the same little give), so
+/// the list never runs past its open place or back up after closing.
 struct SheetWall: ViewModifier {
     let travel: CGFloat
+    let run: CGFloat
     func body(content: Content) -> some View {
         content.visualEffect { content, proxy in
             let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
+            let p = min(max(s / travel, 0), 1)
             let give = SalahSheetDrag.give(-s) - SalahSheetDrag.give(s - travel)
-            return content.offset(y: min(s, 0) + max(s - travel, 0) + give)
+            return content.offset(y: s - run * p + give)
         }
     }
 }

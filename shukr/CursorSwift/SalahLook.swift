@@ -324,6 +324,7 @@ struct SalahLookSwitcher: View {
     @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
     @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
+    @AppStorage(SalahSheetDrag.speedKey) private var sheetSpeed = SalahSheetDrag.defaultSpeed
 
     var body: some View {
         Menu {
@@ -348,6 +349,11 @@ struct SalahLookSwitcher: View {
             Picker("Salah list drag", selection: $sheetFollows) {
                 Text("Vertical live dragging").tag(true)
                 Text("Gesture completion drag").tag(false)
+            }
+            .pickerStyle(.menu)
+            // Vertical live dragging's speed: list points per finger point.
+            Picker("Live drag speed", selection: $sheetSpeed) {
+                ForEach(SalahSheetDrag.speeds, id: \.self) { Text($0 == 1 ? "1× (with the finger)" : "\($0.formatted())×").tag($0) }
             }
             .pickerStyle(.menu)
         } label: {
