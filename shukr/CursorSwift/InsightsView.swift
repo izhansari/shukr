@@ -534,7 +534,7 @@ struct InsightsStats {
         let cal = Calendar.current
         let today = PrayerDay.start(for: now)
         var byDay: [Date: [PrayerModel]] = [:]
-        for p in prayers { byDay[cal.startOfDay(for: p.startTime), default: []].append(p) }
+        for p in prayers { byDay[p.dayStart, default: []].append(p) }   // 2.8.0: by prayer day
 
         let firstDay = byDay.keys.min() ?? today
         let start = range.days.map { cal.date(byAdding: .day, value: -$0, to: today) ?? today } ?? firstDay
@@ -686,7 +686,7 @@ private struct PrayerTrendsGrid: View {
         var rows: [Date: [String: PrayerModel]] = [:]
         let first = days.first ?? today
         for p in prayers where p.startTime >= first {
-            rows[cal.startOfDay(for: p.startTime), default: [:]][p.name] = p
+            rows[p.dayStart, default: [:]][p.name] = p   // 2.8.0
         }
         let selectedPrayer = selected.flatMap { rows[days[$0.day]]?[$0.name] }
         // The fortnight in two numbers (it also fills what was an empty top half — owner).

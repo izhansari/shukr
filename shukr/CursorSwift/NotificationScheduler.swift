@@ -224,10 +224,10 @@ enum NotificationScheduler {
 
         // Which prayers are already prayed, over the days covered.
         let lastDay = cal.date(byAdding: .day, value: daysAhead + 1, to: firstDay) ?? firstDay
-        let rangeStart = firstDay, rangeEnd = lastDay
+        let rangeStart = firstDay, rangeEnd = lastDay.addingTimeInterval(6 * 3600)   // + a post-midnight Isha (2.8.0)
         let descriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate { $0.isCompleted && $0.startTime >= rangeStart && $0.startTime < rangeEnd })
-        let done = Set(((try? context.fetch(descriptor)) ?? []).map { PrayerNotificationID.dayKey($0.startTime) + $0.name })
+        let done = Set(((try? context.fetch(descriptor)) ?? []).map { $0.dayKey + $0.name })   // by prayer day
 
         var items: [Item] = []
         var fullDays = 0   // prayer days with nudges: the next two that are still ahead

@@ -121,10 +121,9 @@ enum WatchZikrSync {
             return row
         }
         // Today's marked prayers with their scores, for the watch list's dots (score colour, faded).
-        let (rowStart, rowEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
         let fresh = container.map { ModelContext($0) } ?? context   // widget / notification marks too
-        let marked = (try? fresh.fetch(FetchDescriptor<PrayerModel>(
-            predicate: #Predicate { $0.isCompleted && $0.startTime >= rowStart && $0.startTime <= rowEnd }))) ?? []
+        let marked = ((try? fresh.fetch(FetchDescriptor<PrayerModel>(
+            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start())))) ?? []).filter(\.isCompleted)   // 2.8.0
         var scores: [String: Double] = [:]
         for prayer in marked { scores[prayer.name] = prayer.numberScore ?? 0 }
         return [
@@ -418,11 +417,9 @@ enum WatchZikrSync {
     /// Every row of a prayer on that calendar day. A day can hold more than one, and a completed
     /// row must never hide behind an unmarked one (`fetchPrayer` returns the first it finds).
     private static func prayerRows(named name: String, on day: Date, in context: ModelContext) -> [PrayerModel] {
-        let dayStart = Calendar.current.startOfDay(for: day)
-        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? day
-        return (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate<PrayerModel> {
-            $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd
-        }))) ?? []
+        // 2.8.0: the prayer day `day` falls in, by key (name filtered here).
+        return ((try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: day))))) ?? []).filter { $0.name == name }
     }
 
     #if DEBUG
@@ -543,10 +540,9 @@ enum WatchZikrSync {
 
     /// A day's DailyPrayerScore from its rows (a late mark or an undo belongs to its own day).
     private static func rescoreDay(of startDate: Date, in context: ModelContext) {
-        let dayStart = Calendar.current.startOfDay(for: startDate)
-        let (rowStart, rowEnd) = PrayerDay.rowRange(forDayStarting: dayStart)
+        let dayStart = PrayerDay.start(for: startDate)   // 2.8.0: the prayer day, not the calendar day
         let dayPrayers = (try? context.fetch(FetchDescriptor<PrayerModel>(
-            predicate: #Predicate { $0.startTime >= rowStart && $0.startTime <= rowEnd }))) ?? []
+            predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart)))) ?? []
         let score = PrayerScoring.dayScore(for: dayPrayers)
         if let row = try? context.fetch(FetchDescriptor<DailyPrayerScore>(
             predicate: #Predicate { $0.date >= dayStart && $0.date <= dayStart })).first {

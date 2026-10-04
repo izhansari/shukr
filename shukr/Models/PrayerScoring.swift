@@ -122,7 +122,7 @@ enum PrayerScoring {
             // Day averages: every day that has prayer rows or a stored score.
             let calendar = Calendar.current
             var byDay: [Date: [PrayerModel]] = [:]
-            for prayer in prayers { byDay[calendar.startOfDay(for: prayer.startTime), default: []].append(prayer) }
+            for prayer in prayers { byDay[prayer.dayStart, default: []].append(prayer) }   // 2.8.0: by prayer day
             let dailies = try context.fetch(FetchDescriptor<DailyPrayerScore>())
             var dailyByDay: [Date: DailyPrayerScore] = [:]
             for daily in dailies { dailyByDay[calendar.startOfDay(for: daily.date)] = daily }

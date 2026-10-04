@@ -114,6 +114,15 @@ class PrayerModel {
     var recordedTimeAtComplete: Date? = nil
     var recordedLat: Double? = nil
     var recordedLon: Double? = nil
+    /// The prayer day this row belongs to, "YYYY-MM-DD" (Fajr to the next Fajr) — schema 2.8.0 (2026-10-04,
+    /// decision audit-a6-schema). A string so it never moves with the clock: an Isha that starts after midnight
+    /// stays on its day, and a time-zone change leaves marked rows where they were. Set at creation; rows from
+    /// before get theirs from the data pass. Read `dayKey`, never this directly (nil = not filled yet).
+    var prayerDayKey: String? = nil
+    /// The day key, stored or (until the backfill) computed the same way.
+    var dayKey: String { prayerDayKey ?? PrayerDay.key(forRow: name, startingAt: startTime) }
+    /// Midnight at the start of the prayer day's calendar date, for code that groups by Date.
+    var dayStart: Date { PrayerDay.start(ofKey: dayKey) ?? Calendar.current.startOfDay(for: startTime) }
 
     var recordedSpot: CLLocationCoordinate2D? {
         guard let recordedLat, let recordedLon else { return nil }
@@ -181,6 +190,7 @@ class PrayerModel {
         self.endTime = endTime
         self.latPrayedAt = latitude
         self.longPrayedAt = longitude
+        self.prayerDayKey = PrayerDay.key(forRow: name, startingAt: startTime)   // 2.8.0: every new row knows its prayer day
         self.dateAtMake = dateAtMake
     }
     

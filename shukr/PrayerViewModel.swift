@@ -24,6 +24,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         if ProcessInfo.processInfo.arguments.contains("-demoStreakBackfill") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoStreakBackfill() }
         }
+        if ProcessInfo.processInfo.arguments.contains("-demoPrayerDayKeyTest") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.demoPrayerDayKeyTest() }
+        }
         #endif
 //        self.loadDailyScores()
 
@@ -369,7 +372,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         ////  CURRENT OBJECTIVE: 12/2 @ 5:04PM just commented this out and gonna try making it dependent on the calc vars from Adhan. Then create the persisted prayerModel objects on completion instead... this is the start of a big rethinking of our current archtiecture to handle the prayers. The current code as it stands will not work because now thelast5Prayers rely on the persisted objects which are then fed into PulseCircleView and PrayerButton.
         
         // The prayer day's rows: keyed by the calendar day of `prayerDate`.
-        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: Calendar.current.startOfDay(for: prayerDate))
+        let dayStartOfPrayerDate = Calendar.current.startOfDay(for: prayerDate)
         
         do {
             // Fetch prayers for the current day from the context
@@ -378,7 +381,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             // pair was inserted on every refresh — hundreds of duplicates, and a map that couldn't
             // draw (2026-09-27). `removeDuplicatePrayerRows` cleans up what that left.
             let fetchDescriptor = FetchDescriptor<PrayerModel>(
-                predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
+                predicate: PrayerDay.rowsPredicate(forDayStarting: dayStartOfPrayerDate),   // 2.8.0: by prayer day
                 sortBy: [SortDescriptor(\.startTime, order: .forward)]
             )
             let existingPrayers = try self.context.fetch(fetchDescriptor)
@@ -444,8 +447,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     private func isNotCompletedToday(prayerName: String) -> Bool{
         let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
+        let todayKey = PrayerDay.key()
         var fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd && $0.name == prayerName }
+            predicate: #Predicate<PrayerModel> { ($0.prayerDayKey == todayKey || ($0.prayerDayKey == nil && $0.startTime >= todayStart && $0.startTime <= todayEnd)) && $0.name == prayerName }
         )
         fetchDescriptor.fetchLimit = 1
 
@@ -790,13 +794,9 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         updateDayMilestones(todayPrayers: todayPrayers, todayStart: todayStart, now: now)
         
         func getTodaysPrayersFromContext() -> [PrayerModel]? {
-            let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start(for: now))
-
-            // Fetch prayers for today
+            // Fetch prayers for today (2.8.0: by prayer day key)
             let todayPrayersFetchDescriptor = FetchDescriptor<PrayerModel>(
-                predicate: #Predicate<PrayerModel> {
-                    $0.startTime >= todayStart && $0.startTime <= todayEnd
-                }
+                predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: now))
             )
             guard let todayPrayers = try? context.fetch(todayPrayersFetchDescriptor) else {
                 print("❌ Failed to fetch today's prayers")
@@ -887,12 +887,18 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         var day = yesterdayStart
         batches: for _ in 0..<150 {                   // ≤ ~1000 days
             guard let batchStart = calendar.date(byAdding: .day, value: -7, to: batchEnd) else { break }
+            // 2.8.0: a day's Isha can start after midnight, so fetch 6 h past the batch and group rows by their own
+            // prayer day; rows whose day lies before this batch wait for the next one (it fetches them).
+            let fetchEnd = batchEnd.addingTimeInterval(6 * 3600)
             let descriptor = FetchDescriptor<PrayerModel>(
-                predicate: #Predicate<PrayerModel> { $0.startTime >= batchStart && $0.startTime < batchEnd && $0.isCompleted }
+                predicate: #Predicate<PrayerModel> { $0.startTime >= batchStart && $0.startTime < fetchEnd && $0.isCompleted }
             )
             guard let rows = try? context.fetch(descriptor) else { return }
             var byDay: [Date: [PrayerModel]] = [:]
-            for row in rows { byDay[calendar.startOfDay(for: row.startTime), default: []].append(row) }
+            for row in rows {
+                let d = row.dayStart
+                if d >= batchStart && d < batchEnd { byDay[d, default: []].append(row) }
+            }
             while day >= batchStart {
                 let dayRows = byDay[day] ?? []
                 if streakAlive {
@@ -1167,10 +1173,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func loadPrayerObjects(for date: Date? = nil) -> [PrayerModel] {
         let targetDate = date ?? PrayerDay.date() // the provided calendar day, else the current prayer day
         let dayStart = Calendar.current.startOfDay(for: targetDate)
-        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? Date()
-        
         var fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.startTime >= dayStart && $0.startTime <= dayEnd },
+            predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart),   // 2.8.0: the prayer day of that date
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
         do {
@@ -1186,10 +1190,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func loadPrayerObjectsV2_AccountsForEmptyPrayerObjects_NotTested(for date: Date? = nil) -> [PrayerModel] {
         let targetDate = date ?? Date() // Use the provided date or default to the current date
         let dayStart = Calendar.current.startOfDay(for: targetDate)
-        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? Date()
-        
         var fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.startTime >= dayStart && $0.startTime <= dayEnd },
+            predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart),   // 2.8.0
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
         do {
@@ -1224,9 +1226,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     
     func loadTodaysPrayerObjects(){
-        let (todayStart, todayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
         let fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.startTime >= todayStart && $0.startTime <= todayEnd},
+            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start()),   // 2.8.0: by prayer day
             sortBy: [SortDescriptor(\.startTime, order: .forward)]
         )
 
@@ -1366,10 +1367,9 @@ extension PrayerViewModel {
     static func removeDuplicatePrayerRows(in container: ModelContainer) {
         let context = ModelContext(container)
         guard let rows = try? context.fetch(FetchDescriptor<PrayerModel>(sortBy: [SortDescriptor(\.startTime)])) else { return }
-        let calendar = Calendar.current
         var groups: [String: [PrayerModel]] = [:]
         for row in rows {
-            groups["\(calendar.startOfDay(for: row.startTime).timeIntervalSince1970)|\(row.name)", default: []].append(row)
+            groups["\(row.dayKey)|\(row.name)", default: []].append(row)   // 2.8.0: by prayer day, not calendar day
         }
         var doomed: [PrayerModel] = []
         for (_, list) in groups where list.count > 1 {
@@ -1421,6 +1421,49 @@ extension PrayerViewModel {
         print("STREAKBACKFILL after 1: streak=\(prayerStreak) inTime=\(onTimeStreak) last=\(lastStreakDate)")
         checkToResetStreak()
         print("STREAKBACKFILL after 2: streak=\(prayerStreak) inTime=\(onTimeStreak)")
+    }
+
+    /// `-demoPrayerDayKeyTest` (simulator only; writes then removes rows): schema 2.8.0's reason. Today's Isha is
+    /// given a start after midnight (tomorrow 00:30) and yesterday's Isha a start this morning (00:30): the day's
+    /// rows must still be exactly today's — the late Isha found (not re-inserted by a refresh), yesterday's not
+    /// adopted. Logs PRAYERDAYKEY ✅ / ❌ and cleans up.
+    func demoPrayerDayKeyTest() {
+        let calendar = Calendar.current
+        let store = UserDefaults(suiteName: SharedStore.appGroup)
+        if (store?.double(forKey: "lastLatitude") ?? 0) == 0 {   // times need a place: New York
+            store?.set(40.7128, forKey: "lastLatitude"); store?.set(-74.0060, forKey: "lastLongitude")
+        }
+        let todayKey = PrayerDay.key()
+        let todayStart = PrayerDay.start()
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: todayStart),
+              let yesterday = calendar.date(byAdding: .day, value: -1, to: todayStart) else { return }
+        let yesterdayKey = PrayerNotificationID.dayKey(yesterday)
+        let marker = "PRAYERDAYKEYTEST"
+        // Clear today's existing Isha rows so the late one is the day's only Isha.
+        let existing = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: todayStart)))) ?? []
+        for r in existing where r.name == "Isha" { context.delete(r) }
+        let late = PrayerModel(name: "Isha", startTime: tomorrow.addingTimeInterval(30 * 60), endTime: tomorrow.addingTimeInterval(90 * 60))
+        late.prayerDayKey = todayKey; late.isCompleted = true; late.numberScore = 0.9; late.timeAtComplete = late.startTime.addingTimeInterval(300); late.mosqueName = marker
+        let stale = PrayerModel(name: "Isha", startTime: todayStart.addingTimeInterval(30 * 60), endTime: todayStart.addingTimeInterval(90 * 60))
+        stale.prayerDayKey = yesterdayKey; stale.isCompleted = true; stale.numberScore = 0.4; stale.mosqueName = marker
+        context.insert(late); context.insert(stale)
+        try? context.save()
+        var ok = true
+        func check(_ cond: Bool, _ what: String) { print("PRAYERDAYKEY \(cond ? "✅" : "❌") \(what)"); ok = ok && cond }
+        let rows1 = loadPrayerObjects(for: PrayerDay.date())
+        check(rows1.contains { $0 === late }, "today's rows include the Isha that starts after midnight")
+        check(!rows1.contains { $0 === stale }, "yesterday's late Isha (this morning) is not adopted by today")
+        fetchPrayerTimes(cameFrom: "PRAYERDAYKEYTEST")
+        let ishas = ((try? context.fetch(FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: todayStart)))) ?? []).filter { $0.name == "Isha" }
+        check(ishas.count == 1, "a refresh leaves one Isha for today (found \(ishas.count))")
+        check(ishas.first === late && late.isCompleted, "and it's the marked late one, untouched")
+        let rows2 = Self.onePerPrayer(loadPrayerObjects(for: PrayerDay.date()))
+        check(rows2.count == 5, "the day still has five prayers (found \(rows2.count))")
+        print("PRAYERDAYKEY \(ok ? "✅ ALL PASSED" : "❌ FAILED")")
+        // Clean up the fakes; a normal refresh restores today's Isha from the times.
+        for r in (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.mosqueName == marker }))) ?? [] { context.delete(r) }
+        try? context.save()
+        fetchPrayerTimes(cameFrom: "PRAYERDAYKEYTEST cleanup")
     }
 }
 #endif

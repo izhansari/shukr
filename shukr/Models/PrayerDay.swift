@@ -57,6 +57,50 @@ enum PrayerDay {
         Calendar.current.startOfDay(for: date(for: now))
     }
 
+    // MARK: Day keys (schema 2.8.0)
+
+    /// "YYYY-MM-DD" of the prayer day an instant falls in (Fajr to the next Fajr at the saved location; the 3 AM
+    /// rule without one). What every "today's rows" lookup compares.
+    static func key(for instant: Date = Date()) -> String {
+        PrayerNotificationID.dayKey(date(for: instant))
+    }
+
+    /// The day key for a prayer ROW, from its name and start — what `PrayerModel.prayerDayKey` stores. Only an Isha
+    /// can belong to the day before its calendar date (one that starts after midnight); Fajr, Dhuhr, Asr and
+    /// Maghrib always belong to the calendar day they start on. Keyed by name on purpose: a Fajr recorded at another
+    /// location (an earlier Fajr than today's rule would compute for that date) must never slip to the previous day.
+    static func key(forRow name: String, startingAt start: Date) -> String {
+        let calendar = Calendar.current
+        let dayStart = calendar.startOfDay(for: start)
+        guard name == "Isha" else { return PrayerNotificationID.dayKey(dayStart) }
+        let cutoff = fajr(onCalendarDayOf: start) ?? dayStart.addingTimeInterval(6 * 3600)   // no location: before 6 AM
+        if start < cutoff, let previous = calendar.date(byAdding: .day, value: -1, to: dayStart) {
+            return PrayerNotificationID.dayKey(previous)
+        }
+        return PrayerNotificationID.dayKey(dayStart)
+    }
+
+    /// Midnight at the start of a key's calendar date, in the current time zone.
+    static func start(ofKey key: String) -> Date? {
+        let parts = key.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var c = DateComponents(); c.year = parts[0]; c.month = parts[1]; c.day = parts[2]
+        return Calendar.current.date(from: c).map { Calendar.current.startOfDay(for: $0) }
+    }
+
+    /// The predicate for one prayer day's rows: the stored key, or — for rows the backfill hasn't reached (an
+    /// install's first launch after the update, or the widget running before the app) — the old time window
+    /// of `rowRange(forDayStarting:)`. Pass both so the fetch works in every state.
+    static func rowsPredicate(key: String, start: Date, end: Date) -> Predicate<PrayerModel> {
+        #Predicate<PrayerModel> { $0.prayerDayKey == key || ($0.prayerDayKey == nil && $0.startTime >= start && $0.startTime <= end) }
+    }
+
+    /// `rowsPredicate` for the prayer day that starts on the calendar day `dayStart`.
+    static func rowsPredicate(forDayStarting dayStart: Date) -> Predicate<PrayerModel> {
+        let (s, e) = rowRange(forDayStarting: dayStart)
+        return rowsPredicate(key: PrayerNotificationID.dayKey(dayStart), start: s, end: e)
+    }
+
     /// When the current prayer day began, as an instant: its Fajr (3 AM without a location). Zikr sessions are timestamped, so "today's sessions" (task progress) means
     /// sessions since this — a session at 1 AM, before Fajr, counts for yesterday.
     static func sessionDayStart(for now: Date = Date()) -> Date {

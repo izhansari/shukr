@@ -243,12 +243,8 @@ struct PrayerEditorView: View { //prayerstreak_flag main viewer for the streaks.
     // Fetch prayers for the selected date
     private func fetchPrayersForDate() {
         let startOfDay = Calendar.current.startOfDay(for: selectedDate)
-        guard let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay)?.addingTimeInterval(-1) else { return }
-        
         let fetchDescriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> {
-                $0.startTime >= startOfDay && $0.startTime <= endOfDay
-            },
+            predicate: PrayerDay.rowsPredicate(forDayStarting: startOfDay),   // 2.8.0: that date's prayer day
             sortBy: [SortDescriptor(\.startTime)]
         )
         

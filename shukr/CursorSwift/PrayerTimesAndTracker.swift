@@ -222,12 +222,10 @@ struct PrayerTimesView: View {
     /// The completed rows of the request's prayer on its calendar day.
     private func completedRows(_ request: WidgetUnmarkRequest) -> [PrayerModel] {
         let name = request.name
-        let dayStart = Calendar.current.startOfDay(for: request.start)
-        let dayEnd = dayStart.addingTimeInterval(86_399)
-        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate {
-            $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd
-        }))) ?? []
-        return rows.filter(\.isCompleted)
+        // 2.8.0: the prayer day the request's start falls in, by key.
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: request.start))))) ?? []
+        return rows.filter { $0.name == name && $0.isCompleted }
     }
 
     /// "Unmark Asr?" appears over whatever is on screen — the Zikr page, Settings, a pushed page, the

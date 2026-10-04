@@ -1237,11 +1237,8 @@ extension SharedStore {
         defer { WidgetPerf.log("scores read \(WidgetPerf.ms(since: t0)) ms") }
         guard let container = widgetContainer else { return [:] }
         let context = ModelContext(container)
-        let (dayStart, dayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
-        let descriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.isCompleted && $0.startTime >= dayStart && $0.startTime <= dayEnd }
-        )
-        let done = (try? context.fetch(descriptor)) ?? []
+        let descriptor = FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start()))   // 2.8.0
+        let done = ((try? context.fetch(descriptor)) ?? []).filter(\.isCompleted)
         return Dictionary(done.map { ($0.name, $0.numberScore ?? 0) }, uniquingKeysWith: { a, _ in a })
     }
 }

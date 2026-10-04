@@ -170,9 +170,23 @@ enum SharedStore {
             if let azkar = BuiltInAzkar.applyIfNeeded(in: context) { print("✅ built-in azkar: \(azkar)") }
             let tagged = BuiltInAzkar.tagRows(in: context)
             if tagged > 0 { print("✅ built-in azkar tagged: \(tagged)") }
+            // 2.8.0: every prayer row carries its prayer day; rows from before get theirs here, once.
+            let keyed = try backfillPrayerDayKeys(in: context)
+            if keyed > 0 { print("✅ prayer day keys: filled=\(keyed)") }
         } catch {
             print("❌ schema V2 data pass failed (will retry next launch): \(error)")
         }
+    }
+
+    /// Rows with no `prayerDayKey` (made before 2.8.0) get the prayer day their start falls in — Fajr to the
+    /// next Fajr at the saved location, the same rule new rows use — so an Isha that started after midnight
+    /// joins its own day. Cheap: fetches only the rows that still need it; returns how many it filled.
+    static func backfillPrayerDayKeys(in context: ModelContext) throws -> Int {
+        let rows = try context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == nil }))
+        guard !rows.isEmpty else { return 0 }
+        for row in rows { row.prayerDayKey = PrayerDay.key(forRow: row.name, startingAt: row.startTime) }
+        try context.save()
+        return rows.count
     }
 
     /// Widget side: open the shared store ONLY if the app has already created it AND it is at
@@ -438,23 +452,18 @@ enum SharedStore {
     // MARK: Widget-side helpers (the app uses its own ModelContainer / PrayerViewModel)
 
     static func fetchPrayer(named name: String, on day: Date, in context: ModelContext) -> PrayerModel? {
-        let dayStart = Calendar.current.startOfDay(for: day)
-        let dayEnd = Calendar.current.date(byAdding: .day, value: 1, to: dayStart)?.addingTimeInterval(-1) ?? day
-        let descriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.name == name && $0.startTime >= dayStart && $0.startTime <= dayEnd }
-        )
-        return try? context.fetch(descriptor).first
+        // 2.8.0: the prayer day `day` falls in, by key; a completed row wins over an unmarked twin (audit B4).
+        let rows = ((try? context.fetch(FetchDescriptor<PrayerModel>(
+            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: day))))) ?? []).filter { $0.name == name }
+        return rows.first(where: \.isCompleted) ?? rows.sorted { $0.startTime < $1.startTime }.first
     }
 
     /// Names of today's prayers already marked complete, straight from the store.
     static func completedPrayerNamesToday() -> Set<String> {
         guard let container = widgetContainer else { return [] }
         let context = ModelContext(container)
-        let (dayStart, dayEnd) = PrayerDay.rowRange(forDayStarting: PrayerDay.start())
-        let descriptor = FetchDescriptor<PrayerModel>(
-            predicate: #Predicate<PrayerModel> { $0.isCompleted && $0.startTime >= dayStart && $0.startTime <= dayEnd }
-        )
-        let done = (try? context.fetch(descriptor)) ?? []
+        let descriptor = FetchDescriptor<PrayerModel>(predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start()))   // 2.8.0
+        let done = ((try? context.fetch(descriptor)) ?? []).filter(\.isCompleted)
         return Set(done.map { $0.name })
     }
 
@@ -1472,7 +1481,7 @@ enum SetAsideStoreSalvage {
         do {
             var prayerByKey: [String: PrayerModel] = [:]
             for p in try context.fetch(FetchDescriptor<PrayerModel>()) {
-                prayerByKey["\(p.name)|\(cal.startOfDay(for: p.startTime).timeIntervalSince1970)"] = p
+                prayerByKey["\(p.name)|\(p.dayKey)"] = p   // 2.8.0: by prayer day
             }
             let c = cols(db, "ZPRAYERMODEL")
             let want = ["ZNAME", "ZSTARTTIME", "ZENDTIME", "ZDATEATMAKE", "ZTIMEATCOMPLETE", "ZNUMBERSCORE", "ZENGLISHSCORE", "ZLATPRAYEDAT",
