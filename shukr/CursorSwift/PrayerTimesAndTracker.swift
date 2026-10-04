@@ -611,6 +611,10 @@ struct PrayerTimesView: View {
 
             // "shukr lost your location" (circle step 3b): its buttons, and what runs it — the circle shows the rest.
             LostPageLayer()
+
+            #if DEBUG
+            TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line]`: the pictures
+            #endif
         }
         // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
         // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
@@ -1828,6 +1832,8 @@ struct PrayerTimesView: View {
             Image(systemName: "chevron.up")
                 .font(.title3)
                 .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                // The tour's "Swipe up" step points at it.
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("chevron", $0) }
                 .opacity(pulling ? 0 : 1)
                 // An overlay, so the chevron's place is exactly as it was.
                 .overlay {
@@ -2578,6 +2584,11 @@ struct PrayerButton: View {
                         let f = proxy.frame(in: .named(PrayerButton.rowSpace))
                         return CGPoint(x: f.midX, y: f.midY)
                     } action: { dotCenter = $0 }
+                    // The tour's mark hint points at the dot of the prayer in its window (every row reports; the hint
+                    // picks the current prayer's).
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                        TourTargets.shared.set("prayerDot." + prayerObject.name, frame)
+                    }
                     #if DEBUG
                     .overlay { HitAreaDebug.overlay }
                     #endif

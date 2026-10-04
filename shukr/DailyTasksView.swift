@@ -254,6 +254,7 @@ struct ZikrCircleWheel: View {
                         circle(for: item)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 circleFrames.byID[item.id] = frame
+                                if item.id == centered { TourTargets.shared.set("zikrCircle", frame) }
                             }
                             // Opening a session out of the centred ring (SessionHandoff): the others go the opening's
                             // way (sink / focus / fade); the centred one keeps its ring and lets its label go.
