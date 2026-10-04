@@ -21,6 +21,10 @@ enum SalahSheetDrag {
     /// from under the page's bottom edge (a full list; a short one starts a little higher, faded out) to its open place.
     /// Fixed per page, so the range never changes under a finger or when "N done" folds.
     static let travelShare: CGFloat = 0.5
+    /// Dead scroll room past each rest, as a share of the page's height (round 2, owner: "it bounces way too much at
+    /// the ends … I can push the whole ring out of the page"): the rests sit inside the content, so a push past one
+    /// scrolls into this room — no rubber band — and `SheetPin` / `SheetWall` hold everything still there.
+    static let deadShare: CGFloat = 0.35
     static let space = "salahSheet"
 
     /// A close nobody should see (behind the sleep curtain, before the morning card, under the lost page): the sheet
@@ -40,33 +44,36 @@ enum SalahSheetDrag {
     }
 }
 
-/// Where a let-go lands, like `.paging`: still moving, it goes the way the finger was going (a short swipe opens or
-/// closes, as the pop's 30 pt swipe did); a finger that stopped first lands on the nearer rest. Pulled down past the
-/// closed rest (the refresh) or pushed past the open one, it settles back on that rest. The behaviour also places code's
-/// scrolls; those keep their target. `ScrollTarget` is measured from the rest (insets applied), as `live.sheetOffset` is.
+/// The let-go (round 2, owner: "a slow flick … moves really, really slow … a fast one goes really fast"): the scroll
+/// view's coast is cut off — the target is where the finger let go — and `pick` records which rest the release goes
+/// to; the page then drives there on its own spring (`CircleMotion.sheetSnap`), so every let-go lands in the same time.
+/// Still moving (≥ 0.15 pt/ms) → the way it was going (a short swipe opens or closes, as the pop's did); stopped → the
+/// nearer rest; past a rest → that rest. Code's scrolls (the chevron's) pass through untouched.
 struct SheetSnap: ScrollTargetBehavior {
     let travel: CGFloat
+    /// The closed rest's place in the content (the dead room above it).
+    let dead: CGFloat
     let live: PagerLiveState
     /// Points per millisecond: slower than this at the let-go counts as stopped.
     static let flick: CGFloat = 0.15
     func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        guard live.sheetPhase == .interacting else { return }
         let now = live.sheetOffset
         let v = context.velocity.dy
         let open: Bool
-        // Not a let-go (code scrolling it — the chevron, a widget — or the content changing): the nearer rest.
-        if live.sheetPhase != .interacting { open = target.rect.origin.y > travel / 2 }
-        else if now <= 0 { open = false }
+        if now <= 0 { open = false }
         else if now >= travel { open = true }
         else if abs(v) >= Self.flick { open = v > 0 }
-        else { open = target.rect.origin.y > travel / 2 }
-        target.rect.origin.y = open ? travel : 0
+        else { open = now > travel / 2 }
+        live.sheetPick = open
+        target.rect.origin.y = now + dead   // no coast: the spring takes it from here
     }
 }
 
 /// The page round the circle, pinned to the viewport while the sheet's content scrolls under it, and moved from the
 /// closed rest toward the open one by the progress (`delta` = open − closed). Worked out in the render pass from the
-/// scroll position itself, so the circle never lags the finger by a frame. Past the closed rest (pulling down) it goes
-/// down with the bounce; past the open rest it goes up with the list.
+/// scroll position itself, so the circle never lags the finger by a frame. Past either rest the counter-move equals
+/// the scroll: the ring stays on its rest, a solid wall (round 2).
 ///
 /// Animatable on `delta`: when the open rest moves ("N done" folding, the list changing), the circle glides there.
 struct SheetPin: ViewModifier, Animatable {
@@ -80,7 +87,19 @@ struct SheetPin: ViewModifier, Animatable {
         content.visualEffect { content, proxy in
             let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
             let p = min(max(s / travel, 0), 1)
-            return content.offset(y: min(max(s, 0), travel) + delta * p)
+            return content.offset(y: s + delta * p)
+        }
+    }
+}
+
+/// The list's layer (one page tall, laid at the closed rest): it scrolls with the finger between the rests and is held
+/// still past them, so the list never passes its open place or comes back up after closing.
+struct SheetWall: ViewModifier {
+    let travel: CGFloat
+    func body(content: Content) -> some View {
+        content.visualEffect { content, proxy in
+            let s = -proxy.frame(in: .scrollView(axis: .vertical)).minY
+            return content.offset(y: min(s, 0) + max(s - travel, 0))
         }
     }
 }
