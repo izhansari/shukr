@@ -75,6 +75,26 @@ final class WatchSync: NSObject, WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         WatchZikrSync.receive(message)
     }
+    /// The watch's pinch log (DEBUG watch builds, queue watch-pinch-log): appended to the app group's
+    /// Library/Caches/pinch.log, which the feedback pull copies. The file is gone once this returns, so it's read here.
+    func session(_ session: WCSession, didReceive file: WCSessionFile) {
+        guard file.metadata?["kind"] as? String == "pinchLog",
+              let text = try? String(contentsOf: file.fileURL, encoding: .utf8),
+              let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.betternorms.shukr.shukrWidget")
+        else { return }
+        let dir = group.appending(path: "Library/Caches")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appending(path: "pinch.log")
+        let data = Data((text.hasSuffix("\n") ? text : text + "\n").utf8)
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
+        }
+        print("⌚️ pinch log: \(text.split(separator: "\n").count) lines → \(url.path)")
+    }
     func sessionDidBecomeInactive(_ session: WCSession) {}
     /// A switch to another watch: the new one has none of what was sent, so forget `lastSent` (it got nothing until
     /// something changed — audit B16) and activate; activation sends.

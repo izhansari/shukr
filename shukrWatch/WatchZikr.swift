@@ -892,6 +892,9 @@ struct WatchCounterView: View {
             count = config.startCount
             startedAt = Date()
             runtime.start()
+            #if DEBUG
+            WatchPinchLog.begin("\(postSalah ? "Tasbih Fatimah" : task?.name ?? "freestyle") · Double Tap \(doubleTapTarget.rawValue)")
+            #endif
             crownFocused = crownOnCounter
             if !hintSeen {
                 hintSeen = true
@@ -1049,6 +1052,9 @@ struct WatchCounterView: View {
 
     /// A tap / pump on the screen: a count, unless counting with the Crown.
     private func screenCount() {
+        #if DEBUG
+        WatchPinchLog.add("tap")
+        #endif
         guard crownMode else { increment(); return }
         // No buzz (owner): it felt like a count that didn't happen. The note says why instead.
         withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
@@ -1095,6 +1101,9 @@ struct WatchCounterView: View {
         if showHint { withAnimation(.easeIn(duration: 0.3)) { showHint = false } }
         let before = count
         count = min(count + tapWorth, 10_000)
+        #if DEBUG
+        WatchPinchLog.add("total \(count)")
+        #endif
         lastCountAt = Date()
         lastCountActive = activeSeconds(at: Date())
         // One haptic per count: the stronger one replaces the count's on a milestone (watchOS drops a
@@ -1194,6 +1203,10 @@ struct WatchCounterView: View {
         clearOwnDraft()
         WatchZikrStore.shared.record(record)
         runtime.stop()
+        #if DEBUG
+        WatchPinchLog.add("finish \(sessionCount)")
+        WatchPinchLog.send()
+        #endif
         WatchHaptics.milestone()   // onto the results: one level above a count
         withAnimation(.easeOut(duration: 0.25)) { finished = record }
     }
@@ -1504,6 +1517,7 @@ struct WatchSettingsPage: View {
     @AppStorage(WatchCrownDirection.key) private var crown = WatchCrownDirection.auto.rawValue
     @AppStorage(WatchDoubleTapTarget.key) private var doubleTap = WatchDoubleTapTarget.scroll.rawValue
     @State private var showHelp = false
+    @State private var pinchLogSent: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1540,6 +1554,13 @@ struct WatchSettingsPage: View {
                         doubleTap = (WatchDoubleTapTarget(rawValue: doubleTap) ?? .scroll).next.rawValue
                     }
                 }
+                #if DEBUG
+                // The pinch log to the phone now (it's also sent at each session's end; queue watch-pinch-log).
+                row("Send pinch log", pinchLogSent ?? "\(WatchPinchLog.count) lines") {
+                    let n = WatchPinchLog.send()
+                    pinchLogSent = n > 0 ? "sent \(n)" : "nothing new"
+                }
+                #endif
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
                     .font(.system(size: 9, design: .rounded))
@@ -2160,6 +2181,43 @@ struct WatchDoubleTapLayer: View {
     private static var discSize: CGFloat { WatchScreen.width * 0.42 }
 }
 
+#if DEBUG
+/// What the pinch scroller really does on a wrist (queue watch-pinch-log; the simulator has no Double Tap): every
+/// scroll sample, phase, count, reset, screen tap and the count's total, in uptime ms since the session opened. Sent to
+/// the phone at each session's end and from Settings → "Send pinch log" (the phone keeps `Library/Caches/pinch.log` in
+/// the app group). No rule reads it.
+enum WatchPinchLog {
+    private static var lines: [String] = []
+    private static var origin = ProcessInfo.processInfo.systemUptime
+    private static let limit = 8_000
+    private static let echo = ProcessInfo.processInfo.arguments.contains("-watchPinchLogPrint")
+    static var count: Int { lines.count }
+
+    static func begin(_ what: String) {
+        origin = ProcessInfo.processInfo.systemUptime
+        add("— session \(what) · \(Date().formatted(date: .abbreviated, time: .standard))")
+    }
+    static func add(_ line: String) {
+        let ms = Int((ProcessInfo.processInfo.systemUptime - origin) * 1000)
+        lines.append("\(ms) \(line)")
+        if lines.count > limit { lines.removeFirst(lines.count - limit) }
+        if echo { print("PINCH \(ms) \(line)") }   // `-watchPinchLogPrint`: the simulator's console too
+    }
+    /// To the phone as a file (queued by WatchConnectivity until it's in reach); the buffer starts again.
+    @discardableResult
+    static func send() -> Int {
+        guard !lines.isEmpty, WCSession.isSupported(), WCSession.default.activationState == .activated else { return 0 }
+        let url = FileManager.default.temporaryDirectory.appending(path: "pinch-\(UUID().uuidString.prefix(6)).log")
+        let text = lines.joined(separator: "\n") + "\n"
+        guard (try? text.write(to: url, atomically: true, encoding: .utf8)) != nil else { return 0 }
+        WCSession.default.transferFile(url, metadata: ["kind": "pinchLog"])
+        let sent = lines.count
+        lines.removeAll()
+        return sent
+    }
+}
+#endif
+
 /// A short list of screen-high pages, painted the page's own colour, that Double Tap scrolls (owner's idea,
 /// 2026-10-04: "no need to have 2,000 … as soon as that item reaches the end … show a new list"). It rests on page 0;
 /// a move counts once, the moment it's a quarter of the way into the next page, and only forwards — never when it
@@ -2218,9 +2276,15 @@ struct WatchDoubleTapScroller: View {
             return (geo.contentOffset.y + geo.contentInsets.top) / height
         } action: { _, page in
             guard let page else { return }
+            #if DEBUG
+            WatchPinchLog.add(String(format: "g %.3f", page))
+            #endif
             // Forwards only: each page once, as soon as the move is a quarter of the way into it.
             while page >= Double(counted) + Self.countAt, counted < Self.pages - 1 {
                 counted += 1
+                #if DEBUG
+                WatchPinchLog.add("count page \(counted)\(enabled ? "" : " (off)")")
+                #endif
                 if enabled { onCount() }
             }
             settling?.cancel()
@@ -2235,6 +2299,8 @@ struct WatchDoubleTapScroller: View {
         .onAppear { focused = enabled }
         .onChange(of: enabled) { _, on in if on { focused = true } }
         #if DEBUG
+        .onScrollPhaseChange { old, new in WatchPinchLog.add("phase \(old) → \(new)") }
+        .onChange(of: focused) { _, f in WatchPinchLog.add("focus \(f)") }
         // `-demoWatchDoubleTapScroll`: a page a second, as a Double Tap would (the simulator has no Double Tap).
         .task {
             guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
@@ -2248,6 +2314,9 @@ struct WatchDoubleTapScroller: View {
 
     /// Page 0 again, without a frame of movement; `counted` first, so the jump back never counts.
     private func backToStart() {
+        #if DEBUG
+        WatchPinchLog.add("reset (counted \(counted), position \(position ?? -1))")
+        #endif
         counted = 0
         guard position != 0 else { return }
         var quiet = Transaction()
