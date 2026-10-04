@@ -1808,6 +1808,10 @@ struct tasbeehView: View {
         @State private var pageHeight: CGFloat = 900
         /// The rate tile's side: per count, or per tasbeeh (a tap flips it).
         @State private var showingPerTasbeeh = false
+        /// The two rate numbers' opacities, each changed in its own animation (a quick fade out, a gentler fade in) —
+        /// one transaction for the whole flip gave both the spring's length, and they overlapped.
+        @State private var perCountOpacity: Double = 1
+        @State private var perTasbeehOpacity: Double = 0
         @State private var finishArmed = false
         @State private var finishArmToken = 0
         @State private var showMantraPicker = false
@@ -2241,7 +2245,14 @@ struct tasbeehView: View {
                     // tile"); flips per count ⇄ per tasbeeh (100 counts) on a tap (owner: "we lost per tasbeeh rate").
                     Button {
                         triggerSomeVibration(type: .medium)
-                        withAnimation(CircleMotion.label) { showingPerTasbeeh.toggle() }
+                        let toTasbeeh = !showingPerTasbeeh
+                        withAnimation(CircleMotion.label) { showingPerTasbeeh = toTasbeeh }   // move, size, captions
+                        withAnimation(CircleMotion.flipOut) {
+                            if toTasbeeh { perCountOpacity = 0 } else { perTasbeehOpacity = 0 }
+                        }
+                        withAnimation(CircleMotion.flipIn) {
+                            if toTasbeeh { perTasbeehOpacity = 1 } else { perCountOpacity = 1 }
+                        }
                     } label: {
                         softRateTile(pace: pace, pacePerTasbeeh: pacePerTasbeeh)
                     }
@@ -2402,14 +2413,16 @@ struct tasbeehView: View {
                 // The top bar's flip (owner: "copy the same flip transition as in the top bar. Opacity and size change
                 // too"): the Zikr title's 12 pt move and fade on its spring (CircleMotion.label), with the ⏸ / ‹ symbols'
                 // shrink to 60 %. Reduce Motion: no move.
+                // The outgoing number fades fast and the incoming one gently, so they barely overlap (owner: "maybe more
+                // scale or more opacity"); the move and size keep the spring.
                 ZStack {
                     rateValue(String(format: "%.2fs", shownPerCount))
-                        .opacity(showingPerTasbeeh ? 0 : 1)
-                        .scaleEffect(showingPerTasbeeh ? 0.6 : 1)
+                        .opacity(perCountOpacity)
+                        .scaleEffect(showingPerTasbeeh ? 0.5 : 1)
                         .offset(y: showingPerTasbeeh ? -rateTravel : 0)
                     rateValue(shownPerTasbeeh)
-                        .opacity(showingPerTasbeeh ? 1 : 0)
-                        .scaleEffect(showingPerTasbeeh ? 1 : 0.6)
+                        .opacity(perTasbeehOpacity)
+                        .scaleEffect(showingPerTasbeeh ? 1 : 0.5)
                         .offset(y: showingPerTasbeeh ? 0 : rateTravel)
                 }
                 ZStack {

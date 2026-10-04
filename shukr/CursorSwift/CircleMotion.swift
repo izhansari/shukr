@@ -27,6 +27,10 @@ enum CircleMotion {
     static let quick: Double = 0.2
     /// ⏸ becoming ‹ Resume and back (one button, PauseResumeButton): its size, corners, colour and symbol together.
     static let pauseMorph = Animation.snappy(duration: 0.3)
+    /// A value flipping in place (the rate tile's number): the old one's fade, quick, and the new one's, gentler,
+    /// so the two barely overlap.
+    static let flipOut = Animation.easeOut(duration: 0.12)
+    static let flipIn = Animation.easeIn(duration: 0.25)
     /// Most changes: a row, the list, a text out or in.
     static let standard: Double = 0.35
     /// The circle's own changes: a ring filling, a state handing over.
