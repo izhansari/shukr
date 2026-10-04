@@ -2169,11 +2169,14 @@ struct tasbeehView: View {
                 Button { showMantraPicker = true } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
+                            // A long nickname wraps to a second line before anything is cut (one line shrank it to
+                            // nothing and cut it off — owner's "Allahu la ilaha illalahu …").
                             Text(title.isEmpty ? "choose a zikr" : title)
                                 .font(.system(size: 19, weight: .light, design: .rounded))
                                 .foregroundStyle(title.isEmpty ? .secondary : .primary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                                .multilineTextAlignment(.leading)
                             if !mantraLocked {
                                 Image(systemName: "chevron.up.chevron.down")
                                     .font(.caption2.weight(.medium))
@@ -2220,10 +2223,10 @@ struct tasbeehView: View {
                             PostSalahPauseCard(count: tasbeeh, bare: true)
                         } else {
                             softWellText
-                                // More above than below: the Uthmani face's marks over the first line reach well past
-                                // its line box, and 12 pt clipped them on a long zikr.
-                                .padding(.top, 20)
-                                .padding(.bottom, 12)
+                                // 18 above (the Uthmani face's marks over the first line reach past its line box; 12
+                                // clipped them), 16 below: the text sits in the middle of its space (owner).
+                                .padding(.top, 18)
+                                .padding(.bottom, 16)
                                 .padding(.horizontal, 14)
                         }
                     }
@@ -2231,13 +2234,17 @@ struct tasbeehView: View {
                 }
                 .scrollIndicators(.automatic)
                 .scrollBounceBehavior(.basedOnSize)
-                .defaultScrollAnchor(.center, for: .alignment)   // a short zikr sits in the middle of the well
+                // The well keeps its room (owner: "still make the sunken well take up all the space"); its parts stack from
+                // the top, each as tall as it is — the text in the middle of its own space, the note under it, the
+                // rest of the room below them (owner: "he just needs a little vertical space since its one line").
+                .defaultScrollAnchor(.top, for: .alignment)
                 .defaultScrollAnchor(.top, for: .initialOffset)  // a long one starts at its top…
                 // …and is put back there whenever the well's height settles (it opened mid-zikr on a 6.1" phone: the
                 // well finds its height after the first layout, and the default anchors didn't hold through that).
                 .scrollPosition($wellScroll)
                 .onChange(of: wellRoom) { _, _ in wellScroll.scrollTo(edge: .top) }
                 .onChange(of: mantra?.id) { _, _ in wellScroll.scrollTo(edge: .top) }
+
                 // (Count in sets is a switch under the tiles now — decision sets-place A: the well keeps its room
                 // for the zikr's text and notes, so they show on a 6.1" phone too.)
             }

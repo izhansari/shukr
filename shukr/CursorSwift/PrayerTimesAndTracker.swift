@@ -973,7 +973,7 @@ struct PrayerTimesView: View {
                 // `-demoLongZikr`: a zikr with a long card (the built-ins' texts, several times over, and a long note —
                 // nothing typed from memory), to see how the pause screen holds it.
                 if ProcessInfo.processInfo.arguments.contains("-demoLongZikr") {
-                    let longName = "Long morning azkar"
+                    let longName = UserDefaults.standard.string(forKey: "demoLongZikrName") ?? "Long morning azkar"
                     if MantraModel.find(named: longName, in: context) == nil {
                         let builtIns = ((try? context.fetch(FetchDescriptor<MantraModel>())) ?? [])
                             .filter { $0.builtInID != nil && !$0.fullText.isEmpty }
@@ -982,6 +982,14 @@ struct PrayerTimesView: View {
                         let m = MantraModel(name: longName, fullText: body,
                                             notes: "Said each morning after Fajr, slowly, one line at a time. My teacher asked me to keep it short on busy days, but to read every line on the weekend and to think about what each one means before moving on to the next.")
                         context.insert(m)
+                        try? context.save()
+                    }
+                    // With `-demoZikrMedia` too: the same sample memo and photo as Alhamdulillah's.
+                    if ProcessInfo.processInfo.arguments.contains("-demoZikrMedia"),
+                       let source = ZikrMediaDemo.seed(in: context),
+                       let long = MantraModel.find(named: longName, in: context) {
+                        long.imageData = source.imageData
+                        long.audioData = source.audioData
                         try? context.save()
                     }
                     UserDefaults.standard.set(longName, forKey: "demoPauseZikr")
