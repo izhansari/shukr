@@ -438,7 +438,10 @@ struct tasbeehView: View {
                 // the circle's inside (picker or count)
                 // The beads round the ring go while paused (owner: "we don't need to keep the 100 neumorphic beads
                 // around the edge of the circle in the pause screen"); the count stays.
-                TasbeehCountView(tasbeeh: tasbeeh, beadsShown: !paused)
+                // Tasbih Fatimah shows the phrase's own count, 0…33 · 0…33 · 0…34: a big 0 says "next phrase" (owner,
+                // fatimah-phase-count). The saved session, results and history keep the total.
+                TasbeehCountView(tasbeeh: sharedState.isDoingPostNamazZikr ? PostSalahTasbeeh.phase(at: tasbeeh).done : tasbeeh,
+                                 beadsShown: !paused)
                     .offset(entryOffset)
                     .modifier(SessionAppear(shown: countIn, style: openingStyle))
                     .modifier(RingLift(lift: ringAbove ? ringLift : nil, dimmed: ringDimmed))
@@ -1188,7 +1191,7 @@ struct tasbeehView: View {
 
     /// The ring for a counted session: freestyle goes round every 100 (never quite full — a full
     /// ring means the goal), a count goal fills to it. Timed sessions follow the ticker. Tasbih
-    /// Fatimah fills once per phrase — 33, 33, 34 — so a full ring says "next phrase" (owner).
+    /// Fatimah follows the phrase — 33, 33, 34 — empty again with the big number at each switch (owner).
     private func refreshCountProgress() {
         if sharedState.isDoingPostNamazZikr {
             progressFraction = CGFloat(PostSalahTasbeeh.ringFraction(at: tasbeeh))
@@ -3257,11 +3260,11 @@ enum PostSalahTasbeeh {
     ]
     static var total: Int { phases.reduce(0) { $0 + $1.count } }
 
-    /// The ring at a total count: full at the end of each phrase (33, 66, 100), then empty again for the next.
+    /// The ring at a total count: the phrase's share, in step with the big number (0…33 · 0…33 · 0…34), so it's
+    /// empty again the moment a phrase is done.
     static func ringFraction(at count: Int) -> Double {
-        guard count > 0 else { return 0 }
-        let p = phase(at: count - 1)
-        return Double(p.done + 1) / Double(p.of)
+        let p = phase(at: count)
+        return Double(p.done) / Double(p.of)
     }
 
     /// The phrase at a total count, and how far into it (0-based index; `done` of `of`).

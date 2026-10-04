@@ -795,11 +795,10 @@ struct WatchCounterView: View {
         max(0, (pausedAt ?? date).timeIntervalSince(startedAt) - pausedTotal)
     }
     private var fraction: Double {
-        // A full ring per phrase, 33 · 33 · 34, as on the phone (owner: "easier to know when we gotta switch").
+        // The phrase's share, 33 · 33 · 34, in step with the number, as on the phone (owner, fatimah-phase-count).
         if postSalah {
-            guard count > 0 else { return 0 }
-            let p = WatchPostSalah.phase(at: count - 1)
-            return Double(p.done + 1) / Double(p.of)
+            let p = WatchPostSalah.phase(at: count)
+            return Double(p.done) / Double(p.of)
         }
         guard let task else { return Double(count % 100) / 100 }
         return task.countMode ? Double(count) / Double(task.goal)
@@ -959,7 +958,8 @@ struct WatchCounterView: View {
             // within the hundred, beads round the outside, the hundreds as dots below the number —
             // under NeuCircularProgressView's "fine" ring. Just the number: nothing says what's
             // being recited (owner: privacy).
-            WatchTasbeehCountView(tasbeeh: count)
+            // Tasbih Fatimah: the phrase's own count, a big 0 at each switch (owner, fatimah-phase-count).
+            WatchTasbeehCountView(tasbeeh: postSalah ? WatchPostSalah.phase(at: count).done : count)
             WatchNeuProgressRing(progress: fraction, animating: !paused)
                 .allowsHitTesting(false)
             // Double Tap counts through the page's background (body).
