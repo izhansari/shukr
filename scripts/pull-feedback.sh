@@ -132,6 +132,11 @@ PY
          "$tmp/feedback.md" > "$OUT/$name.md"
   unsent=$(grep -c '^- Status: unsent' "$OUT/$name.md")
   echo "✓ $name → $OUT/$name.md ($unsent unsent)"
+  # The watch's pinch log (DEBUG watch builds, queue watch-pinch-log), when there is one.
+  mkdir -p "$dir"
+  if fetch Library/Caches/pinch.log "$dir/pinch.log"; then
+    echo "  ⌚️ pinch log → $dir/pinch.log ($(wc -l < "$dir/pinch.log" | tr -d ' ') lines)"
+  fi
   mediaLine="  media: $copied copied, $had already mirrored"
   [[ $gone -gt 0 ]] && mediaLine="$mediaLine, $gone missing on the phone"
   echo "$mediaLine"
