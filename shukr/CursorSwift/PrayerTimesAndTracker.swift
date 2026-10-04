@@ -453,7 +453,8 @@ struct PrayerTimesView: View {
                     switch sharedState.navPosition {
                     case .main:
                         if draggedUp { sharedState.navPosition = .bottom; triggerSomeVibration(type: .light) }
-                        if draggedDown { viewModel.refreshCityAndPrayerTimes(); triggerSomeVibration(type: .light) }
+                        // Pull down: the location and the times again, shown in the top bar (LocationRefresh).
+                        if draggedDown { LocationRefresh.shared.run(viewModel); triggerSomeVibration(type: .light) }
                     case .bottom:
                         if draggedDown { sharedState.navPosition = .main; triggerSomeVibration(type: .light) }
                     default:

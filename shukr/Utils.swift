@@ -3261,7 +3261,9 @@ struct TopBar: View {
         guard let prayer = viewModel.relevantPrayer else { return true }
         return prayer.status() == .upcoming && prayer.name == "Fajr"
     }
-    private var streakShowing: Bool { showStreak || dayIsDone }
+    /// A pull-down refresh brings the city back while it runs and for its ✓.
+    private var streakShowing: Bool { (showStreak || dayIsDone) && refresh.state == .idle }
+    private var refresh: LocationRefresh { LocationRefresh.shared }
 
     private func revealStreak(for seconds: Double) {
         hideStreakWork?.cancel()
@@ -3279,8 +3281,19 @@ struct TopBar: View {
                     ZStack{
                         // location label — tap for the streak
                         HStack{
+                            // The pull-down's refresh, here: a spinner while it works, then ✓ (or !) for a moment.
+                            // The arrow keeps its place (the idle line is laid out exactly as before); the others sit on it.
                             Image(systemName: "location.fill")
                                 .foregroundColor(.secondary)
+                                .opacity(refresh.state == .idle ? 1 : 0)
+                                .overlay {
+                                    switch refresh.state {
+                                    case .working: ProgressView().controlSize(.mini)
+                                    case .done: Image(systemName: "checkmark").foregroundColor(.green)
+                                    case .failed: Image(systemName: "exclamationmark").foregroundColor(.orange)
+                                    case .idle: EmptyView()
+                                    }
+                                }
                             Text(cityName)
                         }
                         .contentShape(Rectangle())
