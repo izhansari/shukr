@@ -53,7 +53,7 @@ struct tasbeehView: View {
         guard ringAbove, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
         if savedSession != nil {
             guard cardsBottomTop > 0 else { return 0 }
-            let tilesTop = cardsBottomTop - pauseScreen_StatsSettingsBG.resultsTilesLift   // they rise on the results
+            let tilesTop = cardsBottomTop - resultsTilesLift   // they rise on the results
             return min(0, tilesTop - Self.resultsRingClearance - (ringHomeMid.y + ringSize.height / 2))
         }
         if paused && pauseSlot.height > 0 { return pauseSlot.midY - ringHomeMid.y }
@@ -77,6 +77,13 @@ struct tasbeehView: View {
     private var setsOn: Bool { countingInSets && secondaryStep > 1 }
     /// The counter's top bar's height (the pause screen's top row matches it).
     @State private var topBarHeight: CGFloat = 0
+    /// How far the results' tiles rise (as the pause view lifts them — the finish line's room at its fullest when
+    /// there's none): the finished ring keeps its room above them. Worked out here, not reported up: setting this
+    /// from the pause view as it laid out lost the sleep finish's results.
+    private var resultsTilesLift: CGFloat {
+        let finishLine = !sharedState.isDoingPostNamazZikr && sharedState.selectedMode != 0
+        return pauseScreen_StatsSettingsBG.resultsLiftBase + (finishLine ? 0 : 48)
+    }
     /// Finish asked for its second tap (it lets go after 3 s, or on resuming).
     @State private var finishArmed = false
     @State private var finishArmToken = 0
@@ -2361,7 +2368,7 @@ struct tasbeehView: View {
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
                 // On the results the tiles rise a little, away from the button under them (owner: "let the different
                 // sections breathe"); measured before, so the ring's room is counted from where they were.
-                .offset(y: finished && resultsIn ? -Self.resultsTilesLift : 0)
+                .offset(y: finished && resultsIn ? -resultsTilesLift : 0)
                 .animation(.easeInOut(duration: CircleMotion.standard), value: finished && resultsIn)
 
                 // The chips while paused; after a sleep finish, Keep counting in their place. More air above them than
@@ -2415,6 +2422,9 @@ struct tasbeehView: View {
                             }
                             .buttonStyle(.plain)
                         }
+                        // Lower than the switches sat, and — like the tiles — as high as with a finish line, so every
+                        // results screen has it in the same place.
+                        .offset(y: Self.resultsButtonDrop - (hasFinishLine ? 0 : finishLineRoom))
                         .modifier(SoftCardsFade(shown: resultsIn, delay: 0.1))
                         .allowsHitTesting(resultsIn)
                     }
@@ -2438,8 +2448,14 @@ struct tasbeehView: View {
         }
 
         private static let statTileHeight: CGFloat = 52
-        /// How far the tiles rise on the results.
-        static let resultsTilesLift: CGFloat = 24
+        /// How far the tiles rise on the results: 24, plus — for a session with no finish line (freestyle, Tasbih
+        /// Fatimah) — that line's missing room, so every results screen has its tiles in the same place (owner: "they
+        /// use the SAME content").
+        static let resultsLiftBase: CGFloat = 24
+        private var finishLineRoom: CGFloat { (26 * airScale).rounded() + 22 }
+        private var resultsTilesLift: CGFloat { Self.resultsLiftBase + (hasFinishLine ? 0 : finishLineRoom) }
+        /// The results' button sits lower than the switches did (owner: "move the bottom buttons down a bit").
+        private static let resultsButtonDrop: CGFloat = 14
         /// The well shows once its name row and a first line of text have room (lower, the text was cut off).
         private static let wellShowsAt: CGFloat = 100
 
