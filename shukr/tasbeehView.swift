@@ -2370,13 +2370,14 @@ struct tasbeehView: View {
                 switch thirdTile {
                 case .left(let left, let at):
                     finishFlag
-                    // Not bold (owner, twice): the numbers light, as the tiles' are; the words between them secondary.
-                    (Text(String(inMinSecStyle2(from: left).dropFirst(3))).font(.system(size: 17, weight: .light))
+                    // Not bold (owner, three times): the numbers in the words' own size and weight — only their colour
+                    // sets them apart (at 17 pt in white beside 15 pt grey words they still read as bold).
+                    (Text(String(inMinSecStyle2(from: left).dropFirst(3)))
                      + Text(" left · you'll finish around ").foregroundColor(.secondary)
-                     + Text(shortTime(at)).font(.system(size: 17, weight: .light)))
+                     + Text(shortTime(at)))
                 case .toGo(let n):
                     finishFlag
-                    (Text(n.formatted()).font(.system(size: 17, weight: .light))
+                    (Text(n.formatted())
                      + Text(" to go").foregroundColor(.secondary))
                 case .counted:
                     // Past the goal and keeping going: said once, quietly.
