@@ -187,20 +187,13 @@ struct ReminderHealthCard: View {
 struct NotificationHealthRows: View {
     @ObservedObject private var health = NotificationHealth.shared
 
-    /// "Your reminders ›" first, always there (owner, reminders-page-way-in: the way in had gone — the status row was
-    /// the only link and only for beta, so a dev Release install had none). Under it the status: "Reminders are on ·
-    /// On time · scheduled through Mon, Oct 5" (it opens the page too); when something's wrong it says so in the warning
-    /// style, with a plain button per fix under it.
+    /// The status is the way in, in every build (owner, reminders-page-way-in: a dev Release install had none; then the
+    /// extra "Your reminders ›" row above it was crossed out — one row): "Reminders are on · On time · scheduled through
+    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style, with a plain button per
+    /// fix under it.
     var body: some View {
         let issues = health.issues
         Group {
-            NavigationLink { YourRemindersView() } label: {
-                Label {
-                    Text("Your reminders").font(.system(.body, design: .rounded))
-                } icon: {
-                    Image(systemName: "bell.badge").foregroundStyle(Color(.systemGreen))
-                }
-            }
             if health.checked {
                 NavigationLink { YourRemindersView() } label: { statusRow(issues) }
                 if health.authorization == .notDetermined {
