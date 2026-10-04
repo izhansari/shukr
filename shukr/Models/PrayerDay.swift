@@ -176,8 +176,15 @@ enum PrayerNotificationID {
     static func make(day: Date, prayer: String, kind: String) -> String {
         "\(dayKey(day)).\(prayer)\(kind)"
     }
+    /// A "Nudge in 5 / 10 min" from a prayer's banner: `snooze.<day>.<prayer>.<uuid>` (audit B1) — marking the prayer
+    /// removes every pending one under `snoozePrefix(day:prayer:)`. Not a planned reminder: `parse` says nil, so the
+    /// scheduler's diff leaves them alone.
+    static let snoozeHead = "snooze."
+    static func snoozePrefix(day: Date, prayer: String) -> String { "\(snoozeHead)\(dayKey(day)).\(prayer)." }
+    static func snooze(day: Date, prayer: String) -> String { snoozePrefix(day: day, prayer: prayer) + UUID().uuidString }
     /// (day key or nil for a legacy id, prayer, kind) — nil when it isn't a prayer notification.
     static func parse(_ id: String) -> (dayKey: String?, prayer: String, kind: String)? {
+        guard !id.hasPrefix(snoozeHead) else { return nil }
         var rest = Substring(id)
         var day: String?
         if let dot = rest.firstIndex(of: "."), rest.distance(from: rest.startIndex, to: dot) == 10 {

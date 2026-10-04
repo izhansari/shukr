@@ -517,7 +517,13 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
 
     private func makeNextSnoozeNotifBe(after seconds: TimeInterval, title: String, body: String, userInfo: [AnyHashable: Any], withActionsFromCatId: String?, then done: @escaping () -> Void) {
         let content = UNMutableNotificationContent()
-        let identifier = "snooze-\(UUID().uuidString)"
+        // Named after its prayer (audit B1), so marking the prayer cancels it (`cancelUpcomingNudges`).
+        let identifier: String
+        if let name = userInfo["prayerName"] as? String, let start = userInfo["prayerStart"] as? TimeInterval {
+            identifier = PrayerNotificationID.snooze(day: Date(timeIntervalSince1970: start), prayer: name)
+        } else {
+            identifier = "snooze-\(UUID().uuidString)"   // a test banner without a prayer
+        }
         content.title = title
         content.body = body
         content.userInfo = userInfo

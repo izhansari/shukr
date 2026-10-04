@@ -262,6 +262,13 @@ class PrayerModel {
         }
         center.removePendingNotificationRequests(withIdentifiers: identifiers)
         print("✅ Canceled notifications for \(name): \(identifiers)")
+        // Its snoozes too (audit B1): a "Nudge in 5 / 10 min" used to fire after the prayer was marked — from the app,
+        // the widget or the watch. The app repeats this on its next open for marks an extension couldn't finish.
+        let snoozePrefix = PrayerNotificationID.snoozePrefix(day: startTime, prayer: name)
+        center.getPendingNotificationRequests { pending in
+            let snoozes = pending.map(\.identifier).filter { $0.hasPrefix(snoozePrefix) }
+            if !snoozes.isEmpty { center.removePendingNotificationRequests(withIdentifiers: snoozes) }
+        }
     }
     
     func getColorForPrayerScore() -> Color {
