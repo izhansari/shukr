@@ -277,7 +277,10 @@ struct SettingsView: View {
                         }
                     }
                     .onChange(of: viewModel.cityName) { _, name in
-                        if name != nil { locationUpdatedAt = Date().timeIntervalSince1970 }
+                        // A real place only: "Error fetching city" / "Unknown" aren't an update (Bradley's review).
+                        if let name, !name.isEmpty, name != "Unknown", !name.hasPrefix("Error") {
+                            locationUpdatedAt = Date().timeIntervalSince1970
+                        }
                     }
                     .sheet(isPresented: $showCityPicker) {
                         CityPickerSheet()

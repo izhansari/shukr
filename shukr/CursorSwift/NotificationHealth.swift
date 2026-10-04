@@ -186,29 +186,22 @@ struct ReminderHealthCard: View {
 
 struct NotificationHealthRows: View {
     @ObservedObject private var health = NotificationHealth.shared
-    @State private var whySheet: ReminderWhy?
 
     /// The status is the way in, in every build (owner, reminders-page-way-in: a dev Release install had none; then the
     /// extra "Your reminders ›" row above it was crossed out — one row): "Reminders are on · On time · scheduled through
-    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style and opens the sheet that
-    /// explains it (Notification settings, or Tops itself up for background refresh — owner, reminders-page-g2), with a plain
-    /// button per fix under it.
+    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style, and the page opens with
+    /// the sheet that explains it already up (Notification settings, or Tops itself up for background refresh — owner,
+    /// reminders-page-g2), with a plain button per fix under the row.
     var body: some View {
         let issues = health.issues
         Group {
             if health.checked {
-                if issues.isEmpty {
-                    NavigationLink { YourRemindersView() } label: { statusRow(issues) }
-                } else {
-                    Button { whySheet = ReminderWhy.forIssues(issues) } label: {
-                        HStack {
-                            statusRow(issues)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(Color(.tertiaryLabel))
-                        }
-                    }
-                    .tint(Color(.label))
-                }
+                // Always the way into Your reminders; with something wrong the page opens with that explanation's sheet
+                // already up (owner: "clicking that thing in the settings should take us to that sheet"; Bradley's
+                // review: the page itself must stay reachable in every state).
+                NavigationLink {
+                    YourRemindersView(openWith: issues.isEmpty ? nil : ReminderWhy.forIssues(issues))
+                } label: { statusRow(issues) }
                 if health.authorization == .notDetermined {
                     fix("Allow notifications") { NotificationStatus.shared.request() }
                 }
@@ -223,7 +216,6 @@ struct NotificationHealthRows: View {
             }
         }
         .task { await health.refresh() }
-        .sheet(item: $whySheet) { ReminderWhySheet(kind: $0) }
     }
 
     private func statusRow(_ issues: [NotificationHealth.Issue]) -> some View {
@@ -280,6 +272,9 @@ struct YourRemindersView: View {
     @State private var selectedDay = Self.debugInt("remindersDay")
     /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
     @State private var whySheet: ReminderWhy?
+    /// Opened from Settings with something wrong: that explanation's sheet comes up over the page, once.
+    var openWith: ReminderWhy? = nil
+    @State private var openedWith = false
     /// Each prayer's reminder setting, the same keys as Settings → Notifications (owner, reminders-runway: "put the start
     /// nudge off matrix thing in this page so they can toggle and see how it changes their runway").
     @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
@@ -460,6 +455,10 @@ struct YourRemindersView: View {
         }
         .task {
             await load()
+            if let openWith, !openedWith {
+                openedWith = true
+                whySheet = openWith
+            }
             #if DEBUG
             if let n = UserDefaults.standard.string(forKey: "remindersSheet").flatMap(Int.init),
                let kind = ReminderWhy(rawValue: n) { whySheet = kind }

@@ -22,7 +22,8 @@ import SwiftUI
             if case .success = result { ok = true } else { ok = false }
             withAnimation(CircleMotion.label) { state = ok ? .done : .failed }
             if ok { triggerSomeVibration(type: .success) }
-            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "locationUpdatedAt")
+            // Only a refresh that worked is "Updated just now" (Bradley's review: a failure stamped it too).
+            if ok { UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "locationUpdatedAt") }
             guard await CircleGate.pause(2) else { return }   // the ✓ / ! for a moment
             withAnimation(CircleMotion.label) { state = .idle }
         }
