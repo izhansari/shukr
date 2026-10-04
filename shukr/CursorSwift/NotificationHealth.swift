@@ -349,9 +349,9 @@ struct YourRemindersView: View {
     private var fine: Bool { health.issues.isEmpty && health.authorization != .notDetermined }
 
     var body: some View {
-        // Every day something's planned for, a week to a row (the runway can reach two weeks).
-        let days = Array(weekDays.prefix(14))
-        let day = days.indices.contains(selectedDay) ? days[selectedDay] : PrayerDay.date()
+        // Whole weeks, this week's first day on (past days and days with nothing planned greyed).
+        let days = calendarDays
+        let day = Calendar.current.date(byAdding: .day, value: selectedDay, to: PrayerDay.date()) ?? PrayerDay.date()
         let dayItems = items(on: day).sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
         let isToday = selectedDay == 0
         // Every prayer the day still has: scheduled ones, ones off in his settings, and (later days) ones not planned yet.
@@ -515,27 +515,58 @@ struct YourRemindersView: View {
     }
 
     /// The Calendar's week: the picked day filled green, today's number green; a grey dot under days with nudges.
+    /// The days grid (owner: "always show 7 days in days ahead. show today, and gray out past or future days that dont
+    /// have notifs"): whole calendar weeks, from this week's first day through the week of the last planned day.
+    private var calendarDays: [Date] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: PrayerDay.date())
+        let first = cal.dateInterval(of: .weekOfYear, for: today)?.start ?? today
+        let last = cal.startOfDay(for: weekDays.last ?? today)
+        let end = cal.dateInterval(of: .weekOfYear, for: last)?.end ?? cal.date(byAdding: .day, value: 7, to: first) ?? today
+        var days: [Date] = []
+        var d = first
+        while d < end, days.count < 21 {
+            days.append(d)
+            d = cal.date(byAdding: .day, value: 1, to: d) ?? end
+        }
+        return days
+    }
+
+    /// Days from today (0 = today; negative = earlier this week).
+    private func offset(_ d: Date) -> Int {
+        let cal = Calendar.current
+        return cal.dateComponents([.day], from: cal.startOfDay(for: PrayerDay.date()), to: cal.startOfDay(for: d)).day ?? 0
+    }
+
+    /// One week of the grid: the picked day filled green, today's number green; past days and days with nothing planned
+    /// in grey (they can't be picked); a grey dot under days with nudges.
     private func weekStrip(_ days: [Date], from start: Int) -> some View {
         HStack(spacing: 0) {
             ForEach(start..<min(start + 7, days.count), id: \.self) { i in
                 let d = days[i]
-                let nudged = items(on: d).contains { $0.kind == .halfway || $0.kind == .endingSoon }
+                let off = offset(d)
+                let dayItems = off < 0 ? [] : items(on: d)
+                let enabled = off == 0 || (off > 0 && !dayItems.isEmpty)
+                let picked = off == selectedDay
+                let nudged = dayItems.contains { $0.kind == .halfway || $0.kind == .endingSoon }
                 Button {
                     triggerSomeVibration(type: .light)
-                    selectedDay = i
+                    selectedDay = off
                 } label: {
                     VStack(spacing: 6) {
-                        Text(d.formatted(.dateTime.weekday(.narrow))).font(.caption2).foregroundStyle(.secondary)
+                        Text(d.formatted(.dateTime.weekday(.narrow))).font(.caption2)
+                            .foregroundStyle(enabled ? Color(.secondaryLabel) : Color(.tertiaryLabel))
                         Text(d.formatted(.dateTime.day()))
-                            .foregroundStyle(selectedDay == i ? Color.white : (i == 0 ? green : Color.primary))
+                            .foregroundStyle(picked ? Color.white : off == 0 ? green : enabled ? Color(.label) : Color(.tertiaryLabel))
                             .frame(width: 32, height: 32)
-                            .background(Circle().fill(selectedDay == i ? green : .clear))
+                            .background(Circle().fill(picked ? green : .clear))
                         Circle().fill(nudged ? Color(.tertiaryLabel) : .clear).frame(width: 4, height: 4)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .disabled(!enabled)
             }
         }
         .padding(.vertical, 2)
