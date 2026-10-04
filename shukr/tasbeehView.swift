@@ -2067,9 +2067,32 @@ struct tasbeehView: View {
             return HStack(spacing: 8) {
                 // ‹ Resume itself is the counter's ⏸, changed in place (PauseResumeButton, in the top bar over this
                 // row); its twin here, unseen, keeps the session line clear of it.
-                PauseResumeButton.resumeLabel
-                    .hidden()
-                    .accessibilityHidden(true)
+                ZStack(alignment: .leading) {
+                    PauseResumeButton.resumeLabel
+                        .hidden()
+                        .accessibilityHidden(true)
+                    // After a sleep finish: Keep counting where ‹ Resume is — it's resuming (owner moved Done back to
+                    // the bottom; this sat in the switches' slot).
+                    if let keepCounting = results?.keepCounting {
+                        Button(action: keepCounting) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                                Text("Keep counting").font(.system(size: 17, weight: .medium, design: .rounded))
+                            }
+                            .foregroundStyle(Color.sage)
+                            .padding(.horizontal, PauseResumeButton.resumePadding)
+                            .frame(height: PauseResumeButton.resumeHeight)
+                            .background(Capsule().fill(Color.sage.opacity(0.10)))
+                            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
+                            .fixedSize()
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0.1))
+                        .allowsHitTesting(finished && resultsIn)
+                    }
+                }
                 Spacer(minLength: 4)
                 // The session between them (never over them: centred on the page it ran into ‹ Resume on a 6.1"
                 // phone); out of the way while Finish asks for its second tap.
@@ -2089,25 +2112,6 @@ struct tasbeehView: View {
                     MinusFinishButton.finishLabel
                         .hidden()
                         .accessibilityHidden(true)
-                    if let results {
-                        Button {
-                            triggerSomeVibration(type: .success)
-                            results.done()
-                        } label: {
-                            Text("Done")
-                                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Color.sage)
-                                .padding(.horizontal, 20)
-                                .frame(height: 40)
-                                .background(Capsule().fill(Color.sage.opacity(0.10)))
-                                .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
-                                .padding(.vertical, 2)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0.1))
-                        .allowsHitTesting(finished && resultsIn)
-                    }
                 }
             }
             .animation(.easeInOut(duration: 0.25), value: finishArmed)
@@ -2375,32 +2379,36 @@ struct tasbeehView: View {
                             .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
                             .allowsHitTesting(pauseShown)
                     }
-                    if let keepCounting = results?.keepCounting {
-                        Button(action: keepCounting) {
-                            Label("Keep counting", systemImage: "play.fill")
-                                .fontWeight(.semibold)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .foregroundStyle(Color.sage)
-                                .background(Capsule().fill(Color.sage.opacity(0.06)))
-                                .overlay(Capsule().stroke(Color.sage.opacity(0.6), lineWidth: 1))
-                                .contentShape(Capsule())
+                    if let results {
+                        // Done back at the bottom, the capsule it was (owner: "the done button can still stay at the
+                        // bottom like how we had it before"), View zikr history under it — in the switches' room.
+                        VStack(spacing: 2) {
+                            Button {
+                                triggerSomeVibration(type: .success)
+                                results.done()
+                            } label: {
+                                Text("Done")
+                                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Color.sage)
+                                    .frame(width: 210, height: 44)
+                                    .background(Capsule().fill(Color.sage.opacity(0.08)))
+                                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            Button {
+                                triggerSomeVibration(type: .light)
+                                showHistory = true
+                            } label: {
+                                Label("View zikr history", systemImage: "clock.arrow.circlepath")
+                                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 24)
+                                    .padding(.vertical, 6)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
-                        .modifier(SoftCardsFade(shown: resultsIn, delay: 0))
-                    } else if finished {
-                        Button {
-                            triggerSomeVibration(type: .light)
-                            showHistory = true
-                        } label: {
-                            Label("View zikr history", systemImage: "clock.arrow.circlepath")
-                                .font(.system(size: 14, weight: .regular, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
                         .modifier(SoftCardsFade(shown: resultsIn, delay: 0.1))
                         .allowsHitTesting(resultsIn)
                     }
