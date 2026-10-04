@@ -3,6 +3,9 @@
 
 import AppIntents
 import WidgetKit
+#if canImport(AlarmKit)
+import AlarmKit
+#endif
 
 // MARK: - Shared SwiftData store
 //
@@ -468,8 +471,14 @@ enum SharedStore {
     }
 
     /// Last location the app saved for the widget (it writes lastLatitude/lastLongitude).
+    /// When the saved spot was last a real fix (`PrayerViewModel.handleLocationChange`; cleared by a picked city).
+    static let lastFixAtKey = "lastFixAt"
+    /// The last real fix, while it's recent (30 min; audit B10): a widget / watch mark records where it was prayed from
+    /// this. A stale fix, or a picked city's centre, put prayers at a mosque they weren't near (a Friday Dhuhr became Jumu'ah).
     static func lastKnownLocation() -> CLLocation? {
         guard let store = UserDefaults(suiteName: appGroup) else { return nil }
+        let at = store.double(forKey: lastFixAtKey)
+        guard at > 0, Date().timeIntervalSince1970 - at < 30 * 60 else { return nil }
         let lat = store.double(forKey: "lastLatitude"), lon = store.double(forKey: "lastLongitude")
         guard lat != 0 || lon != 0 else { return nil }
         return CLLocation(latitude: lat, longitude: lon)
@@ -529,10 +538,18 @@ extension SharedStore {
             return false
         }
 
-        UserDefaults(suiteName: appGroup)?.set(true, forKey: widgetWroteStoreKey)
+        let group = UserDefaults(suiteName: appGroup)
+        group?.set(true, forKey: widgetWroteStoreKey)
+        // The app rescores that day and its streaks (audit B5: every mark made outside the app, not only the list's —
+        // a late mark of yesterday's Isha from a notification left yesterday's score stale).
+        group?.set(start.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)
         WidgetCenter.shared.reloadAllTimelines()   // both prayer widgets
         return true
     }
+
+    /// Posted by the app's own notification handler after "I already prayed" lands while the app is in front
+    /// (audit B7): the page reconciles at once instead of at the next activation.
+    static let markedElsewhere = Notification.Name("shukr.markedElsewhere")
 }
 
 struct OpenTasbeehIntent: AppIntent {
@@ -617,9 +634,7 @@ struct MarkFromListIntent: AppIntent {
         let store = UserDefaults(suiteName: SharedStore.appGroup)
         store?.set(true, forKey: WidgetListState.openKey)
         store?.set(Date().timeIntervalSince1970, forKey: WidgetListState.openedAtKey)
-        if SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
-            store?.set(prayerStart.timeIntervalSince1970, forKey: WidgetListMarks.markedDayKey)   // the app rescores that day
-        } else {
+        if !SharedStore.markPrayerComplete(named: prayerName, start: prayerStart, end: prayerEnd) {
             WidgetCenter.shared.reloadAllTimelines()   // nothing marked: still keep the list up
         }
         return .result()
@@ -1286,8 +1301,14 @@ struct SetFajrAlarmIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<Date> & ProvidesDialog {
-        if UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.bool(forKey: "alarmKitActive") == true {
-            throw SetByShukrError()
+        if let group = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget"), group.bool(forKey: "alarmKitActive") {
+            // AlarmKit's permission taken away while the app wasn't running (audit B13): the Shortcut takes over
+            // again, instead of neither setting an alarm.
+            var permissionGone = false
+            #if canImport(AlarmKit)
+            if #available(iOS 26.1, *), AlarmManager.shared.authorizationState != .authorized { permissionGone = true }
+            #endif
+            if permissionGone { group.set(false, forKey: "alarmKitActive") } else { throw SetByShukrError() }
         }
         let calculatedAlarm = try PrayerUtils.calculateAlarmDescription()
         let resultTime = calculatedAlarm.time

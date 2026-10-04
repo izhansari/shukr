@@ -39,6 +39,17 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                 self?.handleLocationChange(for: newVal)
             }
             .store(in: &cancellables)
+        // The clock or the time zone changed (travel, DST, a corrected clock; audit B12): the times, the rows, the
+        // reminders (calendar triggers would fire at the old wall-clock) and the rollover timer follow.
+        for name in [UIApplication.significantTimeChangeNotification, Notification.Name.NSSystemTimeZoneDidChange] {
+            NotificationCenter.default.publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in
+                    NSTimeZone.resetSystemTimeZone()
+                    self?.fetchPrayerTimes(cameFrom: "time or zone change")
+                }
+                .store(in: &cancellables)
+        }
     }
     
     // MARK: - AppStorage
@@ -78,7 +89,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     @AppStorage("lastOnTimeStreakDate") var lastOnTimeStreakDate_TI: Double = 0
     /// Last day celebrated as a perfect day (all five within their windows), so it fires once.
     @AppStorage("lastPerfectDay") var lastPerfectDay_TI: Double = 0
-    @AppStorage("lastStreakDate") var lastStreakDate_TI: Double = Date().timeIntervalSince1970
+    @AppStorage("lastStreakDate") var lastStreakDate_TI: Double = 0   // audit B15: "today" by default made a fresh install count today (1 Day Streak)
     var lastStreakDate: Date {
         get { return Date(timeIntervalSince1970: lastStreakDate_TI) }
         set { lastStreakDate_TI = newValue.timeIntervalSince1970 }
@@ -113,7 +124,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 //    @Published var dailyScores: [Date: Double] = [:]
 
 
-    @State private var refreshTimer: Timer?
+    private var refreshTimer: Timer?   // a plain property (audit B2): `@State` does nothing outside a View, so the timer could never be re-planned
 
     // MARK: - Computed Vars
     var relevantPrayer: PrayerModel? {
@@ -151,10 +162,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         if let lastAppLocation = lastAppLocation {
             let distanceChange = lastAppLocation.distance(from: location)
             if let lastRequestTime = lastGeocodeRequestTime {
-                if distanceChange < 500, now.timeIntervalSince(lastRequestTime) < 30 {
-                    // if we reach here, we are skipping updates
+                // Under 500 m and under 10 min since the last pass: nothing to do (audit B3 — every 30 s a stationary
+                // phone re-geocoded, re-fetched, re-planned ~7 days of reminders and 60 alarms; CLGeocoder then
+                // rate-limited and "Error fetching city" reached the widgets).
+                if distanceChange < 500, now.timeIntervalSince(lastRequestTime) < 600 {
                     return
-                } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 30s?") }
+                } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 500m ? | \(Int(now.timeIntervalSince(lastRequestTime))) > 10 min?") }
             } else { locationPrinter("📍 New Location: \(location.coordinate.latitude), \(location.coordinate.longitude) -- \(Int(distanceChange)) > 50m ? | First geocoding request") }
         } else { locationPrinter("⚠️ First location update. Proceeding with geocoding.") }
 
@@ -167,6 +180,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         let moved = (lastLatitude == 0 && lastLongitude == 0) ? 0 : saved.distance(from: location)
         let travelled = moved > 15_000
         storeLastCoordinate(location.coordinate)
+        // When the saved spot was last a real fix (audit B10): a widget / watch mark records where it was prayed only
+        // while this is fresh (`SharedStore.lastKnownLocation`); a picked city clears it (`setManualLocation`).
+        if !ENV_LocationManager.hasManualLocation, location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 200 {
+            UserDefaults(suiteName: SharedStore.appGroup)?.set(now.timeIntervalSince1970, forKey: SharedStore.lastFixAtKey)
+        }
         self.lastGeocodeRequestTime = Date()
         self.lastAppLocation = location
         if travelled {
@@ -186,7 +204,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             DispatchQueue.main.async {
                 if let error = error {
                     self?.locationPrinter("❌ Reverse geocoding error: \(error.localizedDescription)")
-                    self?.cityName = "Error fetching city"
+                    // A failed lookup (the rate limit, no network) keeps the city it had (audit B3).
+                    if let s = self, (s.cityName ?? "").isEmpty || s.cityName == "Unknown" { s.cityName = "Error fetching city" }
                     done?(nil)
                     return
                 }
@@ -313,6 +332,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// Writes the app-group `lastLatitude` / `lastLongitude` only when they actually moved. Every
     /// write to that suite invalidates every @AppStorage bound to it (Settings, the root), so
     /// rewriting the same coordinate on each prayer-time calculation re-rendered them for nothing.
+    /// A fix worth recording as where a prayer was prayed (audit B10): under 10 min old and within 500 m. `nil` = no spot.
+    static func usableFix(_ location: CLLocation?) -> CLLocation? {
+        guard let location, location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 500,
+              Date().timeIntervalSince(location.timestamp) < 600 else { return nil }
+        return location
+    }
+
     private func storeLastCoordinate(_ c: CLLocationCoordinate2D) {
         // ~50 m: GPS jitter is metres per fix and can't change prayer times or the qibla.
         if abs(lastLatitude - c.latitude) > 5e-4 { lastLatitude = c.latitude }
@@ -373,6 +399,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         
         // The prayer day's rows: keyed by the calendar day of `prayerDate`.
         let dayStartOfPrayerDate = Calendar.current.startOfDay(for: prayerDate)
+        var changed = false   // a row inserted or its times moved (audit B2)
         
         do {
             // Fetch prayers for the current day from the context
@@ -403,11 +430,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
                         calculationPrinter(overwritePrayerStart: (name: name, startTime: startTime, oldStartTime: persisted.startTime))
                         persisted.startTime = startTime
                         persisted.endTime = endTime
+                        changed = true
                     }
                 } else {
                     // Insert new prayer
                     let newPrayer = PrayerModel( name: name, startTime: startTime, endTime: endTime )
                     self.context.insert(newPrayer)
+                    changed = true
                     calculationPrinter(addNewPrayer: (name: name, startTime: startTime, endTime: endTime))
 
                 }
@@ -429,6 +458,14 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         }
         //-------------------------------------------------------------------
         
+        // The rows on screen follow (audit B2): a new day's rows (the day turned while the app was open) or moved times
+        // reached `todaysPrayers` only at the next appear — the circle and the list stayed on yesterday, and after a
+        // resume the list could be empty.
+        let todayKey = PrayerDay.key()
+        if changed || todaysPrayers.isEmpty || todaysPrayers.contains(where: { $0.dayKey != todayKey }) {
+            loadTodaysPrayerObjects()
+        }
+        scheduleDailyRefresh()   // Fajr moves with the place: the rollover timer follows the times
         scheduleAllPrayerNotifications(prayerByDateDict: prayerTimesForDateDict)
     }
     
@@ -524,11 +561,17 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         if prayer.startTime <= Date() {
             prayer.isCompleted.toggle()
             if prayer.isCompleted {
-                prayer.setPrayerLocation(with: ENV_LocationManager.manager.location)
+                let fix = Self.usableFix(ENV_LocationManager.manager.location)
+                prayer.setPrayerLocation(with: fix)
                 // At one of your own masajid: known at once, so a Jumu'ah is scored (and shown)
-                // as Jumu'ah right away. Anywhere else the MasjidDetector search below decides.
+                // as Jumu'ah right away. Anywhere else the MasjidDetector search below decides —
+                // only from an accurate fix (audit B10): a coarse one put a prayer at a mosque it wasn't near.
                 if let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
-                    prayer.mosqueName = MasjidDetector.favoriteMasjid(near: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    if let fix, fix.horizontalAccuracy <= 100 {
+                        prayer.mosqueName = MasjidDetector.favoriteMasjid(near: CLLocationCoordinate2D(latitude: lat, longitude: lon))
+                    } else {
+                        prayer.mosqueName = ""   // checked: no masjid search for this row
+                    }
                 }
                 prayer.setPrayerScore()
                 prayer.cancelUpcomingNudges()
@@ -590,8 +633,13 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
         guard defaults?.bool(forKey: SharedStore.widgetWroteStoreKey) == true else { return }
         defaults?.set(false, forKey: SharedStore.widgetWroteStoreKey)
         
-        try? context.save()
-        context.rollback()          // refaults registered objects so the next fetch reads the store
+        do {
+            try context.save()
+            context.rollback()      // refaults registered objects so the next fetch reads the store
+        } catch {
+            // The app's unsaved edits stay (audit B6): a rollback after a failed save threw them away.
+            print("⚠️ reconcile: save failed, keeping the app's edits: \(error.localizedDescription)")
+        }
         loadTodaysPrayerObjects()
         for prayer in todaysPrayers where prayer.isCompleted {
             prayer.cancelUpcomingNudges()   // the extension may not be able to reach our notification center
@@ -1309,18 +1357,17 @@ extension PrayerViewModel{
 
 extension PrayerViewModel {
     
-    private func scheduleDailyRefresh() { // this doesnt work when app is closed... but if its open before the rollover and left open until... then it should work
-        do {
-            // The prayer day turns over at the rollover hour (Settings), not midnight.
-            let midnight = PrayerDay.rolloverInstant(after: PrayerDay.date())
-            let timeInterval = max(midnight.timeIntervalSince(Date()), 1)
-            
-            print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { _ in
-                self.timeAtLastRefresh = Date()
-                self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")
-                self.scheduleDailyRefresh() // Schedule the next update
-            }
+    private func scheduleDailyRefresh() {
+        // Runs while the app stays open across the rollover (Fajr, or the hour in Settings); a closed app refreshes on
+        // its next open. Re-planned after every fetch (audit B2): Fajr moves with the place and the method.
+        refreshTimer?.invalidate()
+        let midnight = PrayerDay.rolloverInstant(after: PrayerDay.date())
+        let timeInterval = max(midnight.timeIntervalSince(Date()), 1)
+        print("next refresh scheduled for \(midnight) in \(timerStyle(timeInterval))")
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: timeInterval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.timeAtLastRefresh = Date()
+            self.fetchPrayerTimes(cameFrom: "scheduleDailyRefresh")   // plans the next turn's timer itself
         }
     }
 

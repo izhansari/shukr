@@ -627,6 +627,9 @@ struct PrayerTimesView: View {
                 }
             }
         }
+        // "I already prayed" on a banner while the app is in front (audit B7): the mark lands in the shared store now
+        // and the page used to show it unmarked until the next activation (a re-tap then rescored it).
+        .onReceive(NotificationCenter.default.publisher(for: SharedStore.markedElsewhere)) { _ in openFromWidgetFlags() }
         .onReceive(NotificationCenter.default.publisher(for: TaskModel.didDelete)) { note in
             guard let gone = note.object as? Set<PersistentIdentifier>,
                   let selected = sharedState.selectedTask, gone.contains(selected.persistentModelID) else { return }

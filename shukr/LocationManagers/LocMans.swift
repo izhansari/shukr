@@ -125,6 +125,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = /*kCLLocationAccuracyBest*/ kCLLocationAccuracyNearestTenMeters
+        manager.distanceFilter = 50   // metres (audit B3): a still phone sent a fix every second; nothing here needs under 50 m
         manager.headingFilter = 1   // degrees; no delegate call for sub-degree jitter
         // Known right away, so an authorized launch never shows the location-only setup for a frame.
         authorizationStatus = manager.authorizationStatus
@@ -223,6 +224,7 @@ class EnvLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate 
         group?.set(coordinate.longitude, forKey: "lastLongitude")
         group?.set(name, forKey: "lastCityName")
         group?.set(true, forKey: "manualLocation")
+        group?.removeObject(forKey: SharedStore.lastFixAtKey)   // a city's centre is not where a prayer was prayed (audit B10)
         hasManualLocation = true
         if !isAuthorized { useManualLocation() }
     }

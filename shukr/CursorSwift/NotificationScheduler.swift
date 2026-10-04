@@ -24,6 +24,7 @@
 //
 
 import Foundation
+import UIKit
 import UserNotifications
 import SwiftData
 import BackgroundTasks
@@ -90,6 +91,16 @@ enum NotificationScheduler {
     private static func run(context: ModelContext,
                             todayOverride: [String: (start: Date, end: Date, window: TimeInterval)]?,
                             reason: String) async {
+        // Finishes even if the app is sent to the background mid-plan (audit B12): a plan cut off between its
+        // removes and its adds left a gap in the week.
+        let assertion = await MainActor.run { UIApplication.shared.beginBackgroundTask(withName: "shukr.notifications") }
+        await runPlan(context: context, todayOverride: todayOverride, reason: reason)
+        if assertion != .invalid { await MainActor.run { UIApplication.shared.endBackgroundTask(assertion) } }
+    }
+
+    private static func runPlan(context: ModelContext,
+                                todayOverride: [String: (start: Date, end: Date, window: TimeInterval)]?,
+                                reason: String) async {
         let center = UNUserNotificationCenter.current()
         let items = plan(context: context, todayOverride: todayOverride)
 
@@ -115,7 +126,8 @@ enum NotificationScheduler {
                               uniquingKeysWith: { a, _ in a })
         let stalePending = have.filter { id, sig in want[id]?.sig != sig }.map(\.key)
         let toAdd = want.values.filter { have[$0.item.id] != $0.sig }.map(\.item)
-        if !stalePending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: stalePending) }
+        // Add first (an add with the same id replaces the old request), remove what's gone after (audit B12): a suspend
+        // between a remove and its add never leaves a reminder missing.
         for item in toAdd {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: item.date)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -125,6 +137,8 @@ enum NotificationScheduler {
                 print("❌ notification \(item.id): \(error.localizedDescription)")
             }
         }
+        let gone = stalePending.filter { want[$0] == nil }
+        if !gone.isEmpty { center.removePendingNotificationRequests(withIdentifiers: gone) }
 
         // Earlier days' delivered prayer notifications (and the undated ones of older builds).
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date())

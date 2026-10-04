@@ -71,6 +71,9 @@ enum MasjidDetector {
                 searches += 1
             }
             guard let name = await masjid(at: coordinate) else { continue }   // offline: later
+            // Unmarked, deleted or checked meanwhile (audit B10): an unmarked prayer got a masjid, a Jumu'ah score
+            // and a replayed flourish.
+            guard !prayer.isDeleted, prayer.isCompleted, prayer.mosqueName == nil else { continue }
             prayer.mosqueName = name
             if prayer.isJumuah {
                 prayer.setPrayerScore(atDate: prayer.timeAtComplete ?? prayer.startTime)

@@ -51,6 +51,9 @@ struct PrayersWidgetEntry: TimelineEntry {
     var completedToday: Set<String> { Set(completedScores.keys) }
     /// Tomorrow's Fajr, for the circle once the day's prayers are over.
     var nextFajr: Date? = nil
+    /// Tomorrow's sunrise: tomorrow's Fajr window, so the circle is live from its start (audit B11) until a reload
+    /// builds the new day.
+    var nextSunrise: Date? = nil
     /// The bottom corners (Edit Widget; notes #1).
     var leftCorner: WidgetCornerAction = .qibla
     var rightCorner: WidgetCornerAction = .tasbeeh
@@ -92,7 +95,7 @@ struct PrayersWidgetEntry: TimelineEntry {
         PrayersWidgetEntry(date: date, heading: heading, latitude: latitude, longitude: longitude,
                            toggleShowAllTImes: list ?? toggleShowAllTImes, prayerDict: prayerDict,
                            todayPrayerTimes: todayPrayerTimes, locationName: locationName, textToggle: textToggle,
-                           completedScores: completedScores, nextFajr: nextFajr,
+                           completedScores: completedScores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                            leftCorner: leftCorner, rightCorner: rightCorner, scoreColors: scoreColors,
                            ringAbove: ringAbove, style: style)
     }
@@ -332,12 +335,14 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
         let prayerDate = PrayerDay.date()
         let dateComponents = PrayerUtils.gregorian.dateComponents([.year, .month, .day], from: prayerDate)
         var windows = PrayerUtils.createDummyWindows()
-        var nextFajr: Date?
+        var nextFajr: Date?, nextSunrise: Date?
         do {
             let params = PrayerUtils.getCalculationParameters()
             prayerTimes = try PrayerUtils.getPrayerTimes(for: prayerDate, coordinates: coordinates, params: params)
             let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: prayerDate) ?? prayerDate
-            nextFajr = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params).fajr
+            let tomorrowTimes = try? PrayerUtils.getPrayerTimes(for: tomorrow, coordinates: coordinates, params: params)
+            nextFajr = tomorrowTimes?.fajr
+            nextSunrise = tomorrowTimes?.sunrise
             windows = PrayerUtils.createWindowsFromTimes(prayerTimes, on: prayerDate, nextFajr: nextFajr)
         } catch {
             // adhan gives no times for this place and day (polar latitudes in midnight sun / polar night).
@@ -362,7 +367,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             toggleShowAllTImes: showLocation, prayerDict: windows,
             todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
             completedScores: SharedStore.completedPrayerScoresToday(),
-            nextFajr: nextFajr,
+            nextFajr: nextFajr, nextSunrise: nextSunrise,
             leftCorner: configuration?.corners.left ?? .qibla,
             rightCorner: configuration?.corners.right ?? .tasbeeh,
             scoreColors: configuration?.scoreColors ?? true,
@@ -381,7 +386,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
             return PrayersWidgetEntry(date: entry.date, heading: 0, latitude: latitude, longitude: longitude,
                                       toggleShowAllTImes: showLocation, prayerDict: windows,
                                       todayPrayerTimes: prayerTimes, locationName: locationName, textToggle: textToggle,
-                                      completedScores: scores, nextFajr: nextFajr,
+                                      completedScores: scores, nextFajr: nextFajr, nextSunrise: nextSunrise,
                                       leftCorner: corners.first ?? entry.leftCorner,
                                       rightCorner: corners.count > 1 ? corners[1] : entry.rightCorner,
                                       scoreColors: store.bool(forKey: "demoWidget.plain") ? false : entry.scoreColors,
@@ -607,6 +612,11 @@ struct PrayersWidgetView: View {
             /// So lets display tomorrow's first prayer — its real time. (This used to return `Date()`,
             /// which read "Fajr at <now>" once Isha was marked, 2026-09-25.)
             let fajr = entry.nextFajr ?? now
+            // With its window (audit B11): the timeline gets an entry at tomorrow's Fajr, live from its start — the day's
+            // turn used to wait on iOS's next reload, and Fajr kept reading "next" after it had started.
+            if let sunrise = entry.nextSunrise, sunrise > fajr {
+                return ("Fajr", fajr <= now && now < sunrise, fajr, sunrise, sunrise.timeIntervalSince(fajr))
+            }
             return ("Fajr", false, fajr, fajr, 0)
             
         }

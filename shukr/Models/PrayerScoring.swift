@@ -172,7 +172,8 @@ enum PrayerScoring {
     static func dayScore(for prayers: [PrayerModel]) -> Double {
         let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         let total = names.reduce(0.0) { sum, name in
-            guard let prayer = prayers.first(where: { $0.name == name }), prayer.isCompleted else { return sum }
+            // A completed row wins over an unmarked twin (audit B4: `.first` could land on the unmarked one).
+            guard let prayer = prayers.first(where: { $0.name == name && $0.isCompleted }) else { return sum }
             return sum + (prayer.numberScore ?? 0)
         }
         return total / Double(names.count)

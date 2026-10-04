@@ -230,6 +230,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 
 **Notifications & location**
 - Everything scheduled goes through `NotificationScheduler` (64 budget): diff, remove only owned ids, never `removeAllPending…`. Action handlers call `completionHandler` from inside `UNUserNotificationCenter.add`'s callback.
+- The chain (audit B, 2026-10-04): a fetch reloads `todaysPrayers` when rows changed or the day turned and re-plans the rollover timer; a still phone geocodes / re-plans at most every 10 min (500 m at once) and keeps its city on a failed lookup; the scheduler adds before it removes, under a background-task assertion; a time / zone change re-fetches (`resetSystemTimeZone` first). Every outside mark sets `markedDayKey` (the app rescores that day); a banner mark with the app in front posts `SharedStore.markedElsewhere`.
 - No hard gate on notifications or location (App Review 4.5.4 / 5.1.1); Always is opt-in; `EnvLocationManager` doesn't ask before setup is done. CLMonitor names: letters only, one monitor per name per process.
 
 **Map**
@@ -281,7 +282,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 
 **Mosques, My masajid, masjid-aware prayers** (MosqueFinder.swift, MasjidDetector.swift, PlaceMoments.swift)
 - Mosques in the one map sheet (`mosquePath`): nearest list, drive / walk, Look Around, Directions, Call, place card. `MosqueFavorites` (star pins), `MosqueHiding` (not recommended).
-- `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah; `MasjidArrival` duas (CLMonitor, opt-in; 200 m — a radius change re-adds the conditions, reports in the next 30 s are a baseline; a newly watched masjid is recorded as outside so the first arrival counts; DEBUG Library/Caches/masjid.log = every iOS report, the decision and each dua sent; the simulators don't deliver region events, test on a real visit); `HolyCityWelcome`.
+- `MasjidDetector` (75 m) sets `mosqueName` (2.2.0) → Jumu'ah — only from a usable fix: the app records a spot under 10 min / 500 m and searches only from ≤ 100 m (else `mosqueName = ""`); widget / watch marks use the saved spot only while `lastFixAt` (a real fix, cleared by a picked city) is under 30 min; `check` re-guards the row after its await; `MasjidArrival` duas (CLMonitor, opt-in; 200 m — a radius change re-adds the conditions, reports in the next 30 s are a baseline; a newly watched masjid is recorded as outside so the first arrival counts; DEBUG Library/Caches/masjid.log = every iOS report, the decision and each dua sent; the simulators don't deliver region events, test on a real visit); `HolyCityWelcome`.
 
 **Widgets** (shukrWidget/, MoreWidgets.swift)
 - A marked row in the widget's times list → "Unmark …?" in the app: a UIKit alert in its own window over anything
