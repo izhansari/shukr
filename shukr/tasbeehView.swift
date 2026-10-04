@@ -2214,7 +2214,7 @@ struct tasbeehView: View {
                     }
                 }
             } else {
-                Text(sharedState.titleForSession.isEmpty ? "its full text, notes and sets show up here" : "")
+                Text(sharedState.titleForSession.isEmpty ? "its full text and notes show up here" : "")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -2671,7 +2671,10 @@ struct tasbeehView: View {
         /// +N does; with none, a tap opens its page to pick one (Done then turns it on). A hold opens the page any time.
         private var setsChip: some View {
             let size = setStep
+            // (i) on its shoulder too, like continuous and sleep (owner: "I still don't see the info sheet on the set
+            // button"): its page, the same as a hold.
             return roundSwitch(size > 1 ? "sets of \(size)" : "count in sets", on: countingInSets && size > 1,
+                               info: ("About count in sets", { setsPageTurnsOn = false; showSetsPage = true }),
                                onHold: { setsPageTurnsOn = false; showSetsPage = true }, action: {
                 if size > 1 {
                     countingInSets.toggle()
