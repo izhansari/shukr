@@ -126,8 +126,11 @@ enum NotificationScheduler {
                               uniquingKeysWith: { a, _ in a })
         let stalePending = have.filter { id, sig in want[id]?.sig != sig }.map(\.key)
         let toAdd = want.values.filter { have[$0.item.id] != $0.sig }.map(\.item)
-        // Add first (an add with the same id replaces the old request), remove what's gone after (audit B12): a suspend
-        // between a remove and its add never leaves a reminder missing.
+        // What's gone for good is removed first — it isn't re-added, so no gap, and the pending count never passes 64
+        // (iOS keeps the soonest 64 and drops the rest silently; Bradley's review). A changed id is never removed:
+        // its add replaces it, so a suspend mid-plan can't leave that reminder missing (audit B12).
+        let gone = stalePending.filter { want[$0] == nil }
+        if !gone.isEmpty { center.removePendingNotificationRequests(withIdentifiers: gone) }
         for item in toAdd {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: item.date)
             let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -137,8 +140,6 @@ enum NotificationScheduler {
                 print("❌ notification \(item.id): \(error.localizedDescription)")
             }
         }
-        let gone = stalePending.filter { want[$0] == nil }
-        if !gone.isEmpty { center.removePendingNotificationRequests(withIdentifiers: gone) }
 
         // Earlier days' delivered prayer notifications (and the undated ones of older builds).
         let todayKey = PrayerNotificationID.dayKey(PrayerDay.date())
