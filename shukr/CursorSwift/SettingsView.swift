@@ -60,6 +60,8 @@ struct SettingsView: View {
     @AppStorage("compassDebug") private var compassDebug = false
     @State private var showCityPicker = false
     @State private var refreshState: RefreshState = .idle
+    /// When the city was last worked out (the location row's "Updated 2 min ago").
+    @AppStorage("locationUpdatedAt") private var locationUpdatedAt: Double = 0
     @AppStorage("tasbeehRingStyle") private var tasbeehRingStyle = TasbeehRingStyle.fine.rawValue
     @State private var showWhatsNew = false
     @State private var showRingPlayground = false
@@ -146,7 +148,9 @@ struct SettingsView: View {
                 await minimum
                 withAnimation(.easeInOut(duration: 0.2)) {
                     switch result {
-                    case .success: refreshState = .done
+                    case .success:
+                        refreshState = .done
+                        locationUpdatedAt = Date().timeIntervalSince1970
                     case .failure(let why): refreshState = .failed(why.message)
                     }
                 }
@@ -156,30 +160,60 @@ struct SettingsView: View {
                 if refreshState != .working { withAnimation(.easeInOut(duration: 0.3)) { refreshState = .idle } }
             }
         } label: {
-            HStack(spacing: 8) {
-                Text("Refresh Location")
+            HStack(spacing: 12) {
+                Image(systemName: "location.fill")
                     .foregroundStyle(Color.green)
-                Spacer(minLength: 8)
-                switch refreshState {
-                case .idle:
-                    EmptyView()
-                case .working:
-                    ProgressView()
-                case .done:
-                    Label("Updated just now", systemImage: "checkmark")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                case .failed(let why):
-                    Text(why)
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                        .multilineTextAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(viewModel.cityName ?? "Finding your city…")
+                        .foregroundStyle(.primary)
+                    locationCaption
+                        .font(.caption)
+                        .contentTransition(.opacity)
                 }
+                Spacer(minLength: 8)
+                ZStack {
+                    if refreshState == .working {
+                        ProgressView()
+                    } else {
+                        Image(systemName: refreshState == .done ? "checkmark" : "arrow.clockwise")
+                            .foregroundStyle(refreshState == .done ? Color.green : Color.secondary)
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+                .frame(width: 24)
             }
-            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+            .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityHint("Updates your location and prayer times")
+    }
+
+    /// "Updated 2 min ago", or what went wrong; nothing before the first update is known.
+    @ViewBuilder private var locationCaption: some View {
+        switch refreshState {
+        case .failed(let why):
+            Text(why).foregroundStyle(.orange)
+        case .working:
+            Text("Updating…").foregroundStyle(.secondary)
+        default:
+            if locationUpdatedAt > 0 {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    Text("Updated \(Self.updatedPhrase(Date(timeIntervalSince1970: locationUpdatedAt), now: context.date))")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    /// "just now" under a minute, else "2 min ago" / "3 hr ago" / "yesterday".
+    private static func updatedPhrase(_ date: Date, now: Date) -> String {
+        if now.timeIntervalSince(date) < 60 { return "just now" }
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        f.dateTimeStyle = .named
+        return f.localizedString(for: date, relativeTo: now)
     }
 
     var body: some View {
@@ -211,22 +245,23 @@ struct SettingsView: View {
                 Form {
                     
                     //MARK: - Location Info
-                    Section(header: Text("Location Information")) {
-                        if let cityName = viewModel.cityName {
-                            HStack {
-                                Image(systemName: "mappin.and.ellipse")
-                                Text("City")
-                                Spacer()
-                                Text(cityName)
-                            }
-                        } else {
-                            Text("Fetching city...")
-                        }
-                        
+                    Section(header: Text("Location")) {
                         // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
+                            // One row: the city, when it was last updated, and the row itself refreshes it
+                            // (decision location-row B).
                             refreshLocationRow
                         } else {
+                            if let cityName = viewModel.cityName {
+                                HStack {
+                                    Image(systemName: "mappin.and.ellipse")
+                                    Text("City")
+                                    Spacer()
+                                    Text(cityName)
+                                }
+                            } else {
+                                Text("Fetching city...")
+                            }
                             // No location permission: prayer times come from a picked city.
                             Button("Choose City") { showCityPicker = true }
                                 .tint(.green)
@@ -237,6 +272,9 @@ struct SettingsView: View {
                             }
                             .tint(.green)
                         }
+                    }
+                    .onChange(of: viewModel.cityName) { _, name in
+                        if name != nil { locationUpdatedAt = Date().timeIntervalSince1970 }
                     }
                     .sheet(isPresented: $showCityPicker) {
                         CityPickerSheet()
