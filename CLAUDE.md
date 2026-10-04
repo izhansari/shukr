@@ -322,10 +322,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - **New task** = `NewTaskFlow` (NewTaskFlow.swift), one sheet, never swiped away (✕ on step one, ‹ back): which zikr ("A
   new zikr" = `newZikrCard`, a card over a dimmed screen — also Azkar's ＋) → goal (`RepeatRoundButton` hold-repeat, typed
   number, Count ⇄ Minutes converts at `secondsPerCount`) → where it goes (`NewTaskPlacer`: the system's List `.onMove`, only
-  the new row moves — `onMove` ignores the rest, `moveDisabled` refused every drop; only with tasks already) → Looks good
-  (preview, name, `TaskReminderSheet(embedded:)` slid in). The wheel's New task, Your tasks' ＋ and a zikr's page all open it.
-  The sim's simulated touches can't start a system drag: verify drags with an XCUITest. DEBUG `-demoNewTaskStep N`.
-- Your tasks: rows in the wheel's order (ring / ✓, "40 of 100" / "done", the reminder as a sage bell capsule, the streak), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → `AddDailyTaskView(editing:)` pushed (`navigationDestination(item:)`, its own ‹), swipe → confirm → `TaskModel.delete`, ＋ top right and a New task row. **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`.
+  the new row moves — `onMove` ignores the rest, `moveDisabled` refused every drop; only with tasks already) → the review
+  (decision task-edit-review-pick A): preview, rows Zikr · Goal · Place (new only) — a tap opens that step, its button reads "Done" and comes back (`returnToReview`) — then name and reminder (`TaskReminderSheet(embedded:)` slid in). **Edit = the same review first** (`NewTaskFlow(editing:)`, a sheet; ✕, no dots, Save, Delete Task at the bottom; another zikr keeps the task, its streak and history); every Edit (Your tasks' tap, `TaskMenu`, a zikr's page) opens it; `AddDailyTaskView` no longer edits. The wheel's New task, Your tasks' ＋ and a zikr's page all open it.
+  The sim's simulated touches can't start a system drag: verify drags with an XCUITest. DEBUG `-demoNewTaskStep N`, `-demoYourTasks [-demoZikrTasksEdit N]` (a task's review).
+- Your tasks: rows in the wheel's order (ring / ✓, "40 of 100" / "done", the reminder as a sage bell capsule, the streak), hold-and-drag reorder (`.onMove`, no Edit mode; the ≡ is a hint), tap → the task's review (`NewTaskFlow(editing:)`), swipe → confirm → `TaskModel.delete`, ＋ top right and a New task row. **Trap:** the swipe button must not be `role: .destructive` (the List expects the row gone and the confirm never shows) — `.tint(.red)`.
 
 **Task streaks** (TaskStreak.swift; decisions task-streak-rule A / -miss A / -look C / -results A, 2026-10-01)
 - `TaskModel.streak()`: computed from the task's own sessions, nothing stored: a prayer day (`PrayerDay.start(for:)`) counts

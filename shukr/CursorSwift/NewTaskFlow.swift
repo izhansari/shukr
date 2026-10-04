@@ -7,6 +7,9 @@
 //  goal over at your pace), where it goes among your tasks (the system's own drag; only the new one
 //  moves), and how it'll look with a name and a reminder. A new zikr is a card over the screen
 //  (`newZikrCard`), also Azkar's ＋.
+//  The last step is the task's review (owner, task-edit-review-page A, 2026-10-04): every choice a row, a tap opens
+//  its step and "Done" comes back, like the setup's review. Editing a task opens the same page first
+//  (`NewTaskFlow(editing:)`), so you edit on a page you've seen.
 //
 
 import SwiftUI
@@ -25,6 +28,8 @@ struct NewTaskFlow: View {
     /// Where the new task goes among the existing ones (0 = first); nil = at the end (the default).
     @State private var insertAt: Int?
     var locked: MantraModel? = nil
+    /// The task being edited: the flow opens on its review, and Save writes back (nil = a new task).
+    var editing: TaskModel? = nil
     /// The task just made (the Zikr page centres it).
     var onCreated: (TaskModel) -> Void = { _ in }
 
@@ -44,16 +49,35 @@ struct NewTaskFlow: View {
     @FocusState private var nameFocused: Bool
     @FocusState private var goalFocused: Bool
     @State private var goalText = "33"
+    /// A step opened from the review: its button reads "Done" and goes straight back (the setup's review does the same).
+    @State private var returnToReview = false
+    @State private var confirmDelete = false
+    private var isEditing: Bool { editing != nil }
+    private static let review = 4
 
     init(locked: MantraModel? = nil, onCreated: @escaping (TaskModel) -> Void = { _ in }) {
         self.locked = locked
         self.onCreated = onCreated
         _mantra = State(initialValue: locked)
         _step = State(initialValue: locked == nil ? 1 : 2)
+        _arrivedStep = State(initialValue: locked == nil ? 1 : 2)
         #if DEBUG
         let n = UserDefaults.standard.integer(forKey: "demoNewTaskStep")   // -demoNewTaskStep N (with -demoZikrPage)
         if n > 0 { _step = State(initialValue: n) }
         #endif
+    }
+
+    /// Editing `task`: its review first, the draft taken from it.
+    init(editing task: TaskModel) {
+        self.editing = task
+        _mantra = State(initialValue: task.mantra)
+        _step = State(initialValue: Self.review)
+        _arrivedStep = State(initialValue: Self.review)
+        _countMode = State(initialValue: task.isCountMode)
+        _goal = State(initialValue: task.goal)
+        _goalText = State(initialValue: "\(task.goal)")
+        _name = State(initialValue: task.customName ?? "")
+        _reminder = State(initialValue: ReminderDraft(task))
     }
 
     private var firstStep: Int { locked == nil ? 1 : 2 }
@@ -91,7 +115,7 @@ struct NewTaskFlow: View {
         .presentationDetents([.large])
         .newZikrCard(isPresented: $creatingZikr, initialName: search) { made in
             mantra = made
-            go(2)
+            if returnToReview { backToReview() } else { go(2) }
         }
 
     }
@@ -108,7 +132,20 @@ struct NewTaskFlow: View {
     }
     private func next() { if let i = steps.firstIndex(of: step), i + 1 < steps.count { go(steps[i + 1]) } }
     private func back() {
+        if returnToReview { backToReview(); return }
+        if isEditing { dismiss(); return }
         if let i = steps.firstIndex(of: step), i > 0 { go(steps[i - 1]) } else { dismiss() }
+    }
+    /// From the review into one step; its button then reads "Done".
+    private func edit(_ to: Int) { returnToReview = true; go(to) }
+    private func backToReview() {
+        goalFocused = false
+        returnToReview = false
+        go(Self.review)
+    }
+    /// A step's one button: on to the next, or back to the review it was opened from.
+    private func stepButton() -> some View {
+        primary(returnToReview ? "Done" : "Continue") { returnToReview ? backToReview() : next() }
     }
     private func openReminder(_ open: Bool) {
         forward = open
@@ -130,7 +167,7 @@ struct NewTaskFlow: View {
             Button {
                 if editingReminder { openReminder(false) } else { back() }
             } label: {
-                Image(systemName: editingReminder || step > firstStep ? "chevron.left" : "xmark")
+                Image(systemName: editingReminder || returnToReview || (step > firstStep && !isEditing) ? "chevron.left" : "xmark")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
@@ -139,7 +176,8 @@ struct NewTaskFlow: View {
             .buttonStyle(.plain)
             Spacer()
             HStack(spacing: 6) {
-                ForEach(steps, id: \.self) { i in
+                // No dots once there's a review to come back to: the steps are no longer a sequence.
+                ForEach(isEditing || returnToReview ? [] : steps, id: \.self) { i in
                     Capsule()
                         .fill(i <= step ? Color.sage : Color.primary.opacity(0.12))
                         .frame(width: i == step ? 22 : 8, height: 8)
@@ -216,7 +254,7 @@ struct NewTaskFlow: View {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, m in
                     Button {
                         mantra = m
-                        go(2)
+                        if returnToReview { backToReview() } else { go(2) }
                     } label: {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
@@ -318,7 +356,7 @@ struct NewTaskFlow: View {
             Spacer()
             // Hidden while typing (owner: a tap meant to close the keyboard could land on it).
             if !goalFocused {
-                primary("Continue") { next() }
+                stepButton()
                     .transition(.opacity)
             }
         }
@@ -365,11 +403,11 @@ struct NewTaskFlow: View {
                                             set: { insertAt = $0 }),
                           arrived: arrivedStep == 3)
                 .padding(.top, 16)
-            primary("Continue") { next() }
+            stepButton()
         }
     }
 
-    // MARK: step 4 — how it'll look, a name, a reminder
+    // MARK: step 4 — the review: how it'll look, and every choice a row
 
     private var previewTitle: String {
         let n = name.trimmingCharacters(in: .whitespaces)
@@ -380,14 +418,24 @@ struct NewTaskFlow: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 22) {
-                    heading("Looks good", "This is how it'll sit on your Zikr page")
+                    heading(isEditing ? "Your task" : "Looks good", "Tap anything to change it")
                     ZikrCircleFace(title: previewTitle, icon: nil,
-                                   subtitle: countMode ? "0 of \(goal)" : "0 of \(goal) min",
-                                   ring: .progress(0),
+                                   subtitle: countMode ? "\(today.count) of \(goal)" : "\(today.minutes) of \(goal) min",
+                                   ring: .progress(today.fraction),
                                    mantraLine: name.trimmingCharacters(in: .whitespaces).isEmpty ? nil : mantra?.name)
-                        .frame(width: 210, height: 210)
+                        .frame(width: 190, height: 190)
                         .animation(.easeInOut(duration: 0.2), value: previewTitle)
-                    VStack(spacing: 0) {
+                    card {
+                        reviewRow("text.book.closed", "Zikr", mantra?.name ?? editing?.displayName ?? "") { edit(1) }
+                        Divider().padding(.leading, 52)
+                        reviewRow("target", "Goal", countMode ? "\(goal.formatted()) times a day" : "\(goal) min a day") { edit(2) }
+                        // Where it goes, for a new one only: an existing task moves by dragging in Your tasks.
+                        if !isEditing && !existingTasks.isEmpty {
+                            Divider().padding(.leading, 52)
+                            reviewRow("list.number", "Place", placeLine) { edit(3) }
+                        }
+                    }
+                    card {
                         HStack(spacing: 12) {
                             Image(systemName: "character.cursor.ibeam").foregroundStyle(Color.sage).frame(width: 24)
                             TextField("Name it (optional), e.g. After Fajr", text: $name)
@@ -398,28 +446,86 @@ struct NewTaskFlow: View {
                         Divider().padding(.leading, 52)
                         // The reminder: the old sheet's view, slid in within this sheet (owner: its look,
                         // but no second sheet).
-                        Button { openReminder(true) } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: reminder.kind == nil ? "bell" : "bell.fill").foregroundStyle(Color.sage).frame(width: 24)
-                                Text("Reminder").foregroundStyle(.primary)
-                                Spacer()
-                                Text(reminder.kind == nil ? "Off" : reminder.summary)
-                                    .foregroundStyle(.secondary).lineLimit(1)
-                                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 15)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+                        reviewRow(reminder.kind == nil ? "bell" : "bell.fill", "Reminder",
+                                  reminder.kind == nil ? "Off" : reminder.summary) { openReminder(true) }
                     }
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
-                    .padding(.horizontal, 20)
+                    if isEditing {
+                        Button("Delete Task", role: .destructive) { confirmDelete = true }
+                            .padding(.top, 2)
+                    }
                 }
                 .padding(.bottom, 20)
             }
             .scrollDismissesKeyboard(.immediately)
-            primary("Add to my day") { create() }
+            primary(isEditing ? "Save" : "Add to my day") { isEditing ? save() : create() }
         }
+        .confirmationDialog(editing.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "", isPresented: $confirmDelete,
+                            titleVisibility: .visible) {
+            Button("Delete Task", role: .destructive) { deleteTask() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Its sessions stay in your history.")
+        }
+    }
+
+    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(spacing: 0, content: content)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.primary.opacity(0.045)))
+            .padding(.horizontal, 20)
+    }
+
+    private func reviewRow(_ icon: String, _ label: String, _ value: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon).foregroundStyle(Color.sage).frame(width: 24)
+                Text(label).foregroundStyle(.primary)
+                Spacer()
+                Text(value).foregroundStyle(.secondary).lineLimit(1)
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16).padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// "3rd of 5": where the new task lands among yours.
+    private var placeLine: String {
+        let at = min(insertAt ?? existingTasks.count, existingTasks.count) + 1
+        let ordinal = NumberFormatter()
+        ordinal.numberStyle = .ordinal
+        return "\(ordinal.string(from: at as NSNumber) ?? "\(at)") of \(existingTasks.count + 1)"
+    }
+
+    /// Today's progress on the task being edited, against the goal as it stands in the draft (a new task: none).
+    private var today: (count: Int, minutes: Int, fraction: Double) {
+        guard let editing else { return (0, 0, 0) }
+        let p = editing.progress(in: ZikrReminders.todaysSessions(context))
+        let fraction = countMode ? Double(p.count) / Double(max(goal, 1)) : p.seconds / Double(max(goal, 1) * 60)
+        return (p.count, Int(p.seconds / 60), min(1, fraction))
+    }
+
+    private func save() {
+        guard let editing, let mantra else { return }
+        // Another zikr keeps the task (and its streak and history): owner, task-edit-review-pick A.
+        editing.mantra = mantra
+        editing.mantraName = mantra.name
+        editing.isCountMode = countMode
+        editing.goal = goal
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        editing.customName = trimmed.isEmpty ? nil : trimmed
+        reminder.apply(to: editing)
+        try? context.save()   // a reminder only in memory was lost if the app was killed before autosave
+        NotificationScheduler.reschedule(context: context, reason: "task reminder")
+        dismiss()
+    }
+
+    /// The page goes first, then the task (a task deleted under its own page left a stale view behind).
+    private func deleteTask() {
+        guard let editing else { return }
+        let context = context
+        dismiss()
+        DispatchQueue.main.async { withAnimation { TaskModel.delete(editing, in: context) } }
     }
 
     // MARK: the one button (the pause screen's Resume look)

@@ -1183,13 +1183,7 @@ struct MantraTaskRows: View {
         } header: {
             Text("Tasks")
         }
-        .sheet(item: $editing) { task in
-            NavigationStack {
-                AddDailyTaskView(editing: task, isPresented: Binding(
-                    get: { editing != nil }, set: { if !$0 { editing = nil } }))
-                    .toolbar(.hidden, for: .navigationBar)
-            }
-        }
+        .sheet(item: $editing) { NewTaskFlow(editing: $0) }   // the task's review (task-edit-review-page)
         .alert(asking.map { "Start \($0.title)?" } ?? "",
                isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                presenting: asking) { task in

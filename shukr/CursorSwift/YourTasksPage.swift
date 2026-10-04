@@ -91,11 +91,8 @@ struct YourTasksPage: View {
                         .accessibilityLabel("New task")
                 }
             }
-            .navigationDestination(item: $editing) { task in
-                AddDailyTaskView(editing: task, isPresented: Binding(
-                    get: { editing != nil }, set: { if !$0 { editing = nil } }))
-                    .toolbar(.hidden, for: .navigationBar)   // the editor has its own ‹
-            }
+            // A task's review, the page that made it (task-edit-review-page).
+            .sheet(item: $editing) { NewTaskFlow(editing: $0) }
         .sheet(isPresented: $creating) { NewTaskFlow() }
         .sheet(item: $openZikr) { MantraEditorView(mantra: $0) }
         .onAppear { sessions = ZikrReminders.todaysSessions(context) }

@@ -147,13 +147,8 @@ struct ZikrCircleWheel: View {
                 .opacity(openingSoft ? 0 : 1)
                 .allowsHitTesting(!openingSoft)
             }
-            .sheet(item: $tasksSheetOn) { task in
-                NavigationStack {
-                    AddDailyTaskView(editing: task, isPresented: Binding(
-                        get: { tasksSheetOn != nil }, set: { if !$0 { tasksSheetOn = nil } }))
-                        .toolbar(.hidden, for: .navigationBar)
-                }
-            }
+            // Edit task: the task's review, the page that made it (task-edit-review-page).
+            .sheet(item: $tasksSheetOn) { NewTaskFlow(editing: $0) }
             .navigationDestination(isPresented: $showTasksPage) { YourTasksPage() }
             // The wheel's own pages say how to close them, so a reminder / widget / a start from elsewhere closes them
             // and waits until they've gone (the host's clearCovers) — it centred the task under Your tasks (audit E6).
@@ -318,6 +313,11 @@ struct ZikrCircleWheel: View {
             NewTaskFlow { newTaskScrollTarget = $0.id }   // the wheel centres it
         }
         #if DEBUG
+        .task {   // -demoYourTasks: Your tasks open (with -demoZikrTasksEdit N, task N's review over it)
+            guard ProcessInfo.processInfo.arguments.contains("-demoYourTasks") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            showTasksPage = true
+        }
         .task {   // -demoNewTaskStep N: the flow open at step N
             guard UserDefaults.standard.integer(forKey: "demoNewTaskStep") > 0 else { return }
             try? await Task.sleep(for: .seconds(1.5))
