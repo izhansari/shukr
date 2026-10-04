@@ -12,8 +12,8 @@
 //    so with it on the summary lets them through) → the same kind of card;
 //  - Time Sensitive off alone, Background App Refresh off → no card, a quiet line in Settings.
 //  Settings → Notifications shows the overall status at the top (`NotificationHealthRows`), the
-//  setup's review uses the same checks, and Settings → Notifications → Upcoming reminders
-//  (`UpcomingRemindersView`, beta-only until `UpcomingReminders.isPublic`) lists everything waiting.
+//  setup's review uses the same checks, and Settings → Notifications → Your reminders
+//  (`YourRemindersView`, everyone) lists everything waiting.
 //
 
 import SwiftUI
@@ -186,20 +186,23 @@ struct ReminderHealthCard: View {
 
 struct NotificationHealthRows: View {
     @ObservedObject private var health = NotificationHealth.shared
-    @ObservedObject private var betaAccess = WhatsNewAccess.shared
 
-    /// The status IS the way in (owner, 2026-09-28): "Reminders are on · On time · scheduled through
-    /// Mon, Oct 5" opens Your reminders; when something's wrong it says so in the warning style, with
-    /// a plain button per fix under it.
+    /// "Your reminders ›" first, always there (owner, reminders-page-way-in: the way in had gone — the status row was
+    /// the only link and only for beta, so a dev Release install had none). Under it the status: "Reminders are on ·
+    /// On time · scheduled through Mon, Oct 5" (it opens the page too); when something's wrong it says so in the warning
+    /// style, with a plain button per fix under it.
     var body: some View {
         let issues = health.issues
         Group {
-            if health.checked {
-                if UpcomingReminders.isPublic || betaAccess.beta {
-                    NavigationLink { YourRemindersView() } label: { statusRow(issues) }
-                } else {
-                    statusRow(issues)
+            NavigationLink { YourRemindersView() } label: {
+                Label {
+                    Text("Your reminders").font(.system(.body, design: .rounded))
+                } icon: {
+                    Image(systemName: "bell.badge").foregroundStyle(Color(.systemGreen))
                 }
+            }
+            if health.checked {
+                NavigationLink { YourRemindersView() } label: { statusRow(issues) }
                 if health.authorization == .notDetermined {
                     fix("Allow notifications") { NotificationStatus.shared.request() }
                 }
@@ -230,11 +233,11 @@ struct NotificationHealthRows: View {
             }
         }()
         let fine = issues.isEmpty && health.authorization != .notDetermined
-        // The setup's look: a light symbol in sage (or its soft orange), rounded type, a light detail.
+        // The setup's look: a light symbol in the toggles' green (or its soft orange), rounded type, a light detail.
         return HStack(spacing: 14) {
             Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
                 .font(.system(size: 24, weight: .light))
-                .foregroundStyle(fine ? Color.sage : Color.orange.opacity(0.9))
+                .foregroundStyle(fine ? Color(.systemGreen) : Color.orange.opacity(0.9))
                 .frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(.body, design: .rounded)).foregroundStyle(.primary)
@@ -253,12 +256,6 @@ struct NotificationHealthRows: View {
 
 // MARK: - Upcoming reminders (Settings → Notifications)
 
-/// Whether "Upcoming reminders" is in everyone's Settings. **The one line to flip to make it public**
-/// (feedback E37CE0F0): `true` shows it in the App Store build too; the beta-only card previews in its
-/// Details section stay behind `WhatsNewAccess` either way.
-enum UpcomingReminders {   // (the page is YourRemindersView)
-    static let isPublic = false
-}
 
 /// Every notification shukr has waiting with iOS (out of its 64), grouped by prayer day, with what
 /// each one is; today's delivered ones greyed at the end; the technical bits in a collapsed Details.
@@ -319,7 +316,7 @@ struct YourRemindersView: View {
     }
 
     // MARK: colours — iOS-native (owner, 49171DB2: the muted brand tones read "dull … too android"):
-    // sage stays the accent (the ok ink, the week rings, the picked tile); the bead kinds use the
+    // the accent is the toggles' green, systemGreen — no sage on this page (owner, reminders-page-look); the bead kinds use the
     // system tints, which adapt to light / dark; free slots a clear system grey.
 
     private static let startColor = Color(.systemGreen)                                // starts
@@ -331,9 +328,9 @@ struct YourRemindersView: View {
     private var freeColor: Color { Color(.systemGray4) }
     /// Tile / day switches: one spring for the content swap and the card's height.
     private static let switchSpring = Animation.spring(response: 0.42, dampingFraction: 0.9)
-    private var okInk: Color { Color.sage }
+    private var okInk: Color { Color(.systemGreen) }
     private var warnInk: Color { Color.orange.opacity(0.9) }                              // the setup's Nudge
-    private var okTint: Color { Color.sage.opacity(scheme == .dark ? 0.22 : 0.14) }
+    private var okTint: Color { Color(.systemGreen).opacity(scheme == .dark ? 0.22 : 0.14) }
     private var warnTint: Color { Color.orange.opacity(0.08) }
     /// The setup's small uppercase caption ("today").
     private func caption(_ text: String) -> some View {
@@ -449,7 +446,7 @@ struct YourRemindersView: View {
                     if let through = health.scheduledThrough ?? pending.compactMap(\.date).max() {
                         Text("through " + through.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                             .font(.system(.subheadline, design: .rounded))
-                            .foregroundStyle(Color.sage)
+                            .foregroundStyle(Color(.systemGreen))
                             .padding(.top, 6)
                     }
                 }
@@ -524,7 +521,7 @@ struct YourRemindersView: View {
                             Circle().stroke(Color(.systemGray5), lineWidth: 3)
                             Circle()
                                 .trim(from: 0, to: CGFloat(counts[i]) / CGFloat(most))
-                                .stroke(nudges ? Color.sage : Color.sage.opacity(0.55),
+                                .stroke(nudges ? Color(.systemGreen) : Color(.systemGreen).opacity(0.55),
                                         style: StrokeStyle(lineWidth: 3, lineCap: .round))
                                 .rotationEffect(.degrees(-90))
                             Text("\(counts[i])")
@@ -533,7 +530,7 @@ struct YourRemindersView: View {
                                 .monospacedDigit()
                         }
                         .frame(width: days.count > 7 ? 34 : 40, height: days.count > 7 ? 34 : 40)
-                        Circle().fill(nudges ? Color.sage : .clear).frame(width: 5, height: 5)
+                        Circle().fill(nudges ? Color(.systemGreen) : .clear).frame(width: 5, height: 5)
                     }
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
@@ -584,7 +581,7 @@ struct YourRemindersView: View {
                     HStack(spacing: 12) {
                         Image(systemName: line.symbol)
                             .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(Color.sage)
+                            .foregroundStyle(Color(.systemGreen))
                             .frame(width: 22)
                         Text(line.name).font(.system(.subheadline, design: .rounded)).lineLimit(1)
                         Spacer(minLength: 8)
@@ -640,12 +637,12 @@ struct YourRemindersView: View {
                                           ("Arrives on time", "clock.badge.checkmark")]
         return HStack(spacing: 8) {
             ForEach(tiles.indices, id: \.self) { i in
-                // The setup's option cards: a sage tint and edge on the picked one.
+                // The setup's option cards: a green tint and edge on the picked one.
                 let picked = i == selectedWhy
                 VStack(spacing: 8) {
-                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .regular)).foregroundStyle(Color.sage)
+                    Image(systemName: tiles[i].1).font(.system(size: 20, weight: .regular)).foregroundStyle(Color(.systemGreen))
                     Text(tiles[i].0).font(.system(.footnote, design: .rounded, weight: picked ? .medium : .regular))
-                        .foregroundStyle(picked ? Color.sage : .primary)
+                        .foregroundStyle(picked ? Color(.systemGreen) : .primary)
                         .multilineTextAlignment(.center).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 .frame(maxWidth: .infinity)
@@ -653,7 +650,7 @@ struct YourRemindersView: View {
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(picked ? okTint : Color(.secondarySystemGroupedBackground)))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(picked ? Color.sage.opacity(0.7) : .clear, lineWidth: 1.5))
+                    .stroke(picked ? Color(.systemGreen).opacity(0.7) : .clear, lineWidth: 1.5))
                 .contentShape(Rectangle())
                 .onTapGesture {
                     triggerSomeVibration(type: .light)
@@ -733,13 +730,13 @@ struct YourRemindersView: View {
                     pointRow(why.points[i])
                 }
                 if selectedWhy == 2 && (lateCombination || health.authorization == .denied || health.timeSensitive == .disabled) {
-                    // The setup's primary button: sage text on a soft sage tint with a sage edge.
+                    // The setup's primary button: green text on a soft green tint with a green edge.
                     Button { SettingsLinks.notifications() } label: {
                         Text("Fix in Settings").font(.system(.body, design: .rounded, weight: .medium))
-                            .foregroundStyle(Color.sage)
+                            .foregroundStyle(Color(.systemGreen))
                             .frame(maxWidth: .infinity).frame(minHeight: 48)
-                            .background(Capsule().fill(Color.sage.opacity(0.14)))
-                            .overlay(Capsule().stroke(Color.sage.opacity(0.45), lineWidth: 1))
+                            .background(Capsule().fill(Color(.systemGreen).opacity(0.14)))
+                            .overlay(Capsule().stroke(Color(.systemGreen).opacity(0.45), lineWidth: 1))
                     }
                     .buttonStyle(.plain)
                 }
@@ -757,7 +754,7 @@ struct YourRemindersView: View {
         }
     }
 
-    /// The setup's why-row: a light symbol (sage; the setup's orange when it needs a hand; grey for
+    /// The setup's why-row: a light symbol (green; the setup's orange when it needs a hand; grey for
     /// the neutral explainer), a title and a light detail.
     private func pointRow(_ p: Point) -> some View {
         HStack(alignment: .top, spacing: 14) {
@@ -836,9 +833,9 @@ struct YourRemindersView: View {
                         Text("Off card: \(nextCardText(.off))\nHeld card: \(nextCardText(.held))")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Preview the card: off") { previewCard = .off }
-                            .tint(Color.sage)
+                            .tint(Color(.systemGreen))
                         Button("Preview the card: held") { previewCard = .held }
-                            .tint(Color.sage)
+                            .tint(Color(.systemGreen))
                     }
                 }
                 .font(.system(.subheadline, design: .rounded))
