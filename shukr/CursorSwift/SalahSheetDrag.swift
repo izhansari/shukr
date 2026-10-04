@@ -6,15 +6,13 @@ import SwiftUI
 /// rides in the scroll content (1:1 with the finger), the circle is pinned to the page and lerps between its two resting
 /// places by the progress. `navPosition` is only the resting state, set when the scroll settles.
 ///
-/// Behind a dev switch (My Dev Stuff → "Salah sheet: follows the finger"; DEBUG on) so the owner can compare it with
-/// the pop on his phone. The pop path goes once he picks.
+/// The owner's names: "vertical live dragging" (this) vs "gesture completion drag" (the pop). He went back to the pop
+/// (2026-10-04); this stays behind the palette menu's "Salah list drag" and My Dev Stuff, off.
 enum SalahSheetDrag {
-    static let key = "salahSheetFollows"
-    #if DEBUG
-    static let defaultOn = true
-    #else
+    /// Off by default everywhere (owner, 2026-10-04, after round 3: "go back to gesture completion drag … it doesn't
+    /// feel right"). A new key, so an "on" saved by the test builds doesn't carry over. The palette menu still switches it.
+    static let key = "salahSheetFollows.v2"
     static let defaultOn = false
-    #endif
     /// Pull-to-refresh from closed: a release this far past the closed rest (decision salah-drag-tradeoffs B).
     static let refreshPull: CGFloat = 60
     /// The scroll between the rests, as a share of the page's height: the list moves exactly this far with the finger,
