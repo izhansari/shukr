@@ -1056,13 +1056,18 @@ struct TasbeehCountView: View { // YEHSIRRR we got purples doing same thing from
     //            .shadow(color: Color("NeuDarkShad"), radius: 1, x: 1, y: 1)
     //            .shadow(color: Color("NeuLightShad"), radius: 1, x: -1, y: -1)
     //            .frame(width: 7, height: 7)
+            // In the look's own material (the ring's palette: grey-blue / charcoal under the public look, the
+            // tasbeeh's own under Today's), not the fixed tasbeeh colours (owner: "fix the little neumorphic beads to
+            // match our color palette").
+            let palette = theme.ringPalette
             Circle()
-                .fill(Color("bgColor")
-                    .shadow(.inner(color: Color("NeuDarkShad"), radius: 1, x: -1, y: -1))
-                    .shadow(.inner(color: Color("NeuLightShad"), radius: 1, x: 1, y: 1))
+                .fill(palette.surface
+                    .shadow(.inner(color: palette.shade, radius: 1, x: -1, y: -1))
+                    .shadow(.inner(color: palette.light, radius: 1, x: 1, y: 1))
                 )
                 .frame(width: 7, height: 7)
         }
+        @Environment(\.circleTheme) private var theme
     }
 
 }
