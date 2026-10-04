@@ -2924,13 +2924,32 @@ struct tasbeehView: View {
         static let resumeHeight: CGFloat = 40
         static let resumePadding: CGFloat = 14
         static let barHeight: CGFloat = 56
+        /// The two symbols' own widths at their sizes (measured from the symbols, not guessed).
+        static let pauseWidth: CGFloat = symbolWidth("pause.fill", 24, .bold, fallback: 20)
+        static let chevronWidth: CGFloat = symbolWidth("chevron.left", 15, .semibold, fallback: 9)
+        private static func symbolWidth(_ name: String, _ size: CGFloat, _ weight: UIImage.SymbolWeight,
+                                        fallback: CGFloat) -> CGFloat {
+            UIImage(systemName: name, withConfiguration: UIImage.SymbolConfiguration(pointSize: size, weight: weight))?
+                .size.width ?? fallback
+        }
 
         var body: some View {
             Button(action: action) {
                 HStack(spacing: 4) {
-                    Image(systemName: paused ? "chevron.left" : "pause.fill")
-                        .font(.system(size: paused ? 15 : 24, weight: paused ? .semibold : .bold))
-                        .contentTransition(.symbolEffect(.replace))
+                    // The two symbols crossfade in one slot, each at its own fixed size: the symbol-replace effect
+                    // shrank ⏸ (its bars thinning as the font size moved) and then popped a tiny ‹ in — a hiccup at
+                    // ~0.4 s on the owner's phone. The slot narrows from ⏸'s width to ‹'s.
+                    ZStack {
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 24, weight: .bold))
+                            .opacity(paused ? 0 : 1)
+                            .scaleEffect(paused ? 0.6 : 1)
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .semibold))
+                            .opacity(paused ? 1 : 0)
+                            .scaleEffect(paused ? 1 : 0.6)
+                    }
+                    .frame(width: paused ? Self.chevronWidth : Self.pauseWidth)
                     if paused {
                         Text("Resume")
                             .font(.system(size: 17, weight: .medium, design: .rounded))
@@ -2964,7 +2983,7 @@ struct tasbeehView: View {
         /// The paused capsule's layout alone (no fill): the pause screen keeps its room with it, unseen.
         static var resumeLabel: some View {
             HStack(spacing: 4) {
-                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold)).frame(width: chevronWidth)
                 Text("Resume").font(.system(size: 17, weight: .medium, design: .rounded)).fixedSize()
             }
             .padding(.horizontal, resumePadding)
