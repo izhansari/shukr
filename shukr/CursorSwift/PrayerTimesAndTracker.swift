@@ -49,6 +49,8 @@ struct PrayerTimesView: View {
     @State private var live = PagerLiveState()
     @State private var isDraggingVertically: Bool? = nil   // axis of the current pager drag
     @GestureState private var pagerDragActive = false      // a finger on the pager's drag (resets on cancel too)
+    /// The Salah sheet follows the finger (SalahSheetDrag): the sheet is its own ScrollView, and this gesture only locks the axis.
+    @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
 
     // MARK: - Horizontal pager
     // Three pages side by side in a native paging ScrollView: Zikr | Main | Settings.
@@ -92,9 +94,7 @@ struct PrayerTimesView: View {
     private func goToSalahForMorningCard() {
         guard SleepMorning.pendingID != nil else { return }
         sharedState.go(to: .main, animated: false)   // in this turn: the curtain's snapshot is next
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { sharedState.navPosition = .main }
+        SalahSheetDrag.closeQuietly(sharedState)
     }
 
     /// Sleep mode ended a session: once nothing is over the Salah page, go to it (circle showing) and
@@ -113,9 +113,7 @@ struct PrayerTimesView: View {
         guard await stage.until(deadline: Self.morningCardDeadline, { stage.sceneActive && CircleCover.nothingOverCircle }),
               morningSession == nil, SleepMorning.pendingID != nil, SleepMorning.isArmed,
               let session = SleepMorning.pending(in: context) else { return }
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { sharedState.navPosition = .main }
+        SalahSheetDrag.closeQuietly(sharedState)
         // The card draws round the circle's frame: mount it once the pager rests on Salah (at once — the page change
         // is quiet — but measured, not guessed: audit D, finding 2).
         await sharedState.navigate(to: .main, animated: false)
@@ -434,7 +432,7 @@ struct PrayerTimesView: View {
                     }
                 }
                 if isDraggingVertically == true {
-                    guard sharedState.horizontalPage == .main else { return }
+                    guard sharedState.horizontalPage == .main, !sheetFollows else { return }
                     let nudged = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
                     live.pull = showBottom ? max(0, nudged) : nudged   // no upward nudge once open
                 }
@@ -447,7 +445,7 @@ struct PrayerTimesView: View {
                 // chevron's nudge settling.
                 withAnimation(CircleMotion.page) {
                     live.pull = 0
-                    guard vertical, sharedState.horizontalPage == .main else { return }
+                    guard vertical, sharedState.horizontalPage == .main, !sheetFollows else { return }
                     let draggedDown = value.translation.height > threshold
                     let draggedUp = value.translation.height < -threshold
                     switch sharedState.navPosition {
@@ -1245,9 +1243,38 @@ struct PrayerTimesView: View {
             .compactMap { ($0 as? UIWindowScene)?.keyWindow?.safeAreaInsets.bottom }
             .first ?? 34
 
+        @AppStorage(SalahSheetDrag.key) private var follows = SalahSheetDrag.defaultOn
+        /// The following sheet's measurements: the circle's and the list's sizes, and the resting places worked out
+        /// from them (SheetRests). Not per-frame.
+        @State private var circleSize: CGSize = .zero
+        @State private var listSize: CGSize = .zero
+        @State private var rests = SheetRests()
+        @State private var restsReady = false
+        @State private var sheetPosition = ScrollPosition(y: 0)
+
         var body: some View {
+            if follows { followingBody } else { poppingBody }
+        }
+
+        /// The circle, its box measured for the following sheet's resting layouts.
+        private var circle: some View {
+            ZStack {
+                MainCircleView(showQiblaMap: $showQiblaMap, showTasbeehPage: $showTasbeehPage)
+                    .geometryGroup()
+                    .onAppear {
+                        print("⭐️ prayerTimesView onAppear")
+                        viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
+                        viewModel.loadTodaysPrayerObjects()
+                        viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
+                    }
+            }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { if circleSize != $0 { circleSize = $0 } }
+        }
+
+        /// The pop (the switch off): the Spacer layout, the sheet inserted and removed with `navPosition`.
+        private var poppingBody: some View {
             let lost = CircleStage.shared.lost
-            VStack {
+            return VStack {
                 Spacer()
                 if showBottom {
                     Spacer()
@@ -1256,16 +1283,7 @@ struct PrayerTimesView: View {
                 // The lost page (circle step 3b): the circle risen, with room for its title above and what sharing
                 // location gives below, and the buttons at the bottom (LostWords / LostPageLayer measure them).
 
-                ZStack {
-                    MainCircleView(showQiblaMap: $showQiblaMap, showTasbeehPage: $showTasbeehPage)
-                        .geometryGroup()
-                        .onAppear {
-                            print("⭐️ prayerTimesView onAppear")
-                            viewModel.fetchPrayerTimes(cameFrom: "onAppear pulse circle Circles")
-                            viewModel.loadTodaysPrayerObjects()
-                            viewModel.checkToResetStreak() //viewModel.calculatePrayerStreak()
-                        }
-                }
+                circle
                 // The lost page (circle step 3b): room for its title above and what sharing location gives below, as
                 // padding — a height that animates; zero otherwise (an extra view in this stack added its spacing, and
                 // inserting / removing one twitched the circle at the hand-off).
@@ -1306,6 +1324,136 @@ struct PrayerTimesView: View {
             // circle jumping ~70 pt (Sami's audit, finding 2).
             .animation(RowMotion.resolved(rowMotionRaw).animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)),
                        value: PrayerListFold.shared.showDone)
+        }
+
+        // MARK: The sheet that follows the finger (SalahSheetDrag)
+
+        /// The page as it rests closed — the pop's closed layout, untouched, so the welcome still lands on it.
+        private func closedPage(lost: LostStage?) -> some View {
+            VStack {
+                Spacer()
+                circle
+                    .padding(.top, lost.map { $0.risen ? $0.titleHeight + 28 : 0 } ?? 0)
+                    .padding(.bottom, lost.map { $0.risen ? 28 + $0.reasonsHeight : 0 } ?? 0)
+                    .animation(lost.map { $0.risen ? CircleMotion.Lost.rise : CircleMotion.Lost.down }, value: lost?.risen)
+                Spacer()
+                Color.clear.frame(height: closedBottomReserve + (lost.map { $0.risen ? $0.buttonsHeight : 0 } ?? 0))
+            }
+        }
+
+        /// The pop's two layouts with empty boxes the circle's and the list's sizes: where each rests, open and closed.
+        private var restGhosts: some View {
+            let measure = { (key: WritableKeyPath<SheetRests, CGFloat>, top: Bool) in
+                { (frame: CGRect) in
+                    let v = top ? frame.minY : frame.midY
+                    if abs(rests[keyPath: key] - v) > 0.25 { rests[keyPath: key] = v }
+                }
+            }
+            return ZStack {
+                VStack {
+                    Spacer()
+                    Color.clear.frame(width: circleSize.width, height: circleSize.height)
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.closedCircleY, false))
+                    Spacer()
+                    Color.clear.frame(height: closedBottomReserve)
+                }
+                VStack {
+                    Spacer(); Spacer(); Spacer()
+                    Color.clear.frame(width: circleSize.width, height: circleSize.height)
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openCircleY, false))
+                    Spacer(); Spacer()
+                    Color.clear.frame(width: listSize.width, height: listSize.height)
+                        .onGeometryChange(for: CGRect.self, of: { $0.frame(in: .named(SalahSheetDrag.space)) }, action: measure(\.openListTop, true))
+                    Spacer()
+                    Color.clear.frame(height: bottomChromeHeight + theme.listFooterRoom)
+                }
+            }
+            .hidden()
+            .allowsHitTesting(false)
+        }
+
+        private var followingBody: some View {
+            let lost = CircleStage.shared.lost
+            return GeometryReader { geo in
+                let height = geo.size.height
+                let travel = max((height * SalahSheetDrag.travelShare).rounded(), 1)
+                // The open rest moving (the fold, the list's rows changing) glides, after the first measure.
+                let restMotion = restsReady ? RowMotion.resolved(rowMotionRaw)
+                    .animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)) : nil
+                ScrollView(.vertical) {
+                    ZStack(alignment: .top) {
+                        // The track: exactly `travel` of scroll beyond the page.
+                        Color.clear.frame(height: height + travel)
+                        if lost == nil {
+                            BottomSharedView(showDailyAyahView: $showDailyAyahView)
+                                .onGeometryChange(for: CGSize.self) { $0.size } action: { if listSize != $0 { listSize = $0 } }
+                                .modifier(SheetListFade(live: live))
+                                .opacity(CircleStage.shared.pageHidden ? 0 : 1)
+                                .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
+                                .offset(y: rests.openListTop + travel)
+                                .animation(restMotion, value: rests.openListTop)
+                        }
+                        closedPage(lost: lost)
+                            .frame(width: geo.size.width, height: height)
+                            .modifier(SheetPin(travel: travel, delta: rests.openCircleY - rests.closedCircleY))
+                            .animation(restMotion, value: rests.openCircleY - rests.closedCircleY)
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .scrollTargetBehavior(SheetSnap(travel: travel))
+                .scrollPosition($sheetPosition)
+                .modifier(SheetLock(live: live, lost: lost != nil))
+                .onScrollGeometryChange(for: CGFloat.self) { g in g.contentOffset.y + g.contentInsets.top } action: { old, new in
+                    live.sheetOffset = new
+                    if live.sheetTravel != travel { live.sheetTravel = travel }
+                    // The tick: the finger (or its coast) taking the sheet across halfway, like the pager's page tick.
+                    if live.sheetPhase == .interacting || live.sheetPhase == .decelerating,
+                       (old < travel / 2) != (new < travel / 2) {
+                        triggerSomeVibration(type: .light)
+                    }
+                }
+                .onScrollPhaseChange { old, new, context in
+                    live.sheetPhase = new
+                    let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top
+                    // Pulled down past the closed rest and let go: the location and the times again (LocationRefresh,
+                    // shown in the top bar).
+                    if old == .interacting, !showBottom, offset < -SalahSheetDrag.refreshPull {
+                        LocationRefresh.shared.run(viewModel)
+                        triggerSomeVibration(type: .light)
+                    }
+                    // Settled: the resting state, after the fact (the scroll's own layout pass: publish next turn).
+                    guard new == .idle else { return }
+                    let resting: SharedStateClass.ViewPosition = offset > travel / 2 ? .bottom : .main
+                    DispatchQueue.main.async {
+                        guard sharedState.navPosition != resting else { return }
+                        withAnimation(CircleMotion.page) { sharedState.navPosition = resting }
+                    }
+                }
+                .background { restGhosts }
+                .coordinateSpace(.named(SalahSheetDrag.space))
+                // Moved by code (the chevron, a widget, a demo, setup): the scroll goes there; the settle confirms it.
+                .onChange(of: sharedState.navPosition) { _, _ in rest(travel: travel, animated: true) }
+                .onChange(of: travel) { _, _ in rest(travel: travel, animated: false) }
+                .onAppear { rest(travel: travel, animated: false) }
+                .onChange(of: rests) { _, new in
+                    guard !restsReady, new.openListTop > 0 else { return }
+                    DispatchQueue.main.async { restsReady = true }
+                }
+            }
+        }
+
+        /// Scrolls the sheet to the rest `navPosition` names, unless it's there or a finger has it.
+        private func rest(travel: CGFloat, animated: Bool) {
+            guard live.sheetPhase == .idle || live.sheetPhase == .animating else { return }
+            let target: CGFloat = showBottom ? travel : 0
+            let quiet = SalahSheetDrag.takeQuiet()
+            guard abs(live.sheetOffset - target) > 0.5 else { return }
+            if animated, !quiet, UIApplication.shared.applicationState == .active {
+                withAnimation(CircleMotion.movement(CircleMotion.sheetSnap, reduced: reduceMotion)) { sheetPosition.scrollTo(y: target) }
+            } else {
+                var t = Transaction(); t.disablesAnimations = true
+                withTransaction(t) { sheetPosition.scrollTo(y: target) }
+            }
         }
     }
 
@@ -1363,7 +1511,10 @@ struct PrayerTimesView: View {
         static let titlePush: CGFloat = 150
         /// What follows the live scroll does it in `ChromeFollow` / `ChromeLeaves`: this body reads none of it, so it
         /// isn't re-run on every frame of a swipe (audit D, finding 7).
-        private func follow(_ role: ChromeFollow.Role) -> ChromeFollow { ChromeFollow(live: live, role: role) }
+        private func follow(_ role: ChromeFollow.Role) -> ChromeFollow {
+            ChromeFollow(live: live, role: role, sheetFollows: sheetFollows)
+        }
+        @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
 
         var body: some View {
             VStack(spacing: 0) {
@@ -1552,6 +1703,12 @@ struct PrayerTimesView: View {
         }
         let live: PagerLiveState
         let role: Role
+        /// The Salah sheet follows the finger (SalahSheetDrag): the sheet's pieces follow its live progress instead of
+        /// its resting state.
+        var sheetFollows = false
+
+        /// How open the sheet is, 0...1: live when it follows the finger, else the resting state.
+        private func sheet(_ open: Bool) -> CGFloat { sheetFollows ? live.sheetProgress : (open ? 1 : 0) }
 
         func body(content: Content) -> some View {
             /// How far onto the Zikr page we are, 0...1, live from the scroll offset.
@@ -1559,12 +1716,16 @@ struct PrayerTimesView: View {
             let (opacity, push, taps): (CGFloat, CGFloat, Bool) = switch role {
             case .salah(let push): (1 - zikr, zikr * push, zikr < 0.5)
             case .zikr(let push): (zikr, -(1 - zikr) * push, zikr > 0.5)
-            case .chevron(let open): (open ? 0 : 1 - zikr, 0, !open && zikr < 0.5)
-            case .doneFooter(let open): (open ? 1 - zikr : 0, 0, open && zikr < 0.5)
-            case .bottomBar(let open): (open ? 1 : zikr, 0, open || zikr > 0.5)
+            case .chevron(let open): ((1 - sheet(open)) * (1 - zikr), 0, sheet(open) < 0.5 && zikr < 0.5)
+            case .doneFooter(let open): (sheet(open) * (1 - zikr), 0, sheet(open) >= 0.5 && zikr < 0.5)
+            case .bottomBar(let open): (max(sheet(open), zikr), 0, sheet(open) >= 0.5 || zikr > 0.5)
             }
+            // "N done" rides up under the list while a finger brings the sheet (its fixed spot is the open rest).
+            let rise: CGFloat = if case .doneFooter = role, sheetFollows {
+                (1 - live.sheetProgress) * live.sheetTravel
+            } else { 0 }
             content
-                .offset(x: push)
+                .offset(x: push, y: rise)
                 .opacity(Double(opacity))
                 .allowsHitTesting(taps)
         }
@@ -2554,6 +2715,14 @@ struct ChevronTap2: View {
     /// once a drag is decided vertical (so sideways drift can't turn into a page swipe) and by
     /// the post-salah pill while a finger is on it. Cleared on release.
     var pagerLocked = false
+    /// The Salah sheet that follows the finger (SalahSheetDrag): its scroll from the closed rest in points (negative
+    /// while pulled down, past `sheetTravel` while pushed up), the distance between the rests, and its scroll phase
+    /// (the pager is locked while it moves).
+    var sheetOffset: CGFloat = 0
+    var sheetTravel: CGFloat = 1
+    var sheetPhase: ScrollPhase = .idle
+    /// 0 closed … 1 open.
+    var sheetProgress: CGFloat { min(max(sheetOffset / max(sheetTravel, 1), 0), 1) }
 }
 
 
@@ -2587,7 +2756,7 @@ struct PagerBackdrop: View {
 struct PagerLock: ViewModifier {
     var live: PagerLiveState
     func body(content: Content) -> some View {
-        content.scrollDisabled(live.pagerLocked)
+        content.scrollDisabled(live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating)
     }
 }
 

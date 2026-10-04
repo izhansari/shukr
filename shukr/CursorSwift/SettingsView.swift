@@ -30,6 +30,7 @@ struct SettingsView: View {
     @AppStorage("didShowAlarmSetupAlert") private var didShowAlarmSetupAlert: Bool = false
     @AppStorage("alarmEnabled", store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) var alarmEnabled: Bool = false
     #if DEBUG
+    @AppStorage(SalahSheetDrag.key) private var salahSheetFollows = SalahSheetDrag.defaultOn
     @AppStorage(WidgetSpeedTest.stillRingKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var widgetStillRing = false
     @AppStorage(WidgetSpeedTest.fewestEntriesKey, store: UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")) private var widgetFewestEntries = false
     #endif
@@ -493,6 +494,11 @@ struct SettingsView: View {
                             Toggle("Fewest updates", isOn: $widgetFewestEntries)
                                 .onChange(of: widgetFewestEntries) { WidgetCenter.shared.reloadAllTimelines() }
                         } header: { Text("Dev · Widget") }
+
+                        Section {
+                            // The Salah sheet: the finger drags it (a ScrollView) or a swipe pops it (the old way).
+                            Toggle("Salah sheet: follows the finger", isOn: $salahSheetFollows)
+                        } header: { Text("Dev · Salah sheet") }
 
                         Section {
                             Toggle("Compass debug (under the Salah circle)", isOn: $compassDebug)

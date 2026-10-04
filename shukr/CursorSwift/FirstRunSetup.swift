@@ -641,7 +641,7 @@ struct LostPageLayer: View {
         stage.preview = location.lostPreview
         CircleCover.set("lost", true)   // no reminders card / qibla buzz meanwhile (not over the circle: CircleCover)
         if WelcomeTarget.playing || reduceMotion || !CircleStage.shared.sceneActive {
-            quietly { sharedState.navPosition = .main }
+            SalahSheetDrag.closeQuietly(sharedState)
             sharedState.go(to: .main, animated: false)
         } else if sharedState.horizontalPage != .main || sharedState.navPosition != .main {
             // Open on another page or with the list up: back to the circle the usual way first, and on once it's there

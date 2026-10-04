@@ -52,6 +52,9 @@ enum CircleMotion {
     /// A page arriving: the pager's programmatic scroll, the salah sheet popping up and down, the bottom bar's moves
     /// (it was typed 10 times as `.spring(response: 0.35, dampingFraction: 0.85)`).
     static let page = Animation.spring(response: 0.35, dampingFraction: 0.85)
+    /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
+    /// release is the scroll view's own coast.
+    static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)
     /// The page round the circle (the chrome, the list) coming back after the opening or the lost page; the welcome's
     /// own morph runs the same length so the two meet.
     static let pageRevealDuration: Double = 0.45
