@@ -373,6 +373,11 @@ struct FlickAway: ViewModifier {
     var onHold: (Bool) -> Void = { _ in }
     @State private var drag: CGSize = .zero
     @State private var gone = false
+    /// A finger on it; SwiftUI resets it when the drag ends or is cancelled (audit B14: a cancelled drag kept the pager
+    /// locked and the pill's countdown held).
+    @GestureState private var touching = false
+    /// A flick took: it's on its way out (set at once — `gone` waits for the fade).
+    @State private var leaving = false
     @Environment(PagerLiveState.self) private var live: PagerLiveState?
 
     private func pulled(_ d: CGSize) -> CGSize {
@@ -388,6 +393,7 @@ struct FlickAway: ViewModifier {
             .opacity(gone ? 0 : 1 - 0.85 * min(Double(hypot(drag.width, drag.height)) / 140, 1))
             .simultaneousGesture(
                 DragGesture(minimumDistance: 6)
+                    .updating($touching) { _, on, _ in on = true }
                     .onChanged { value in
                         guard !gone else { return }
                         if drag == .zero { onHold(true) }
@@ -400,6 +406,7 @@ struct FlickAway: ViewModifier {
                         let t = value.predictedEndTranslation
                         if hypot(value.translation.width, value.translation.height) > 60 || hypot(t.width, t.height) > 120 {
                             triggerSomeVibration(type: .light)
+                            leaving = true
                             // Fades where it is, then goes with no animation of its own (when the fade is done).
                             Task { @MainActor in
                                 await CircleMotion.animate(.easeOut(duration: CircleMotion.flickAwayDuration)) { gone = true }
@@ -410,6 +417,13 @@ struct FlickAway: ViewModifier {
                         }
                     }
             )
+            // Let go without an end (cancelled): unlock the pager, the pill's countdown runs again, it slides back.
+            .onChange(of: touching) { _, on in
+                guard !on, !gone, !leaving else { return }
+                if live?.pagerLocked == true { live?.pagerLocked = false }
+                onHold(false)
+                if drag != .zero { withAnimation(CircleMotion.flickBack) { drag = .zero } }
+            }
     }
 }
 

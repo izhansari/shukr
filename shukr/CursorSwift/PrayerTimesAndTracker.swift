@@ -48,6 +48,7 @@ struct PrayerTimesView: View {
     /// this screen's body is not re-evaluated on every finger move (that was the old lag).
     @State private var live = PagerLiveState()
     @State private var isDraggingVertically: Bool? = nil   // axis of the current pager drag
+    @GestureState private var pagerDragActive = false      // a finger on the pager's drag (resets on cancel too)
 
     // MARK: - Horizontal pager
     // Three pages side by side in a native paging ScrollView: Zikr | Main | Settings.
@@ -404,13 +405,16 @@ struct PrayerTimesView: View {
     // iOS 27). A tap never moves 5 pt, so rows get it; drags still lock early enough. Vertical → `live.pagerLocked` (the pager is
     // `.scrollDisabled` while it's set) so sideways drift during a vertical drag can never
     // turn into a page swipe; horizontal → this gesture stays out of it. Cleared on release.
-    private var abstractedDragGesture: _EndedGesture<_ChangedGesture<DragGesture>> {
+    private var abstractedDragGesture: some Gesture {
         let resistanceFactor = 0.5
         let maxOffset: CGFloat = 20
         let threshold: CGFloat = 30
         let decideAt: CGFloat = 6
 
         return DragGesture(minimumDistance: 5, coordinateSpace: .global)
+            // True while a finger is on it; SwiftUI puts it back on its own when the drag ends *or is cancelled*
+            // (`pagerDragReleased` — audit B14: a cancelled drag never reached onEnded and left the pager dead).
+            .updating($pagerDragActive) { _, active, _ in active = true }
             .onChanged { value in
                 if isDraggingVertically == nil { // decide the axis once per drag
                     let t = value.translation
@@ -457,6 +461,14 @@ struct PrayerTimesView: View {
                     }
                 }
             }
+    }
+
+    /// The pager's drag let go — ended or cancelled: unlock the pager and settle the nudge. After an ended drag
+    /// onEnded has done this already (nothing changes); after a cancelled one, nothing else would.
+    private func pagerDragReleased() {
+        isDraggingVertically = nil
+        if live.pagerLocked { live.pagerLocked = false }
+        if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
     }
 
     var body: some View {
@@ -545,6 +557,7 @@ struct PrayerTimesView: View {
                 }
             }
             .simultaneousGesture(abstractedDragGesture)
+            .onChange(of: pagerDragActive) { _, active in if !active { pagerDragReleased() } }
             .onScrollPhaseChange { _, phase, context in
                 live.pagerPhase = phase
                 let geometry = context.geometry
