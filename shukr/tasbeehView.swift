@@ -53,7 +53,8 @@ struct tasbeehView: View {
         guard ringAbove, ringSize.height > 0, ringHomeMid != .zero, !ringToCentre else { return 0 }
         if savedSession != nil {
             guard cardsBottomTop > 0 else { return 0 }
-            return min(0, cardsBottomTop - Self.resultsRingClearance - (ringHomeMid.y + ringSize.height / 2))
+            let tilesTop = cardsBottomTop - pauseScreen_StatsSettingsBG.resultsTilesLift   // they rise on the results
+            return min(0, tilesTop - Self.resultsRingClearance - (ringHomeMid.y + ringSize.height / 2))
         }
         if paused && pauseSlot.height > 0 { return pauseSlot.midY - ringHomeMid.y }
         return 0
@@ -1831,6 +1832,8 @@ struct tasbeehView: View {
         @State private var wellRoom: CGFloat = 148
         /// The well's scroll: at the top for a new zikr or a new height.
         @State private var wellScroll = ScrollPosition(edge: .top)
+        /// The zikr's own page, opened by a tap on its card.
+        @State private var showZikrPage = false
         @State private var bottomInset: CGFloat = 0
         /// The page's height inside the safe area: how much room the gaps get (`airScale`).
         @State private var pageHeight: CGFloat = 900
@@ -2006,9 +2009,17 @@ struct tasbeehView: View {
                     }
                     .padding(.top, 12)
                     // A tap among the zikr's name, its media and its text never resumes (only the page round them does):
-                    // a near-miss on ▶︎ resumed the session (owner).
+                    // a near-miss on ▶︎ resumed the session (owner). A tap on the card opens the zikr's own page to edit
+                    // it (decision pause-zikr-edit A); its name, ▶︎ and photo keep their own taps.
                     .contentShape(Rectangle())
-                    .onTapGesture {}
+                    .onTapGesture {
+                        guard mantra != nil, !sharedState.isDoingPostNamazZikr else { return }
+                        triggerSomeVibration(type: .light)
+                        showZikrPage = true
+                    }
+                    .sheet(isPresented: $showZikrPage) {
+                        if let mantra { MantraEditorView(mantra: mantra, inSession: true) }
+                    }
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
                     // Whatever room is left over on a tall phone sits here, between the card and the tiles — only after
@@ -2071,27 +2082,6 @@ struct tasbeehView: View {
                     PauseResumeButton.resumeLabel
                         .hidden()
                         .accessibilityHidden(true)
-                    // After a sleep finish: Keep counting where ‹ Resume is — it's resuming (owner moved Done back to
-                    // the bottom; this sat in the switches' slot).
-                    if let keepCounting = results?.keepCounting {
-                        Button(action: keepCounting) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
-                                Text("Keep counting").font(.system(size: 17, weight: .medium, design: .rounded))
-                            }
-                            .foregroundStyle(Color.sage)
-                            .padding(.horizontal, PauseResumeButton.resumePadding)
-                            .frame(height: PauseResumeButton.resumeHeight)
-                            .background(Capsule().fill(Color.sage.opacity(0.10)))
-                            .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
-                            .fixedSize()
-                            .padding(.vertical, 2)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .modifier(SoftCardsFade(shown: finished && resultsIn, delay: 0.1))
-                        .allowsHitTesting(finished && resultsIn)
-                    }
                 }
                 Spacer(minLength: 4)
                 // The session between them (never over them: centred on the page it ran into ‹ Resume on a 6.1"
@@ -2369,6 +2359,10 @@ struct tasbeehView: View {
                 }
                 .frame(height: Self.statTileHeight * 2 + 10)
                 .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { onBottomTop($0) }
+                // On the results the tiles rise a little, away from the button under them (owner: "let the different
+                // sections breathe"); measured before, so the ring's room is counted from where they were.
+                .offset(y: finished && resultsIn ? -Self.resultsTilesLift : 0)
+                .animation(.easeInOut(duration: CircleMotion.standard), value: finished && resultsIn)
 
                 // The chips while paused; after a sleep finish, Keep counting in their place. More air above them than
                 // the other gaps (owner: "more space to breathe between time text and feature buttons").
@@ -2383,17 +2377,29 @@ struct tasbeehView: View {
                         // Done back at the bottom, the capsule it was (owner: "the done button can still stay at the
                         // bottom like how we had it before"), View zikr history under it — in the switches' room.
                         VStack(spacing: 2) {
+                            // After a sleep finish the button is Keep counting, not Done (owner: "if they're up they
+                            // prolly wanna keep counting. if they done reading, they prolly asleep").
                             Button {
-                                triggerSomeVibration(type: .success)
-                                results.done()
+                                if let keepCounting = results.keepCounting {
+                                    keepCounting()
+                                } else {
+                                    triggerSomeVibration(type: .success)
+                                    results.done()
+                                }
                             } label: {
-                                Text("Done")
-                                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                    .foregroundStyle(Color.sage)
-                                    .frame(width: 210, height: 44)
-                                    .background(Capsule().fill(Color.sage.opacity(0.08)))
-                                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
-                                    .contentShape(Capsule())
+                                Group {
+                                    if results.keepCounting != nil {
+                                        Label("Keep counting", systemImage: "play.fill")
+                                    } else {
+                                        Text("Done")
+                                    }
+                                }
+                                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.sage)
+                                .frame(width: 210, height: 44)
+                                .background(Capsule().fill(Color.sage.opacity(0.08)))
+                                .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
+                                .contentShape(Capsule())
                             }
                             .buttonStyle(.plain)
                             Button {
@@ -2432,6 +2438,8 @@ struct tasbeehView: View {
         }
 
         private static let statTileHeight: CGFloat = 52
+        /// How far the tiles rise on the results.
+        static let resultsTilesLift: CGFloat = 24
         /// The well shows once its name row and a first line of text have room (lower, the text was cut off).
         private static let wellShowsAt: CGFloat = 100
 

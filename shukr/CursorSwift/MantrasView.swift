@@ -773,8 +773,13 @@ struct MantraEditorView: View {
 
     /// Create only: called with the new zikr once it's saved (the picker selects it).
     var onCreate: ((MantraModel) -> Void)? = nil
+    /// Opened from a running session's pause screen (a tap on the zikr's card — decision pause-zikr-edit A): no task
+    /// rows (a tap there would start another session) and no Delete (the session is counting this zikr).
+    var inSession = false
 
-    init(mantra: MantraModel?, initialName: String = "", onCreate: ((MantraModel) -> Void)? = nil) {
+    init(mantra: MantraModel?, initialName: String = "", inSession: Bool = false,
+         onCreate: ((MantraModel) -> Void)? = nil) {
+        self.inSession = inSession
         self.mantra = mantra
         self.onCreate = onCreate
         _name = State(initialValue: mantra?.name ?? initialName.trimmingCharacters(in: .whitespacesAndNewlines))
@@ -892,18 +897,20 @@ struct MantraEditorView: View {
 
                     // Its tasks as the same rows as Your tasks (the Zikr tab reorganisation): tap → "Start?",
                     // hold → the task's options; + Add task opens the steps on the goal.
-                    MantraTaskRows(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
-                        // Close this page; the host waits until what covers the pager has really gone, goes to the
-                        // Zikr page, and its wheel starts it (it was a guessed 0.35 s — audit E5).
-                        ZikrAudio.stopAll()
-                        dismiss()
-                        ZikrFocus.start(task.id.uuidString, resume: resume)
+                    if !inSession {
+                        MantraTaskRows(mantra: mantra, onNewTask: { creatingTask = true }) { task, resume in
+                            // Close this page; the host waits until what covers the pager has really gone, goes to the
+                            // Zikr page, and its wheel starts it (it was a guessed 0.35 s — audit E5).
+                            ZikrAudio.stopAll()
+                            dismiss()
+                            ZikrFocus.start(task.id.uuidString, resume: resume)
+                        }
                     }
                     MantraSessionsSection(mantra: mantra, editing: $sessionsEditing, selected: $selectedSessions,
                                           sessionToOpen: $sessionToOpen, sessionToDelete: $sessionToDelete)
 
                     // Only while editing, never for a built-in (owner, 2026-09-27).
-                    if isEditing && !mantra.isBuiltIn {
+                    if isEditing && !mantra.isBuiltIn && !inSession {
                         Section {
                             Button(role: .destructive) {
                                 deleteTitle = "Delete “\(mantra.name)”?"
