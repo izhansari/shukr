@@ -1445,6 +1445,7 @@ struct PrayerTimesView: View {
                 .onScrollPhaseChange { old, new, context in
                     live.sheetPhase = new
                     let offset = context.geometry.contentOffset.y + context.geometry.contentInsets.top - dead
+                    if new == .interacting { sheetScroll.stop() }   // a finger takes it, mid-spring or not
                     if old == .interacting, new != .interacting {
                         // Pulled down past the closed rest and let go: the location and the times again
                         // (LocationRefresh, shown in the top bar).
@@ -1454,26 +1455,24 @@ struct PrayerTimesView: View {
                         }
                         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
                         if live.refreshReach != 0 { live.refreshReach = 0 }
-                        // The let-go: pick the rest from the finger's speed, then UIKit's animated scroll takes it there
-                        // — one time for every let-go, and a new finger stops it where it is (SheetRelease).
-                        let open = SheetRelease.open(at: offset, velocity: sheetScroll.releaseVelocity, travel: travel)
+                        // The let-go: pick the rest from the finger's speed, then spring there starting at that speed
+                        // (SheetScrollHandle.spring: no stop between the finger and the landing), and a new finger
+                        // takes it at any frame.
+                        let velocity = sheetScroll.releaseVelocity
+                        let open = SheetRelease.open(at: offset, velocity: velocity, travel: travel)
                         live.sheetPick = open
                         if open != (offset > travel / 2) { triggerSomeVibration(type: .light) }
-                        settle(open: open, travel: travel, dead: dead)
+                        settle(open: open, velocity: velocity, travel: travel)
                         return
                     }
                     // Settled: the resting state, after the fact (the scroll's own layout pass: publish next turn).
-                    guard new == .idle else { return }
+                    guard new == .idle, !sheetScroll.springing else { return }
                     // Never left between the rests: whatever stopped it there goes on to where the let-go was going.
                     if offset > 0.5, offset < travel - 0.5 {
-                        settle(open: live.sheetPick, travel: travel, dead: dead)
+                        settle(open: live.sheetPick, velocity: 0, travel: travel)
                         return
                     }
-                    let resting: SharedStateClass.ViewPosition = offset > travel / 2 ? .bottom : .main
-                    DispatchQueue.main.async {
-                        guard sharedState.navPosition != resting else { return }
-                        withAnimation(CircleMotion.page) { sharedState.navPosition = resting }
-                    }
+                    noteResting(offset: offset, travel: travel)
                 }
                 .background { restGhosts }
                 .coordinateSpace(.named(SalahSheetDrag.space))
@@ -1488,12 +1487,21 @@ struct PrayerTimesView: View {
             }
         }
 
-        /// Takes the sheet to a rest (a let-go, or a stop between the rests), next turn, with UIKit's animated scroll
-        /// (SheetScrollHandle: one time for every let-go, and a finger stops it); not if a finger took it again.
-        private func settle(open: Bool, travel: CGFloat, dead: CGFloat) {
+        /// Springs the sheet to a rest from `velocity` (a let-go, or a stop between the rests); navPosition follows
+        /// once it rests.
+        private func settle(open: Bool, velocity: CGFloat, travel: CGFloat) {
+            guard live.sheetPhase != .interacting else { return }
+            sheetScroll.spring(by: (open ? travel : 0) - live.sheetOffset, velocity: velocity) {
+                noteResting(offset: open ? travel : 0, travel: travel)
+            }
+        }
+
+        /// The resting state, after the fact (published next turn: a scroll's layout pass doesn't reach every reader).
+        private func noteResting(offset: CGFloat, travel: CGFloat) {
+            let resting: SharedStateClass.ViewPosition = offset > travel / 2 ? .bottom : .main
             DispatchQueue.main.async {
-                guard live.sheetPhase != .interacting else { return }
-                sheetScroll.scroll(by: (open ? travel : 0) - live.sheetOffset, animated: true)
+                guard sharedState.navPosition != resting else { return }
+                withAnimation(CircleMotion.page) { sharedState.navPosition = resting }
             }
         }
 

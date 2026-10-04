@@ -142,7 +142,7 @@ struct SheetRests: Equatable {
 /// stops"): a SwiftUI-animated `scrollTo` started at the let-go was cut off ~35 ms later by the scroll view's own
 /// zero-length coast finishing, and the sheet stopped between the rests. UIKit's animated `setContentOffset` is one
 /// fixed time whatever the flick, and a new finger stops it where it is.
-final class SheetScrollHandle {
+final class SheetScrollHandle: NSObject {
     weak var view: UIScrollView?
     /// The finger's speed, from the scroll's own samples while it's down (the pan's velocity had already reset by the
     /// time the let-go reached the page): content points per millisecond, positive = toward open.
@@ -169,7 +169,70 @@ final class SheetScrollHandle {
     /// `adjustedContentInset` disagreed by 53 pt, which left the closed page in the dead room).
     func scroll(by delta: CGFloat, animated: Bool) {
         guard let view, abs(delta) > 0.25 else { return }
-        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: view.contentOffset.y + delta), animated: animated)
+        if animated { spring(by: delta, velocity: 0); return }
+        stop()
+        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: view.contentOffset.y + delta), animated: false)
+    }
+
+    // MARK: the landing spring (owner's recording, 2026-10-04: "it like hits a snag")
+    // UIKit's animated setContentOffset starts from a standstill (ease in): after a fast flick the list stopped dead for
+    // ~4 frames, then eased off. This spring starts at the finger's speed and runs the page's spring (CircleMotion.page:
+    // response 0.35, damping 0.85), stepped each frame on the scroll view itself, so a finger can take it at any frame.
+
+    private var link: CADisplayLink?
+    private var target: CGFloat = 0     // contentOffset.y
+    private var position: CGFloat = 0   // contentOffset.y, kept here (the view rounds it to pixels: read back, the
+                                        // spring never got within 0.3 pt and crept on)
+    private var speed: CGFloat = 0      // points per second
+    private var started: CFTimeInterval = 0
+    private var onRest: (() -> Void)?
+    static let response: CGFloat = 0.35
+    static let damping: CGFloat = 0.85
+    var springing: Bool { link != nil }
+
+    /// Springs the scroll by `delta` points, starting at `velocity` (points per millisecond, as `releaseVelocity`).
+    func spring(by delta: CGFloat, velocity: CGFloat, onRest: (() -> Void)? = nil) {
+        guard let view else { return }
+        stop()
+        // Stop UIKit's own coast where it is.
+        view.setContentOffset(view.contentOffset, animated: false)
+        position = view.contentOffset.y
+        target = position + delta
+        speed = velocity * 1000
+        started = CACurrentMediaTime()
+        self.onRest = onRest
+        let link = CADisplayLink(target: self, selector: #selector(step(_:)))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    /// A finger took it (or code moved it): no more spring.
+    func stop() {
+        link?.invalidate()
+        link = nil
+        onRest = nil
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        guard let view else { stop(); return }
+        let dt = CGFloat(min(max(link.targetTimestamp - link.timestamp, 1.0 / 240), 1.0 / 30))
+        let omega = 2 * .pi / Self.response
+        let k = omega * omega, c = 2 * Self.damping * omega
+        var x = position - target
+        for _ in 0..<4 {   // four small steps a frame: steady at any refresh rate
+            let h = dt / 4
+            speed += (-k * x - c * speed) * h
+            x += speed * h
+        }
+        position = target + x
+        if (abs(x) < 1 && abs(speed) < 30) || CACurrentMediaTime() - started > 1.5 {
+            view.contentOffset.y = target
+            let done = onRest
+            stop()
+            done?()
+        } else {
+            view.contentOffset.y = position
+        }
     }
 }
 
