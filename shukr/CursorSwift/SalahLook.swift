@@ -354,7 +354,7 @@ struct SalahLookSwitcher: View {
 /// the spot, one tap away (owner, 2026-10-01: "make a new button for play in the top right. i hate the nested
 /// selection"). Visual only — nothing marked, moved or saved (SalahLookPlay).
 struct SalahPlayButton: View {
-    @EnvironmentObject private var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) private var sharedState
     @EnvironmentObject private var location: EnvLocationManager
 
     var body: some View {

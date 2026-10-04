@@ -59,7 +59,7 @@ struct tasbeehView: View {
         return 0
     }
     @Environment(\.modelContext) private var context
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     
     // AppStorage properties
     @AppStorage("inactivityToggle") var toggleInactivityTimer = false
@@ -1504,7 +1504,7 @@ struct tasbeehView: View {
     /// not for a task's session, which stays on its task's mantra), the shared bento, and Done.
     struct ResultsView: View {
         @Environment(\.modelContext) private var context
-        @EnvironmentObject var sharedState: SharedStateClass
+        @Environment(SharedStateClass.self) var sharedState
         @Binding var isPresented: Bool
         let savedSession: SessionDataModel
         /// Only after a sleep finish: carry the same session on (he was only dozing).
@@ -1758,7 +1758,7 @@ struct tasbeehView: View {
                 tasbeehRate: "10m 4s"
             )
         )
-        .environmentObject(SharedStateClass())
+        .environment(SharedStateClass())
     }
 
     
@@ -1778,7 +1778,7 @@ struct tasbeehView: View {
         @State private var setsPageTurnsOn = false
         @State private var showSleepIntro = false
         @State private var showGoalIntro = false
-        @EnvironmentObject var sharedState: SharedStateClass
+        @Environment(SharedStateClass.self) var sharedState
         let paused: Bool
         let mantra: MantraModel?
         let tasbeeh: Int
@@ -3439,7 +3439,7 @@ struct SoftCardsFade: ViewModifier {
 /// history" and, after the session that kept it, the streak.
 struct SessionDoneFace: View {
     @Environment(\.modelContext) private var context
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     let session: SessionDataModel
 
     @State private var showMantraPicker = false
@@ -3788,11 +3788,11 @@ struct ZikrBento: View {
 }
 
 #Preview {
-    @Previewable @StateObject var sharedState = SharedStateClass()
+    @Previewable @State var sharedState = SharedStateClass()
     @Previewable @State var dummyBool: Bool = true
 
     tasbeehView(isPresented: $dummyBool)
-        .environmentObject(sharedState) // Inject shared state into the environment
+        .environment(sharedState) // Inject shared state into the environment
 }
 
 /// Asks a running tasbeeh session to pause (its normal pause screen), e.g. before the widget's "Unmark?"

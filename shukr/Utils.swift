@@ -3235,7 +3235,7 @@ private struct FloatingSymbols: View {
 
 struct TopBar: View {
     @EnvironmentObject var viewModel: PrayerViewModel
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
     
     @AppStorage("prayerStreak") var prayerStreak: Int = 0 //prayerstreak_flag

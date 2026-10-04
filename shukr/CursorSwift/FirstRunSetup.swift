@@ -581,7 +581,7 @@ struct LostWords: View {
 /// the acknowledgement and the hand-off when it comes back (circle step 3b). On PrayerTimesView, over the page.
 struct LostPageLayer: View {
     @EnvironmentObject private var location: EnvLocationManager
-    @EnvironmentObject private var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) private var sharedState
     @EnvironmentObject private var viewModel: PrayerViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pickingCity = false

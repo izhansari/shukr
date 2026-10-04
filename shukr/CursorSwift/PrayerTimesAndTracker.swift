@@ -16,7 +16,7 @@ import WidgetKit
 // MARK: - Prayer Times View
 
 struct PrayerTimesView: View {
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @EnvironmentObject var viewModel: PrayerViewModel
     @Environment(\.presentationMode) var presentationMode
     @Environment(\.modelContext) var context
@@ -1194,7 +1194,7 @@ struct PrayerTimesView: View {
     /// owner tried follow-the-finger versions (a custom gesture, then a native ScrollView) and
     /// asked for this pop back (2026-09-24). `live.pull` is the resisted drag nudge.
     struct SalahPageContent: View {
-        @EnvironmentObject var sharedState: SharedStateClass
+        @Environment(SharedStateClass.self) var sharedState
         @EnvironmentObject var viewModel: PrayerViewModel
         @Environment(\.circleTheme) private var theme
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -1294,7 +1294,7 @@ struct PrayerTimesView: View {
     /// Top bar (menu + TopBar on Salah, "Zikr" title on Zikr) and the chevron / bottom bar,
     /// fixed over the pager. Reads `live` so it alone re-renders while scrolling or dragging.
     struct PagerChromeView: View {
-        @EnvironmentObject var sharedState: SharedStateClass
+        @Environment(SharedStateClass.self) var sharedState
         var live: PagerLiveState
         @ObservedObject private var access = WhatsNewAccess.shared
         @Binding var showMapPage: Bool
@@ -1669,7 +1669,7 @@ struct PrayerTimesView: View {
 
     
     struct CustomBottomBar: View {
-        @EnvironmentObject var sharedState: SharedStateClass
+        @Environment(SharedStateClass.self) var sharedState
         @Environment(\.circleTheme) private var theme
 
         var body: some View {
@@ -1768,7 +1768,7 @@ struct ContentView3_Previews: PreviewProvider {
 
         // Create a preview PrayerTimesView
         return PrayerTimesView(/*context: context*/)
-            .environmentObject(sharedState)
+            .environment(sharedState)
     }
 }
 
@@ -2017,7 +2017,7 @@ struct PrayerButton: View {
     private static let dotPress = Animation.spring(response: 0.1, dampingFraction: 0.7)
     /// An unmark from the row's alert: the page settles back (score → prayer, the list's rows) in one ease.
     private static let unmarkFade = Animation.easeInOut(duration: 0.4)
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @EnvironmentObject var viewModel: PrayerViewModel
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
 

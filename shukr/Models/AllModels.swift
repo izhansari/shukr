@@ -8,11 +8,17 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import Observation
 import CoreLocation
 import WidgetKit
 import UserNotifications
 
-class SharedStateClass: ObservableObject {
+/// App-wide UI state (what the session is about, which page / vertical position the pager rests at). `@Observable`
+/// (2026-10-04): a view re-renders only for the properties its body reads — as an ObservableObject every `@Published`
+/// write re-rendered every view holding it. Inject with `.environment(sharedState)`, read with
+/// `@Environment(SharedStateClass.self)`; a binding needs `@Bindable`.
+@Observable
+class SharedStateClass {
     enum ViewPosition {
         case top
         case main
@@ -20,40 +26,40 @@ class SharedStateClass: ObservableObject {
         case left
         case right
     }
-    @Published var selectedMode: Int = 1
+    var selectedMode: Int = 1
     
-    @Published var titleForSession: String = ""
-    @Published var selectedMinutes: Int = 0
-    @Published var targetCount: String = ""
+    var titleForSession: String = ""
+    var selectedMinutes: Int = 0
+    var targetCount: String = ""
 
-    @Published var isDoingPostNamazZikr: Bool = false
-//    @Published var showingOtherPages: Bool = false
-    @Published var showSalahTabOld: Bool = true
+    var isDoingPostNamazZikr: Bool = false
+//    var showingOtherPages: Bool = false
+    var showSalahTabOld: Bool = true
     /// Vertical state of the center page only (.main = circle, .bottom = salah sheet open).
     /// Paging to Zikr / Settings does NOT change this, so the center page comes back exactly
     /// as it was left. (.left / .right / .top are legacy and no longer set.)
-    @Published var navPosition: ViewPosition = .main
-    @Published var cameFromNavPosition: ViewPosition = .main // legacy, unused
+    var navPosition: ViewPosition = .main
+    var cameFromNavPosition: ViewPosition = .main // legacy, unused
 
     /// Which page of the horizontal pager is showing. Written by the pager when a swipe
     /// settles, and by anything that wants to navigate (bottom bar, widget deep link, menu).
     enum HorizontalPage: Hashable { case zikr, main, settings }
-    @Published var horizontalPage: HorizontalPage = .main
+    var horizontalPage: HorizontalPage = .main
     /// The next `horizontalPage` change scrolls the pager at once (`go(to:animated: false)`); the pager resets it.
-    var quietPageChange = false
+    @ObservationIgnored var quietPageChange = false
     
     /// The mantra object behind `titleForSession`, so a saved session can link to it.
     /// Nil when the title came from somewhere without a row (post-salah sequence); `saveSession`
     /// then falls back to a lookup by name.
-    @Published var mantraForSession: MantraModel? = nil
+    var mantraForSession: MantraModel? = nil
 
     /// "Continue from where you left off" on a task (Zikr page): the next session starts with
     /// today's count / time already on the ring. Read and cleared by `tasbeehView.startTimer`;
     /// only the new counts are saved, so today's total isn't counted twice.
-    var resumeCount: Int = 0
-    var resumeSeconds: TimeInterval = 0
+    @ObservationIgnored var resumeCount: Int = 0
+    @ObservationIgnored var resumeSeconds: TimeInterval = 0
 
-    @Published var selectedTask: TaskModel? = nil {
+    var selectedTask: TaskModel? = nil {
         didSet {
             if let task = selectedTask{
 //                let remainingGoal = task.isCountMode ? (task.goal - task.runningCount) : task.goal - Int(task.runningSeconds/60))
@@ -80,7 +86,7 @@ class SharedStateClass: ObservableObject {
     }
 
 
-//    @Published var newTopMainOrBottom: ViewPosition = .main {
+//    var newTopMainOrBottom: ViewPosition = .main {
 //        didSet {
 ////            print("newTopMainOrBottom changed to: \(newTopMainOrBottom)")
 //        }

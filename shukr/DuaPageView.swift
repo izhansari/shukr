@@ -4,7 +4,7 @@ import SwiftData
 // MARK: - DuaPageView
 
 struct DuaPageView: View {
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \DuaModel.date, order: .reverse) private var duaItems: [DuaModel]

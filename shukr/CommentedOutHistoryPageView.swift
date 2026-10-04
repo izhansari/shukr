@@ -14,7 +14,7 @@ import SwiftUI
 
 
 struct HistoryPageView: View {
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Environment(\.presentationMode) var presentationMode
 
     @Environment(\.modelContext) private var context

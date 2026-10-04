@@ -29,7 +29,7 @@ struct MainCircleView: View {
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     /// The soft ring (the theme, CircleTheme.swift).
     @Environment(\.circleTheme) private var theme
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @EnvironmentObject var viewModel: PrayerViewModel
     @EnvironmentObject var locationManager: EnvLocationManager   // only to start updates; publishes rarely
     @Environment(\.colorScheme) var colorScheme
@@ -783,7 +783,7 @@ struct summaryCircle: View{
     @AppStorage(NextLabel.key, store: UserDefaults(suiteName: SharedStore.appGroup)) private var showNextLabel = true
     // FIXME: think this through more and make sure it makes sense.
     @EnvironmentObject var viewModel: PrayerViewModel
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Query private var scores: [DailyPrayerScore]
 
     @Binding var ogText: Bool  // to control the toggle text in the middle

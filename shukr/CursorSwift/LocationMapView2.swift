@@ -922,7 +922,7 @@ struct LocationMapContentView: View {
     @Environment(\.modelContext) private var context
     @EnvironmentObject var compass: CompassState
     @EnvironmentObject var envLocation: EnvLocationManager
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Environment(\.dismiss) private var dismiss
 
     /// Every prayer with a recorded spot.
@@ -1647,7 +1647,7 @@ struct MapPill: ButtonStyle {
 // MARK: - CircleWithArrowOverlay
 struct CircleWithArrowOverlay: View {
     @EnvironmentObject var compass: CompassState
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     var degrees: Double
     var isAtMecca: Bool
     /// Zoomed out: the ring and its bearing triangle fade; the compass chevron stays on the dot.

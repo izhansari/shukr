@@ -257,14 +257,14 @@ struct shukrApp: App {
         .environmentObject(environmentLocationManager)
         .environmentObject(environmentLocationManager.compass)   // compass views subscribe to this, nothing else does
         .environmentObject(environmentLocationManager.health)    // "needs calibrating": the ☰ badge / row, the line
-        .environmentObject(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
+        .environment(sharedState) // Inject shared state into the environment (Global access point for `sharedState`)
 //            .environmentObject(prayerViewModel) // Inject PrayerViewModel
         /*
          Inject `sharedState` as an EnvironmentObject at the top level of the app.
          This makes `sharedState` globally accessible to any view within the view hierarchy
          that starts from `PrayerTimesView`.
          All subviews can access it implicitly by declaring:
-         `@EnvironmentObject var sharedState: SharedStateClass`.
+         `@Environment(SharedStateClass.self) var sharedState`.
          NOTE: This injection covers all views in the hierarchy. Additional injections are unnecessary,
          unless a view is presented outside this hierarchy, like with a new window or distinct view instance.
          */

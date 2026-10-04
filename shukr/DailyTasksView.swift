@@ -53,7 +53,7 @@ enum ZikrFocus {
 }
 
 struct ZikrCircleWheel: View {
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
     @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
     @Query private var todaysSessions: [SessionDataModel]
@@ -793,7 +793,7 @@ struct ZikrCircleFace: View {
 
 struct AddDailyTaskView: View {
     @Environment(\.modelContext) private var context
-    @EnvironmentObject var sharedState: SharedStateClass
+    @Environment(SharedStateClass.self) var sharedState
     @FocusState var isGoalEntryFocused: Bool
 
     @Query private var taskItems: [TaskModel] // Query to fetch persisted TaskModel items
