@@ -435,6 +435,7 @@ struct PrayerTimesView: View {
                     guard sharedState.horizontalPage == .main, !sheetFollows else { return }
                     let nudged = min(max(value.translation.height * resistanceFactor, -maxOffset), maxOffset)
                     live.pull = showBottom ? max(0, nudged) : nudged   // no upward nudge once open
+                    live.refreshReach = showBottom ? 0 : max(value.translation.height, 0) / threshold
                 }
             }
             .onEnded { value in
@@ -443,6 +444,7 @@ struct PrayerTimesView: View {
                 live.pagerLocked = false
                 // The sheet's own move is the page's and the chrome's implicit animation (rule 6); this one is the
                 // chevron's nudge settling.
+                live.refreshReach = 0
                 withAnimation(CircleMotion.page) {
                     live.pull = 0
                     guard vertical, sharedState.horizontalPage == .main, !sheetFollows else { return }
@@ -468,6 +470,7 @@ struct PrayerTimesView: View {
         isDraggingVertically = nil
         if live.pagerLocked { live.pagerLocked = false }
         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
+        if live.refreshReach != 0 { live.refreshReach = 0 }
     }
 
     var body: some View {
@@ -1250,7 +1253,9 @@ struct PrayerTimesView: View {
         @State private var listSize: CGSize = .zero
         @State private var rests = SheetRests()
         @State private var restsReady = false
-        @State private var sheetPosition = ScrollPosition(y: 0)
+        /// The sheet's UIScrollView: every move by code goes through it (no `.scrollPosition` binding — its write-back at
+        /// the end of a touch cut off whatever scroll was started at the let-go; round 3).
+        @State private var sheetScroll = SheetScrollHandle()
 
         var body: some View {
             if follows { followingBody } else { poppingBody }
@@ -1377,7 +1382,7 @@ struct PrayerTimesView: View {
             return GeometryReader { geo in
                 let height = geo.size.height
                 let travel = max((height * SalahSheetDrag.travelShare).rounded(), 1)
-                let dead = (height * SalahSheetDrag.deadShare).rounded()
+                let dead = SalahSheetDrag.dead
                 // The open rest moving (the fold, the list's rows changing) glides, after the first measure.
                 let restMotion = restsReady ? RowMotion.resolved(rowMotionRaw)
                     .animation(springy: CircleMotion.movement(CircleMotion.spring, reduced: reduceMotion)) : nil
@@ -1385,6 +1390,7 @@ struct PrayerTimesView: View {
                     ZStack(alignment: .top) {
                         // The track: `travel` between the rests, and dead room past each (no rubber band at a rest).
                         Color.clear.frame(height: height + travel + 2 * dead)
+                            .background(SheetScrollFinder(handle: sheetScroll))
                         if lost == nil {
                             // The list's layer, a page tall at the closed rest: held still past the rests (SheetWall).
                             BottomSharedView(showDailyAyahView: $showDailyAyahView)
@@ -1406,16 +1412,27 @@ struct PrayerTimesView: View {
                     }
                 }
                 .scrollIndicators(.hidden)
-                .scrollTargetBehavior(SheetSnap(travel: travel, dead: dead, live: live))
-                .scrollPosition($sheetPosition)
                 .modifier(SheetLock(live: live, lost: lost != nil))
                 .onScrollGeometryChange(for: CGFloat.self) { g in g.contentOffset.y + g.contentInsets.top - dead } action: { old, new in
                     live.sheetOffset = new
+                    if live.sheetPhase == .interacting { sheetScroll.sample(new) }
                     if live.sheetTravel != travel { live.sheetTravel = travel }
                     // Pulled down past the closed rest (dead room: nothing moves): the chevron's resisted nudge, as the
                     // pop's drag showed it.
                     let pull = live.sheetPhase == .interacting && new < 0 ? min(-new * 0.5, 20) : 0
                     if live.pull != pull { live.pull = pull }
+                    let reach = live.sheetPhase == .interacting && new < 0 ? -new / SalahSheetDrag.refreshPull : 0
+                    if live.refreshReach != reach { live.refreshReach = reach }
+                    // The first layout (the scroll starts in the dead room): quietly onto the rest navPosition names.
+                    if !sheetScroll.placed, live.sheetPhase == .idle {
+                        let target: CGFloat = showBottom ? travel : 0
+                        if abs(new - target) <= 0.5 { sheetScroll.placed = true } else {
+                            DispatchQueue.main.async {
+                                guard live.sheetPhase == .idle else { return }
+                                sheetScroll.scroll(by: target - live.sheetOffset, animated: false)
+                            }
+                        }
+                    }
                     // The tick: the finger taking the sheet across halfway, like the pager's page tick.
                     if live.sheetPhase == .interacting, (old < travel / 2) != (new < travel / 2) {
                         triggerSomeVibration(type: .light)
@@ -1432,16 +1449,22 @@ struct PrayerTimesView: View {
                             triggerSomeVibration(type: .light)
                         }
                         if live.pull != 0 { withAnimation(CircleMotion.page) { live.pull = 0 } }
-                        // The let-go: our spring to the picked rest, whatever the finger's speed (SheetSnap cut the coast).
-                        let target = (live.sheetPick ? travel : 0) + dead
-                        if (live.sheetPick) != (offset > travel / 2) { triggerSomeVibration(type: .light) }
-                        withAnimation(CircleMotion.movement(CircleMotion.sheetSnap, reduced: reduceMotion)) {
-                            sheetPosition.scrollTo(y: target)
-                        }
+                        if live.refreshReach != 0 { live.refreshReach = 0 }
+                        // The let-go: pick the rest from the finger's speed, then UIKit's animated scroll takes it there
+                        // — one time for every let-go, and a new finger stops it where it is (SheetRelease).
+                        let open = SheetRelease.open(at: offset, velocity: sheetScroll.releaseVelocity, travel: travel)
+                        live.sheetPick = open
+                        if open != (offset > travel / 2) { triggerSomeVibration(type: .light) }
+                        settle(open: open, travel: travel, dead: dead)
                         return
                     }
                     // Settled: the resting state, after the fact (the scroll's own layout pass: publish next turn).
                     guard new == .idle else { return }
+                    // Never left between the rests: whatever stopped it there goes on to where the let-go was going.
+                    if offset > 0.5, offset < travel - 0.5 {
+                        settle(open: live.sheetPick, travel: travel, dead: dead)
+                        return
+                    }
                     let resting: SharedStateClass.ViewPosition = offset > travel / 2 ? .bottom : .main
                     DispatchQueue.main.async {
                         guard sharedState.navPosition != resting else { return }
@@ -1461,6 +1484,15 @@ struct PrayerTimesView: View {
             }
         }
 
+        /// Takes the sheet to a rest (a let-go, or a stop between the rests), next turn, with UIKit's animated scroll
+        /// (SheetScrollHandle: one time for every let-go, and a finger stops it); not if a finger took it again.
+        private func settle(open: Bool, travel: CGFloat, dead: CGFloat) {
+            DispatchQueue.main.async {
+                guard live.sheetPhase != .interacting else { return }
+                sheetScroll.scroll(by: (open ? travel : 0) - live.sheetOffset, animated: true)
+            }
+        }
+
         /// Scrolls the sheet to the rest `navPosition` names, unless it's there or a finger has it.
         private func rest(travel: CGFloat, dead: CGFloat, animated: Bool) {
             guard live.sheetPhase == .idle || live.sheetPhase == .animating else { return }
@@ -1468,12 +1500,8 @@ struct PrayerTimesView: View {
             let quiet = SalahSheetDrag.takeQuiet()
             // A quiet place (the first appear: the scroll starts at 0, in the dead room) always goes; a move only if needed.
             guard !animated || abs(live.sheetOffset - target) > 0.5 else { return }
-            if animated, !quiet, UIApplication.shared.applicationState == .active {
-                withAnimation(CircleMotion.movement(CircleMotion.sheetSnap, reduced: reduceMotion)) { sheetPosition.scrollTo(y: target + dead) }
-            } else {
-                var t = Transaction(); t.disablesAnimations = true
-                withTransaction(t) { sheetPosition.scrollTo(y: target + dead) }
-            }
+            // Not in its window yet (the first appear): the idle check in onScrollGeometryChange places it.
+            sheetScroll.scroll(by: target - live.sheetOffset, animated: animated && !quiet && UIApplication.shared.applicationState == .active)
         }
     }
 
@@ -1763,16 +1791,30 @@ struct PrayerTimesView: View {
         }
     }
 
-    /// The chevron hint, nudged by the pull-to-refresh drag.
+    /// The chevron hint, nudged by the pull-to-refresh drag; while the closed page is pulled down it gives way to a small
+    /// quiet line, "Keep pulling to refresh", then "Let go to refresh" (owner, round 3: "small, simple, subtle text").
     private struct ChevronHint: View {
         let live: PagerLiveState
         var body: some View {
+            let pulling = live.refreshReach > 0.15
             Image(systemName: "chevron.up")
                 .font(.title3)
                 .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
-                .padding(.bottom, 30)
-                .padding()
-                .offset(y: live.pull)
+                .opacity(pulling ? 0 : 1)
+                // An overlay, so the chevron's place is exactly as it was.
+                .overlay {
+                    Text(live.refreshReach >= 1 ? "Let go to refresh" : "Keep pulling to refresh")
+                        .font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                        .foregroundStyle(Color(.tertiaryLabel))   // explicit: in the Button's label .tertiary took the tint
+                        .fixedSize()
+                        .contentTransition(.opacity)
+                        .opacity(pulling ? 1 : 0)
+                }
+            .animation(.easeOut(duration: CircleMotion.quick), value: pulling)
+            .animation(.easeOut(duration: CircleMotion.quick), value: live.refreshReach >= 1)
+            .padding(.bottom, 30)
+            .padding()
+            .offset(y: live.pull)
         }
     }
 
@@ -2741,7 +2783,10 @@ struct ChevronTap2: View {
     var sheetOffset: CGFloat = 0
     var sheetTravel: CGFloat = 1
     var sheetPhase: ScrollPhase = .idle
-    /// Where the last let-go goes (SheetSnap): true = open.
+    /// How far a pull-down on the closed page is toward refreshing, 1 = let go now (both drags). The chevron turns into
+    /// "Keep pulling to refresh" (owner, round 3).
+    var refreshReach: CGFloat = 0
+    /// Where the last let-go goes (SheetRelease): true = open.
     @ObservationIgnored var sheetPick = false
     /// 0 closed … 1 open.
     var sheetProgress: CGFloat { min(max(sheetOffset / max(sheetTravel, 1), 0), 1) }

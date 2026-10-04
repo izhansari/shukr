@@ -323,6 +323,7 @@ struct SalahLookSwitcher: View {
     @AppStorage(SalahPalette.key) private var paletteRaw = CircleTheme.standard.palette.rawValue
     @AppStorage(SalahLook.linesKey) private var lines = CircleTheme.standard.lines
     @AppStorage(SessionOpening.key) private var openingRaw = SessionOpening.sink.rawValue
+    @AppStorage(SalahSheetDrag.key) private var sheetFollows = SalahSheetDrag.defaultOn
 
     var body: some View {
         Menu {
@@ -341,6 +342,12 @@ struct SalahLookSwitcher: View {
             .pickerStyle(.menu)
             Picker("Zikr ring opens", selection: $openingRaw) {
                 ForEach(SessionOpening.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            .pickerStyle(.menu)
+            // The Salah list's drag (owner's names): it follows the finger, or the swipe finishes and it pops.
+            Picker("Salah list drag", selection: $sheetFollows) {
+                Text("Vertical live dragging").tag(true)
+                Text("Gesture completion drag").tag(false)
             }
             .pickerStyle(.menu)
         } label: {
