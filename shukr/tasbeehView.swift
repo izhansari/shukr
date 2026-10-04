@@ -2011,6 +2011,11 @@ struct tasbeehView: View {
                     .onTapGesture {}
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
+                    // Whatever room is left over on a tall phone sits here, between the card and the tiles — only after
+                    // everything else has its height (lowest priority). Without it the page was centred in the screen
+                    // and its top row sat ~18 pt under ‹ Resume / Finish (owner: "a bit off the top").
+                    Spacer(minLength: 0)
+                        .layoutPriority(-1)
                     gap(20)
                     softBottom
                 }
