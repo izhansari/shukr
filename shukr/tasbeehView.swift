@@ -565,14 +565,12 @@ struct tasbeehView: View {
             // Settings & Start/Stop
             VStack {
                 
-                // The Top Buttons During Session. ⏸ on the left, where the pause screen's ‹ Resume stands; − on the right,
-                // with +N beside it only while counting in sets (decision top-bar-finish A, owner: "it should only show
-                // there when we turn on that setting from the pause screen"; a tap turns sets off). Always laid out,
-                // faded out and inert while paused: removing them popped the layout on every pause / resume.
+                // The Top Buttons During Session. ⏸ on the left — the same button becomes ‹ Resume while paused
+                // (PauseResumeButton, decision pause-resume-morph A); − on the right, with +N beside it only while
+                // counting in sets (decision top-bar-finish A; a tap turns sets off). The right side is always laid out,
+                // faded out and inert while paused: removing it popped the layout on every pause / resume.
                 HStack {
-                    PlayPauseButton(togglePause: togglePause, paused: paused)
-                        .opacity(paused ? 0 : 1)
-                        .allowsHitTesting(!paused)   // a disabled button still swallowed the pause screen's taps
+                    PauseResumeButton(paused: paused, reduceMotion: reduceMotion, action: togglePause)
 
                     Spacer()
 
@@ -2029,24 +2027,11 @@ struct tasbeehView: View {
         private var pauseTopRow: some View {
             let finished = results != nil
             return HStack(spacing: 8) {
-                Button { togglePause() } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
-                        Text("Resume").font(.system(size: 17, weight: .medium, design: .rounded))
-                    }
-                    .foregroundStyle(Color.sage)
-                    .padding(.horizontal, 14)
-                    .frame(height: 40)
-                    .background(Capsule().fill(Color.sage.opacity(0.10)))
-                    .overlay(Capsule().strokeBorder(Color.sage.opacity(0.7), lineWidth: 1.2))
-                    .fixedSize()
-                    .padding(.vertical, 2)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .modifier(SoftCardsFade(shown: pauseShown, delay: 0))
-                .allowsHitTesting(pauseShown)
-                .accessibilityLabel("Resume")
+                // ‹ Resume itself is the counter's ⏸, changed in place (PauseResumeButton, in the top bar over this
+                // row); its twin here, unseen, keeps the session line clear of it.
+                PauseResumeButton.resumeLabel
+                    .hidden()
+                    .accessibilityHidden(true)
                 Spacer(minLength: 4)
                 // The session between them (never over them: centred on the page it ran into ‹ Resume on a 6.1"
                 // phone); out of the way while Finish asks for its second tap.
@@ -2924,32 +2909,66 @@ struct tasbeehView: View {
         }
     }
     
-    struct PlayPauseButton: View {
-        let togglePause: () -> Void
+    /// ⏸ while counting; paused, the same button becomes ‹ Resume (decision pause-resume-morph A, owner: "ideally they
+    /// are the same button"). One view the whole time — never removed, never swapped — so SwiftUI interpolates it: the
+    /// grey square widens into the sage capsule, its corners round, the symbol changes in place (symbol replace) and
+    /// "Resume" fades in beside it; resuming plays it backwards, and a tap mid-way just turns it round. One named timing
+    /// (CircleMotion.pauseMorph), a plain fade under Reduce Motion. Always 56 pt tall, so the bar never changes height
+    /// (the pause screen's top row matches the bar).
+    struct PauseResumeButton: View {
         let paused: Bool
-        
+        var reduceMotion = false
+        let action: () -> Void
+
+        /// Paused: the capsule's sizes, shared with the pause screen's unseen twin (`resumeLabel`).
+        static let resumeHeight: CGFloat = 40
+        static let resumePadding: CGFloat = 14
+        static let barHeight: CGFloat = 56
+
         var body: some View {
-            // eventually use this to toggle the settings modal that replaces the pause stats modal.
-            /*
-            if paused{
-                Button(action: togglePause) {
-                    Image(systemName: "gear")
-                        .font(.system(size: 24, weight: .bold))
-                        .foregroundColor(.gray.opacity(0.8))
-                        .padding()
-                        .background(/*paused ? .clear : */.gray.opacity(0.08))
-                        .cornerRadius(10)
+            Button(action: action) {
+                HStack(spacing: 4) {
+                    Image(systemName: paused ? "chevron.left" : "pause.fill")
+                        .font(.system(size: paused ? 15 : 24, weight: paused ? .semibold : .bold))
+                        .contentTransition(.symbolEffect(.replace))
+                    if paused {
+                        Text("Resume")
+                            .font(.system(size: 17, weight: .medium, design: .rounded))
+                            .fixedSize()
+                            .transition(.opacity)
+                    }
                 }
+                .foregroundStyle(paused ? Color.sage : Color.gray.opacity(0.3))
+                .padding(.horizontal, paused ? Self.resumePadding : 16)
+                .frame(minWidth: Self.barHeight)
+                .frame(height: paused ? Self.resumeHeight : Self.barHeight)
+                .background {
+                    RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous)
+                        .fill(paused ? Color.sage.opacity(0.10) : Color.gray.opacity(0.08))
+                }
+                // The word is laid out at its place at once; the button grows to it. Clipped to the button, the growing
+                // capsule reveals it (unclipped, it hung outside for a few frames each way).
+                .clipShape(RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: paused ? Self.resumeHeight / 2 : 10, style: .continuous)
+                        .strokeBorder(Color.sage.opacity(paused ? 0.7 : 0), lineWidth: 1.2)
+                }
+                .frame(height: Self.barHeight)
+                .contentShape(Rectangle())
             }
-             */
-            Button(action: togglePause) {
-                Image(systemName: paused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(paused ? .gray.opacity(0.8) : .gray.opacity(0.3))
-                    .padding()
-                    .background(/*paused ? .clear : */.gray.opacity(0.08))
-                    .cornerRadius(10)
+            .buttonStyle(.plain)
+            .animation(CircleMotion.movement(CircleMotion.pauseMorph, reduced: reduceMotion), value: paused)
+            .accessibilityLabel(paused ? "Resume" : "Pause")
+        }
+
+        /// The paused capsule's layout alone (no fill): the pause screen keeps its room with it, unseen.
+        static var resumeLabel: some View {
+            HStack(spacing: 4) {
+                Image(systemName: "chevron.left").font(.system(size: 15, weight: .semibold))
+                Text("Resume").font(.system(size: 17, weight: .medium, design: .rounded)).fixedSize()
             }
+            .padding(.horizontal, resumePadding)
+            .frame(height: resumeHeight)
         }
     }
 

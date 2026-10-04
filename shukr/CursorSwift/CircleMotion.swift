@@ -27,6 +27,8 @@ enum CircleMotion {
     static let quick: Double = 0.2
     /// The rate tile's per count ⇄ per tasbeeh flip: out the top, in from below (the old pause screen's).
     static let rateFlip: Double = 0.3
+    /// ⏸ becoming ‹ Resume and back (one button, PauseResumeButton): its size, corners, colour and symbol together.
+    static let pauseMorph = Animation.snappy(duration: 0.3)
     /// Most changes: a row, the list, a text out or in.
     static let standard: Double = 0.35
     /// The circle's own changes: a ring filling, a state handing over.
