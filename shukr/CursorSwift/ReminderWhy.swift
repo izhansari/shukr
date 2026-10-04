@@ -66,7 +66,7 @@ enum ReminderWhy: Int, Identifiable, CaseIterable {
             let n = NotificationScheduler.nudgeDaysAhead
             let free = max(NotificationScheduler.limit - pendingCount, 0)
             return Content(head: "iOS lets each app keep 64 notifications waiting. Here's how shukr spends them.", points: [
-                Point(big: "Every start, all week", small: "Each prayer's start is scheduled \(NotificationScheduler.daysAhead) days ahead.", symbol: "calendar", warn: false),
+                Point(big: "Every start, as far as they go", small: "Each prayer's start for the next \(NotificationScheduler.daysAhead) days, then further while slots are free — up to \(NotificationScheduler.maxDaysAhead) days. Fewer reminders a day means a longer runway.", symbol: "calendar", warn: false),
                 Point(big: "Nudges for the next \(n) days", small: "Halfway and 30 minutes left are added as each day comes closer (the days with a dot).", symbol: "bell.badge", warn: false),
                 Point(big: "\(free) slot\(free == 1 ? "" : "s") free", small: "Room for snoozes and zikr reminders.", symbol: "circle.dashed", warn: false),
             ])

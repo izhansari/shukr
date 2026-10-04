@@ -37,7 +37,12 @@ enum NotificationScheduler {
     static let limit = 64
     /// Slots left for things scheduled outside the scheduler (snoozes).
     static let spare = 4
+    /// Every prayer start this far ahead comes first (the week, ahead of far zikr reminders).
     static let daysAhead = 7
+    /// …and then further, as far as the 64 allow (owner, reminders-runway A: "if they change it so less notifs come each
+    /// day, will they get a longer runway?" — now yes). Past `daysAhead` a start is the lowest priority, so it only takes
+    /// slots nothing nearer wants; the last-resort reminder still follows the last start that made it in.
+    static let maxDaysAhead = 12
 
     /// One pending notification the scheduler wants. Lower `priority` wins when the budget is tight.
     struct Item {
@@ -235,10 +240,11 @@ enum NotificationScheduler {
         let now = Date()
         let cal = Calendar.current
         let firstDay = cal.startOfDay(for: PrayerDay.date(for: now))
-        let horizon = now.addingTimeInterval(TimeInterval(daysAhead) * 86_400)
+        let horizon = now.addingTimeInterval(TimeInterval(maxDaysAhead) * 86_400)
+        let week = now.addingTimeInterval(TimeInterval(daysAhead) * 86_400)
 
         // Which prayers are already prayed, over the days covered.
-        let lastDay = cal.date(byAdding: .day, value: daysAhead + 1, to: firstDay) ?? firstDay
+        let lastDay = cal.date(byAdding: .day, value: maxDaysAhead + 1, to: firstDay) ?? firstDay
         let rangeStart = firstDay, rangeEnd = lastDay.addingTimeInterval(6 * 3600)   // + a post-midnight Isha (2.8.0)
         let descriptor = FetchDescriptor<PrayerModel>(
             predicate: #Predicate { $0.isCompleted && $0.startTime >= rangeStart && $0.startTime < rangeEnd })
@@ -246,7 +252,7 @@ enum NotificationScheduler {
 
         var items: [Item] = []
         var fullDays = 0   // prayer days with nudges: the next two that are still ahead
-        for offset in 0...(daysAhead + 1) {
+        for offset in 0...(maxDaysAhead + 1) {
             guard let day = cal.date(byAdding: .day, value: offset, to: firstDay) else { continue }
             let dayWindows = offset == 0 ? (todayOverride ?? windows(for: day)) : windows(for: day)
             guard let dayWindows, let fajr = dayWindows["Fajr"]?.start, fajr < horizon else { continue }
@@ -262,8 +268,9 @@ enum NotificationScheduler {
                 for kind in kinds {
                     guard let (date, content) = prayerNotification(kind, prayer: name, window: window),
                           date > now, date < horizon else { continue }
-                    // Near days: starts, then their nudges; far days' starts after.
-                    let priority = withNudges ? (kind == "Start" ? 0 : 1) : 2
+                    // Near days: starts, then their nudges; the week's other starts after; past the week, last (they
+                    // take only what's left once far zikr reminders have theirs).
+                    let priority = withNudges ? (kind == "Start" ? 0 : 1) : (date < week ? 2 : 4)
                     items.append(Item(id: PrayerNotificationID.make(day: day, prayer: name, kind: kind),
                                       date: date, priority: priority, content: content))
                 }

@@ -280,6 +280,21 @@ struct YourRemindersView: View {
     @State private var selectedDay = Self.debugInt("remindersDay")
     /// The explanation open as a sheet (ReminderWhy). DEBUG `-remindersSheet N` opens one (screenshots).
     @State private var whySheet: ReminderWhy?
+    /// Each prayer's reminder setting, the same keys as Settings → Notifications (owner, reminders-runway: "put the start
+    /// nudge off matrix thing in this page so they can toggle and see how it changes their runway").
+    @AppStorage("fajrNotif") private var fajrNotif = NotificationDefaults.notify("Fajr")
+    @AppStorage("dhuhrNotif") private var dhuhrNotif = NotificationDefaults.notify("Dhuhr")
+    @AppStorage("asrNotif") private var asrNotif = NotificationDefaults.notify("Asr")
+    @AppStorage("maghribNotif") private var maghribNotif = NotificationDefaults.notify("Maghrib")
+    @AppStorage("ishaNotif") private var ishaNotif = NotificationDefaults.notify("Isha")
+    @AppStorage("fajrNudges") private var fajrNudges = NotificationDefaults.nudges("Fajr")
+    @AppStorage("dhuhrNudges") private var dhuhrNudges = NotificationDefaults.nudges("Dhuhr")
+    @AppStorage("asrNudges") private var asrNudges = NotificationDefaults.nudges("Asr")
+    @AppStorage("maghribNudges") private var maghribNudges = NotificationDefaults.nudges("Maghrib")
+    @AppStorage("ishaNudges") private var ishaNudges = NotificationDefaults.nudges("Isha")
+    private var settingsKey: [Bool] {
+        [fajrNotif, dhuhrNotif, asrNotif, maghribNotif, ishaNotif, fajrNudges, dhuhrNudges, asrNudges, maghribNudges, ishaNudges]
+    }
 
     private static func debugFlag(_ arg: String) -> Bool {
         #if DEBUG
@@ -334,10 +349,15 @@ struct YourRemindersView: View {
     private var fine: Bool { health.issues.isEmpty && health.authorization != .notDetermined }
 
     var body: some View {
-        let days = Array(weekDays.prefix(7))
+        // Every day something's planned for, a week to a row (the runway can reach two weeks).
+        let days = Array(weekDays.prefix(14))
         let day = days.indices.contains(selectedDay) ? days[selectedDay] : PrayerDay.date()
         let dayItems = items(on: day).sorted { ($0.date ?? .distantFuture) < ($1.date ?? .distantFuture) }
-        let prayers = PrayerNotificationID.prayers.filter { p in dayItems.contains { $0.prayer == p && Self.prayerKinds.contains($0.kind) } }
+        let isToday = selectedDay == 0
+        // Every prayer the day still has: scheduled ones, ones off in his settings, and (later days) ones not planned yet.
+        let prayers = PrayerNotificationID.prayers.filter { p in
+            dayItems.contains { $0.prayer == p && Self.prayerKinds.contains($0.kind) } || !isToday
+        }
         let zikr = dayItems.filter { $0.kind == .zikr || $0.kind == .zikrLater }
         let others = dayItems.filter { [.masjid, .keepAlive, .other].contains($0.kind) }
         return List {
@@ -345,16 +365,39 @@ struct YourRemindersView: View {
                 statusRow
                 usageBar
             } footer: {
-                Text("iOS lets each app keep 64 notifications waiting. shukr plans a week ahead and tops them up when you open it.")
+                Text("iOS lets each app keep 64 notifications waiting. shukr plans as far ahead as they allow and tops them up when you open it.")
             }
 
-            Section { weekStrip(days) } header: { Text("This week") }
+            Section {
+                HStack {
+                    prayerCol(prayerName: "Fajr", notifIsOn: $fajrNotif, nudgeIsOn: $fajrNudges)
+                    Divider()
+                    prayerCol(prayerName: "Dhuhr", notifIsOn: $dhuhrNotif, nudgeIsOn: $dhuhrNudges)
+                    Divider()
+                    prayerCol(prayerName: "Asr", notifIsOn: $asrNotif, nudgeIsOn: $asrNudges)
+                    Divider()
+                    prayerCol(prayerName: "Maghrib", notifIsOn: $maghribNotif, nudgeIsOn: $maghribNudges)
+                    Divider()
+                    prayerCol(prayerName: "Isha", notifIsOn: $ishaNotif, nudgeIsOn: $ishaNudges)
+                }
+                .padding(.vertical, 6)
+            } header: {
+                Text("Each prayer")
+            } footer: {
+                Text("Tap to switch: off · start · start + nudges. Fewer reminders a day schedule further ahead.")
+            }
+
+            Section {
+                ForEach(Array(stride(from: 0, to: days.count, by: 7)), id: \.self) { start in
+                    weekStrip(days, from: start)
+                }
+            } header: { Text("Days ahead") }
 
             Section {
                 if prayers.isEmpty && others.isEmpty {
                     Text("Nothing scheduled").foregroundStyle(.secondary)
                 }
-                ForEach(prayers, id: \.self) { prayerRow($0, dayItems) }
+                ForEach(prayers, id: \.self) { prayerRow($0, dayItems, dayKey: PrayerNotificationID.dayKey(day)) }
                 ForEach(others) { item in
                     plainRow(symbol: "bell", title: line(for: item), time: time(item))
                 }
@@ -411,6 +454,14 @@ struct YourRemindersView: View {
             }
         }
         .refreshable { await load() }
+        // A bell changed: the plan is redone (prayerCol re-fetches), then the page reads it again.
+        .onChange(of: settingsKey) { _, _ in
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                await load()
+                await health.refresh()
+            }
+        }
         .task {
             await load()
             #if DEBUG
@@ -431,7 +482,12 @@ struct YourRemindersView: View {
         let title = off ? "Reminders are off" : fine ? "Reminders are on" : "Reminders need a hand"
         let through = health.scheduledThrough ?? pending.compactMap(\.date).max()
         let subtitle = off ? "Notifications are off for shukr"
-            : fine ? "On time" + (through.map { " · scheduled through " + $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? "")
+            : fine ? "On time" + (through.map { d in
+                // The runway in days (owner, reminders-runway): it grows when fewer reminders a day are scheduled.
+                let days = (Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: Date()),
+                                                            to: Calendar.current.startOfDay(for: d)).day ?? 0) + 1
+                return " · scheduled through " + d.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) + " (\(days) days)"
+            } ?? "")
             : "See Notification settings below"
         return HStack(spacing: 14) {
             Image(systemName: fine ? "checkmark.circle" : "exclamationmark.circle")
@@ -463,9 +519,9 @@ struct YourRemindersView: View {
     }
 
     /// The Calendar's week: the picked day filled green, today's number green; a grey dot under days with nudges.
-    private func weekStrip(_ days: [Date]) -> some View {
+    private func weekStrip(_ days: [Date], from start: Int) -> some View {
         HStack(spacing: 0) {
-            ForEach(days.indices, id: \.self) { i in
+            ForEach(start..<min(start + 7, days.count), id: \.self) { i in
                 let d = days[i]
                 let nudged = items(on: d).contains { $0.kind == .halfway || $0.kind == .endingSoon }
                 Button {
@@ -489,10 +545,14 @@ struct YourRemindersView: View {
         .padding(.vertical, 2)
     }
 
-    /// One row per prayer: its grey symbol, the name, how many reminders; under it every one of them with its time —
-    /// "Start 1:07 · Halfway 2:41 · 30 min left 3:46" — so a nudged prayer reads as three.
-    private func prayerRow(_ prayer: String, _ dayItems: [Item]) -> some View {
+    /// One row per prayer, and how the day compares with his setting (owner, reminders-runway: "shows us how it compares
+    /// to our set preferences … that way us acknowledging it … shows user that its intended"): every reminder it has with
+    /// its time ("Start 1:07 · Halfway 2:41 · 30 min left 3:46"), then why it's that — start only as he set it, nudges
+    /// still to come on a later day, off in his settings, or not planned yet (past the runway).
+    private func prayerRow(_ prayer: String, _ dayItems: [Item], dayKey: String) -> some View {
         let mine = dayItems.filter { $0.prayer == prayer && Self.prayerKinds.contains($0.kind) }
+        let setting = NotificationScheduler.settings(prayer)
+        let hasNudges = mine.contains { $0.kind == .halfway || $0.kind == .endingSoon }
         let parts = mine.map { item -> String in
             let label = switch item.kind {
             case .start: "Start"
@@ -502,17 +562,26 @@ struct YourRemindersView: View {
             }
             return "\(label) \(Self.hm(item.date))"
         }
+        let note: String? = {
+            if !setting.notify { return "Off in your settings" }
+            if mine.isEmpty { return "Not planned yet — added as the day comes closer" }
+            if !setting.nudges { return "Start only, as you set" }
+            if !hasNudges { return "Nudges added \(nudgesAddedOn(dayKey) ?? "closer to the day")" }
+            return nil
+        }()
+        let line = ([parts.joined(separator: " · ")] + [note].compactMap { $0 }).filter { !$0.isEmpty }.joined(separator: " · ")
+        let quiet = !setting.notify || mine.isEmpty
         return HStack(spacing: 12) {
             Image(systemName: prayerSymbol(prayer)).foregroundStyle(.secondary).frame(width: 26)
             VStack(alignment: .leading, spacing: 2) {
-                Text(prayer)
-                Text(parts.joined(separator: " · ")).font(.footnote).foregroundStyle(.secondary)
+                Text(prayer).foregroundStyle(quiet ? Color.secondary : Color.primary)
+                Text(line).font(.footnote).foregroundStyle(.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             HStack(spacing: 3) {
                 Text("\(mine.count)").monospacedDigit()
-                Image(systemName: "bell").font(.caption)
+                Image(systemName: mine.isEmpty ? "bell.slash" : "bell").font(.caption)
             }
             .foregroundStyle(.secondary)
             .accessibilityLabel("\(mine.count) reminder\(mine.count == 1 ? "" : "s")")
@@ -578,7 +647,7 @@ struct YourRemindersView: View {
         let lastKey = pending.map(\.dayKey).max()
         let last = lastKey.flatMap { Self.dayKeyFormatter.date(from: $0) }
         let span = last.map { Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: today), to: $0).day ?? 6 } ?? 6
-        return (0...max(6, min(span, 9))).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
+        return (0...max(6, min(span, NotificationScheduler.maxDaysAhead + 1))).compactMap { Calendar.current.date(byAdding: .day, value: $0, to: today) }
     }
 
     private func items(on day: Date) -> [Item] {
