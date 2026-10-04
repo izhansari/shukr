@@ -111,8 +111,24 @@ enum SalahLookPlay {
     func open(from frame: CGRect, landingBase: Double?) {
         entry = Entry(frame: frame, landingBase: landingBase, at: Uptime.now)
         soft = true
+        inPlace = false
         phase = .open
     }
+
+    /// A session opened on the Salah page (post-salah, Tasbih Fatimah): an ordinary opaque cover while it's up, but it
+    /// closes in place — its contents go, then its page fades off the Salah page, then the cover goes with no animation
+    /// (owner, post-salah-close: the stock dismiss slid the results down over the Salah page). Only from a plain state:
+    /// a wheel session already open keeps its own close.
+    func openInPlace() {
+        guard phase == .closed else { return }
+        entry = nil
+        inPlace = true
+        phase = .open
+    }
+    /// Opened with `openInPlace`: the close plays in place (no ring to land).
+    private(set) var inPlace = false
+    /// The session closes by its own fade (a wheel session, or one opened in place): resets wait for the cover to go.
+    var closesSoftly: Bool { soft || inPlace }
 
     // MARK: The cover
 
@@ -136,14 +152,18 @@ enum SalahLookPlay {
 
     /// The host's binding was set to false: a soft cover on screen closes by its session's own close; anything else
     /// (a plain sheet, the app in the background — a sleep finish needs it gone in that turn) closes at once.
-    func shouldPlayClose(appActive: Bool) -> Bool { soft && appActive && phase == .open }
-    func requestClose() { phase = .leaving }
+    func shouldPlayClose(appActive: Bool) -> Bool { closesSoftly && appActive && phase == .open }
+    func requestClose() {
+        if inPlace { soft = true }   // the cover clears behind the page, so the Salah page is there as the page fades
+        phase = .leaving
+    }
     func reveal() { if phase == .leaving { phase = .revealing } }
     func finishClose() { if phase == .leaving || phase == .revealing { phase = .done } }
 
     /// The cover has gone (its `onDismiss`): the rest of the app may change what the session showed.
     func coverGone() {
         soft = false
+        inPlace = false
         phase = .closed
         entry = nil
         let work = afterCloseWork
@@ -156,7 +176,7 @@ enum SalahLookPlay {
     /// fading: the pause card collapsed when its zikr was cleared mid-fade), else now. Was a guess of the close's
     /// length plus 0.05 s.
     func afterClose(_ work: @escaping () -> Void) {
-        if soft && UIApplication.shared.applicationState == .active {
+        if closesSoftly && UIApplication.shared.applicationState == .active {
             afterCloseWork.append(work)
         } else {
             work()

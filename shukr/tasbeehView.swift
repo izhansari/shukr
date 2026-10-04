@@ -388,6 +388,17 @@ struct tasbeehView: View {
             // Whatever happens (cancelled, the app sent away mid-close: completions stop), the cover still goes.
             defer { SessionHandoff.shared.finishClose() }
             let handoff = SessionHandoff.shared
+            if handoff.inPlace {
+                // On the Salah page (post-salah): out, then in — everything on the page goes where it stands (no
+                // slide, no ring to land), then the page itself fades and the Salah page is there under it.
+                await CircleMotion.animate(.easeOut(duration: CircleMomentTiming.out)) {
+                    leaving = true; countIn = false; chromeIn = false; ringOut = true
+                }
+                guard !Task.isCancelled else { return }
+                handoff.reveal()
+                await CircleMotion.animate(.easeInOut(duration: CircleMotion.sessionPageOutDuration)) { pageIn = false }
+                return
+            }
             if openingStyle == .fade {
                 withAnimation(.easeIn(duration: Self.fadeCloseDuration)) { leaving = true }
                 guard await CircleGate.pause(Self.fadeCloseDuration) else { return }
@@ -836,7 +847,10 @@ struct tasbeehView: View {
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
             // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).
-            if !timerIsActive, sharedState.isDoingPostNamazZikr { PostSalahTasbeeh.prepare(sharedState, in: context) }
+            if !timerIsActive, sharedState.isDoingPostNamazZikr {
+                PostSalahTasbeeh.prepare(sharedState, in: context)
+                SessionHandoff.shared.openInPlace()   // on the Salah page: it closes in place (post-salah-close)
+            }
             resolveSessionMantra()
             
             if !timerIsActive{
@@ -1262,7 +1276,7 @@ struct tasbeehView: View {
         // Nothing counted, opened out of a Zikr ring (soft close, the app on screen): close while the pause screen is
         // still exactly as seen, and reset the rest once it's gone — reset first, the ring emptied, the pause screen
         // went and the counter showed through mid-fade (owner's recording, 2026-10-02).
-        if sessionCount <= 0 && SessionHandoff.shared.soft && UIApplication.shared.applicationState == .active {
+        if sessionCount <= 0 && SessionHandoff.shared.closesSoftly && UIApplication.shared.applicationState == .active {
             inactivityTimerHandler(run: "stop")
             if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff { triggerSomeVibration(type: .vibrate) }
             SessionHandoff.shared.afterClose { finishStopReset() }
