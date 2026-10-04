@@ -95,6 +95,16 @@ enum PrayerDay {
         #Predicate<PrayerModel> { $0.prayerDayKey == key || ($0.prayerDayKey == nil && $0.startTime >= start && $0.startTime <= end) }
     }
 
+    /// `rowsPredicate` for the day a NAMED prayer's start belongs to — by the name rule (`key(forRow:startingAt:)`),
+    /// not the Fajr-computed day: just after travelling, a Fajr recorded before the new location's Fajr would
+    /// otherwise be looked up on the previous day and a second Fajr inserted (Bradley's review of 3006a85).
+    static func rowsPredicate(forRow name: String, startingAt start: Date) -> Predicate<PrayerModel> {
+        let key = key(forRow: name, startingAt: start)
+        let dayStart = self.start(ofKey: key) ?? Calendar.current.startOfDay(for: start)
+        let (s, e) = rowRange(forDayStarting: dayStart)
+        return rowsPredicate(key: key, start: s, end: e)
+    }
+
     /// `rowsPredicate` for the prayer day that starts on the calendar day `dayStart`.
     static func rowsPredicate(forDayStarting dayStart: Date) -> Predicate<PrayerModel> {
         let (s, e) = rowRange(forDayStarting: dayStart)

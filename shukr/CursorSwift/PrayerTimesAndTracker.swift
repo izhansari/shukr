@@ -224,7 +224,7 @@ struct PrayerTimesView: View {
         let name = request.name
         // 2.8.0: the prayer day the request's start falls in, by key.
         let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(
-            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: request.start))))) ?? []
+            predicate: PrayerDay.rowsPredicate(forRow: name, startingAt: request.start)))) ?? []
         return rows.filter { $0.name == name && $0.isCompleted }
     }
 

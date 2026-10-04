@@ -454,7 +454,7 @@ enum SharedStore {
     static func fetchPrayer(named name: String, on day: Date, in context: ModelContext) -> PrayerModel? {
         // 2.8.0: the prayer day `day` falls in, by key; a completed row wins over an unmarked twin (audit B4).
         let rows = ((try? context.fetch(FetchDescriptor<PrayerModel>(
-            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: day))))) ?? []).filter { $0.name == name }
+            predicate: PrayerDay.rowsPredicate(forRow: name, startingAt: day)))) ?? []).filter { $0.name == name }
         return rows.first(where: \.isCompleted) ?? rows.sorted { $0.startTime < $1.startTime }.first
     }
 

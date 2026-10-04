@@ -300,7 +300,7 @@ enum WatchZikrSync {
         prayer.setPrayerScore(atDate: tapped)
         prayer.cancelUpcomingNudges()
         // Its own day's score (a mark delivered after Fajr belongs to yesterday).
-        rescoreDay(of: startDate, in: context)
+        rescoreDay(of: startDate, name: name, in: context)
         do {
             try context.save()
         } catch {
@@ -363,7 +363,7 @@ enum WatchZikrSync {
             guard !done.isEmpty else { tombstone([markID, original]); scheduleSend(); return }
             // Every completed row of that prayer on that day (a day can hold two).
             done.forEach { $0.resetPrayer() }
-            rescoreDay(of: startDate, in: context)
+            rescoreDay(of: startDate, name: name, in: context)
             do { try saveUnmark(context) } catch {
                 print("⌚️ watch unmark not saved: \(error)")
                 context.rollback()
@@ -387,7 +387,7 @@ enum WatchZikrSync {
         }
         guard !carrying.isEmpty else { tombstone([markID]); scheduleSend(); return }
         carrying.forEach { $0.resetPrayer() }
-        rescoreDay(of: startDate, in: context)
+        rescoreDay(of: startDate, name: name, in: context)
         do { try saveUnmark(context) } catch {
             print("⌚️ watch undo not saved: \(error)")
             context.rollback()
@@ -419,7 +419,7 @@ enum WatchZikrSync {
     private static func prayerRows(named name: String, on day: Date, in context: ModelContext) -> [PrayerModel] {
         // 2.8.0: the prayer day `day` falls in, by key (name filtered here).
         return ((try? context.fetch(FetchDescriptor<PrayerModel>(
-            predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start(for: day))))) ?? []).filter { $0.name == name }
+            predicate: PrayerDay.rowsPredicate(forRow: name, startingAt: day)))) ?? []).filter { $0.name == name }
     }
 
     #if DEBUG
@@ -539,8 +539,10 @@ enum WatchZikrSync {
     #endif
 
     /// A day's DailyPrayerScore from its rows (a late mark or an undo belongs to its own day).
-    private static func rescoreDay(of startDate: Date, in context: ModelContext) {
-        let dayStart = PrayerDay.start(for: startDate)   // 2.8.0: the prayer day, not the calendar day
+    private static func rescoreDay(of startDate: Date, name: String, in context: ModelContext) {
+        // 2.8.0: the day this prayer belongs to, by the name rule (never the Fajr-computed day — a Fajr recorded
+        // before the new location's Fajr would rescore the day before).
+        let dayStart = PrayerDay.start(ofKey: PrayerDay.key(forRow: name, startingAt: startDate)) ?? Calendar.current.startOfDay(for: startDate)
         let dayPrayers = (try? context.fetch(FetchDescriptor<PrayerModel>(
             predicate: PrayerDay.rowsPredicate(forDayStarting: dayStart)))) ?? []
         let score = PrayerScoring.dayScore(for: dayPrayers)
