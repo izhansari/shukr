@@ -1016,6 +1016,9 @@ struct WatchCounterView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .gesture(countGesture)
+        // DEBUG `-watchScrollFingerTest`: touches go through to the Double Tap scroller, so a finger's swipe in the
+        // simulator scrolls it as a pinch would (the simulator has no Double Tap).
+        .allowsHitTesting(!WatchDoubleTapScroller.fingerTest)
         .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
         // The crown counts here (nothing on this screen scrolls). Snapped to detents; detent
         // haptics are off, so the only buzz is the count's own — you feel exactly what counted.
@@ -2152,9 +2155,12 @@ struct WatchDoubleTapLayer: View {
     private static var discSize: CGFloat { WatchScreen.width * 0.42 }
 }
 
-/// Pages one screen each, painted the page's own colour, that Double Tap scrolls. Every page it moves is a count; a finger can't reach it (the counter is on
-/// top) and the Crown stays with the counter (its focus); a scroll a finger did make isn't counted. Back to the middle,
-/// quietly, whenever it rests far from it, so it never runs out.
+/// A short list of screen-high pages, painted the page's own colour, that Double Tap scrolls (owner's idea,
+/// 2026-10-04: "no need to have 2,000 … as soon as that item reaches the end … show a new list"). It rests on page 0;
+/// a move counts once, the moment it's a quarter of the way into the next page, and only forwards — never when it
+/// lands, so nothing arrives late in a batch, and a bounce back never counts (a tap after pinches counted "a few taps
+/// at once"). Once it has come to rest it's put back on page 0, quietly. A finger can't reach it (the counter is on
+/// top); the Crown scrolls it too, so a click forward is a count.
 struct WatchDoubleTapScroller: View {
     let enabled: Bool
     /// Carries the primary-action shortcut (`scroll`); without it, watchOS's own Double Tap scrolling (`scrollAuto`).
@@ -2162,13 +2168,22 @@ struct WatchDoubleTapScroller: View {
     /// The page's colour: clear pages had Double Tap find nothing — the gesture symbol shook at the top (owner).
     let fill: Color
     let onCount: () -> Void
-    private static let pages = 2_000
-    private static let middle = 1_000
-    @State private var position: Int? = WatchDoubleTapScroller.middle
-    /// The page last counted from; a landing on another page counts the difference.
-    @State private var counted: Int?
-    /// A landing counts once it has held for `settle` — at the end of a scroll the offset can touch the next page
-    /// and come back within a frame or two (three counts a page in the simulator).
+    static let fingerTest: Bool = {
+        #if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-watchScrollFingerTest")
+        #else
+        return false
+        #endif
+    }()
+    /// Room for a few quick pinches before it's back on page 0.
+    private static let pages = 6
+    /// How far into the next page a move counts.
+    private static let countAt = 0.25
+    @State private var position: Int? = 0
+    /// The furthest page counted since it was last put back on page 0.
+    @State private var counted = 0
+    /// Back to page 0 once it has rested `settle` on a page (at the end of a scroll the offset can touch the next page
+    /// and come back within a frame or two).
     @State private var settling: Task<Void, Never>?
     private static let settle: Duration = .milliseconds(60)
     /// The Crown's focus: Double Tap scrolls only the view the Crown would (owner: a tap gave the counter the focus,
@@ -2177,7 +2192,7 @@ struct WatchDoubleTapScroller: View {
 
     var body: some View {
         ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
+            VStack(spacing: 0) {
                 ForEach(0..<Self.pages, id: \.self) { page in
                     fill
                         .containerRelativeFrame([.horizontal, .vertical])
@@ -2192,25 +2207,25 @@ struct WatchDoubleTapScroller: View {
         .focused($focused)
         .handGestureShortcut(.primaryAction, isEnabled: enabled && shortcut)
         .ignoresSafeArea()
-        // Counted from where it rests, not from `position` (the pinches scrolled and buzzed but never counted, owner):
-        // a page is a landing when the offset sits on a page boundary and stays there; several pinches faster than
-        // the scroll land once, several pages on. The jump back to the middle is over 5 pages, so it never counts.
-        .onScrollGeometryChange(for: Int?.self) { geo in
+        .onScrollGeometryChange(for: Double?.self) { geo in
             let height = geo.containerSize.height
             guard height > 1 else { return nil }
-            let page = (geo.contentOffset.y + geo.contentInsets.top) / height
-            return abs(page - page.rounded()) < 0.02 ? Int(page.rounded()) : nil
+            return (geo.contentOffset.y + geo.contentInsets.top) / height
         } action: { _, page in
-            settling?.cancel()
             guard let page else { return }
+            // Forwards only: each page once, as soon as the move is a quarter of the way into it.
+            while page >= Double(counted) + Self.countAt, counted < Self.pages - 1 {
+                counted += 1
+                if enabled { onCount() }
+            }
+            settling?.cancel()
+            let resting = page.rounded()
+            guard abs(page - resting) < 0.02 else { return }
             settling = Task { @MainActor in
                 try? await Task.sleep(for: Self.settle)
                 guard !Task.isCancelled else { return }
-                land(on: page)
+                backToStart()
             }
-        }
-        .onScrollPhaseChange { _, phase in
-            if phase == .idle { recentre() }
         }
         .onAppear { focused = enabled }
         .onChange(of: enabled) { _, on in if on { focused = true } }
@@ -2220,23 +2235,19 @@ struct WatchDoubleTapScroller: View {
             guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
-                withAnimation { position = (position ?? Self.middle) + 1 }
+                withAnimation { position = min((position ?? 0) + 1, Self.pages - 1) }
             }
         }
         #endif
     }
 
-    private func land(on page: Int) {
-        defer { counted = page }
-        guard let counted, page != counted, abs(page - counted) <= 5, enabled else { return }
-        for _ in 0..<abs(page - counted) { onCount() }
-    }
-
-    private func recentre() {
-        guard let position, abs(position - Self.middle) > Self.middle / 2 else { return }
+    /// Page 0 again, without a frame of movement; `counted` first, so the jump back never counts.
+    private func backToStart() {
+        counted = 0
+        guard position != 0 else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) { self.position = Self.middle }
+        withTransaction(quiet) { position = 0 }
     }
 }
 
