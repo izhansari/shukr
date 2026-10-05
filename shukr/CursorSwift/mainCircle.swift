@@ -344,8 +344,12 @@ struct MainCircleView: View {
                             if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
                                 let marking = !prayer.isCompleted
                                 viewModel.togglePrayerCompletion(for: prayer)
-                                // The tour's Hold step: a practice mark, undone after its flourish (Tour.swift).
-                                if marking { TourRuntime.shared.event(.held(prayer, viewModel)) }
+                                // The tour's Mark step (a practice the user undoes next), or a first mark's celebration.
+                                if marking { TourRuntime.shared.event(.marked(prayer, viewModel)) }
+                            } else if TourRuntime.shared.step == .mark {
+                                // The tour with no prayer in its window: the mark's preview (nothing written).
+                                NotificationCenter.default.post(name: SalahLookPlay.mark, object: nil)
+                                TourRuntime.shared.event(.markedPreview)
                                 // The post-salah pill follows the flourish (.prayerCompleted).
                             }
                         }
@@ -357,7 +361,7 @@ struct MainCircleView: View {
             if morningShown == nil && lostShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
-                           tap: { showQiblaMap = true })
+                           tap: { TourRuntime.shared.event(.mapOpened); showQiblaMap = true })
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
                 // never moves (it stays centred on the page).
                 Color.clear
