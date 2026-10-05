@@ -172,7 +172,7 @@ struct CountTipBubble: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     /// The tour's bubble look while the owner compares (audit E21): an edge and a stronger shadow.
-    @AppStorage(TourInk.solidKey) private var solid = false
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -213,13 +213,8 @@ struct CountTipBubble: View {
         .frame(width: 300)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // fixed 300 pt wide over the counter
         .accessibilityElement(children: .contain)
-        .background(
-            PointerBubble(tail: tail, tailX: tailX)
-                .fill(theme.backdrop)
-                .overlay { if solid { PointerBubble(tail: tail, tailX: tailX).stroke(Color.primary.opacity(0.14), lineWidth: 1) } }
-                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : (solid ? 0.24 : 0.14)), radius: solid ? 16 : 12, x: 5, y: 7)
-                .shadow(color: .white.opacity(scheme == .dark ? 0.06 : 0.9), radius: 8, x: -4, y: -4)
-        )
+        .tourBubble(PointerBubble(tail: tail, tailX: tailX), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
+                    scheme: scheme, backdrop: theme.backdrop)
     }
 }
 

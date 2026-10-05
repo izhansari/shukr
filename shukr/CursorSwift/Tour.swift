@@ -412,7 +412,7 @@ struct TourCallout: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @State private var shown = false
-    @AppStorage(TourInk.solidKey) private var solid = false
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     /// The bubble's own height, measured (it grows with the to-dos).
@@ -425,7 +425,7 @@ struct TourCallout: View {
         let below = hole.map { size.height - $0.maxY > bubbleHeight + 60 } ?? true
         ZStack(alignment: .topLeading) {
             // The spotlight: the page washes out a little away from the control, in the page's own colour (no grey).
-            RadialGradient(colors: [.clear, .clear, theme.backdrop.opacity(solid ? 0.7 : 0.45)],
+            RadialGradient(colors: [.clear, .clear, theme.backdrop.opacity(0.45)],
                            center: UnitPoint(x: center.x / max(size.width, 1), y: center.y / max(size.height, 1)),
                            startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
                 .opacity(shown ? 1 : 0)
@@ -525,14 +525,40 @@ struct TourCallout: View {
         .padding(16)
         .tint(TourInk.green)   // never the system blue
         .accessibilityElement(children: .contain)
-        .background(
-            // A soft pebble in the page's own colour, raised with the app's shadows (dark below-right, light above-left).
-            BubbleShape(tailUp: below)
-                .fill(theme.backdrop)
-                .overlay { if solid { BubbleShape(tailUp: below).stroke(Color.primary.opacity(0.14), lineWidth: 1) } }
-                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : (solid ? 0.24 : 0.14)), radius: solid ? 16 : 12, x: 5, y: 7)
-                .shadow(color: .white.opacity(scheme == .dark ? 0.06 : 0.9), radius: 8, x: -4, y: -4)
-        )
+        .tourBubble(BubbleShape(tailUp: below), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
+                    scheme: scheme, backdrop: theme.backdrop)
+    }
+}
+
+/// The tip's material (owner: "the tool tip is a little hard to see… maybe we make it liquid glass-y? or something that
+/// just doesn't look the same material as our soft ring material"): glass (the default), ink (the opposite of the
+/// page's look), or the old soft pebble. `-tourBubbleLook glass|ink|soft` for the pictures.
+enum TourBubbleLook: String { case glass, ink, soft }
+
+extension View {
+    @ViewBuilder
+    func tourBubble<S: Shape>(_ shape: S, look: TourBubbleLook, scheme: ColorScheme, backdrop: Color) -> some View {
+        switch look {
+        case .glass:
+            if #available(iOS 26.0, *) {
+                self.glassEffect(.regular, in: shape)
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.12), radius: 16, y: 8)
+            } else {
+                self.background(.regularMaterial, in: shape)
+                    .overlay(shape.stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
+            }
+        case .ink:
+            // The page's opposite: dark on a light page, light on a dark one; the words follow.
+            self.environment(\.colorScheme, scheme == .dark ? .light : .dark)
+                .background(shape.fill(scheme == .dark ? Color(white: 0.95) : Color(white: 0.14))
+                    .shadow(color: .black.opacity(0.22), radius: 14, y: 6))
+        case .soft:
+            // The old pebble in the page's own colour, raised with the app's shadows.
+            self.background(shape.fill(backdrop)
+                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.14), radius: 12, x: 5, y: 7)
+                .shadow(color: .white.opacity(scheme == .dark ? 0.06 : 0.9), radius: 8, x: -4, y: -4))
+        }
     }
 }
 
@@ -540,9 +566,8 @@ struct TourCallout: View {
 /// for the ✓ and Next; faint (0.45) for the ring round a control, so it never reads as a scored prayer's ring.
 enum TourInk {
     static let green = Color.green
-    /// The bubble with an edge, a stronger shadow and a stronger wash (audit E21; the owner picks — decision
-    /// tour-bubble-look). `-tourBubbleSolid YES` for the pictures.
-    static let solidKey = "tourBubbleSolid"
+    /// The tip's material (TourBubbleLook).
+    static let lookKey = "tourBubbleLook"
 }
 
 /// A step's to-dos: an empty ring each, filled with a green ✓ the moment its action happens; the words go quiet once done.
