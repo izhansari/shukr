@@ -175,8 +175,6 @@ struct TourOverlay: View {
     /// The bubble's bottom here (global y), above what it talks about (the list steps — audit J); nil: by the hole.
     var aboveY: CGFloat? = nil
     var showsBack = false
-    /// The ✓ moment before the insight: Not now sits where Continue is about to appear, so it takes no tap then.
-    var settling = false
     var onNext: () -> Void = {}
     var onBack: () -> Void = {}
     var onSkip: () -> Void = {}
@@ -194,7 +192,7 @@ struct TourOverlay: View {
                                 place: place ?? step.place, tasks: tasks ?? step.tasks, ticked: ticked,
                                 notes: showNotes ? step.notes : [], lit: lit, insight: insight, nextLabel: nextLabel,
                                 hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
-                                aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack, settling: settling,
+                                aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
                                 onNext: onNext, onBack: onBack, onSkip: onSkip)
                 } else {
                     dim(size: geo.size, hole: hole)
@@ -437,7 +435,7 @@ private struct TourBubblePlacement: Layout {
 /// Round 3 (owner: "too subtle … not a fan of the stock apple tool tip"; Bradley's four changes): a shukr-made callout.
 /// A light spotlight (the rest of the page washes out a little, never grey), the control glowing twice, and a soft raised
 /// bubble that grows out of the control's edge with a soft tail: the gesture moving inside it, a headline and a quiet
-/// line, three dots for the tour's place and "Not now".
+/// line, the tour's place (dots) and Continue.
 struct TourCallout: View {
     let step: TourStep
     let hole: CGRect?
@@ -458,8 +456,6 @@ struct TourCallout: View {
     /// The bubble's bottom here (this view's space): above the list on its steps (audit J).
     var aboveY: CGFloat? = nil
     var showsBack = false
-    /// The ✓ moment before the insight: Not now sits where Continue is about to appear, so it takes no tap then.
-    var settling = false
     var onNext: () -> Void = {}
     var onBack: () -> Void = {}
     var onSkip: () -> Void
@@ -588,14 +584,7 @@ struct TourCallout: View {
                     .accessibilityLabel("Step \(place.0) of \(place.1)")
                 }
                 Spacer()
-                if place != nil && nextLabel != "Done" {   // the last step: Done is the way out
-                    Button("Not now", action: onSkip)
-                        .buttonStyle(.plain)
-                        .font(.system(.footnote, design: .rounded, weight: .regular))
-                        .foregroundStyle(Color(.secondaryLabel)).fixedSize()
-                        // A quick tap meant for Continue landed here and ended the tour (Ben's first-tap lead).
-                        .disabled(settling)
-                }
+                // No "Not now" here (owner): the way out is Skip tour at the top, two taps (TourSkipButton).
                 if showsNext {
                     Button(nextLabel, action: onNext)
                         .buttonStyle(.plain)
@@ -1136,10 +1125,33 @@ struct TourLayer: View {
     /// The qibla step has waited a while (a compass that won't settle): a Next appears.
     @State private var qiblaWaited = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// "You skipped the tour" for a few seconds after a skip (owner: tell them where to find it again).
+    @State private var skippedNote = false
     private var runtime: TourRuntime { TourRuntime.shared }
 
     var body: some View {
         ZStack {
+            // The way out, away from the tips (owner: no "Not now" in them): two taps, like Finish early.
+            if runtime.active, runtime.step != nil, !covered {
+                TourSkipButton {
+                    runtime.skip()
+                    withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 52)
+                .padding(.trailing, 16)
+                .transition(.opacity)
+            }
+            if skippedNote {
+                TourSkippedNote { withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false } }
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 52)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .task {
+                        try? await Task.sleep(for: .seconds(5))
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false }
+                    }
+            }
             // Taken off the step's page (a widget or a control opened another page; the pager is held, so it was a
             // dead end — Ben's round C): one way back.
             if let step = runtime.step, !covered, !onItsPage(step) {
@@ -1169,7 +1181,6 @@ struct TourLayer: View {
                             hint: runtime.completing || insight ? nil : hint(step),
                             aboveY: aboveY(step),
                             showsBack: runtime.canGoBack,
-                            settling: runtime.completing && !insight,
                             onNext: { runtime.event(.next) },
                             onBack: { runtime.event(.back) },
                             onSkip: { runtime.skip() })
@@ -1491,6 +1502,87 @@ enum PracticeClock {
 
     /// A practice prayer's time as shown (a real prayer's as it is).
     static func shown(_ date: Date, of prayer: PrayerModel) -> Date { date.addingTimeInterval(shift(for: prayer)) }
+}
+
+/// Skip tour (owner: "a double tap confirmation … like how our finish early buttons are"): the first tap arms it —
+/// "✓ Tap again to skip" in sage, growing leftwards — the second skips; it lets go after 3 s.
+struct TourSkipButton: View {
+    let action: () -> Void
+    @State private var armed = false
+    @State private var token = 0
+
+    var body: some View {
+        Button {
+            if armed {
+                triggerSomeVibration(type: .medium)
+                armed = false
+                action()
+            } else {
+                triggerSomeVibration(type: .light)
+                token += 1
+                let mine = token
+                armed = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout, not a motion
+                    if mine == token { armed = false }
+                }
+            }
+        } label: {
+            // Armed, its words are the button: the whole sage capsule takes the second tap (an overlay didn't).
+            ZStack(alignment: .trailing) {
+                Text("Skip tour")
+                    .font(.system(.footnote, design: .rounded, weight: .medium))
+                    .foregroundStyle(Color.primary.opacity(0.6))
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .background(Capsule().fill(Color.primary.opacity(0.06)))
+                    .opacity(armed ? 0 : 1)
+                if armed {
+                    HStack(spacing: 5) {
+                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                        Text("Tap again to skip").font(.system(.footnote, design: .rounded, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 32)
+                    .background(Capsule().fill(Color.sage))
+                    .fixedSize()
+                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
+                }
+            }
+            .animation(.snappy(duration: 0.25), value: armed)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(armed ? "Tap again to skip the tour" : "Skip tour")
+    }
+}
+
+/// After a skip: where the tour lives now (owner: "hey, you skipped the tour … you can find it in settings").
+struct TourSkippedNote: View {
+    let dismiss: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("You skipped the tour")
+                .font(.system(.subheadline, design: .rounded, weight: .medium))
+            Text("Take it any time: Settings → Show me around again.")
+                .font(.system(.subheadline, design: .rounded, weight: .light))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 340, alignment: .leading)
+        .tourBubble(RoundedRectangle(cornerRadius: 20, style: .continuous),
+                    look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .padding(.horizontal, 24)
+        .onTapGesture(perform: dismiss)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
 }
 
 /// "Back to the tour ›": shown when something took the page away from the tour's step.
