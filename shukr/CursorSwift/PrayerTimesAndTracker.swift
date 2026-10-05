@@ -725,6 +725,10 @@ struct PrayerTimesView: View {
         }
         // A practice mark undone: the post-salah pill it brought goes too.
         .onChange(of: TourRuntime.shared.clearPill) { _, _ in live.postSalahNudge = nil }
+        // The first real mark's pill, held through the celebration, comes on its Continue.
+        .onChange(of: TourRuntime.shared.pillRelease) { _, _ in
+            if let name = TourRuntime.shared.heldPillName { live.postSalahNudge = name }
+        }
         // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
         // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
         .onChange(of: somethingCovers || showTasbeehPage, initial: true) { _, covered in
@@ -1997,7 +2001,7 @@ struct PrayerTimesView: View {
         var body: some View {
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
             let settings = min(max(live.scrollProgress - 1, 0), 1)
-            PostSalahNudge(onOpen: onOpen,
+            PostSalahNudge(onOpen: { TourRuntime.shared.event(.pillOpened); onOpen() },
                            onDismiss: {
                                live.postSalahNudge = nil   // the pill animates (or not) itself
                                TourRuntime.shared.event(.pillClosed)   // ✕ or a flick: the tour's to-do (never its expiry)

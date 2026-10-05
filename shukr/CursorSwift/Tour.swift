@@ -6,7 +6,7 @@ import TipKit
 /// Coach marks: a dim with a clear cut-out round the real control, one line beside it, the step ending on the real action.
 /// The dim takes no touches, so the control under the cut-out (and everything else) works as usual.
 enum TourStep: String, CaseIterable, Identifiable {
-    case circle, colors, qibla, list, rowTime, mark, fold, markedRow, edit, undo, zikr, settings, celebrate, map, hintMark
+    case circle, colors, qibla, list, rowTime, mark, fold, markedRow, edit, undo, zikr, settings, celebrate, firstPill, map, hintMark
     var id: String { rawValue }
 
     /// The measured frame it points at (TourTargets), or nil for a page-wide step.
@@ -19,6 +19,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .rowTime, .markedRow: "prayerRow."      // + the row's name (TourLayer)
         case .list: "chevron"
         case .zikr, .settings: nil                   // the settings row once there (TourLayer)
+        case .firstPill: "pill"
         }
     }
     var words: String { headline + ". " + subline }
@@ -41,6 +42,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .zikr: "There\u{2019}s more, one page over."
         case .settings: "And that\u{2019}s the house."
         case .celebrate: "Your first prayer, marked."
+        case .firstPill: "Tasbih Fatimah, after every prayer."
         case .map: "See where you prayed"
         case .hintMark: "Tap the dot"
         }
@@ -69,6 +71,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .zikr: "Your zikr and daily tasks live to the right. Nothing to do here now \u{2014} just so you know where they are."
         case .settings: "The bar at the bottom takes you anywhere, too."
         case .celebrate: "May there be many more."
+        case .firstPill: "Each time you mark a prayer, this comes up for a little while \u{2014} 33\u{00A0}\u{00B7}\u{00A0}33\u{00A0}\u{00B7}\u{00A0}34, if you\u{2019}d like to say it. Tap it now."
         case .map: "Every prayer you mark is on the map, under Explore → Prayers."
         case .hintMark: "to mark it prayed. Hold it to change the time."
         }
@@ -82,13 +85,14 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .qibla: ("That\u{2019}s the qibla, wherever you are.", "Tap the arrow when you want the map.")
         case .list: ("That\u{2019}s your day in one place.", "Tap a prayer\u{2019}s dot when you\u{2019}ve prayed; its time says when it starts.")
         case .rowTime: ("How long until it starts, at a glance.", "It flips back by itself.")
-        case .mark: ("Marked.", "After each prayer that pill offers Tasbih Fatimah \u{2014} 33 \u{00B7} 33 \u{00B7} 34 \u{2014} if you want it. \u{2715} when you don\u{2019}t.")
+        case .mark: ("Marked.", "After each prayer that pill offers Tasbih Fatimah \u{2014} 33\u{00A0}\u{00B7}\u{00A0}33\u{00A0}\u{00B7}\u{00A0}34 \u{2014} if you want it. \u{2715} when you don\u{2019}t.")
         case .fold: ("Short list, nothing lost.", "They\u{2019}re always one tap away.")
         case .markedRow: ("Fajr says Qaza.", "It was marked after its time. That\u{2019}s not what happened \u{2014} so let\u{2019}s fix it.")
         case .edit: ("Fixed \u{2014} and honest.", "You can change the time, and the place too. What the app first recorded is kept, so you can always go back.")
         case .undo: ("Undone.", "That\u{2019}s the last of the fixing. Your tracker will only ever say what\u{2019}s true.")
         case .zikr: ("Tap the circle there whenever you want to count.", "We\u{2019}ll show you round it the first time you do.")
         case .settings: ("That\u{2019}s shukr.", "May it make your prayers easier. If you ever want this walk again, it lives here \u{2014} \u{201C}Show me around again\u{201D}.")
+        case .firstPill: ("It\u{2019}ll be there after every prayer.", "Mark a prayer and it comes up. \u{2715} when you\u{2019}d rather not.")
         case .celebrate, .map, .hintMark: nil
         }
     }
@@ -116,6 +120,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .undo: ["Tap Asr\u{2019}s dot, then Yes"]
         case .zikr: ["Swipe right"]
         case .settings: ["Tap Settings below"]
+        case .firstPill: ["Tap \u{201C}Post-salah tasbih\u{201D}"]
         case .map: ["Tap the arrow on the circle"]
         case .colors, .celebrate, .hintMark: []
         }
@@ -131,6 +136,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .rowTime: "hourglass"
         case .markedRow: "checkmark.seal"
         case .celebrate: "sparkles"
+        case .firstPill: "hand.tap"
         case .map: "map"
         case .list: "arrow.up"
         case .zikr: "circle.hexagongrid"
@@ -1019,6 +1025,19 @@ struct BubbleShape: Shape {
                                        .zikr, .settings]
     /// The first real mark gets a celebration (and then the map), once — armed by the first-run setup only.
     static let celebrateArmedKey = "tour.firstMark.armed"
+    /// The first real mark's post-salah pill waits for the celebration's Continue (owner: "hold the post salah tasbih
+    /// pill until after they have marked and they press continue"); then the pill comes, with its own card.
+    @ObservationIgnored private var firstMarkPending = false
+    private(set) var heldPillName: String?
+    /// Bumped when the held pill should come (the page raises it).
+    private(set) var pillRelease = 0
+    /// Called where the pill would rise after a mark: true = held for the first-mark celebration.
+    func holdPill(_ name: String) -> Bool {
+        guard firstMarkPending else { return false }
+        heldPillName = name
+        return true
+    }
+
     /// How it's celebrated (decision first-mark-celebration — the confetti goes, owner: "tacky"): A the edge glow,
     /// B the perfect-day flourish, C nothing more than the mark's own flourish and the card. Confetti until he picks;
     /// DEBUG `-celebrateStyle A|B|C` for the pictures.
@@ -1032,12 +1051,12 @@ struct BubbleShape: Shape {
         default: break
         }
         #endif
-        return .confetti
+        return .glow   // decision first-mark-celebration: A (owner, 2026-10-05: "go with option A")
     }
 
     enum Event {
         case circleTapped, listOpened, unmarked, mapOpened, foldTapped, qiblaAligned, next, back
-        case comingRowTapped, markedRowTapped, pillClosed, zikrPage, settingsPage
+        case comingRowTapped, markedRowTapped, pillClosed, pillOpened, zikrPage, settingsPage
         /// The time editor opened on a prayer; its score now (0…1); Save.
         case editorOpened(String), editorScored(Double), editorSaved(String)
         /// A real mark (the circle held, or a dot tapped), or the mark's preview when no prayer is due.
@@ -1148,6 +1167,8 @@ struct BubbleShape: Shape {
             if active { return }   // between two steps: the tour's, not a "first real mark" (audit A7)
             if case .marked = e, UserDefaults.standard.bool(forKey: Self.celebrateArmedKey) {
                 UserDefaults.standard.set(false, forKey: Self.celebrateArmedKey)
+                firstMarkPending = true
+                heldPillName = nil
                 run += 1
                 let thisRun = run
                 Task {
@@ -1160,6 +1181,18 @@ struct BubbleShape: Shape {
         }
         switch (step, e) {
         // Continue, once the insight is up; Back, any time.
+        // After the tour (before the general Continue, which ends the tour): the held pill comes, with its card (or the map hint at once if no pill was held).
+        case (.celebrate, .next):
+            firstMarkPending = false
+            if heldPillName != nil {
+                pillRelease += 1
+                go(to: .firstPill)
+            } else {
+                go(to: .map)
+            }
+        case (.firstPill, .pillOpened): tick(0)
+        case (.firstPill, .pillClosed) where !ticked.contains(0): go(to: .map)   // ✕ instead: on to the map hint
+        case (.firstPill, .next) where insight: go(to: .map)
         case (_, .next) where insight || step.tasks.isEmpty && step.notes.isEmpty: advance(from: step)
         case (_, .back): goBack(from: step)
         // Only the user's own action ticks (audit J): the circle's tap, not its flip state.
@@ -1198,7 +1231,6 @@ struct BubbleShape: Shape {
             tick(0)
         case (.zikr, .zikrPage): tick(0)
         case (.settings, .settingsPage): tick(0)
-        case (.celebrate, .next): go(to: .map)
         case (.map, .mapOpened), (.map, .next): withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
         default: break
         }
@@ -1443,6 +1475,7 @@ struct TourLayer: View {
 
     private func nextLabel(_ step: TourStep, insight: Bool) -> String {
         if step == .settings && insight { return "Done" }
+        if step == .celebrate { return "Continue" }
         if step == .map { return "Got it" }
         return insight ? "Continue" : "Next"
     }
@@ -1488,6 +1521,8 @@ struct TourLayer: View {
         case .zikr where sharedState.horizontalPage == .zikr: "zikrCircle"
         case .settings where sharedState.horizontalPage == .settings: "tourAgainRow"
         case .settings: "settingsTab"
+        // The pill until it's tapped; then it's gone, and the card hangs under the circle (not over it).
+        case .firstPill where runtime.ticked.contains(0) || !runtime.pillVisible: "circle"
         default: step.target
         }
     }
@@ -1523,6 +1558,8 @@ struct TourLayer: View {
             return mid(t.frame("settingsTab")).map { .init(kind: .tap, at: $0) }
         // The qibla arrow sits on the circle's upper right.
         case .map: return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
+        // On the pill's words, left of its ✕.
+        case .firstPill: return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.midX - 20, y: $0.midY)) }
         case .colors, .qibla, .celebrate, .hintMark: return nil
         }
     }
@@ -1575,7 +1612,7 @@ struct TourLayer: View {
         // flips its time; a hold is refused by `allows(marking:)`).
         case .zikr: return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
         case .settings: return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
-        case .colors, .qibla, .celebrate, .map, .hintMark: return []
+        case .colors, .qibla, .celebrate, .firstPill, .map, .hintMark: return []
         }
     }
 
@@ -1587,7 +1624,7 @@ struct TourLayer: View {
         case .rowTime, .mark, .fold, .markedRow, .edit, .undo, .hintMark: return page == .main && list == .bottom
         case .zikr: return page == .main || page == .zikr
         case .settings: return page == .zikr || page == .settings
-        case .celebrate, .map: return page == .main
+        case .celebrate, .firstPill, .map: return page == .main
         }
     }
 }

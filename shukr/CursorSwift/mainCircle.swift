@@ -716,7 +716,8 @@ struct MainCircleView: View {
             CircleStage.shared.holdRow(nil)       // the list folds the row now (it animates itself)
             // The post-salah pill under the top bar (it animates its own arrival). The original event's name even after
             // a Jumu'ah correction ("Dhuhr"), as the row's (Sami's review of 98eeedf).
-            live?.postSalahNudge = event.name
+            // The first real mark's pill waits for the celebration's Continue (Tour.swift `holdPill`).
+            if !TourRuntime.shared.holdPill(event.name) { live?.postSalahNudge = event.name }
             guard await CircleGate.pause(0.5) else { return }
             quietly { flourish = nil; flourishOut = false }
         }
