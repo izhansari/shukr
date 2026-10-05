@@ -785,6 +785,13 @@ struct BubbleShape: Shape {
 
     /// Whether a mark or an unmark may happen now (Ben's G1 / G2). Outside the tour, always. In it, only the step's own:
     /// a mark on the mark step; Asr's undo on the undo step.
+    /// Whether a prayer's time editor may open now. Outside the tour, always; in it, only the fix step's own: the practice
+    /// Fajr, until it's saved (owner: "we should only limit it to the Fajr one … we gotta control this thing").
+    func allowsEditing(_ prayer: PrayerModel) -> Bool {
+        guard active else { return true }
+        return step == .edit && prayer.name == "Fajr" && Self.isPracticeAnywhere(prayer) && !ticked.contains(2)
+    }
+
     func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
         guard active else { return true }
         if marking { return step == .mark && !ticked.contains(0) }
@@ -943,6 +950,12 @@ struct BubbleShape: Shape {
         guard let step, !completing, step.tasks.indices.contains(i), !ticked.contains(i) else { return }
         withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
         checkDone()
+    }
+
+    /// A to-do undone by the user's own action (the fix step's time moved off the yellow before Save).
+    private func untick(_ i: Int) {
+        guard !completing, ticked.contains(i) else { return }
+        withAnimation(.snappy(duration: 0.3)) { _ = ticked.remove(i) }
     }
 
     /// A note has happened: its bullet lights.
@@ -1132,7 +1145,10 @@ struct BubbleShape: Shape {
         case (.markedRow, .markedRowTapped): tick(0)
         case (.edit, .editorOpened(let name)) where name == "Fajr": tick(0)
         // On time (yellow) or better.
-        case (.edit, .editorScored(let score)) where ticked.contains(0) && score >= 0.8: tick(1)
+        // The yellow itself (not green, not red), and only while it's there: off the yellow, the to-do is undone and
+        // Save waits (the editor saves nothing else in this step — owner).
+        case (.edit, .editorScored(let score)) where ticked.contains(0):
+            if PrayerScoring.grade(for: score) == .onTime { tick(1) } else { untick(1) }
         case (.edit, .editorSaved(let name)) where name == "Fajr" && ticked.contains(1): tick(2)
         case (.undo, .unmarked):
             clearPill += 1
@@ -1195,6 +1211,12 @@ struct TourLayer: View {
 
     var body: some View {
         ZStack {
+            // Only the step's own move (owner: "make it so that it's only the intended thing"): while the tour runs,
+            // the app takes no touch except through the step's opening — its target until its to-dos are done, then
+            // nothing but the card. Sheets and alerts the step opens (the time editor, Yes) sit above it.
+            if runtime.active, !covered {
+                TourInputGuard(openings: openings(runtime.step))
+            }
             // The door, on the real day: Show me / Later (decision onboarding-start A).
             if runtime.inviting, !covered, sharedState.horizontalPage == .main, sharedState.navPosition == .main {
                 GeometryReader { geo in
@@ -1433,6 +1455,36 @@ struct TourLayer: View {
         }
     }
 
+    /// Where the step's move may happen (global frames): nothing between steps, nothing once its to-dos are done,
+    /// nothing off its page (Back to the tour is the way).
+    private func openings(_ step: TourStep?) -> [CGRect] {
+        guard let step, onItsPage(step), !runtime.completing, !runtime.insight else { return [] }
+        let t = TourTargets.shared
+        let done = runtime.ticked
+        func f(_ key: String) -> [CGRect] { t.frame(key).map { [$0] } ?? [] }
+        /// The page between the circle and the tab bar: where a swipe starts.
+        func swipeBand(from top: CGFloat?) -> [CGRect] {
+            guard let bottom = t.frame("settingsTab")?.minY else { return [] }
+            let y = (top ?? 140)
+            return [CGRect(x: 0, y: y, width: 10_000, height: max(bottom - 8 - y, 0))]
+        }
+        switch step {
+        case .circle: return f("circle")
+        case .list: return swipeBand(from: t.frame("circle").map { $0.maxY + 8 })
+        case .rowTime: return f("prayerRow.Maghrib")
+        case .mark: return done.contains(0) ? f("pill") : f("prayerDot.Asr") + f("circle")
+        case .fold: return f("doneFold")
+        case .markedRow: return f("prayerRow.Fajr")
+        case .edit: return done.contains(2) ? [] : f("prayerRow.Fajr")
+        case .undo: return f("prayerDot.Asr")
+        // The whole page under the top bar: the swipe hint sits above the circle (a tap on the circle there only
+        // flips its time; a hold is refused by `allows(marking:)`).
+        case .zikr: return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
+        case .settings: return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
+        case .colors, .qibla, .celebrate, .map, .hintMark: return []
+        }
+    }
+
     private func onItsPage(_ step: TourStep) -> Bool {
         let page = sharedState.horizontalPage, list = sharedState.navPosition
         switch step {
@@ -1589,6 +1641,30 @@ enum PracticeClock {
 
     /// A practice prayer's time as shown (a real prayer's as it is).
     static func shown(_ date: Date, of prayer: PrayerModel) -> Date { date.addingTimeInterval(shift(for: prayer)) }
+}
+
+/// The tour's input guard: a clear sheet over the app that takes every touch — taps, holds, swipes — except through
+/// `openings` (global frames), where the touch reaches the app beneath. A touch it takes gets a light no.
+struct TourInputGuard: View {
+    let openings: [CGRect]
+
+    var body: some View {
+        GeometryReader { geo in
+            let origin = geo.frame(in: .global).origin
+            let shape = Path { p in
+                p.addRect(CGRect(origin: .zero, size: geo.size).insetBy(dx: -200, dy: -200))
+                for o in openings {
+                    p.addRoundedRect(in: o.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: -6, dy: -6),
+                                     cornerSize: CGSize(width: 12, height: 12))
+                }
+            }
+            Color.clear
+                .contentShape(shape, eoFill: true)
+                .gesture(DragGesture(minimumDistance: 0).onEnded { _ in triggerSomeVibration(type: .light) })
+                .accessibilityHidden(true)
+        }
+        .ignoresSafeArea()
+    }
 }
 
 /// Skip tour (owner: "a double tap confirmation … like how our finish early buttons are"): the first tap arms it —

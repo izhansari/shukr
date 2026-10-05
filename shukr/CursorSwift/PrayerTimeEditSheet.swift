@@ -60,7 +60,11 @@ struct PrayerTimeEditSheet: View {
         guard let openedWith else { return false }
         return abs(draft.timeIntervalSince(openedWith)) >= 30
     }
-    private var canSave: Bool { isValid && (changed || draftSpot != nil) }
+    private var canSave: Bool { isValid && (changed || draftSpot != nil) && (!tourTip || draftInYellow) }
+    /// The tour's fix step saves only a time in the yellow (owner: "only allow a save … if it's in the yellow").
+    private var draftInYellow: Bool {
+        PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)) == .onTime
+    }
 
     /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
     /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.
@@ -115,7 +119,8 @@ struct PrayerTimeEditSheet: View {
                     .font(.subheadline)
                     .fontWeight(.thin)
                     .foregroundStyle(.secondary)
-                if showsLocation {
+                // Not in the tour: its fix step is the time alone (owner: only the intended thing).
+                if showsLocation && !tourTip {
                     spotChip.padding(.top, 8)
                 }
             }
@@ -148,7 +153,7 @@ struct PrayerTimeEditSheet: View {
             guard tourTip else { return }
             TourRuntime.shared.event(.editorScored(PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: picked)))
         }
-        .presentationDetents([.height((showsLocation ? 572 : 540) + (tourTip ? 132 : 0))])
+        .presentationDetents([.height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

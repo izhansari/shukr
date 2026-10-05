@@ -2722,6 +2722,11 @@ struct PrayerButton: View {
 
     private func openTimeEditor() {
         guard prayerObject.isCompleted else { return }
+        // In the tour only the fix step's Fajr opens (a light no otherwise, as for a mark the tour doesn't want).
+        guard TourRuntime.shared.allowsEditing(prayerObject) else {
+            triggerSomeVibration(type: .light)
+            return
+        }
         // Open on the prayer's own day. The wheel only edits hour/minute and keeps the date it
         // starts with: starting from a tap after midnight (rollover) put every picked time on the
         // next day — always Qaza.
