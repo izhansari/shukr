@@ -563,7 +563,8 @@ struct TourCallout: View {
                 }
                 .padding(.leading, 40)
                 .padding(.top, 2)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                // A fade only: sliding in from above drew it over the last to-do for a frame (Sami).
+                .transition(.opacity)
                 .accessibilityElement(children: .combine)
             }
             HStack {
@@ -902,7 +903,13 @@ struct BubbleShape: Shape {
         Task {
             try? await Task.sleep(for: .seconds(1.2))   // the bubble first
             let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 30
-            let lights: [Double] = [0.06, 0.4, 0.85]   // where the ring shows green, yellow, red
+            // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
+            // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window (Sami: fixed
+            // shares lit yellow and red a second late).
+            let window = Self.practiceWindow
+            let lights: [Double] = [0.005] + PrayerScoring.gradeChanges(start: .distantPast,
+                                                                         end: Date.distantPast.addingTimeInterval(window))
+                .map { $0.timeIntervalSince(.distantPast) / window }
             var playing: Bool { run == thisRun && step == .colors }
             while playing {
                 var elapsed: TimeInterval = 0
