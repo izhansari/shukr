@@ -868,6 +868,7 @@ struct tasbeehView: View {
         .onAppear {
             _ = SessionHandoff.shared.takeEntry()   // read (entryFrom, landingBase); the next session opens as it should
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
+            TourRuntime.shared.event(.sessionStarted)   // the tour's last step ends on a session
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
             // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).

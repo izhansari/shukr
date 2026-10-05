@@ -612,10 +612,34 @@ struct PrayerTimesView: View {
             // "shukr lost your location" (circle step 3b): its buttons, and what runs it — the circle shows the rest.
             LostPageLayer()
 
+            // The first-run tour (Tour.swift): its callout over the live app, never over a cover or a session.
+            TourLayer(covered: somethingCovers || showTasbeehPage)
+
             #if DEBUG
-            TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line]`: the pictures
+            TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line|callout]`: the pictures
             #endif
         }
+        // The tour: from Settings → Show me around again (the Salah page, the list closed), or once after the first-run
+        // setup when the page has come back from the welcome.
+        .onReceive(NotificationCenter.default.publisher(for: TourRuntime.start)) { _ in
+            sharedState.go(to: .main)
+            SalahSheetDrag.closeQuietly(sharedState)
+            Task {
+                try? await Task.sleep(for: .seconds(0.6))
+                TourRuntime.shared.begin()
+            }
+        }
+        .onChange(of: CircleStage.shared.pageHidden, initial: true) { _, hidden in
+            guard !hidden, UserDefaults.standard.bool(forKey: TourRuntime.pendingKey),
+                  !UserDefaults.standard.bool(forKey: TourRuntime.doneKey) else { return }
+            Task {
+                try? await Task.sleep(for: .seconds(1.2))
+                guard TourRuntime.shared.step == nil, !CircleStage.shared.pageHidden else { return }
+                TourRuntime.shared.begin()
+            }
+        }
+        // A practice mark undone: the post-salah pill it brought goes too.
+        .onChange(of: TourRuntime.shared.undone) { _, _ in live.postSalahNudge = nil }
         // The welcome lands on the Salah circle only if nothing covers it (a widget may have opened
         // Daily Ayah / 99 Names / the map); otherwise it opens out like a doorway.
         .onChange(of: somethingCovers || showTasbeehPage, initial: true) { _, covered in

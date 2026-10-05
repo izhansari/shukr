@@ -342,7 +342,10 @@ struct MainCircleView: View {
                             // on the next one (audit A).
                             guard momentKind != .marking, flourish == nil else { return }
                             if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
+                                let marking = !prayer.isCompleted
                                 viewModel.togglePrayerCompletion(for: prayer)
+                                // The tour's Hold step: a practice mark, undone after its flourish (Tour.swift).
+                                if marking { TourRuntime.shared.event(.held(prayer, viewModel)) }
                                 // The post-salah pill follows the flourish (.prayerCompleted).
                             }
                         }
@@ -755,6 +758,7 @@ struct MainCircleView: View {
     }
     
     private func handleTap() {
+        TourRuntime.shared.event(.circleTapped)   // the tour's first step ends on this tap
         guard morningShown == nil, lostShown == nil else { return }
         // Only when the circle has text to flip. "Missed" and the day's score have none (a buzz
         // there felt like a broken button); the prayer's "ends / at" text is an

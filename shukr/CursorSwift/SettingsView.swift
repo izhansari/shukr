@@ -376,6 +376,15 @@ struct SettingsView: View {
                     
                     
                     
+                    // The first-run tour again, for everyone (Tour.swift).
+                    Section {
+                        Button {
+                            NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                        } label: {
+                            Label("Show me around again", systemImage: "hand.point.up.left")
+                        }
+                    }
+
                     if betaAccess.available {
                         // (Lock Screen time left is "27m" for good — owner, settings-cleanup-1; the picker is gone.)
                         Section {

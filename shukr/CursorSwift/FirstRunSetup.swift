@@ -87,7 +87,13 @@ enum FirstRunSetup {
     }
 
     static func markDone() {
-        if !isDone { UserDefaults.standard.set(true, forKey: doneKey) }
+        if !isDone {
+            UserDefaults.standard.set(true, forKey: doneKey)
+            // The first-run tour follows the setup, once the welcome has played (Tour.swift).
+            if !UserDefaults.standard.bool(forKey: TourRuntime.doneKey) {
+                UserDefaults.standard.set(true, forKey: TourRuntime.pendingKey)
+            }
+        }
     }
 
     /// Widget / control / Action-button launches set one of these before the app opens.
