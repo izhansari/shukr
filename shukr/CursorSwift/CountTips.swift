@@ -75,10 +75,10 @@ import SwiftUI
                              line: "Every session you finish is kept here.", task: "Open History, top left", needed: 1,
                              insight: nil)
         case .delete: Words(symbol: "trash", headline: "Tidy up",
-                            line: "That was a practice session: the top one under Today.", task: "Swipe it left, then Delete", needed: 1,
+                            line: "That was practice \u{2014} swipe it left, then Delete.", task: "Swipe the top one left, then Delete", needed: 1,
                             insight: ("Gone", "Swipe left on any session to delete it."))
         case .end: Words(symbol: "hand.tap", headline: "Your turn",
-                         line: "Now start your real session: tap the circle when you're ready.", task: nil, needed: 0,
+                         line: "Now the real one: tap the circle when you\u{2019}re ready.", task: nil, needed: 0,
                          insight: nil)
         case .done: Words(symbol: nil, headline: "", line: "", task: nil, needed: 0, insight: nil)
         }

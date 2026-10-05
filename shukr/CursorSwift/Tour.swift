@@ -26,37 +26,48 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The ask's two lines: a short headline and a quiet line under it.
     var headline: String {
         switch self {
-        case .circle: "Your prayer"
-        case .colors: "Green, yellow, red"
-        case .qibla: "Face the qibla"
-        case .list: "Today's prayers"
-        case .rowTime: "How long until it starts"
-        case .mark: "Mark your prayer"
-        case .fold: "Your marked prayers"
-        case .markedRow: "Your time and score"
-        case .edit: "Fix a mark"
-        case .undo: "Undo a mark"
-        case .zikr: "Your zikr"
-        case .settings: "Settings"
+        // The tour as a story in three chapters, one warm voice (Izhan: "warmer … a story"; Ben's script,
+        // board/brief-frank-tour-story.md).
+        case .circle: "This is the heart of shukr."
+        case .colors: "The ring is also a score."
+        case .qibla: "Which way to face."
+        case .list: "Your day, prayer by prayer."
+        case .rowTime: "Plan ahead."
+        case .mark: "A tracker is only worth having if it\u{2019}s true."
+        case .fold: "Out of the way."
+        case .markedRow: "How you did."
+        case .edit: "Say you really prayed Fajr on time."
+        case .undo: "Marked one by mistake?"
+        case .zikr: "There\u{2019}s more, one page over."
+        case .settings: "And that\u{2019}s the house."
         case .celebrate: "Your first prayer, marked"
         case .map: "See where you prayed"
         case .hintMark: "Tap the dot"
         }
     }
+    /// The story's chapters, shown small over the first card of each (Ben's script).
+    var chapter: String? {
+        switch self {
+        case .circle: "Your day"
+        case .mark: "Keeping it honest"
+        case .zikr: "The rest of the house"
+        default: nil
+        }
+    }
     var subline: String {
         switch self {
-        case .circle: "This is a practice prayer: nothing here is saved."
-        case .colors: "The ring's colour is the score you'd get if you prayed now."
-        case .qibla: "The small arrow on the circle points the way."
-        case .list: "They're under the circle."
-        case .rowTime: "A coming prayer's time can show how long is left."
-        case .mark: "It's the practice prayer, so nothing is saved."
-        case .fold: "Marked prayers tuck under \u{201C}done\u{201D}."
-        case .markedRow: "A marked prayer shows when you prayed and your score."
-        case .edit: "Fajr was marked late, so it counts as Qaza. Say you really prayed it on time."
-        case .undo: "Marked one by mistake?"
-        case .zikr: "It's one page over."
-        case .settings: "The bar at the bottom takes you to any page, too."
+        case .circle: "One circle: which prayer it is now, or the next one; how much of its time has gone; and the small arrow is your qibla. Most days, this is all you\u{2019}ll look at."
+        case .colors: "Pray early and it\u{2019}s green; later, yellow; late, red. Miss it, grey. We made it a colour so you never have to do the maths."
+        case .qibla: "Turn until the arrow points up. It goes green when you\u{2019}re facing Makkah."
+        case .list: "Swipe up. The five prayers are under the circle: a dot to mark each, its time to plan by."
+        case .rowTime: "A coming prayer\u{2019}s time can tell you how long you\u{2019}ve got."
+        case .mark: "So we made it easy to keep true. Start with the simplest thing: you prayed Asr, so mark it."
+        case .fold: "Marked prayers fold under \u{201C}done\u{201D}, so your list stays short."
+        case .markedRow: "Each marked prayer keeps when you prayed and what it scored."
+        case .edit: "Hold its row. Drag the colour bar, or pick a time in the yellow, to set when you actually prayed. Then save."
+        case .undo: "Take it back."
+        case .zikr: "Your zikr and daily tasks live to the right. Nothing to do here now \u{2014} just so you know where they are."
+        case .settings: "The bar at the bottom takes you anywhere, too."
         case .celebrate: "Keep it up — every prayer you mark grows your streak."
         case .map: "Every prayer you mark is on the map, under Explore → Prayers."
         case .hintMark: "to mark it prayed. Hold it to change the time."
@@ -66,25 +77,25 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// continue"). nil: the ask stays, with Continue (a step with nothing to do).
     var insight: (String, String)? {
         switch self {
-        case .circle: ("Your prayer at a glance", "Tap the circle any time to see how long is left before it ends.")
-        case .colors: ("Pray in the green", "The earlier you pray, the higher the score. Grey means missed.")
-        case .qibla: ("That's the qibla", "Wherever you are, the arrow points the way. Tap it for the map.")
-        case .list: ("Your day, prayer by prayer", "Tap a prayer's dot to mark it. Its time says when it starts, or how long until. Marked prayers tuck under \u{201C}done\u{201D}.")
-        case .rowTime: ("Plan ahead", "Tap a coming prayer's time to see how long until it starts. It flips back by itself.")
-        case .mark: ("Marked", "After each prayer this pill offers Tasbih Fatimah (33 · 33 · 34). Tap it to start, or \u{2715} to skip.")
-        case .fold: ("Out of the way", "Your list stays short, and your marked prayers are one tap away.")
-        case .markedRow: ("How you did", "Each marked prayer shows its score. Fajr says Qaza: it was marked after its time.")
-        case .edit: ("Fixed", "You can change the time, and the place too. What the app recorded is kept, so you can always go back to it.")
-        case .undo: ("Undone", "That's how you take back a mark.")
-        case .zikr: ("Your zikr", "Your zikr and daily tasks live here. Tap the circle to start counting, any time.")
-        case .settings: ("Show me around again", "Run this tour again any time, from here.")
+        case .circle: ("Those two taps are the whole clock.", "Everything else in shukr is built around this circle.")
+        case .colors: ("Pray in the green.", "That\u{2019}s the whole idea.")
+        case .qibla: ("That\u{2019}s the qibla, wherever you are.", "Tap the arrow when you want the map.")
+        case .list: ("That\u{2019}s your day in one place.", "Tap a prayer\u{2019}s dot when you\u{2019}ve prayed; its time says when it starts.")
+        case .rowTime: ("How long until it starts, at a glance.", "It flips back by itself.")
+        case .mark: ("Marked.", "After each prayer that pill offers Tasbih Fatimah \u{2014} 33 \u{00B7} 33 \u{00B7} 34 \u{2014} if you want it. \u{2715} when you don\u{2019}t.")
+        case .fold: ("Short list, nothing lost.", "They\u{2019}re always one tap away.")
+        case .markedRow: ("Fajr says Qaza.", "It was marked after its time. That\u{2019}s not what happened \u{2014} so let\u{2019}s fix it.")
+        case .edit: ("Fixed \u{2014} and honest.", "You can change the time, and the place too. What the app first recorded is kept, so you can always go back.")
+        case .undo: ("Undone.", "That\u{2019}s the last of the fixing. Your tracker will only ever say what\u{2019}s true.")
+        case .zikr: ("Tap the circle there whenever you want to count.", "We\u{2019}ll show you round it the first time you do.")
+        case .settings: ("That\u{2019}s shukr.", "May it make your prayers easier. If you ever want this walk again, it lives here \u{2014} \u{201C}Show me around again\u{201D}.")
         case .celebrate, .map, .hintMark: nil
         }
     }
     /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do.
     var notes: [String] {
         switch self {
-        case .colors: ["Green: the first 30 minutes", "Yellow: on time", "Red: late"]
+        case .colors: ["Green \u{2014} the first 30 minutes", "Yellow \u{2014} on time", "Red \u{2014} late"]
         case .qibla: ["It turns green when you face it"]
         default: []
         }
@@ -92,15 +103,17 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The step's to-dos: each ticked only by the user's own action (audit J: never by a state that changes by itself).
     var tasks: [String] {
         switch self {
-        case .circle: ["Tap the circle", "Tap again to flip it back"]
-        case .qibla: ["Turn until the arrow points up"]
+        case .circle: ["Tap it: how long is left", "Tap again: when it ends"]
+        case .qibla: ["Turn until it points up"]
         case .list: ["Swipe up"]
-        case .rowTime: ["Tap Maghrib's time"]
-        case .mark: ["Tap Asr's dot, or hold the circle", "Close the pill with \u{2715}"]
-        case .fold: ["Tap \u{201C}done\u{201D} to show them", "Tap it again to hide them"]
-        case .markedRow: ["Tap Fajr's time"]
-        case .edit: ["Hold Fajr's row", "Pick a time in the yellow", "Save"]
-        case .undo: ["Tap Asr's dot, then Yes"]
+        case .rowTime: ["Tap Maghrib\u{2019}s time"]
+        case .mark: ["Tap Asr\u{2019}s dot (or hold the circle)", "Close the pill: \u{2715}"]
+        case .fold: ["Tap \u{201C}done\u{201D} to show them", "Tap it again to hide them"]   // the real count: TourLayer
+        case .markedRow: ["Tap Fajr\u{2019}s time"]
+        // Three ticks kept (owner: a save only in the yellow), in the script's voice.
+        case .edit: ["Hold Fajr\u{2019}s row", "Set a time in the yellow", "Save"]
+        // One tick (the unmark itself), so one line.
+        case .undo: ["Tap Asr\u{2019}s dot, then Yes"]
         case .zikr: ["Swipe right"]
         case .settings: ["Tap Settings below"]
         case .map: ["Tap the arrow on the circle"]
@@ -535,9 +548,19 @@ struct TourCallout: View {
                     .frame(width: 28)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
-                    // The app's own type: rounded, light (owner: "change the type face in tooltip to match").
+                    // The story's chapter, small, over its first card (Ben's script).
+                    if let chapter = step.chapter {
+                        Text(chapter.uppercased())
+                            .font(.system(.caption2, design: .rounded, weight: .medium))
+                            .tracking(1.2)
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 1)
+                    }
+                    // The app's own type: rounded, light (owner: "change the type face in tooltip to match"). A sentence
+                    // now, so it may wrap.
                     Text(override?.0 ?? step.headline)
                         .font(.system(.body, design: .rounded, weight: .regular))
+                        .fixedSize(horizontal: false, vertical: true)
                         .accessibilityAddTraits(.isHeader)
                     Text(override?.1 ?? step.subline)
                         .font(.system(.subheadline, design: .rounded, weight: .light))
@@ -1175,7 +1198,20 @@ struct BubbleShape: Shape {
     }
 
     #if DEBUG
-    func debugJump(to target: TourStep) { go(to: target) }
+    func debugJump(to target: TourStep) {
+        go(to: target)
+        // `-tourShowPayoff YES`: the step as it ends — every to-do ticked, every note lit, its payoff up (the pictures).
+        guard UserDefaults.standard.bool(forKey: "tourShowPayoff") else { return }
+        let thisRun = run
+        Task {
+            try? await Task.sleep(for: .seconds(0.8))
+            guard run == thisRun, step == target else { return }
+            ticked = Set(target.tasks.indices)
+            lit = Set(target.notes.indices)
+            completing = true
+            insight = true
+        }
+    }
     #endif
 
     /// Out, then in: the bubble goes, the practice day is set for the next step, then it comes at the next control.
@@ -1280,6 +1316,7 @@ struct TourLayer: View {
                             showsNext: insight || nothingToDo || step == .celebrate
                                 || (step == .qibla && !runtime.completing && (compass.status != .ok || qiblaWaited)),
                             place: runtime.place(of: step),
+                            tasks: tasks(step),
                             ticked: runtime.ticked,
                             lit: runtime.lit,
                             insight: insight ? step.insight : nil,
@@ -1376,10 +1413,22 @@ struct TourLayer: View {
     private func override(_ step: TourStep) -> (String, String)? {
         switch step {
         case .qibla where compass.status != .ok && runtime.ticked.isEmpty && !runtime.completing:
-            return ("Face the qibla", "Your compass needs a moment: move the phone in a figure 8, or tap Next.")
+            return ("Which way to face.", "Your compass needs a moment: move the phone in a figure 8, or tap Next.")
+        // "2 done" in the words is the list's real count (Ben's script).
+        case .fold:
+            return (step.headline, "Marked prayers fold under \u{201C}\(doneCount) done\u{201D}, so your list stays short.")
         default:
             return nil
         }
+    }
+
+    /// The practice day's marked prayers: the list's "N done".
+    private var doneCount: Int { TourRuntime.practiceMirror?.filter(\.isCompleted).count ?? 0 }
+
+    /// The to-dos in place of the step's own: the fold's, with the list's real count.
+    private func tasks(_ step: TourStep) -> [String]? {
+        guard step == .fold else { return nil }
+        return ["Tap \u{201C}\(doneCount) done\u{201D} to show them", "Tap it again to hide them"]
     }
 
     /// Where the bubble's bottom goes on the list steps: above the list, over the circle — never over the rows (audit J).
@@ -1738,7 +1787,7 @@ struct TourSkippedNote: View {
         VStack(alignment: .leading, spacing: 3) {
             Text("You skipped the tour")
                 .font(.system(.subheadline, design: .rounded, weight: .medium))
-            Text("Take it any time: Settings → Show me around again.")
+            Text("It lives in Settings whenever you want it.")
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1836,13 +1885,13 @@ struct TourSheetTip: View {
     var body: some View {
         let done = Set([runtime.ticked.contains(1) ? 0 : nil, runtime.ticked.contains(2) ? 1 : nil].compactMap { $0 })
         VStack(alignment: .leading, spacing: 8) {
-            Text("Fajr was marked late")
+            Text("When did you really pray Fajr?")
                 .font(.system(.body, design: .rounded, weight: .regular))
-            Text("Drag the colour bar, or pick a time in the yellow.")
+            Text("Drag the colour bar, or pick a time in the yellow. Then save.")
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            TourChecklist(tasks: ["Pick a time in the yellow", "Save"], ticked: done)
+            TourChecklist(tasks: ["Set a time in the yellow", "Save"], ticked: done)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
