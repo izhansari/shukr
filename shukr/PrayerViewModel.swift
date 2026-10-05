@@ -670,7 +670,8 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             print("⚠️ reconcile: save failed, keeping the app's edits: \(error.localizedDescription)")
         }
         loadTodaysPrayerObjects()
-        for prayer in todaysPrayers where prayer.isCompleted {
+        // Never the tour's practice rows (Ben's G8): they own no notifications.
+        for prayer in todaysPrayers where prayer.isCompleted && !TourRuntime.isPracticeAnywhere(prayer) {
             prayer.cancelUpcomingNudges()   // the extension may not be able to reach our notification center
         }
         calculatePrayerStreak()
