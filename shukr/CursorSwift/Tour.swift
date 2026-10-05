@@ -316,6 +316,12 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                // `-tourAwayAfter s`: s seconds later the page is taken to Zikr, as a widget would (Back to the tour).
+                let away = UserDefaults.standard.double(forKey: "tourAwayAfter")
+                if away > 0 {
+                    try? await Task.sleep(for: .seconds(away))
+                    sharedState.go(to: .zikr)
+                }
                 return
             }
             if TourHintDemo.hint != nil || TourHintDemo.tip != nil {
@@ -590,7 +596,8 @@ struct TourChecklist: View {
                         .symbolEffect(.bounce, value: reduceMotion ? false : done)
                     Text(tasks[i])
                         .font(.system(.subheadline, design: .rounded, weight: .regular))
-                        .foregroundStyle(done ? Color.secondary : Color.primary)
+                        // Done stays readable on glass (Sami: only the strike line showed).
+                        .foregroundStyle(done ? Color.primary.opacity(0.5) : Color.primary)
                         .strikethrough(done, color: .secondary.opacity(0.6))
                         .fixedSize(horizontal: false, vertical: true)
                     if let progress, !done {
@@ -998,6 +1005,14 @@ struct TourLayer: View {
 
     var body: some View {
         ZStack {
+            // Taken off the step's page (a widget or a control opened another page; the pager is held, so it was a
+            // dead end — Ben's round C): one way back.
+            if let step = runtime.step, !covered, !onItsPage(step), !runtime.completing {
+                BackToTourPill { returnTo(step) }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 150)   // above the Zikr page's "tasks done" line and the tab bar
+                    .transition(.opacity)
+            }
             // Done, it stays a moment wherever the action took the page (the list up, the Zikr page) so the ✓ is seen.
             if let step = runtime.step, !covered, onItsPage(step) || runtime.completing {
                 // Once the mark is made the step keeps its words and its dot while it acknowledges (it read "No prayer
@@ -1155,6 +1170,14 @@ struct TourLayer: View {
     /// The row the edit step holds: Fajr (its words' example, marked on the practice day), else the practice mark.
     private func editRow(_ practice: String) -> String {
         viewModel.todaysPrayers.contains { $0.name == "Fajr" && $0.isCompleted } ? "Fajr" : practice
+    }
+
+    /// Back to where `step` happens: its page, and the list open or closed as it needs.
+    private func returnTo(_ step: TourStep) {
+        sharedState.go(to: step == .count ? .zikr : .main)
+        if let wanted = sheetPosition(step), sharedState.navPosition != wanted {
+            withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
+        }
     }
 
     /// Where the list must be for a step (nil: either).
@@ -1322,4 +1345,27 @@ enum PracticeClock {
 
     /// A practice prayer's time as shown (a real prayer's as it is).
     static func shown(_ date: Date, of prayer: PrayerModel) -> Date { date.addingTimeInterval(shift(for: prayer)) }
+}
+
+/// "Back to the tour ›": shown when something took the page away from the tour's step.
+struct BackToTourPill: View {
+    let action: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text("Back to the tour")
+                Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
+            }
+            .font(.system(.subheadline, design: .rounded, weight: .medium))
+            .foregroundStyle(Color.primary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .tourBubble(Capsule(), look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        }
+        .buttonStyle(.plain)
+    }
 }
