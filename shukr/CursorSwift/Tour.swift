@@ -45,7 +45,14 @@ enum TourStep: String, CaseIterable, Identifiable {
     }
     var subline: String {
         switch self {
-        case .circle: "This is a practice prayer: nothing here is saved."
+        case .circle:
+            #if DEBUG
+            UserDefaults.standard.string(forKey: "mockTourStart") == "B"
+                ? "Let's practise on a pretend prayer — nothing here is saved."
+                : "This is a practice prayer: nothing here is saved."
+            #else
+            "This is a practice prayer: nothing here is saved."
+            #endif
         case .colors: "The ring's colour is the score you'd get if you prayed now."
         case .qibla: "The small arrow on the circle points the way."
         case .list: "They're under the circle."
@@ -308,6 +315,16 @@ struct TourDemoLayer: View {
             if let step {
                 TourOverlay(step: step, style: style,
                             target: step == .hintMark ? viewModel.relevantPrayer.map { "prayerDot." + $0.name } : nil) { self.step = nil }
+            }
+            // `-mockTourStart A`: decision onboarding-start's A, a picture only (Ben's audit L): the invitation on the
+            // real day, under the circle. Nothing behind its buttons.
+            if UserDefaults.standard.string(forKey: "mockTourStart") == "A", let circle = TourTargets.shared.frame("circle") {
+                GeometryReader { geo in
+                    let origin = geo.frame(in: .global).origin
+                    TourInviteMock()
+                        .frame(width: min(geo.size.width - 48, 300))
+                        .position(x: geo.size.width / 2, y: circle.maxY - origin.y + 24 + 95)
+                }
             }
         }
         .task {
@@ -1584,6 +1601,43 @@ struct TourSkippedNote: View {
         .accessibilityAddTraits(.isButton)
     }
 }
+
+#if DEBUG
+/// Decision onboarding-start's A (Ben's audit L), drawn for its picture: the tour's look, no ring, no to-dos.
+struct TourInviteMock: View {
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Want a quick look around?")
+                    .font(.system(.body, design: .rounded, weight: .regular))
+                Text("Two minutes, on a practice prayer — nothing you do here is saved. You can run it again any time from Settings.")
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Text("Later")
+                    .font(.system(.footnote, design: .rounded, weight: .regular))
+                    .foregroundStyle(Color(.secondaryLabel))
+                Spacer()
+                Text("Show me")
+                    .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .frame(height: 36)
+                    .background(Capsule().fill(TourInk.green))
+            }
+        }
+        .padding(18)
+        .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
+                    look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+    }
+}
+#endif
 
 /// "Back to the tour ›": shown when something took the page away from the tour's step.
 struct BackToTourPill: View {
