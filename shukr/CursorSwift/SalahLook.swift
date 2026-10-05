@@ -281,6 +281,7 @@ struct SoftDoneFooter: View {
                 withAnimation(RowMotion.current.animation(springy: CircleMotion.spring)) {
                     fold.showDone.toggle()
                 }
+                TourRuntime.shared.event(.foldTapped)   // the user's tap, not a fold the app made
             } label: {
                 // Secondary text, a step quieter than the bar's icons (owner: it read "the same exact color as the
                 // icons in the bottom bar").

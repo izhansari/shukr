@@ -383,6 +383,12 @@ struct SettingsView: View {
                         } label: {
                             Label("Show me around again", systemImage: "hand.point.up.left")
                         }
+                        // The tour ends here (audit J): its last bubble points at this row.
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
+                    }
+                    .id("tourAgainRow")
+                    .onChange(of: TourRuntime.shared.step == .settings && TourRuntime.shared.ticked.contains(0)) { _, there in
+                        if there { withAnimation { proxy.scrollTo("tourAgainRow", anchor: .center) } }
                     }
 
                     if betaAccess.available {

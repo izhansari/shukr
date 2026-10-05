@@ -473,7 +473,8 @@ struct PostSalahNudge: View {
         shown && scenePhase == .active && WelcomeTarget.canLand
             && CircleCover.active.subtracting(Self.seeThroughCovers).isEmpty
     }
-    private var running: Bool { visible && !holding && !expiring && !frozen }
+    /// Never during the tour: its pill is closed by the user's ✕, a to-do (audit J: no to-do done by itself).
+    private var running: Bool { visible && !holding && !expiring && !frozen && !TourRuntime.shared.active }
     private func left(at now: TimeInterval) -> Double {
         let elapsed = spent + (runningSince.map { now - $0 } ?? 0)
         return max(0, 1 - elapsed / Self.lifetime)

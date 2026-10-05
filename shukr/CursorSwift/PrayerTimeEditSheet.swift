@@ -98,8 +98,12 @@ struct PrayerTimeEditSheet: View {
         .padding(.horizontal, 20)
     }
 
+    /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent").
+    private var tourTip: Bool { TourRuntime.shared.step == .edit && TourRuntime.isPracticeAnywhere(prayer) }
+
     var body: some View {
         VStack(spacing: 20) {
+            if tourTip { TourSheetTip().padding(.top, 26) }
             // Header, like the main circle's
             VStack(spacing: 4) {
                 HStack(alignment: .center) {
@@ -115,7 +119,7 @@ struct PrayerTimeEditSheet: View {
                     spotChip.padding(.top, 8)
                 }
             }
-            .padding(.top, 30)   // room under the drag handle
+            .padding(.top, tourTip ? 0 : 30)   // room under the drag handle
 
             PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
 
@@ -139,7 +143,12 @@ struct PrayerTimeEditSheet: View {
             spotAddress = nil
             if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
         }
-        .presentationDetents([.height(showsLocation ? 572 : 540)])
+        // The tour's fix step: its score as the time moves (a time in the yellow ticks its to-do).
+        .onChange(of: draft, initial: true) { _, picked in
+            guard tourTip else { return }
+            TourRuntime.shared.event(.editorScored(PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: picked)))
+        }
+        .presentationDetents([.height((showsLocation ? 572 : 540) + (tourTip ? 132 : 0))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

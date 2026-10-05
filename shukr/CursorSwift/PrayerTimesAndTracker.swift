@@ -1956,12 +1956,15 @@ struct PrayerTimesView: View {
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
             let settings = min(max(live.scrollProgress - 1, 0), 1)
             PostSalahNudge(onOpen: onOpen,
-                           onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
+                           onDismiss: {
+                               live.postSalahNudge = nil   // the pill animates (or not) itself
+                               TourRuntime.shared.event(.pillClosed)   // ✕ or a flick: the tour's to-do (never its expiry)
+                           },
                            shown: zikr < 0.5 && settings < 0.5)
                 // The tour's post-salah step points at it, and ends when it goes (Tour.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("pill", $0) }
                 .onAppear { TourRuntime.shared.pillVisible = true }
-                .onDisappear { TourRuntime.shared.pillVisible = false; TourRuntime.shared.event(.pillGone) }
+                .onDisappear { TourRuntime.shared.pillVisible = false }
                 .padding(.top, 64)
                 .opacity(Double(1 - zikr))
                 .allowsHitTesting(zikr < 0.5)
@@ -2202,6 +2205,7 @@ struct TodaysPrayerListView: View {
                         Button {
                             triggerSomeVibration(type: .light)
                             showDone.toggle()   // the page animates the fold itself (SalahPageContent)
+                            TourRuntime.shared.event(.foldTapped)   // the user's tap, not a fold the app made
                         } label: {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.circle")
@@ -2299,6 +2303,8 @@ struct TodaysPrayerListView: View {
                 .padding(.horizontal)
                 .padding(.vertical, 12)
                 .modifier(SalahLookCard())
+                // The tour's list steps put their bubble above this, never over the rows (audit J).
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("prayerList", $0) }
             }
             if outside {
                 // "N done" lives in the chrome above the bottom bar (SoftDoneFooter); only its count is set here.
@@ -2679,7 +2685,7 @@ struct PrayerButton: View {
         let marked = prayerObject.timeAtComplete ?? Date()
         selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
         showTimePicker = true
-        TourRuntime.shared.event(.editorOpened)   // the tour's "change the time or place" step
+        TourRuntime.shared.event(.editorOpened(prayerObject.name))   // the tour's "change the time or place" step
     }
 
     var body: some View {
@@ -2803,6 +2809,7 @@ struct PrayerButton: View {
                                         let old = prayerObject.timeAtComplete ?? .distantPast
                                         if abs(date.timeIntervalSince(old)) >= 30 { viewModel.editPrayerTime(prayerObject, to: date) }
                                         if let spot { viewModel.movePrayer(prayerObject, to: spot) }
+                                        TourRuntime.shared.event(.editorSaved(prayerObject.name))   // the tour's fix step
                                         showTimePicker = false
                                     })
                 // Closed by a widget open: like Cancel (the sheet keeps its edits in a local draft).
