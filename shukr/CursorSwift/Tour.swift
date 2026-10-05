@@ -40,7 +40,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .undo: "Marked one by mistake?"
         case .zikr: "There\u{2019}s more, one page over."
         case .settings: "And that\u{2019}s the house."
-        case .celebrate: "Your first prayer, marked"
+        case .celebrate: "Your first prayer, marked."
         case .map: "See where you prayed"
         case .hintMark: "Tap the dot"
         }
@@ -68,7 +68,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .undo: "Take it back."
         case .zikr: "Your zikr and daily tasks live to the right. Nothing to do here now \u{2014} just so you know where they are."
         case .settings: "The bar at the bottom takes you anywhere, too."
-        case .celebrate: "Keep it up — every prayer you mark grows your streak."
+        case .celebrate: "May there be many more."
         case .map: "Every prayer you mark is on the map, under Explore → Prayers."
         case .hintMark: "to mark it prayed. Hold it to change the time."
         }
@@ -324,6 +324,10 @@ struct TourDemoLayer: View {
             }
         }
         .task {
+            // `-armFirstMark YES`: the next real mark is celebrated (as after the first-run setup) — the pictures.
+            if UserDefaults.standard.bool(forKey: "armFirstMark") {
+                UserDefaults.standard.set(true, forKey: TourRuntime.celebrateArmedKey)
+            }
             // `-tourStart [-tourStartAfter s]`: the real tour, as Settings → Show me around again starts it.
             if ProcessInfo.processInfo.arguments.contains("-tourStart") {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
@@ -1015,6 +1019,21 @@ struct BubbleShape: Shape {
                                        .zikr, .settings]
     /// The first real mark gets a celebration (and then the map), once — armed by the first-run setup only.
     static let celebrateArmedKey = "tour.firstMark.armed"
+    /// How it's celebrated (decision first-mark-celebration — the confetti goes, owner: "tacky"): A the edge glow,
+    /// B the perfect-day flourish, C nothing more than the mark's own flourish and the card. Confetti until he picks;
+    /// DEBUG `-celebrateStyle A|B|C` for the pictures.
+    enum CelebrateStyle { case confetti, glow, perfectDay, quiet }
+    static var celebrateStyle: CelebrateStyle {
+        #if DEBUG
+        switch UserDefaults.standard.string(forKey: "celebrateStyle") {
+        case "A": return .glow
+        case "B": return .perfectDay
+        case "C": return .quiet
+        default: break
+        }
+        #endif
+        return .confetti
+    }
 
     enum Event {
         case circleTapped, listOpened, unmarked, mapOpened, foldTapped, qiblaAligned, next, back
@@ -1332,7 +1351,26 @@ struct TourLayer: View {
                     // step's animated change was left at nothing — no card, no Skip — until the next update (Sami's
                     // and Frank's invisible step 1, intermittent).
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
-                if step == .celebrate && !reduceMotion { ConfettiBurst().allowsHitTesting(false) }
+                if step == .celebrate && !reduceMotion {
+                    switch TourRuntime.celebrateStyle {
+                    case .confetti: ConfettiBurst().allowsHitTesting(false)
+                    case .glow: FirstMarkGlow()
+                    case .perfectDay, .quiet: EmptyView()   // the list's own flourish (onChange below) / nothing more
+                    }
+                }
+            }
+        }
+        // Decision first-mark-celebration B: the perfect-day flourish, once, in the list (opened, its done rows out).
+        .onChange(of: runtime.step) { _, step in
+            guard step == .celebrate, TourRuntime.celebrateStyle == .perfectDay, !reduceMotion else { return }
+            Task { @MainActor in
+                if sharedState.navPosition != .bottom {
+                    await CircleMotion.animate(CircleMotion.page) { sharedState.navPosition = .bottom }
+                }
+                await CircleMotion.animate(RowMotion.current.animation(springy: CircleMotion.spring)) {
+                    PrayerListFold.shared.showDone = true
+                }
+                NotificationCenter.default.post(name: .perfectDay, object: true)
             }
         }
         .onChange(of: sharedState.navPosition) { _, position in
@@ -1851,6 +1889,19 @@ struct TourInviteCard: View {
         .accessibilityElement(children: .contain)
         .opacity(shown ? 1 : 0)
         .task { withAnimation(.easeOut(duration: 0.4)) { shown = true } }
+    }
+}
+
+/// Decision first-mark-celebration A: the map's qibla edge glow in the ring's green, once — in, a breath, out.
+struct FirstMarkGlow: View {
+    @State private var on = false
+    var body: some View {
+        AlignedEdgeGlow(on: on)
+            .task {
+                on = true
+                try? await Task.sleep(for: .seconds(1.6))
+                on = false
+            }
     }
 }
 
