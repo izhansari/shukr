@@ -215,6 +215,8 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
   `-demoCalibrationSheet`, `-demoMenuOpen`; the phone keeps Library/Caches/compass.log (DEBUG builds). DEBUG Settings → My Dev Stuff →
   Compass debug, `-demoCompassJiggle [-demoCompassSweep]`. `userLocation` isn't published. Every app-group write, even the same value, invalidates bound `@AppStorage`: write only on change.
 - No `GeometryReader` in the welcome overlay (blank app). Decode images off the main thread, never in `body`.
+- A hole cut with `.contentShape(path, eoFill: true)` must be a plain rect: SwiftUI's hit test reads a small curved hole
+  (a 26 pt rounded rect, an ellipse) as solid (`TourInputGuard`'s openings; the tour's undo dot was dead at 402 pt).
 
 **Shared store & widget**
 - One store: `SharedStore` (SharedTargetForIntents.swift, both targets), `<group>/shukr.store`. **Only the app creates or migrates it**; `widgetContainer` opens it only if it exists at the current version.
