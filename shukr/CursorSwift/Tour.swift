@@ -176,6 +176,8 @@ struct TourOverlay: View {
     /// The bubble's bottom here (global y), above what it talks about (the list steps — audit J); nil: by the hole.
     var aboveY: CGFloat? = nil
     var showsBack = false
+    /// The ✓ moment before the insight: Not now sits where Continue is about to appear, so it takes no tap then.
+    var settling = false
     var onNext: () -> Void = {}
     var onBack: () -> Void = {}
     var onSkip: () -> Void = {}
@@ -193,7 +195,7 @@ struct TourOverlay: View {
                                 place: place ?? step.place, tasks: tasks ?? step.tasks, ticked: ticked,
                                 notes: showNotes ? step.notes : [], lit: lit, insight: insight, nextLabel: nextLabel,
                                 hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
-                                aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
+                                aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack, settling: settling,
                                 onNext: onNext, onBack: onBack, onSkip: onSkip)
                 } else {
                     dim(size: geo.size, hole: hole)
@@ -457,6 +459,8 @@ struct TourCallout: View {
     /// The bubble's bottom here (this view's space): above the list on its steps (audit J).
     var aboveY: CGFloat? = nil
     var showsBack = false
+    /// The ✓ moment before the insight: Not now sits where Continue is about to appear, so it takes no tap then.
+    var settling = false
     var onNext: () -> Void = {}
     var onBack: () -> Void = {}
     var onSkip: () -> Void
@@ -546,8 +550,11 @@ struct TourCallout: View {
             }
             if let insight {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(insight.0)
-                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    // Not twice: the Zikr step's insight has the card's own headline (Sami's nit).
+                    if insight.0 != (override?.0 ?? step.headline) {
+                        Text(insight.0)
+                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    }
                     Text(insight.1)
                         .font(.system(.subheadline, design: .rounded, weight: .light))
                         .foregroundStyle(.secondary)
@@ -587,6 +594,8 @@ struct TourCallout: View {
                         .buttonStyle(.plain)
                         .font(.system(.footnote, design: .rounded, weight: .regular))
                         .foregroundStyle(Color(.secondaryLabel)).fixedSize()
+                        // A quick tap meant for Continue landed here and ended the tour (Ben's first-tap lead).
+                        .disabled(settling)
                 }
                 if showsNext {
                     Button(nextLabel, action: onNext)
@@ -1161,6 +1170,7 @@ struct TourLayer: View {
                             hint: runtime.completing || insight ? nil : hint(step),
                             aboveY: aboveY(step),
                             showsBack: runtime.canGoBack,
+                            settling: runtime.completing && !insight,
                             onNext: { runtime.event(.next) },
                             onBack: { runtime.event(.back) },
                             onSkip: { runtime.skip() })
@@ -1261,6 +1271,8 @@ struct TourLayer: View {
         case .rowTime: "prayerRow.Maghrib"
         case .markedRow: "prayerRow.Fajr"
         case .list where sharedState.navPosition == .bottom: "prayerList"
+        // On the Zikr page: under its circle (the taller card with its insight sat over the circle, centred on the page).
+        case .zikr where sharedState.horizontalPage == .zikr: "zikrCircle"
         case .settings where sharedState.horizontalPage == .settings: "tourAgainRow"
         case .settings: "settingsTab"
         default: step.target
