@@ -2608,6 +2608,7 @@ struct PrayerButton: View {
         let marked = prayerObject.timeAtComplete ?? Date()
         selectedEditTimeDate = min(max(marked, editTimeRange.lowerBound), editTimeRange.upperBound)
         showTimePicker = true
+        TourRuntime.shared.event(.editorOpened)   // the tour's "change the time or place" step
     }
 
     var body: some View {

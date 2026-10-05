@@ -6,13 +6,14 @@ import TipKit
 /// Coach marks: a dim with a clear cut-out round the real control, one line beside it, the step ending on the real action.
 /// The dim takes no touches, so the control under the cut-out (and everything else) works as usual.
 enum TourStep: String, CaseIterable, Identifiable {
-    case circle, list, mark, undo, swipe, count, celebrate, map, hintMark
+    case circle, colors, list, mark, edit, undo, swipe, count, celebrate, map, hintMark
     var id: String { rawValue }
 
     /// The measured frame it points at (TourTargets), or nil for a page-wide step.
     var target: String? {
         switch self {
-        case .circle, .celebrate, .map: "circle"
+        case .circle, .colors, .celebrate, .map: "circle"
+        case .edit: "prayerDot."   // + the practice prayer's name (TourLayer)
         case .list: "chevron"
         case .mark: "prayerDot."   // + the current prayer's name, or the circle when none is due (TourLayer)
         case .undo: "prayerDot."   // + the practice prayer's name (TourLayer)
@@ -25,6 +26,8 @@ enum TourStep: String, CaseIterable, Identifiable {
         switch self {
         case .circle: "This is your prayer. Tap the circle to flip between when it ends and how long is left."
         case .mark: "Tap your prayer's dot, or hold the circle, to mark it prayed."
+        case .colors: "The ring's colour is the score you'd get if you prayed now."
+        case .edit: "Hold a marked prayer's row to change when or where you prayed."
         case .undo: "Tap its dot, then Yes, to undo a mark."
         case .celebrate: "Your first prayer, marked."
         case .map: "Tap the arrow on the circle for the map."
@@ -39,6 +42,8 @@ enum TourStep: String, CaseIterable, Identifiable {
         switch self {
         case .circle: "Tap your prayer"
         case .mark: "Mark your prayer"
+        case .colors: "Green, yellow, red"
+        case .edit: "Change the time or place"
         case .undo: "Undo it"
         case .celebrate: "Your first prayer, marked"
         case .map: "See where you prayed"
@@ -51,7 +56,9 @@ enum TourStep: String, CaseIterable, Identifiable {
     var subline: String {
         switch self {
         case .circle: "It flips between when it ends and the time left."
-        case .mark: "Tap its dot, or hold the circle. It's practice: you'll undo it next."
+        case .mark: "Tap its dot, or hold the circle. It's practice: you'll undo it after."
+        case .colors: "The ring fills as the time passes. Green: the first 30 minutes. Yellow: on time. Red: late. Grey: missed."
+        case .edit: "Hold its row: you can change when or where you prayed. Close it to carry on."
         case .undo: "Tap its dot, then Yes. That's how you fix a mark."
         case .celebrate: "Keep it up — every prayer you mark grows your streak."
         case .map: "Tap the small arrow at the top of the circle, then Explore → Prayers."
@@ -65,6 +72,8 @@ enum TourStep: String, CaseIterable, Identifiable {
         switch self {
         case .circle, .count, .hintMark: "hand.tap"
         case .mark: "checkmark.circle"
+        case .colors: "circle.lefthalf.filled"
+        case .edit: "clock.arrow.circlepath"
         case .undo: "arrow.uturn.backward"
         case .celebrate: "sparkles"
         case .map: "map"
@@ -75,12 +84,14 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The tour's place ("2 of 4"); nil for a one-time hint.
     var place: (Int, Int)? {
         switch self {
-        case .circle: (1, 6)
-        case .list: (2, 6)
-        case .mark: (3, 6)
-        case .undo: (4, 6)
-        case .swipe: (5, 6)
-        case .count: (6, 6)
+        case .circle: (1, 8)
+        case .colors: (2, 8)
+        case .list: (3, 8)
+        case .mark: (4, 8)
+        case .edit: (5, 8)
+        case .undo: (6, 8)
+        case .swipe: (7, 8)
+        case .count: (8, 8)
         case .celebrate, .map, .hintMark: nil
         }
     }
@@ -361,7 +372,8 @@ struct TourCallout: View {
                 .allowsHitTesting(false)
             // A thin green ring drawing once round the control, in the prayer ring's own stroke (Sami: "like the ring
             // filling, not a pulse").
-            if hole != nil {
+            // Not on the colours step: the prayer ring's own colour is what it explains.
+            if hole != nil && step != .colors {
                 Group {
                     if step.roundHole {
                         Circle().trim(from: 0, to: drawn)
@@ -491,13 +503,13 @@ struct BubbleShape: Shape {
     /// Which run of the tour this is: a step scheduled by an earlier run (or after Not now) never shows.
     @ObservationIgnored private var run = 0
     /// The tour's steps this time (no undo after a preview).
-    private(set) var steps: [TourStep] = [.circle, .list, .mark, .undo, .swipe, .count]
+    private(set) var steps: [TourStep] = [.circle, .colors, .list, .mark, .edit, .undo, .swipe, .count]
     /// The first real mark gets a celebration (and then the map), once — armed by the first-run setup or by Show me
     /// around again, so someone already using the app never gets it out of the blue.
     static let celebrateArmedKey = "tour.firstMark.armed"
 
     enum Event {
-        case circleTapped, listOpened, zikrPage, sessionStarted, unmarked, mapOpened, next
+        case circleTapped, listOpened, zikrPage, sessionStarted, unmarked, mapOpened, editorOpened, next
         /// A real mark (the circle held, or a dot tapped), or the mark's preview when no prayer is due.
         case marked(PrayerModel, PrayerViewModel), markedPreview
     }
@@ -509,7 +521,7 @@ struct BubbleShape: Shape {
     func begin() {
         practiceNote = nil
         practicePrayer = nil
-        steps = [.circle, .list, .mark, .undo, .swipe, .count]
+        steps = [.circle, .colors, .list, .mark, .edit, .undo, .swipe, .count]
         UserDefaults.standard.set(true, forKey: Self.celebrateArmedKey)
         run += 1
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
@@ -551,17 +563,20 @@ struct BubbleShape: Shape {
             return
         }
         switch (step, e) {
-        case (.circle, .circleTapped): go(to: .list)
+        case (.circle, .circleTapped): go(to: .colors)
+        case (.colors, .next): go(to: .list)
         case (.list, .listOpened): go(to: .mark)
         case (.mark, .marked(let prayer, let viewModel)):
             practicePrayer = prayer
             practiceViewModel = viewModel
             PrayerListFold.shared.showDone = true   // the marked prayer's row shows for the undo
-            noteThen(("That's it", "Marked. Now undo it — it was practice."), next: .undo)
+            noteThen(("That's it", "Marked. Next: how to change it, and undo it."), next: .edit)
         case (.mark, .markedPreview):
-            steps.removeAll { $0 == .undo }
+            steps.removeAll { $0 == .undo || $0 == .edit }
             noteThen(("That's it", "No prayer is due now, so that was just a preview."), next: .swipe)
-        case (.undo, .unmarked):
+        // The editor opened (a sheet over the page): the undo step waits under it, shown when it closes.
+        case (.edit, .editorOpened): go(to: .undo)
+        case (.undo, .unmarked), (.edit, .unmarked):
             practicePrayer = nil
             clearPill += 1
             go(to: .swipe)
@@ -614,7 +629,7 @@ struct TourLayer: View {
                             target: target(step, due: due),
                             override: step == .mark ? (runtime.practiceNote ?? (due == nil
                                 ? ("Mark your prayer", "No prayer is due now: hold the circle to see how it looks.") : nil)) : nil,
-                            showsNext: step == .celebrate || step == .map,
+                            showsNext: step == .colors || step == .celebrate || step == .map,
                             place: runtime.place(of: step),
                             onNext: { runtime.event(.next) },
                             onSkip: { runtime.skip() })
@@ -639,7 +654,7 @@ struct TourLayer: View {
     private func target(_ step: TourStep, due: PrayerModel?) -> String? {
         switch step {
         case .mark: due.map { "prayerDot." + $0.name } ?? "circle"
-        case .undo: runtime.practicePrayer.map { "prayerDot." + $0.name }
+        case .undo, .edit: runtime.practicePrayer.map { "prayerDot." + $0.name }
         default: step.target
         }
     }
@@ -647,8 +662,8 @@ struct TourLayer: View {
     private func onItsPage(_ step: TourStep) -> Bool {
         switch step {
         case .count: sharedState.horizontalPage == .zikr
-        case .circle, .list: sharedState.horizontalPage == .main && sharedState.navPosition == .main
-        case .mark, .undo: sharedState.horizontalPage == .main && sharedState.navPosition == .bottom
+        case .circle, .colors, .list: sharedState.horizontalPage == .main && sharedState.navPosition == .main
+        case .mark, .edit, .undo: sharedState.horizontalPage == .main && sharedState.navPosition == .bottom
         case .celebrate, .map: sharedState.horizontalPage == .main
         case .swipe: sharedState.horizontalPage == .main
         case .hintMark: sharedState.horizontalPage == .main && sharedState.navPosition == .bottom
