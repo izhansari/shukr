@@ -194,6 +194,8 @@ struct tasbeehView: View {
     @State private var sleepResumeReady = false
     /// A saved stop's cleanup (`finishStopCleanup`) waits for the results to land — or runs at once with no frames to wait for.
     @State private var stopCleanupPending = false
+    /// The finish buzz already played on the goal's own tap / tick (stopTimer(goal:)): the cleanup doesn't play it again.
+    @State private var finishBuzzPlayed = false
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
@@ -1149,7 +1151,7 @@ struct tasbeehView: View {
 //            print("progFrac? \(progressFraction >= 1) -- paused? \(paused) -- autoStop? \(autoStop)") // for debugging
             if ((progressFraction >= 1) && !paused) {
                 if(autoStop && timerIsActive){
-                    stopTimer()
+                    stopTimer(goal: true)
                     print("homeboy auto stopped....")
                 }
             }
@@ -1157,11 +1159,20 @@ struct tasbeehView: View {
     }
     
         
-    private func stopTimer() {
+    /// `goal`: the count goal's tap or the timed goal's tick ended it — the finish buzz plays now, on that tap, not a
+    /// second later when the results' fade-in runs the cleanup (owner: "it feels like a visible hang"; zikr-goal-haptic).
+    private func stopTimer(goal: Bool = false) {
         ZikrAudio.stopAll()     // a memo started on the pause card doesn't play on into the results
         guard timerIsActive else {
             print("Timer is not active")
             return
+        }
+        if goal, !stoppedDueToInactivity, !endedAsleep, !countingHapticsOff {   // never buzz someone asleep
+            triggerSomeVibration(type: .vibrate)
+            finishBuzzPlayed = true
+            #if DEBUG
+            if let at = lastTapAt { print("GOAL finish buzz \(Int(Date().timeIntervalSince(at) * 1000)) ms after the last tap") }
+            #endif
         }
         
         print("ran a stopTimer().")
@@ -1323,7 +1334,8 @@ struct tasbeehView: View {
         // went and the counter showed through mid-fade (owner's recording, 2026-10-02).
         if sessionCount <= 0 && SessionHandoff.shared.closesSoftly && UIApplication.shared.applicationState == .active {
             inactivityTimerHandler(run: "stop")
-            if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff { triggerSomeVibration(type: .vibrate) }
+            if !finishBuzzPlayed && !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff { triggerSomeVibration(type: .vibrate) }
+            finishBuzzPlayed = false
             SessionHandoff.shared.afterClose { finishStopReset() }
             isPresented = false
             return
@@ -1338,9 +1350,10 @@ struct tasbeehView: View {
         noteModalText = ""
         
         
-        if !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff {   // never buzz someone asleep
+        if !finishBuzzPlayed && !stoppedDueToInactivity && !endedAsleep && !countingHapticsOff {   // never buzz someone asleep
             triggerSomeVibration(type: .vibrate)
         }
+        finishBuzzPlayed = false   // played on the goal's tap (stopTimer(goal:)), or just now
         
         stoppedDueToInactivity = false
         endedAsleep = false
@@ -1547,7 +1560,7 @@ struct tasbeehView: View {
             // save 34 of 33. A set that jumps past it (30 + 5) keeps its whole set: 35 (owner).
             if autoStop && sharedState.selectedMode == 2,
                let target = Int(sharedState.targetCount), target > 0, tasbeeh >= target {
-                stopTimer()
+                stopTimer(goal: true)
             }
         }
     }
