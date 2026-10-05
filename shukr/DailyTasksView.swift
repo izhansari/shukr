@@ -32,11 +32,14 @@ struct ZikrPageView: View {
 enum ZikrFocus {
     static let notification = Notification.Name("zikrFocusTask")
     private(set) static var pending: String?
-    static func request(_ taskID: String) {
+    /// Centre it at once, no wheel turn (a widget open goes straight there).
+    private(set) static var instant = false
+    static func request(_ taskID: String, instant: Bool = false) {
         pending = taskID
+        self.instant = instant
         NotificationCenter.default.post(name: notification, object: nil)
     }
-    static func take() -> String? { defer { pending = nil }; return pending }
+    static func take() -> String? { defer { pending = nil; instant = false }; return pending }
 
     /// Start a task's session from elsewhere (a zikr's page, owner 2026-09-30): the app closes
     /// what covers it, goes to the Zikr page, and the wheel starts it (`resume`: from today's count).
@@ -212,8 +215,14 @@ struct ZikrCircleWheel: View {
     private func focusPending() {
         guard let id = ZikrFocus.pending, let task = tasks.first(where: { $0.id.uuidString == id }) else { return }
         guard !isDone(task) else { _ = ZikrFocus.take(); return }   // finished: not on the wheel
+        let instant = ZikrFocus.instant
         _ = ZikrFocus.take()
         wheelTask?.cancel()
+        if instant {   // from a widget: already in the middle when the page shows, no turn
+            var quiet = Transaction(); quiet.disablesAnimations = true
+            withTransaction(quiet) { centered = id }
+            return
+        }
         wheelTask = Task { @MainActor in
             // Once the Zikr page has come in (it was a guessed 0.35 s).
             _ = await CircleStage.shared.until(deadline: 2) { CircleStage.shared.restingPage == .zikr }

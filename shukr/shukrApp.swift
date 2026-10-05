@@ -139,6 +139,24 @@ struct shukrApp: App {
         #if DEBUG
         SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
+        // `-widgetOpenTest ayah|names|compass|tasbeeh|task:<uuid>`: a launch as if from that widget (the flags its intent
+        // sets before the app opens), to check the opening is skipped and the page comes up at once.
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-widgetOpenTest"),
+           i + 1 < ProcessInfo.processInfo.arguments.count,
+           let group = UserDefaults(suiteName: SharedStore.appGroup) {
+            let what = ProcessInfo.processInfo.arguments[i + 1]
+            switch what {
+            case "ayah": group.set(true, forKey: "widgetDailyAyah")
+            case "names": group.set(true, forKey: "widgetNames")
+            case "compass": group.set(true, forKey: "widgetCompass")
+            case "tasbeeh": group.set(true, forKey: "widgetTasbeeh")
+            default:
+                if what.hasPrefix("task:") {
+                    group.set(String(what.dropFirst(5)), forKey: "widgetZikrTask")
+                    group.set(true, forKey: "widgetTasbeeh")
+                }
+            }
+        }
         // `-sendNotificationSamples YES` (NotificationSamples): every notification, 6 s apart.
         if UserDefaults.standard.bool(forKey: "sendNotificationSamples") { Task { await NotificationSamples.send() } }
         if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {

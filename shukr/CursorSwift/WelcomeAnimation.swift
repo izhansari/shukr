@@ -92,6 +92,9 @@ struct WelcomeGate: ViewModifier {
     private static var shouldShowOnLaunch: Bool {
         // The first-run setup is up: it ends in this welcome itself (its Bismillah hand-off).
         if FirstRunSetup.showingAtLaunch { return false }
+        // Opened from a widget: straight to what it points at, no opening (owner: "i think better we skip it and no
+        // animation go straight to the desired task. same with daily ayah. and with 99 names. any widget action").
+        if FirstRunSetup.openedFromWidget { return false }
         #if DEBUG
         // Demo launch args drive screenshots / automation — don't cover them.
         if ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("-demo") })

@@ -168,33 +168,60 @@ struct PrayerTimesView: View {
                 viewModel.calculateDayScore(for: day)
                 viewModel.recomputeStreaks()
             }
+            // Every widget open goes straight there: no page slide, no push, no wheel turn (owner: "no animation go
+            // straight to the desired task … any widget action honestly"; the welcome is skipped too — WelcomeGate).
             if openAyahFromWidget {
-                clearCovers {
-                    sharedState.horizontalPage = .main
-                    showDailyAyahPage = true
+                openFromWidget {
+                    sharedState.go(to: .main, animated: false)
+                    instantly { showDailyAyahPage = true }
                 }
             } else if openNamesFromWidget {
-                clearCovers {
-                    sharedState.horizontalPage = .main
-                    showNamesPage = true
+                openFromWidget {
+                    sharedState.go(to: .main, animated: false)
+                    instantly { showNamesPage = true }
                 }
             }
 
             if openCompassFromWidget, !showQiblaMap {
-                clearCovers {
-                    sharedState.navPosition = .main
-                    showQiblaMap = true
+                openFromWidget {
+                    instantly {
+                        sharedState.navPosition = .main
+                        showQiblaMap = true
+                    }
                 }
             }
             
             else if openTasbeehFromWidget{
-                clearCovers {
-                    sharedState.horizontalPage = .zikr
-                    // A task row in the Zikr widget: bring that task's circle to the middle.
-                    if let zikrTaskID { ZikrFocus.request(zikrTaskID) }
+                openFromWidget {
+                    // A task row in the Zikr widget: that task's circle already in the middle.
+                    if let zikrTaskID { ZikrFocus.request(zikrTaskID, instant: true) }
+                    // A turn later: on a cold launch the pager isn't laid out yet, and its first report put it back on
+                    // Salah.
+                    DispatchQueue.main.async { sharedState.go(to: .zikr, animated: false) }
                 }
             }
         }
+    }
+
+    /// A widget open: at once when nothing covers the page (a cold launch — no hop through a task, so the page is
+    /// already there when the app first shows), else once the covers have gone (`clearCovers`).
+    private func openFromWidget(_ go: @escaping @MainActor () -> Void) {
+        guard !showTasbeehPage else { return }
+        if !somethingCovers && CircleCover.active.isEmpty {
+            pendingOpen?.cancel()
+            go()
+        } else {
+            clearCovers { go() }
+        }
+    }
+
+    /// A change with no animation (a widget open: the page is simply there). The root stack's push is UIKit's and
+    /// ignores the transaction, so UIKit's animations are off too for a moment.
+    private func instantly(_ change: () -> Void) {
+        UIView.setAnimationsEnabled(false)
+        var quiet = Transaction(); quiet.disablesAnimations = true
+        withTransaction(quiet, change)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { UIView.setAnimationsEnabled(true) }
     }
 
     /// "Unmark Asr?" → Unmark, from the widget's times list: today's row goes through the app's own
@@ -722,7 +749,11 @@ struct PrayerTimesView: View {
         .onChange(of: showTasbeehPage) { _, up in
             if !up { widgetUnmarkToken += 1; showWidgetUnmarkWhenClear(token: widgetUnmarkToken) }
         }
-        .onAppear { showMorningCardWhenClear() }
+        .onAppear {
+            showMorningCardWhenClear()
+            // A cold launch from a widget: straight there as the page first comes up, not after the activation.
+            openFromWidgetFlags()
+        }
         // A page pushed over the pager (☰'s destinations, a widget's page, Settings' pushes) is a cover until the pager is
         // back on screen with the pop finished — UIKit's did-appear (SwiftUI's onAppear comes as the pop starts). Popping
         // closes it (any depth: the flags).

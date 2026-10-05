@@ -103,6 +103,11 @@ enum FirstRunSetup {
         return deepLinkFlags.contains { group?.bool(forKey: $0) == true }
     }
 
+    /// Opened by a widget or a control (a deep link, or a widget list's "Unmark …?"): no welcome, straight there.
+    static var openedFromWidget: Bool {
+        openedFromDeepLink || UserDefaults(suiteName: SharedStore.appGroup)?.string(forKey: WidgetListMarks.unmarkKey) != nil
+    }
+
     /// There's a location to open a deep link onto (a stored coordinate). Without one the widget
     /// can't be acted on anyway (no Salah page), so a new install opened from a widget still gets
     /// the setup — and a flag left behind never keeps it away.
