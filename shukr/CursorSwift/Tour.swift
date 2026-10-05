@@ -947,12 +947,16 @@ struct BubbleShape: Shape {
     /// from their real rows.
     static func repairScoresOnce(_ viewModel: PrayerViewModel) {
         let key = "tour.scoreRepair.v1"
-        guard practiceMirror == nil, !UserDefaults.standard.bool(forKey: key) else { return }
+        var force = false
+        #if DEBUG
+        force = ProcessInfo.processInfo.arguments.contains("-scoreRepairTest")   // run it again (the sim check)
+        #endif
+        guard practiceMirror == nil, force || !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
         let today = PrayerDay.date()
         for back in 0...3 {
             guard let day = Calendar.current.date(byAdding: .day, value: -back, to: today) else { continue }
-            viewModel.calculateDayScore(for: day)
+            viewModel.calculateDayScore(for: day, fromStore: true)
         }
     }
 
