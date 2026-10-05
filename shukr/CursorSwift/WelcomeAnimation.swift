@@ -119,6 +119,18 @@ struct WelcomeGate: ViewModifier {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: WelcomeGate.raiseCurtain)) { _ in raise() }
+            // A widget sent the app to another page while the welcome plays (its intent wrote the flags after the
+            // launch began): the welcome steps aside at once, so that page has its bars and its taps (owner:
+            // "it hides bottom bar and top bar … and doesn't register clicks"; widget-open-chrome). Not ▶︎ Opening.
+            .onReceive(NotificationCenter.default.publisher(for: DeepLinkSignal.arrived)) { _ in
+                guard showing, !inPlace else { return }
+                var quiet = Transaction(); quiet.disablesAnimations = true
+                // The opening's hold on the page (the bars, the list) goes in the same quiet turn: no fade-in.
+                withTransaction(quiet) {
+                    showing = false; fromBlack = false; WelcomeTarget.playing = false
+                    CircleStage.shared.opening = nil
+                }
+            }
             // The palette's Play → Opening / Good morning (SalahLook.swift): the welcome again, in place.
             .onReceive(NotificationCenter.default.publisher(for: SalahLookPlay.welcome)) { note in
                 guard !showing, !curtain else { return }

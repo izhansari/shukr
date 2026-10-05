@@ -31,15 +31,24 @@ struct ZikrPageView: View {
 /// is there to take it (a cold launch mounts it after the request).
 enum ZikrFocus {
     static let notification = Notification.Name("zikrFocusTask")
-    private(set) static var pending: String?
+    /// The task to centre, kept until the wheel has it (its tasks may not be loaded yet on a cold launch) — for
+    /// `keep` at most (widget-open-chrome: "the task focus isn't reliable").
+    static var pending: String? {
+        guard let p = pendingID, Uptime.now - requestedAt < keep else { return nil }
+        return p
+    }
+    private static var pendingID: String?
+    private static var requestedAt: Double = 0
+    private static let keep: Double = 3
     /// Centre it at once, no wheel turn (a widget open goes straight there).
     private(set) static var instant = false
     static func request(_ taskID: String, instant: Bool = false) {
-        pending = taskID
+        pendingID = taskID
+        requestedAt = Uptime.now
         self.instant = instant
         NotificationCenter.default.post(name: notification, object: nil)
     }
-    static func take() -> String? { defer { pending = nil; instant = false }; return pending }
+    static func take() -> String? { defer { pendingID = nil; instant = false }; return pending }
 
     /// Start a task's session from elsewhere (a zikr's page, owner 2026-09-30): the app closes
     /// what covers it, goes to the Zikr page, and the wheel starts it (`resume`: from today's count).
@@ -52,7 +61,7 @@ enum ZikrFocus {
     }
     static func takeStart() -> (id: String, resume: Bool)? { defer { pendingStart = nil }; return pendingStart }
     /// A deleted task can't be focused later.
-    static func forget(_ ids: [String]) { if let p = pending, ids.contains(p) { pending = nil } }
+    static func forget(_ ids: [String]) { if let p = pendingID, ids.contains(p) { pendingID = nil } }
 }
 
 struct ZikrCircleWheel: View {
@@ -180,6 +189,8 @@ struct ZikrCircleWheel: View {
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.notification)) { _ in focusPending() }
+            // The tasks arriving after the request (a cold launch): the request is still there for them.
+            .onChange(of: tasks.count) { _, _ in focusPending() }
             .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.wheelStartNotification)) { _ in startPending() }
             .onAppear { focusPending() }
     }
@@ -257,7 +268,9 @@ struct ZikrCircleWheel: View {
         let items = items
         return GeometryReader { geo in
             ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(spacing: 0) {
+                // Never lazy (CLAUDE.md): a lazy stack only estimates rows it hasn't built, so centring a task further
+                // down (a widget open, `scrollPosition` set before layout) landed on a neighbour (widget-open-chrome).
+                VStack(spacing: 0) {
                     ForEach(items) { item in
                         let away = openingSoft && item.id != centered
                         circle(for: item)

@@ -445,6 +445,12 @@ struct MainCircleView: View {
         // The welcome on this circle: its arc waits at nothing under the mark (it's hidden then, so this is unseen),
         // and sweeps out from the start as the words come in on the landing.
         .onChange(of: openingHidesWords) { _, hidden in
+            // The opening gone before it landed (a widget sent the app elsewhere): the arc back as it is, no sweep.
+            if !hidden, CircleStage.shared.opening == nil {
+                arcSweepTask?.cancel()
+                quietly { arcSweep = nil }
+                return
+            }
             guard hidden, !reduceMotion else { return }
             // ▶︎ Opening in place: once the circle's words and arc have faded out (it vanished in a frame otherwise).
             let inPlace = CircleStage.shared.opening?.inPlace == true

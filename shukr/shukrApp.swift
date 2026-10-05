@@ -164,6 +164,49 @@ struct shukrApp: App {
                 }
             }
         }
+        // `-widgetOpenTestWarm ayah|names|compass|tasbeeh|task:<uuid>`: the same flags, set as the app first goes to the
+        // background — then `simctl launch` brings it back as a widget tap on a running app would (widget-open-chrome).
+        if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-widgetOpenTestWarm"),
+           i + 1 < ProcessInfo.processInfo.arguments.count {
+            let what = ProcessInfo.processInfo.arguments[i + 1]
+            var token: NSObjectProtocol?
+            token = NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification,
+                                                           object: nil, queue: .main) { _ in
+                guard let group = UserDefaults(suiteName: SharedStore.appGroup) else { return }
+                switch what {
+                case "ayah": group.set(true, forKey: "widgetDailyAyah")
+                case "names": group.set(true, forKey: "widgetNames")
+                case "compass": group.set(true, forKey: "widgetCompass")
+                case "tasbeeh": group.set(true, forKey: "widgetTasbeeh")
+                default:
+                    if what.hasPrefix("task:") {
+                        group.set(String(what.dropFirst(5)), forKey: "widgetZikrTask")
+                        group.set(true, forKey: "widgetTasbeeh")
+                    }
+                }
+                if let token { NotificationCenter.default.removeObserver(token) }
+            }
+        }
+        // `-deepLinkAfter <s> -deepLinkTo tasbeeh|ayah|names|compass|task:<uuid>`: as a widget's intent does on a cold
+        // launch — the flags written s seconds after the app started, then DeepLinkSignal (mid-welcome).
+        let deepAfter = UserDefaults.standard.double(forKey: "deepLinkAfter")
+        if deepAfter > 0, let what = UserDefaults.standard.string(forKey: "deepLinkTo") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + deepAfter) {
+                guard let group = UserDefaults(suiteName: SharedStore.appGroup) else { return }
+                switch what {
+                case "ayah": group.set(true, forKey: "widgetDailyAyah")
+                case "names": group.set(true, forKey: "widgetNames")
+                case "compass": group.set(true, forKey: "widgetCompass")
+                case "tasbeeh": group.set(true, forKey: "widgetTasbeeh")
+                default:
+                    if what.hasPrefix("task:") {
+                        group.set(String(what.dropFirst(5)), forKey: "widgetZikrTask")
+                        group.set(true, forKey: "widgetTasbeeh")
+                    }
+                }
+                DeepLinkSignal.post()
+            }
+        }
         // `-sendNotificationSamples YES` (NotificationSamples): every notification, 6 s apart.
         if UserDefaults.standard.bool(forKey: "sendNotificationSamples") { Task { await NotificationSamples.send() } }
         if ProcessInfo.processInfo.arguments.contains("-alarmCheck") {

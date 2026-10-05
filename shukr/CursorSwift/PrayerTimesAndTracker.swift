@@ -763,6 +763,8 @@ struct PrayerTimesView: View {
         }
         // The first-run setup is done: a widget open that arrived during it, now.
         .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openFromWidgetFlags() }
+        // A widget's intent wrote its flags after the launch had begun (widget-open-chrome): now, not at the next open.
+        .onReceive(NotificationCenter.default.publisher(for: DeepLinkSignal.arrived)) { _ in openFromWidgetFlags() }
         // A marked row tapped in the Prayers widget's times list: the app asks (showWidgetUnmarkWhenClear).
         .onChange(of: widgetUnmark != nil) { _, up in CircleCover.set("widgetUnmark", up) }
         // A request that waited out a tasbeeh session: now.

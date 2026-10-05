@@ -560,6 +560,7 @@ struct OpenTasbeehIntent: AppIntent {
     
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
             store.setValue(true, forKey: "widgetTasbeeh")
+            DeepLinkSignal.post()
             WidgetCenter.shared.reloadAllTimelines()
             print("widgetTasbeeh: \(store.bool(forKey: "widgetTasbeeh"))")
         }
@@ -575,10 +576,22 @@ struct OpenCompassIntent: AppIntent {
         
         if let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget") {
             store.setValue(true, forKey: "widgetCompass")
+            DeepLinkSignal.post()
             WidgetCenter.shared.reloadAllTimelines()
             print("widgetCompass: \(store.bool(forKey: "widgetCompass"))")
         }
         return .result()
+    }
+}
+
+/// A widget / control open's flags have just been written (widget-open-chrome). These intents run in the app
+/// (`openAppWhenRun`), so on a cold launch they write after the app has started — after the welcome decided to play
+/// and after the first look at the flags. The app opens the page as soon as this arrives, and the welcome steps aside.
+/// In the widget's own process nobody listens.
+enum DeepLinkSignal {
+    static let arrived = Notification.Name("shukr.deepLinkArrived")
+    static func post() {
+        Task { @MainActor in NotificationCenter.default.post(name: arrived, object: nil) }
     }
 }
 
@@ -596,6 +609,7 @@ struct OpenZikrTaskIntent: AppIntent {
         let store = UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")
         store?.set(taskID, forKey: "widgetZikrTask")
         store?.set(true, forKey: "widgetTasbeeh")
+        DeepLinkSignal.post()
         return .result()
     }
 }
@@ -607,6 +621,7 @@ struct OpenDailyAyahIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetDailyAyah")
+        DeepLinkSignal.post()
         return .result()
     }
 }
@@ -671,6 +686,7 @@ struct OpenNamesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult {
         UserDefaults(suiteName: "group.betternorms.shukr.shukrWidget")?.set(true, forKey: "widgetNames")
+        DeepLinkSignal.post()
         return .result()
     }
 }
