@@ -370,7 +370,11 @@ struct MainCircleView: View {
             if morningShown == nil && lostShown == nil && !openingHides {
                 // Its own view: only the arrow redraws with the compass, not the whole circle.
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
-                           tap: { TourRuntime.shared.event(.mapOpened); showQiblaMap = true })
+                           tap: {
+                               // Inside the circle's opening, but not the tour's move (Sami): no map during the tour.
+                               guard !TourRuntime.shared.active else { triggerSomeVibration(type: .light); return }
+                               TourRuntime.shared.event(.mapOpened); showQiblaMap = true
+                           })
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle
                 // never moves (it stays centred on the page).
                 Color.clear

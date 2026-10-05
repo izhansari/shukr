@@ -493,7 +493,8 @@ struct PrayerTimesView: View {
                     case .main:
                         if draggedUp { sharedState.navPosition = .bottom; triggerSomeVibration(type: .light) }
                         // Pull down: the location and the times again, shown in the top bar (LocationRefresh).
-                        if draggedDown { LocationRefresh.shared.run(viewModel); triggerSomeVibration(type: .light) }
+                        // Not during the tour: only its step's move (Sami: a swipe down on the list step refreshed).
+                        if draggedDown && !TourRuntime.shared.active { LocationRefresh.shared.run(viewModel); triggerSomeVibration(type: .light) }
                     case .bottom:
                         if draggedDown { sharedState.navPosition = .main; triggerSomeVibration(type: .light) }
                     default:

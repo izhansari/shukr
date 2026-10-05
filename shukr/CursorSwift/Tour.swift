@@ -795,7 +795,8 @@ struct BubbleShape: Shape {
     func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
         guard active else { return true }
         if marking { return step == .mark && !ticked.contains(0) }
-        return step == .undo && prayer === practicePrayer && !completing
+        // The practice Asr by name: the row's object can be another instance than `practicePrayer` (Sami: 3/3 dead).
+        return step == .undo && prayer.name == "Asr" && Self.isPracticeAnywhere(prayer) && !completing
     }
     /// Which run of the tour this is: a step scheduled by an earlier run (or after Not now) never shows.
     @ObservationIgnored private var run = 0
@@ -1306,6 +1307,12 @@ struct TourLayer: View {
         }
         // A page reached and at rest (not mid-swipe: ticking mid-move froze the pager — Sami's round D run).
         .onChange(of: CircleStage.shared.restingPage) { _, page in
+            // The Zikr step frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
+            if runtime.active, runtime.step == .zikr, page == .settings {
+                triggerSomeVibration(type: .light)
+                withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
+                return
+            }
             if page == .zikr { runtime.event(.zikrPage) }
             if page == .settings { runtime.event(.settingsPage) }
         }
