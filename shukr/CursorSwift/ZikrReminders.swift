@@ -232,6 +232,7 @@ extension TaskModel {
 enum SessionDeletion {
     @MainActor static func delete(_ sessions: [SessionDataModel], in context: ModelContext) {
         guard !sessions.isEmpty else { return }
+        CountTips.shared.sessionsDeleted(sessions.map(\.id))   // the session tour's practice session
         for session in sessions { context.delete(session) }
         try? context.save()
         WidgetCenter.shared.reloadAllTimelines()

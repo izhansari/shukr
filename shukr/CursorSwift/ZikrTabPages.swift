@@ -106,5 +106,15 @@ struct ZikrHistoryPage: View {
                 }
             }
             .onDisappear { PaceCoordinator.stopAll() }   // a pace playing on a row stops with the page
+            // The session tour: delete its practice session here, then back to the Zikr page.
+            // Over the all-time header, never the rows: the session to delete is the top one.
+            .overlay(alignment: .top) {
+                if CountTips.shared.tip == .delete {
+                    CountTipCard(tip: .delete).padding(.top, 70)
+                }
+            }
+            .onAppear { CountTips.shared.historyOpened() }
+            .onChange(of: CountTips.shared.popHistory) { _, _ in dismiss() }
     }
+    @Environment(\.dismiss) private var dismiss
 }

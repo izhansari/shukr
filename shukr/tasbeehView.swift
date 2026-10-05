@@ -199,6 +199,8 @@ struct tasbeehView: View {
     @State private var totalPauseInSession: Double = 0
     @State private var secsToReport: TimeInterval = 0
     @State private var savedSession: SessionDataModel? = nil
+    /// Counts made by the current drag (the session tour's "three in one stroke").
+    @State private var strokesThisTouch = 0
     
     /// Post-salah: which of the three phrases the count is in (for the phase-change haptic).
     @State private var postSalahPhase = 0
@@ -514,7 +516,8 @@ struct tasbeehView: View {
                                             if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
                                                 dragToIncrementBool = false
                                                 incrementTasbeeh()
-                                                CountTips.shared.counted(byDrag: true)
+                                                strokesThisTouch += 1
+                                                CountTips.shared.counted(byDrag: true, inTouch: strokesThisTouch)
                                                 lowestPoint = value.translation.height // need to set it otherwise it will always be the lowest point of the entire drag sesh
                                                 // Check if dragged up from lowest point by a value of incrementThreshold/2
                                             } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {
@@ -523,6 +526,8 @@ struct tasbeehView: View {
                                             }
                                         }
                                         .onEnded { _ in
+                                            CountTips.shared.dragEnded(strokes: strokesThisTouch)   // the session tour
+                                            strokesThisTouch = 0
                                             // Reset offsets after drag ends
                                             dragToIncrementBool = true
                                             offsetY = 0
@@ -653,6 +658,7 @@ struct tasbeehView: View {
                                           reduceMotion: reduceMotion) {
                             if paused { finishTap() } else { decrementTasbeeh() }
                         }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.finish", $0) }
                     }
                 }
                 .animation(paused ? .easeOut(duration: ringAbove ? 0.15 : 0.35) : .easeIn, value: paused)
@@ -772,9 +778,10 @@ struct tasbeehView: View {
             }
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
 
-            // The first session's tips: tap · hold and drag · pause · the pause screen's chips.
+            // The session tour (CountTips): tapping, dragging, the pause screen, the results.
             CountTipsLayer(paused: paused,
-                           clear: savedSession == nil && !showInactivityAlert && countIn && !leaving,
+                           clear: !showInactivityAlert && (countIn || savedSession != nil) && !leaving,
+                           results: savedSession != nil,
                            pauseButton: pauseButtonFrame, chips: chipsFrame)
             
             // results page
@@ -963,7 +970,6 @@ struct tasbeehView: View {
         }
         .onChange(of: paused) { _, nowPaused in
             if !nowPaused { finishArmed = false }   // resumed: Finish isn't left half-armed for the next pause
-            if !nowPaused { CountTips.shared.resumed() }
         }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
@@ -1185,6 +1191,7 @@ struct tasbeehView: View {
         if sessionCount == 0 { SessionDraft.clear() }   // audit A7: nothing to keep
         if sessionCount > 0 {
             savedSession = saveSession()
+            if let saved = savedSession { CountTips.shared.sessionSaved(saved.id) }   // the session tour's practice session
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
             // Shared-state writes re-render the whole home screen under this cover, so they wait
@@ -1411,6 +1418,7 @@ struct tasbeehView: View {
 
     /// Done on the soft results (ResultsView's Done).
     private func finishFromResults() {
+        CountTips.shared.resultsDone()
         // Cleared once the session has gone: under a soft close the results are still fading.
         SessionHandoff.shared.afterClose {
             sharedState.titleForSession = ""
@@ -1725,6 +1733,7 @@ struct tasbeehView: View {
                             sharedState.titleForSession = ""
                             sharedState.mantraForSession = nil   // audit A8: a stale pick outlived a deleted zikr
                         }
+                        CountTips.shared.resultsDone()
                         isPresented = false
                     } label: {
                         Text("Done")
@@ -1734,6 +1743,7 @@ struct tasbeehView: View {
                             .foregroundStyle(Color.sage)
                             .background(Capsule().fill(Color.sage.opacity(0.18)))
                             .contentShape(Capsule())
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.done", $0) }
                     }
                     .buttonStyle(.plain)
                     .frame(maxWidth: 420)
@@ -1986,7 +1996,11 @@ struct tasbeehView: View {
         @State private var scrollHeight: CGFloat = 0
 
         var body: some View {
-            if ringAbove { softBody } else { todayBody }
+            Group {
+                if ringAbove { softBody } else { todayBody }
+            }
+            // The session tour skips its finish-time tip when there's none (a freestyle session).
+            .onChange(of: showsFinishEstimate, initial: true) { _, shown in CountTips.shared.finishShown = shown }
         }
 
         @ViewBuilder private var todayBody: some View {
@@ -2008,11 +2022,13 @@ struct tasbeehView: View {
                             PostSalahPauseCard(count: tasbeeh)
                         } else {
                             mantraCard
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
                         }
                         ZikrBento(count: tasbeeh, seconds: secsToReport, secondsPerCount: newAvrgTPC,
                                   perTasbeeh: tasbeehRate,
                                   finish: showsFinishEstimate ? (timeLeft, finishTime) : nil,
                                   usualSecondsPerCount: mantra?.secondsPerCount)
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
                     }
                     .frame(maxWidth: 420)
                     .padding(.horizontal, 20)
@@ -2110,6 +2126,7 @@ struct tasbeehView: View {
                     }
                     .modifier(SoftCardsFade(shown: pauseShown, delay: 0.22))
                     .allowsHitTesting(pauseShown)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.notes", $0) }
                     // Whatever room is left over on a tall phone sits here, between the card and the tiles — only after
                     // everything else has its height (lowest priority). Without it the page was centred in the screen
                     // and its top row sat ~18 pt under ‹ Resume / Finish (owner: "a bit off the top").
@@ -2117,6 +2134,8 @@ struct tasbeehView: View {
                         .layoutPriority(-1)
                     gap(20)
                     softBottom
+                        // The session tour's stats tip sits above the tiles (their top is this block's top).
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.stats", $0) }
                 }
                 .frame(maxWidth: 420)
                 .padding(.horizontal, 20)
@@ -2487,6 +2506,7 @@ struct tasbeehView: View {
                                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                                 .foregroundStyle(Color.sage)
                                 .frame(width: 210, height: 44)
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("ct.done", $0) }
                                 .background(Capsule().fill(Color.sage.opacity(0.08)))
                                 .overlay(Capsule().strokeBorder(Color.sage.opacity(0.9), lineWidth: 1.5))
                                 .contentShape(Capsule())

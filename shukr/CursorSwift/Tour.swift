@@ -37,7 +37,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .edit: "Fix a mark"
         case .undo: "Undo a mark"
         case .zikr: "Your zikr"
-        case .settings: "One more thing"
+        case .settings: "Settings"
         case .celebrate: "Your first prayer, marked"
         case .map: "See where you prayed"
         case .hintMark: "Tap the dot"
@@ -55,8 +55,8 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .markedRow: "A marked prayer shows when you prayed and your score."
         case .edit: "Fajr was marked late, so it counts as Qaza. Say you really prayed it on time."
         case .undo: "Marked one by mistake?"
-        case .zikr: "Your zikr and daily tasks live one swipe to the right. Have a look now, or later."
-        case .settings: "Swipe left to Settings."
+        case .zikr: "It's one page over."
+        case .settings: "The bar at the bottom takes you to any page, too."
         case .celebrate: "Keep it up — every prayer you mark grows your streak."
         case .map: "Every prayer you mark is on the map, under Explore → Prayers."
         case .hintMark: "to mark it prayed. Hold it to change the time."
@@ -76,8 +76,9 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .markedRow: ("How you did", "Each marked prayer shows its score. Fajr says Qaza: it was marked after its time.")
         case .edit: ("Fixed", "You can change the time, and the place too. What the app recorded is kept, so you can always go back to it.")
         case .undo: ("Undone", "That's how you take back a mark.")
+        case .zikr: ("Your zikr", "Your zikr and daily tasks live here. Tap the circle to start counting, any time.")
         case .settings: ("Show me around again", "Run this tour again any time, from here.")
-        case .zikr, .celebrate, .map, .hintMark: nil
+        case .celebrate, .map, .hintMark: nil
         }
     }
     /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do.
@@ -101,9 +102,10 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .markedRow: ["Tap Fajr's time"]
         case .edit: ["Hold Fajr's row", "Pick a time in the yellow", "Save"]
         case .undo: ["Tap Asr's dot, then Yes"]
-        case .settings: ["Swipe to Settings"]
+        case .zikr: ["Swipe right"]
+        case .settings: ["Tap Settings below"]
         case .map: ["Tap the arrow on the circle"]
-        case .colors, .zikr, .celebrate, .hintMark: []
+        case .colors, .celebrate, .hintMark: []
         }
     }
     var symbol: String {
@@ -313,6 +315,11 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                // `-tourFrom <step>`: straight to that step (its practice state set as on a Back).
+                if let raw = UserDefaults.standard.string(forKey: "tourFrom"), let from = TourStep(rawValue: raw) {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    TourRuntime.shared.debugJump(to: from)
+                }
                 // `-tourWidgetWrote YES`: as if a widget / banner had marked a prayer (the next activation reconciles):
                 // today's real score must stay as it was (Bradley's review).
                 if UserDefaults.standard.bool(forKey: "tourWidgetWrote") {
@@ -437,7 +444,12 @@ struct TourCallout: View {
         let center = hole.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: size.width / 2, y: size.height * 0.45)
         let radius = hole.map { max($0.width, $0.height) / 2 } ?? 60
         // Below the control when there's room, else above it.
-        let below = aboveY == nil && (hole.map { size.height - $0.maxY > bubbleHeight + 60 } ?? true)
+        // Above or below from a fixed allowance, never from the bubble's own measured height: that fed back (a taller
+        // bubble flipped it, the flip re-measured it) and spun the main thread on Settings (Sami's round D run).
+        let below = aboveY == nil && (hole.map { size.height - $0.maxY > 260 } ?? true)
+        let width = typeSize >= .xxLarge ? size.width - 32 : min(size.width - 48, 300)
+        // The tail points at the control (Settings' tab sits right of centre), kept clear of the corners.
+        let tail = hole.map { min(max($0.midX - size.width / 2, -(width / 2 - 40)), width / 2 - 40) } ?? 0
         ZStack(alignment: .topLeading) {
             // The spotlight: the page washes out a little away from the control, in the page's own colour (no grey).
             RadialGradient(colors: [.clear, .clear, theme.backdrop.opacity(0.45)],
@@ -448,11 +460,15 @@ struct TourCallout: View {
             // Where to touch, and how: a grey thumbprint that taps, holds or slides (owner: "a grayish circle indicator
             // about as big as a thumbprint that pulses slowly … that way we don't gotta show the green circle").
             if let hint { TouchHint(spec: hint) }
-            bubble(below: below)
+            bubble(below: below, tail: tail)
                 // Larger text gets the screen's width (audit C13); the bubble is measured and kept on screen (bubbleY).
-                .frame(width: typeSize >= .xxLarge ? size.width - 32 : min(size.width - 48, 300))
+                .frame(width: width)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bubbleHeight = $0 }
+                // Whole points only: placed by its height, the text's height moved by a fraction with where it sat, and
+                // the two chased each other every frame (the main thread spun; Settings' step never reached Done).
+                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded(.up) } action: { h in
+                    if abs(h - bubbleHeight) >= 1 { bubbleHeight = h }
+                }
                 .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
                 .opacity(shown ? 1 : 0)
                 .position(x: size.width / 2, y: bubbleY(below: below, center: center, radius: radius))
@@ -484,7 +500,7 @@ struct TourCallout: View {
         return bottom > top ? min(max(wanted, top), bottom) : size.height / 2
     }
 
-    private func bubble(below: Bool) -> some View {
+    private func bubble(below: Bool, tail: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 // The gesture, in the page's ink: green is kept for what's done (owner: "not too much of it").
@@ -554,7 +570,7 @@ struct TourCallout: View {
         .padding(16)
         .tint(TourInk.green)   // never the system blue
         .accessibilityElement(children: .contain)
-        .tourBubble(BubbleShape(tailUp: below), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
+        .tourBubble(BubbleShape(tailUp: below, tailOffset: tail), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
                     scheme: scheme, backdrop: theme.backdrop)
     }
 }
@@ -661,13 +677,15 @@ struct TourChecklist: View {
     }
 }
 
-/// A rounded bubble with a soft tail at the top or bottom centre (no hard triangle: the tail's sides are curves).
+/// A rounded bubble with a soft tail at the top or bottom (no hard triangle: the tail's sides are curves), `tailOffset`
+/// from the centre.
 struct BubbleShape: Shape {
     var tailUp: Bool
+    var tailOffset: CGFloat = 0
     func path(in rect: CGRect) -> Path {
         let r: CGFloat = 22, tw: CGFloat = 30, th: CGFloat = 10
         var p = Path(roundedRect: rect, cornerRadius: r, style: .continuous)
-        let mid = rect.midX
+        let mid = rect.midX + tailOffset
         if tailUp {
             p.move(to: CGPoint(x: mid - tw / 2, y: rect.minY + 1))
             p.addQuadCurve(to: CGPoint(x: mid, y: rect.minY - th), control: CGPoint(x: mid - tw / 6, y: rect.minY))
@@ -720,7 +738,8 @@ struct BubbleShape: Shape {
     static let acknowledge: TimeInterval = 0.9
 
     /// The pager stays on the step's page, except where the step is about other pages.
-    var locksPager: Bool { active && !(step == .zikr || step == .settings) }
+    /// The pager stays on the step's page; only the Zikr step swipes (Settings is reached by the bar — audit J).
+    var locksPager: Bool { active && step != .zikr }
     /// The list stays open or closed as the step needs; the list step opens it, and the last two leave it be.
     var holdsSheet: Bool { active && !(step == .list || step == .zikr || step == .settings) }
     /// The post-salah pill is on the page.
@@ -902,7 +921,7 @@ struct BubbleShape: Shape {
 
     enum Event {
         case circleTapped, listOpened, unmarked, mapOpened, foldTapped, qiblaAligned, next, back
-        case comingRowTapped, markedRowTapped, pillClosed, settingsPage
+        case comingRowTapped, markedRowTapped, pillClosed, zikrPage, settingsPage
         /// The time editor opened on a prayer; its score now (0…1); Save.
         case editorOpened(String), editorScored(Double), editorSaved(String)
         /// A real mark (the circle held, or a dot tapped), or the mark's preview when no prayer is due.
@@ -1029,6 +1048,7 @@ struct BubbleShape: Shape {
         case (.undo, .unmarked):
             clearPill += 1
             tick(0)
+        case (.zikr, .zikrPage): tick(0)
         case (.settings, .settingsPage): tick(0)
         case (.celebrate, .next): go(to: .map)
         case (.map, .mapOpened), (.map, .next): withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
@@ -1047,6 +1067,10 @@ struct BubbleShape: Shape {
         guard let i = steps.firstIndex(of: step), i > 0 else { return }
         go(to: steps[i - 1])
     }
+
+    #if DEBUG
+    func debugJump(to target: TourStep) { go(to: target) }
+    #endif
 
     /// Out, then in: the bubble goes, the practice day is set for the next step, then it comes at the next control.
     private func go(to next: TourStep) {
@@ -1119,7 +1143,9 @@ struct TourLayer: View {
                 withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
             }
         }
-        .onChange(of: sharedState.horizontalPage) { _, page in
+        // A page reached and at rest (not mid-swipe: ticking mid-move froze the pager — Sami's round D run).
+        .onChange(of: CircleStage.shared.restingPage) { _, page in
+            if page == .zikr { runtime.event(.zikrPage) }
             if page == .settings { runtime.event(.settingsPage) }
         }
         .onAppear { runtime.viewModel = viewModel }
@@ -1204,6 +1230,7 @@ struct TourLayer: View {
         case .markedRow: "prayerRow.Fajr"
         case .list where sharedState.navPosition == .bottom: "prayerList"
         case .settings where sharedState.horizontalPage == .settings: "tourAgainRow"
+        case .settings: "settingsTab"
         default: step.target
         }
     }
@@ -1231,10 +1258,12 @@ struct TourLayer: View {
             guard !runtime.ticked.contains(0) else { return nil }   // the editor's own tip takes it from there
             return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) }
         case .undo: return mid(t.frame("prayerDot.Asr")).map { .init(kind: .tap, at: $0) }
-        case .zikr: return circle.map { .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: $0.minX - 20, y: $0.minY - 56)) }
+        case .zikr:
+            guard sharedState.horizontalPage == .main else { return nil }
+            return circle.map { .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: $0.minX - 20, y: $0.minY - 56)) }
         case .settings:
             guard sharedState.horizontalPage != .settings else { return nil }
-            return circle.map { .init(kind: .swipe(dx: -170, dy: 0), at: CGPoint(x: $0.maxX + 20, y: $0.minY - 56)) }
+            return mid(t.frame("settingsTab")).map { .init(kind: .tap, at: $0) }
         // The qibla arrow sits on the circle's upper right.
         case .map: return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
         case .colors, .qibla, .celebrate, .hintMark: return nil
@@ -1243,7 +1272,11 @@ struct TourLayer: View {
 
     /// Back to where `step` happens: its page, and the list open or closed as it needs.
     private func returnTo(_ step: TourStep) {
-        let page: SharedStateClass.HorizontalPage = step == .settings && runtime.ticked.contains(0) ? .settings : .main
+        let page: SharedStateClass.HorizontalPage = switch step {
+        case .zikr: runtime.ticked.contains(0) ? .zikr : .main
+        case .settings: runtime.ticked.contains(0) ? .settings : .zikr
+        default: .main
+        }
         sharedState.go(to: page)
         if let wanted = sheetPosition(step), sharedState.navPosition != wanted {
             withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
@@ -1266,7 +1299,7 @@ struct TourLayer: View {
         case .list: return page == .main && (list == .main || runtime.ticked.contains(0))
         case .rowTime, .mark, .fold, .markedRow, .edit, .undo, .hintMark: return page == .main && list == .bottom
         case .zikr: return page == .main || page == .zikr
-        case .settings: return page == .main || page == .settings
+        case .settings: return page == .zikr || page == .settings
         case .celebrate, .map: return page == .main
         }
     }

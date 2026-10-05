@@ -655,6 +655,9 @@ struct PrayerTimesView: View {
             // Any stage cover too (the ☰ menu, the map, a row's time editor): the edit step's "Close it" is its close.
             TourLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
                       || morningSession != nil || !CircleStage.shared.sceneActive || !CircleStage.shared.covers.isEmpty)
+            // The session tour's last tips, on the Zikr page (CountTips: History, then "your turn").
+            ZikrPageTipsLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
+                              onZikr: sharedState.horizontalPage == .zikr)
 
             #if DEBUG
             TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line|callout]`: the pictures
@@ -1692,6 +1695,7 @@ struct PrayerTimesView: View {
                         ZStack {
                         // Zikr page, top left: History (the Zikr tab reorganisation; symbols only, 2026-10-01).
                         ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("historyDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
 
                         Button { showMenu = true } label: {
@@ -2114,6 +2118,8 @@ struct PrayerTimesView: View {
                             }
                             .foregroundColor(sharedState.horizontalPage == .settings ? .green : .gray)
                             .frame(width: 100)
+                            // The tour's last step taps this (audit J: the bar is taught as well as the swipe).
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("settingsTab", $0) }
                         }
                     }
                     .padding(.top, 15)

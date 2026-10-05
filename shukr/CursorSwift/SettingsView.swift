@@ -387,7 +387,8 @@ struct SettingsView: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
                     }
                     .id("tourAgainRow")
-                    .onChange(of: TourRuntime.shared.step == .settings && TourRuntime.shared.ticked.contains(0)) { _, there in
+                    // Once the page has come to rest (scrolling it mid-swipe stalled the pager — Sami's round D run).
+                    .onChange(of: TourRuntime.shared.step == .settings && CircleStage.shared.restingPage == .settings) { _, there in
                         if there { withAnimation { proxy.scrollTo("tourAgainRow", anchor: .center) } }
                     }
 
