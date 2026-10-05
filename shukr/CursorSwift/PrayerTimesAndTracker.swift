@@ -685,20 +685,22 @@ struct PrayerTimesView: View {
             #endif
         }
         // The tour: from Settings → Show me around again (the Salah page, the list closed), or once after the first-run
-        // setup when the page has come back from the welcome.
+        // setup when the page has come back from the welcome. Both open at its door, the invitation (decision
+        // onboarding-start A).
         .onReceive(NotificationCenter.default.publisher(for: TourRuntime.start)) { _ in
             sharedState.go(to: .main)
             SalahSheetDrag.closeQuietly(sharedState)
             Task {
                 try? await Task.sleep(for: .seconds(0.6))
-                TourRuntime.shared.begin()
+                TourRuntime.shared.invite()
             }
         }
         .onChange(of: CircleStage.shared.pageHidden, initial: true) { _, hidden in
             guard !hidden, TourRuntime.shouldAutoStart else { return }
             tourWait?.cancel()
             tourWait = Task {
-                try? await Task.sleep(for: .seconds(1.2))
+                // A breath on the real day after the welcome lands, ring alive, before the invitation (audit L).
+                try? await Task.sleep(for: .seconds(2.5))
                 // Deferred, never skipped, while something else owns the page (audit A4): the lost page, the morning
                 // card, the reminders card, a cover, a system alert.
                 let stage = CircleStage.shared
@@ -706,7 +708,7 @@ struct PrayerTimesView: View {
                 guard !Task.isCancelled, !TourRuntime.shared.active, TourRuntime.shouldAutoStart else { return }
                 SalahSheetDrag.closeQuietly(sharedState)
                 sharedState.go(to: .main, animated: false)
-                TourRuntime.shared.begin()
+                TourRuntime.shared.invite()
             }
         }
         // A practice mark undone: the post-salah pill it brought goes too.
@@ -1801,10 +1803,13 @@ struct PrayerTimesView: View {
                         Spacer()
                         ZStack(alignment: .trailing) {   // the Azkar door keeps its place beside the Play / palette pair
                         // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
+                        // Skip tour takes this corner while the tour runs (Tour.swift's TourSkipButton).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .modifier(follow(.zikr(push: 0)))
+                            .opacity(TourRuntime.shared.active ? 0 : 1)
+                            .allowsHitTesting(!TourRuntime.shared.active)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
-                        if access.available {
+                        if access.available && !TourRuntime.shared.active {
                             HStack(spacing: 0) {
                                 SalahPlayButton()
                                 SalahLookSwitcher()

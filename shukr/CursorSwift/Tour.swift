@@ -45,14 +45,7 @@ enum TourStep: String, CaseIterable, Identifiable {
     }
     var subline: String {
         switch self {
-        case .circle:
-            #if DEBUG
-            UserDefaults.standard.string(forKey: "mockTourStart") == "B"
-                ? "Let's practise on a pretend prayer — nothing here is saved."
-                : "This is a practice prayer: nothing here is saved."
-            #else
-            "This is a practice prayer: nothing here is saved."
-            #endif
+        case .circle: "This is a practice prayer: nothing here is saved."
         case .colors: "The ring's colour is the score you'd get if you prayed now."
         case .qibla: "The small arrow on the circle points the way."
         case .list: "They're under the circle."
@@ -316,16 +309,6 @@ struct TourDemoLayer: View {
                 TourOverlay(step: step, style: style,
                             target: step == .hintMark ? viewModel.relevantPrayer.map { "prayerDot." + $0.name } : nil) { self.step = nil }
             }
-            // `-mockTourStart A`: decision onboarding-start's A, a picture only (Ben's audit L): the invitation on the
-            // real day, under the circle. Nothing behind its buttons.
-            if UserDefaults.standard.string(forKey: "mockTourStart") == "A", let circle = TourTargets.shared.frame("circle") {
-                GeometryReader { geo in
-                    let origin = geo.frame(in: .global).origin
-                    TourInviteMock()
-                        .frame(width: min(geo.size.width - 48, 300))
-                        .position(x: geo.size.width / 2, y: circle.maxY - origin.y + 24 + 95)
-                }
-            }
         }
         .task {
             // `-tourStart [-tourStartAfter s]`: the real tour, as Settings → Show me around again starts it.
@@ -333,8 +316,14 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                // `-tourSkipInvite YES` (or `-tourFrom`): Show me at once, past the invitation.
+                let from = UserDefaults.standard.string(forKey: "tourFrom").flatMap(TourStep.init(rawValue:))
+                if from != nil || UserDefaults.standard.bool(forKey: "tourSkipInvite") {
+                    try? await Task.sleep(for: .seconds(1.0))
+                    TourRuntime.shared.acceptInvite()
+                }
                 // `-tourFrom <step>`: straight to that step (its practice state set as on a Back).
-                if let raw = UserDefaults.standard.string(forKey: "tourFrom"), let from = TourStep(rawValue: raw) {
+                if let from {
                     try? await Task.sleep(for: .seconds(1.5))
                     TourRuntime.shared.debugJump(to: from)
                 }
@@ -777,6 +766,9 @@ struct BubbleShape: Shape {
     /// Between begin() and finish(), gaps between steps included: events then belong to the tour, never to the
     /// "first real mark" outside it (audit A7); the pager and the list are held (audit E17).
     private(set) var active = false
+    /// The invitation is up, on the real day (decision onboarding-start A — Izhan picked Ben's A): "Want a quick look
+    /// around?" Show me / Later. Not yet the tour: no practice day, nothing held.
+    private(set) var inviting = false
     /// How often the tour has started from the first-run setup: a kill mid-tour resumes it once (audit A3).
     static let startedKey = "tour.v1.started"
     /// How long the ✓ shows before the insight.
@@ -871,10 +863,10 @@ struct BubbleShape: Shape {
     }
 
     /// Asr's place in its window, as a share of it (its start moved back; the window keeps its length).
-    private func setPracticeProgress(_ share: Double, animated: Bool = true) {
+    private func setPracticeProgress(_ share: Double, animation: Animation? = .easeInOut(duration: 0.9)) {
         guard let asr = practiceAsr else { return }
         let start = Date().addingTimeInterval(-share * Self.practiceWindow)
-        withAnimation(animated ? .easeInOut(duration: 0.9) : nil) {
+        withAnimation(animation) {
             asr.startTime = start
             asr.endTime = start.addingTimeInterval(Self.practiceWindow)
         }
@@ -903,18 +895,34 @@ struct BubbleShape: Shape {
     }
 
     /// The colours step: the practice ring goes green → yellow → red, each note lit as the ring gets there.
+    /// The colours step: the ring fills smoothly from just begun to nearly over in 7 s — green, then yellow, then red —
+    /// and again, until the card is dismissed (owner: "progress over 7 seconds. Smoothly, not in steps … continuously").
+    /// Each colour's note lights as the ring first reaches it.
     private func playColors(run thisRun: Int) {
         Task {
             try? await Task.sleep(for: .seconds(1.2))   // the bubble first
-            for (i, share) in [0.06, 0.4, 0.85].enumerated() {
-                // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
-                _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
-                guard run == thisRun, step == .colors else { return }
-                setPracticeProgress(share)
-                try? await Task.sleep(for: .seconds(1.0))
-                guard run == thisRun, step == .colors else { return }
-                light(i)
-                try? await Task.sleep(for: .seconds(1.1))
+            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 30
+            let lights: [Double] = [0.06, 0.4, 0.85]   // where the ring shows green, yellow, red
+            var playing: Bool { run == thisRun && step == .colors }
+            while playing {
+                var elapsed: TimeInterval = 0
+                var last = Date()
+                setPracticeProgress(0, animation: nil)
+                while playing, elapsed < sweep {
+                    // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
+                    if !CircleStage.shared.sceneActive {
+                        _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
+                        last = Date()
+                    }
+                    let now = Date()
+                    elapsed += now.timeIntervalSince(last)
+                    last = now
+                    let share = top * min(elapsed / sweep, 1)
+                    setPracticeProgress(share, animation: .linear(duration: frame))
+                    for (i, at) in lights.enumerated() where share >= at { light(i) }
+                    try? await Task.sleep(for: .seconds(frame))
+                }
+                try? await Task.sleep(for: .seconds(0.6))   // a beat in the red before it begins again
             }
             guard run == thisRun else { return }
             setPracticeProgress(5 * 60 / Self.practiceWindow)   // back to just begun (green)
@@ -979,7 +987,29 @@ struct BubbleShape: Shape {
     /// A step to go back to.
     var canGoBack: Bool { step.flatMap { steps.firstIndex(of: $0) }.map { $0 > 0 } ?? false }
 
+    /// The tour's door: the invitation on the real day, after setup and from Settings alike (audit L).
+    func invite() {
+        guard !active, step == nil else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { inviting = true }
+    }
+
+    /// "Show me": the practice day comes in and step 1 with it.
+    func acceptInvite() {
+        guard inviting else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { inviting = false }
+        begin()
+    }
+
+    /// "Later": nothing more, ever, except Settings → Show me around again (the card said so).
+    func declineInvite() {
+        guard inviting else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { inviting = false }
+        UserDefaults.standard.set(true, forKey: Self.doneKey)
+        UserDefaults.standard.removeObject(forKey: Self.pendingKey)
+    }
+
     func begin() {
+        inviting = false
         practicePrayer = nil
         steps = Self.allSteps
         // The celebration is armed by the first-run setup only (FirstRunSetup.markDone): Show me around again never
@@ -992,7 +1022,14 @@ struct BubbleShape: Shape {
         startPractice()
         resetStepState()
         prepare(.circle)
-        withAnimation(.easeOut(duration: CircleMotion.quick)) { step = .circle }
+        // Step 1 a turn later: the practice day's fetch (startPractice) could draw the layer mid-begin, and a step set
+        // in the same turn was then never drawn — no card, no Skip, until the next change (intermittent; Sami's and
+        // Frank's invisible step 1, TOURDBG logs 2026-10-05).
+        let thisRun = run
+        Task { @MainActor in
+            guard run == thisRun, active, step == nil else { return }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { step = .circle }
+        }
     }
 
     /// Builds before 2026-10-05 could save the practice day's score as a real day's (a widget / banner mark mid-tour
@@ -1126,6 +1163,9 @@ struct BubbleShape: Shape {
             try? await Task.sleep(for: .seconds(0.45))
             guard run == thisRun else { return }
             prepare(next)
+            // The step a turn after its practice state (as in begin(): a change in the same turn could go undrawn).
+            try? await Task.sleep(for: .milliseconds(1))
+            guard run == thisRun else { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { step = next }
             if next == .colors { playColors(run: thisRun) }
         }
@@ -1148,16 +1188,35 @@ struct TourLayer: View {
 
     var body: some View {
         ZStack {
-            // The way out, away from the tips (owner: no "Not now" in them): two taps, like Finish early.
-            if runtime.active, runtime.step != nil, !covered {
+            // The door, on the real day: Show me / Later (decision onboarding-start A).
+            if runtime.inviting, !covered, sharedState.horizontalPage == .main, sharedState.navPosition == .main {
+                GeometryReader { geo in
+                    let origin = geo.frame(in: .global).origin
+                    let below = TourTargets.shared.frame("circle").map { $0.maxY - origin.y + 24 } ?? geo.size.height * 0.62
+                    TourInviteCard(onShow: { runtime.acceptInvite() }, onLater: { runtime.declineInvite() })
+                        .frame(width: min(geo.size.width - 48, 320))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, below)
+                }
+                .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                .onAppear {
+                    AccessibilityNotification.Announcement("Want a quick look around? Two minutes, on a practice prayer.").post()
+                }
+            }
+            // The way out, away from the tips (owner: no "Not now" in them): two taps, like Finish early. In the top
+            // bar's row, top right (owner: the DEBUG buttons there aren't in real builds).
+            // Not on the Settings step: Done is its way out, and Settings' own top right is a control (Sami: there it
+            // sat on the Fajr alarm switch).
+            if runtime.active, let step = runtime.step, step != .settings, !covered {
                 TourSkipButton {
                     runtime.skip()
                     withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, 52)
+                .padding(.top, 12)
                 .padding(.trailing, 16)
-                .transition(.opacity)
+                .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
             if skippedNote {
                 TourSkippedNote { withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false } }
@@ -1202,6 +1261,10 @@ struct TourLayer: View {
                             onBack: { runtime.event(.back) },
                             onSkip: { runtime.skip() })
                     .id(step)
+                    // In without the layer's own fade (the callout fades itself in, `shown`): an insertion riding the
+                    // step's animated change was left at nothing — no card, no Skip — until the next update (Sami's
+                    // and Frank's invisible step 1, intermittent).
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
                 if step == .celebrate && !reduceMotion { ConfettiBurst().allowsHitTesting(false) }
             }
         }
@@ -1522,55 +1585,54 @@ enum PracticeClock {
 }
 
 /// Skip tour (owner: "a double tap confirmation … like how our finish early buttons are"): the first tap arms it —
-/// "✓ Tap again to skip" in sage, growing leftwards — the second skips; it lets go after 3 s.
+/// "✓ Tap again to skip" in sage, growing leftwards (it's placed by its trailing edge) — the second skips; it lets go
+/// after 3 s.
 struct TourSkipButton: View {
     let action: () -> Void
+    /// Its own fade in (the layer inserts it without one).
+    @State private var shown = false
     @State private var armed = false
     @State private var token = 0
 
     var body: some View {
-        Button {
+        // One capsule whose words and colour change, with its own tap: what's drawn is what takes the tap (as a system
+        // Button, the armed capsule's left part took no tap — Sami, Frank).
+        HStack(spacing: 5) {
             if armed {
-                triggerSomeVibration(type: .medium)
-                armed = false
-                action()
-            } else {
-                triggerSomeVibration(type: .light)
-                token += 1
-                let mine = token
-                armed = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout, not a motion
-                    if mine == token { armed = false }
-                }
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
             }
-        } label: {
-            // Armed, its words are the button: the whole sage capsule takes the second tap (an overlay didn't).
-            ZStack(alignment: .trailing) {
-                Text("Skip tour")
-                    .font(.system(.footnote, design: .rounded, weight: .medium))
-                    .foregroundStyle(Color.primary.opacity(0.6))
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background(Capsule().fill(Color.primary.opacity(0.06)))
-                    .opacity(armed ? 0 : 1)
-                if armed {
-                    HStack(spacing: 5) {
-                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
-                        Text("Tap again to skip").font(.system(.footnote, design: .rounded, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .frame(height: 32)
-                    .background(Capsule().fill(Color.sage))
-                    .fixedSize()
-                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .trailing)))
-                }
-            }
-            .animation(.snappy(duration: 0.25), value: armed)
-            .contentShape(Capsule())
+            Text(armed ? "Tap again to skip" : "Skip tour")
+                .font(.system(.footnote, design: .rounded, weight: armed ? .semibold : .medium))
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(armed ? Color.white : Color.primary.opacity(0.6))
+        .padding(.horizontal, 14)
+        .frame(height: 32)
+        .background(Capsule().fill(armed ? Color.sage : Color.primary.opacity(0.06)))
+        .fixedSize()
+        .contentShape(Capsule())
+        .onTapGesture(perform: tap)
+        .opacity(shown ? 1 : 0)
+        .task { withAnimation(.easeOut(duration: CircleMotion.quick)) { shown = true } }
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(armed ? "Tap again to skip the tour" : "Skip tour")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default, tap)
+    }
+
+    private func tap() {
+        if armed {
+            triggerSomeVibration(type: .medium)
+            armed = false
+            action()
+        } else {
+            triggerSomeVibration(type: .light)
+            token += 1
+            let mine = token
+            armed = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout, not a motion
+                if mine == token { armed = false }
+            }
+        }
     }
 }
 
@@ -1602,9 +1664,13 @@ struct TourSkippedNote: View {
     }
 }
 
-#if DEBUG
-/// Decision onboarding-start's A (Ben's audit L), drawn for its picture: the tour's look, no ring, no to-dos.
-struct TourInviteMock: View {
+/// The tour's door (decision onboarding-start A, Ben's audit L): on the real day, under the circle, in the tour's look —
+/// no ring, no to-dos, no haptic. Show me (green) / Later (quiet).
+struct TourInviteCard: View {
+    let onShow: () -> Void
+    let onLater: () -> Void
+    /// Its own fade in (the layer inserts it without one).
+    @State private var shown = false
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
@@ -1620,24 +1686,33 @@ struct TourInviteMock: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Text("Later")
+                Button("Later", action: onLater)
+                    .buttonStyle(.plain)
                     .font(.system(.footnote, design: .rounded, weight: .regular))
                     .foregroundStyle(Color(.secondaryLabel))
+                    .frame(minHeight: 36)
+                    .contentShape(Rectangle())
                 Spacer()
-                Text("Show me")
-                    .font(.system(.subheadline, design: .rounded, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .frame(height: 36)
-                    .background(Capsule().fill(TourInk.green))
+                Button(action: onShow) {
+                    Text("Show me")
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 18)
+                        .frame(height: 36)
+                        .background(Capsule().fill(TourInk.green))
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(18)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
                     look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+        .accessibilityElement(children: .contain)
+        .opacity(shown ? 1 : 0)
+        .task { withAnimation(.easeOut(duration: 0.4)) { shown = true } }
     }
 }
-#endif
 
 /// "Back to the tour ›": shown when something took the page away from the tour's step.
 struct BackToTourPill: View {
