@@ -160,7 +160,20 @@ enum TourStep: String, CaseIterable, Identifiable {
         frames[key] = frame
     }
     func frame(_ key: String) -> CGRect? {
-        key == "circle" ? WelcomeTarget.circleFrame : frames[key]
+        key == "circle" ? (settledCircle ?? WelcomeTarget.circleFrame) : frames[key]
+    }
+    /// The circle's frame once it has held still a moment: the circle's measured frame blinked smaller for 3 frames as
+    /// the ring turned yellow, and the card hung under it jumped up and back (owner's recording, 2026-10-05).
+    private(set) var settledCircle: CGRect?
+    @ObservationIgnored private var circleSettle: Task<Void, Never>?
+    func circleMoved(_ frame: CGRect) {
+        circleSettle?.cancel()
+        if settledCircle == nil { settledCircle = frame; return }
+        circleSettle = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.12))
+            guard !Task.isCancelled, settledCircle != frame else { return }
+            settledCircle = frame
+        }
     }
 }
 
@@ -956,22 +969,22 @@ struct BubbleShape: Shape {
     /// and again, until the card is dismissed (owner: "progress over 7 seconds. Smoothly, not in steps … continuously").
     /// Each colour's note lights as the ring first reaches it.
     private func playColors(run thisRun: Int) {
-        Task {
+        // The sweep's ring from the step's first frame, where the ring already is (just begun): the green zone's living
+        // fill gives way to it as the card comes in, not mid-step (it popped as the sweep began).
+        let start = 5 * 60 / Self.practiceWindow
+        colorSweep = start
+        Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.2))   // the bubble first
-            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 30
+            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 60, rewind: TimeInterval = 0.7
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
-            // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window (Sami: fixed
-            // shares lit yellow and red a second late).
-            let window = Self.practiceWindow
-            let lights: [Double] = [0.005] + PrayerScoring.gradeChanges(start: .distantPast,
-                                                                         end: Date.distantPast.addingTimeInterval(window))
-                .map { $0.timeIntervalSince(.distantPast) / window }
+            // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
+            let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
             var playing: Bool { run == thisRun && step == .colors }
-            while playing {
+            /// One stretch of the ring, `from` → `to` over `length`, eased by `curve`, each frame (60 a second).
+            @MainActor func play(_ from: Double, _ to: Double, _ length: TimeInterval, curve: (Double) -> Double, lighting: Bool) async {
                 var elapsed: TimeInterval = 0
                 var last = Date()
-                setPracticeProgress(0, animation: nil)
-                while playing, elapsed < sweep {
+                while playing, elapsed < length {
                     // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
                     if !CircleStage.shared.sceneActive {
                         _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
@@ -980,16 +993,52 @@ struct BubbleShape: Shape {
                     let now = Date()
                     elapsed += now.timeIntervalSince(last)
                     last = now
-                    let share = top * min(elapsed / sweep, 1)
-                    setPracticeProgress(share, animation: .linear(duration: frame))
-                    for (i, at) in lights.enumerated() where share >= at { light(i) }
+                    let share = from + (to - from) * curve(min(elapsed / length, 1))
+                    colorSweep = share
+                    if lighting { for (i, at) in lights.enumerated() where share >= at { light(i) } }
                     try? await Task.sleep(for: .seconds(frame))
                 }
-                try? await Task.sleep(for: .seconds(0.6))   // a beat in the red before it begins again
+            }
+            while playing {
+                await play(start, top, sweep, curve: { $0 }, lighting: true)                 // the fill, steady
+                try? await Task.sleep(for: .seconds(0.5))                                    // a beat in the red
+                await play(top, start, rewind, curve: { 0.5 - cos($0 * .pi) / 2 }, lighting: false)   // back, eased
+                try? await Task.sleep(for: .seconds(0.3))
             }
             guard run == thisRun else { return }
+            colorSweep = nil
             setPracticeProgress(5 * 60 / Self.practiceWindow)   // back to just begun (green)
         }
+    }
+
+    /// The colours step's ring (owner: "progress over 7 seconds. Smoothly … the color changing to be smoother as well"):
+    /// a share of the window the practice ring draws directly, every frame, instead of its times — nil otherwise.
+    private(set) var colorSweep: Double?
+    /// Where the practice window's colour changes (PrayerScoring.gradeChanges), as shares of it.
+    static let sweepStops: (yellow: Double, red: Double) = {
+        let changes = PrayerScoring.gradeChanges(start: .distantPast, end: Date.distantPast.addingTimeInterval(practiceWindow))
+            .map { $0.timeIntervalSince(.distantPast) / practiceWindow }
+        return (changes.first ?? 0.16, changes.last ?? 0.58)
+    }()
+    /// The sweep's colour: the ring's own green, yellow and red, blended across each change (no snap).
+    static func sweepColor(_ share: Double) -> Color {
+        let blend = 0.05
+        func mix(_ a: UIColor, _ b: UIColor, _ t: Double) -> Color {
+            var (r1, g1, b1, a1, r2, g2, b2, a2): (CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat, CGFloat)
+                = (0, 0, 0, 0, 0, 0, 0, 0)
+            a.getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+            b.getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+            let t = CGFloat(min(max(t, 0), 1))
+            return Color(red: r1 + (r2 - r1) * t, green: g1 + (g2 - g1) * t, blue: b1 + (b2 - b1) * t)
+        }
+        let green = UIColor(PrayerScoring.color(for: 1)), yellow = UIColor(PrayerScoring.color(for: 0.9)),
+            red = UIColor(PrayerScoring.color(for: 0.7))
+        let (y, r) = (sweepStops.yellow, sweepStops.red)
+        if share < y - blend { return Color(green) }
+        if share < y + blend { return mix(green, yellow, (share - (y - blend)) / (2 * blend)) }
+        if share < r - blend { return Color(yellow) }
+        if share < r + blend { return mix(yellow, red, (share - (r - blend)) / (2 * blend)) }
+        return Color(red)
     }
 
     // MARK: To-dos, notes, insight
@@ -1174,6 +1223,7 @@ struct BubbleShape: Shape {
         lit = []
         completing = false
         insight = false
+        colorSweep = nil   // the colours step's ring goes with it (a skip, Back, Continue)
     }
 
     func event(_ e: Event) {

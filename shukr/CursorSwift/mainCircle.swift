@@ -161,6 +161,7 @@ struct MainCircleView: View {
                 // Where the welcome's ring lands (WelcomeAnimation.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: {
                     WelcomeTarget.circleFrame = $0   // only this circle writes it
+                    TourTargets.shared.circleMoved($0)   // the tour's, settled (Tour.swift)
                 }
             
             //Inner Content — hidden while a completion flourish plays over it (PrayerCompletionFX)
@@ -185,6 +186,8 @@ struct MainCircleView: View {
                         // The dev preview of a prayer beginning: from (almost) nothing, as a real start does — its
                         // own clock drew it already most of the way round (Sami's audit, finding 8).
                         if shownIsPreview && status == .current { return 0.015 }
+                        // The tour's colours step draws its sweep directly, every frame (Tour.swift `colorSweep`).
+                        if let sweep = TourRuntime.shared.colorSweep, TourRuntime.shared.isPractice(prayer) { return sweep }
                         guard status == .current else { return 1 }
                         let totalDuration = prayer.endTime.timeIntervalSince(prayer.startTime)
                         let elapsed = currentTime.timeIntervalSince(prayer.startTime)
@@ -196,6 +199,9 @@ struct MainCircleView: View {
                     var progressColor: Color {
                         if progress >= 1 { return .clear }
                         if shownIsPreview && status == .current { return .green }   // the preview's start (a held row is long past)
+                        if let sweep = TourRuntime.shared.colorSweep, TourRuntime.shared.isPractice(prayer) {
+                            return TourRuntime.sweepColor(sweep)   // blended across each change
+                        }
                         return PrayerScoring.color(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: currentTime))
                     }
                     let upcoming = status == .upcoming
@@ -205,7 +211,9 @@ struct MainCircleView: View {
                         // In the Perfect (green) window under the soft ring, the arc is the tasbeeh ring's living fill
                         // (AliveRingFill, "fine") cut to the arc — "it deserves it … we want to beautify when we are in
                         // that period of prayer" (owner, 2026-10-01). Yellow / red stay the solid arc below.
-                        let perfectNow = theme.arc.alivePerfect && progress < 1 && PrayerScoring.grade(for: PrayerScoring.score(
+                        // Not during the tour's colour sweep: the swap to the solid arc at yellow popped (owner).
+                        let perfectNow = theme.arc.alivePerfect && progress < 1 && TourRuntime.shared.colorSweep == nil
+                            && PrayerScoring.grade(for: PrayerScoring.score(
                             start: prayer.startTime, end: prayer.endTime, markedAt: currentTime)) == .perfect
                         if perfectNow {
                             AliveRingFill(dark: colorScheme == .dark, tuning: .fine)
@@ -220,6 +228,10 @@ struct MainCircleView: View {
                                 }
                                 .shadow(color: Color.green.opacity(AliveRingTuning.fine.glow), radius: 6)
                                 .allowsHitTesting(false)
+                                // Fades as the tour's colour sweep takes the ring (its own animation: the sweep's
+                                // change carries none). Only in the tour — a real prayer's moment is untouched.
+                                .transition(TourRuntime.shared.active
+                                            ? .opacity.animation(.easeInOut(duration: CircleMotion.quick)) : .identity)
                         }
                         // progress arc. Under the soft ring it takes the tasbeeh arc's shape (NeuCircularProgressView,
                         // "fine"): as wide as the band, round ends, a soft glow in its own colour (owner, 2026-10-01).
@@ -230,6 +242,9 @@ struct MainCircleView: View {
                             .frame(width: 200, height: 200)
                             .shadow(color: progressColor.opacity(theme.arc.glow), radius: 6)   // glow 0 = none
                             .opacity(perfectNow ? 0 : 1)
+                            // The tour's colour sweep coming or going: the arc and the living fill cross-fade (it popped
+                            // in one frame). Only then — the real ring's moments are untouched.
+                            .animation(.easeInOut(duration: CircleMotion.quick), value: TourRuntime.shared.colorSweep == nil)
                             .animation(animationStyle, value: currentTime/*progress*/)
                     
                         // Inner content
