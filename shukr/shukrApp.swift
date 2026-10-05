@@ -139,6 +139,13 @@ struct shukrApp: App {
         #if DEBUG
         SalahLook.seedExploringDefaults()   // dev builds start the look exploration on Sunken well, no lines
         if ProcessInfo.processInfo.arguments.contains("-autoMethodTest") { AutoMethodSelfTest.run() }
+        // `-tourPendingTest`: as if the first-run setup had just finished (the tour pending, never started), to test that
+        // a kill mid-tour resumes it once on the next launch (audit A3).
+        if ProcessInfo.processInfo.arguments.contains("-tourPendingTest") {
+            UserDefaults.standard.set(true, forKey: TourRuntime.pendingKey)
+            UserDefaults.standard.set(0, forKey: TourRuntime.startedKey)
+            UserDefaults.standard.set(false, forKey: TourRuntime.doneKey)
+        }
         // `-widgetOpenTest ayah|names|compass|tasbeeh|task:<uuid>`: a launch as if from that widget (the flags its intent
         // sets before the app opens), to check the opening is skipped and the page comes up at once.
         if let i = ProcessInfo.processInfo.arguments.firstIndex(of: "-widgetOpenTest"),

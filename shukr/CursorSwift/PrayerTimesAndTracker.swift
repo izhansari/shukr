@@ -121,6 +121,13 @@ struct PrayerTimesView: View {
         morningSession = session
     }
     @State private var morningWait: Task<Void, Never>?
+    @State private var tourWait: Task<Void, Never>?
+    /// Nothing else owns the Salah page: the tour may start, or show (audit A4).
+    private var tourCanStart: Bool {
+        let stage = CircleStage.shared
+        return !stage.pageHidden && stage.sceneActive && stage.lost == nil && morningSession == nil
+            && !somethingCovers && !showTasbeehPage && !FirstRunSetup.isShowing && !WelcomeTarget.playing
+    }
     private static let morningCardDeadline: Double = 20
 
     /// Widget / control / Action-button opens (one-shot flags in the app group). Held while the
@@ -474,7 +481,9 @@ struct PrayerTimesView: View {
                 live.refreshReach = 0
                 withAnimation(CircleMotion.page) {
                     live.pull = 0
-                    guard vertical, sharedState.horizontalPage == .main, !sheetFollows else { return }
+                    // The tour holds the list where its step needs it (audit E17); only its list step opens it.
+                    guard vertical, sharedState.horizontalPage == .main, !sheetFollows,
+                          !TourRuntime.shared.holdsSheet else { return }
                     let draggedDown = value.translation.height > threshold
                     let draggedUp = value.translation.height < -threshold
                     switch sharedState.navPosition {
@@ -640,7 +649,9 @@ struct PrayerTimesView: View {
             LostPageLayer()
 
             // The first-run tour (Tour.swift): its callout over the live app, never over a cover or a session.
-            TourLayer(covered: somethingCovers || showTasbeehPage)
+            // Any stage cover too (the ☰ menu, the map, a row's time editor): the edit step's "Close it" is its close.
+            TourLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
+                      || morningSession != nil || !CircleStage.shared.sceneActive || !CircleStage.shared.covers.isEmpty)
 
             #if DEBUG
             TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line|callout]`: the pictures
@@ -657,11 +668,17 @@ struct PrayerTimesView: View {
             }
         }
         .onChange(of: CircleStage.shared.pageHidden, initial: true) { _, hidden in
-            guard !hidden, UserDefaults.standard.bool(forKey: TourRuntime.pendingKey),
-                  !UserDefaults.standard.bool(forKey: TourRuntime.doneKey) else { return }
-            Task {
+            guard !hidden, TourRuntime.shouldAutoStart else { return }
+            tourWait?.cancel()
+            tourWait = Task {
                 try? await Task.sleep(for: .seconds(1.2))
-                guard TourRuntime.shared.step == nil, !CircleStage.shared.pageHidden else { return }
+                // Deferred, never skipped, while something else owns the page (audit A4): the lost page, the morning
+                // card, the reminders card, a cover, a system alert.
+                let stage = CircleStage.shared
+                guard await stage.until(deadline: 600, recheck: 1, { tourCanStart }) else { return }
+                guard !Task.isCancelled, !TourRuntime.shared.active, TourRuntime.shouldAutoStart else { return }
+                SalahSheetDrag.closeQuietly(sharedState)
+                sharedState.go(to: .main, animated: false)
                 TourRuntime.shared.begin()
             }
         }
@@ -1795,6 +1812,9 @@ struct PrayerTimesView: View {
             .overlay(alignment: .top) {
                 if live.postSalahNudge != nil {
                     PostSalahNudgeOnPage(live: live) {
+                        // The tour's pill came from a practice mark: it never opens a real, saved session (audit A1);
+                        // ✕ closes it.
+                        guard !TourRuntime.shared.active else { return }
                         live.postSalahNudge = nil
                         sharedState.isDoingPostNamazZikr = true
                         // In place (decision post-salah-entry A): the cover with no animation of its own, the session
@@ -2950,7 +2970,9 @@ struct PagerBackdrop: View {
 struct PagerLock: ViewModifier {
     var live: PagerLiveState
     func body(content: Content) -> some View {
-        content.scrollDisabled(live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating)
+        // The tour holds the page too: only its swipe step pages (audit E17).
+        content.scrollDisabled(live.pagerLocked || live.sheetPhase == .interacting || live.sheetPhase == .decelerating
+                               || TourRuntime.shared.locksPager)
     }
 }
 

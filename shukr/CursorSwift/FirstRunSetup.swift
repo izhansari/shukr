@@ -92,6 +92,9 @@ enum FirstRunSetup {
             // The first-run tour follows the setup, once the welcome has played (Tour.swift).
             if !UserDefaults.standard.bool(forKey: TourRuntime.doneKey) {
                 UserDefaults.standard.set(true, forKey: TourRuntime.pendingKey)
+                UserDefaults.standard.set(0, forKey: TourRuntime.startedKey)
+                // A new user's first real mark is celebrated (only from here: audit A6).
+                UserDefaults.standard.set(true, forKey: TourRuntime.celebrateArmedKey)
             }
         }
     }

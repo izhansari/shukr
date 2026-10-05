@@ -16,8 +16,8 @@ import SwiftUI
     private(set) var tip: Tip?
     /// Strokes counted on the drag tip (three end it).
     private(set) var strokes = 0
-    /// "That's it" for a moment after the strokes.
-    private(set) var cheered = false
+    /// The tip's to-do is done (its green ✓), for a moment before the next tip.
+    private(set) var done = false
     static let strokesNeeded = 3
 
     private var stage: Tip {
@@ -31,7 +31,7 @@ import SwiftUI
         #if DEBUG
         if CommandLine.arguments.contains("-demoCountTips") { Self.rearm() }
         #endif
-        strokes = 0; cheered = false
+        strokes = 0; done = false
         tip = postSalah || stage == .done ? nil : stage
     }
 
@@ -44,20 +44,13 @@ import SwiftUI
     func counted(byDrag: Bool) {
         guard let tip else { return }
         switch tip {
-        case .tap:
-            advance(to: .drag)
-            if byDrag { counted(byDrag: true) }   // they found the drag on their own: it counts there too
-        case .drag where byDrag && !cheered:
+        // Only the thing it asks for ticks it (owner: "it doesn't let us progress until the user does exactly that").
+        case .tap where !byDrag && !done:
+            finishTip(then: .drag)
+        case .drag where byDrag && !done:
             withAnimation(.snappy(duration: 0.25)) { strokes += 1 }
             guard strokes >= Self.strokesNeeded else { return }
-            withAnimation(.easeOut(duration: 0.2)) { cheered = true }
-            stage = .pause
-            Task {
-                try? await Task.sleep(for: .seconds(1.4))
-                guard self.tip == .drag else { return }
-                self.cheered = false
-                self.advance(to: .pause)
-            }
+            finishTip(then: .pause)
         default: break
         }
     }
@@ -70,6 +63,19 @@ import SwiftUI
     /// Back to counting from the pause screen.
     func resumed() {
         if tip == .settings { advance(to: .done) }
+    }
+
+    /// The ✓, a moment to see it, then the next tip.
+    private func finishTip(then next: Tip) {
+        withAnimation(.snappy(duration: 0.3)) { done = true }
+        stage = next
+        let current = tip
+        Task {
+            try? await Task.sleep(for: .seconds(1.1))
+            guard self.tip == current else { return }
+            self.done = false
+            self.advance(to: next)
+        }
     }
 
     private func advance(to next: Tip) {
@@ -94,32 +100,34 @@ struct CountTipsLayer: View {
                 if clear, let tip = tips.tip {
                     switch tip {
                     case .tap where !paused:
-                        CountTipBubble(symbol: "hand.tap", headline: "Tap anywhere to count",
-                                       subline: "The whole screen is your counter.")
-                            .position(x: proxy.size.width / 2, y: proxy.size.height - 150)
+                        CountTipBubble(symbol: "hand.tap", headline: "Count",
+                                       subline: "The whole screen is your counter.",
+                                       tasks: ["Tap anywhere"], done: tips.done)
+                            .position(x: proxy.size.width / 2, y: proxy.size.height - 160)
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     case .drag where !paused:
-                        CountTipBubble(symbol: tips.cheered ? "checkmark.circle" : nil,
-                                       headline: tips.cheered ? "That's it" : "Or hold and drag",
-                                       subline: tips.cheered ? "Tap or drag, whichever suits you."
-                                                             : "Keep your finger down and move it down and up, like scrolling. Each stroke down counts.",
-                                       strokes: tips.cheered ? nil : tips.strokes)
-                            .position(x: proxy.size.width / 2, y: proxy.size.height - 160)
+                        CountTipBubble(symbol: nil, headline: "Or hold and drag",
+                                       subline: "Keep your finger down and move it down and up, like scrolling. Each stroke down counts.",
+                                       tasks: ["Drag down and up"], done: tips.done,
+                                       progress: (tips.strokes, CountTips.strokesNeeded))
+                            .position(x: proxy.size.width / 2, y: proxy.size.height - 170)
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     case .pause where !paused && pauseButton.width > 0:
                         let tailX = pauseButton.midX - origin.x
                         CountTipBubble(symbol: "pause.circle", headline: "Pause for more",
                                        subline: "Count in sets, sleep mode and haptics are on the pause screen.",
+                                       tasks: ["Tap \u{23F8}"], done: false,
                                        tail: .up, tailX: tailX - 16)
                             .padding(.leading, 16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .position(x: proxy.size.width / 2, y: pauseButton.maxY - origin.y + 70)
+                            .position(x: proxy.size.width / 2, y: pauseButton.maxY - origin.y + 82)
                             .transition(.opacity)
                     case .settings where paused && chips.width > 0:
                         CountTipBubble(symbol: "slider.horizontal.3", headline: "This session's settings",
-                                       subline: "Tap one to switch it; ⓘ says what it does. Tap anywhere else to carry on.",
+                                       subline: "Tap one to switch it; \u{24D8} says what it does.",
+                                       tasks: ["Tap anywhere else to carry on"], done: false,
                                        tail: .down, tailX: (chips.midX - origin.x) - (proxy.size.width - 300) / 2)
-                            .position(x: proxy.size.width / 2, y: chips.minY - origin.y - 72)
+                            .position(x: proxy.size.width / 2, y: chips.minY - origin.y - 84)
                             .transition(.opacity)
                     default:
                         EmptyView()
@@ -141,52 +149,55 @@ struct CountTipBubble: View {
     var symbol: String?
     let headline: String
     let subline: String
-    var strokes: Int? = nil
+    var tasks: [String] = []
+    var done = false
+    var progress: (Int, Int)? = nil
     var tail: Tail? = nil
     /// The tail's x inside the bubble.
     var tailX: CGFloat = 150
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
+    /// The tour's bubble look while the owner compares (audit E21): an edge and a stronger shadow.
+    @AppStorage(TourInk.solidKey) private var solid = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Group {
-                if let symbol {
-                    Image(systemName: symbol)
-                        .font(.system(size: 22, weight: .regular))
-                        .foregroundStyle(Color(.systemGreen))
-                        .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: true)
-                } else {
-                    StrokeFinger()
-                }
-            }
-            .frame(width: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(headline).font(.system(size: 17, weight: .semibold))
-                Text(subline)
-                    .font(.system(size: 15)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let strokes {
-                    HStack(spacing: 5) {
-                        ForEach(0..<CountTips.strokesNeeded, id: \.self) { i in
-                            Circle().fill(i < strokes ? Color(.systemGreen) : Color(.tertiaryLabel))
-                                .frame(width: 6, height: 6)
-                        }
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Group {
+                    if let symbol {
+                        Image(systemName: symbol)
+                            .font(.system(size: 21, weight: .light))
+                            .foregroundStyle(Color.primary.opacity(0.7))
+                            .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: !done)
+                    } else {
+                        StrokeFinger()
                     }
-                    .padding(.top, 4)
                 }
+                .frame(width: 28)
+                .padding(.top, 1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(headline).font(.system(size: 18, weight: .regular, design: .rounded))
+                    Text(subline)
+                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            if !tasks.isEmpty {
+                TourChecklist(tasks: tasks, ticked: done ? [0] : [], progress: progress)
+                    .padding(.leading, 40)
+            }
         }
         .padding(16)
         .frame(width: 300)
         .background(
             PointerBubble(tail: tail, tailX: tailX)
                 .fill(theme.backdrop)
-                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.14), radius: 12, x: 5, y: 7)
+                .overlay { if solid { PointerBubble(tail: tail, tailX: tailX).stroke(Color.primary.opacity(0.14), lineWidth: 1) } }
+                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : (solid ? 0.24 : 0.14)), radius: solid ? 16 : 12, x: 5, y: 7)
                 .shadow(color: .white.opacity(scheme == .dark ? 0.06 : 0.9), radius: 8, x: -4, y: -4)
         )
-        .fontDesign(.rounded)
     }
 }
 
@@ -195,8 +206,8 @@ private struct StrokeFinger: View {
     @State private var down = false
     var body: some View {
         ZStack {
-            Capsule().fill(Color(.systemGreen).opacity(0.15)).frame(width: 14, height: 40)
-            Circle().fill(Color(.systemGreen)).frame(width: 14, height: 14)
+            Capsule().fill(Color.primary.opacity(0.1)).frame(width: 14, height: 40)
+            Circle().fill(Color.primary.opacity(0.6)).frame(width: 14, height: 14)
                 .offset(y: down ? 13 : -13)
         }
         .onAppear {
