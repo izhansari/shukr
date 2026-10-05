@@ -443,6 +443,11 @@ private struct TourBubblePlacement: Layout {
     let edge: CGFloat?
     let below: Bool
     let fallbackY: CGFloat
+    /// What the step asks you to touch (this view's space): the bubble never lands on it — kept on screen, a tall
+    /// bubble (the largest text) moves to its other side instead (Sami: card 9 covered Fajr's row at AX XXXL).
+    var avoid: CGRect? = nil
+    /// The highest the bubble goes: under Skip tour during the tour (Sami: card 9's payoff covered it).
+    var topLimit: CGFloat = 64
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         proposal.replacingUnspecifiedDimensions()
@@ -454,8 +459,16 @@ private struct TourBubblePlacement: Layout {
         let h = size.height
         let wanted = edge.map { below ? $0 + h / 2 : $0 - h / 2 } ?? fallbackY
         // Never off the screen, nor under the status bar or the home indicator (a tall bubble, large text, a small phone).
-        let top = 64 + h / 2, bottom = bounds.height - 24 - h / 2
-        let y = bottom > top ? min(max(wanted, top), bottom) : bounds.height / 2
+        let top = topLimit + h / 2, bottom = bounds.height - 24 - h / 2
+        func clamp(_ y: CGFloat) -> CGFloat { bottom > top ? min(max(y, top), bottom) : bounds.height / 2 }
+        var y = clamp(wanted)
+        if let avoid, avoid.intersects(CGRect(x: 0, y: y - h / 2, width: bounds.width, height: h)) {
+            // Its other side, if that's clear: under the target, else over it.
+            let options = [avoid.maxY + 14 + h / 2, avoid.minY - 14 - h / 2].map(clamp)
+            if let clear = options.first(where: { !avoid.intersects(CGRect(x: 0, y: $0 - h / 2, width: bounds.width, height: h)) }) {
+                y = clear
+            }
+        }
         bubble.place(at: CGPoint(x: bounds.midX, y: bounds.minY + y), anchor: .center,
                      proposal: ProposedViewSize(width: size.width, height: h))
     }
@@ -516,11 +529,12 @@ struct TourCallout: View {
             // Measured and placed in one layout pass (`TourBubblePlacement`): never a stored height fed back into its
             // position — that looped on Settings (Sami, 402 pt: 116 % CPU, the step never reached Done).
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
-                                fallbackY: size.height * 0.62) {
+                                fallbackY: size.height * 0.62, avoid: hole,
+                                topLimit: place == nil ? 64 : typeSize.isAccessibilitySize ? 158 : 112) {
                 bubble(below: below, tail: tail)
                     // Larger text gets the screen's width (audit C13); kept on screen by the placement.
                     .frame(width: width)
-                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
                     .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
                     .opacity(shown ? 1 : 0)
             }
@@ -563,6 +577,7 @@ struct TourCallout: View {
                         Text(chapter.uppercased())
                             .font(.system(.caption2, design: .rounded, weight: .medium))
                             .tracking(1.2)
+                            .fixedSize(horizontal: false, vertical: true)   // wraps at the largest sizes (Sami)
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 1)
                     }
@@ -1293,6 +1308,7 @@ struct TourLayer: View {
     /// The qibla step has waited a while (a compass that won't settle): a Next appears.
     @State private var qiblaWaited = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// "You skipped the tour" for a few seconds after a skip (owner: tell them where to find it again).
     @State private var skippedNote = false
     private var runtime: TourRuntime { TourRuntime.shared }
@@ -1331,7 +1347,8 @@ struct TourLayer: View {
                     withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(.top, 12)
+                // Under the top bar at the largest sizes, where the city's name reaches the corner (Sami, AX XXXL).
+                .padding(.top, typeSize.isAccessibilitySize ? 56 : 12)
                 .padding(.trailing, 16)
                 .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
@@ -1920,7 +1937,7 @@ struct TourInviteCard: View {
             }
         }
         .padding(18)
-        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
         .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
                     look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
         .accessibilityElement(children: .contain)

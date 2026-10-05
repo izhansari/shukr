@@ -99,7 +99,7 @@ struct ZikrHistoryPage: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editing ? "Done" : "Select") { withAnimation { editing.toggle() } }
                         .fontWeight(editing ? .semibold : .regular)
-                        .disabled(anySession.isEmpty)
+                        .disabled(anySession.isEmpty || CountTips.shared.guardsDeletes)   // the tour's delete tip: its row only
                 }
                 if #available(iOS 26.0, *) {
                     if !editing { DefaultToolbarItem(kind: .search, placement: .bottomBar) }

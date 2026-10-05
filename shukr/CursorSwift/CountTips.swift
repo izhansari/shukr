@@ -37,6 +37,7 @@ import SwiftUI
     static func rearm() {
         UserDefaults.standard.removeObject(forKey: stageKey)
         UserDefaults.standard.removeObject(forKey: sessionKey)
+        UserDefaults.standard.removeObject(forKey: keptKey)
         shared.tip = nil
     }
 
@@ -74,8 +75,13 @@ import SwiftUI
         case .history: Words(symbol: "clock.arrow.circlepath", headline: "Your history",
                              line: "Every session you finish is kept here.", task: "Open History, top left", needed: 1,
                              insight: nil)
+        // Counted for real: kept, nothing to delete.
+        case .delete where UserDefaults.standard.bool(forKey: keptKey):
+            Words(symbol: "checkmark.circle", headline: "That one counts",
+                  line: "You counted for real \u{2014} keep it. Every session you finish is kept here.", task: nil,
+                  needed: 0, insight: nil)
         case .delete: Words(symbol: "trash", headline: "Tidy up",
-                            line: "That was practice \u{2014} swipe it left, then Delete.", task: "Swipe the top one left, then Delete", needed: 1,
+                            line: "That was practice \u{2014} swipe it left, then Delete.", task: "Swipe \u{201C}Practice\u{201D} left, then Delete", needed: 1,
                             insight: ("Gone", "Swipe left on any session to delete it."))
         case .end: Words(symbol: "hand.tap", headline: "Your turn",
                          line: "Now the real one: tap the circle when you\u{2019}re ready.", task: nil, needed: 0,
@@ -86,7 +92,9 @@ import SwiftUI
 
     // MARK: The session
 
-    func sessionOpened(postSalah: Bool) {
+    /// `task`: a task's session — never the practice one (its counts would go into the task's day and streak; Ben's
+    /// audit N): the tips wait for a freestyle session.
+    func sessionOpened(postSalah: Bool, task: Bool = false) {
         #if DEBUG
         if CommandLine.arguments.contains("-demoCountTips") { Self.rearm() }
         // `-countTipsFrom <n>`: start the session tour at that tip (its raw value: 0 tap … 7 finishButton, 8 results).
@@ -94,7 +102,7 @@ import SwiftUI
            let n = Int(CommandLine.arguments[i + 1]), let from = Tip(rawValue: n) { stage = from }
         #endif
         resetTip()
-        guard !postSalah else { if (tip?.rawValue ?? 99) <= Tip.finishButton.rawValue { tip = nil }; return }
+        guard !postSalah && !task else { if (tip?.rawValue ?? 99) <= Tip.finishButton.rawValue { tip = nil }; return }
         var s = stage
         // Left on the pause screen's tips: they start again at the pause tip.
         if (Tip.stats.rawValue...Tip.finishButton.rawValue).contains(s.rawValue) { s = .pause; stage = s }
@@ -145,9 +153,20 @@ import SwiftUI
     /// The pause button pressed (not the pause going to the background makes).
     func pausePressed() { if tip == .pause { bump() } }
     /// The session saved by Finish: the tour's own session.
-    func sessionSaved(_ id: UUID) {
-        if tip == .finishButton { sessionID = id.uuidString; bump() }
+    func sessionSaved(_ id: UUID, count: Int) {
+        guard tip == .finishButton else { return }
+        // Counted for real (more than the tips asked for): it's theirs — never offered for deleting (Ben's audit N).
+        if count > Self.practiceMost { sessionID = nil; UserDefaults.standard.set(true, forKey: Self.keptKey) }
+        else { sessionID = id.uuidString; UserDefaults.standard.removeObject(forKey: Self.keptKey) }
+        bump()
     }
+    /// More counts than the tips ask for (2 taps, 3 drags, 3 in one drag = 8, with room): a real session.
+    static let practiceMost = 12
+    static let keptKey = "countTips.v2.kept"
+    /// The tour's own session (only it may be deleted while the delete tip is up).
+    func isPractice(_ id: UUID) -> Bool { sessionID == id.uuidString }
+    /// The delete tip is up: no other session can be deleted (Ben's audit N).
+    var guardsDeletes: Bool { tip == .delete }
     func historyOpened() { if tip == .history { go(.delete) } }
     func sessionsDeleted(_ ids: [UUID]) {
         if tip == .delete, let mine = sessionID, ids.map(\.uuidString).contains(mine) { bump() }

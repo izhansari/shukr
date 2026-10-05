@@ -385,7 +385,7 @@ struct SessionRow: View {
                     if let pace {
                         Button { startFeelingPace(pace) } label: { Label("Feel the pace", systemImage: "metronome") }
                     }
-                    if let onDelete {
+                    if let onDelete, !tourLocked {
                         Divider()
                         Button(role: .destructive) { onDelete() } label: { Label("Delete…", systemImage: "trash") }
                     }
@@ -394,7 +394,8 @@ struct SessionRow: View {
                 // stopped paging sideways, so rows can swipe again). Not `role: .destructive`:
                 // the List would expect the row gone at once and the confirm never shows.
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if let onDelete {
+                    // The session tour's delete tip: only its own practice session swipes (Ben's audit N).
+                    if let onDelete, !tourLocked {
                         Button { onDelete() } label: { Label("Delete", systemImage: "trash") }
                             .tint(.red)
                     }
@@ -403,6 +404,11 @@ struct SessionRow: View {
             core
         }
     }
+
+    /// The session tour's delete tip is up and this isn't its practice session: not deletable now.
+    private var tourLocked: Bool { CountTips.shared.guardsDeletes && !CountTips.shared.isPractice(session.id) }
+    /// This is the tour's practice session, while its delete tip is up: named and ringed.
+    private var tourPractice: Bool { CountTips.shared.guardsDeletes && CountTips.shared.isPractice(session.id) }
 
     private var holdable: some View {
         summary
@@ -419,6 +425,15 @@ struct SessionRow: View {
         }
         // Each count: a soft green edge glow around the row, like the qibla map's aligned glow.
         .background { PaceEdgeGlow(beat: paceBeat).padding(-8) }
+        // The practice session the tip asks to delete, ringed so it's the one swiped (not a real one).
+        .overlay {
+            if tourPractice {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(TourInk.green, lineWidth: 2)
+                    .padding(-8)
+                    .allowsHitTesting(false)
+            }
+        }
         // The whole row tints while the pace plays.
         // Always an explicit background: the system's grey selected-row fill looked off in Edit
         // mode (owner) — the selection circle is enough.
@@ -428,7 +443,9 @@ struct SessionRow: View {
     private var summary: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                if showsMantraName {
+                if tourPractice {
+                    Text("Practice").font(.body.weight(.medium))
+                } else if showsMantraName {
                     Text(session.mantra?.name ?? session.title)
                         .font(.body.weight(.medium))
                 } else {

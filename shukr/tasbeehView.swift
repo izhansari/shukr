@@ -892,7 +892,8 @@ struct tasbeehView: View {
         .onAppear {
             _ = SessionHandoff.shared.takeEntry()   // read (entryFrom, landingBase); the next session opens as it should
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
-            CountTips.shared.sessionOpened(postSalah: sharedState.isDoingPostNamazZikr)
+            CountTips.shared.sessionOpened(postSalah: sharedState.isDoingPostNamazZikr,
+                                           task: sharedState.selectedMode != 0 && sharedState.selectedTask != nil)
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
             // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).
@@ -1191,7 +1192,7 @@ struct tasbeehView: View {
         if sessionCount == 0 { SessionDraft.clear() }   // audit A7: nothing to keep
         if sessionCount > 0 {
             savedSession = saveSession()
-            if let saved = savedSession { CountTips.shared.sessionSaved(saved.id) }   // the session tour's practice session
+            if let saved = savedSession { CountTips.shared.sessionSaved(saved.id, count: saved.totalCount) }   // the session tour's practice session
             
             print("saved session: \(savedSession == nil ? "nil" : "\(savedSession!.title) with \(savedSession!.totalCount)")")
             // Shared-state writes re-render the whole home screen under this cover, so they wait
