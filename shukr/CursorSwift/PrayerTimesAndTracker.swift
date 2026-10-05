@@ -512,6 +512,21 @@ struct PrayerTimesView: View {
         if live.refreshReach != 0 { live.refreshReach = 0 }
     }
 
+    #if DEBUG
+    /// What may hide the tour's callout right now, plus the page and the list, for the log.
+    private var tourHiddenReason: String {
+        var why: [String] = []
+        if somethingCovers { why.append("somethingCovers") }
+        if showTasbeehPage { why.append("tasbeeh") }
+        if CircleStage.shared.lost != nil { why.append("lost") }
+        if morningSession != nil { why.append("morningCard") }
+        if !CircleStage.shared.sceneActive { why.append("sceneInactive") }
+        if !CircleStage.shared.covers.isEmpty { why.append("covers=\(CircleStage.shared.covers)") }
+        why.append("page=\(sharedState.horizontalPage) list=\(sharedState.navPosition)")
+        return why.joined(separator: " ")
+    }
+    #endif
+
     var body: some View {
         ZStack {
             // The backdrop, status-bar strip included: pages are clipped to the pager, which
@@ -655,6 +670,12 @@ struct PrayerTimesView: View {
             // Any stage cover too (the ☰ menu, the map, a row's time editor): the edit step's "Close it" is its close.
             TourLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
                       || morningSession != nil || !CircleStage.shared.sceneActive || !CircleStage.shared.covers.isEmpty)
+            #if DEBUG
+                // What may hide the tour's callout (Sami's step 1 with nothing on screen): "TOUR cover …" on each change.
+                .onChange(of: "\(TourRuntime.shared.step?.rawValue ?? "-") · \(tourHiddenReason)", initial: true) { _, line in
+                    if TourRuntime.shared.step != nil { print("TOUR cover \(line)") }
+                }
+            #endif
             // The session tour's last tips, on the Zikr page (CountTips: History, then "your turn").
             ZikrPageTipsLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
                               onZikr: sharedState.horizontalPage == .zikr)
