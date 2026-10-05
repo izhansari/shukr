@@ -326,11 +326,12 @@ struct TourDemoLayer: View {
                     try? await Task.sleep(for: .seconds(3))
                     UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
                 }
-                // `-tourAwayAfter s`: s seconds later the page is taken to Zikr, as a widget would (Back to the tour).
+                // `-tourAwayAfter s`: s seconds later the page is taken to Zikr, as a widget would (Back to the tour);
+                // `-tourAwayTo settings` takes it to Settings instead (the settings step without a tap).
                 let away = UserDefaults.standard.double(forKey: "tourAwayAfter")
                 if away > 0 {
                     try? await Task.sleep(for: .seconds(away))
-                    sharedState.go(to: .zikr)
+                    sharedState.go(to: UserDefaults.standard.string(forKey: "tourAwayTo") == "settings" ? .settings : .zikr)
                 }
                 return
             }
@@ -406,6 +407,30 @@ enum TourHintDemo {
 }
 #endif
 
+/// Places the tour's bubble: measures it, hangs it from `edge` (its top when `below`, else its bottom; centred on
+/// `fallbackY` without one), centred across, and keeps it clear of the status bar and the home indicator.
+private struct TourBubblePlacement: Layout {
+    let edge: CGFloat?
+    let below: Bool
+    let fallbackY: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let bubble = subviews.first else { return }
+        let size = bubble.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+        let h = size.height
+        let wanted = edge.map { below ? $0 + h / 2 : $0 - h / 2 } ?? fallbackY
+        // Never off the screen, nor under the status bar or the home indicator (a tall bubble, large text, a small phone).
+        let top = 64 + h / 2, bottom = bounds.height - 24 - h / 2
+        let y = bottom > top ? min(max(wanted, top), bottom) : bounds.height / 2
+        bubble.place(at: CGPoint(x: bounds.midX, y: bounds.minY + y), anchor: .center,
+                     proposal: ProposedViewSize(width: size.width, height: h))
+    }
+}
+
 /// Round 3 (owner: "too subtle … not a fan of the stock apple tool tip"; Bradley's four changes): a shukr-made callout.
 /// A light spotlight (the rest of the page washes out a little, never grey), the control glowing twice, and a soft raised
 /// bubble that grows out of the control's edge with a soft tail: the gesture moving inside it, a headline and a quiet
@@ -437,12 +462,8 @@ struct TourCallout: View {
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// The bubble's own height, measured (it grows with the to-dos).
-    @State private var bubbleHeight: CGFloat = 130
-
     var body: some View {
         let center = hole.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: size.width / 2, y: size.height * 0.45)
-        let radius = hole.map { max($0.width, $0.height) / 2 } ?? 60
         // Below the control when there's room, else above it.
         // Above or below from a fixed allowance, never from the bubble's own measured height: that fed back (a taller
         // bubble flipped it, the flip re-measured it) and spun the main thread on Settings (Sami's round D run).
@@ -460,18 +481,18 @@ struct TourCallout: View {
             // Where to touch, and how: a grey thumbprint that taps, holds or slides (owner: "a grayish circle indicator
             // about as big as a thumbprint that pulses slowly … that way we don't gotta show the green circle").
             if let hint { TouchHint(spec: hint) }
-            bubble(below: below, tail: tail)
-                // Larger text gets the screen's width (audit C13); the bubble is measured and kept on screen (bubbleY).
-                .frame(width: width)
-                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-                // Whole points only: placed by its height, the text's height moved by a fraction with where it sat, and
-                // the two chased each other every frame (the main thread spun; Settings' step never reached Done).
-                .onGeometryChange(for: CGFloat.self) { $0.size.height.rounded(.up) } action: { h in
-                    if abs(h - bubbleHeight) >= 1 { bubbleHeight = h }
-                }
-                .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
-                .opacity(shown ? 1 : 0)
-                .position(x: size.width / 2, y: bubbleY(below: below, center: center, radius: radius))
+            // Measured and placed in one layout pass (`TourBubblePlacement`): never a stored height fed back into its
+            // position — that looped on Settings (Sami, 402 pt: 116 % CPU, the step never reached Done).
+            TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
+                                fallbackY: size.height * 0.62) {
+                bubble(below: below, tail: tail)
+                    // Larger text gets the screen's width (audit C13); kept on screen by the placement.
+                    .frame(width: width)
+                    .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
+                    .opacity(shown ? 1 : 0)
+            }
+            .frame(width: size.width, height: size.height)
         }
         .task {
             // Reduce Motion (audit C14): the ring is simply there and the bubble fades in.
@@ -485,19 +506,11 @@ struct TourCallout: View {
         }
     }
 
-    private func bubbleY(below: Bool, center: CGPoint, radius: CGFloat) -> CGFloat {
-        let h = bubbleHeight
-        let wanted: CGFloat
-        if let aboveY {
-            wanted = aboveY - 14 - h / 2
-        } else if let hole {
-            wanted = below ? hole.maxY + 14 + h / 2 : hole.minY - 14 - h / 2
-        } else {
-            wanted = size.height * 0.62
-        }
-        // Never off the screen, nor under the status bar or the home indicator (a tall bubble, large text, a small phone).
-        let top: CGFloat = 64 + h / 2, bottom = size.height - 24 - h / 2
-        return bottom > top ? min(max(wanted, top), bottom) : size.height / 2
+    /// The edge the bubble hangs from: its top when below the control, its bottom when above (nil = no control).
+    private func bubbleEdge(below: Bool) -> CGFloat? {
+        if let aboveY { return aboveY - 14 }
+        guard let hole else { return nil }
+        return below ? hole.maxY + 14 : hole.minY - 14
     }
 
     private func bubble(below: Bool, tail: CGFloat) -> some View {
