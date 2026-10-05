@@ -633,6 +633,17 @@ struct PrayerTimesView: View {
                     var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) { scrollPage = landed }
                 }
+                // A programmatic scroll stopped short (a tab tap, then a vertical swipe at once: the lock's
+                // `.scrollDisabled` cut its animation) leaves `horizontalPage` naming a page that isn't showing — the
+                // bar lit Settings over Salah and every later Settings tap was a no-op (pager-settings-stuck). The page
+                // on screen wins. Next turn, and only if nothing has asked for a page since (that sets `scrollPage`).
+                if sharedState.horizontalPage != landed {
+                    DispatchQueue.main.async {
+                        guard live.pagerPhase == .idle, scrollPage == landed,
+                              sharedState.horizontalPage != landed else { return }
+                        sharedState.horizontalPage = landed
+                    }
+                }
             }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
                 // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match, quietly when the
