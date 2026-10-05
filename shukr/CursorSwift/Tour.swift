@@ -28,6 +28,25 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .hintMark: "Tap the dot to mark it prayed. Hold it to change the time."
         }
     }
+    /// The callout's two lines (style .callout): a short headline and a quiet line under it.
+    var headline: String {
+        switch self {
+        case .circle: "Tap your prayer"
+        case .list: "Swipe up"
+        case .swipe: "Swipe right"
+        case .count: "Tap to count"
+        case .hintMark: "Tap the dot"
+        }
+    }
+    var subline: String {
+        switch self {
+        case .circle: "It flips between when it ends and the time left."
+        case .list: "Today's prayers are under the circle."
+        case .swipe: "Your zikr and daily tasks are there."
+        case .count: "Your daily tasks live round it."
+        case .hintMark: "to mark it prayed. Hold it to change the time."
+        }
+    }
     var symbol: String {
         switch self {
         case .circle, .count, .hintMark: "hand.tap"
@@ -64,7 +83,7 @@ enum TourStep: String, CaseIterable, Identifiable {
 
 /// Two looks for the words, for the owner's pick (decision onboarding-tour-look): a small card by the cut-out, or a
 /// line near the bottom.
-enum TourCardStyle: String { case card, line }
+enum TourCardStyle: String { case card, line, callout }
 
 /// The dim with its cut-out and the words. Touches pass through the dim to the real app; only "Skip tour" takes one.
 struct TourOverlay: View {
@@ -82,14 +101,19 @@ struct TourOverlay: View {
                 $0.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: step.roundHole ? -10 : -14, dy: step.roundHole ? -10 : -6)
             }
             ZStack(alignment: .topLeading) {
-                dim(size: geo.size, hole: hole)
-                    .allowsHitTesting(false)
-                if let hole {
-                    holeEdge(hole).allowsHitTesting(false)
-                }
-                switch style {
-                case .card: card(in: geo.size, hole: hole)
-                case .line: line(in: geo.size)
+                if style == .callout {
+                    TourCallout(step: step, hole: hole, size: geo.size, onSkip: onSkip)
+                } else {
+                    dim(size: geo.size, hole: hole)
+                        .allowsHitTesting(false)
+                    if let hole {
+                        holeEdge(hole).allowsHitTesting(false)
+                    }
+                    switch style {
+                    case .card: card(in: geo.size, hole: hole)
+                    case .line: line(in: geo.size)
+                    case .callout: EmptyView()
+                    }
                 }
             }
         }
@@ -268,3 +292,130 @@ enum TourHintDemo {
     }
 }
 #endif
+
+/// Round 3 (owner: "too subtle … not a fan of the stock apple tool tip"; Bradley's four changes): a shukr-made callout.
+/// A light spotlight (the rest of the page washes out a little, never grey), the control glowing twice, and a soft raised
+/// bubble that grows out of the control's edge with a soft tail: the gesture moving inside it, a headline and a quiet
+/// line, three dots for the tour's place and "Not now".
+struct TourCallout: View {
+    let step: TourStep
+    let hole: CGRect?
+    let size: CGSize
+    var onSkip: () -> Void
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @State private var shown = false
+    /// The ring round the control drawing once, like the prayer ring filling (Sami), 0…1.
+    @State private var drawn = 0.0
+
+    var body: some View {
+        let center = hole.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: size.width / 2, y: size.height * 0.45)
+        let radius = hole.map { max($0.width, $0.height) / 2 } ?? 60
+        // Below the control when there's room, else above it.
+        let below = hole.map { size.height - $0.maxY > 230 } ?? true
+        ZStack(alignment: .topLeading) {
+            // The spotlight: the page washes out a little away from the control, in the page's own colour (no grey).
+            RadialGradient(colors: [.clear, .clear, theme.backdrop.opacity(0.45)],
+                           center: UnitPoint(x: center.x / max(size.width, 1), y: center.y / max(size.height, 1)),
+                           startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
+                .opacity(shown ? 1 : 0)
+                .allowsHitTesting(false)
+            // A thin green ring drawing once round the control, in the prayer ring's own stroke (Sami: "like the ring
+            // filling, not a pulse").
+            if hole != nil {
+                Group {
+                    if step.roundHole {
+                        Circle().trim(from: 0, to: drawn)
+                            .stroke(Color(.systemGreen), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: radius * 2, height: radius * 2)
+                    } else {
+                        Capsule().trim(from: 0, to: drawn)
+                            .stroke(Color(.systemGreen), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                            .frame(width: (hole?.width ?? 0) + 8, height: (hole?.height ?? 0) + 4)
+                    }
+                }
+                .position(center)
+                .allowsHitTesting(false)
+            }
+            bubble(below: below)
+                .frame(width: min(size.width - 48, 300))
+                .scaleEffect(shown ? 1 : 0.6, anchor: below ? .top : .bottom)
+                .opacity(shown ? 1 : 0)
+                .position(x: size.width / 2, y: bubbleY(below: below, center: center, radius: radius))
+        }
+        .task {
+            // The control first (its ring draws), then the bubble rises out of the page beside it.
+            withAnimation(.easeInOut(duration: 0.9)) { drawn = 1 }
+            try? await Task.sleep(for: .seconds(0.35))
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { shown = true }
+        }
+    }
+
+    private func bubbleY(below: Bool, center: CGPoint, radius: CGFloat) -> CGFloat {
+        let h: CGFloat = 118
+        guard let hole else { return size.height * 0.62 }
+        return below ? hole.maxY + 14 + h / 2 : hole.minY - 14 - h / 2
+    }
+
+    private func bubble(below: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: step.symbol)
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(Color(.systemGreen))
+                    .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: true)
+                    .frame(width: 30)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(step.headline).font(.system(size: 17, weight: .semibold))
+                    Text(step.subline).font(.system(size: 15)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack {
+                if let place = step.place {
+                    HStack(spacing: 5) {
+                        ForEach(1...3, id: \.self) { i in
+                            Circle().fill(i == min(place.0, 3) ? Color(.systemGreen) : Color(.tertiaryLabel))
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                }
+                Spacer()
+                Button("Not now", action: onSkip).font(.footnote).foregroundStyle(Color(.secondaryLabel))
+            }
+            .padding(.leading, 42)
+        }
+        .padding(16)
+        .background(
+            // A soft pebble in the page's own colour, raised with the app's shadows (dark below-right, light above-left).
+            BubbleShape(tailUp: below)
+                .fill(theme.backdrop)
+                .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.14), radius: 12, x: 5, y: 7)
+                .shadow(color: .white.opacity(scheme == .dark ? 0.06 : 0.9), radius: 8, x: -4, y: -4)
+        )
+        .fontDesign(.rounded)
+    }
+}
+
+/// A rounded bubble with a soft tail at the top or bottom centre (no hard triangle: the tail's sides are curves).
+struct BubbleShape: Shape {
+    var tailUp: Bool
+    func path(in rect: CGRect) -> Path {
+        let r: CGFloat = 22, tw: CGFloat = 30, th: CGFloat = 10
+        var p = Path(roundedRect: rect, cornerRadius: r, style: .continuous)
+        let mid = rect.midX
+        if tailUp {
+            p.move(to: CGPoint(x: mid - tw / 2, y: rect.minY + 1))
+            p.addQuadCurve(to: CGPoint(x: mid, y: rect.minY - th), control: CGPoint(x: mid - tw / 6, y: rect.minY))
+            p.addQuadCurve(to: CGPoint(x: mid + tw / 2, y: rect.minY + 1), control: CGPoint(x: mid + tw / 6, y: rect.minY))
+            p.closeSubpath()
+        } else {
+            p.move(to: CGPoint(x: mid - tw / 2, y: rect.maxY - 1))
+            p.addQuadCurve(to: CGPoint(x: mid, y: rect.maxY + th), control: CGPoint(x: mid - tw / 6, y: rect.maxY))
+            p.addQuadCurve(to: CGPoint(x: mid + tw / 2, y: rect.maxY - 1), control: CGPoint(x: mid + tw / 6, y: rect.maxY))
+            p.closeSubpath()
+        }
+        return p
+    }
+}
