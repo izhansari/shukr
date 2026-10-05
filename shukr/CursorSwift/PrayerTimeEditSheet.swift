@@ -102,6 +102,7 @@ struct PrayerTimeEditSheet: View {
         .padding(.horizontal, 20)
     }
 
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent").
     private var tourTip: Bool { TourRuntime.shared.step == .edit && TourRuntime.isPracticeAnywhere(prayer) }
 
@@ -153,7 +154,9 @@ struct PrayerTimeEditSheet: View {
             guard tourTip else { return }
             TourRuntime.shared.event(.editorScored(PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: picked)))
         }
-        .presentationDetents([.height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0))])
+        // The tour's tip at the largest text: the full height, else Save fell off the sheet (Sami, AX XXXL).
+        .presentationDetents([tourTip && typeSize.isAccessibilitySize
+                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

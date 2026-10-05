@@ -2001,6 +2001,9 @@ struct TourSheetTip: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color(.tertiarySystemFill)))
+        // The sheet adds a fixed room for it (PrayerTimeEditSheet, +132): larger, it pushed Save off the sheet and the
+        // step couldn't be finished (Sami, AX XXXL).
+        .dynamicTypeSize(...DynamicTypeSize.large)
         .accessibilityElement(children: .contain)
     }
 }
