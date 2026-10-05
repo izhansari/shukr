@@ -239,7 +239,7 @@ struct PrayerTimesView: View {
         // Every completed row of that prayer on that day (a day can hold duplicates): the one on
         // today's list through the app's own unmark (haptic, day score, streak, widget), the rest reset.
         let shown = viewModel.todaysPrayers.first {
-            $0.isCompleted && $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
+            !TourRuntime.isPracticeAnywhere($0) && $0.isCompleted && $0.name == request.name && Calendar.current.isDate($0.startTime, inSameDayAs: request.start)
         }
         let others = completedRows(request).filter { $0.persistentModelID != shown?.persistentModelID }
         others.forEach { $0.resetPrayer() }
@@ -282,7 +282,9 @@ struct PrayerTimesView: View {
               let store = UserDefaults(suiteName: SharedStore.appGroup),
               store.string(forKey: WidgetListMarks.unmarkKey) != nil,
               await stage.until(deadline: Self.unmarkDeadline, {
+                  // …and not during the tour: its list is the practice day (Ben's G7).
                   stage.sceneActive && !welcome.playing && !stage.covers.contains("firstRunSetup")
+                      && !TourRuntime.shared.active
               }),
               token == widgetUnmarkToken, OverlayAlert.canShow else { return }
         // A tasbeeh session up: it goes into its pause state first, then the prompt shows over it (owner,
@@ -1954,7 +1956,8 @@ struct PrayerTimesView: View {
                            shown: zikr < 0.5 && settings < 0.5)
                 // The tour's post-salah step points at it, and ends when it goes (Tour.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("pill", $0) }
-                .onDisappear { TourRuntime.shared.event(.pillGone) }
+                .onAppear { TourRuntime.shared.pillVisible = true }
+                .onDisappear { TourRuntime.shared.pillVisible = false; TourRuntime.shared.event(.pillGone) }
                 .padding(.top, 64)
                 .opacity(Double(1 - zikr))
                 .allowsHitTesting(zikr < 0.5)
@@ -2429,6 +2432,11 @@ struct PrayerButton: View {
     private func handlePrayerButtonPress() {
         // Only allow pressing on Future Prayers
         if !isFuturePrayer {
+            // The tour lets only its own moves through (Ben's G1 / G2): a light no otherwise.
+            guard TourRuntime.shared.allows(marking: !prayerObject.isCompleted, prayerObject) else {
+                triggerSomeVibration(type: .light)
+                return
+            }
             if !prayerObject.isCompleted {
                 viewModel.togglePrayerCompletion(for: prayerObject)   // the post-salah pill follows (.prayerCompleted)
                 TourRuntime.shared.event(.marked(prayerObject, viewModel))   // the tour's Mark step / a first mark

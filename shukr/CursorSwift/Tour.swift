@@ -677,7 +677,20 @@ struct BubbleShape: Shape {
     static let startedKey = "tour.v1.started"
 
     /// The pager stays on the step's page; only the swipe step pages (audit E17).
-    var locksPager: Bool { active && step != .swipe }
+    /// Once the swipe is ticked it locks too: swiping straight back during its ✓ left the count step hidden on Salah with
+    /// the pager held (Ben's G4).
+    var locksPager: Bool { active && !(step == .swipe && !completing) }
+
+    /// The post-salah pill is on the page (its step ticks at once if it's already gone — Ben's G3).
+    @ObservationIgnored var pillVisible = false
+
+    /// Whether a mark or an unmark may happen now (Ben's G1 / G2). Outside the tour, always. In it, only the practice
+    /// day's own moves: a mark on the mark step; Asr's undo as "Fix a marked prayer"'s third to-do.
+    func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
+        guard active else { return true }
+        if marking { return step == .mark && ticked.isEmpty }
+        return step == .edit && prayer === practicePrayer && ticked.isSuperset(of: [0, 1])
+    }
     /// The list stays open or closed as the step needs; only the list step opens it (audit E17).
     var holdsSheet: Bool { active && step != .list }
     /// Which run of the tour this is: a step scheduled by an earlier run (or after Not now) never shows.
@@ -721,7 +734,7 @@ struct BubbleShape: Shape {
         ("Maghrib", 190, 75, false), ("Isha", 280, 120, false)]
 
     /// The practice day kept round now (audit A5): a phone left on a step never lets Asr end or Maghrib come due.
-    private func repinPractice() {
+    func repinPractice() {
         guard let day = practiceDay else { return }
         let now = Date()
         var quiet = Transaction(); quiet.disablesAnimations = true
@@ -936,12 +949,9 @@ struct BubbleShape: Shape {
         // The editor opened (a sheet over the page): ticked under it; its close ticks the second and moves on.
         case (.edit, .editorOpened): tick(0)
         case (.edit, .editorClosed) where ticked.contains(0): tick(1)
-        // Undone: the third to-do. Undone before the row was held (nothing marked to hold any more) ticks them all.
+        // Undone: the third to-do (an undo before the first two is refused — `allows`).
         case (.edit, .unmarked):
             clearPill += 1
-            if !ticked.isSuperset(of: [0, 1]) {
-                withAnimation(.snappy(duration: 0.3)) { ticked.formUnion([0, 1]) }
-            }
             // The dot stays pointed at while the ✓ shows; the practice prayer is let go as the step moves on.
             tick(2) { self.practicePrayer = nil; self.go(to: .swipe) }
         case (.swipe, .zikrPage): tick(0)
@@ -1020,12 +1030,24 @@ struct TourLayer: View {
         // VoiceOver says each step as it comes, and each to-do as it's done (audit C15); touches still pass through.
         .onChange(of: runtime.step) { _, step in
             guard let step else { return }
+            // A to-do that's already true ticks as the step comes (Ben's G3), and the count step's page is put back.
+            switch step {
+            case .list where sharedState.navPosition == .bottom: runtime.event(.listOpened)
+            case .swipe where sharedState.horizontalPage == .zikr: runtime.event(.zikrPage)
+            case .pill where !runtime.pillVisible: runtime.event(.pillGone)
+            case .count where sharedState.horizontalPage != .zikr: sharedState.go(to: .zikr)
+            default: break
+            }
             let todo = step.tasks.isEmpty ? "" : " To do: " + step.tasks.joined(separator: ", ") + "."
             AccessibilityNotification.Announcement("\(step.headline). \(step.subline)\(todo)").post()
         }
         .onChange(of: runtime.ticked) { old, new in
             guard let step = runtime.step, let i = new.subtracting(old).first, step.tasks.indices.contains(i) else { return }
             AccessibilityNotification.Announcement("Done: \(step.tasks[i])").post()
+        }
+        // Back from the background: the practice day round now again (Ben's round C).
+        .onChange(of: CircleStage.shared.sceneActive) { _, active in
+            if active, runtime.active, runtime.step != .colors { runtime.repinPractice() }
         }
         // The time editor closed (the edit step's second to-do).
         .onChange(of: covered) { _, isCovered in

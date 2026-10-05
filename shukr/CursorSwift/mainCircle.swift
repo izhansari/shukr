@@ -345,6 +345,11 @@ struct MainCircleView: View {
                             guard momentKind != .marking, flourish == nil else { return }
                             if let prayer = viewModel.relevantPrayer, prayer.status() != .upcoming {
                                 let marking = !prayer.isCompleted
+                                // The tour lets only its own moves through (Ben's G1): a hold on step 1 marks nothing.
+                                guard TourRuntime.shared.allows(marking: marking, prayer) else {
+                                    triggerSomeVibration(type: .light)
+                                    return
+                                }
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 // The tour's Mark step (a practice the user undoes next), or a first mark's celebration.
                                 if marking { TourRuntime.shared.event(.marked(prayer, viewModel)) }
