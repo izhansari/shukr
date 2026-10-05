@@ -1285,6 +1285,9 @@ struct PrayerTimesView: View {
                     }
             }
             .onGeometryChange(for: CGSize.self) { $0.size } action: { if circleSize != $0 { circleSize = $0 } }
+            #if DEBUG
+            .modifier(DemoTip(tip: FlipCircleTip(), on: TourHintDemo.tip == "circle"))
+            #endif
         }
 
         /// The pop (the switch off): the Spacer layout, the sheet inserted and removed with `navPosition`.
@@ -1595,6 +1598,9 @@ struct PrayerTimesView: View {
                     // offsets read the live scroll — the titles' own bodies don't.
                     ZStack(alignment: .top) {
                         TopBar()
+                            #if DEBUG
+                            .modifier(DemoTip(tip: SwipeToZikrTip(), on: TourHintDemo.tip == "zikr", edge: .top))
+                            #endif
                             .modifier(follow(.salah(push: Self.titlePush)))
                         ZikrPageTitle()
                             .modifier(follow(.zikr(push: Self.titlePush)))
@@ -1831,7 +1837,16 @@ struct PrayerTimesView: View {
             let pulling = live.refreshReach > 0.15
             Image(systemName: "chevron.up")
                 .font(.title3)
-                .foregroundStyle(live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                .foregroundStyle(TourHints.shared.chevronLine != nil ? Color.secondary
+                                 : live.pull != 0 ? Color.secondary : Color(.secondarySystemFill))
+                // The tour's words just above the chevron (Tour.swift).
+                .overlay(alignment: .bottom) {
+                    if let line = TourHints.shared.chevronLine {
+                        Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light)
+                            .foregroundStyle(Color(.secondaryLabel)).fixedSize()
+                            .offset(y: -30)
+                    }
+                }
                 // The tour's "Swipe up" step points at it.
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("chevron", $0) }
                 .opacity(pulling ? 0 : 1)
@@ -2613,7 +2628,12 @@ struct PrayerButton: View {
 
                 Spacer()
 
-                timeColumn
+                if let line = TourHints.shared.markLine, isCurrentPrayer {
+                    // The tour's mark hint in the current row's time place (Tour.swift).
+                    Text(line).font(.footnote).fontDesign(.rounded).fontWeight(.light).foregroundStyle(.secondary)
+                } else {
+                    timeColumn
+                }
             }
             // A Jumu'ah's masjid, under the name, inside the row's height (showMasjidLine): drawn over the row, so
             // nothing below it moves.

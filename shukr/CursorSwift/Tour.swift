@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 
 /// The first-run tour on the live app (owner, ask onboarding-tour: "a little gentle onboarding once users get past set up
 /// … not stand alone sheets, like acc interactive on the real app"; Ben's brief board/brief-frank-onboarding-tour.md).
@@ -195,12 +196,74 @@ struct TourDemoLayer: View {
             }
         }
         .task {
+            if TourHintDemo.hint != nil || TourHintDemo.tip != nil {
+                try? await Task.sleep(for: .seconds(1.5))
+                TourHintDemo.start(sharedState)
+                return
+            }
             guard let raw = UserDefaults.standard.string(forKey: "demoTour"), let wanted = TourStep(rawValue: raw) else { return }
             try? await Task.sleep(for: .seconds(2))
             if wanted == .count { sharedState.horizontalPage = .zikr }
             if wanted == .hintMark { sharedState.navPosition = .bottom }
             try? await Task.sleep(for: .seconds(1.5))
             withAnimation(.easeOut(duration: CircleMotion.quick)) { step = wanted }
+        }
+    }
+}
+#endif
+
+/// The tour without a dim (Bradley's and Sami's direction, after the owner's "don't love the style"): the app says it
+/// in its own words, where it already speaks — the circle's time line, a line over the chevron, the top bar's title, the
+/// current row's time — for the one step, gone on the real action. Read by those views; nil = their usual words.
+@MainActor @Observable final class TourHints {
+    static let shared = TourHints()
+    var circleLine: String?
+    var chevronLine: String?
+    var titleLine: String?
+    var markLine: String?
+}
+
+/// Apple's own tips (TipKit), the native alternative: a small popover at the real control, no dim.
+struct FlipCircleTip: Tip {
+    var title: Text { Text("Tap the circle") }
+    var message: Text? { Text("It flips between when this prayer ends and how long is left.") }
+    var image: Image? { Image(systemName: "hand.tap") }
+}
+struct SwipeToZikrTip: Tip {
+    var title: Text { Text("Swipe right for your zikr") }
+    var message: Text? { Text("Your daily tasks and the counter live there.") }
+    var image: Image? { Image(systemName: "arrow.right") }
+}
+
+#if DEBUG
+/// A TipKit popover on a view, for the pictures only.
+struct DemoTip<T: Tip>: ViewModifier {
+    let tip: T
+    let on: Bool
+    var edge: Edge = .bottom
+    func body(content: Content) -> some View {
+        if on { content.popoverTip(tip, arrowEdge: edge) } else { content }
+    }
+}
+
+/// `-demoTourHint circle|list|zikr|mark` (the words in place) and `-demoTourTip circle|zikr` (TipKit): pictures.
+enum TourHintDemo {
+    static var hint: String? { UserDefaults.standard.string(forKey: "demoTourHint") }
+    static var tip: String? { UserDefaults.standard.string(forKey: "demoTourTip") }
+    @MainActor static func start(_ sharedState: SharedStateClass) {
+        if tip != nil {
+            try? Tips.resetDatastore()
+            Tips.showAllTipsForTesting()
+            try? Tips.configure()
+        }
+        switch hint {
+        case "circle": TourHints.shared.circleLine = "tap to see time left"
+        case "list": TourHints.shared.chevronLine = "swipe up for today's prayers"
+        case "zikr": TourHints.shared.titleLine = "swipe right for your zikr"
+        case "mark":
+            TourHints.shared.markLine = "tap the dot to mark"
+            sharedState.navPosition = .bottom
+        default: break
         }
     }
 }

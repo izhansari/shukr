@@ -3294,7 +3294,7 @@ struct TopBar: View {
                                     case .idle: EmptyView()
                                     }
                                 }
-                            Text(cityName)
+                            Text(TourHints.shared.titleLine ?? cityName)   // the tour's words in the title's place
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {

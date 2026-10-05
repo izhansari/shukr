@@ -252,7 +252,13 @@ struct MainCircleView: View {
                                         // tuned in the DEBUG NEXT label playground).
                                     NextTag(shown: upcoming && showNextLabel)
                                 }
-                                if status == .current{
+                                if let line = TourHints.shared.circleLine {
+                                    // The tour's words in the time line's place (Tour.swift).
+                                    Text(line)
+                                        .font(.subheadline).fontDesign(.rounded).fontWeight(.thin)
+                                        .foregroundStyle(.secondary)
+                                }
+                                else if status == .current{
                                     PrayerTimeLine(end: prayer.endTime, now: currentTime,
                                                    lastHourLeft: !prayer.isCompleted && !shownIsPreview,
                                                    prayerKey: prayer.name, trigger: timeFlipPulse)
