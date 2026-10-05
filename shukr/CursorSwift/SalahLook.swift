@@ -299,6 +299,7 @@ struct SoftDoneFooter: View {
                 .padding(.horizontal, 24)
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("doneFold", $0) }
             }
             .buttonStyle(.plain)
             .padding(.bottom, 12)   // a little air above the bar (owner: "too close to the bottom bar")

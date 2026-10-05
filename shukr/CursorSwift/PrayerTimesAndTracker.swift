@@ -2160,6 +2160,7 @@ struct TodaysPrayerListView: View {
                             .padding(.top, visibleIsEmpty ? 0 : 12)
                             .padding(.bottom, 2)
                             .contentShape(Rectangle())
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("doneFold", $0) }
                         }
                         .buttonStyle(.plain)
                     }

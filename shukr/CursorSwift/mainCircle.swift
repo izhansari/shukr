@@ -349,7 +349,7 @@ struct MainCircleView: View {
                             } else if TourRuntime.shared.step == .mark {
                                 // The tour with no prayer in its window: the mark's preview (nothing written).
                                 NotificationCenter.default.post(name: SalahLookPlay.mark, object: nil)
-                                TourRuntime.shared.event(.markedPreview)
+                                TourRuntime.shared.event(.markedPreview(viewModel))
                                 // The post-salah pill follows the flourish (.prayerCompleted).
                             }
                         }
