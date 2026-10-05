@@ -622,6 +622,7 @@ struct BubbleShape: Shape {
         practicePrayer = nil
         steps = Self.allSteps
         UserDefaults.standard.set(true, forKey: Self.celebrateArmedKey)
+        CountTips.rearm()   // the first counting session's tips come again too
         run += 1
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
         startPractice()

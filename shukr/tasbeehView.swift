@@ -139,6 +139,9 @@ struct tasbeehView: View {
     @State private var ringMoveTask: Task<Void, Never>?
     /// The pause screen's sleep chip (global): the sleep dim has a hole there while paused.
     @State private var sleepChipFrame: CGRect = .zero
+    /// Where ⏸ and the pause screen's chips are, for the first session's tips (CountTips).
+    @State private var pauseButtonFrame: CGRect = .zero
+    @State private var chipsFrame: CGRect = .zero
     /// Reduce Motion: the ring fades out, changes place, and fades back in instead of travelling.
     @State private var ringDimmed = false
     /// Finished from the pause screen: its tiles and buttons stay up into the results (only the ring moves).
@@ -488,6 +491,7 @@ struct tasbeehView: View {
                                 .onTapGesture {
                                     //                                            print("Tap gesture detected")
                                     incrementTasbeeh() // Increment on tap
+                                    CountTips.shared.counted(byDrag: false)
                                 }
                                 .gesture(
                                     DragGesture(minimumDistance: 0) // Set to 0 for immediate tracking
@@ -508,6 +512,7 @@ struct tasbeehView: View {
                                             if dragToIncrementBool && offsetY - highestPoint > incrementThreshold {
                                                 dragToIncrementBool = false
                                                 incrementTasbeeh()
+                                                CountTips.shared.counted(byDrag: true)
                                                 lowestPoint = value.translation.height // need to set it otherwise it will always be the lowest point of the entire drag sesh
                                                 // Check if dragged up from lowest point by a value of incrementThreshold/2
                                             } else if !dragToIncrementBool && lowestPoint - offsetY > incrementThreshold/2 {
@@ -604,6 +609,7 @@ struct tasbeehView: View {
                     // mid-move (the ring held, then jumped ~85 pt; Sami's B1).
                     onBottomTop: { if savedSession == nil { cardsBottomTop = $0 } },
                     onSleepChipFrame: { sleepChipFrame = $0 },
+                    onChipsFrame: { chipsFrame = $0 },
                     topBarHeight: topBarHeight,
                     finishArmed: finishArmed
                 )
@@ -619,7 +625,11 @@ struct tasbeehView: View {
                 // counting in sets (decision top-bar-finish A; a tap turns sets off). The right side is always laid out,
                 // faded out and inert while paused: removing it popped the layout on every pause / resume.
                 HStack {
-                    PauseResumeButton(paused: paused, reduceMotion: reduceMotion, action: togglePause)
+                    PauseResumeButton(paused: paused, reduceMotion: reduceMotion, action: {
+                        if !paused { CountTips.shared.pausePressed() }
+                        togglePause()
+                    })
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pauseButtonFrame = $0 }
 
                     Spacer()
 
@@ -759,6 +769,11 @@ struct tasbeehView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.5), value: toggleInactivityTimer)
+
+            // The first session's tips: tap · hold and drag · pause · the pause screen's chips.
+            CountTipsLayer(paused: paused,
+                           clear: savedSession == nil && !showInactivityAlert && countIn && !leaving,
+                           pauseButton: pauseButtonFrame, chips: chipsFrame)
             
             // results page
             ZStack{
@@ -869,6 +884,7 @@ struct tasbeehView: View {
             _ = SessionHandoff.shared.takeEntry()   // read (entryFrom, landingBase); the next session opens as it should
             CircleCover.set("tasbeeh", true)   // a session is up: prompts wait (e.g. the widget's "Unmark?")
             TourRuntime.shared.event(.sessionStarted)   // the tour's last step ends on a session
+            CountTips.shared.sessionOpened(postSalah: sharedState.isDoingPostNamazZikr)
             appLookDark = colorScheme == .dark
             tasbeehColorMode = appLookDark
             // Post-salah: the Tasbih Fatimah zikr is set up BEFORE anything resolves the pick (audit A8).
@@ -946,6 +962,7 @@ struct tasbeehView: View {
         }
         .onChange(of: paused) { _, nowPaused in
             if !nowPaused { finishArmed = false }   // resumed: Finish isn't left half-armed for the next pause
+            if !nowPaused { CountTips.shared.resumed() }
         }
         .onChange(of: tasbeeh){_, newTasbeeh in
             inactivityTimerHandler(run: "restart")
@@ -994,6 +1011,7 @@ struct tasbeehView: View {
             }
         }
         .onDisappear {
+            CountTips.shared.sessionClosed()
             finishStopCleanup()
             CircleCover.set("tasbeeh", false)
             if sleptSaved { SleepMorning.clear() }   // Done on the results after a sleep finish: awake, no card
@@ -1871,6 +1889,7 @@ struct tasbeehView: View {
         var onBottomTop: (CGFloat) -> Void = { _ in }
         /// The sleep chip's place (global): the sleep dim leaves it uncovered while paused.
         var onSleepChipFrame: (CGRect) -> Void = { _ in }
+        var onChipsFrame: (CGRect) -> Void = { _ in }
         /// The counter's top bar's height: the pause screen's top row matches it, so ‹ Resume lands where ⏸ was.
         var topBarHeight: CGFloat = 0
 
@@ -2812,6 +2831,8 @@ struct tasbeehView: View {
                 setsChip
                 hapticsChip
             }
+            // Where they are, for the first session's tips (CountTips).
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { onChipsFrame($0) }
         }
 
         private var setStep: Int { mantra?.quickAddStep ?? noMantraSetStep }
