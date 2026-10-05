@@ -49,6 +49,8 @@ struct NextLabelTuning: Codable, Equatable {
 /// "NEXT" over a name, without taking space (an overlay on the name, so the name never moves).
 struct NextTag: View {
     var shown = true
+    /// "next", or "practice" on the tour's pretend prayer.
+    var label = "next"
     #if DEBUG
     @AppStorage(NextLabelTuning.key) private var tuningJSON = ""
     private var tuning: NextLabelTuning { NextLabelTuning.decode(tuningJSON) }
@@ -58,7 +60,7 @@ struct NextTag: View {
     #endif
 
     var body: some View {
-        Text("next")
+        Text(label)
             .font(.system(size: tuning.size, weight: .medium, design: .rounded))
             .tracking(tuning.tracking)
             .textCase(.uppercase)

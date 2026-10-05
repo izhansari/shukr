@@ -250,7 +250,9 @@ struct MainCircleView: View {
                                 .overlay(alignment: .top) {
                                     // A small tag set apart, not a line of the stack (NextTag;
                                         // tuned in the DEBUG NEXT label playground).
-                                    NextTag(shown: upcoming && showNextLabel)
+                                    // The tour's pretend prayer says so (Tour.swift).
+                                    NextTag(shown: (upcoming && showNextLabel) || TourRuntime.shared.isPractice(prayer),
+                                            label: TourRuntime.shared.isPractice(prayer) ? "practice" : "next")
                                 }
                                 if let line = TourHints.shared.circleLine {
                                     // The tour's words in the time line's place (Tour.swift).

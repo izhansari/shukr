@@ -510,6 +510,12 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     /// follows — a Friday Dhuhr moved onto a masjid becomes Jumu'ah, moved off one it's scored by
     /// the clock again.
     @MainActor func movePrayer(_ prayer: PrayerModel, to spot: CLLocationCoordinate2D) {
+        if TourRuntime.shared.isPractice(prayer) {   // the tour's pretend prayer: nothing saved
+            prayer.latPrayedAt = spot.latitude
+            prayer.longPrayedAt = spot.longitude
+            objectWillChange.send()
+            return
+        }
         // Keep where the app recorded it, the first time it's moved (so it can be put back).
         if prayer.recordedLat == nil, let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt {
             prayer.recordedLat = lat
@@ -543,6 +549,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
     /// A user's time edit (the time editor): keeps the recorded time, rescores, updates the day.
     func editPrayerTime(_ prayer: PrayerModel, to date: Date) {
+        if TourRuntime.isPracticeAnywhere(prayer) {   // the tour's pretend prayer: nothing saved
+            prayer.editTime(to: date)
+            objectWillChange.send()
+            return
+        }
         prayer.editTime(to: date)
         afterTimeChange(prayer)
     }
@@ -558,6 +569,24 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     }
 
     func togglePrayerCompletion(for prayer: PrayerModel) {
+        // The tour's pretend prayer: the moment plays, nothing is saved, scored into streaks, sent to widgets or rescheduled.
+        if TourRuntime.isPracticeAnywhere(prayer) {
+            if !prayer.isCompleted {
+                prayer.isCompleted = true
+                prayer.setPrayerScore()
+                PrayerCompletionHaptics.play()
+                let window = prayer.endTime.timeIntervalSince(prayer.startTime)
+                let progress = window > 0 ? Date().timeIntervalSince(prayer.startTime) / window : 1
+                NotificationCenter.default.post(name: .prayerCompleted, object: PrayerCompletionEvent(
+                    name: prayer.displayName, score: prayer.numberScore ?? 0, progress: min(max(progress, 0), 1),
+                    summary: prayer.scoreSummary, prayerName: prayer.name))
+            } else {
+                triggerSomeVibration(type: .medium)
+                prayer.resetPrayer()
+            }
+            objectWillChange.send()
+            return
+        }
         if prayer.startTime <= Date() {
             prayer.isCompleted.toggle()
             if prayer.isCompleted {
@@ -1274,6 +1303,11 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     
     
     func loadTodaysPrayerObjects(){
+        // The first-run tour shows its pretend day instead of today (Tour.swift); nothing of it is saved.
+        if let practice = TourRuntime.practiceMirror {
+            todaysPrayers = practice
+            return
+        }
         let fetchDescriptor = FetchDescriptor<PrayerModel>(
             predicate: PrayerDay.rowsPredicate(forDayStarting: PrayerDay.start()),   // 2.8.0: by prayer day
             sortBy: [SortDescriptor(\.startTime, order: .forward)]

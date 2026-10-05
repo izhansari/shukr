@@ -1901,6 +1901,9 @@ struct PrayerTimesView: View {
             PostSalahNudge(onOpen: onOpen,
                            onDismiss: { live.postSalahNudge = nil },  // the pill animates (or not) itself
                            shown: zikr < 0.5 && settings < 0.5)
+                // The tour's post-salah step points at it, and ends when it goes (Tour.swift).
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("pill", $0) }
+                .onDisappear { TourRuntime.shared.event(.pillGone) }
                 .padding(.top, 64)
                 .opacity(Double(1 - zikr))
                 .allowsHitTesting(zikr < 0.5)
@@ -2550,6 +2553,7 @@ struct PrayerButton: View {
     /// A tap on the time: flip its text (a started prayer's time doesn't flip). A Jumu'ah shows its masjid instead.
     private func timeTap() {
         guard isFuturePrayer || prayerObject.isCompleted else { return }
+        TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's row steps
         if prayerObject.isJumuah && prayerObject.isCompleted {
             showMasjidLine(!masjidLine)
             return
@@ -2680,6 +2684,10 @@ struct PrayerButton: View {
                 }
             }
             .offset(y: masjidLine ? -Self.masjidLift : 0)
+            // The tour points at whole rows too (a coming prayer's time, a marked prayer's score).
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                TourTargets.shared.set("prayerRow." + prayerObject.name, frame)
+            }
             #if DEBUG
             .onReceive(NotificationCenter.default.publisher(for: Self.demoMasjidLine)) { _ in
                 if prayerObject.isJumuah { showMasjidLine(true) }
