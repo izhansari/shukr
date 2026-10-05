@@ -263,12 +263,13 @@ struct MainCircleView: View {
                                 else if status == .current{
                                     PrayerTimeLine(end: prayer.endTime, now: currentTime,
                                                    lastHourLeft: !prayer.isCompleted && !shownIsPreview,
-                                                   prayerKey: prayer.name, trigger: timeFlipPulse)
+                                                   prayerKey: prayer.name, trigger: timeFlipPulse,
+                                                   labelShift: PracticeClock.shift(for: prayer))
                                         .foregroundStyle(.secondary)
                                 }
                                 else if status ==  .upcoming{
                                     ExternalToggleText(
-                                        originalText: "at \(shortTimePM(prayer.startTime))",
+                                        originalText: "at \(shortTimePM(PracticeClock.shown(prayer.startTime, of: prayer)))",
                                         toggledText: timeUntilStart(prayer.startTime),
                                         externalTrigger: $timeFlipPulse,
                                         font: .subheadline,
@@ -1021,6 +1022,8 @@ struct PrayerTimeLine: View {
     let prayerKey: String
     /// The circle's tap (MainCircleView's `timeFlipPulse`): each change flips.
     let trigger: Bool
+    /// Moves the shown "ends" time (the tour's practice clock); the time left is real.
+    var labelShift: TimeInterval = 0
 
     private enum Mode { case ends, left }
     @State private var flipped = false
@@ -1038,7 +1041,7 @@ struct PrayerTimeLine: View {
     private var wanted: Mode { lastHour != flipped ? .left : .ends }
 
     var body: some View {
-        Text((shown ?? wanted) == .left ? timeLeftString(from: end.timeIntervalSince(now)) : "ends \(shortTimePM(end))")
+        Text((shown ?? wanted) == .left ? timeLeftString(from: end.timeIntervalSince(now)) : "ends \(shortTimePM(end.addingTimeInterval(labelShift)))")
             .font(.subheadline)
             .fontDesign(.rounded)
             .fontWeight(.thin)

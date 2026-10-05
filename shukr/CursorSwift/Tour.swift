@@ -711,7 +711,7 @@ struct BubbleShape: Shape {
     @ObservationIgnored weak var viewModel: PrayerViewModel?
     func isPractice(_ prayer: PrayerModel) -> Bool { practiceDay?.contains { $0 === prayer } ?? false }
     private var practiceAsr: PrayerModel? { practiceDay?.first { $0.name == "Asr" } }
-    private static let practiceWindow: TimeInterval = 180 * 60
+    private static let practiceWindow: TimeInterval = 187 * 60   // Asr 4:31–7:38 PM
 
     private func startPractice() {
         let now = Date()
@@ -728,10 +728,15 @@ struct BubbleShape: Shape {
         viewModel?.loadTodaysPrayerObjects()
     }
 
-    /// The practice day, in minutes from now: Fajr and Dhuhr done, Asr just begun, Maghrib and Isha to come.
-    private static let practicePlan: [(name: String, from: Double, length: Double, done: Bool)] = [
-        ("Fajr", -600, 90, true), ("Dhuhr", -300, 180, true), ("Asr", -5, 180, false),
-        ("Maghrib", 190, 75, false), ("Isha", 280, 120, false)]
+    /// The practice day, in minutes from now: Fajr and Dhuhr done, Asr begun 5 minutes ago, Maghrib and Isha to come —
+    /// laid out as the plain day it reads as (PracticeClock: Fajr 5:12–6:38 AM, Dhuhr 1:05–4:31 PM, Asr 4:31–7:38 PM,
+    /// Maghrib 7:38–8:55 PM, Isha 8:55 PM–12:00 AM; owner, section H).
+    private static let practicePlan: [(name: String, from: Double, length: Double, done: Bool)] = {
+        let asrStart = Double(PracticeClock.asrStartMinute)
+        return [("Fajr", 312, 398, true), ("Dhuhr", 785, 991, true), ("Asr", 991, 1178, false),
+                ("Maghrib", 1178, 1255, false), ("Isha", 1255, 1440, false)]
+            .map { ($0.0, $0.1 - asrStart - 5, $0.2 - $0.1, $0.3) }
+    }()
 
     /// The practice day kept round now (audit A5): a phone left on a step never lets Asr end or Maghrib come due.
     func repinPractice() {
@@ -1298,4 +1303,23 @@ struct TouchHint: View {
             }
         }
     }
+}
+
+/// The practice day's clock (owner, audit section H: "fixed plausible times"; the colours demo "isn't how our actual
+/// salah ring behaves" when its "ends at" moved). Its windows sit round the real now, so the ring, the colour and the
+/// mark's score behave as they do for a real prayer; its times are shown as a plain afternoon, Asr at 4:31 PM. The
+/// shift is taken from Asr's start, so the colours demo, which slides Asr's window, leaves "ends 7:38 PM" where it is.
+enum PracticeClock {
+    static let asrStartMinute = 16 * 60 + 31
+
+    /// How far a prayer's times are moved for show: 0 for a real prayer.
+    static func shift(for prayer: PrayerModel) -> TimeInterval {
+        guard TourRuntime.isPracticeAnywhere(prayer),
+              let asr = TourRuntime.practiceMirror?.first(where: { $0.name == "Asr" }) else { return 0 }
+        let asrShown = Calendar.current.startOfDay(for: Date()).addingTimeInterval(Double(asrStartMinute) * 60)
+        return asrShown.timeIntervalSince(asr.startTime)
+    }
+
+    /// A practice prayer's time as shown (a real prayer's as it is).
+    static func shown(_ date: Date, of prayer: PrayerModel) -> Date { date.addingTimeInterval(shift(for: prayer)) }
 }

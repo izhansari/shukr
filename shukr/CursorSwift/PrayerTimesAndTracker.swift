@@ -2605,6 +2605,9 @@ struct PrayerButton: View {
     }
 
     /// "On time · 88" (PrayerScoring).
+    /// The start time as shown: the tour's practice clock moves a practice row's (PracticeClock).
+    private var shownStart: Date { PracticeClock.shown(calcStartTime, of: prayerObject) }
+
     private var completedTimeAndScore: String {
         prayerObject.scoreSummary ?? "Missed"
     }
@@ -2809,7 +2812,7 @@ struct PrayerButton: View {
                 if isFuturePrayer {
                     // Future Prayer: Toggleable Time/Countdown
                     ExternalToggleText(
-                        originalText: shortTimePM(calcStartTime),
+                        originalText: shortTimePM(shownStart),
                         toggledText: timeUntilStart(calcStartTime),
                         externalTrigger: $toggledText,
                         font: timeFontSize,
@@ -2822,7 +2825,7 @@ struct PrayerButton: View {
 
                 } else if prayerObject.isCompleted && prayerObject.isJumuah {
                     // A Jumu'ah: its time stays; a tap opens the masjid's line under the name (showMasjidLine).
-                    Text(shortTimePM(calcStartTime))
+                    Text(shortTimePM(shownStart))
                         .font(timeFontSize)
                         .foregroundColor(.secondary.opacity(statusBasedOpacity))
                         .fontDesign(.rounded)
@@ -2831,7 +2834,7 @@ struct PrayerButton: View {
                     // Completed Prayer: Show Completion Time
                     if prayerObject.timeAtComplete != nil {
                         ExternalToggleText(
-                            originalText: shortTimePM(calcStartTime),
+                            originalText: shortTimePM(shownStart),
                             toggledText: completedTimeAndScore,
                             externalTrigger: $toggledText,
                             font: timeFontSize,
@@ -2846,7 +2849,7 @@ struct PrayerButton: View {
                     }
                 } else {
                     // Current Prayer: Show Start Time
-                    Text(shortTimePM(calcStartTime))
+                    Text(shortTimePM(shownStart))
                         .font(timeFontSize)
                         .foregroundColor(.secondary)
                         .fontDesign(.rounded)

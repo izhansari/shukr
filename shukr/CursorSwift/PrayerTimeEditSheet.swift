@@ -157,6 +157,8 @@ struct PrayerTimeEditor: View {
     var showsScore = true
 
     var isValid: Bool { range.contains(draft) }
+    /// The tour's practice clock (0 for a real prayer).
+    private var shift: TimeInterval { PracticeClock.shift(for: prayer) }
     /// A Jumu'ah isn't graded by the clock (full marks, "Jumu'ah"), so the editor agrees with Save.
     private var score: Double {
         prayer.isJumuah ? 1 : PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)
@@ -182,23 +184,26 @@ struct PrayerTimeEditor: View {
         }
         func dist(_ a: Date, _ b: Date) -> Double { let x = abs(clock(a) - clock(b)); return min(x, 1440 - x) }
         if dist(draft, range.lowerBound) <= dist(draft, range.upperBound) {
-            return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound))."
+            return "That's before \(prayer.name) started at \(shortTimePM(range.lowerBound.addingTimeInterval(shift)))."
         }
         // The upper bound is now unless the day already rolled over before now.
         if range.upperBound < Date().addingTimeInterval(-60) {
-            return "That's after Fajr at \(shortTimePM(range.upperBound)) — the next day had started."
+            return "That's after Fajr at \(shortTimePM(range.upperBound.addingTimeInterval(shift))) — the next day had started."
         }
-        return "That hasn't happened yet — it's \(shortTimePM(range.upperBound)) now."
+        return "That hasn't happened yet — it's \(shortTimePM(range.upperBound.addingTimeInterval(shift))) now."
     }
 
     var body: some View {
         let grade = PrayerScoring.grade(for: score)
         VStack(spacing: 20) {
-            PrayerWindowBar(start: prayer.startTime, end: prayer.endTime,
+            PrayerWindowBar(start: prayer.startTime, end: prayer.endTime, labelShift: shift,
                             marked: draft, color: isValid ? PrayerScoring.color(for: score) : Color(.tertiaryLabel),
                             onPick: pickFromBar)
 
-            PrayerTimeWheel(time: $draft, day: prayer.startTime, range: range)
+            // The tour's practice prayer reads on its plain clock (PracticeClock): the wheel shows, and picks, shifted times.
+            PrayerTimeWheel(time: Binding(get: { draft.addingTimeInterval(shift) }, set: { draft = $0.addingTimeInterval(-shift) }),
+                            day: prayer.startTime.addingTimeInterval(shift),
+                            range: range.lowerBound.addingTimeInterval(shift)...range.upperBound.addingTimeInterval(shift))
                 .frame(height: 150)
 
             if showsScore {
@@ -220,7 +225,7 @@ struct PrayerTimeEditor: View {
                 Button {
                     draft = min(max(recorded, range.lowerBound), range.upperBound)
                 } label: {
-                    Label("You marked it at \(shortTimePM(recorded)) · use that", systemImage: "arrow.uturn.backward")
+                    Label("You marked it at \(shortTimePM(recorded.addingTimeInterval(shift))) · use that", systemImage: "arrow.uturn.backward")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -291,6 +296,8 @@ struct SaveCancelButtons: View {
 struct PrayerWindowBar: View {
     let start: Date
     let end: Date
+    /// Moves the shown start / end (the tour's practice clock).
+    var labelShift: TimeInterval = 0
     let marked: Date
     let color: Color
     /// Tap or drag on the bar: the fraction of the window under the finger, 0…1.
@@ -332,9 +339,9 @@ struct PrayerWindowBar: View {
             }
             .frame(height: 16)
             HStack {
-                Text(shortTimePM(start))
+                Text(shortTimePM(start.addingTimeInterval(labelShift)))
                 Spacer()
-                Text(isQaza ? "qaza" : shortTimePM(end))
+                Text(isQaza ? "qaza" : shortTimePM(end.addingTimeInterval(labelShift)))
                     .contentTransition(.opacity)
                     .animation(.easeInOut(duration: 0.2), value: isQaza)
             }
