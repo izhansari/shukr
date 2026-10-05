@@ -2102,8 +2102,10 @@ struct PrayerTimesView: View {
         var body: some View {
             VStack(spacing: 0){
 
-                    // The bar wears the page (Salah and Zikr); Settings keeps the system look.
-                    ThemedBarDivider(plain: sharedState.horizontalPage == .settings)
+                    // One surface on every page: the bar wears the theme. It leaves with the Salah page toward Settings
+                    // (ChromeLeaves), so a Settings look only ever showed mid-swipe — the bar turned white at the page's
+                    // midpoint (bottom-bar-colour, owner: "looks careless").
+                    ThemedBarDivider()
 
                     
                     HStack {
@@ -2167,7 +2169,7 @@ struct PrayerTimesView: View {
 //                    .background(Color("bgColor"))
                 
             }
-            .background(sharedState.horizontalPage == .settings ? Color(.systemBackground) : theme.backdrop)
+            .background(theme.backdrop)
         }
         
     }
