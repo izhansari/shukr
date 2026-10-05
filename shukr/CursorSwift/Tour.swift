@@ -1661,8 +1661,9 @@ struct TourInputGuard: View {
             let shape = Path { p in
                 p.addRect(CGRect(origin: .zero, size: geo.size).insetBy(dx: -200, dy: -200))
                 for o in openings {
-                    p.addRoundedRect(in: o.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: -6, dy: -6),
-                                     cornerSize: CGSize(width: 12, height: 12))
+                    // Plain rects: SwiftUI's even-odd hit test reads a small curved hole (Asr's 26 pt dot) as filled, so
+                    // the undo step's tap never got through at 402 pt (Sami); `CGPath` and plain rects get it right.
+                    p.addRect(o.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: -6, dy: -6))
                 }
             }
             Color.clear
