@@ -84,7 +84,7 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do.
     var notes: [String] {
         switch self {
-        case .circle: ["It flips back to when it ends by itself"]
+        case .circle: ["Tap again to flip it back."]
         case .colors: ["Green: the first 30 minutes", "Yellow: on time", "Red: late"]
         case .qibla: ["It turns green when you face it"]
         default: []
@@ -168,6 +168,8 @@ struct TourOverlay: View {
     /// The notes that have lit (shown while the step asks; hidden with its insight).
     var lit: Set<Int> = []
     var showNotes = true
+    /// What the step was good for, added under its ticked to-dos once they're done.
+    var insight: (String, String)? = nil
     var nextLabel = "Next"
     /// The touch to show (global).
     var hint: TouchHintSpec? = nil
@@ -189,7 +191,7 @@ struct TourOverlay: View {
                 if style == .callout {
                     TourCallout(step: step, hole: hole, size: geo.size, override: override, showsNext: showsNext,
                                 place: place ?? step.place, tasks: tasks ?? step.tasks, ticked: ticked,
-                                notes: showNotes ? step.notes : [], lit: lit, nextLabel: nextLabel,
+                                notes: showNotes ? step.notes : [], lit: lit, insight: insight, nextLabel: nextLabel,
                                 hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
                                 aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
                                 onNext: onNext, onBack: onBack, onSkip: onSkip)
@@ -447,6 +449,8 @@ struct TourCallout: View {
     var ticked: Set<Int> = []
     var notes: [String] = []
     var lit: Set<Int> = []
+    /// The insight, under the ticked to-dos (owner, Ben's section K: the card stays, the insight is added to it).
+    var insight: (String, String)? = nil
     var nextLabel = "Next"
     /// The touch to show, in this view's space.
     var hint: TouchHintSpec? = nil
@@ -539,6 +543,20 @@ struct TourCallout: View {
             if !tasks.isEmpty || !notes.isEmpty {
                 TourChecklist(tasks: tasks, ticked: ticked, notes: notes, lit: lit)
                     .padding(.leading, 40)
+            }
+            if let insight {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(insight.0)
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                    Text(insight.1)
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 40)
+                .padding(.top, 2)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .accessibilityElement(children: .combine)
             }
             HStack {
                 if showsBack {
@@ -1124,7 +1142,9 @@ struct TourLayer: View {
             }
             if let step = runtime.step, !covered, onItsPage(step) {
                 let insight = runtime.insight
-                let words = insight ? step.insight : override(step)
+                // The ask stays as it was — headline, ticked to-dos, notes — and the insight is added under it (owner,
+                // Ben's section K: swapping the words read as a new card).
+                let words = override(step)
                 let nothingToDo = step.tasks.isEmpty && step.notes.isEmpty
                 TourOverlay(step: step, style: .callout,
                             target: target(step),
@@ -1134,10 +1154,9 @@ struct TourLayer: View {
                             showsNext: insight || nothingToDo || step == .celebrate
                                 || (step == .qibla && !runtime.completing && (compass.status != .ok || qiblaWaited)),
                             place: runtime.place(of: step),
-                            tasks: insight ? [] : nil,
                             ticked: runtime.ticked,
                             lit: runtime.lit,
-                            showNotes: !insight,
+                            insight: insight ? step.insight : nil,
                             nextLabel: nextLabel(step, insight: insight || nothingToDo),
                             hint: runtime.completing || insight ? nil : hint(step),
                             aboveY: aboveY(step),

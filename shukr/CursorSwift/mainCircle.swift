@@ -264,7 +264,8 @@ struct MainCircleView: View {
                                     PrayerTimeLine(end: prayer.endTime, now: currentTime,
                                                    lastHourLeft: !prayer.isCompleted && !shownIsPreview,
                                                    prayerKey: prayer.name, trigger: timeFlipPulse,
-                                                   labelShift: PracticeClock.shift(for: prayer))
+                                                   labelShift: PracticeClock.shift(for: prayer),
+                                                   holds: TourRuntime.shared.step == .circle)
                                         .foregroundStyle(.secondary)
                                 }
                                 else if status ==  .upcoming{
@@ -1030,6 +1031,9 @@ struct PrayerTimeLine: View {
     let trigger: Bool
     /// Moves the shown "ends" time (the tour's practice clock); the time left is real.
     var labelShift: TimeInterval = 0
+    /// No flip back by itself: only a tap flips it back (the tour's first step — owner, Ben's section K); the usual
+    /// flip-back starts once it's let go.
+    var holds = false
 
     private enum Mode { case ends, left }
     @State private var flipped = false
@@ -1057,12 +1061,9 @@ struct PrayerTimeLine: View {
                 triggerSomeVibration(type: .light)
                 flipped.toggle()
                 revert?.cancel()
-                guard flipped, !lastHour else { return }
-                revert = Task { @MainActor in
-                    guard await CircleGate.pause(Self.flipSeconds) else { return }
-                    flipped = false
-                }
+                scheduleRevert()
             }
+            .onChange(of: holds) { _, _ in revert?.cancel(); scheduleRevert() }
             .onChange(of: lastHour) { _, _ in revert?.cancel(); flipped = false }   // the hour begins: its default
             .onChange(of: prayerKey) { _, key in
                 // A new prayer: its own default, at once (the face swap fades the circle's words already).
@@ -1075,6 +1076,15 @@ struct PrayerTimeLine: View {
                 away = false
             }
             .onChange(of: wanted) { _, mode in change(to: mode) }
+    }
+
+    /// Flipped (and not held): back by itself after `flipSeconds`.
+    private func scheduleRevert() {
+        guard flipped, !lastHour, !holds else { return }
+        revert = Task { @MainActor in
+            guard await CircleGate.pause(Self.flipSeconds) else { return }
+            flipped = false
+        }
     }
 
     private func change(to mode: Mode) {
