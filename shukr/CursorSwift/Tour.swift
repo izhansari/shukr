@@ -955,7 +955,8 @@ struct BubbleShape: Shape {
         UserDefaults.standard.set(true, forKey: key)
         let today = PrayerDay.date()
         for back in 0...3 {
-            guard let day = Calendar.current.date(byAdding: .day, value: -back, to: today) else { continue }
+            guard let day = Calendar.current.date(byAdding: .day, value: -back, to: today),
+                  !viewModel.loadPrayerObjects(for: day).isEmpty else { continue }   // no rows: no record (Sami)
             viewModel.calculateDayScore(for: day, fromStore: true)
         }
     }
