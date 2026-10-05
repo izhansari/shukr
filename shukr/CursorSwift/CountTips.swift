@@ -138,6 +138,20 @@ struct CountTipsLayer: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        // VoiceOver: each tip said as it comes, and its ✓ (audit C15). The layer itself takes no touches.
+        .onChange(of: tips.tip) { _, tip in
+            let words: String? = switch tip {
+            case .tap: "Count. Tap anywhere on the screen."
+            case .drag: "Or hold and drag: keep your finger down and move it down and up. Each stroke down counts."
+            case .pause: "Pause for more: count in sets, sleep mode and haptics are on the pause screen."
+            case .settings: "This session's settings. Tap one to switch it."
+            default: nil
+            }
+            if let words { AccessibilityNotification.Announcement(words).post() }
+        }
+        .onChange(of: tips.done) { _, done in
+            if done { AccessibilityNotification.Announcement("Done").post() }
+        }
     }
 }
 
@@ -159,6 +173,7 @@ struct CountTipBubble: View {
     @Environment(\.circleTheme) private var theme
     /// The tour's bubble look while the owner compares (audit E21): an edge and a stronger shadow.
     @AppStorage(TourInk.solidKey) private var solid = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -166,9 +181,13 @@ struct CountTipBubble: View {
                 Group {
                     if let symbol {
                         Image(systemName: symbol)
-                            .font(.system(size: 21, weight: .light))
+                            .font(.system(.title3, weight: .light))
                             .foregroundStyle(Color.primary.opacity(0.7))
-                            .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: !done)
+                            .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: !done && !reduceMotion)
+                    } else if reduceMotion {
+                        Image(systemName: "arrow.up.and.down")   // the moving finger, still (audit C14)
+                            .font(.system(.title3, weight: .light))
+                            .foregroundStyle(Color.primary.opacity(0.7))
                     } else {
                         StrokeFinger()
                     }
@@ -176,9 +195,10 @@ struct CountTipBubble: View {
                 .frame(width: 28)
                 .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(headline).font(.system(size: 18, weight: .regular, design: .rounded))
+                    Text(headline).font(.system(.body, design: .rounded, weight: .regular))
+                        .accessibilityAddTraits(.isHeader)
                     Text(subline)
-                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -191,6 +211,8 @@ struct CountTipBubble: View {
         }
         .padding(16)
         .frame(width: 300)
+        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // fixed 300 pt wide over the counter
+        .accessibilityElement(children: .contain)
         .background(
             PointerBubble(tail: tail, tailX: tailX)
                 .fill(theme.backdrop)

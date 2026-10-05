@@ -415,6 +415,8 @@ struct TourCallout: View {
     /// The ring round the control drawing once, like the prayer ring filling (Sami), 0…1.
     @State private var drawn = 0.0
     @AppStorage(TourInk.solidKey) private var solid = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     /// The bubble's own height, measured (it grows with the to-dos).
     @State private var bubbleHeight: CGFloat = 130
 
@@ -450,13 +452,21 @@ struct TourCallout: View {
                 .allowsHitTesting(false)
             }
             bubble(below: below)
-                .frame(width: min(size.width - 48, 300))
+                // Larger text gets the screen's width (audit C13); the bubble is measured and kept on screen (bubbleY).
+                .frame(width: typeSize >= .xxLarge ? size.width - 32 : min(size.width - 48, 300))
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { bubbleHeight = $0 }
-                .scaleEffect(shown ? 1 : 0.6, anchor: below ? .top : .bottom)
+                .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
                 .opacity(shown ? 1 : 0)
                 .position(x: size.width / 2, y: bubbleY(below: below, center: center, radius: radius))
         }
         .task {
+            // Reduce Motion (audit C14): the ring is simply there and the bubble fades in.
+            if reduceMotion {
+                drawn = 1
+                withAnimation(.easeOut(duration: 0.25)) { shown = true }
+                return
+            }
             // The control first (its ring draws), then the bubble rises out of the page beside it.
             withAnimation(.easeInOut(duration: 0.9)) { drawn = 1 }
             try? await Task.sleep(for: .seconds(0.35))
@@ -466,8 +476,15 @@ struct TourCallout: View {
 
     private func bubbleY(below: Bool, center: CGPoint, radius: CGFloat) -> CGFloat {
         let h = bubbleHeight
-        guard let hole else { return size.height * 0.62 }
-        return below ? hole.maxY + 14 + h / 2 : hole.minY - 14 - h / 2
+        let wanted: CGFloat
+        if let hole {
+            wanted = below ? hole.maxY + 14 + h / 2 : hole.minY - 14 - h / 2
+        } else {
+            wanted = size.height * 0.62
+        }
+        // Never off the screen, nor under the status bar or the home indicator (a tall bubble, large text, a small phone).
+        let top: CGFloat = 64 + h / 2, bottom = size.height - 24 - h / 2
+        return bottom > top ? min(max(wanted, top), bottom) : size.height / 2
     }
 
     private func bubble(below: Bool) -> some View {
@@ -475,17 +492,20 @@ struct TourCallout: View {
             HStack(alignment: .top, spacing: 12) {
                 // The gesture, in the page's ink: green is kept for what's done (owner: "not too much of it").
                 Image(systemName: step.symbol)
-                    .font(.system(size: 21, weight: .light))
+                    .font(.system(.title3, weight: .light))
                     .foregroundStyle(Color.primary.opacity(0.7))
-                    .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)), isActive: ticked.count < max(tasks.count, 1))
+                    .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)),
+                                  isActive: !reduceMotion && ticked.count < max(tasks.count, 1))
+                    .accessibilityHidden(true)
                     .frame(width: 28)
                     .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     // The app's own type: rounded, light (owner: "change the type face in tooltip to match").
                     Text(override?.0 ?? step.headline)
-                        .font(.system(size: 18, weight: .regular, design: .rounded))
+                        .font(.system(.body, design: .rounded, weight: .regular))
+                        .accessibilityAddTraits(.isHeader)
                     Text(override?.1 ?? step.subline)
-                        .font(.system(size: 15, weight: .light, design: .rounded))
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -502,18 +522,20 @@ struct TourCallout: View {
                                 .frame(width: 4, height: 4)
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Step \(place.0) of \(place.1)")
                 }
                 Spacer()
                 if override == nil && place != nil && step != .count {   // the last step: Done is the way out
                     Button("Not now", action: onSkip)
                         .buttonStyle(.plain)
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .font(.system(.footnote, design: .rounded, weight: .regular))
                         .foregroundStyle(Color(.secondaryLabel)).fixedSize()
                 }
                 if showsNext && override == nil {
                     Button(step == .map ? "Got it" : step == .count ? "Done" : "Next", action: onNext)
                         .buttonStyle(.plain)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
                         .foregroundStyle(TourInk.green).fixedSize()
                         .padding(.leading, 16)
                 }
@@ -522,6 +544,7 @@ struct TourCallout: View {
         }
         .padding(16)
         .tint(TourInk.green)   // never the system blue
+        .accessibilityElement(children: .contain)
         .background(
             // A soft pebble in the page's own colour, raised with the app's shadows (dark below-right, light above-left).
             BubbleShape(tailUp: below)
@@ -548,6 +571,7 @@ struct TourChecklist: View {
     let ticked: Set<Int>
     /// The drag tip's strokes, beside its one to-do ("2 of 3").
     var progress: (Int, Int)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -555,24 +579,28 @@ struct TourChecklist: View {
                 let done = ticked.contains(i)
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Image(systemName: done ? "checkmark.circle.fill" : "circle")
-                        .font(.system(size: 15, weight: .regular))
+                        .font(.system(.subheadline, weight: .regular))
                         .foregroundStyle(done ? TourInk.green : Color.primary.opacity(0.35))
                         .contentTransition(.symbolEffect(.replace))
-                        .symbolEffect(.bounce, value: done)
+                        .symbolEffect(.bounce, value: reduceMotion ? false : done)
                     Text(tasks[i])
-                        .font(.system(size: 15, weight: .regular, design: .rounded))
+                        .font(.system(.subheadline, design: .rounded, weight: .regular))
                         .foregroundStyle(done ? Color.secondary : Color.primary)
                         .strikethrough(done, color: .secondary.opacity(0.6))
                         .fixedSize(horizontal: false, vertical: true)
                     if let progress, !done {
                         Text("\(progress.0) of \(progress.1)")
-                            .font(.system(size: 13, weight: .light, design: .rounded))
+                            .font(.system(.footnote, design: .rounded, weight: .light))
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
                             .contentTransition(.numericText())
                     }
                 }
                 .animation(.snappy(duration: 0.3), value: done)
+                // VoiceOver reads each to-do with its state (audit C15).
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel((done ? "Done: " : "To do: ") + tasks[i]
+                                    + (progress.map { done ? "" : ", \($0.0) of \($0.1)" } ?? ""))
             }
         }
     }
@@ -946,6 +974,7 @@ struct TourLayer: View {
     @EnvironmentObject private var compass: CompassState
     /// The qibla step has waited a while (a compass that won't settle): a Next appears.
     @State private var qiblaWaited = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var runtime: TourRuntime { TourRuntime.shared }
 
     var body: some View {
@@ -969,7 +998,7 @@ struct TourLayer: View {
                             onNext: { runtime.event(.next) },
                             onSkip: { runtime.skip() })
                     .id(step)
-                if step == .celebrate { ConfettiBurst().allowsHitTesting(false) }
+                if step == .celebrate && !reduceMotion { ConfettiBurst().allowsHitTesting(false) }
             }
         }
         .onChange(of: sharedState.navPosition) { _, position in
@@ -983,6 +1012,16 @@ struct TourLayer: View {
             if page == .zikr { runtime.event(.zikrPage) }
         }
         .onAppear { runtime.viewModel = viewModel }
+        // VoiceOver says each step as it comes, and each to-do as it's done (audit C15); touches still pass through.
+        .onChange(of: runtime.step) { _, step in
+            guard let step else { return }
+            let todo = step.tasks.isEmpty ? "" : " To do: " + step.tasks.joined(separator: ", ") + "."
+            AccessibilityNotification.Announcement("\(step.headline). \(step.subline)\(todo)").post()
+        }
+        .onChange(of: runtime.ticked) { old, new in
+            guard let step = runtime.step, let i = new.subtracting(old).first, step.tasks.indices.contains(i) else { return }
+            AccessibilityNotification.Announcement("Done: \(step.tasks[i])").post()
+        }
         // The time editor closed (the edit step's second to-do).
         .onChange(of: covered) { _, isCovered in
             if !isCovered { runtime.event(.editorClosed) }
