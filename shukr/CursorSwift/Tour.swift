@@ -84,7 +84,6 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do.
     var notes: [String] {
         switch self {
-        case .circle: ["Tap again to flip it back."]
         case .colors: ["Green: the first 30 minutes", "Yellow: on time", "Red: late"]
         case .qibla: ["It turns green when you face it"]
         default: []
@@ -93,7 +92,7 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The step's to-dos: each ticked only by the user's own action (audit J: never by a state that changes by itself).
     var tasks: [String] {
         switch self {
-        case .circle: ["Tap the circle"]
+        case .circle: ["Tap the circle", "Tap again to flip it back"]
         case .qibla: ["Turn until the arrow points up"]
         case .list: ["Swipe up"]
         case .rowTime: ["Tap Maghrib's time"]
@@ -1058,9 +1057,9 @@ struct BubbleShape: Shape {
         case (_, .next) where insight || step.tasks.isEmpty && step.notes.isEmpty: advance(from: step)
         case (_, .back): goBack(from: step)
         // Only the user's own action ticks (audit J): the circle's tap, not its flip state.
+        // Two taps, two to-dos (owner): time left, then back to when it ends.
         case (.circle, .circleTapped):
-            tick(0)
-            light(0)
+            tickNext()
         case (.qibla, .qiblaAligned):
             tick(0)
             light(0)
