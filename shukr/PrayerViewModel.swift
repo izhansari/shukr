@@ -741,7 +741,10 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
     func calculateDayScore(for date: Date) {
         let today = PrayerDay.date()
         let updatingToday = Calendar.current.isDate(date, inSameDayAs: today)
-        let objectsToCheck: [PrayerModel] = updatingToday ? todaysPrayers : loadPrayerObjects(for: date)
+        // During the tour `todaysPrayers` is its practice day: today is scored from the store's real rows, never the
+        // practice ones (Bradley's review: a mid-tour widget / banner mark saved the practice score as today's).
+        let practiceShown = TourRuntime.practiceMirror != nil
+        let objectsToCheck: [PrayerModel] = updatingToday && !practiceShown ? todaysPrayers : loadPrayerObjects(for: date)
         // Average of the five prayers' points, unmarked = 0 (PrayerScoring).
         let dayScore = PrayerScoring.dayScore(for: objectsToCheck)
 //        dailyScores[Calendar.current.startOfDay(for: date)] = dayScore

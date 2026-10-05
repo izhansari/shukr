@@ -336,6 +336,7 @@ struct PrayerTimesView: View {
     /// kind) and nothing else is going on — not over a tasbeeh session, a cover, the setup, or a
     /// widget's destination.
     private func maybeShowHealthCard() {
+        guard !TourRuntime.shared.active else { return }   // never over the tour (Bradley); the next activation asks again
         healthWait?.cancel()
         healthWait = Task {
             // A moment after the app comes forward (not on its first frame), and not while the opening plays (a sheet
@@ -772,6 +773,7 @@ struct PrayerTimesView: View {
             showMorningCardWhenClear()
             // A cold launch from a widget: straight there as the page first comes up, not after the activation.
             openFromWidgetFlags()
+            TourRuntime.repairScoresOnce(viewModel)
         }
         // A page pushed over the pager (☰'s destinations, a widget's page, Settings' pushes) is a cover until the pager is
         // back on screen with the pop finished — UIKit's did-appear (SwiftUI's onAppear comes as the pop starts). Popping

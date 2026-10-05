@@ -71,7 +71,7 @@ enum TourStep: String, CaseIterable, Identifiable {
         // The owner's own example (audit E20).
         case .edit: "Say you prayed Fajr but forgot to mark it. No worries: mark it now, then fix the time, and even the place."
         case .fold: "Marked prayers tuck under \u{201C}done\u{201D}."
-        case .qibla: "The small arrow on the circle turns green when you face it."
+        case .qibla: "The small arrow on the circle points the way."
         case .rowTime: "A coming prayer's time can show how long is left."
         case .pill: "It offers Tasbih Fatimah (33 · 33 · 34) after you pray."
         case .markedRow: "A marked prayer shows when you prayed and your score."
@@ -84,12 +84,23 @@ enum TourStep: String, CaseIterable, Identifiable {
         case .hintMark: "to mark it prayed. Hold it to change the time."
         }
     }
+    /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do. A step with
+    /// notes never moves on by itself: once they've all lit (and its to-dos are ticked) it shows "Got it" and waits.
+    var notes: [String] {
+        switch self {
+        case .circle: ["After a moment it flips back to when it ends. Tap any time."]
+        case .colors: ["Green: the first 30 minutes", "Yellow: on time", "Red: late"]
+        case .qibla: ["It turns green when you face it"]
+        default: []
+        }
+    }
+
     /// The step's to-dos (owner: "like to do list bullets and then marked done when event has been triggered"): each is
     /// ticked by the real action, and the step moves on only once they all are.
     var tasks: [String] {
         switch self {
-        case .circle: ["Tap the circle: time left", "Tap again: when it ends"]
-        case .colors: ["Green: the first 30 minutes", "Yellow: on time", "Red: late"]
+        case .circle: ["Tap the circle: how long is left"]
+        case .colors: []
         case .qibla: ["Turn until the arrow points up"]
         case .list: ["Swipe up"]
         case .rowTime: ["Tap a coming prayer's time"]
@@ -176,6 +187,9 @@ struct TourOverlay: View {
     /// The to-dos in place of the step's own (the mark step with no prayer due), and which are done.
     var tasks: [String]? = nil
     var ticked: Set<Int> = []
+    /// The notes that have lit.
+    var lit: Set<Int> = []
+    var nextLabel = "Next"
     /// The touch to show (global).
     var hint: TouchHintSpec? = nil
     var onNext: () -> Void = {}
@@ -192,6 +206,7 @@ struct TourOverlay: View {
                 if style == .callout {
                     TourCallout(step: step, hole: hole, size: geo.size, override: override, showsNext: showsNext,
                                 place: place ?? step.place, tasks: tasks ?? step.tasks, ticked: ticked,
+                                notes: step.notes, lit: lit, nextLabel: nextLabel,
                                 hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
                                 onNext: onNext, onSkip: onSkip)
                 } else {
@@ -316,6 +331,12 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
+                // `-tourWidgetWrote YES`: as if a widget / banner had marked a prayer (the next activation reconciles):
+                // today's real score must stay as it was (Bradley's review).
+                if UserDefaults.standard.bool(forKey: "tourWidgetWrote") {
+                    try? await Task.sleep(for: .seconds(3))
+                    UserDefaults(suiteName: SharedStore.appGroup)?.set(true, forKey: SharedStore.widgetWroteStoreKey)
+                }
                 // `-tourAwayAfter s`: s seconds later the page is taken to Zikr, as a widget would (Back to the tour).
                 let away = UserDefaults.standard.double(forKey: "tourAwayAfter")
                 if away > 0 {
@@ -408,9 +429,12 @@ struct TourCallout: View {
     var override: (String, String)? = nil
     var showsNext = false
     var place: (Int, Int)? = nil
-    /// The step's to-dos and which are done (TourRuntime.ticked).
+    /// The step's to-dos and which are done (TourRuntime.ticked); its notes and which have lit.
     var tasks: [String] = []
     var ticked: Set<Int> = []
+    var notes: [String] = []
+    var lit: Set<Int> = []
+    var nextLabel = "Next"
     /// The touch to show, in this view's space.
     var hint: TouchHintSpec? = nil
     var onNext: () -> Void = {}
@@ -496,8 +520,8 @@ struct TourCallout: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if !tasks.isEmpty {
-                TourChecklist(tasks: tasks, ticked: ticked)
+            if !tasks.isEmpty || !notes.isEmpty {
+                TourChecklist(tasks: tasks, ticked: ticked, notes: notes, lit: lit)
                     .padding(.leading, 40)
             }
             HStack {
@@ -519,7 +543,7 @@ struct TourCallout: View {
                         .foregroundStyle(Color(.secondaryLabel)).fixedSize()
                 }
                 if showsNext && override == nil {
-                    Button(step == .map ? "Got it" : step == .count ? "Done" : "Next", action: onNext)
+                    Button(nextLabel, action: onNext)
                         .buttonStyle(.plain)
                         .font(.system(.footnote, design: .rounded, weight: .medium))
                         .foregroundStyle(TourInk.green).fixedSize()
@@ -582,6 +606,9 @@ struct TourChecklist: View {
     let ticked: Set<Int>
     /// The drag tip's strokes, beside its one to-do ("2 of 3").
     var progress: (Int, Int)? = nil
+    /// Notes: a bullet each, lit (green, the words full) as it happens; nothing to tick.
+    var notes: [String] = []
+    var lit: Set<Int> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -613,6 +640,23 @@ struct TourChecklist: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel((done ? "Done: " : "To do: ") + tasks[i]
                                     + (progress.map { done ? "" : ", \($0.0) of \($0.1)" } ?? ""))
+            }
+            ForEach(notes.indices, id: \.self) { i in
+                let on = lit.contains(i)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Circle()
+                        .fill(on ? TourInk.green : Color.primary.opacity(0.25))
+                        .frame(width: 7, height: 7)
+                        .frame(width: 15)   // under the to-dos' rings
+                        .scaleEffect(on && !reduceMotion ? 1.15 : 1)
+                    Text(notes[i])
+                        .font(.system(.subheadline, design: .rounded, weight: .regular))
+                        .foregroundStyle(on ? Color.primary : Color.primary.opacity(0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .animation(.snappy(duration: 0.3), value: on)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(notes[i])
             }
         }
     }
@@ -672,6 +716,11 @@ struct BubbleShape: Shape {
     private(set) var ticked: Set<Int> = []
     /// Every to-do is done: the bubble stays a moment, wherever the action took the page, then the next step.
     private(set) var completing = false
+    /// The current step's notes that have lit.
+    private(set) var lit: Set<Int> = []
+    /// A step with notes has played them all (and its to-dos are ticked): "Got it" shows and the step waits for it
+    /// (audit I: "nothing moves on by itself except an action step whose to-dos are all ticked").
+    private(set) var awaitingGotIt = false
     /// Between begin() and finish(), gaps between steps included: events then belong to the tour, never to the
     /// "first real mark" outside it (audit A7); the pager and the list are held (audit E17).
     private(set) var active = false
@@ -763,6 +812,7 @@ struct BubbleShape: Shape {
         guard practiceDay != nil else { return }
         practiceDay = nil
         viewModel?.loadTodaysPrayerObjects()
+        viewModel?.calculateDayScore(for: PrayerDay.date())   // the circle's score is today's again (Bradley)
     }
 
     /// Asr's place in its window, as a share of it (its start moved back; the window keeps its length).
@@ -781,11 +831,13 @@ struct BubbleShape: Shape {
             // The bubble comes first (go(to:) waits 0.45 s), then each colour.
             try? await Task.sleep(for: .seconds(1.2))
             for (i, share) in [0.06, 0.4, 0.85].enumerated() {
+                // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
+                _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
                 guard run == thisRun, step == .colors else { return }
                 setPracticeProgress(share)
                 try? await Task.sleep(for: .seconds(1.0))   // the ring's move (0.9 s), then its tick
                 guard run == thisRun, step == .colors else { return }
-                tick(i)
+                light(i)
                 try? await Task.sleep(for: .seconds(1.1))
             }
             guard run == thisRun else { return }
@@ -798,6 +850,8 @@ struct BubbleShape: Shape {
         guard let step, !completing, !ticked.contains(i) else { return }
         withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
         guard ticked.count >= (count ?? step.tasks.count) else { return }
+        // A step with notes waits for its Got it instead.
+        if !step.notes.isEmpty { checkGotIt(); return }
         completing = true
         let thisRun = run
         let wait = max(Self.acknowledge, Self.minimumDwell - Date().timeIntervalSince(shownAt))
@@ -806,6 +860,19 @@ struct BubbleShape: Shape {
             guard run == thisRun, self.step == step else { return }
             (then ?? { self.advance(from: step) })()
         }
+    }
+
+    /// A note has happened: its bullet lights.
+    private func light(_ i: Int) {
+        guard let step, step.notes.indices.contains(i), !lit.contains(i) else { return }
+        withAnimation(.snappy(duration: 0.3)) { _ = lit.insert(i) }
+        checkGotIt()
+    }
+
+    /// Every to-do ticked and every note lit: "Got it".
+    private func checkGotIt() {
+        guard let step, ticked.count >= step.tasks.count, lit.count >= step.notes.count, !awaitingGotIt else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { awaitingGotIt = true }
     }
 
     /// The next to-do not yet done (steps whose to-dos are done in order).
@@ -819,6 +886,9 @@ struct BubbleShape: Shape {
         switch step {
         case .count: finish()
         case .map: withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
+        case .circle:
+            go(to: .colors)
+            playColors(run: run)
         case .colors: go(to: .qibla)
         case .fold:
             if steps.contains(.markedRow) {
@@ -866,8 +936,24 @@ struct BubbleShape: Shape {
         startPractice()
         ticked = []
         completing = false
+        lit = []
+        awaitingGotIt = false
         shownAt = Date()
         withAnimation(.easeOut(duration: CircleMotion.quick)) { step = .circle }
+    }
+
+    /// Builds before 2026-10-05 could save the practice day's score as a real day's (a widget / banner mark mid-tour
+    /// re-scored "today" from the practice list — Bradley's review): once, the last few prayer days are scored again
+    /// from their real rows.
+    static func repairScoresOnce(_ viewModel: PrayerViewModel) {
+        let key = "tour.scoreRepair.v1"
+        guard practiceMirror == nil, !UserDefaults.standard.bool(forKey: key) else { return }
+        UserDefaults.standard.set(true, forKey: key)
+        let today = PrayerDay.date()
+        for back in 0...3 {
+            guard let day = Calendar.current.date(byAdding: .day, value: -back, to: today) else { continue }
+            viewModel.calculateDayScore(for: day)
+        }
     }
 
     /// The first-run tour should start (again) now: set up, not done, and started fewer than twice.
@@ -884,9 +970,13 @@ struct BubbleShape: Shape {
         UserDefaults.standard.set(true, forKey: Self.doneKey)
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
         undoPracticeIfLeft()
+        // The practice mark's pill goes with the tour: left up, a tap opened a real, saved Tasbih Fatimah (Bradley).
+        clearPill += 1
         endPractice()
         ticked = []
         completing = false
+        lit = []
+        awaitingGotIt = false
         withAnimation(.easeOut(duration: CircleMotion.quick)) { step = nil }
     }
 
@@ -918,11 +1008,16 @@ struct BubbleShape: Shape {
         switch (step, e) {
         // Each step moves on only once its to-dos are all done, each ticked by its real action (owner: "it doesn't let
         // us progress until the user does exactly that … then we show it's been done in the tooltip").
+        // Got it, once a step's notes have played (audit I).
+        case (_, .next) where awaitingGotIt: advance(from: step)
         case (.circle, .circleTapped):
-            tickNext { self.go(to: .colors); self.playColors(run: self.run) }
+            tick(0)
+            light(0)   // it flips back by itself: said, not asked
         // Facing the qibla ends it (owner: "pointing in qibla direction will satisfy that step"); Next only when the
         // compass can't (TourLayer).
-        case (.qibla, .qiblaAligned): tick(0)
+        case (.qibla, .qiblaAligned):
+            tick(0)
+            light(0)
         case (.qibla, .next): go(to: .list)
         case (.list, .listOpened): tick(0)
         case (.rowTime, .comingRowTapped): tick(0)
@@ -980,6 +1075,8 @@ struct BubbleShape: Shape {
         withAnimation(.easeOut(duration: CircleMotion.quick)) { step = nil }
         ticked = []
         completing = false
+        lit = []
+        awaitingGotIt = false
         let thisRun = run
         Task {
             try? await Task.sleep(for: .seconds(0.45))
@@ -1024,12 +1121,14 @@ struct TourLayer: View {
                             target: target(step, due: due),
                             override: override(step, due: due),
                             // Only where no action can end it: the celebration, and a compass that can't settle.
-                            showsNext: step == .celebrate || step == .count
+                            showsNext: step == .celebrate || step == .count || runtime.awaitingGotIt
                                 || (step == .qibla && !runtime.completing && (compass.status != .ok || qiblaWaited)),
                             place: runtime.place(of: step),
                             tasks: step == .mark && due == nil && runtime.practiceNote == nil ? ["Hold the circle"] : nil,
                             ticked: runtime.ticked,
-                            hint: runtime.completing ? nil : hint(step, due: due),
+                            lit: runtime.lit,
+                            nextLabel: runtime.awaitingGotIt || step == .map ? "Got it" : step == .count ? "Done" : "Next",
+                            hint: runtime.completing || runtime.awaitingGotIt ? nil : hint(step, due: due),
                             onNext: { runtime.event(.next) },
                             onSkip: { runtime.skip() })
                     .id(step)
@@ -1060,6 +1159,10 @@ struct TourLayer: View {
             }
             let todo = step.tasks.isEmpty ? "" : " To do: " + step.tasks.joined(separator: ", ") + "."
             AccessibilityNotification.Announcement("\(step.headline). \(step.subline)\(todo)").post()
+        }
+        .onChange(of: runtime.lit) { old, new in
+            guard let step = runtime.step, let i = new.subtracting(old).first, step.notes.indices.contains(i) else { return }
+            AccessibilityNotification.Announcement(step.notes[i]).post()
         }
         .onChange(of: runtime.ticked) { old, new in
             guard let step = runtime.step, let i = new.subtracting(old).first, step.tasks.indices.contains(i) else { return }
