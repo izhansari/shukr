@@ -143,6 +143,68 @@ enum TourCopy {
         static let doneButton = "Done"
     }
 
+    // MARK: The Zikr Tour (chapter 3's "Show me", the first Zikr visit, ☰ → Zikr Tour)
+
+    enum ZikrTour {
+        static let title = "Zikr"
+        static let menuRow = "Zikr Tour"            // in the ☰ menu until it's finished
+        static let offer = "Want to learn Zikr properly? About 2 minutes."
+        static let showMe = "Show me"
+        static let skipToSettings = "Skip to Settings"   // in the app tour
+        static let notNow = "Not now"                    // on its own
+
+        static let kindsStep = "Freestyle or a task"
+        static let kindsLead = "Freestyle: any zikr, any time, no goal. Tasks: a daily goal for one zikr."
+        static let kindsTodo = "Tap New task"
+        static let reuseLead = "You already have an Astaghfirullah task — let’s use it."
+        static let reuseDoneLead = "You already have an Astaghfirullah task, and today’s is done."
+
+        static let taskStep = "Your first task"
+        static let pickLead = "Every task is one zikr."
+        static let pickTodo = "Pick Astaghfirullah"
+        static let goalLead = "A goal can be a count or minutes."
+        static let goalTodo = "Make it 33, then Continue"
+        static let placeLead = "Put it where you like on your list, or leave it at the end."
+        static let placeTodo = "Continue"
+        static let reviewLead = "Name: optional, like “After Fajr”. Reminder: optional — a daily nudge at a time or around a prayer."
+        static let reviewTodo = "Tap Add to my day"
+
+        static let countStep = "Count it"
+        static let startLead = "Your task is on the wheel."
+        static let startTodo = "Tap Astaghfirullah"
+        static let tapLead = "The whole screen counts."
+        static let tapTodo = "Tap anywhere, 3 times"
+        static let dragLead = "Drag down anywhere, then lift."
+        static let dragTodo = "3 separate drags"
+        static let strokeLead = "Keep your finger down and move it down and up."
+        static let strokeTodo = "3 drags without lifting"
+        static let goLead = "Keep going — it ends by itself at 33."
+        static let goTodo = "Reach 33"
+
+        static let streakStep = "Your streak and pace"
+        static let streakLead = "Every day you meet it, your streak grows."
+        static func paceLine(_ seconds: Double) -> String {
+            "Your pace: \(String(format: "%.1f", seconds))s a count — shukr learns it as you go."
+        }
+        static let streakTodo = "Tap Done"
+
+        static let timeStep = "How long it takes"
+        static let timeLead = "With your pace, the line under the wheel knows how long your tasks will take."
+        static let timeTodo = "Tap it"
+        static let tasksLead = "All your tasks. Hold and drag to change their order."
+
+        static let whereStep = "Where things live"
+        static let historyLead = "Every session you finish lives in History."
+        static let historyTodo = "Open History, top left"
+        static let historyPageLead = "Today’s session is at the top."
+        static let azkarLead = "Your zikr live in Azkar."
+        static let azkarTodo = "Open Azkar, top right"
+        static let azkarPageLead = "The built-in ones, and your own — ＋ adds one."
+
+        static let doneLine = "That’s Zikr. Your Astaghfirullah is waiting for you tomorrow."
+        static let doneButton = "Done"
+    }
+
     // MARK: The first counting session's tips (a freestyle session, after the tour)
 
     enum Session {

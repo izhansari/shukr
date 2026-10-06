@@ -94,7 +94,7 @@ enum TourStep: String, CaseIterable, Identifiable {
 /// Settings); Settings ends on its last line, the tour's own row.
 /// Where a chapter is: `go` (get to its page), `learn` (its first "what it's for" step), `learnMore` (its second: the
 /// circle's colours with the demo ring, the list's what you can do), `tryIt` (the to-dos), `last` (Settings' closing words).
-enum TourPhase: Equatable { case go, learn, learnMore, tryIt, last }
+enum TourPhase: Equatable { case go, learn, learnMore, tryIt, last, deep }
 
 /// One part of a step's "what it's for": a short lead and its list (owner: glanceable, never a paragraph).
 struct TourBlock: Equatable {
@@ -245,7 +245,9 @@ struct TourDemoLayer: View {
                 UserDefaults.standard.set(true, forKey: TourRuntime.celebrateArmedKey)
             }
             // `-tourStart [-tourStartAfter s]`: the real tour, as Settings → Show me around again starts it.
-            if ProcessInfo.processInfo.arguments.contains("-tourStart") {
+            // Once per launch: this view comes back after every pushed page (it restarted the tour under History).
+            if ProcessInfo.processInfo.arguments.contains("-tourStart"), !TourDebugOnce.started {
+                TourDebugOnce.started = true
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
@@ -588,10 +590,12 @@ struct TourPageView: View {
     /// "1  Prayer Circle", the chapter's ring at the right.
     private func chapterHeader(_ index: Int) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text("\(index)")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-                .foregroundStyle(Color.primary.opacity(0.4))
+            if index > 0 {   // 0: a chapter on its own (the Zikr Tour from ☰), no number
+                Text("\(index)")
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(Color.primary.opacity(0.4))
+            }
             Text(page.headline)
                 .font(.system(.headline, design: .rounded, weight: .semibold))
                 .fixedSize(horizontal: false, vertical: true)
@@ -697,7 +701,7 @@ struct TourSectionView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!section.peekable)
+                    .allowsHitTesting(section.peekable)   // not .disabled: that greyed the line next to the others
                     .accessibilityLabel(section.peekable ? (open ? "Hide: \(title)" : "Show again: \(title)") : "Done: \(title)")
                     .transition(.opacity.animation(.easeOut(duration: CircleMotion.quick).delay(0.15)))
                 } else {
@@ -1303,7 +1307,7 @@ struct BubbleShape: Shape {
     private func prepare(_ card: TourStep) {
         // The Zikr chapter's example tasks: up from its first step until Settings is reached (the tab is tapped from
         // the Zikr page).
-        if card == .zikr || card == .settings { TourExamples.shared.show() } else { TourExamples.shared.hide() }
+        TourExamples.shared.hide()   // the Zikr chapter is the Zikr Tour now: real tasks, no examples
         guard practiceDay != nil else { return }
         repinPractice()
         if let asr = practiceAsr {
@@ -1710,6 +1714,12 @@ struct BubbleShape: Shape {
 
     func skip() { finish(completed: false) }
 
+    /// The Zikr Tour (chapter 3) ended — finished, or Skip to Settings: on to Settings.
+    func zikrTourEnded() {
+        guard active, step == .zikr else { return }
+        go(to: .settings)
+    }
+
     private func finish(completed: Bool) {
         run += 1
         active = false
@@ -1802,7 +1812,10 @@ struct BubbleShape: Shape {
         case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): go(to: .zikr)
 
         // 3 · Zikr: go there, then learn it.
-        case (.zikr, .go, .zikrPage): setPhase(.learn)
+        // The Zikr page: the Zikr Tour takes chapter 3 from here (its offer first: Show me / Skip to Settings).
+        case (.zikr, .go, .zikrPage):
+            withAnimation(.smooth(duration: CircleMotion.standard)) { phase = .deep }
+            ZikrTour.shared.offer(inAppTour: true)
         case (.zikr, .learn, .next): setPhase(.tryIt)
         case (.zikr, .tryIt, .wheelScrolled): tick(0)
         case (.zikr, .tryIt, .exampleOption): tick(1)
@@ -1939,18 +1952,20 @@ struct TourLayer: View {
         ZStack {
             // Only the card's own moves (owner: "only the intended thing"): while the tour runs the app takes no touch
             // except through the card's openings — no buzz on the others (owner): the thing to touch pulses instead.
-            if runtime.active, !covered {
+            // Chapter 3's Zikr Tour draws its own bubble, guard and Skip (ZikrTour.swift).
+            let zikrTour = runtime.step == .zikr && runtime.phase == .deep
+            if runtime.active, !covered, !zikrTour {
                 TourInputGuard(openings: openings(runtime.step)) { runtime.nudge() }
             }
             inviteLayer
             // The one bubble, for the whole tour: never rebuilt between cards (owner: "one tooltip that visually moves
             // … to the next focus location"); out of sight only while a sheet or a cover is over the page, or the card's
             // page isn't showing (Back to the tour then).
-            if let step = runtime.step {
+            if let step = runtime.step, !zikrTour {
                 bubble(step)
             }
             backPill
-            skipLayer
+            if !zikrTour { skipLayer }
         }
     }
 
@@ -2711,11 +2726,13 @@ struct TourSheetTip: View {
 /// compass's red dot sits over it when that's needed too.
 struct TourMenuBadge: View {
     @AppStorage(TourRuntime.completedKey) private var completed = false
+    @AppStorage(ZikrTour.completedKey) private var zikrCompleted = false
     var body: some View {
         Circle()
             .fill(TourInk.green)
             .frame(width: 8, height: 8)
-            .opacity(completed || TourRuntime.shared.active ? 0 : 1)
+            // Either tour not yet taken to its end (the app tour, the Zikr Tour).
+            .opacity((completed && zikrCompleted) || TourRuntime.shared.active || ZikrTour.shared.active ? 0 : 1)
             .animation(.easeInOut(duration: 0.3), value: completed)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -2852,3 +2869,7 @@ struct TourPairs: View {
         }
     }
 }
+
+#if DEBUG
+@MainActor enum TourDebugOnce { static var started = false }
+#endif

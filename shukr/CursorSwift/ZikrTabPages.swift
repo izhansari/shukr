@@ -72,7 +72,12 @@ struct AzkarPage: View {
                 }
             }
             .newZikrCard(isPresented: $showingNewZikr)   // the card over the page, not a sheet
+            // The Zikr Tour's Azkar step: its bubble here, Continue back (ZikrTour.swift).
+            .overlay { ZikrTourInline(place: .azkar) }
+            .onAppear { ZikrTour.shared.azkarOpened() }
+            .onChange(of: ZikrTour.shared.popPage) { _, _ in if ZikrTour.shared.step == .done { dismissAzkar() } }
     }
+    @Environment(\.dismiss) private var dismissAzkar
 }
 
 /// History, its own page: the all-time header, the bars and every session; Select → Delete.
@@ -119,8 +124,11 @@ struct ZikrHistoryPage: View {
                     CountTipsSkip().padding(.trailing, 16).padding(.top, 14)
                 }
             }
-            .onAppear { CountTips.shared.historyOpened() }
+            .onAppear { CountTips.shared.historyOpened(); ZikrTour.shared.historyOpened() }
             .onChange(of: CountTips.shared.popHistory) { _, _ in dismiss() }
+            // The Zikr Tour's History step: its bubble here, Continue back (ZikrTour.swift).
+            .overlay { ZikrTourInline(place: .history) }
+            .onChange(of: ZikrTour.shared.popPage) { _, _ in if ZikrTour.shared.step == .azkar { dismiss() } }
     }
     @Environment(\.dismiss) private var dismiss
 }

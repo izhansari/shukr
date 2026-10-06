@@ -113,6 +113,12 @@ struct NewTaskFlow: View {
         // step one closes; ‹ walks back.
         .interactiveDismissDisabled()
         .presentationDetents([.large])
+        // The Zikr Tour's bubble, in the sheet (a sheet covers the tour's own layer); it follows the flow's step.
+        .overlay {
+            ZikrTourInline(place: .newTask, alignment: .top,
+                           padding: EdgeInsets(top: 62, leading: 0, bottom: 0, trailing: 0))
+        }
+        .onChange(of: step, initial: true) { _, now in if !isEditing { ZikrTour.shared.taskFlowAt(now) } }
         .newZikrCard(isPresented: $creatingZikr, initialName: search) { made in
             mantra = made
             if returnToReview { backToReview() } else { go(2) }
@@ -235,6 +241,8 @@ struct NewTaskFlow: View {
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 20)
+                .disabled(ZikrTour.shared.guardsNewTask)
+                .opacity(ZikrTour.shared.guardsNewTask ? 0.4 : 1)
 
                 if !yours.isEmpty { group("Your azkar", yours) }
                 if !builtIns.isEmpty { group("Built-in", builtIns) }
@@ -253,6 +261,8 @@ struct NewTaskFlow: View {
             VStack(spacing: 0) {
                 ForEach(Array(list.enumerated()), id: \.element.id) { i, m in
                     Button {
+                        // The Zikr Tour's task: Astaghfirullah only (ZikrTour.swift; decision zikr-tour-task-guard A).
+                        guard ZikrTour.shared.allowsPick(m.name) else { return }
                         mantra = m
                         if returnToReview { backToReview() } else { go(2) }
                     } label: {
@@ -356,7 +366,11 @@ struct NewTaskFlow: View {
             Spacer()
             // Hidden while typing (owner: a tap meant to close the keyboard could land on it).
             if !goalFocused {
+                // The Zikr Tour's task: 33, a count (ZikrTour.swift).
+                let allowed = ZikrTour.shared.allowsGoal(countMode: countMode, goal: goal)
                 stepButton()
+                    .disabled(!allowed)
+                    .opacity(allowed ? 1 : 0.4)
                     .transition(.opacity)
             }
         }
@@ -457,7 +471,10 @@ struct NewTaskFlow: View {
                 .padding(.bottom, 20)
             }
             .scrollDismissesKeyboard(.immediately)
+            let addAllowed = isEditing || ZikrTour.shared.allowsAdd(name: mantra?.name, countMode: countMode, goal: goal)
             primary(isEditing ? "Save" : "Add to my day") { isEditing ? save() : create() }
+                .disabled(!addAllowed)
+                .opacity(addAllowed ? 1 : 0.4)
         }
         .confirmationDialog(editing.map { "Delete \u{201C}\($0.title)\u{201D}?" } ?? "", isPresented: $confirmDelete,
                             titleVisibility: .visible) {

@@ -646,6 +646,10 @@ struct PrayerTimesView: View {
                     }
                 }
             }
+            .onChange(of: sharedState.horizontalPage) { left, now in
+                // Settings may have changed how times are worked out: refetch on leaving its page.
+                if left == .settings, now != .settings { viewModel.fetchPrayerTimes(cameFrom: "left the Settings page") }
+            }
             .onChange(of: sharedState.horizontalPage) { _, wanted in
                 // Programmatic nav (bottom bar, menu, widget deep link): scroll the pager to match, quietly when the
                 // change asked for it (`go(to:animated: false)` — this used to spring every change: audit D, bug 7).
@@ -693,6 +697,9 @@ struct PrayerTimesView: View {
             // The session tour's last tips, on the Zikr page (CountTips: History, then "your turn").
             ZikrPageTipsLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
                               onZikr: sharedState.horizontalPage == .zikr)
+            // The Zikr Tour on the Zikr page (ZikrTour.swift): its offer and its steps there.
+            ZikrTourLayer(covered: somethingCovers || showTasbeehPage || !CircleStage.shared.covers.isEmpty,
+                          onZikr: sharedState.horizontalPage == .zikr && CircleStage.shared.restingPage == .zikr)
 
             #if DEBUG
             TourDemoLayer()   // `-demoTour circle|list|swipe|count|hintMark [-tourStyle line|callout]`: the pictures
@@ -1779,6 +1786,17 @@ struct PrayerTimesView: View {
                                     pendingMenuAction = { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
                                     showMenu = false
                                 }
+                                // The Zikr Tour, until it's taken to its end (ZikrTour.swift): its offer on the Zikr page.
+                                ZikrTourMenuRow {
+                                    pendingMenuAction = {
+                                        sharedState.go(to: .zikr)
+                                        Task { @MainActor in
+                                            try? await Task.sleep(for: .seconds(0.5))
+                                            ZikrTour.shared.offer(inAppTour: false)
+                                        }
+                                    }
+                                    showMenu = false
+                                }
                                 // Which build this is (BuildInfo): when it was built + the commit.
                                 // Tap → What's new (DEBUG / TestFlight).
                                 BuildLineButton {
@@ -1833,9 +1851,11 @@ struct PrayerTimesView: View {
                         // Zikr page, top right: Azkar (Your tasks is "N of M tasks done" under the wheel).
                         // Skip tour takes this corner while the tour runs (Tour.swift's TourSkipButton).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("azkarDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
                             .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : 1)
-                            .allowsHitTesting(!TourRuntime.shared.active)
+                            // The Zikr Tour's Azkar step opens it (its guard lets only that through).
+                            .allowsHitTesting(!TourRuntime.shared.active || ZikrTour.shared.step == .azkar)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available && !TourRuntime.shared.active {
                             HStack(spacing: 0) {
@@ -3074,7 +3094,7 @@ struct PagerLock: ViewModifier {
 struct SettingsPage: View, Equatable {
     var onBack: () -> Void
     static func == (lhs: SettingsPage, rhs: SettingsPage) -> Bool { true }
-    var body: some View { SettingsView(onBack: onBack) }
+    var body: some View { SettingsView(onBack: onBack, refetchOnLeave: false) }
 }
 
 /// A marked row tapped in the Prayers widget's times list: which prayer, on which day

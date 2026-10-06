@@ -1,0 +1,566 @@
+//
+//  ZikrTour.swift
+//  shukr
+//
+//  The Zikr Tour (owner, 2026-10-06; board/brief-zikr-tour.md; decisions zikr-deep-shape A, zikr-deep-newtask A,
+//  zikr-deep-count A, zikr-tour-task-guard A): make one real task — Astaghfirullah, 33 a day — count it, and see where
+//  it shows up. Offered as chapter 3 of the app tour reaches the Zikr page, once on the first Zikr visit, and from ☰.
+//  One bubble in the tour's chapter look wherever the step is: the Zikr page, inside New task, over the session, its
+//  results, Your tasks, History, Azkar. Everything it makes is real: the task, the session, the streak, the pace.
+//
+
+import SwiftUI
+import SwiftData
+
+@MainActor @Observable final class ZikrTour {
+    static let shared = ZikrTour()
+    /// Taken to its end (a skip doesn't count): until then "Zikr Tour" sits in ☰ with the green dot.
+    static let completedKey = "zikrTour.v1.completed"
+    /// Offered once on the first Zikr visit (or seen in the app tour).
+    static let offeredKey = "zikrTour.v1.offered"
+
+    enum Step: Int, Comparable {
+        case offer, kinds, pick, goal, place, review, start, taps, drags, stroke, keepGoing, results,
+             timeLeft, yourTasks, history, historyPage, azkar, azkarPage, done
+        static func < (a: Step, b: Step) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    private(set) var step: Step? {
+        didSet {
+            #if DEBUG
+            if step != oldValue { print("ZIKRTOUR step \(step.map { "\($0)" } ?? "-")") }
+            #endif
+        }
+    }
+    /// Chapter 3 of the app tour (its Continue goes on to Settings), or on its own.
+    private(set) var inAppTour = false
+    /// The current step's count (taps, drags, strokes in one touch, the session's total).
+    private(set) var progress = 0
+    /// The session's count so far: "Reach 33" starts from it, not from 0.
+    @ObservationIgnored private var sessionTotal = 0
+    /// Its to-do done: the ✓ a moment, then the next step.
+    private(set) var completing = false
+    var openSection: String?
+    /// The task the tour counts (made in it, or theirs already).
+    private(set) var taskID: UUID?
+    private(set) var reused = false
+    /// Their Astaghfirullah task was already done today: no counting steps.
+    private(set) var skippedCount = false
+    /// The session's pace, seconds a count.
+    private(set) var pace: Double?
+    /// Bumped to close the page the tour is on (Your tasks, History, Azkar).
+    private(set) var popPage = 0
+    /// Asks the wheel to centre an item ("add", a task's id).
+    private(set) var centre: (String, Int) = ("", 0)
+
+    var active: Bool { step != nil }
+    static var completed: Bool { UserDefaults.standard.bool(forKey: completedKey) }
+    static let astaghfirullah = "Astaghfirullah"
+    static func isAstaghfirullah(_ name: String?) -> Bool {
+        BuiltInAzkar.key(name ?? "") == BuiltInAzkar.key(astaghfirullah)
+    }
+
+    // MARK: Starting and ending
+
+    /// The offer: chapter 3 of the app tour, the first Zikr visit, or ☰ (`straightIn`: no offer, the steps at once).
+    func offer(inAppTour: Bool) {
+        UserDefaults.standard.set(true, forKey: Self.offeredKey)
+        self.inAppTour = inAppTour
+        go(.offer)
+    }
+
+    /// Show me: their Astaghfirullah task if they have one (no duplicate), else making it.
+    /// Already done for today: it's off the wheel and there's nothing left to count, so straight to how long tasks take.
+    func showMe(existing: TaskModel?, doneToday: Bool = false) {
+        if let existing {
+            taskID = existing.id
+            reused = true
+            skippedCount = doneToday
+            if doneToday { go(.timeLeft) } else {
+                go(.start)
+                requestCentre(existing.id.uuidString)
+            }
+        } else {
+            reused = false
+            skippedCount = false
+            go(.kinds)
+            requestCentre("add")
+        }
+    }
+
+    /// Skip to Settings / Not now / Skip tour: gone, not completed.
+    func dismiss() {
+        let wasInTour = inAppTour
+        end()
+        if wasInTour { TourRuntime.shared.zikrTourEnded() }
+    }
+
+    private func finish() {
+        UserDefaults.standard.set(true, forKey: Self.completedKey)
+        let wasInTour = inAppTour
+        end()
+        if wasInTour { TourRuntime.shared.zikrTourEnded() }
+    }
+
+    private func end() {
+        withAnimation(.easeOut(duration: CircleMotion.quick)) {
+            step = nil
+            progress = 0
+            completing = false
+            openSection = nil
+        }
+        inAppTour = false
+        taskID = nil
+        pace = nil
+    }
+
+    // MARK: What the wheel and the pages may do
+
+    /// A wheel tap (the item centred): only the one the step asks for.
+    func allowsWheelTap(_ id: String) -> Bool {
+        switch step {
+        case .kinds: return id == "add"
+        case .start: return id == taskID?.uuidString
+        default: return false
+        }
+    }
+    /// The wheel's tap went through: on to the next step.
+    func wheelTapped(_ id: String) {
+        if step == .kinds, id == "add" { complete() }
+        if step == .start, id == taskID?.uuidString { complete() }
+    }
+
+    /// New task, while making the tour's: only Astaghfirullah (owner: guard it), 33 a day.
+    var guardsNewTask: Bool { step.map { $0 >= .pick && $0 <= .review } ?? false }
+    func allowsPick(_ name: String) -> Bool { !guardsNewTask || Self.isAstaghfirullah(name) }
+    func allowsGoal(countMode: Bool, goal: Int) -> Bool { !guardsNewTask || (countMode && goal == 33) }
+    func allowsAdd(name: String?, countMode: Bool, goal: Int) -> Bool {
+        !guardsNewTask || (Self.isAstaghfirullah(name) && countMode && goal == 33)
+    }
+    /// New task's own step (1 zikr, 2 goal, 3 place, 4 review).
+    func taskFlowAt(_ flowStep: Int) {
+        guard guardsNewTask || step == .kinds else { return }
+        let to: Step = switch flowStep { case 1: .pick; case 2: .goal; case 3: .place; default: .review }
+        if step != to { go(to) }
+    }
+    /// The sheet closed without a task: back to the wheel's step.
+    func taskFlowClosed() { if guardsNewTask { go(.kinds); requestCentre("add") } }
+    func taskCreated(_ task: TaskModel) {
+        guard guardsNewTask else { return }
+        taskID = task.id
+        go(.start)
+        requestCentre(task.id.uuidString)
+    }
+
+    // MARK: The session
+
+    func counted(byDrag: Bool, inTouch: Int, total: Int) {
+        sessionTotal = total
+        guard let step, !completing else { return }
+        switch step {
+        case .taps where !byDrag: bump(3)
+        case .stroke where byDrag:
+            withAnimation(.snappy(duration: 0.25)) { progress = max(progress, inTouch) }
+            if progress >= 3 { complete() }
+        case .keepGoing:
+            withAnimation(.snappy(duration: 0.25)) { progress = total }
+        default: break
+        }
+    }
+    func dragEnded(strokes: Int) {
+        guard let step, !completing else { return }
+        switch step {
+        case .drags where strokes > 0: bump(3)
+        case .stroke: withAnimation(.snappy(duration: 0.25)) { progress = 0 }
+        default: break
+        }
+    }
+    /// The session saved (its goal reached, or finished early): the results.
+    func sessionSaved(_ session: SessionDataModel) {
+        guard let step, step >= .taps, step <= .keepGoing else { return }
+        pace = session.avgTimePerClick > 0 ? session.avgTimePerClick : nil
+        go(.results)
+    }
+    func resultsDone() { if step == .results { complete() } }
+    func sessionClosed() {
+        // Closed without saving (✕ before a count): back to starting it.
+        if let step, step >= .taps, step <= .keepGoing { go(.start) }
+    }
+
+    // MARK: The line under the wheel, the pages
+
+    func summaryTapped() { if step == .timeLeft { complete() } }
+    func historyOpened() { if step == .history { go(.historyPage) } }
+    func azkarOpened() { if step == .azkar { go(.azkarPage) } }
+
+    /// Continue / Done on the bubble.
+    func next() {
+        switch step {
+        case .yourTasks: popPage += 1; go(.history)
+        case .historyPage: popPage += 1; go(.azkar)
+        case .azkarPage: popPage += 1; go(.done)
+        case .done: finish()
+        default: break
+        }
+    }
+
+    func toggle(_ id: String) {
+        withAnimation(.smooth(duration: CircleMotion.standard)) { openSection = openSection == id ? nil : id }
+    }
+
+    // MARK: Moving on
+
+    private func bump(_ needed: Int) {
+        withAnimation(.snappy(duration: 0.25)) { progress += 1 }
+        if progress >= needed { complete() }
+    }
+
+    private func complete() {
+        #if DEBUG
+        print("ZIKRTOUR complete \(step.map { "\($0)" } ?? "-")")
+        #endif
+        guard let step else { return }
+        withAnimation(.snappy(duration: 0.25)) { completing = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.7))
+            guard self.step == step else { return }
+            switch step {
+            case .kinds: go(.pick)          // New task opens (the wheel's tap)
+            case .start: go(.taps)
+            case .stroke: go(.keepGoing)
+            case .results: go(.timeLeft)   // Done closes the session onto the Zikr page
+            case .timeLeft: go(.yourTasks)
+            default: if let n = Step(rawValue: step.rawValue + 1) { go(n) }
+            }
+        }
+    }
+
+    private func go(_ next: Step) {
+        withAnimation(.smooth(duration: CircleMotion.standard)) {
+            step = next
+            progress = next == .keepGoing ? sessionTotal : 0
+            completing = false
+            openSection = nil
+        }
+    }
+
+    private func requestCentre(_ id: String) { centre = (id, centre.1 + 1) }
+
+    #if DEBUG
+    /// `-zikrTourFrom <step raw value>`: on its own, straight to that step (its task: the first Astaghfirullah one).
+    static var debugStarted = false
+    func debugStart(_ raw: Int, task: TaskModel?) {
+        guard let s = Step(rawValue: raw) else { return }
+        inAppTour = false
+        taskID = task?.id
+        go(s)
+    }
+    #endif
+
+    // MARK: The bubble
+
+    private typealias C = TourCopy.ZikrTour
+
+    /// The bubble now: the chapter's steps so far (the finished ones folded), the current one open.
+    var page: TourPage {
+        guard let step else { return TourPage(headline: C.title) }
+        let index = inAppTour ? 3 : 0
+        if step == .offer {
+            return TourPage(headline: C.title, index: index, progress: 0,
+                            sections: [TourSection(id: "zt.offer", lead: C.offer)],
+                            primary: C.showMe, secondary: inAppTour ? C.skipToSettings : C.notNow)
+        }
+        // Where each step sits: its section, its lead, its one to-do.
+        func section(_ id: String, _ title: String, from: Step, to: Step, lead: String, todo: String?,
+                     needed: Int = 0) -> TourSection? {
+            guard step >= from else { return nil }
+            var s = TourSection(id: id, title: title, done: step > to, lead: lead, tasks: todo.map { [$0] } ?? [])
+            if step <= to, needed > 1, !completing { s.progress = (progress, needed) }
+            return s
+        }
+        let kindsLead = reused ? C.reuseLead : C.kindsLead
+        let taskLead: String = switch step {
+            case .pick: C.pickLead
+            case .goal: C.goalLead
+            case .place: C.placeLead
+            default: C.reviewLead
+        }
+        let taskTodo: String = switch step {
+            case .pick: C.pickTodo
+            case .goal: C.goalTodo
+            case .place: C.placeTodo
+            default: C.reviewTodo
+        }
+        let countLead: String = switch step {
+            case .start: reused ? C.reuseLead : C.startLead
+            case .taps: C.tapLead
+            case .drags: C.dragLead
+            case .stroke: C.strokeLead
+            default: C.goLead
+        }
+        let countTodo: String = switch step {
+            case .start: C.startTodo
+            case .taps: C.tapTodo
+            case .drags: C.dragTodo
+            case .stroke: C.strokeTodo
+            default: C.goTodo
+        }
+        let countNeeded = switch step { case .taps, .drags, .stroke: 3; case .keepGoing: 33; default: 0 }
+        let streakLead = [C.streakLead, pace.map(C.paceLine)].compactMap { $0 }.joined(separator: " ")
+        let timeLead = step == .yourTasks ? C.tasksLead : skippedCount ? "\(C.reuseDoneLead) \(C.timeLead)" : C.timeLead
+        let whereLead: String = switch step {
+            case .history: C.historyLead
+            case .historyPage: C.historyPageLead
+            case .azkar: C.azkarLead
+            default: C.azkarPageLead
+        }
+        let whereTodo: String? = switch step {
+            case .history: C.historyTodo
+            case .azkar: C.azkarTodo
+            default: nil
+        }
+        var sections: [TourSection] = [
+            reused ? section("zt.kinds", C.kindsStep, from: .kinds, to: .kinds, lead: kindsLead, todo: nil)
+                   : section("zt.kinds", C.kindsStep, from: .kinds, to: .kinds, lead: kindsLead, todo: C.kindsTodo),
+            reused ? nil : section("zt.task", C.taskStep, from: .pick, to: .review, lead: taskLead, todo: taskTodo),
+            skippedCount ? nil : section("zt.count", C.countStep, from: .start, to: .keepGoing, lead: countLead, todo: countTodo, needed: countNeeded),
+            skippedCount ? nil : section("zt.streak", C.streakStep, from: .results, to: .results, lead: streakLead, todo: C.streakTodo),
+            section("zt.time", C.timeStep, from: .timeLeft, to: .yourTasks, lead: timeLead,
+                    todo: step == .timeLeft ? C.timeTodo : nil),
+            section("zt.where", C.whereStep, from: .history, to: .azkarPage, lead: whereLead, todo: whereTodo),
+        ].compactMap { $0 }
+        // Reused task: the kinds line shows straight away, as done.
+        if reused, step >= .start, let i = sections.firstIndex(where: { $0.id == "zt.kinds" }) { sections[i].done = true }
+        if step == .done { sections.append(TourSection(id: "zt.done", note: C.doneLine)) }
+        let units = 6.0
+        let finished = Double([Step.kinds, .review, .keepGoing, .results, .yourTasks, .azkarPage].filter { $0 < step }.count)
+        let primary: String? = switch step {
+            case .yourTasks, .historyPage, .azkarPage: TourCopy.continueButton
+            case .done: inAppTour ? TourCopy.continueButton : C.doneButton
+            default: nil
+        }
+        return TourPage(headline: C.title, index: index, progress: step == .done ? 1 : finished / units,
+                        sections: sections, primary: primary)
+    }
+
+    /// Which place the current step's bubble belongs to.
+    enum Place { case zikrPage, newTask, session, results, yourTasks, history, azkar }
+    var place: Place? {
+        switch step {
+        case nil: nil
+        case .offer, .kinds, .start, .timeLeft, .history, .azkar, .done: .zikrPage
+        case .pick, .goal, .place, .review: .newTask
+        case .taps, .drags, .stroke, .keepGoing: .session
+        case .results: .results
+        case .yourTasks: .yourTasks
+        case .historyPage: .history
+        case .azkarPage: .azkar
+        }
+    }
+}
+
+/// The Zikr Tour's bubble — the tour's own (TourPageView in our rounded glass), wherever the step is.
+struct ZikrTourBubble: View {
+    @State private var tour = ZikrTour.shared
+    var onSecondary: () -> Void = {}
+    @Environment(\.tourShowMe) private var showMe
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.circleTheme) private var theme
+    @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
+
+    var body: some View {
+        TourPageView(step: .zikr, page: tour.page, place: nil, ticked: tour.completing ? [0] : [], lit: [],
+                     openSection: tour.openSection, showsBack: false, qiblaSkip: false,
+                     onPrimary: { tour.step == .offer ? showMe() : tour.next() }, onSecondary: onSecondary, onBack: {},
+                     onToggle: { tour.toggle($0) }, onSkipQibla: {})
+            .padding(16)
+            .frame(width: 330)
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .accessibilityElement(children: .contain)
+            .tourBubble(RoundedRectangle(cornerRadius: 22, style: .continuous),
+                        look: TourBubbleLook(rawValue: lookRaw) ?? .glass, scheme: scheme, backdrop: theme.backdrop)
+    }
+}
+
+/// The bubble in one place (New task, the session, the results, a page): drawn only while the step is there.
+struct ZikrTourInline: View {
+    let place: ZikrTour.Place
+    var alignment: Alignment = .bottom
+    var padding: EdgeInsets = EdgeInsets(top: 0, leading: 0, bottom: 40, trailing: 0)
+    @State private var tour = ZikrTour.shared
+    var body: some View {
+        if tour.place == place {
+            ZikrTourBubble()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+                .padding(padding)
+                .transition(.opacity)
+        }
+    }
+}
+
+/// The Zikr page's layer: the offer and the page's steps, the only touches let through, Skip top right, the first-visit
+/// offer.
+struct ZikrTourLayer: View {
+    let covered: Bool
+    let onZikr: Bool
+    @State private var tour = ZikrTour.shared
+    @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
+    @Environment(\.modelContext) private var context
+
+    var body: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            let t = TourTargets.shared
+            ZStack {
+                if !covered, onZikr, tour.place == .zikrPage {
+                    TourInputGuard(openings: openings(t)) {}
+                    bubble(t, origin: origin, height: proxy.size.height)
+                    TourSkipButton {
+                        tour.dismiss()
+                        if TourRuntime.shared.active { TourRuntime.shared.skip() }
+                    }
+                    .opacity(tour.step == .offer || tour.step == .done ? 0 : 1)   // the offer and the end have their own buttons
+                    .allowsHitTesting(tour.step != .offer && tour.step != .done)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, (t.frame("historyDoor").map { $0.midY - origin.y } ?? 76) - 16)
+                    .padding(.trailing, 60)
+                }
+            }
+            .animation(.easeInOut(duration: CircleMotion.quick), value: tour.step)
+        }
+        .ignoresSafeArea()
+        #if DEBUG
+        .task {   // once per launch: the layer comes back after every pushed page
+            if !ZikrTour.debugStarted, let i = CommandLine.arguments.firstIndex(of: "-zikrTourFrom"),
+               i + 1 < CommandLine.arguments.count, let raw = Int(CommandLine.arguments[i + 1]) {
+                ZikrTour.debugStarted = true
+                try? await Task.sleep(for: .seconds(2))
+                tour.debugStart(raw, task: tasks.first { ZikrTour.isAstaghfirullah($0.mantra?.name ?? $0.mantraName) })
+            }
+        }
+        #endif
+        // The first Zikr visit: offered once, if the tour hasn't been seen (not over the app tour, not before setup).
+        .onChange(of: onZikr, initial: true) { _, on in
+            guard on, !covered, !tour.active, !TourRuntime.shared.active, FirstRunSetup.isDone,
+                  !ZikrTour.completed, !UserDefaults.standard.bool(forKey: ZikrTour.offeredKey) else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.6))
+                guard onZikr, !tour.active, !TourRuntime.shared.active else { return }
+                tour.offer(inAppTour: false)
+            }
+        }
+    }
+
+    @ViewBuilder private func bubble(_ t: TourTargets, origin: CGPoint, height: CGFloat) -> some View {
+        let slot = t.frame("zikrSlot")
+        let bubble = ZikrTourBubble(onSecondary: { tour.dismiss() })
+            .environment(\.tourShowMe, {
+                let task = tasks.first { ZikrTour.isAstaghfirullah($0.mantra?.name ?? $0.mantraName) }
+                let dayStart = PrayerDay.sessionDayStart()
+                let today = (try? context.fetch(FetchDescriptor<SessionDataModel>(
+                    predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
+                tour.showMe(existing: task, doneToday: task.map { $0.isCompleted(with: $0.progress(in: today)) } ?? false)
+            })
+        switch tour.step {
+        // Over the wheel (the line under it and the doors stay clear).
+        case .offer, .kinds, .start:
+            bubble.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, max(0, height - ((slot?.minY ?? 300) - origin.y) + 12))
+        // Under the doors: History / Azkar.
+        case .history, .azkar:
+            bubble.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .padding(.top, (t.frame("historyDoor").map { $0.maxY - origin.y } ?? 100) + 12)
+        // Over the line under the wheel (the end too: six ✓ lines don't fit above the wheel).
+        default:
+            bubble.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, max(0, height - ((t.frame("zikrSummary")?.minY ?? 600) - origin.y) + 12))
+        }
+    }
+
+    /// The one thing the step asks for: the circle at the wheel's middle, the line under it, a door.
+    private func openings(_ t: TourTargets) -> [CGRect] {
+        switch tour.step {
+        case .kinds, .start: t.frame("zikrSlot").map { [$0] } ?? []
+        case .timeLeft: t.frame("zikrSummary").map { [$0] } ?? []
+        case .history: t.frame("historyDoor").map { [$0.insetBy(dx: -8, dy: -8)] } ?? []
+        case .azkar: t.frame("azkarDoor").map { [$0.insetBy(dx: -8, dy: -8)] } ?? []
+        default: []
+        }
+    }
+}
+
+/// The offer's Show me (the page knows their tasks; the bubble doesn't).
+private struct TourShowMeKey: EnvironmentKey { static let defaultValue: () -> Void = {} }
+extension EnvironmentValues {
+    var tourShowMe: () -> Void {
+        get { self[TourShowMeKey.self] }
+        set { self[TourShowMeKey.self] = newValue }
+    }
+}
+
+/// ☰ → Zikr Tour, until it's taken to its end.
+struct ZikrTourMenuRow: View {
+    @AppStorage(ZikrTour.completedKey) private var completed = false
+    let action: () -> Void
+    var body: some View {
+        if !completed {
+            Button(action: action) {
+                Label {
+                    Text(TourCopy.ZikrTour.menuRow)
+                } icon: {
+                    Image(systemName: "circle.hexagongrid")
+                        .overlay(alignment: .topTrailing) {
+                            Circle().fill(TourInk.green).frame(width: 7, height: 7).offset(x: 3, y: -2)
+                        }
+                }
+                .fontDesign(.rounded)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// The Zikr Tour over its session: counting low on the screen (not on the pause screen), the results over Done; Skip top
+/// right, left of −.
+struct ZikrTourSessionLayer: View {
+    let paused: Bool
+    let results: Bool
+    @State private var tour = ZikrTour.shared
+
+    var body: some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            let t = TourTargets.shared
+            ZStack {
+                if tour.place == .session, !paused, !results {
+                    ZikrTourBubble()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, 56)
+                        .transition(.opacity)
+                    TourSkipButton {
+                        tour.dismiss()
+                        if TourRuntime.shared.active { TourRuntime.shared.skip() }
+                    }
+                    .opacity(tour.step == .offer || tour.step == .done ? 0 : 1)   // the offer and the end have their own buttons
+                    .allowsHitTesting(tour.step != .offer && tour.step != .done)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, (t.frame("ct.finish").map { $0.midY - origin.y } ?? 76) - 16)
+                    .padding(.trailing, t.frame("ct.finish").map { proxy.size.width - ($0.minX - origin.x) + 10 } ?? 72)
+                }
+                if tour.place == .results, results, let done = t.frame("ct.done") {
+                    ZikrTourBubble()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .padding(.bottom, proxy.size.height - (done.minY - origin.y) + 14)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: CircleMotion.quick), value: tour.step)
+        }
+        .ignoresSafeArea()
+    }
+}

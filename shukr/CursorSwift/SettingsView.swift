@@ -8,6 +8,7 @@ struct SettingsView: View {
     /// The header's back chevron. Passed in rather than read from `sharedState`, so this big
     /// Form doesn't re-render on every page turn (it only ever wrote `horizontalPage`).
     var onBack: () -> Void = {}
+    var refetchOnLeave = true
     @EnvironmentObject var envLocationManager: EnvLocationManager
     @Environment(\.colorScheme) var colorScheme // Access the environment color scheme
     
@@ -651,7 +652,11 @@ struct SettingsView: View {
 
             }
         }
-        .onDisappear{
+        // The pushed Settings only: the pager's page refetches when it's paged away from (PrayerTimesAndTracker). Under a
+        // pushed page (Your tasks) the pager's copy was told disappear / appear on every update, the fetch published,
+        // and the two fed each other at 100 % CPU.
+        .onDisappear {
+            guard refetchOnLeave else { return }
             viewModel.fetchPrayerTimes(cameFrom: "onDisappear SettingsView")
         }
     }
