@@ -324,6 +324,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   Double Tap (30 s of pinches, an empty log) and no Crown turn — watchOS takes them to wake the screen (a continuous
   buzz), and counting resumes once it's on; `screen dimmed` / `bright` lines in the log. `-watchPinchLogPrint` + `devicectl … process launch --console` streams
   `WatchPinchLog` live; DEBUG `-demoWatchCrown`, `-watchScrollFingerTest`, `-demoWatchDoubleTapScroll`; Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
+- Salah list (`WatchPrayerList`): a row's tap marks / asks to unmark; its time has its own tap that flips it like the
+  phone's `timeTap` (to come: "in 2h 5m"; prayed: `WatchScoring.summary`; current / missed: no flip), back after
+  `flipSeconds` 3 s; the ring's flip goes back after 3 s too. DEBUG `-demoWatchFlip "Fajr,Asr"`.
 - Look (WatchLook.swift, ask watch-appearance): the phone sends `modeToggleNew` as `appearance` (0 light · 1 dark · 2
   auto; resent on change from shukrApp's root); auto = the phone's rule, light from sunrise to Maghrib, from the watch's
   own times, re-checked at each switch; wrist down = dark. The phone's public soft look (greyBlue): `WatchNeu.bg(scheme)`

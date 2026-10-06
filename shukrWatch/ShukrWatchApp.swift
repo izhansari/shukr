@@ -323,6 +323,11 @@ struct WatchPrayerList: View {
     @EnvironmentObject private var session: WatchSession
     @State private var showDone = false
     @State private var unmarking: WatchPrayer?
+    /// Rows whose time is flipped (the phone's PrayerButton `timeTap`): one still to come shows "in 2h 5m", a prayed
+    /// one its grade and score ("On time · 88"); the current and missed ones don't flip. Back by itself after 3 s.
+    @State private var flipped: Set<String> = []
+    @State private var flipTokens: [String: Int] = [:]
+    static let flipSeconds: TimeInterval = 3
 
     var body: some View {
         let _ = session.revision
@@ -378,6 +383,10 @@ struct WatchPrayerList: View {
         .onAppear {
             let done = WatchPrayers.completed(dayStart: prayers[0].start)
             if UserDefaults.standard.bool(forKey: "demoWatchShowDone") { showDone = true }
+            // `-demoWatchFlip "Fajr,Asr"`: flip those rows' times, as a tap would.
+            for name in (UserDefaults.standard.string(forKey: "demoWatchFlip") ?? "").split(separator: ",") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { flipTime(String(name)) }
+            }
             if let name = UserDefaults.standard.string(forKey: "demoWatchUnmarkAsk"),
                let p = prayers.first(where: { $0.name == name }) { unmarking = p }
             if let name = UserDefaults.standard.string(forKey: "demoWatchUnmark"), done.contains(name),
@@ -400,6 +409,46 @@ struct WatchPrayerList: View {
         }
     }
 
+    /// The row's time; tapped (its own tap, before the row's mark / unmark), it flips for a prayer still to come or a
+    /// prayed one, with a click — owner: "clicking the prayer list times to toggle", like the phone.
+    @ViewBuilder
+    private func timeLabel(_ p: WatchPrayer, future: Bool, done: Bool, score: Double?) -> some View {
+        let flip: String? = future ? WatchPrayerRing.until(p.start, now: now)
+            : done ? score.map { WatchScoring.summary(forScore: $0) } : nil
+        let showFlip = flip != nil && flipped.contains(p.name)
+        let label = Group {
+            if showFlip, let flip { Text(flip) } else { Text(p.start, style: .time) }
+        }
+        .font(.system(size: WatchScreen.small ? 13 : 14, weight: .light, design: .rounded))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .contentTransition(.opacity)
+        if flip != nil {
+            label
+                .padding(.leading, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .padding(.vertical, -6)
+                .onTapGesture { flipTime(p.name) }
+        } else {
+            label
+        }
+    }
+
+    private func flipTime(_ name: String) {
+        WKInterfaceDevice.current().play(.click)
+        let on = !flipped.contains(name)
+        withAnimation(.easeInOut(duration: 0.2)) { if on { flipped.insert(name) } else { flipped.remove(name) } }
+        let token = (flipTokens[name] ?? 0) + 1
+        flipTokens[name] = token
+        guard on else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.flipSeconds) {
+            guard flipTokens[name] == token else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { _ = flipped.remove(name) }
+        }
+    }
+
     private func row(_ p: WatchPrayer, done: Bool, score: Double?) -> some View {
         let future = now < p.start
         let edge = Color.secondary.opacity(future ? 0.2 : 0.5)
@@ -413,10 +462,8 @@ struct WatchPrayerList: View {
             .frame(width: 12, height: 12)
             Text(p.name)
                 .font(.system(size: WatchScreen.small ? 14 : 15, weight: .light, design: .rounded))
-            Spacer()
-            Text(p.start, style: .time)
-                .font(.system(size: WatchScreen.small ? 13 : 14, weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            timeLabel(p, future: future, done: done, score: score)
         }
         // Five rows + the "done" row fit one screen on 41 mm and up (no scrolling).
         .padding(.vertical, WatchScreen.small ? 4.5 : 6)
@@ -440,6 +487,8 @@ struct WatchPrayerRing: View {
     /// Replaces the tap's own action (the small ring over the list: back up to the ring).
     var onTap: (() -> Void)? = nil
     @State private var showLeft = false
+    /// The flip goes back by itself, like the phone's circle (`flipSeconds`, 3 s); a second tap sooner turns it back.
+    @State private var flipToken = 0
     /// The hold to mark it: fills round the ring while pressed (like the phone's circle).
     @State private var holdFill: CGFloat = 0
     /// A hold is cancelled for good once the ring moves on screen during it: a vertical page swipe
@@ -474,8 +523,9 @@ struct WatchPrayerRing: View {
 
     /// Before it starts: "in 5m" / "in 1h 51m", the phone's `timeUntilStart` (to the minute: the
     /// page redraws once a minute).
-    private var untilText: String {
-        let minutes = max(0, Int(prayer.start.timeIntervalSince(now) / 60))
+    private var untilText: String { Self.until(prayer.start, now: now) }
+    static func until(_ start: Date, now: Date) -> String {
+        let minutes = max(0, Int(start.timeIntervalSince(now) / 60))
         if minutes < 1 { return "in <1m" }
         return minutes >= 60 ? "in \(minutes / 60)h \(minutes % 60)m" : "in \(minutes)m"
     }
@@ -545,6 +595,13 @@ struct WatchPrayerRing: View {
             guard !compact else { return }
             WKInterfaceDevice.current().play(.click)
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
+            flipToken += 1
+            guard showLeft else { return }
+            let token = flipToken
+            DispatchQueue.main.asyncAfter(deadline: .now() + WatchPrayerList.flipSeconds) {
+                guard token == flipToken else { return }
+                withAnimation(.easeInOut(duration: 0.2)) { showLeft = false }
+            }
         }
         // Hold to mark it prayed, like the phone's circle.
         .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { y in
