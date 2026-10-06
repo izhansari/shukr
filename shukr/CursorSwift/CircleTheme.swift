@@ -109,12 +109,10 @@ struct CircleTheme: Equatable {
                  : Track(width: 12, fill: Color(.secondarySystemFill), lifted: false, dashesInBand: false)
     }
 
-    /// The prayer list's way in under the circle: Today's slides up from the bottom; the soft looks rise 36 pt from just
-    /// under their place, so they never cross the fixed "N done" line or the bar (decision list-reveal-rise A).
+    /// The prayer list's way in and out under the circle: Today's slides from the bottom; the soft looks travel
+    /// `CircleMotion.listTravel` while they fade, always farther than the circle moves, so the two never overlap.
     var listEntrance: AnyTransition {
-        soft ? .asymmetric(insertion: .offset(y: 36).combined(with: .opacity),
-                           removal: .offset(y: CircleMotion.listExitDrop).combined(with: .opacity))
-             : .move(edge: .bottom).combined(with: .opacity)
+        soft ? .offset(y: CircleMotion.listTravel).combined(with: .opacity) : .move(edge: .bottom).combined(with: .opacity)
     }
     /// Room under the open list for the soft looks' "N done" line, which sits in the chrome above the bar.
     var listFooterRoom: CGFloat { soft ? 44 : 0 }

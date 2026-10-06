@@ -1447,8 +1447,8 @@ struct PrayerTimesView: View {
                     .opacity(CircleStage.shared.pageHidden ? 0 : 1)
                     .animation(CircleMotion.ease(CircleMotion.pageRevealDuration), value: CircleStage.shared.pageHidden)
                     // Today's look: slides up from the bottom and fades (owner, 2026-10-01: "i liked our initial
-                    // transition better"). Soft looks: rises 36 pt from just under its place and fades, so it never
-                    // crosses the fixed "N done" line or the bar (Sami's audit, finding 3; decision list-reveal-rise A).
+                    // transition better"). Soft looks: rises in and drops out `CircleMotion.listTravel` (200 pt) as it
+                    // fades — farther than the circle moves, so the ring and the rows never ghost over each other (Izhan).
                     // Reduce Motion: a fade in place.
                     .transition(reduceMotion ? .opacity : theme.listEntrance)
                     Spacer()

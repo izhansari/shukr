@@ -198,6 +198,7 @@ TestFlight install. "Run setup again" and What's new follow `.available` (the ow
 - Root holds `sharedState` as `@State` and injects it with `.environment(sharedState)`; `SharedStateClass` is `@Observable` (2026-10-04): read it with `@Environment(SharedStateClass.self)`, a binding needs `@Bindable`, and a view re-renders only for the properties its body reads (one-shot flags like `quietPageChange` / `resumeCount` are `@ObservationIgnored`). No `@Query` with `#Predicate { builtInID == nil }` on the Azkar / History pages (100 % CPU loop): fetch all, filter in memory.
 - The zikr wheel must not be a LazyVStack. A nav bar must never change height (trailing slot always holds a button; Azkar's sort button is a fixed `AzkarSortButton.width`).
 
+- The soft list pops in and out traveling `CircleMotion.listTravel` (200 pt) as it fades — always farther than the circle moves, so the ring and the rows never overlap (Izhan, replaces the 36 pt rise of list-reveal-rise A). Keep any new list motion clear of the ring.
 - Prayer list rows have ONE gesture (`PrayerButton.rowGesture`): don't go back to `onTapGesture` + a simultaneous long press, and the mark area stays the 22 pt circle round the dot (not the name or a full-height box).
 - A task counts only its own linked sessions; freestyle and post-salah never touch tasks. Watch sessions retry by UUID, never double-counted.
 
