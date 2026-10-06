@@ -89,7 +89,7 @@ enum TourCopy {
             "Tap a marked prayer for its score",
             "Hold Fajr, move it into the yellow, save",      // only Fajr opens, and saves only in the yellow, until this is done
         ]
-        static let allDone = "That’s your day — and it only ever says what’s true."
+        static let allDone = "That’s your day — all in one list and easy to track."
 
         // The tip inside the time editor (opened by the last to-do).
         static let editorTitle = "When did you really pray?"
