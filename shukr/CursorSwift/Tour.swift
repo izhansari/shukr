@@ -1614,7 +1614,18 @@ struct BubbleShape: Shape {
         TourStep.cards.firstIndex(of: step).map { ($0 + 1, TourStep.cards.count) }
     }
     /// A card to go back to.
-    var canGoBack: Bool { step.flatMap { TourStep.cards.firstIndex(of: $0) }.map { $0 > 0 } ?? false }
+    /// Back: the step before, within the chapter — never the last chapter (owner, 2026-10-06); none on a chapter's first
+    /// step, nor back to a "Get there" (they're already there).
+    var canGoBack: Bool { previousPhase != nil }
+    private var previousPhase: TourPhase? {
+        switch (step, phase) {
+        case (.circle, .learnMore), (.list, .learnMore): .learn
+        case (.circle, .tryIt), (.list, .tryIt): .learnMore
+        case (.zikr, .tryIt): .learn
+        case (.settings, .last): .learn
+        default: nil
+        }
+    }
 
     /// The tour's door after the first-run setup: the invitation on the real day.
     func invite() {
@@ -1839,9 +1850,20 @@ struct BubbleShape: Shape {
     }
 
     /// Back: the card before, as it starts (its practice state put back).
+    /// One step back within the chapter: its practice state as the step needs it (a to-do step left: its ticks and
+    /// what they changed are undone — the circle's Asr unmarked again), the step's page back as it was.
     private func goBack(from step: TourStep) {
-        guard let i = TourStep.cards.firstIndex(of: step), i > 0 else { return }
-        go(to: TourStep.cards[i - 1], back: true)
+        guard let back = previousPhase else { return }
+        if phase == .tryIt { prepare(step) }
+        if step == .settings { settingsScroll = (.top, settingsScroll.1 + 1) }
+        withAnimation(.smooth(duration: CircleMotion.standard)) {
+            ticked = []
+            lit = back == .learnMore && step == .circle ? [0, 1, 2] : lit   // the colours' lines, lit as after the demo
+            openSection = nil
+            folding = nil
+            qiblaSkippable = false
+            phase = back
+        }
     }
 
     #if DEBUG
@@ -1947,7 +1969,7 @@ struct TourLayer: View {
                     ticked: runtime.ticked, lit: runtime.lit,
                     openSection: runtime.openSection,
                     hint: hint(step), aboveY: aboveY(step),
-                    showsBack: runtime.canGoBack && runtime.phase != .last,
+                    showsBack: runtime.canGoBack,
                     flash: flashFrame(), flashes: runtime.flashes, nudges: runtime.nudges,
                     qiblaSkip: skipQibla, forward: runtime.forward,
                     onPrimary: { runtime.event(.next) },
