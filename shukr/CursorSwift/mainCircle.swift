@@ -1169,14 +1169,16 @@ struct PrayerTimeLine: View {
     private var lastHour: Bool { lastHourLeft && end.timeIntervalSince(now) <= Self.lastHourSeconds }
     /// The last hour's default is the time left; a flip shows the other.
     private var wanted: Mode { lastHour != flipped ? .left : .ends }
+    private var lastHourLeftShown: Bool { lastHour && (shown ?? wanted) == .left }
 
     var body: some View {
         Text((shown ?? wanted) == .left ? timeLeftString(from: end.timeIntervalSince(now)) : "ends \(shortTimePM(end.addingTimeInterval(labelShift)))")
             .font(.subheadline)
             .fontDesign(.rounded)
-            .fontWeight(.thin)
-            // The last hour's time left in the prayer name's colour, not grey (owner: "a little more prominent").
-            .foregroundStyle(lastHour && (shown ?? wanted) == .left ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
+            // The last hour's time left in the prayer name's colour and weight (light), not thin grey (owner: "a little
+            // more prominent … maybe its the weight" — thin read faint even in black; the watch's light looked right).
+            .fontWeight(lastHourLeftShown ? .light : .thin)
+            .foregroundStyle(lastHourLeftShown ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
             .modifier(CircleWordsAway(away: away))
             .onAppear { if shown == nil { shown = wanted; shownFor = prayerKey } }
             .onChange(of: trigger) { _, _ in
