@@ -2437,6 +2437,7 @@ struct TourSkipButton: View {
     @State private var token = 0
     /// The words, out while the capsule changes (out, then in — the two labels never cross).
     @State private var wordsAway = false
+    @Environment(\.circleTheme) private var theme
 
     var body: some View {
         // One capsule whose words and colour change, with its own tap: what's drawn is what takes the tap (as a system
@@ -2454,7 +2455,9 @@ struct TourSkipButton: View {
         .foregroundStyle(armed ? TourInk.green : Color.primary.opacity(0.6))
         .padding(.horizontal, 14)
         .frame(height: 32)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        // Solid: the page's own colour under the tint, so what it covers (Zikr's title beside Azkar) doesn't show
+        // through (owner: "fill in its background so we don't have ghosting").
+        .background(Capsule().fill(Color.primary.opacity(0.06)).background(Capsule().fill(theme.backdrop)))
         .overlay(Capsule().strokeBorder(TourInk.green, lineWidth: 1.5).opacity(armed ? 1 : 0))
         .fixedSize()
         .animation(.smooth(duration: CircleMotion.quick), value: armed)
