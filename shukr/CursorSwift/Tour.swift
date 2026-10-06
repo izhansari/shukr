@@ -1403,8 +1403,8 @@ struct BubbleShape: Shape {
     static let circleBlocks = [
         // When → what it shows (owner's words, 2026-10-05): the situation, an arrow, the prayer.
         TourBlock(lead: "It shows the prayer that matters to you:",
-                  items: ["during a prayer|the current one", "already prayed?|the upcoming one",
-                          "end of the day|any you missed"], pairs: true),
+                  items: ["during a prayer?|the current one", "already prayed?|the upcoming one",
+                          "end of the day?|any you missed"], pairs: true),
         TourBlock(lead: "The ring fills with different colors based on how much time passes:",
                   items: ["First 30 min", "On time", "Late"], colours: true),
     ]
@@ -2757,6 +2757,10 @@ struct TourPairs: View {
             ForEach(lines.indices, id: \.self) { i in
                 let parts = lines[i].split(separator: "|", maxSplits: 1).map(String.init)
                 GridRow(alignment: .firstTextBaseline) {
+                    // Still a bulleted list (owner): the dot in the bullets' own column.
+                    Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+                        .frame(width: 15)
                     Text(parts[0])
                         .font(.system(.subheadline, design: .rounded, weight: .medium))
                         .foregroundStyle(Color.primary.opacity(0.95))
@@ -2771,6 +2775,5 @@ struct TourPairs: View {
                 .accessibilityLabel(parts.joined(separator: ": "))
             }
         }
-        .padding(.leading, 4)
     }
 }
