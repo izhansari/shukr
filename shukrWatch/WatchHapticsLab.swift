@@ -2,7 +2,7 @@
 //  WatchHapticsLab.swift
 //  shukrWatch
 //
-//  Every haptic watchOS lets an app play (WKHapticType — the whole list; SwiftUI's sensoryFeedback plays these same
+//  Every haptic watchOS lets an app play (WKHapticType, the ones a Series 9 plays — the navigation and diving ones played nothing on Laraib's watch and are left out; SwiftUI's sensoryFeedback plays these same
 //  ones on the watch), each a tap away, so the owner can feel them all before choosing a session's (owner, 2026-10-06:
 //  "a little dev setting that lets me explore all the different kind of vibrations … then … give the user some
 //  granular control on what type of haptic they want in a counting session"). Beta only (WatchBeta: DEBUG / TestFlight).
@@ -14,6 +14,10 @@ import WatchKit
 struct WatchHapticsLab: View {
     /// Plays it five times at a quick counting pace, to feel it as counts rather than once.
     @State private var asCounts = false
+    /// Inside a counting session's runtime (the mindfulness session the counter keeps open): does a type's sound stay
+    /// quiet there? (owner: "in our first version with strong medium light, there wasnt ever sound")
+    @State private var inSession = false
+    @State private var runtime = WatchRuntime()
     @State private var playing: String?
 
     private struct Haptic: Identifiable {
@@ -35,11 +39,6 @@ struct WatchHapticsLab: View {
         Haptic(name: "Failure", type: .failure, note: "a short falling pattern", usedFor: "a mark the phone refused"),
         Haptic(name: "Retry", type: .retry, note: "three quick taps", usedFor: "counting in sets"),
         Haptic(name: "Notification", type: .notification, note: "the notification tap", usedFor: "session time running out"),
-        Haptic(name: "Navigation", type: .navigationGenericManeuver, note: "Maps' generic turn"),
-        Haptic(name: "Turn left", type: .navigationLeftTurn, note: "Maps' left turn"),
-        Haptic(name: "Turn right", type: .navigationRightTurn, note: "Maps' right turn"),
-        Haptic(name: "Depth prompt", type: .underwaterDepthPrompt, note: "a diving prompt"),
-        Haptic(name: "Depth critical", type: .underwaterDepthCriticalPrompt, note: "a diving alarm"),
     ]
 
     var body: some View {
@@ -52,6 +51,15 @@ struct WatchHapticsLab: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            Toggle(isOn: $inSession) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("As in a session")
+                    Text("runs the counter's session, to compare the sound")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .onChange(of: inSession) { _, on in if on { runtime.start() } else { runtime.stop() } }
             ForEach(haptics) { h in
                 Button { play(h) } label: {
                     VStack(alignment: .leading, spacing: 2) {
@@ -79,6 +87,7 @@ struct WatchHapticsLab: View {
                 .listRowBackground(Color.clear)
         }
         .navigationTitle("Haptics")
+        .onDisappear { runtime.stop() }
     }
 
     private func play(_ h: Haptic) {

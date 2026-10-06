@@ -564,7 +564,10 @@ struct WatchZikrPage: View {
             let items: [Item] = [.freestyle] + store.tasks.map { .task($0) }
             GeometryReader { geo in
                 ScrollView {
-                    LazyVStack(spacing: 0) {
+                    // Never lazy (the phone's rule, CLAUDE.md): a lazy stack only estimates rows it hasn't built, so a
+                    // hard flick or a fast Crown reached unbuilt circles and the settle jumped 50–60 pt in one frame
+                    // when they were built (29–39 jumps a minute on Laraib's watch).
+                    VStack(spacing: 0) {
                         ForEach(items) { item in
                             // A real button (owner, YGF3: starting was hard to hit): the system's
                             // press feedback and its touch slop — a bare tap gesture in a scrolling
@@ -587,8 +590,22 @@ struct WatchZikrPage: View {
                 // item"): the default limit let one flick move only one item on a watch-sized screen.
                 .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
                 .scrollPosition(id: $centered, anchor: .center)
+                // The wheel's feel, measured on a wrist (beta builds' log; `-watchPinchLogPrint` streams it): each
+                // offset with its time (gaps = dropped frames), the phases, where it settles.
+                .onScrollPhaseChange { old, new in WatchPinchLog.add("wheel phase \(old) → \(new)") }
+                .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y } action: { _, y in
+                    WatchPinchLog.add(String(format: "wheel y %.1f", y))
+                }
                 .contentMargins(.vertical, max((geo.size.height - rowHeight) / 2, 0), for: .scrollContent)
                 .scrollIndicators(.hidden)
+                // The phone's dot scrubber, down the left edge (owner: "to the left side the same way it is in the
+                // app, where we can scrub through all the tasks … by our finger or with the crown").
+                // Its own view: only the dots redraw as the centred circle changes — the page reading `centered` redrew
+                // the scroll view each circle it passed, and the settle jumped its last 50–60 pt in one frame (39 times
+                // in a minute of hard flicks on Laraib's watch).
+                .overlay(alignment: .leading) {
+                    if items.count > 1 { Scrubber(items: items, centered: $centered, now: context.date) }
+                }
                 .overlay(alignment: .bottom) {
                     if !store.hasData {
                         Text("Your tasks come from shukr on your iPhone")
@@ -688,6 +705,68 @@ struct WatchZikrPage: View {
         guard running == nil, let draft = store.settleDraft() else { return }
         let task = draft.taskID.flatMap { id in store.tasks.first { $0.id == id } }
         running = WatchCounterConfig(restoring: draft, task: task)
+    }
+
+    /// One dot per circle, the centred one bigger, tasks done today sage (the phone's `scrubber`). A finger on them
+    /// flies through the circles — a click for each one passed, and a pill beside the finger naming it; the Crown
+    /// moves the wheel, and the dots follow.
+    private struct Scrubber: View {
+        let items: [Item]
+        @Binding var centered: String?
+        let now: Date
+        @State private var scrubbing = false
+
+        private let dotSlot: CGFloat = 11
+        private let scrubberPad: CGFloat = 8
+
+        var body: some View {
+            VStack(spacing: 0) {
+                ForEach(items) { item in
+                    let current = item.id == centered
+                    let done: Bool = { if case .task(let t) = item { return WatchZikrStore.shared.isDone(t, at: now) } else { return false } }()
+                    Circle()
+                        .fill(done ? Color.watchSage : Color.primary.opacity(current ? 0.6 : 0.22))
+                        .frame(width: current ? 6 : 4, height: current ? 6 : 4)
+                        .frame(width: 16, height: dotSlot)
+                }
+            }
+            .padding(.vertical, scrubberPad)
+            .background(Capsule().fill(Color.primary.opacity(scrubbing ? 0.1 : 0)))
+            .scaleEffect(scrubbing ? 1.15 : 1, anchor: .leading)
+            .overlay(alignment: .topLeading) {
+                if scrubbing, let index = items.firstIndex(where: { $0.id == centered }) {
+                    Text(scrubLabel(items[index]))
+                        .font(.system(size: 13, design: .rounded))
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Capsule().fill(.regularMaterial))
+                        .fixedSize()
+                        .offset(x: 26, y: scrubberPad + dotSlot * CGFloat(index) - 8)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+            .contentShape(Rectangle().inset(by: -10))
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if !scrubbing { withAnimation(.snappy(duration: 0.2)) { scrubbing = true } }
+                        let index = min(max(Int((value.location.y - scrubberPad) / dotSlot), 0), items.count - 1)
+                        if centered != items[index].id {
+                            WKInterfaceDevice.current().play(.click)
+                            withAnimation(.snappy(duration: 0.18)) { centered = items[index].id }
+                        }
+                    }
+                    .onEnded { _ in withAnimation(.snappy(duration: 0.2)) { scrubbing = false } }
+            )
+            .animation(.snappy(duration: 0.2), value: centered)
+            .padding(.leading, 2)
+        }
+
+        private func scrubLabel(_ item: Item) -> String {
+            if case .task(let t) = item { return t.title } else { return "Freestyle" }
+        }
     }
 
     private func tapped(_ item: Item, now: Date) {
@@ -1664,7 +1743,7 @@ struct WatchSettingsPage: View {
                         .textCase(.uppercase)
                         .foregroundStyle(.secondary)
                         .padding(.top, 8)
-                    row("Haptics lab", "14") { showHaptics = true }
+                    row("Haptics lab", "9") { showHaptics = true }
                 }
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
