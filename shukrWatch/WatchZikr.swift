@@ -584,6 +584,12 @@ struct WatchZikrPage: View {
                 }
                 .contentMargins(.vertical, max((geo.size.height - rowHeight) / 2, 0), for: .scrollContent)
                 .scrollIndicators(.hidden)
+                // The wheel fades out at the bottom, under the tasks line (the phone's soft edge under its bar).
+                .mask(
+                    LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.72),
+                                           .init(color: .black.opacity(store.tasks.isEmpty ? 1 : 0.15), location: 0.9)],
+                                   startPoint: .top, endPoint: .bottom)
+                )
                 // The phone's dot scrubber, down the left edge (owner: "to the left side the same way it is in the
                 // app, where we can scrub through all the tasks … by our finger or with the crown").
                 // Its own view: only the dots redraw as the centred circle changes — the page reading `centered` redrew
@@ -599,6 +605,8 @@ struct WatchZikrPage: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .padding(.bottom, 16)
+                    } else if !store.tasks.isEmpty {
+                        tasksSummary(now: context.date).padding(.bottom, 14)
                     }
                 }
             }
@@ -778,6 +786,39 @@ struct WatchZikrPage: View {
         private func scrubLabel(_ item: Item) -> String {
             if case .task(let t) = item { return t.title } else { return "Freestyle" }
         }
+    }
+
+    /// The phone's line under the wheel (owner: "add this line to the bottom … no need for it to be a link"):
+    /// "1 of 3 tasks done · about 14 min to go" / "all 3 tasks done today". What's left at your pace: a count task's
+    /// counts left × its pace (none yet → left out), a timed one's minutes left.
+    private func tasksSummary(now: Date) -> some View {
+        let tasks = store.tasks
+        let done = tasks.filter { store.isDone($0, at: now) }.count
+        let left: Double = tasks.filter { !store.isDone($0, at: now) }.compactMap { task -> Double? in
+            let p = store.progress(task, at: now)
+            if task.countMode { return task.pace.map { Double(max(task.goal - p.count, 0)) * $0 } }
+            return max(Double(task.goal) * 60 - p.seconds, 0)
+        }.reduce(0, +)
+        let all = done == tasks.count
+        // Two lines on purpose (one wrapped wherever it fell: "to go" alone).
+        return VStack(spacing: 0) {
+            HStack(spacing: 3) {
+                if all { Image(systemName: "checkmark") }
+                Text(all ? "all \(tasks.count) tasks done today" : "\(done) of \(tasks.count) tasks done")
+            }
+            if !all, left > 0 { Text("about " + Self.estimate(left) + " to go") }
+        }
+        .font(.system(size: 10, weight: .light, design: .rounded))
+        .foregroundStyle(all ? Color.watchSage : Color.secondary)
+        .lineLimit(1)
+        .allowsHitTesting(false)
+    }
+
+    /// The phone's `zikrEstimateString` without its "~": "4 min", "1h 10m", "<1 min".
+    private static func estimate(_ seconds: Double) -> String {
+        if seconds < 60 { return "<1 min" }
+        let minutes = Int((seconds / 60).rounded(.up))
+        return minutes < 60 ? "\(minutes) min" : "\(minutes / 60)h \(minutes % 60)m"
     }
 
     private func tapped(_ item: Item, now: Date) {
