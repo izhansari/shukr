@@ -9,6 +9,8 @@ enum TourStep: String, CaseIterable, Identifiable {
     // The tour itself, four cards (tour v2, Izhan's spec 2026-10-05, board/brief-tour-v2.md): each card is one topic —
     // learn it where it lives, then try it — and the one bubble drifts from card to card, turning its page.
     case circle, list, zikr, settings
+    // Before them: a welcome, and how the tour goes (owner: "something Muslim and friendly").
+    case intro
     // After the tour: the first real mark's celebration, the post-salah pill's card, the map hint.
     case celebrate, firstPill, map, hintMark
     var id: String { rawValue }
@@ -16,6 +18,8 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The four cards, in order.
     static let cards: [TourStep] = [.circle, .list, .zikr, .settings]
     var isCard: Bool { Self.cards.contains(self) }
+    /// A page of the tour itself: the welcome or a card (not a post-tour step).
+    var isTourPage: Bool { self == .intro || isCard }
     /// A card's chapter title, led by its number in the bubble (owner).
     var chapterTitle: String {
         switch self {
@@ -49,6 +53,7 @@ enum TourStep: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .circle, .hintMark, .firstPill: "hand.tap"
+        case .intro: "moon.stars"
         case .list: "list.bullet"
         case .zikr: "circle.hexagongrid"
         case .settings: "gearshape"
@@ -96,6 +101,8 @@ struct TourBlock: Equatable {
     let items: [String]
     /// The ring's colours: each item gets its colour's dot, lit as the demo's ring reaches it.
     var colours = false
+    /// Numbered instead of dotted (the welcome's four chapters).
+    var numbered = false
 }
 
 /// One step of a chapter (owner: steps that collapse as you go): open while it's the current one, then folded to a ✓
@@ -587,7 +594,8 @@ struct TourPageView: View {
                 .foregroundStyle(Color.primary.opacity(0.6))
                 .accessibilityHidden(true)
             Text(page.headline)
-                .font(.system(.body, design: .rounded, weight: .regular))
+                // The welcome in the chapters' title type.
+                .font(.system(step == .intro ? .headline : .body, design: .rounded, weight: step == .intro ? .semibold : .regular))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let line = page.subline {
@@ -734,7 +742,7 @@ struct TourLearnBlocks: View {
                     if blocks[i].colours {
                         TourColorKey(notes: blocks[i].items, lit: lit, vertical: true)
                     } else {
-                        TourBullets(lines: blocks[i].items)
+                        TourBullets(lines: blocks[i].items, numbered: blocks[i].numbered)
                     }
                 }
             }
@@ -746,13 +754,23 @@ struct TourLearnBlocks: View {
 struct TourBullets: View {
     let lines: [String]
     var small = false
+    var numbered = false
     var body: some View {
         VStack(alignment: .leading, spacing: small ? 4 : 6) {
             ForEach(lines.indices, id: \.self) { i in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
-                        .frame(width: 15)
-                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+                    Group {
+                        if numbered {
+                            Text("\(i + 1)")
+                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(TourInk.green)
+                        } else {
+                            Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
+                                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+                        }
+                    }
+                    .frame(width: 15)
                     Text(lines[i])
                         .font(.system(small ? .footnote : .subheadline, design: .rounded, weight: .light))
                         .foregroundStyle(Color.primary.opacity(small ? 0.6 : 0.85))
@@ -1036,6 +1054,9 @@ struct BubbleShape: Shape {
 @MainActor @Observable final class TourRuntime {
     static let shared = TourRuntime()
     static let doneKey = "tour.v1.done"
+    /// Taken to its end (Done on the last card — a skip doesn't count): until then "App Tour" sits in the ☰ menu with a
+    /// dot on ☰ (owner, 2026-10-05).
+    static let completedKey = "tour.v2.completed"
     /// Set when the first-run setup finishes: the tour starts once the welcome has played.
     static let pendingKey = "tour.v1.pending"
     static let start = Notification.Name("shukr.tour.start")
@@ -1234,8 +1255,6 @@ struct BubbleShape: Shape {
         guard let share = colorSweep, isPractice(prayer) else { return nil }
         return prayer.startTime.addingTimeInterval(share * prayer.endTime.timeIntervalSince(prayer.startTime))
     }
-    /// Where the practice window's last hour begins, as a share of it.
-    private static let lastHourShare = 1 - 3600 / practiceWindow
 
     private func playColors(run thisRun: Int) {
         guard !sweeping else { return }
@@ -1245,7 +1264,6 @@ struct BubbleShape: Shape {
         colorSweep = start
         Task { @MainActor in
             let sweep: TimeInterval = 8, top = 0.97, frame: TimeInterval = 1.0 / 60
-            var lastHourShown = false
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
             // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
@@ -1264,12 +1282,6 @@ struct BubbleShape: Shape {
                 let share = start + (top - start) * min(elapsed / sweep, 1)
                 colorSweep = share
                 for (i, at) in lights.enumerated() where share >= at { light(i) }
-                // The last hour: the time line turns to the time left — it glows, so the eye goes there.
-                if !lastHourShown, share >= Self.lastHourShare {
-                    lastHourShown = true
-                    flashKey = "circleTime"
-                    flashes += 1
-                }
                 try? await Task.sleep(for: .seconds(frame))
             }
             guard run == thisRun else { return }
@@ -1352,6 +1364,16 @@ struct BubbleShape: Shape {
     // it's the one, then folded to a ✓ line. Learning is short lists (owner's layout), never a paragraph.
     private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
         switch step {
+        case .intro:
+            // The welcome (owner: introductory, how the tour goes, "something Muslim and friendly").
+            let intro = TourSection(id: "intro",
+                                    lead: "Welcome to shukr. A quick look around, in four short chapters:",
+                                    blocks: [TourBlock(items: ["Prayer Circle \u{00B7} the prayer that matters now",
+                                                               "Prayer List \u{00B7} your whole day",
+                                                               "Zikr \u{00B7} your daily remembrance",
+                                                               "Settings \u{00B7} make it yours"], numbered: true)],
+                                    note: "Each one: a quick look, then you try it. It\u{2019}s a practice day \u{2014} nothing you do here is kept.")
+            return TourPage(headline: "Assalamu alaikum", sections: [intro], primary: "Bismillah, let\u{2019}s begin")
         case .circle:
             var shows = TourSection(id: "circle.shows", title: "What it shows", blocks: [Self.circleBlocks[0]])
             var colours = TourSection(id: "circle.colours", title: "The colours", blocks: [Self.circleBlocks[1]])
@@ -1562,7 +1584,7 @@ struct BubbleShape: Shape {
         let thisRun = run
         Task { @MainActor in
             guard run == thisRun, active, step == nil else { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { step = .circle }
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { step = .intro }
         }
     }
 
@@ -1590,12 +1612,13 @@ struct BubbleShape: Shape {
         return d.bool(forKey: pendingKey) && !d.bool(forKey: doneKey) && d.integer(forKey: startedKey) < 2
     }
 
-    func skip() { finish() }
+    func skip() { finish(completed: false) }
 
-    private func finish() {
+    private func finish(completed: Bool) {
         run += 1
         active = false
         UserDefaults.standard.set(true, forKey: Self.doneKey)
+        if completed { UserDefaults.standard.set(true, forKey: Self.completedKey) }
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
         practicePrayer = nil
         clearPill += 1
@@ -1654,6 +1677,7 @@ struct BubbleShape: Shape {
         case (_, _, .back): goBack(from: step)
 
         // 1 · The circle: learn (the colours demo, then Continue), then try.
+        case (.intro, _, .next): go(to: .circle)
         case (.circle, .learn, .next): setPhase(.learnMore)
         case (.circle, .learnMore, .demo): playColors(run: run)
         case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
@@ -1696,7 +1720,7 @@ struct BubbleShape: Shape {
                 flashKey = "tourAgainRow"
                 flashes += 1
             }
-        case (.settings, .last, .next): finish()
+        case (.settings, .last, .next): finish(completed: true)
         default: break
         }
     }
@@ -1767,8 +1791,8 @@ struct BubbleShape: Shape {
             forward = !back
             withAnimation(.smooth(duration: CircleMotion.standard)) {
                 resetCardState()
-                if next == .circle { sweepPlayed = true }   // back to the circle: its demo was seen
-                phase = (next == .zikr || next == .settings) ? .go : (next == .circle && sweepPlayed ? .tryIt : .learn)
+                if next == .circle && back { sweepPlayed = true }   // back to the circle: its demo was seen
+                phase = (next == .zikr || next == .settings) ? .go : (next == .circle && back ? .tryIt : .learn)
                 step = next
             }
         }
@@ -1870,7 +1894,7 @@ struct TourLayer: View {
 
     @ViewBuilder private var backPill: some View {
         // Taken off the card's page (a widget or a control opened another page; the pager is held): one way back.
-        if let step = runtime.step, step.isCard, !covered, !onItsPage(step) {
+        if let step = runtime.step, step.isTourPage, !covered, !onItsPage(step) {
             BackToTourPill { returnTo(step) }
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 150)   // above the Zikr page's "tasks done" line and the tab bar
@@ -1912,11 +1936,11 @@ struct TourLayer: View {
         content
             .onChange(of: runtime.step) { _, step in
                 guard let step else { return }
-                if step.isCard, !onItsPage(step) { returnTo(step) }
+                if step.isTourPage, !onItsPage(step) { returnTo(step) }
                 announce()
             }
             .onChange(of: runtime.phase) { _, _ in
-                guard let step = runtime.step, step.isCard else { return }
+                guard let step = runtime.step, step.isTourPage else { return }
                 if !onItsPage(step) { returnTo(step) }
                 announce()
             }
@@ -2003,7 +2027,7 @@ extension TourLayer {
 
     /// What the bubble says: a card's page, or a post-tour step's own words.
     private func page(_ step: TourStep) -> TourPage {
-        if step.isCard { return runtime.page }
+        if step.isTourPage { return runtime.page }
         switch step {
         case .celebrate: return TourPage(headline: step.headline, subline: step.subline, primary: "Continue")
         case .firstPill:
@@ -2114,6 +2138,7 @@ extension TourLayer {
     private func sheetPosition(_ step: TourStep?) -> SharedStateClass.ViewPosition? {
         switch step {
         case .circle: runtime.ticked.contains(2) ? nil : .main   // marked: the swipe up opens it (the card's last move)
+        case .intro: .main
         case .list: .bottom
         case .zikr: .main
         default: nil
@@ -2395,7 +2420,7 @@ struct TourSkippedNote: View {
         VStack(alignment: .leading, spacing: 3) {
             Text("You skipped the tour")
                 .font(.system(.subheadline, design: .rounded, weight: .medium))
-            Text("It lives in Settings whenever you want it.")
+            Text("It\u{2019}s in the \u{2630} menu whenever you want it.")
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2520,5 +2545,50 @@ struct TourSheetTip: View {
         // step couldn't be finished (Sami, AX XXXL).
         .dynamicTypeSize(...DynamicTypeSize.large)
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// A dot on ☰ until the tour has been taken to its end (owner, 2026-10-05): it leads to "App Tour" in the menu. The
+/// compass's red dot sits over it when that's needed too.
+struct TourMenuBadge: View {
+    @AppStorage(TourRuntime.completedKey) private var completed = false
+    var body: some View {
+        Circle()
+            .fill(TourInk.green)
+            .frame(width: 8, height: 8)
+            .opacity(completed || TourRuntime.shared.active ? 0 : 1)
+            .animation(.easeInOut(duration: 0.3), value: completed)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
+/// "App Tour" at the bottom of the ☰ menu until the tour has been taken to its end (a skip leaves it there); then
+/// it's gone for good — Settings' "Show me around again" stays (owner, 2026-10-05).
+struct TourMenuRow: View {
+    @AppStorage(TourRuntime.completedKey) private var completed = false
+    let action: () -> Void
+
+    var body: some View {
+        if !completed {
+            Button(action: action) {
+                Label {
+                    Text("App Tour")
+                } icon: {
+                    Image(systemName: "sparkles")
+                        .overlay(alignment: .topTrailing) {
+                            Circle().fill(TourInk.green).frame(width: 7, height: 7).offset(x: 3, y: -2)
+                        }
+                }
+                .fontDesign(.rounded)
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("A short look around shukr")
+        }
     }
 }

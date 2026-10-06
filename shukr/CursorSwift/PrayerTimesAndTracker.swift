@@ -1751,7 +1751,10 @@ struct PrayerTimesView: View {
                                 .foregroundColor(.gray.opacity(0.8))
                                 // The compass needs calibrating: a red dot (its own small view, so the
                                 // chrome doesn't redraw with the compass).
-                                .overlay(alignment: .topTrailing) { CompassMenuBadge().offset(x: 3, y: -1) }
+                                // The tour not yet taken to its end: a green dot (Tour.swift), under the compass's.
+                                .overlay(alignment: .topTrailing) {
+                                    ZStack { TourMenuBadge(); CompassMenuBadge() }.offset(x: 3, y: -1)
+                                }
                                 .padding()
                         }
                         .popover(isPresented: $showMenu, arrowEdge: .top) {
@@ -1769,6 +1772,11 @@ struct PrayerTimesView: View {
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 CompassMenuRow {
                                     pendingMenuAction = { showCalibration = true }
+                                    showMenu = false
+                                }
+                                // Until the tour is taken to its end (Tour.swift).
+                                TourMenuRow {
+                                    pendingMenuAction = { NotificationCenter.default.post(name: TourRuntime.start, object: nil) }
                                     showMenu = false
                                 }
                                 // Which build this is (BuildInfo): when it was built + the commit.
