@@ -43,6 +43,16 @@ extension DayPrayer {
     }
 }
 
+/// A row on the Settings page to scroll to once it's at rest (the day page's "Set a Fajr alarm ›" lands on the alarm, not
+/// the top — Ben's audit). Settings scrolls on `count`.
+@MainActor @Observable final class SettingsJump {
+    static let shared = SettingsJump()
+    private(set) var target = ""
+    private(set) var count = 0
+    func request(_ id: String) { target = id; count += 1 }
+    static let fajrAlarm = "fajrAlarm"
+}
+
 /// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.
 struct DayRing: View {
     let day: [DayPrayer]
@@ -151,8 +161,19 @@ struct DayCentre: View {
 /// The day's prayers, before today's: one list per prayer day, newest first (yesterday at 0), `days` of them; an
 /// empty list for a day with no rows (it breaks a run, as it should).
 enum DayHistory {
+    /// Earlier days don't change within a day: one fetch per prayer day (Ben's audit — it ran on every appearance).
+    @MainActor private static var cache: (key: String, days: [[DayPrayer]])?
+
     @MainActor static func load(_ context: ModelContext, days: Int = 35) -> [[DayPrayer]] {
         let today = PrayerDay.date()
+        let key = PrayerNotificationID.dayKey(today)
+        if let cache, cache.key == key, cache.days.count == days { return cache.days }
+        let loaded = fetch(context, days: days, today: today)
+        cache = (key, loaded)
+        return loaded
+    }
+
+    @MainActor private static func fetch(_ context: ModelContext, days: Int, today: Date) -> [[DayPrayer]] {
         let cutoff = Calendar.current.date(byAdding: .day, value: -(days + 2), to: Calendar.current.startOfDay(for: today)) ?? today
         let descriptor = FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.startTime >= cutoff })
         guard let rows = try? context.fetch(descriptor) else { return [] }

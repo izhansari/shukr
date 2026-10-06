@@ -314,6 +314,7 @@ struct SettingsView: View {
                     
                     // MARK: - Daily Alarm
                     AlarmSettingsView()
+                        .id(SettingsJump.fajrAlarm)
                     
                     
                     
@@ -389,6 +390,12 @@ struct SettingsView: View {
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
                     // mid-swipe stalled the pager, Sami's round D run) — then this row for its last step.
+                    // The day page's "Set a Fajr alarm ›": the alarm row, once the page is at rest (DaySummary.swift).
+                    .onChange(of: SettingsJump.shared.count) { _, _ in
+                        withAnimation(.smooth(duration: CircleMotion.standard)) {
+                            proxy.scrollTo(SettingsJump.shared.target, anchor: .center)
+                        }
+                    }
                     .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
                         let to = TourRuntime.shared.settingsScroll.0
                         withAnimation(.smooth(duration: CircleMotion.standard)) {

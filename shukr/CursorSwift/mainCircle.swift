@@ -895,6 +895,10 @@ struct summaryCircle: View{
         if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
             Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
                 .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+        } else if shownDay.isEmpty {
+            // No rows for the day shown (the app not opened that day): say so, not nothing (Ben's audit).
+            Text(showingYesterday ? "No prayers marked yesterday." : "No prayers marked today.")
+                .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
         } else if let line, !line.text.isEmpty {
             VStack(spacing: 6) {
                 Text(line.text)
@@ -902,7 +906,10 @@ struct summaryCircle: View{
                     .fixedSize(horizontal: false, vertical: true)
                     .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
                 if line.offersFajrAlarm && !fajrAlarmOn {
-                    Button { sharedState.go(to: .settings) } label: {
+                    Button {
+                        // Settings, then its alarm row once the page has come to rest (scrolling mid-swipe stalls it).
+                        Task { if await sharedState.navigate(to: .settings) { SettingsJump.shared.request(SettingsJump.fajrAlarm) } }
+                    } label: {
                         Text("Set a Fajr alarm ›").font(.system(size: 14, weight: .regular, design: .rounded))
                             .foregroundStyle(Color.sage)
                     }
