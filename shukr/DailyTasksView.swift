@@ -486,6 +486,7 @@ struct ZikrCircleWheel: View {
         .padding(.vertical, 7)
         .frame(maxWidth: 180)
         .background(Capsule().fill(.ultraThinMaterial))
+        .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 0.75))   // a subtle grey edge (owner)
         .opacity(openingSoft ? 0 : 1)
         .sheet(isPresented: $showFreestylePicker) {
             MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)

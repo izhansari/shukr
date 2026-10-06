@@ -714,6 +714,7 @@ struct WatchZikrPage: View {
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .frame(maxWidth: 88)
                 .background(Capsule().fill(.ultraThinMaterial))
+                .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 0.75))   // a subtle grey edge (owner)
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
