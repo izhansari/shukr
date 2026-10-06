@@ -78,14 +78,23 @@ enum TourStep: String, CaseIterable, Identifiable {
 /// Settings); Settings ends on its last line, the tour's own row.
 enum TourPhase: Equatable { case go, learn, tryIt, last }
 
-/// What the one bubble says right now: built by TourRuntime from the card and its phase.
+/// One part of a card's "what it's for": a short lead and its list (owner: glanceable, never a paragraph).
+struct TourBlock: Equatable {
+    let lead: String
+    let items: [String]
+    /// The ring's colours: each item gets its colour's dot, lit as the demo's ring reaches it.
+    var colours = false
+}
+
+/// What the one bubble says right now: built by TourRuntime from the card and its phase. The headline is the card's
+/// chapter title, the same the whole way through (owner); what's under it folds and grows in place.
 struct TourPage: Equatable {
     var headline: String
     var subline: String? = nil
-    /// The card's "what it's for": plain bullets (learn), folded to one line once they're trying it.
-    var bullets: [String] = []
-    /// The colours' lines: dim until the ring reaches them in the demo.
-    var notes: [String] = []
+    /// The card's "what it's for" (learn), folded to one line (`foldedTitle`) once they're trying it.
+    var blocks: [TourBlock] = []
+    /// The to-dos are all done: folded to one "All done" line.
+    var tasksDone = false
     /// The to-dos; `locked` ones wait (greyed) until the ones before are done.
     var tasks: [String] = []
     var locked: Set<Int> = []
@@ -391,7 +400,7 @@ struct TourCallout: View {
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
                                 // Nothing to point at (Settings' learn): low, clear of what it talks about.
                                 fallbackY: step == .settings ? size.height : size.height * 0.6, avoid: hole,
-                                topLimit: typeSize.isAccessibilitySize ? 158 : 100) {
+                                topLimit: typeSize.isAccessibilitySize ? 158 : 112) {
                 bubble(below: below, tail: tail)
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
@@ -492,9 +501,8 @@ struct TourPageView: View {
                 }
             }
             Group {
-                if !page.bullets.isEmpty { TourBullets(lines: page.bullets) }
-                if !page.notes.isEmpty { TourColorKey(notes: page.notes, lit: lit) }
-                // While trying it: what it's for, folded to one line (owner: collapsible so the card stays small).
+                // What it's for: open while learning; on Continue it folds into its one line (the same card the whole
+                // way — owner), which opens it again.
                 if let folded {
                     Button(action: onToggleLearn) {
                         HStack(spacing: 5) {
@@ -510,24 +518,33 @@ struct TourPageView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(learnOpen ? "Hide: \(folded.title)" : "Show: \(folded.title)")
-                    if learnOpen {
-                        VStack(alignment: .leading, spacing: 6) {
-                            if let line = folded.page.subline {
-                                Text(line)
-                                    .font(.system(.footnote, design: .rounded, weight: .light))
-                                    .foregroundStyle(Color.primary.opacity(0.6))
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            TourBullets(lines: folded.page.bullets, small: true)
-                            if !folded.page.notes.isEmpty {
-                                TourColorKey(notes: folded.page.notes, lit: Set(folded.page.notes.indices))
-                            }
-                        }
-                        .transition(.opacity)
-                    }
+                    .transition(.opacity.animation(.easeOut(duration: CircleMotion.quick).delay(0.15)))   // as the words roll up
                 }
-                if !page.tasks.isEmpty {
+                // One view the whole card: on Continue it rolls up under its line (clipped to a height that animates to
+                // nothing), and the line opens it again.
+                let blocks = folded?.page.blocks ?? page.blocks
+                if !blocks.isEmpty {
+                    let open = folded == nil || learnOpen
+                    TourLearnBlocks(blocks: blocks, lit: folded == nil ? lit : Set(0..<3))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(height: open ? nil : 0, alignment: .top)
+                        .clipped()
+                        .opacity(open ? 1 : 0)
+                        .padding(.top, open ? 0 : -10)   // no gap left in the stack
+                        .accessibilityHidden(!open)
+                }
+                if page.tasksDone {
+                    // Done: the to-dos fold to one line.
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(TourInk.green)
+                        Text("All done").foregroundStyle(Color.primary.opacity(0.6))
+                    }
+                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .transition(.opacity)
+                } else if !page.tasks.isEmpty {
                     TourChecklist(tasks: page.tasks, ticked: ticked, locked: page.locked)
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
+                                                removal: .opacity.combined(with: .scale(scale: 0.9, anchor: .top))))
                 }
                 if qiblaSkip {
                     Button("No compass here? Skip it", action: onSkipQibla)
@@ -587,6 +604,29 @@ struct TourPageView: View {
     }
 }
 
+/// A card's "what it's for": each block a lead, then its short list (the colours with their dots).
+struct TourLearnBlocks: View {
+    let blocks: [TourBlock]
+    let lit: Set<Int>
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(blocks.indices, id: \.self) { i in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(blocks[i].lead)
+                        .font(.system(.subheadline, design: .rounded, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                    if blocks[i].colours {
+                        TourColorKey(notes: blocks[i].items, lit: lit, vertical: true)
+                    } else {
+                        TourBullets(lines: blocks[i].items)
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// The "what it's for" lines: a small dot each.
 struct TourBullets: View {
     let lines: [String]
@@ -613,14 +653,38 @@ struct TourBullets: View {
 struct TourColorKey: View {
     let notes: [String]
     let lit: Set<Int>
+    /// One under another, like the card's other lists (the circle's learn page); else side by side.
+    var vertical = false
     private static let colors: [Color] = [PrayerScoring.color(for: 1), PrayerScoring.color(for: 0.9), PrayerScoring.color(for: 0.7)]
     var body: some View {
-        // Two lines at most: the three keys side by side, wrapping only at large text.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) { keys }
-            VStack(alignment: .leading, spacing: 4) { keys }
+        if vertical {
+            // Laid out like TourBullets: the dot in the bullet's column.
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(notes.indices, id: \.self) { i in
+                    let on = lit.contains(i)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Circle().fill(Self.colors[min(i, 2)].opacity(on ? 1 : 0.6))
+                            .frame(width: on ? 9 : 7, height: on ? 9 : 7)
+                            .frame(width: 15)
+                            .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                        Text(notes[i])
+                            .font(.system(.subheadline, design: .rounded, weight: on ? .medium : .light))
+                            .foregroundStyle(Color.primary.opacity(on ? 0.95 : 0.75))
+                    }
+                    .animation(.snappy(duration: 0.3), value: on)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label(i))
+                }
+            }
+        } else {
+            // Two lines at most: the three keys side by side, wrapping only at large text.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { keys }
+                VStack(alignment: .leading, spacing: 4) { keys }
+            }
         }
     }
+    private func label(_ i: Int) -> String { "\(["Green", "Yellow", "Red"][min(i, 2)]): \(notes[i])" }
     @ViewBuilder private var keys: some View {
         ForEach(notes.indices, id: \.self) { i in
             let on = lit.contains(i)
@@ -633,7 +697,7 @@ struct TourColorKey: View {
             }
             .animation(.snappy(duration: 0.3), value: on)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(["Green", "Yellow", "Red"][min(i, 2)]): \(notes[i])")
+            .accessibilityLabel(label(i))
         }
     }
 }
@@ -1049,6 +1113,15 @@ struct BubbleShape: Shape {
     /// The circle card's colours demo (owner: "user triggered … they see the whole sweep and then the continue button
     /// turns on"): the ring fills smoothly from just begun to nearly over in 7 s — green, then yellow, then red — once,
     /// each colour's line lighting as the ring first reaches it; then the ring is back where it was.
+    /// The colours demo's clock: the moment in the practice window the sweep has reached (the circle's time line
+    /// switches to the time left in its last hour, as the real one does — owner).
+    func sweepNow(for prayer: PrayerModel) -> Date? {
+        guard let share = colorSweep, isPractice(prayer) else { return nil }
+        return prayer.startTime.addingTimeInterval(share * prayer.endTime.timeIntervalSince(prayer.startTime))
+    }
+    /// Where the practice window's last hour begins, as a share of it.
+    private static let lastHourShare = 1 - 3600 / practiceWindow
+
     private func playColors(run thisRun: Int) {
         guard !sweeping else { return }
         sweeping = true
@@ -1056,7 +1129,8 @@ struct BubbleShape: Shape {
         let start = 5 * 60 / Self.practiceWindow
         colorSweep = start
         Task { @MainActor in
-            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 60
+            let sweep: TimeInterval = 8, top = 0.97, frame: TimeInterval = 1.0 / 60
+            var lastHourShown = false
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
             // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
@@ -1075,10 +1149,16 @@ struct BubbleShape: Shape {
                 let share = start + (top - start) * min(elapsed / sweep, 1)
                 colorSweep = share
                 for (i, at) in lights.enumerated() where share >= at { light(i) }
+                // The last hour: the time line turns to the time left — it glows, so the eye goes there.
+                if !lastHourShown, share >= Self.lastHourShare {
+                    lastHourShown = true
+                    flashKey = "circleTime"
+                    flashes += 1
+                }
                 try? await Task.sleep(for: .seconds(frame))
             }
             guard run == thisRun else { return }
-            try? await Task.sleep(for: .seconds(0.4))   // a beat in the red
+            try? await Task.sleep(for: .seconds(1.2))   // a beat in the red, the minutes left readable
             guard run == thisRun else { return }
             withAnimation(.easeInOut(duration: CircleMotion.standard)) {
                 colorSweep = nil
@@ -1125,49 +1205,74 @@ struct BubbleShape: Shape {
     var doneCount: Int { Self.practiceMirror?.filter(\.isCompleted).count ?? 0 }
 
     /// The current card's words, to-dos and buttons (the post-tour steps have their own, in TourLayer).
-    var page: TourPage { page(for: step, phase: phase) }
+    var page: TourPage {
+        // Continue from learning, its first half: what it's for rolls up into its one line, nothing new yet.
+        if let into = folding {
+            var p = page(for: step, phase: into)
+            p.tasks = []
+            p.insight = nil
+            p.primary = nil
+            p.secondary = nil
+            return p
+        }
+        return page(for: step, phase: phase)
+    }
+    /// Continue from learning is in two beats (owner: the content collapses into its line item, one card the whole
+    /// way): first the fold (this, the phase it's folding into), then what comes next under the line.
+    private(set) var folding: TourPhase?
     /// A card's "what it's for", as it reads while learning it (folded to one line once they're trying it).
     func learnPage(_ card: TourStep) -> TourPage { page(for: card, phase: .learn) }
 
+    static let circleTitle = "This is your prayer circle."
+    static let listTitle = "Your whole day, prayer by prayer."
+    static let zikrTitle = "Your zikr."
+    static let settingsTitle = "Your settings."
+    /// The owner's words for card 1 (2026-10-05), as he laid them out.
+    static let circleBlocks = [
+        TourBlock(lead: "It shows the prayer that matters to you:",
+                  items: ["the current one", "the upcoming one", "any you missed"]),
+        TourBlock(lead: "The ring fills with different colors based on how much time passes:",
+                  items: ["First 30 min", "On time", "Late"], colours: true),
+    ]
+
     private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
         switch (step, phase) {
+        // Each card's headline is its chapter title, the same the whole way through (owner); learning is a few short
+        // blocks (owner's own layout for card 1: a lead, then a short list), folded to one line once they try it.
         case (.circle, .learn):
             return TourPage(
-                headline: "This is your prayer circle.",
-                subline: "It shows the prayer that matters now: the one that\u{2019}s on, the next once you\u{2019}ve marked it, any you missed by the day\u{2019}s end.",
-                bullets: ["The ring fills as time passes. Its colour is the score you\u{2019}d get if you prayed now:"],
-                notes: ["First 30 min", "On time", "Late"],
-                insight: "The small arrow points to the qibla. Hold the circle once you\u{2019}ve prayed to mark it.",
+                headline: Self.circleTitle,
+                blocks: Self.circleBlocks,
                 primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
                 secondary: sweepPlayed && !sweeping ? "Play again" : nil)
-        case (.circle, _) where ticked.contains(2):
-            // Marked: the payoff, small enough to sit above the circle — the whole page under it is free for the swipe.
-            return TourPage(
-                headline: "Marked and saved.",
-                subline: "The circle has moved on to Maghrib, and Asr is now in your prayer list.",
-                insight: "Swipe up to see your list.")
         case (.circle, _):
+            // Marked: the to-dos fold to "All done" and the payoff — small enough to sit above the circle, the whole
+            // page under it free for the swipe.
+            let marked = ticked.contains(2)
             return TourPage(
-                headline: "Try it.",
-                tasks: ["Tap the circle to flip its time", "Turn until the arrow points up",
+                headline: Self.circleTitle,
+                tasksDone: marked,
+                tasks: ["Tap the circle to flip its time", "Turn until the qibla arrow points up",
                         "Hold the circle to mark Asr"],
                 locked: lockedCircle,
+                insight: marked ? "Marked and saved \u{2014} Asr is in your prayer list now. Swipe up to see it." : nil,
                 foldedTitle: "What the circle shows")
         case (.list, .learn):
             return TourPage(
-                headline: "Your whole day, prayer by prayer.",
-                subline: "Every prayer and its time. Mark them done here, fix when and where you prayed, and see how well you\u{2019}re praying today.",
-                bullets: ["Prayers still to come are greyed out.",
-                          "Tap a prayer\u{2019}s dot to mark it done \u{2014} tap again to unmark it.",
-                          "A coming prayer\u{2019}s time tells you how long until it.",
-                          "A marked prayer shows when you prayed and its score.",
-                          "Marked prayers fold under \u{201C}done\u{201D}, so the list stays short.",
-                          "Hold a marked prayer to fix when and where you prayed."],
+                headline: Self.listTitle,
+                blocks: [TourBlock(lead: "Every prayer and its time:",
+                                   items: ["coming ones are greyed out, with the time until",
+                                           "marked ones show when you prayed and the score",
+                                           "marked ones fold under \u{201C}done\u{201D}"]),
+                         TourBlock(lead: "Here you can:",
+                                   items: ["tap a dot to mark or unmark a prayer",
+                                           "hold a marked prayer to fix when and where you prayed",
+                                           "see how well you\u{2019}re praying today"])],
                 primary: "Continue")
         case (.list, _):
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
             return TourPage(
-                headline: "Try it.",
+                headline: Self.listTitle,
                 tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to show your marked prayers",
                         "Tap a marked prayer to see its score",
                         "Tap a coming prayer to see how long until it",
@@ -1177,28 +1282,30 @@ struct BubbleShape: Shape {
                 foldedTitle: "What the list is for",
                 primary: all ? "Continue" : nil)
         case (.zikr, .go):
-            return TourPage(headline: "There\u{2019}s more, one page over.", subline: "Your zikr and daily tasks.",
-                            tasks: ["Swipe right"])
+            return TourPage(headline: Self.zikrTitle, subline: "It\u{2019}s one page over.", tasks: ["Swipe right"])
         case (.zikr, _):
             return TourPage(
-                headline: "Your zikr.",
-                bullets: ["Your daily tasks sit on this wheel, freestyle first. Scroll for the rest.",
-                          "History is top left, your Azkar top right.",
-                          "With tasks, the line under the wheel says how many are done today and the time the rest will take. Tap it for them all."],
+                headline: Self.zikrTitle,
+                blocks: [TourBlock(lead: "On this page:",
+                                   items: ["your tasks on the wheel, freestyle first \u{2014} scroll for more",
+                                           "History top left, Azkar top right",
+                                           "under the wheel: tasks done today and the time left \u{2014} tap it for all"])],
                 primary: "Continue")
         case (.settings, .go):
-            return TourPage(headline: "Settings is one tap away.", tasks: ["Tap Settings"])
+            return TourPage(headline: Self.settingsTitle, subline: "One tap away.", tasks: ["Tap Settings"])
         case (.settings, .learn):
             return TourPage(
-                headline: "Your settings.",
-                bullets: ["Your location, and how prayer times are worked out.",
-                          "A reminder for each prayer.",
-                          "The Fajr alarm.",
-                          "How shukr looks."],
+                headline: Self.settingsTitle,
+                blocks: [TourBlock(lead: "Here you set:",
+                                   items: ["your location and how prayer times are worked out",
+                                           "a reminder for each prayer",
+                                           "the Fajr alarm",
+                                           "how shukr looks"])],
                 primary: "Continue")
         case (.settings, _):
-            return TourPage(headline: "This tour lives here.",
-                            subline: "Tap \u{201C}Show me around again\u{201D} any time you want it.",
+            return TourPage(headline: Self.settingsTitle,
+                            insight: "This tour lives here: tap \u{201C}Show me around again\u{201D} any time.",
+                            foldedTitle: "What\u{2019}s in Settings",
                             primary: "Done")
         default:
             return TourPage(headline: step?.headline ?? "")
@@ -1380,6 +1487,7 @@ struct BubbleShape: Shape {
         completing = false
         insight = false
         learnOpen = false
+        folding = nil
         qiblaSkippable = false
         sweeping = false
         colorSweep = nil   // the colours demo's ring goes with it (a skip, Back)
@@ -1469,9 +1577,23 @@ struct BubbleShape: Shape {
 
     /// A phase within the card: the bubble grows or changes in place (no page turn).
     private func setPhase(_ next: TourPhase) {
-        withAnimation(.smooth(duration: CircleMotion.standard)) {
-            if next == .tryIt { ticked = []; learnOpen = false }
-            phase = next
+        guard folding == nil else { return }
+        func land() {
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                if next == .tryIt { ticked = []; learnOpen = false }
+                folding = nil
+                phase = next
+            }
+        }
+        // Learning folds away first, then the to-dos (or the last words) come in under its line.
+        guard phase == .learn, next == .tryIt || next == .last, step?.isCard == true else { return land() }
+        learnOpen = false
+        withAnimation(.smooth(duration: CircleMotion.standard)) { folding = next }
+        let thisRun = run, card = step
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(CircleMotion.standard + 0.05))
+            guard run == thisRun, step == card, folding == next else { return }
+            land()
         }
     }
 
@@ -1590,7 +1712,7 @@ struct TourLayer: View {
         let skipQibla = step == .circle && tryingIt && runtime.qiblaSkippable && !runtime.ticked.contains(1)
         TourOverlay(step: step, page: page(step), target: target(step), place: runtime.place(of: step),
                     ticked: runtime.ticked, lit: runtime.lit,
-                    folded: tryingIt ? folded(step) : nil, learnOpen: runtime.learnOpen,
+                    folded: step.isCard ? folded(step) : nil, learnOpen: runtime.learnOpen,   // the card's page says when
                     hint: hint(step), aboveY: aboveY(step),
                     showsBack: runtime.canGoBack && runtime.phase != .last,
                     flash: flashFrame(), flashes: runtime.flashes, nudges: runtime.nudges,
@@ -1686,8 +1808,9 @@ private struct TourLayerWatchers2: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onChange(of: runtime.lit) { old, new in
-                guard let i = new.subtracting(old).first, runtime.page.notes.indices.contains(i) else { return }
-                AccessibilityNotification.Announcement(runtime.page.notes[i]).post()
+                let colours = TourRuntime.circleBlocks.first(where: \.colours)?.items ?? []
+                guard let i = new.subtracting(old).first, colours.indices.contains(i) else { return }
+                AccessibilityNotification.Announcement(colours[i]).post()
             }
             .onChange(of: runtime.ticked) { old, new in
                 guard let i = new.subtracting(old).first, runtime.page.tasks.indices.contains(i) else { return }

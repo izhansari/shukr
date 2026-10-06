@@ -285,7 +285,9 @@ struct MainCircleView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 else if status == .current{
-                                    PrayerTimeLine(end: prayer.endTime, now: currentTime,
+                                    // The tour's colours demo runs the line on its own clock: the last hour shows the
+                                    // time left, as the real ring does (owner).
+                                    PrayerTimeLine(end: prayer.endTime, now: TourRuntime.shared.sweepNow(for: prayer) ?? currentTime,
                                                    lastHourLeft: !prayer.isCompleted && !shownIsPreview,
                                                    prayerKey: prayer.name, trigger: timeFlipPulse,
                                                    labelShift: PracticeClock.shift(for: prayer),
