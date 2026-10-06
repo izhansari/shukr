@@ -450,9 +450,10 @@ struct WatchZikrFace: View {
                         .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(pick.chosen ? Color.watchSage : Color.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(Color.primary.opacity(0.1)))
                         .frame(maxWidth: 88)
-                        .background(Capsule().fill(WatchNeu.page(colorScheme)))   // over the ring
+                        // Glass over the ring (owner: "pick a zikr messes up the soft look … Overlap is fine. Maybe use
+                        // glass even"): a page-coloured capsule cut a hole in the soft band.
+                        .watchGlassCapsule()
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
