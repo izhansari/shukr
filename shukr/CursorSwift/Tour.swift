@@ -588,15 +588,32 @@ struct TourPageView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private var plainHeader: some View {
+    @ViewBuilder private var plainHeader: some View {
+        if step == .intro {
+            // The welcome: its symbol beside the line, in the chapters' title type.
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: step.symbol)
+                    .font(.system(.subheadline, weight: .regular))
+                    .foregroundStyle(Color.primary.opacity(0.6))
+                    .accessibilityHidden(true)
+                Text(page.headline)
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        } else {
+            plainStack
+        }
+    }
+
+    private var plainStack: some View {
         VStack(alignment: .leading, spacing: 3) {
             Image(systemName: step.symbol)
                 .font(.system(.caption, weight: .regular))
                 .foregroundStyle(Color.primary.opacity(0.6))
                 .accessibilityHidden(true)
             Text(page.headline)
-                // The welcome in the chapters' title type.
-                .font(.system(step == .intro ? .headline : .body, design: .rounded, weight: step == .intro ? .semibold : .regular))
+                .font(.system(.body, design: .rounded, weight: .regular))
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
             if let line = page.subline {
@@ -755,31 +772,48 @@ struct TourLearnBlocks: View {
 struct TourBullets: View {
     let lines: [String]
     var small = false
+    /// The welcome's chapters: "Title|subtitle" each, numbered, the title as a title and the words under it.
     var numbered = false
     var body: some View {
-        VStack(alignment: .leading, spacing: small ? 4 : 6) {
+        VStack(alignment: .leading, spacing: numbered ? 10 : (small ? 4 : 6)) {
             ForEach(lines.indices, id: \.self) { i in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Group {
-                        if numbered {
-                            Text("\(i + 1)")
-                                .font(.system(.subheadline, design: .rounded, weight: .semibold))
-                                .monospacedDigit()
-                                .foregroundStyle(TourInk.green)
-                        } else {
-                            Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
-                                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
-                        }
-                    }
-                    .frame(width: 15)
-                    Text(lines[i])
-                        .font(.system(small ? .footnote : .subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(Color.primary.opacity(small ? 0.6 : 0.85))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                if numbered { chapterLine(i) } else { bullet(i) }
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func bullet(_ i: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+                .frame(width: 15)
+            Text(lines[i])
+                .font(.system(small ? .footnote : .subheadline, design: .rounded, weight: .light))
+                .foregroundStyle(Color.primary.opacity(small ? 0.6 : 0.85))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// "1  Prayer Circle" in the chapters' own title type, its words under it as a subtitle (owner).
+    private func chapterLine(_ i: Int) -> some View {
+        let parts = lines[i].split(separator: "|", maxSplits: 1).map(String.init)
+        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text("\(i + 1)")
+                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.primary.opacity(0.4))
+                .frame(width: 14, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(parts[0])
+                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                if parts.count > 1 {
+                    Text(parts[1])
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                }
+            }
+        }
     }
 }
 
@@ -1369,15 +1403,16 @@ struct BubbleShape: Shape {
     private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
         switch step {
         case .intro:
-            // The welcome (owner: introductory, how the tour goes, "something Muslim and friendly").
+            // Before the chapters: how the tour goes (owner). No greeting — the setup has said welcome, salam and
+            // Bismillah already; this just begins (owner: "just make it say Bismillah. Let's take a quick look around").
             let intro = TourSection(id: "intro",
-                                    lead: "Welcome to shukr. A quick look around, in four short chapters:",
-                                    blocks: [TourBlock(items: ["Prayer Circle \u{00B7} the prayer that matters now",
-                                                               "Prayer List \u{00B7} your whole day",
-                                                               "Zikr \u{00B7} your daily remembrance",
-                                                               "Settings \u{00B7} make it yours"], numbered: true)],
-                                    note: "Each one: a quick look, then you try it. It\u{2019}s a practice day \u{2014} nothing you do here is kept.")
-            return TourPage(headline: "Assalamu alaikum", sections: [intro], primary: "Bismillah, let\u{2019}s begin")
+                                    blocks: [TourBlock(items: ["Prayer Circle|the prayer that matters now",
+                                                               "Prayer List|your whole day",
+                                                               "Zikr|your daily remembrance",
+                                                               "Settings|make it yours"], numbered: true)],
+                                    note: "A quick look at each, then you try it. It\u{2019}s a practice day \u{2014} nothing here is kept.")
+            return TourPage(headline: "Bismillah. Let\u{2019}s take a quick look around.", sections: [intro],
+                            primary: "Let\u{2019}s begin")
         case .circle:
             var shows = TourSection(id: "circle.shows", title: "What it shows", blocks: [Self.circleBlocks[0]])
             var colours = TourSection(id: "circle.colours", title: "The colours", blocks: [Self.circleBlocks[1]])
