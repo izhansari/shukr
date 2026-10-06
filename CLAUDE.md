@@ -320,8 +320,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   counter, the list `scrollDisabled`, taps / pinch don't count; a glass "Crown mode" pill on the bottom edge's centre, its Crown
   without an arrow until the way is picked, then ↑ / ↓; every start of crown mode picks the way again (Auto); it counts
   with the wrist down too — a tap goes back to tap & pinch, recreating the list (`scrollerGeneration`: a list once locked never took the Crown
-  back); one `@FocusState crownOwner`, two fought). Double Tap is never delivered with the screen off (Laraib's watch:
-  30 s of pinches, nothing reached the app). `-watchPinchLogPrint` + `devicectl … process launch --console` streams
+  back); one `@FocusState crownOwner`, two fought). Nothing reaches the app with the screen off (Laraib's watch): no
+  Double Tap (30 s of pinches, an empty log) and no Crown turn — watchOS takes them to wake the screen (a continuous
+  buzz), and counting resumes once it's on; `screen dimmed` / `bright` lines in the log. `-watchPinchLogPrint` + `devicectl … process launch --console` streams
   `WatchPinchLog` live; DEBUG `-demoWatchCrown`, `-watchScrollFingerTest`, `-demoWatchDoubleTapScroll`; Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
 - Untried on a real watch: wrist-down runtime, outbox catch-up, compass, memo, complications. DEBUG `-demoWatch`.
 
