@@ -318,7 +318,7 @@ struct PrayerStatusDot: View {
             if future {
                 Circle()
                     .inset(by: 0.6)
-                    .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: Self.futureDashes)
+                    .stroke(Color.secondary.opacity(0.6), style: Self.futureDashes)   // the future row's own grey (statusBasedOpacity)
             } else {
                 indicator
             }
@@ -327,10 +327,11 @@ struct PrayerStatusDot: View {
         .animation(.easeInOut(duration: CircleMotion.quick), value: done)
     }
 
-    /// Ten dashes round the 14 pt dot, fitted so the last doesn't run into the first.
+    /// Eight short dashes round the 14 pt dot, fitted so the last doesn't run into the first (decision
+    /// list-future-ring H: 8, each 18 % of its period).
     private static let futureDashes: StrokeStyle = {
-        let period = CGFloat.pi * (14 - 1.2) / 10
-        return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.4, period * 0.6])
+        let period = CGFloat.pi * (14 - 1.2) / 8
+        return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.18, period * 0.82])
     }()
 
     @ViewBuilder private var indicator: some View {
