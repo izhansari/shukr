@@ -592,7 +592,9 @@ struct WatchPrayerRing: View {
                     }
                 }
                 .font(.system(size: 11 * max(k, 0.8), weight: .light, design: .rounded))
-                .foregroundStyle(.secondary)
+                // The last hour's time left in the name's colour, not grey (owner: "a little more prominent", as on
+                // the phone).
+                .foregroundStyle(current && lastHour && !showLeft ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
                 .contentTransition(.opacity)
             }
             if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k, onOpenMap: onQibla) }

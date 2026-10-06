@@ -298,7 +298,6 @@ struct MainCircleView: View {
                                                    prayerKey: prayer.name, trigger: timeFlipPulse,
                                                    labelShift: PracticeClock.shift(for: prayer),
                                                    holds: TourRuntime.shared.step == .circle)
-                                        .foregroundStyle(.secondary)
                                 }
                                 else if status ==  .upcoming{
                                     ExternalToggleText(
@@ -1176,6 +1175,8 @@ struct PrayerTimeLine: View {
             .font(.subheadline)
             .fontDesign(.rounded)
             .fontWeight(.thin)
+            // The last hour's time left in the prayer name's colour, not grey (owner: "a little more prominent").
+            .foregroundStyle(lastHour && (shown ?? wanted) == .left ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
             .modifier(CircleWordsAway(away: away))
             .onAppear { if shown == nil { shown = wanted; shownFor = prayerKey } }
             .onChange(of: trigger) { _, _ in

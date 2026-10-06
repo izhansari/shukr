@@ -67,6 +67,11 @@ enum ZikrFocus {
 struct ZikrCircleWheel: View {
     @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
+    /// The zikr Freestyle counts under, by name ("" = just count) — the watch's "Pick a zikr" (owner, 2026-10-06:
+    /// "i love the pick a zikr thing in the watch. but its not in the ios app"). Kept until changed, like the watch's.
+    @AppStorage("freestylePick") private var freestylePick = ""
+    @State private var showFreestylePicker = false
+    @State private var pickedMantra: MantraModel?
     @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
     @Query private var storedSessions: [SessionDataModel]
     /// The tour's Zikr chapter shows its example tasks instead (TourExamples, Tour.swift): never saved, never started.
@@ -459,7 +464,22 @@ struct ZikrCircleWheel: View {
     private func circle(for item: Item) -> some View {
         switch item {
         case .freestyle:
-            ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full)
+            ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full,
+                           pick: (label: freestylePick.isEmpty ? "Pick a zikr" : freestylePick,
+                                  chosen: !freestylePick.isEmpty,
+                                  action: {
+                                      guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
+                                      triggerSomeVibration(type: .light)
+                                      showFreestylePicker = true
+                                  },
+                                  clear: { triggerSomeVibration(type: .light); freestylePick = "" }))
+                .sheet(isPresented: $showFreestylePicker) {
+                    MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)
+                }
+                .onChange(of: pickedMantra) { _, mantra in
+                    if let mantra { freestylePick = mantra.name }
+                    pickedMantra = nil
+                }
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
@@ -632,8 +652,10 @@ struct ZikrCircleWheel: View {
         switch item {
         case .freestyle:
             sharedState.targetCount = ""
-            sharedState.titleForSession = ""
-            sharedState.mantraForSession = nil
+            // Under the picked zikr, if it's still there (saved under it, like the watch's); else just counting.
+            let picked = freestylePick.isEmpty ? nil : MantraModel.find(named: freestylePick, in: context)
+            sharedState.titleForSession = picked?.name ?? ""
+            sharedState.mantraForSession = picked
             sharedState.selectedMinutes = 0
             sharedState.selectedMode = 0
             openSession(from: item.id, base: 1, rewind: true)   // its full ring empties into a fresh count
@@ -742,6 +764,8 @@ struct ZikrCircleFace: View {
     var mantraLine: String? = nil
     /// A third, quieter line: roughly how long what's left takes ("~4 min").
     var note: String? = nil
+    /// Freestyle's zikr, as a glass chip on the circle's bottom edge (the watch's): tap → pick one; ✕ → just count.
+    var pick: (label: String, chosen: Bool, action: () -> Void, clear: () -> Void)? = nil
     /// The Salah look prototype (SalahLook.swift): any soft look gives the wheel the tasbeeh ring — the soft
     /// band and a 6 pt round arc with a glow (owner, 2026-10-01: "make the zikr tab also use the neumorphic
     /// style. and the task rings too").
@@ -813,6 +837,35 @@ struct ZikrCircleFace: View {
             // The wheel's own choice (`openSession`): a plain fade under Reduce Motion — it shrank and dropped here while
             // the other circles faded (transitions audit, bug 6).
             .modifier(SessionAppear(shown: !contentAway, style: reduceMotion ? .fade : .current))
+            if let pick {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Button(action: pick.action) {
+                            HStack(spacing: 4) {
+                                Text(pick.label).lineLimit(1)
+                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                            }
+                        }
+                        if pick.chosen {
+                            Button(action: pick.clear) {
+                                Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                            }
+                            .accessibilityLabel("Just count")
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .font(.subheadline)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(pick.chosen ? Color.sage : Color.secondary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .frame(maxWidth: 180)
+                    .pickChipGlass()
+                    .offset(y: 16)
+                }
+                .modifier(SessionAppear(shown: !contentAway, style: reduceMotion ? .fade : .current))
+            }
         }
         .frame(width: 200, height: 200)
     }
@@ -1270,5 +1323,16 @@ struct AddDailyTaskView: View {
             Spacer()
         }
 //        AddDailyTaskView(isPresented: $testBool, scrollProxy: UUID())
+    }
+}
+
+private extension View {
+    /// Freestyle's chip: glass over the ring (the watch's look; owner: "with glass again"), a light material before iOS 26.
+    @ViewBuilder func pickChipGlass() -> some View {
+        if #available(iOS 26.0, *) {
+            glassEffect(.regular.interactive(), in: Capsule())
+        } else {
+            background(Capsule().fill(.ultraThinMaterial))
+        }
     }
 }
