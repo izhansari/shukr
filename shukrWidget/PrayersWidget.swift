@@ -80,12 +80,14 @@ struct PrayersWidgetEntry: TimelineEntry {
         case .auto: isNight ? .dark : .light
         }
     }
-    /// The container's colour, matching `forcedScheme` (the asset would follow the phone).
+    /// The container's colour, matching `forcedScheme`: the app's soft surface (decision widget-soft-ring B) —
+    /// grey-blue light, charcoal dark; following the phone when the Style does.
     var background: Color {
         switch forcedScheme {
-        case .dark?: .black
-        case .light?: .white
-        default: Color("widgetBgColor")
+        case .dark?: WidgetSoft.surface(.dark)
+        case .light?: WidgetSoft.surface(.light)
+        default: Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(white: 0.10, alpha: 1)
+                                                                 : UIColor(red: 0.890, green: 0.898, blue: 0.933, alpha: 1) })
         }
     }
 
@@ -255,8 +257,7 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     shown.style = style
                     render(shown, size: size, phoneDark: phoneDark, "\(px)-style-\(style.rawValue)-\(phone)")
                 }
-                // The soft ring, on the soft surface (to show the owner before it's switched on).
-                PrayersWidgetView.softRing = true
+                // The soft ring on the soft surface, whatever the entry's Style.
                 PrayersWidgetView.LiveArc.snapshotAt = entry.date
                 let soft = PrayersWidgetView(entry: entry.at(entry.date, list: false))
                     .frame(width: size, height: size)
@@ -266,7 +267,6 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                 let r = ImageRenderer(content: soft)
                 r.scale = 3
                 if let data = r.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent("\(px)-soft-\(phone).png")) }
-                PrayersWidgetView.softRing = false
                 // The times list, and with only the first prayer marked (the others that started
                 // show as empty circles to tap).
                 render(entry.at(entry.date, list: true), size: size, phoneDark: phoneDark, "\(px)-list-\(phone)")
@@ -603,6 +603,9 @@ struct PrayersWidgetView: View {
 
     struct WidgetPrayerCircleView: View {
         let entry: PrayersWidgetEntry
+        /// An unmarked prayer's last hour (an entry lands at end − 60 min: `moments`).
+        private var lastHour: Bool { relevantPrayer.current && relevantPrayer.end.timeIntervalSince(entry.date) <= 60 * 60 }
+        private var lastHourLeftShown: Bool { lastHour && !entry.textToggle }
         
         let prayerOrder = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
         
@@ -749,15 +752,18 @@ struct PrayersWidgetView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
                                 Group {
-                                    if entry.textToggle {
+                                    if entry.textToggle != lastHour {
                                         Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .relative)
                                     } else {
                                         Text(relevantPrayer.current ? "ends " : "at ")
                                             + Text(relevantPrayer.current ? relevantPrayer.end : relevantPrayer.start, style: .time)
                                     }
                                 }
-                                .font(.system(size: 10, weight: .thin, design: .rounded))
-                                .foregroundStyle(.secondary)
+                                // The app's last hour (PrayerTimeLine `lastHourLeft`): time left is the default, in the
+                                // name's colour and weight; the tap shows when it ends (owner: "the 60 min rule … like
+                                // we have in watch and ios").
+                                .font(.system(size: 10, weight: lastHourLeftShown ? .light : .thin, design: .rounded))
+                                .foregroundStyle(lastHourLeftShown ? AnyShapeStyle(Color.primary) : AnyShapeStyle(.secondary))
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 8)
                             }
@@ -865,9 +871,8 @@ struct PrayersWidgetView: View {
     /// (owner, BB277A98: "we never had the background ring colored"). Masking twice (fa63e22) only
     /// squared the tint to ~9 % and made a reload dim the arc; one plain mask (8a6f160) showed it
     /// at ~30 %.
-    /// The soft ring (the app's public look) instead of the grey band: off until the owner has seen it (DEBUG renders
-    /// draw both — `-demoWidgetShots`).
-    static var softRing = false
+    /// The soft ring (the app's public look) instead of the grey band (owner, decision widget-soft-ring B: "i like it").
+    static let softRing = true
 
     static func upcomingDashes(diameter: CGFloat) -> StrokeStyle {
         let period: CGFloat = 8, dashShare: CGFloat = 3 / 8
