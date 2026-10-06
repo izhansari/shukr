@@ -398,9 +398,6 @@ struct WatchZikrFace: View {
     let subtitle: String
     let fraction: Double
     var done = false
-    /// Freestyle: the zikr it counts under, as a small chip inside the circle (tap → pick one);
-    /// the rest of the circle still starts counting in one tap.
-    var pick: (label: String, chosen: Bool, action: () -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -436,29 +433,6 @@ struct WatchZikrFace: View {
                 }
                 .font(.system(size: 11, weight: .thin, design: .rounded))
                 .foregroundStyle(done ? Color.watchSage : .secondary)
-            }
-            // Freestyle's zikr chip on the circle's bottom edge (owner, YGF3): in the middle it sat
-            // where a thumb aims to start, and opened the picker instead.
-            if let pick {
-                VStack {
-                    Spacer()
-                    Button(action: pick.action) {
-                        HStack(spacing: 2) {
-                            Text(pick.label).lineLimit(1).minimumScaleFactor(0.8)
-                            Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
-                        }
-                        .font(.system(size: 10, design: .rounded))
-                        .foregroundStyle(pick.chosen ? Color.watchSage : Color.secondary)
-                        .padding(.horizontal, 8).padding(.vertical, 3)
-                        .frame(maxWidth: 88)
-                        // Glass over the ring (owner: "pick a zikr messes up the soft look … Overlap is fine. Maybe use
-                        // glass even"): a page-coloured capsule cut a hole in the soft band.
-                        .watchGlassCapsule()
-                        .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .offset(y: 10)
-                }
             }
         }
         .frame(width: 112, height: 112)
@@ -554,6 +528,8 @@ struct WatchZikrPage: View {
     /// The task the open session belongs to, so closing it can move on once it's done.
     @State private var sessionTaskID: String?
     @State private var showZikrPicker = false
+    /// The wheel is scrolling: the Freestyle chip steps aside.
+    @State private var wheelMoving = false
     private let rowHeight: CGFloat = 122
 
     private enum Item: Identifiable {
@@ -596,7 +572,10 @@ struct WatchZikrPage: View {
                 .scrollPosition(id: $centered, anchor: .center)
                 // The wheel's feel, measured on a wrist (beta builds' log; `-watchPinchLogPrint` streams it): each
                 // offset with its time (gaps = dropped frames), the phases, where it settles.
-                .onScrollPhaseChange { old, new in WatchPinchLog.add("wheel phase \(old) → \(new)") }
+                .onScrollPhaseChange { old, new in
+                    WatchPinchLog.add("wheel phase \(old) → \(new)")
+                    wheelMoving = new != .idle
+                }
                 .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y } action: { _, y in
                     WatchPinchLog.add(String(format: "wheel y %.1f", y))
                 }
@@ -609,6 +588,15 @@ struct WatchZikrPage: View {
                 // in a minute of hard flicks on Laraib's watch).
                 .overlay(alignment: .leading) {
                     if items.count > 1 { Scrubber(items: items, centered: $centered, now: context.date) }
+                }
+                // Freestyle's zikr chip (owner, YGF3: on the bottom edge, not where a thumb aims to start): on the wheel,
+                // where the centred circle's edge sits — not on the circle, whose shrink and tilt turned the glass into
+                // a blob (owner). Only while Freestyle is centred and the wheel is still.
+                .overlay {
+                    if !store.azkar.isEmpty {
+                        FreestyleChip(centered: $centered, moving: $wheelMoving) { showZikrPicker = true }
+                            .offset(y: 56)
+                    }
                 }
                 .overlay(alignment: .bottom) {
                     if !store.hasData {
@@ -674,9 +662,7 @@ struct WatchZikrPage: View {
         switch item {
         case .freestyle:
             // The picked zikr, if any, under the title (one tap still starts counting).
-            WatchZikrFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "tap to count", fraction: 1,
-                          pick: store.azkar.isEmpty ? nil
-                              : (store.freestylePick ?? "Pick a zikr", store.freestylePick != nil, { showZikrPicker = true }))
+            WatchZikrFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "tap to count", fraction: 1)
         case .task(let task):
             let p = store.progress(task, at: now)
             let done = store.isDone(task, at: now)
@@ -717,6 +703,34 @@ struct WatchZikrPage: View {
     /// One dot per circle, the centred one bigger, tasks done today sage (the phone's `scrubber`). A finger on them
     /// flies through the circles — a click for each one passed, and a pill beside the finger naming it; the Crown
     /// moves the wheel, and the dots follow.
+    /// The picked zikr (or "Pick a zikr"), glass; its own view, so the page never redraws for `centered`.
+    private struct FreestyleChip: View {
+        @Binding var centered: String?
+        @Binding var moving: Bool
+        let action: () -> Void
+        @ObservedObject private var store = WatchZikrStore.shared
+
+        var body: some View {
+            let shown = centered == "freestyle" && !moving
+            Button(action: action) {
+                HStack(spacing: 2) {
+                    Text(store.freestylePick ?? "Pick a zikr").lineLimit(1).minimumScaleFactor(0.8)
+                    Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
+                }
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(store.freestylePick != nil ? Color.watchSage : Color.secondary)
+                .padding(.horizontal, 8).padding(.vertical, 3)
+                .frame(maxWidth: 88)
+                .watchGlassCapsule()
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .opacity(shown ? 1 : 0)
+            .allowsHitTesting(shown)
+            .animation(.easeOut(duration: 0.2), value: shown)
+        }
+    }
+
     private struct Scrubber: View {
         let items: [Item]
         @Binding var centered: String?

@@ -72,6 +72,8 @@ struct ZikrCircleWheel: View {
     @AppStorage("freestylePick") private var freestylePick = ""
     @State private var showFreestylePicker = false
     @State private var pickedMantra: MantraModel?
+    /// The wheel is scrolling: the Freestyle chip steps aside.
+    @State private var wheelMoving = false
     @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
     @Query private var storedSessions: [SessionDataModel]
     /// The tour's Zikr chapter shows its example tasks instead (TourExamples, Tour.swift): never saved, never started.
@@ -327,6 +329,11 @@ struct ZikrCircleWheel: View {
             .overlay(alignment: .leading) {   // left edge (owner)
                 scrubber(items).opacity(openingSoft ? 0 : 1).allowsHitTesting(!openingSoft)
             }
+            // Freestyle's zikr: a glass chip on the wheel, where the centred circle's bottom edge sits — not on the circle,
+            // whose shrink and tilt as it scrolls away turned the glass into a big blob (owner). Only while Freestyle is
+            // centred and the wheel is still.
+            .overlay { freestyleChip.offset(y: 100) }
+            .onScrollPhaseChange { _, phase in wheelMoving = phase != .idle }
             // Centre the focused circle on the SCREEN (owner): the page starts under the status
             // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
@@ -458,28 +465,54 @@ struct ZikrCircleWheel: View {
                               note: done ? nil : estimateNote(task, p))
     }
 
+    /// Freestyle's zikr (the watch's "Pick a zikr"): tap → pick one; ✕ → just count. Glass, over the ring.
+    private var freestyleChip: some View {
+        let shown = centered == "freestyle" && !wheelMoving && !openingSoft
+        return HStack(spacing: 8) {
+            Button {
+                guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
+                triggerSomeVibration(type: .light)
+                showFreestylePicker = true
+            } label: {
+                HStack(spacing: 4) {
+                    Text(freestylePick.isEmpty ? "Pick a zikr" : freestylePick).lineLimit(1)
+                    Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+                }
+            }
+            if !freestylePick.isEmpty {
+                Button { triggerSomeVibration(type: .light); freestylePick = "" } label: {
+                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                }
+                .accessibilityLabel("Just count")
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.subheadline)
+        .fontDesign(.rounded)
+        .foregroundStyle(freestylePick.isEmpty ? Color.secondary : Color.sage)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 180)
+        .pickChipGlass()
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(shown)
+        .animation(.easeOut(duration: 0.2), value: shown)
+        .sheet(isPresented: $showFreestylePicker) {
+            MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)
+        }
+        .onChange(of: pickedMantra) { _, mantra in
+            if let mantra { freestylePick = mantra.name }
+            pickedMantra = nil
+        }
+    }
+
     // MARK: circles
 
     @ViewBuilder
     private func circle(for item: Item) -> some View {
         switch item {
         case .freestyle:
-            ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full,
-                           pick: (label: freestylePick.isEmpty ? "Pick a zikr" : freestylePick,
-                                  chosen: !freestylePick.isEmpty,
-                                  action: {
-                                      guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
-                                      triggerSomeVibration(type: .light)
-                                      showFreestylePicker = true
-                                  },
-                                  clear: { triggerSomeVibration(type: .light); freestylePick = "" }))
-                .sheet(isPresented: $showFreestylePicker) {
-                    MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)
-                }
-                .onChange(of: pickedMantra) { _, mantra in
-                    if let mantra { freestylePick = mantra.name }
-                    pickedMantra = nil
-                }
+            ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full)
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
@@ -764,8 +797,6 @@ struct ZikrCircleFace: View {
     var mantraLine: String? = nil
     /// A third, quieter line: roughly how long what's left takes ("~4 min").
     var note: String? = nil
-    /// Freestyle's zikr, as a glass chip on the circle's bottom edge (the watch's): tap → pick one; ✕ → just count.
-    var pick: (label: String, chosen: Bool, action: () -> Void, clear: () -> Void)? = nil
     /// The Salah look prototype (SalahLook.swift): any soft look gives the wheel the tasbeeh ring — the soft
     /// band and a 6 pt round arc with a glow (owner, 2026-10-01: "make the zikr tab also use the neumorphic
     /// style. and the task rings too").
@@ -837,35 +868,6 @@ struct ZikrCircleFace: View {
             // The wheel's own choice (`openSession`): a plain fade under Reduce Motion — it shrank and dropped here while
             // the other circles faded (transitions audit, bug 6).
             .modifier(SessionAppear(shown: !contentAway, style: reduceMotion ? .fade : .current))
-            if let pick {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Button(action: pick.action) {
-                            HStack(spacing: 4) {
-                                Text(pick.label).lineLimit(1)
-                                Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-                            }
-                        }
-                        if pick.chosen {
-                            Button(action: pick.clear) {
-                                Image(systemName: "xmark").font(.caption2.weight(.semibold))
-                            }
-                            .accessibilityLabel("Just count")
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.subheadline)
-                    .fontDesign(.rounded)
-                    .foregroundStyle(pick.chosen ? Color.sage : Color.secondary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 7)
-                    .frame(maxWidth: 180)
-                    .pickChipGlass()
-                    .offset(y: 16)
-                }
-                .modifier(SessionAppear(shown: !contentAway, style: reduceMotion ? .fade : .current))
-            }
         }
         .frame(width: 200, height: 200)
     }
