@@ -462,11 +462,6 @@ struct PrayersWidgetView: View {
         let entry: PrayersWidgetEntry
         private let order = ["Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Isha"]
 
-        /// The first prayer that hasn't started (not Sunrise).
-        private var nextName: String? {
-            order.first { $0 != "Sunrise" && (entry.prayerDict[$0]?.start ?? .distantPast) > entry.date }
-        }
-
         var body: some View {
             ZStack(alignment: .bottom) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -536,21 +531,9 @@ struct PrayersWidgetView: View {
                           size: tappable || !sunrise ? 11 : 7)
                     .frame(width: 11)
                     .opacity(sunrise ? 0 : 1)
-                // The NEXT tag gives way on a narrow widget: at 158 pt "Dhuhr NEXT" truncated both
-                // the name and its time (feedback 99D47ABE follow-up check).
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) {
-                        nameText(name, current)
-                        if name == nextName {
-                            Text("next")
-                                .font(.system(size: 7, weight: .medium, design: .rounded))
-                                .tracking(1)
-                                .textCase(.uppercase)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    nameText(name, current)
-                }
+                // No NEXT tag in the list (owner, 2026-10-06: "get rid of the word NEXT in widgets prayer list"); the
+                // dashed dot says a prayer is still to come.
+                nameText(name, current)
                 Spacer(minLength: 4)
                 Text(start, style: .time)
                     .font(.system(size: 11, weight: current ? .regular : .light, design: .rounded))
