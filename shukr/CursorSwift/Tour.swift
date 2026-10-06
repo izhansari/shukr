@@ -443,7 +443,11 @@ struct TourCallout: View {
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
                                 // Nothing to point at (Settings' learn): low, clear of what it talks about.
                                 fallbackY: step == .settings ? size.height : size.height * 0.6, avoid: hole,
-                                topLimit: typeSize.isAccessibilitySize ? 158 : 112, mayFlip: openSection == nil) {
+                                topLimit: typeSize.isAccessibilitySize ? 158 : 112,
+                                // A bubble asked to sit above (the circle once marked, the list, the wheel) never flips
+                                // under its target — under it covered the swipe up on a 13 Pro Max (owner); it overlaps
+                                // the target's top instead.
+                                mayFlip: openSection == nil && aboveY == nil) {
                 bubble(below: below, tail: tail)
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
