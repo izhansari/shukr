@@ -489,7 +489,8 @@ struct ZikrCircleWheel: View {
         .overlay(Capsule().stroke(Color.primary.opacity(0.14), lineWidth: 0.75))   // a subtle grey edge (owner)
         .opacity(openingSoft ? 0 : 1)
         .sheet(isPresented: $showFreestylePicker) {
-            MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)
+            MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra,
+                             excluding: [PostSalahTasbeeh.mantraName])
         }
         .onChange(of: pickedMantra) { _, mantra in
             if let mantra { freestylePick = mantra.name }
@@ -517,6 +518,8 @@ struct ZikrCircleWheel: View {
                     // The tour's example tasks say so (owner: "make it clear that these are not real tasks").
                     if example { NextTag(label: TourCopy.Zikr.exampleTag).padding(.top, 52) }
                 }
+                // Hold anywhere in the circle (owner: only the words took the hold); the preview is the circle too.
+                .contentShape(Circle())
                 .contentShape(.contextMenuPreview, Circle())
                 .contextMenu {
                     // An example's options change nothing: picking one is the tour's to-do (Tour.swift).

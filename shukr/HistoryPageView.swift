@@ -932,10 +932,13 @@ struct MantraPickerView: View {
     @State private var pendingNew: MantraModel?
 
     private var presentation: Set<PresentationDetent>
+    /// Zikr left out of the list (Freestyle's pick leaves out Tasbih Fatimah — its own session after a prayer).
+    private var excluding: Set<String>
     private var trimmedQuery: String { searchQuery.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// Same match as the Azkar page: name, full text or notes.
     private var filteredMantras: [MantraModel] {
         let q = trimmedQuery
+        let mantraItems = mantraItems.filter { !excluding.contains(BuiltInAzkar.key($0.name)) }
         guard !q.isEmpty else { return mantraItems }
         return mantraItems.filter {
             $0.name.localizedCaseInsensitiveContains(q) || $0.fullText.localizedCaseInsensitiveContains(q)
@@ -947,7 +950,8 @@ struct MantraPickerView: View {
     }
 
     // Allow selectedSession and selectedMantra to be optional in the initializer
-    init(isPresented: Binding<Bool>, selectedSession: Binding<SessionDataModel?> = .constant(nil), selectedMantra: Binding<String?> = .constant(nil), selectedMantraObject: Binding<MantraModel?> = .constant(nil), presentation: Set<PresentationDetent>? = nil) {
+    init(isPresented: Binding<Bool>, selectedSession: Binding<SessionDataModel?> = .constant(nil), selectedMantra: Binding<String?> = .constant(nil), selectedMantraObject: Binding<MantraModel?> = .constant(nil), presentation: Set<PresentationDetent>? = nil, excluding: Set<String> = []) {
+        self.excluding = Set(excluding.map(BuiltInAzkar.key))
         self._isPresented = isPresented
         self._selectedSession = selectedSession
         self._selectedMantra = selectedMantra

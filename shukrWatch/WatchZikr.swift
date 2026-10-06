@@ -2026,7 +2026,9 @@ struct WatchZikrPicker: View {
     var body: some View {
         List {
             row("Just count", selected: store.freestylePick == nil) { store.freestylePick = nil }
-            ForEach(store.azkar, id: \.self) { name in
+            // Never Tasbih Fatimah (owner: it's its own 33 · 33 · 34 session, after a prayer) — also when an older
+            // phone build still sends it.
+            ForEach(store.azkar.filter { $0 != WatchPostSalah.name }, id: \.self) { name in
                 row(name, selected: store.freestylePick == name) { store.freestylePick = name }
             }
         }
