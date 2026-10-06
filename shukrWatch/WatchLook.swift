@@ -12,6 +12,32 @@
 
 import SwiftUI
 
+/// The watch's own Look setting (owner, 2026-10-06: "give the Apple Watch its own control for light mode, dark mode, and
+/// auto … another option for sync with the phone"): Sync with iPhone (the default) follows the phone's; the others
+/// set the watch's own.
+enum WatchLookChoice: String, CaseIterable {
+    case sync, light, dark, auto
+    static let key = "watch.lookChoice"
+    /// 0 light, 1 dark, 2 auto; nil = the phone's.
+    var mode: Int? {
+        switch self {
+        case .sync: nil
+        case .light: 0
+        case .dark: 1
+        case .auto: 2
+        }
+    }
+    var short: String {
+        switch self {
+        case .sync: "iPhone"
+        case .light: "Light"
+        case .dark: "Dark"
+        case .auto: "Auto"
+        }
+    }
+    var next: Self { Self.allCases[(Self.allCases.firstIndex(of: self)! + 1) % Self.allCases.count] }
+}
+
 @MainActor
 final class WatchLook: ObservableObject {
     static let shared = WatchLook()
@@ -31,6 +57,8 @@ final class WatchLook: ObservableObject {
         default: break
         }
         #endif
+        if let own = WatchLookChoice(rawValue: WatchStore.defaults.string(forKey: WatchLookChoice.key) ?? ""),
+           let fixed = own.mode { return fixed }
         return WatchStore.defaults.object(forKey: WatchStore.Key.appearance) as? Int ?? 1
     }
 

@@ -335,7 +335,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   accuracy, let go +1.5°) = green ring + edge glow, .success then a click each second. From the watch's own fix if
   recent, else the phone's spot. DEBUG `-demoWatchQiblaMap YES -demoWatchHeading 40`.
 - Look (WatchLook.swift, ask watch-appearance): the phone sends `modeToggleNew` as `appearance` (0 light · 1 dark · 2
-  auto; resent on change from shukrApp's root); auto = the phone's rule, light from sunrise to Maghrib, from the watch's
+  auto; resent on change from shukrApp's root) — unless watch Settings → Look (`WatchLookChoice`: iPhone · Light · Dark · Auto) picks its own; auto = the phone's rule, light from sunrise to Maghrib, from the watch's
   own times, re-checked at each switch; wrist down = dark. The phone's public soft look (greyBlue): `WatchNeu.bg(scheme)`
   grey-blue / charcoal on every page, `WatchSoftBand` = the raised band, the arc fine and round with a glow. **watchOS
   draws the top-level clock and the sideways page dots white whatever the look** — no recolour, no hide (5 ways tried;

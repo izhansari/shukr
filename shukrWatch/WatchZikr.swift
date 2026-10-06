@@ -1598,8 +1598,8 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 /// counting works lives behind the ⓘ.
 struct WatchSettingsPage: View {
     @AppStorage(WatchCountMode.key, store: WatchStore.defaults) private var countMode = WatchCountMode.touch.rawValue
+    @AppStorage(WatchLookChoice.key, store: WatchStore.defaults) private var look = WatchLookChoice.sync.rawValue
     @State private var showHelp = false
-    @State private var pinchLogSent: String?
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1628,12 +1628,16 @@ struct WatchSettingsPage: View {
                 row("Count with", (WatchCountMode(rawValue: countMode) ?? .touch).short) {
                     countMode = (WatchCountMode(rawValue: countMode) ?? .touch).next.rawValue
                 }
-                if WatchBeta.on {
-                    // The pinch log to the phone now (it's also sent at each session's end; queue watch-pinch-log).
-                    row("Send pinch log", pinchLogSent ?? "\(WatchPinchLog.count) lines") {
-                        let n = WatchPinchLog.send()
-                        pinchLogSent = n > 0 ? "sent \(n)" : "nothing new"
-                    }
+                Text("look")
+                    .font(.system(size: 10, design: .rounded))
+                    .tracking(1.2)
+                    .textCase(.uppercase)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+                // Light / Dark / Auto of its own, or the iPhone's (WatchLook).
+                row("Look", (WatchLookChoice(rawValue: look) ?? .sync).short) {
+                    look = (WatchLookChoice(rawValue: look) ?? .sync).next.rawValue
+                    WatchLook.shared.refresh()
                 }
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
@@ -2240,7 +2244,7 @@ struct WatchDoubleTapLayer: View {
 /// scroll sample, phase, count, reset, screen tap and the count's total, in uptime ms since the session opened. On in
 /// DEBUG and TestFlight builds (`WatchBeta.on`: the only pinch watch is a TestFlight one — owner); never in the App Store's.
 /// Sent to
-/// the phone at each session's end and from Settings → "Send pinch log" (the phone keeps `Library/Caches/pinch.log` in
+/// the phone at each session's end (the phone keeps `Library/Caches/pinch.log` in
 /// the app group). No rule reads it.
 enum WatchPinchLog {
     private static var lines: [String] = []
