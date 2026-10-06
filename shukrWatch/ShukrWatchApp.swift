@@ -204,6 +204,13 @@ struct WatchHomeView: View {
     @EnvironmentObject var session: WatchSession
     @ObservedObject private var moments = WatchMoment.shared
     @State private var tasbih: WatchCounterConfig?
+    @State private var showQiblaMap: Bool = {
+        #if DEBUG
+        return UserDefaults.standard.bool(forKey: "demoWatchQiblaMap")   // `-demoWatchQiblaMap YES`
+        #else
+        return false
+        #endif
+    }()
     @State private var showList: Int = {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "watchSalahList") { return 1 }   // `-watchSalahList YES`
@@ -224,7 +231,8 @@ struct WatchHomeView: View {
                             if let r = WatchPrayers.relevant(at: context.date) {
                                 // Hidden (blurred away) while the flourish plays, like the phone's
                                 // circle content; the next prayer crossfades in after it.
-                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true)
+                                WatchPrayerRing(prayer: r.prayer, current: r.current, now: context.date, showsQibla: true,
+                                                onQibla: { showQiblaMap = true })
                                     .opacity(moments.flourish == nil ? 1 : 0)
                                     .blur(radius: moments.flourish == nil ? 0 : 6)
                                     // No hold / tap on the ring while the flourish plays over it.
@@ -286,6 +294,7 @@ struct WatchHomeView: View {
                     if m != nil { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 } }
                 }
                 .fullScreenCover(item: $tasbih) { config in WatchCounterView(config: config).watchLookRoot() }
+                .fullScreenCover(isPresented: $showQiblaMap) { WatchQiblaMap().watchLookRoot() }
                 #if DEBUG
                 // `-demoWatchPostSalah`: open Tasbih Fatimah as if from the pill (simulator).
                 .onAppear {
@@ -486,6 +495,8 @@ struct WatchPrayerRing: View {
     var compact = false
     /// Replaces the tap's own action (the small ring over the list: back up to the ring).
     var onTap: (() -> Void)? = nil
+    /// The qibla arrow's tap: the qibla map.
+    var onQibla: (() -> Void)? = nil
     @State private var showLeft = false
     /// The flip goes back by itself, like the phone's circle (`flipSeconds`, 3 s); a second tap sooner turns it back.
     @State private var flipToken = 0
@@ -577,7 +588,7 @@ struct WatchPrayerRing: View {
                 .foregroundStyle(.secondary)
                 .contentTransition(.opacity)
             }
-            if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k) }
+            if showsQibla { WatchQiblaArrow(ringDiameter: 118 * k, onOpenMap: onQibla) }
         }
         .contentShape(Circle())
         // A new prayer on the ring, or the one shown starting, goes back to "ends …" / "at …".

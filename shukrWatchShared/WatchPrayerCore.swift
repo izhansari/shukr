@@ -417,12 +417,25 @@ enum WatchQibla {
     static var bearing: Double? {
         guard WatchStore.hasLocation else { return nil }
         let d = WatchStore.defaults
-        let lat = d.double(forKey: WatchStore.Key.latitude) * .pi / 180
-        let lon = d.double(forKey: WatchStore.Key.longitude) * .pi / 180
+        return bearing(fromLat: d.double(forKey: WatchStore.Key.latitude), lon: d.double(forKey: WatchStore.Key.longitude))
+    }
+
+    /// The bearing from any spot (the qibla map uses the watch's own fix when it has one).
+    static func bearing(fromLat latDeg: Double, lon lonDeg: Double) -> Double {
+        let lat = latDeg * .pi / 180
+        let lon = lonDeg * .pi / 180
         let kLat = kaaba.lat * .pi / 180, kLon = kaaba.lon * .pi / 180
         let y = sin(kLon - lon) * cos(kLat)
         let x = cos(lat) * sin(kLat) - sin(lat) * cos(kLat) * cos(kLon - lon)
         return (atan2(y, x) * 180 / .pi + 360).truncatingRemainder(dividingBy: 360)
+    }
+
+    /// −180…180.
+    static func signed(_ d: Double) -> Double {
+        var d = d.truncatingRemainder(dividingBy: 360)
+        if d > 180 { d -= 360 }
+        if d < -180 { d += 360 }
+        return d
     }
 
     /// The phone's Settings → qibla accuracy (± degrees counted as facing it).

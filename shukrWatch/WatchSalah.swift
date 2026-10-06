@@ -398,6 +398,8 @@ final class WatchCompass: NSObject, ObservableObject, CLLocationManagerDelegate 
 /// compass; green, upright, with a dot on the ring and a tap once you're facing it.
 struct WatchQiblaArrow: View {
     let ringDiameter: CGFloat
+    /// A tap on the arrow opens the qibla map (owner: "clicking the Qibla arrow … renders the map").
+    var onOpenMap: (() -> Void)? = nil
     @ObservedObject private var compass = WatchCompass.shared
     @Environment(\.isLuminanceReduced) private var wristDown
     @State private var aligned = false
@@ -432,6 +434,10 @@ struct WatchQiblaArrow: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(aligned ? Color.green : Color.primary)
                         .opacity(0.55)
+                        // Its own tap, before the ring's (which flips the time): a finger-sized spot round it.
+                        .frame(width: 34, height: 30)
+                        .contentShape(Rectangle())
+                        .onTapGesture { WKInterfaceDevice.current().play(.click); onOpenMap?() }
                         .offset(y: -ringDiameter * 0.4)
                         .rotationEffect(.degrees(aligned ? 0 : relative))
                         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: aligned)

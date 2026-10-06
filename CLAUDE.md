@@ -327,6 +327,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - Salah list (`WatchPrayerList`): a row's tap marks / asks to unmark; its time has its own tap that flips it like the
   phone's `timeTap` (to come: "in 2h 5m"; prayed: `WatchScoring.summary`; current / missed: no flip), back after
   `flipSeconds` 3 s; the ring's flip goes back after 3 s too. DEBUG `-demoWatchFlip "Fajr,Asr"`.
+- Qibla map (WatchQiblaMap.swift, ask watch-qibla-map): the ring's Qibla arrow has its own tap → a full-screen SwiftUI
+  `Map`, the phone's qibla mode only (no Explore / prayers / mosques): north, then Qibla-up after 0.35 s, the camera a
+  little ahead so the dot sits low; the geodesic line (green 90 %, 3 pt), 🕋; `WatchQiblaRing` = the phone's
+  CircleWithArrowOverlay; the pill "← Turn left N°" / "Turn right N° →" / "Facing Mecca 🕋"; aligned (the phone's
+  accuracy, let go +1.5°) = green ring + edge glow, .success then a click each second. From the watch's own fix if
+  recent, else the phone's spot. DEBUG `-demoWatchQiblaMap YES -demoWatchHeading 40`.
 - Look (WatchLook.swift, ask watch-appearance): the phone sends `modeToggleNew` as `appearance` (0 light · 1 dark · 2
   auto; resent on change from shukrApp's root); auto = the phone's rule, light from sunrise to Maghrib, from the watch's
   own times, re-checked at each switch; wrist down = dark. The phone's public soft look (greyBlue): `WatchNeu.bg(scheme)`
