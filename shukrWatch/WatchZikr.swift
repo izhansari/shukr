@@ -951,6 +951,7 @@ struct WatchCounterView: View {
         .onDisappear { runtime.stop() }
         // The Crown's owner follows the state: the counter in crown mode, the pages otherwise, nobody while paused.
         .onChange(of: crownOwnerWanted) { _, _ in giveCrown() }
+        .onChange(of: wristDown) { _, down in WatchPinchLog.add(down ? "screen dimmed" : "screen bright") }
         .onChange(of: scenePhase) { _, phase in
             // Leaving the app (the Crown to the watch face, another app) pauses, like the phone — only in the
             // background: inactive is the wrist down / a banner, and counting goes on through those (the runtime
