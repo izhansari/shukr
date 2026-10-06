@@ -312,10 +312,26 @@ struct PrayerStatusDot: View {
     private var edge: Color { Color.secondary.opacity(future ? 0.2 : 0.5) }
 
     var body: some View {
-        indicator
-            .frame(width: 14, height: 14)
-            .animation(.easeInOut(duration: CircleMotion.quick), value: done)
+        Group {
+            // A prayer still to come: a dashed ring, like the main circle's upcoming track (owner, 2026-10-06: tells a
+            // future prayer from the current and past ones at a glance), whatever the dot style.
+            if future {
+                Circle()
+                    .inset(by: 0.6)
+                    .stroke(Color.secondary.opacity(UpcomingTrack.opacity), style: Self.futureDashes)
+            } else {
+                indicator
+            }
+        }
+        .frame(width: 14, height: 14)
+        .animation(.easeInOut(duration: CircleMotion.quick), value: done)
     }
+
+    /// Ten dashes round the 14 pt dot, fitted so the last doesn't run into the first.
+    private static let futureDashes: StrokeStyle = {
+        let period = CGFloat.pi * (14 - 1.2) / 10
+        return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.4, period * 0.6])
+    }()
 
     @ViewBuilder private var indicator: some View {
         switch style {
