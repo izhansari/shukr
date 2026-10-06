@@ -1382,14 +1382,17 @@ struct BubbleShape: Shape {
         case .list:
             // Two short steps (owner: the first was still too long), one line a bullet.
             var shows = TourSection(id: "list.shows", title: "What it shows",
+                                    // Marked ones tuck away — said with how to get them back (owner: "only unmarked ones are
+                                    // shown" alone sounded like losing them).
                                     blocks: [TourBlock(items: ["your day\u{2019}s prayers and their times",
-                                                               "only unmarked ones are shown",
                                                                "coming ones greyed, with time until",
-                                                               "marked ones show your time and score"])])
+                                                               "marked ones show your time and score",
+                                                               "marked ones tuck below, one tap away"])])
             var can = TourSection(id: "list.can", title: "What you can do",
-                                  blocks: [TourBlock(items: ["unfold to see all your prayers",
-                                                             "tap a dot to mark or unmark",
-                                                             "hold a marked one to fix time or place",
+                                  // What, not how (owner): the gestures are the to-dos' job.
+                                  blocks: [TourBlock(items: ["see all your prayers, marked ones too",
+                                                             "complete a prayer, or undo it",
+                                                             "edit when and where you prayed",
                                                              "see how well you\u{2019}re praying today"])])
             guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: "Continue") }
             shows.done = true
