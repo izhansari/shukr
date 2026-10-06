@@ -324,6 +324,13 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   Double Tap (30 s of pinches, an empty log) and no Crown turn — watchOS takes them to wake the screen (a continuous
   buzz), and counting resumes once it's on; `screen dimmed` / `bright` lines in the log. `-watchPinchLogPrint` + `devicectl … process launch --console` streams
   `WatchPinchLog` live; DEBUG `-demoWatchCrown`, `-watchScrollFingerTest`, `-demoWatchDoubleTapScroll`; Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
+- Look (WatchLook.swift, ask watch-appearance): the phone sends `modeToggleNew` as `appearance` (0 light · 1 dark · 2
+  auto; resent on change from shukrApp's root); auto = the phone's rule, light from sunrise to Maghrib, from the watch's
+  own times, re-checked at each switch; wrist down = dark. The phone's public soft look (greyBlue): `WatchNeu.bg(scheme)`
+  grey-blue / charcoal on every page, `WatchSoftBand` = the raised band, the arc fine and round with a glow. **watchOS
+  draws the top-level clock and the sideways page dots white whatever the look** — no recolour, no hide (5 ways tried;
+  inside a session or a sheet it follows the look); on the grey-blue it stays readable (decision watch-light-clock B).
+  Every sheet / cover's content gets `.watchLookRoot()`; each root page `.watchPageBackground()`. DEBUG `-watchLook light|dark|auto`, `-watchPage 0|1|2`.
 - Untried on a real watch: wrist-down runtime, outbox catch-up, compass, memo, complications. DEBUG `-demoWatch`.
 
 **Fajr alarm** (FajrAlarmKit.swift; iOS 26.1+ AlarmKit, else the Shortcut)

@@ -391,6 +391,7 @@ enum WatchHaptics {
 /// The phone's Zikr circle (ZikrCircleFace), small: a thick pale track and a glowing green ring —
 /// full for Freestyle, today's progress for a task.
 struct WatchZikrFace: View {
+    @Environment(\.colorScheme) private var colorScheme
     let title: String
     var icon: String? = nil
     var mantraLine: String? = nil
@@ -403,7 +404,7 @@ struct WatchZikrFace: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.white.opacity(0.14), lineWidth: 7)
+            Circle().stroke(Color.primary.opacity(0.14), lineWidth: 7)
             Circle()
                 .trim(from: 0, to: max(min(fraction, 1), 0.001))
                 .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
@@ -448,9 +449,9 @@ struct WatchZikrFace: View {
                         .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(pick.chosen ? Color.watchSage : Color.secondary)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(Color.white.opacity(0.1)))
+                        .background(Capsule().fill(Color.primary.opacity(0.1)))
                         .frame(maxWidth: 88)
-                        .background(Capsule().fill(Color.black))   // over the ring
+                        .background(Capsule().fill(WatchNeu.page(colorScheme)))   // over the ring
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -620,9 +621,9 @@ struct WatchZikrPage: View {
             }
         }
         #endif
-        .sheet(isPresented: $showZikrPicker) { WatchZikrPicker(isPresented: $showZikrPicker) }
+        .sheet(isPresented: $showZikrPicker) { WatchZikrPicker(isPresented: $showZikrPicker).watchLookRoot() }
         .fullScreenCover(item: $running, onDismiss: landAfterSession) { config in
-            WatchCounterView(config: config)
+            WatchCounterView(config: config).watchLookRoot()
         }
         .onChange(of: running?.task?.id) { _, id in if let id { sessionTaskID = id } }
         .onAppear { reopenDraft() }
@@ -643,6 +644,7 @@ struct WatchZikrPage: View {
                 Button("Start over") { start(WatchCounterConfig(task: task)) }
             }
             .padding(.horizontal, 4)
+            .watchLookRoot()
         }
     }
 
@@ -721,6 +723,7 @@ func minutesText(_ seconds: Double) -> String {
 // MARK: - Counter
 
 struct WatchCounterView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let config: WatchCounterConfig
     @Environment(\.dismiss) private var dismiss
 
@@ -827,7 +830,7 @@ struct WatchCounterView: View {
                     // band and inset beads only read on it (owner: no fade at the edges). Black with
                     // the wrist down, like the rest of watchOS's always-on screens.
                     //
-                    (wristDown ? Color.black : WatchNeu.bg)
+                    (wristDown ? Color.black : WatchNeu.bg(colorScheme))
                         .ignoresSafeArea()
                         .opacity(paused ? 0 : 1)
                     // Double Tap (Series 9+ / Ultra 2), under the counter: the counter above takes every touch, so
@@ -839,7 +842,7 @@ struct WatchCounterView: View {
                     // mode is active"); the counter takes the Crown.
                     WatchDoubleTapLayer(target: doubleTapTarget,
                                         enabled: !paused && finished == nil && !crownMode,
-                                        fill: wristDown ? Color.black : WatchNeu.bg,
+                                        fill: wristDown ? Color.black : WatchNeu.bg(colorScheme),
                                         crown: $crown,
                                         crownOwner: $crownOwner,
                                         onCrownIdle: { crownGate.idle() },
@@ -850,7 +853,7 @@ struct WatchCounterView: View {
                     if paused {
                         // Solid, so nothing behind it makes it hard to read (owner).
                         pauseScreen
-                            .background(Color.black.ignoresSafeArea())
+                            .background(WatchNeu.page(colorScheme).ignoresSafeArea())
                             .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96)))
                     }
                 }
@@ -1102,7 +1105,7 @@ struct WatchCounterView: View {
                 Button { setCrownMode(false) } label: {
                     Label("Crown mode", systemImage: crownSymbol)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
@@ -1421,7 +1424,7 @@ struct WatchMemoButton: View {
         } label: {
             HStack(spacing: 6) {
                 ZStack {
-                    Circle().stroke(Color.white.opacity(0.2), lineWidth: 2)
+                    Circle().stroke(Color.primary.opacity(0.2), lineWidth: 2)
                     Circle().trim(from: 0, to: player.progress)
                         .stroke(Color.watchSage, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                         .rotationEffect(.degrees(-90))
@@ -1669,7 +1672,7 @@ struct WatchSettingsPage: View {
         }
         #endif
         }
-        .sheet(isPresented: $showHelp) { WatchCountingHelp() }
+        .sheet(isPresented: $showHelp) { WatchCountingHelp().watchLookRoot() }
     }
 
     /// One line: the setting, its value on the right; a tap steps to the next value.
@@ -1700,7 +1703,7 @@ struct WatchSettingsPage: View {
             }
             .padding(.vertical, 10)
             .padding(.horizontal, 12)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.08)))
+            .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.08)))
         }
         .buttonStyle(.plain)
         .accessibilityValue(value)
@@ -1819,7 +1822,7 @@ struct WatchPostSalahStrip: View {
             HStack(spacing: 3) {
                 ForEach(0..<3, id: \.self) { i in
                     Capsule()
-                        .fill(i < p.index ? Color.watchSage : i == p.index ? Color.watchSage.opacity(0.6) : Color.white.opacity(0.15))
+                        .fill(i < p.index ? Color.watchSage : i == p.index ? Color.watchSage.opacity(0.6) : Color.primary.opacity(0.15))
                         .frame(width: 18, height: 3)
                 }
             }
@@ -2012,7 +2015,7 @@ struct WatchPauseStats: View {
                     .contentTransition(.opacity)
                     .frame(maxWidth: .infinity)
                     .frame(height: WatchScreen.small ? 30 : 34)
-                    .background(Capsule().fill(finishArmed ? Color.green.opacity(0.22) : Color.white.opacity(0.12)))
+                    .background(Capsule().fill(finishArmed ? Color.green.opacity(0.22) : Color.primary.opacity(0.12)))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -2149,7 +2152,7 @@ struct WatchPauseStats: View {
     private func tile<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         content()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.08)))
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
@@ -2184,7 +2187,7 @@ struct WatchPauseSettings: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.08)))
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.08)))
                 }
                 .buttonStyle(.plain)
             }
@@ -2219,7 +2222,7 @@ struct WatchPauseSettings: View {
                 .foregroundStyle(lit ? Color.green : .secondary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
-                .background(Capsule().fill(lit ? Color.green.opacity(0.15) : Color.white.opacity(0.08)))
+                .background(Capsule().fill(lit ? Color.green.opacity(0.15) : Color.primary.opacity(0.08)))
                 .contentTransition(.opacity)
         }
         .buttonStyle(.plain)
@@ -2275,7 +2278,7 @@ private extension View {
         if #available(watchOS 26.0, *) {
             glassEffect(.regular, in: Capsule())
         } else {
-            background(Capsule().fill(Color.white.opacity(0.14)))
+            background(Capsule().fill(Color.primary.opacity(0.14)))
         }
     }
 }

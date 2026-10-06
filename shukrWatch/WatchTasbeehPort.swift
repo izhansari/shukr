@@ -38,6 +38,7 @@ struct WatchNeuProgressRing: View {
     /// False while the pause screen covers it: the fill holds still.
     var animating = true
     @Environment(\.isLuminanceReduced) private var dim
+    @Environment(\.colorScheme) private var scheme
 
     // AliveRingTuning.fine (its grain left out on the watch)
     private let band: CGFloat = 6, sweepSpeed = 23.0, lightStrength = 0.03, lightSpeed = 0.63
@@ -49,9 +50,9 @@ struct WatchNeuProgressRing: View {
             Circle()
                 .stroke(lineWidth: band)
                 .frame(width: 200 * s, height: 200 * s)
-                .foregroundColor(WatchNeu.ring)
-                .shadow(color: WatchNeu.darkShadow, radius: 4 * s, x: 2 * s, y: 2 * s)
-                .shadow(color: WatchNeu.lightShadow, radius: 6 * s, x: -2 * s, y: -2 * s)
+                .foregroundColor(WatchNeu.bg(scheme))   // NeuRing = the page's colour, either look
+                .shadow(color: WatchNeu.darkShadow(scheme), radius: 4 * s, x: 2 * s, y: 2 * s)
+                .shadow(color: WatchNeu.lightShadow(scheme), radius: 6 * s, x: -2 * s, y: -2 * s)
             fill
                 .frame(width: 230 * s, height: 230 * s)
                 .mask {
@@ -94,6 +95,7 @@ struct WatchNeuProgressRing: View {
 /// TasbeehCountView, scaled.
 struct WatchTasbeehCountView: View {
     let tasbeeh: Int
+    @Environment(\.colorScheme) private var scheme
     private var s: CGFloat { WatchNeu.scale }
     private var circleSize: CGFloat { 10 * s }
     private var arcRadius: CGFloat { 60 * s }
@@ -119,9 +121,9 @@ struct WatchTasbeehCountView: View {
                 let bead = 7 * s
                 let turn = Angle.degrees(180 + 360 / 100).radians
                 let dark = beadShadow(-1, -1, turn), light = beadShadow(1, 1, turn)
-                let shading = GraphicsContext.Shading.style(WatchNeu.bg
-                    .shadow(.inner(color: WatchNeu.darkShadow, radius: 1, x: dark.x, y: dark.y))
-                    .shadow(.inner(color: WatchNeu.lightShadow, radius: 1, x: light.x, y: light.y)))
+                let shading = GraphicsContext.Shading.style(WatchNeu.bg(scheme)
+                    .shadow(.inner(color: WatchNeu.darkShadow(scheme), radius: 1, x: dark.x, y: dark.y))
+                    .shadow(.inner(color: WatchNeu.lightShadow(scheme), radius: 1, x: light.x, y: light.y)))
                 for index in 0..<(tasbeeh % 100) {
                     let p = beadPosition(for: index, center: center, turn: turn)
                     ctx.fill(Path(ellipseIn: CGRect(x: p.x - bead / 2, y: p.y - bead / 2, width: bead, height: bead)), with: shading)

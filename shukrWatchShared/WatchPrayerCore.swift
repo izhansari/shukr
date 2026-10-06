@@ -31,6 +31,8 @@ enum WatchStore {
         /// The mark id sent to the phone for each local mark (name → id), for undo / a failed save.
         static let localMarkIDs = "watch.localMarkIDs"
         static let masajid = "watch.masajid"
+        /// The phone's light / dark / auto (0 / 1 / 2; WatchLook).
+        static let appearance = "watch.appearance"
         /// Prayers unmarked on the watch, shown undone until the phone stops listing them:
         /// name → prayer-day start.
         static let localUnmarks = "watch.localUnmarks"
@@ -57,6 +59,7 @@ enum WatchStore {
         set(context["scores"], Key.scores)
         set(context["qiblaSensitivity"], Key.qiblaSensitivity)
         set(context["masajid"], Key.masajid)
+        set(context["appearance"], Key.appearance)
         // Marks / unmarks the phone has handled (by id) are settled: whatever it decided — applied,
         // or ignored because it arrived out of order — is what it now reports, so the watch drops
         // its own pending copy and both show the same thing. A mark is handled once it's under

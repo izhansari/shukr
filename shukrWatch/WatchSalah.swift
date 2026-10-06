@@ -273,7 +273,7 @@ struct WatchCompletionMoment: View {
     var body: some View {
         ZStack {
             // The ring's track stays (the ring's own is faded out under this).
-            Circle().stroke(Color.white.opacity(0.12), lineWidth: 7.7)   // WatchPrayerRing's band
+            WatchSoftBand(width: 6.05)   // WatchPrayerRing's band (5.5 × 1.1)
             Circle()
                 .trim(from: 0, to: sweep)
                 .stroke(color, style: StrokeStyle(lineWidth: 4 * s, lineCap: .round))

@@ -47,6 +47,8 @@ final class WatchSync: NSObject, WCSessionDelegate {
             "city": group?.string(forKey: "lastCityName") ?? "",
             "completed": Array(SharedStore.completedPrayerNamesToday()).sorted(),
             "completedDay": dayStart.timeIntervalSince1970,
+            // Light / dark / auto, the phone's Settings (0 / 1 / 2): the watch follows it (owner, watch-appearance).
+            "appearance": UserDefaults.standard.integer(forKey: "modeToggleNew"),
         ]
         context.merge(WatchZikrSync.payload()) { current, _ in current }
         guard lastSent != (context as NSDictionary) else { return }

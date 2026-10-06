@@ -313,6 +313,8 @@ struct shukrApp: App {
                     colorModeToggleNew == 1 ? .dark :
                     (prayerViewModel.isDaytime ? .light : .dark)
             )
+            // The watch follows the same setting (Settings' toggle, the setup's step).
+            .onChange(of: colorModeToggleNew) { _, _ in WatchSync.shared.send() }
             
             
         }

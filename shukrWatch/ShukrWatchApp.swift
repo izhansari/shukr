@@ -32,6 +32,7 @@ struct ShukrWatchApp: App {
     var body: some Scene {
         WindowGroup {
             WatchRootView()
+                .watchLookRoot()
                 .environmentObject(session)
         }
         // Woken in the background with a new context from the phone: held until it has been delivered and taken (an
@@ -183,9 +184,9 @@ struct WatchRootView: View {
 
     var body: some View {
         TabView(selection: $page) {
-            WatchZikrPage().tag(0)
-            WatchHomeView(onScreen: page == 1).tag(1)
-            WatchSettingsPage().tag(2)
+            WatchZikrPage().tag(0).watchPageBackground()
+            WatchHomeView(onScreen: page == 1).tag(1).watchPageBackground()
+            WatchSettingsPage().tag(2).watchPageBackground()
         }
         .tabViewStyle(.page)
         // A session the app was closed on: open on Zikr, where it comes back paused.
@@ -284,7 +285,7 @@ struct WatchHomeView: View {
                 .onChange(of: moments.moment) { _, m in
                     if m != nil { withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) { showList = 0 } }
                 }
-                .fullScreenCover(item: $tasbih) { config in WatchCounterView(config: config) }
+                .fullScreenCover(item: $tasbih) { config in WatchCounterView(config: config).watchLookRoot() }
                 #if DEBUG
                 // `-demoWatchPostSalah`: open Tasbih Fatimah as if from the pill (simulator).
                 .onAppear {
@@ -449,6 +450,8 @@ struct WatchPrayerRing: View {
     @State private var ringY: CGFloat = 0
     @State private var pressY: CGFloat?
     private var k: CGFloat { compact ? 0.55 : 1.1 }
+    /// The soft ring's band (AliveRingTuning.fine's 6 pt on the phone's 200 pt circle, scaled).
+    private var band: CGFloat { 5.5 * k }
 
     private func cancelHold() {
         holdCancelled = true
@@ -479,20 +482,20 @@ struct WatchPrayerRing: View {
 
     var body: some View {
         ZStack {
-            // The phone's 200 pt circle has a 12 pt band and a 4 pt arc; scaled to ~118 pt.
-            if current {
-                Circle().stroke(Color.white.opacity(0.12), lineWidth: 7 * k)
-            } else {
-                Circle().stroke(Color.white.opacity(0.55), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))   // stronger, like the app (2026-09-28)
+            // The phone's soft ring (its public look): a raised band in the page's surface, the arc a fine round band
+            // the same width with its own glow; a prayer still to come draws its dashes inside the band.
+            WatchSoftBand(width: band)
+            if !current {
+                Circle().stroke(Color.primary.opacity(0.45), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))
             }
             // Holding to mark: the score arc itself swells and glows in its own colour (no green —
             // nothing may suggest a grade the prayer doesn't have; owner).
             let scoreColor = WatchScoring.color(start: prayer.start, end: prayer.end, at: now)
             Circle()
                 .trim(from: 0, to: elapsed)
-                .stroke(scoreColor, style: StrokeStyle(lineWidth: (2.5 + 3.5 * holdFill) * k, lineCap: .butt))
+                .stroke(scoreColor, style: StrokeStyle(lineWidth: band + 3.5 * holdFill * k, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: scoreColor.opacity(0.7 * holdFill), radius: 8 * holdFill)
+                .shadow(color: scoreColor.opacity(0.45 + 0.25 * holdFill), radius: (4 + 4 * holdFill) * k)
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
                     Image(systemName: WatchPrayers.symbol(prayer.name))
