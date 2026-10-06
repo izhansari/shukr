@@ -1316,9 +1316,6 @@ struct BubbleShape: Shape {
 
     // MARK: What the bubble says
 
-    /// The practice day's marked prayers: the list's "N done".
-    var doneCount: Int { Self.practiceMirror?.filter(\.isCompleted).count ?? 0 }
-
     /// The current card's words, to-dos and buttons (the post-tour steps have their own, in TourLayer).
     var page: TourPage {
         // A step finishing, its first beat: it rolls up into its ✓ line, nothing new under it yet.
@@ -1385,12 +1382,13 @@ struct BubbleShape: Shape {
         case .list:
             // Two short steps (owner: the first was still too long), one line a bullet.
             var shows = TourSection(id: "list.shows", title: "What it shows",
-                                    blocks: [TourBlock(items: ["every prayer of the day, with its time",
-                                                               "coming ones greyed, with the time until",
-                                                               "marked ones with your time and score",
-                                                               "marked ones fold under \u{201C}done\u{201D}"])])
+                                    blocks: [TourBlock(items: ["your day\u{2019}s prayers and their times",
+                                                               "only unmarked ones are shown",
+                                                               "coming ones greyed, with time until",
+                                                               "marked ones show your time and score"])])
             var can = TourSection(id: "list.can", title: "What you can do",
-                                  blocks: [TourBlock(items: ["tap a dot to mark or unmark",
+                                  blocks: [TourBlock(items: ["unfold to see all your prayers",
+                                                             "tap a dot to mark or unmark",
                                                              "hold a marked one to fix time or place",
                                                              "see how well you\u{2019}re praying today"])])
             guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: "Continue") }
@@ -1399,9 +1397,10 @@ struct BubbleShape: Shape {
             can.done = true
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
             let tryIt = TourSection(id: "list.try", title: "Try it",
-                                    tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to open them",
+                                    // The ones they can do now first, the waiting (greyed) ones after (owner).
+                                    tasks: ["Tap a coming prayer for the time until",
+                                            "Unfold to see all your prayers",
                                             "Tap a marked prayer for its score",
-                                            "Tap a coming prayer for the time until",
                                             "Hold a marked one, change its time, save"],
                                     note: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil)
             return chapter(.list, 2 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 6, [shows, can, tryIt],
@@ -1443,10 +1442,10 @@ struct BubbleShape: Shape {
         if !ticked.contains(2) { l.insert(3) }
         return l
     }
-    /// The list's: a marked prayer's score once they're shown; the fix once the three taps are done.
+    /// The list's: a marked prayer's score once they're unfolded; the fix once the three taps are done.
     private var lockedList: Set<Int> {
         var l: Set<Int> = []
-        if !ticked.contains(0) { l.insert(1) }
+        if !ticked.contains(1) { l.insert(2) }
         if !ticked.isSuperset(of: [0, 1, 2]) { l.insert(3) }
         return l
     }
@@ -1670,9 +1669,9 @@ struct BubbleShape: Shape {
         // 2 · The list: learn, then try.
         case (.list, .learn, .next): setPhase(.learnMore)
         case (.list, .learnMore, .next): setPhase(.tryIt)
-        case (.list, .tryIt, .foldTapped): tick(0, flash: "doneFold")
-        case (.list, .tryIt, .markedRowTapped): tick(1, flash: "markedRow")
-        case (.list, .tryIt, .comingRowTapped): tick(2, flash: "comingRow")
+        case (.list, .tryIt, .comingRowTapped): tick(0, flash: "comingRow")
+        case (.list, .tryIt, .foldTapped): tick(1, flash: "doneFold")
+        case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
         case (.list, .tryIt, .editorSaved): tick(3)
         case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): go(to: .zikr)
 
@@ -2016,13 +2015,9 @@ extension TourLayer {
 
     /// What the bubble points at, for the card and its phase.
     private func target(_ step: TourStep) -> String? {
-        let ticked = runtime.ticked
         switch (step, runtime.phase) {
         case (.circle, _): return "circle"
-        case (.list, .learn), (.list, .learnMore): return "prayerList"
-        case (.list, _):
-            if !ticked.contains(0) { return "doneFold" }
-            return "prayerList"
+        case (.list, _): return "prayerList"
         case (.zikr, .go): return "circle"
         case (.zikr, _): return "zikrCircle"
         case (.settings, .go): return "settingsTab"
@@ -2067,9 +2062,9 @@ extension TourLayer {
             if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
             return nil
         case (.list, .tryIt):
-            if next(0) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: CGPoint(x: $0.x + 60, y: $0.y)) } }
-            if next(1) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
-            if next(2) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
+            if next(0) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
+            if next(1) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: CGPoint(x: $0.x + 60, y: $0.y)) } }
+            if next(2) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
             if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
             return nil
         case (.zikr, .go):
