@@ -1060,6 +1060,12 @@ struct WatchCounterView: View {
         WatchPinchLog.add("mode → \(on ? "crown" : "tap & pinch")")
         WKInterfaceDevice.current().play(.click)
         withAnimation(.easeInOut(duration: 0.25)) { crownMode = on; modeNote = false }
+        // Every start of crown mode asks the way again: Auto's first turn picks it each time, not once a session (owner:
+        // "every time we turn crown mode off and back on, we check the direction").
+        if on {
+            crownGate = WatchCrownGate(direction: WatchCrownDirection.current.fixed)
+            crownGate.reset(to: crown)
+        }
         if !on && !crownOnCounter { scrollerGeneration += 1 }
         // Off: the pages take the Crown back, for pinch — a moment later, once they're unlocked and focusable again
         // (in the same turn the Crown went to nobody, and a pinch shook: "nothing to act on").
@@ -1093,7 +1099,7 @@ struct WatchCounterView: View {
             }
             if crownMode {
                 Button { setCrownMode(false) } label: {
-                    Label("Crown mode", systemImage: "digitalcrown.arrow.clockwise")
+                    Label("Crown mode", systemImage: crownSymbol)
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(1)
@@ -1114,6 +1120,16 @@ struct WatchCounterView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
+    /// The pill's Crown points the way this session counts (owner): no arrow until Auto's first turn picks it; ↑ for
+    /// forward (+1, the clockwise symbol), ↓ for back.
+    private var crownSymbol: String {
+        switch crownGate.direction {
+        case 1?: "digitalcrown.arrow.clockwise"
+        case (-1)?: "digitalcrown.arrow.counterclockwise"
+        default: "digitalcrown"
+        }
+    }
+
     /// "Taps are off" / "Crown is off", for 1.6 s.
     private func showModeNote() {
         withAnimation(.easeOut(duration: 0.2)) { modeNote = true }
@@ -1124,10 +1140,12 @@ struct WatchCounterView: View {
         }
     }
 
-    /// A step the counting way counts once (WatchCrownGate); the other way reloads. Ignored with
-    /// the wrist down (dimmed screen), so a sleeve brushing the crown doesn't count.
+    /// A step the counting way counts once (WatchCrownGate); the other way reloads. In Crown mode it counts with the
+    /// wrist down too (owner: "get crown counting to work while the screen is off" — pinch can't: watchOS sends no
+    /// Double Tap then).
     private func crownTurned(to value: Double) {
-        guard !paused, finished == nil, !wristDown else { crownGate.reset(to: value); return }
+        guard !paused, finished == nil, crownMode || !wristDown else { crownGate.reset(to: value); return }
+        if wristDown { WatchPinchLog.add("crown turned, wrist down") }
         // Only while counting with the Crown (owner: "the user has to decide which mode … Pinch and touch - or just
         // crown"). With tap & pinch the pages hold the Crown for Double Tap; a turn scrolls them without counting
         // and hands one step here (`crownHanded`), which only says so.
@@ -1702,7 +1720,7 @@ struct WatchCountingHelp: View {
                                  : "Turn the Crown: each click counts one, either way", systemImage: "digitalcrown.arrow.clockwise")
                 Group {
                     if crownRules {
-                        Text("Count with: tap & pinch, or the Crown alone. Settings picks the default; the pause screen's second page changes it for a session. The Crown doesn't count with your wrist down.")
+                        Text("Count with: tap & pinch, or the Crown alone. Settings picks the default; the pause screen's second page changes it for a session. With the Crown it counts with your wrist down too.")
                         Text("Crown counts: Auto — your first turn picks the way.")
                     }
                     if WatchBeta.on {

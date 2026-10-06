@@ -317,8 +317,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   → 55); a Crown scroll reports phases, a pinch never does, so nothing counts while a phase is live or for
   `crownQuiet` 0.6 s after — a flicked Crown reports idle while still sliding; the Crown never counts and never switches
   the mode, it shows "Crown is off"; its system buzz while scrolling the list stays) or **Crown** (`crownOwner` = the
-  counter, the list `scrollDisabled`, taps / pinch don't count; a glass "Crown mode" pill on the bottom edge's centre —
-  a tap goes back to tap & pinch, recreating the list (`scrollerGeneration`: a list once locked never took the Crown
+  counter, the list `scrollDisabled`, taps / pinch don't count; a glass "Crown mode" pill on the bottom edge's centre, its Crown
+  without an arrow until the way is picked, then ↑ / ↓; every start of crown mode picks the way again (Auto); it counts
+  with the wrist down too — a tap goes back to tap & pinch, recreating the list (`scrollerGeneration`: a list once locked never took the Crown
   back); one `@FocusState crownOwner`, two fought). Double Tap is never delivered with the screen off (Laraib's watch:
   30 s of pinches, nothing reached the app). `-watchPinchLogPrint` + `devicectl … process launch --console` streams
   `WatchPinchLog` live; DEBUG `-demoWatchCrown`, `-watchScrollFingerTest`, `-demoWatchDoubleTapScroll`; Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
