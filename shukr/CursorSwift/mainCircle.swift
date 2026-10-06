@@ -1020,8 +1020,8 @@ struct summaryCircle: View{
             .modifier(CircleWordsAway(away: away || showsScore))
         }
         .transition(.opacity)
-        .onAppear { getTheNextFajrTime(); refreshDay(); DayPageState.shared.up = true }
-        .onDisappear { DayPageState.shared.up = false }
+        .onAppear { getTheNextFajrTime(); refreshDay(); DayPageState.shared.pageAppeared() }
+        .onDisappear { DayPageState.shared.pageGone() }
         .onChange(of: showsScore) { _, shows in
             picked = nil
             if shows { refreshDay() }

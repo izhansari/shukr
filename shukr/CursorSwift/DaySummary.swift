@@ -18,7 +18,29 @@ extension DayPrayer {
 /// (Izhan: "have it rise together with the page").
 @MainActor @Observable final class DayPageState {
     static let shared = DayPageState()
-    var up = false
+    private(set) var up = false
+    /// The list's card is raised: set `CircleMotion.dayCardLiftDelay` after the page comes up (its rows unfold first —
+    /// Izhan: "let it expand first then raise the card"), cleared with it. Kept here, not in the card's view: the list
+    /// rebuilds its card as the page swaps, and a view's own state started out raised.
+    private(set) var lifted = false
+    private var token = 0
+
+    func pageAppeared() {
+        up = true
+        token += 1
+        let mine = token
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(CircleMotion.dayCardLiftDelay))
+            guard token == mine, up else { return }
+            lifted = true
+        }
+    }
+
+    func pageGone() {
+        token += 1
+        up = false
+        lifted = false
+    }
 }
 
 /// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.

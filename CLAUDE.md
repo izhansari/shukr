@@ -263,7 +263,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (missed → Qaza → late, "hardest this week" + "Set a Fajr alarm ›" when off; the same fix three nights running gives
   way), milestones (7, 14, 21, 30… days all in time), noticed (rotated, none repeated within 3 days), Thursday →
   Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. A full day glows once (`daySummary.glowed`).
-  The list's well rises into a raised card with the day's page (all five marked and `DayPageState.up`, set while summaryCircle is mounted — not at the mark) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
+  The list's well rises into a raised card with the day's page (all five marked and `DayPageState.lifted`, set `CircleMotion.dayCardLiftDelay` after summaryCircle mounts so the rows unfold first; kept in DayPageState because the list rebuilds its card at the swap) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)

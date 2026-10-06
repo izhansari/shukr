@@ -346,7 +346,7 @@ struct SalahLookCard: ViewModifier {
             content.clipShape(card)
                 .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
                 .scaleEffect(raised && !reduceMotion ? 1.012 : 1)
-                .animation(reduceMotion ? .easeOut(duration: CircleMotion.quick) : .easeInOut(duration: 0.9), value: raised)
+                .animation(reduceMotion ? .easeOut(duration: CircleMotion.quick) : CircleMotion.dayCardLift, value: raised)
         case .today, .pills, .quiet:
             content
         }

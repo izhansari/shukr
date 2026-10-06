@@ -52,6 +52,14 @@ enum CircleMotion {
     /// A page arriving: the pager's programmatic scroll, the salah sheet popping up and down, the bottom bar's moves
     /// (it was typed 10 times as `.spring(response: 0.35, dampingFraction: 0.85)`).
     static let page = Animation.spring(response: 0.35, dampingFraction: 0.85)
+    /// The soft list leaving as the sheet pops down: it drops this far while it fades — farther than the circle travels
+    /// down (~150 pt), so the circle never passes over the fading rows (Izhan: "move down at least as fast as the main
+    /// circle … so there isnt ghosting"). Its way in stays the 36 pt rise (decision list-reveal-rise A).
+    static let listExitDrop: CGFloat = 200
+    /// The day's page: the list's card lifts once its rows have unfolded, not while (Izhan: "let it expand first then
+    /// raise the card"); the rows' make-room-then-fade takes ~0.3–0.6 s.
+    static let dayCardLiftDelay: Double = 0.7
+    static let dayCardLift = Animation.easeInOut(duration: 0.9)
     /// The Salah sheet that follows the finger, moved by code (the chevron, a widget, a demo): its scroll to a rest. A
     /// release is the scroll view's own coast.
     static let sheetSnap = Animation.spring(response: 0.35, dampingFraction: 0.85)
