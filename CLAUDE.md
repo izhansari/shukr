@@ -34,8 +34,12 @@ restore agreed behaviour, review fix-ups that don't change what he sees, and int
 4. Install on his phone only right after pulling the team line, so every build has everyone's work.
 5. Done = `queue.sh done <id> <hash>` right after the push (the What's new entry carries what was and wasn't checked);
    no done message. Message Bradley only when blocked (`queue.sh block`).
-6. Bradley reviews after it lands. Only a real bug (a crash, lost data, something wrong he'd notice) stops the next
-   item; nits ride along with a later one.
+6. **Checks are sized to the change, with no back-and-forth rounds (owner, 2026-10-06, decision review-cadence A).**
+   Whoever builds checks the logic of what changed. Copy and small visual tweaks: the build plus one small screenshot.
+   Risky changes (data, flows, gestures): one look, at one size; the largest text, light and dark, and frame-by-frame only
+   when the change is about layout or animation. One review pass per TestFlight push, by one reviewer (Bradley); no
+   per-commit review rounds among agents. Only a real bug (a crash, lost data, something wrong he'd notice) stops the
+   next item; nits ride along with a later one.
 7. Izhan gets one update per round (a round = a new build on his phone): what's on it, what to try, decisions batched.
 8. **A question for Izhan is logged before it's asked (`board/decide.sh ask`) and its answer recorded after
    (`decide.sh answer`)**; he answers on the What's new page, in chat with Bradley, or on the board — in that order; never
