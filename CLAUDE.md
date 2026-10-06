@@ -255,6 +255,14 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - The ring fills with the window, coloured by the score you'd get now; a tap flips "ends at" / time left. Not yet started: dashed `UpcomingTrack` + `NextTag`, solid at the start (`settleTrack`).
 - Marking: haptic, `CompletionFlourish` (`heldPrayer`), done rows fold into "N done"; tap the dot's circle to mark, elsewhere flips the time, hold opens `PrayerTimeEditSheet` (local draft; recorded value kept, 2.3.0). `PostSalahNudge` (15 s ring) is the only post-salah prompt.
 - DEBUG: `-demoPrayerStart [-demoPrayerStartThenMark]`, `-demoPrayerCompletion`.
+- **The day's page** (decision day-score-end; DaySummary.swift, DayInsight.swift): the summary's score side (all five
+  marked, list open) — `DayRing` on the ring's band: five fifths (Fajr at the top) in their grade colours, a dot where in
+  each window it was prayed (Qaza at the end), unmarked = faint dashes; the circle's own tap area shrinks to the middle
+  there (`daySummaryShowing`) so the band's tap picks a fifth (centre shows it, lets go after 8 s). Centre: whole-number
+  score + "4 of 5 in time" / "all five in time" / "all five early". One line under the circle from `DayInsight`: act-on
+  (missed → Qaza → late, "hardest this week" + "Set a Fajr alarm ›" when off; the same fix three nights running gives
+  way), milestones (7, 14, 21, 30… days all in time), noticed (rotated, none repeated within 3 days), Thursday →
+  Jumu'ah; kept per prayer day (`daySummary.shownLines`); none in the tour. A full day glows once (`daySummary.glowed`).
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

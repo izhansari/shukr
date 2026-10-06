@@ -109,6 +109,12 @@ struct MainCircleView: View {
         return nil
     }
     /// The prayer the circle draws, if its face is a prayer.
+    /// The day's score side is up (summaryCircle's day ring takes taps on the band).
+    private var daySummaryShowing: Bool {
+        guard case .summary = displayedFace ?? derivedFace else { return false }
+        return summaryShowsScore ?? summaryWantsScore
+    }
+
     /// Whether the clock moving to `next` changes the ring's colour (its grade, as `progressColor` reads it).
     private func tickChangesColor(to next: Date) -> Bool {
         guard let p = shownPrayer else { return false }
@@ -362,6 +368,8 @@ struct MainCircleView: View {
             Circle()
                 .fill(Color(.systemBackground).opacity(0.001))
                 .frame(width: 200, height: 200)
+                // The day's page: the band is the day ring's (a tap there tells that prayer), the middle stays this one's.
+                .contentShape(Circle().inset(by: daySummaryShowing ? 26 : 0))
                 .onTapGesture {
                     handleTap()  // Toggle the trigger
                 }
@@ -854,6 +862,15 @@ struct summaryCircle: View{
     let showsScore: Bool
     let away: Bool
     @State private var nextFajr: (start: Date, end: Date)?
+    // The day's page (DaySummary.swift): earlier days for the line, the tapped fifth, the glow.
+    @Environment(\.modelContext) private var context
+    @Environment(\.circleTheme) private var theme
+    @AppStorage("alarmEnabled", store: UserDefaults(suiteName: SharedStore.appGroup)) private var fajrAlarmOn = false
+    @State private var history: [[DayPrayer]] = []
+    @State private var picked: Int?
+    @State private var pickedAt = Date.distantPast
+    @State private var line: DayInsight.Line?
+    @State private var glow = false
     /// A stored day score, `daysBack` prayer days before today (1 = yesterday).
     private func storedScore(daysBack: Int) -> Double {
         let day = Calendar.current.date(byAdding: .day, value: -daysBack, to: PrayerDay.date()) ?? PrayerDay.date()
@@ -869,13 +886,58 @@ struct summaryCircle: View{
     }
     private var shownScore: Double { showingYesterday ? storedScore(daysBack: 1) : viewModel.todaysScore }
 
-    private func changeInDailyScore() -> Text {
-        let previous = storedScore(daysBack: showingYesterday ? 2 : 1)
-        let changeWithSign = shownScore - previous
-        let improvement = changeWithSign > 0
-        let absChange = abs(changeWithSign)
-        let percentageAbs = String(format: "%.1f%%", absChange * 100)
-        return Text(changeWithSign < 0 ? "↓\(percentageAbs)" : "↑\(percentageAbs)").foregroundStyle(improvement ? Color(.systemGreen) : Color(.systemRed))
+    /// The prayers of the day shown (today, or yesterday before a Fajr with nothing marked).
+    private var shownDay: [DayPrayer] {
+        showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
+    }
+
+    @ViewBuilder private var dayLine: some View {
+        if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
+            Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
+                .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+        } else if let line, !line.text.isEmpty {
+            VStack(spacing: 6) {
+                Text(line.text)
+                    .multilineTextAlignment(.center).lineLimit(2).minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: 14, weight: .light, design: .rounded)).foregroundStyle(.secondary)
+                if line.offersFajrAlarm && !fajrAlarmOn {
+                    Button { sharedState.go(to: .settings) } label: {
+                        Text("Set a Fajr alarm ›").font(.system(size: 14, weight: .regular, design: .rounded))
+                            .foregroundStyle(Color.sage)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
+        }
+    }
+
+    /// The day's line, kept for the day (DayInsight); none during the tour (its practice day isn't the user's).
+    private func refreshDay() {
+        guard !TourRuntime.shared.active else { line = nil; return }
+        history = DayHistory.load(context)
+        let today = PrayerDay.date()
+        let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: today) ?? today
+        let input = DayInsight.Inputs(
+            dayKey: PrayerNotificationID.dayKey(showingYesterday ? Calendar.current.date(byAdding: .day, value: -1, to: today) ?? today : today),
+            today: shownDay,
+            history: showingYesterday ? Array(history.dropFirst()) : history,
+            fajrAlarmOn: fajrAlarmOn,
+            tomorrowStart: { viewModel.getPrayerTime(for: $0, on: tomorrow)?.start },
+            tomorrowIsFriday: Calendar.current.component(.weekday, from: tomorrow) == 6)
+        line = DayInsight.line(input)
+        // A full day glows once (per prayer day), the first time its page is shown.
+        let key = input.dayKey
+        if showsScore, shownDay.count == 5, shownDay.allSatisfy(\.inTime),
+           UserDefaults.standard.string(forKey: "daySummary.glowed") != key {
+            UserDefaults.standard.set(key, forKey: "daySummary.glowed")
+            withAnimation(.easeOut(duration: 0.8)) { glow = true }
+            Task {
+                try? await Task.sleep(for: .seconds(2.4))
+                withAnimation(.easeInOut(duration: 1.6)) { glow = false }
+            }
+        }
     }
 
     func getTheNextFajrTime() {
@@ -896,24 +958,26 @@ struct summaryCircle: View{
         // Score ↔ next Fajr take turns — one goes out, then the other comes in (CircleMoments.swift), in every look;
         // Today's look crossfaded them inside the sheet's animation, "100.0" over "Fajr" mid-swap.
         ZStack{
-            // The Summary Score
-            // Same type as the Insights ring: a large light number over a thin caption.
-            VStack(spacing: 2){
-                Text(String(format: "%.1f", shownScore * 100))
-                    .font(.system(size: 44, weight: .light, design: .rounded))
-                    .contentTransition(.numericText(value: shownScore))
-                Text(showingYesterday ? "yesterday's score" : "today's score")
-                    .font(.footnote)
-                    .fontDesign(.rounded)
-                    .fontWeight(.thin)
-                    .foregroundColor(.secondary)
-                changeInDailyScore()
-                    .opacity(0.7)
-                    .font(.caption)
-                    .fontDesign(.rounded)
-                    .padding(.top, 2)
+            // The day (decision day-score-end): the ring holds the day's five prayers round the score; a fifth tapped
+            // tells that prayer; one line under the circle.
+            DayCentre(day: shownDay, score: shownScore, picked: picked, yesterday: showingYesterday)
+                .animation(.easeOut(duration: CircleMotion.quick), value: picked)
+                .modifier(CircleWordsAway(away: away || !showsScore))
+            DayRing(day: shownDay, picked: picked) { i in
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
+                pickedAt = Date()
+                triggerSomeVibration(type: .light)
+            }
+            .background {
+                // A full day: the ring glows once (its first showing that day), then settles.
+                Circle().fill(Color.green.opacity(0.12)).frame(width: 290, height: 290).blur(radius: 32)
+                    .opacity(glow ? 1 : 0).allowsHitTesting(false)
+            }
+            .overlay(alignment: .top) {
+                dayLine.frame(width: 310).offset(y: 222)
             }
             .modifier(CircleWordsAway(away: away || !showsScore))
+            .allowsHitTesting(showsScore && !away)
 
             // Fajr Icon, Title, Time — a prayer that hasn't started, so the future look (NEXT over
             // a dimmed name, the dashed track), keeping its own time text: "in 4 hr" ⇄ its window.
@@ -956,7 +1020,21 @@ struct summaryCircle: View{
             .modifier(CircleWordsAway(away: away || showsScore))
         }
         .transition(.opacity)
-        .onAppear { getTheNextFajrTime() }
+        .onAppear { getTheNextFajrTime(); refreshDay() }
+        .onChange(of: showsScore) { _, shows in
+            picked = nil
+            if shows { refreshDay() }
+        }
+        // A mark (or an unmark) changes the day.
+        .onChange(of: viewModel.todaysPrayers.map { "\($0.name)\($0.isCompleted)\($0.timeAtComplete?.timeIntervalSince1970 ?? 0)" }) { _, _ in
+            refreshDay()
+        }
+        // A tapped fifth lets go after a while.
+        .task(id: pickedAt) {
+            guard picked != nil else { return }
+            try? await Task.sleep(for: .seconds(8))
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
+        }
     }
     
 
