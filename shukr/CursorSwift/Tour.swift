@@ -2437,6 +2437,8 @@ struct TourSkipButton: View {
     @State private var token = 0
     /// The words, out while the capsule changes (out, then in — the two labels never cross).
     @State private var wordsAway = false
+    /// The green edge, faded on its own (the capsule itself changes size at once — see `change(to:)`).
+    @State private var edge = false
     @Environment(\.circleTheme) private var theme
 
     var body: some View {
@@ -2458,9 +2460,8 @@ struct TourSkipButton: View {
         // Solid: the page's own colour under the tint, so what it covers (Zikr's title beside Azkar) doesn't show
         // through (owner: "fill in its background so we don't have ghosting").
         .background(Capsule().fill(Color.primary.opacity(0.06)).background(Capsule().fill(theme.backdrop)))
-        .overlay(Capsule().strokeBorder(TourInk.green, lineWidth: 1.5).opacity(armed ? 1 : 0))
+        .overlay(Capsule().strokeBorder(TourInk.green, lineWidth: 1.5).opacity(edge ? 1 : 0))
         .fixedSize()
-        .animation(.smooth(duration: CircleMotion.quick), value: armed)
         .contentShape(Capsule())
         .onTapGesture(perform: tap)
         .opacity(shown ? 1 : 0)
@@ -2475,6 +2476,7 @@ struct TourSkipButton: View {
         if armed {
             triggerSomeVibration(type: .medium)
             armed = false
+            edge = false
             action()
         } else {
             triggerSomeVibration(type: .light)
@@ -2487,14 +2489,16 @@ struct TourSkipButton: View {
         }
     }
 
-    /// Out, then in: the words fade, the capsule grows (or shrinks) and turns, the new words fade in.
+    /// Out, then in: the words fade, the capsule changes size while they're away — at once, never animated (an
+    /// animated width kept the old tap area: the armed capsule's left part took no tap — Frank's trap, seen again
+    /// 2026-10-06) — then the new words and the green edge fade in.
     private func change(to on: Bool) {
-        withAnimation(.easeOut(duration: 0.1)) { wordsAway = true }
+        withAnimation(.easeOut(duration: 0.1)) { wordsAway = true; if !on { edge = false } }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            armed = on   // the capsule's own animation (CircleMotion.quick)
-            DispatchQueue.main.asyncAfter(deadline: .now() + CircleMotion.quick * 0.6) {
-                withAnimation(.easeIn(duration: 0.15)) { wordsAway = false }
-            }
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) { armed = on }
+            withAnimation(.easeIn(duration: 0.15)) { wordsAway = false; if on { edge = true } }
         }
     }
 }
