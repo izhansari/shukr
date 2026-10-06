@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 import TipKit
 
 /// The first-run tour on the live app (owner, ask onboarding-tour: "a little gentle onboarding once users get past set up
@@ -1118,7 +1119,7 @@ struct BubbleShape: Shape {
     var locksPager: Bool { active && !(step == .zikr && phase == .go) }
     /// The list stays as the card needs it (TourLayer.sheetPosition); free only where the card is about other pages.
     /// The Zikr card's learn page names Azkar, top right: its door shows then (not tappable — the tour's guard).
-    static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase == .learn }
+    static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase != .go }
     /// Card 1 lets go once Asr is marked: its last to-do is the swipe up.
     var holdsSheet: Bool {
         active && !(step == .zikr && phase == .go) && step != .settings && !(step == .circle && ticked.contains(2))
@@ -1228,6 +1229,9 @@ struct BubbleShape: Shape {
     /// The practice day as a card starts (forward or Back): Asr unmarked on the circle card, marked after it; Fajr late
     /// until it's fixed; "done" closed; no pill.
     private func prepare(_ card: TourStep) {
+        // The Zikr chapter's example tasks: up from its first step until Settings is reached (the tab is tapped from
+        // the Zikr page).
+        if card == .zikr || card == .settings { TourExamples.shared.show() } else { TourExamples.shared.hide() }
         guard practiceDay != nil else { return }
         repinPractice()
         if let asr = practiceAsr {
@@ -1431,14 +1435,24 @@ struct BubbleShape: Shape {
                            locked: lockedList, primary: all ? "Continue" : nil)
         case .zikr:
             var there = TourSection(id: "zikr.go", title: "Get there", lead: "It\u{2019}s one page over.", tasks: ["Swipe right"])
-            guard phase != .go else { return chapter(.zikr, 0, of: 2, [there]) }
+            guard phase != .go else { return chapter(.zikr, 0, of: 4, [there]) }
             there.done = true
-            let page = TourSection(id: "zikr.shows", title: "On this page",
+            // Example tasks on the wheel (TourExamples), said so (owner: "not real tasks … just example tasks").
+            var page = TourSection(id: "zikr.shows", title: "On this page",
+                                   lead: "The tasks here are examples.",
                                    blocks: [TourBlock(items: ["your tasks on the wheel, freestyle first",
-                                                              "scroll the wheel for the rest",
                                                               "History top left, Azkar top right",
                                                               "under it: tasks done and time left"])])
-            return chapter(.zikr, 1, of: 2, [there, page], primary: "Continue")
+            guard phase != .learn else { return chapter(.zikr, 1, of: 4, [there, page], primary: "Continue") }
+            page.done = true
+            let all = ticked.isSuperset(of: [0, 1])
+            // Done: the to-dos fold to their ✓ line (as the circle's do), so the bubble stays over the wheel.
+            let tryIt = TourSection(id: "zikr.try", title: "Try it", done: all,
+                                    tasks: ["Scroll the wheel", "Hold a task, then pick an option"])
+            let after = TourSection(id: "zikr.after",
+                                    note: "On your own tasks, that\u{2019}s how you edit or delete them.")
+            return chapter(.zikr, 2 + Double(ticked.intersection([0, 1]).count), of: 4,
+                           [there, page, tryIt] + (all ? [after] : []), primary: all ? "Continue" : nil)
         case .settings:
             var there = TourSection(id: "settings.go", title: "Get there", lead: "One tap away.", tasks: ["Tap Settings"])
             guard phase != .go else { return chapter(.settings, 0, of: 2, [there]) }
@@ -1527,6 +1541,8 @@ struct BubbleShape: Shape {
 
     enum Event {
         case circleTapped, listOpened, unmarked, mapOpened, foldTapped, qiblaAligned, next, back
+        /// The Zikr chapter: the wheel moved; an example task's option picked from its hold menu.
+        case wheelScrolled, exampleOption
         case comingRowTapped, markedRowTapped, pillClosed, pillOpened, zikrPage, settingsPage
         /// The circle card's "See it in action" / "Play again"; the qibla line's skip (no compass).
         case demo, skipQibla
@@ -1622,6 +1638,7 @@ struct BubbleShape: Shape {
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
         practicePrayer = nil
         clearPill += 1
+        TourExamples.shared.hide()
         endPractice()
         resetCardState()
         sweepPlayed = false
@@ -1703,10 +1720,14 @@ struct BubbleShape: Shape {
 
         // 3 · Zikr: go there, then learn it.
         case (.zikr, .go, .zikrPage): setPhase(.learn)
-        case (.zikr, .learn, .next): go(to: .settings)
+        case (.zikr, .learn, .next): setPhase(.tryIt)
+        case (.zikr, .tryIt, .wheelScrolled): tick(0)
+        case (.zikr, .tryIt, .exampleOption): tick(1)
+        case (.zikr, .tryIt, .next) where ticked.isSuperset(of: [0, 1]): go(to: .settings)
 
         // 4 · Settings: go there, then learn it at the top, then the tour's own row.
         case (.settings, .go, .settingsPage):
+            TourExamples.shared.hide()   // off the Zikr page: the user's own tasks are back
             settingsScroll = (.top, settingsScroll.1 + 1)
             setPhase(.learn)
         case (.settings, .learn, .next):
@@ -2061,7 +2082,7 @@ extension TourLayer {
         // Marked: over the circle, so the swipe up has the page under it (the bubble there took the touches).
         case .circle where runtime.ticked.contains(2): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
         // Over the wheel: the tasks line under it is one of the things it talks about.
-        case .zikr where runtime.phase == .learn: return TourTargets.shared.frame("zikrCircle").map { $0.minY - 10 }
+        case .zikr where runtime.phase != .go: return TourTargets.shared.frame("zikrCircle").map { $0.minY - 10 }
         default: return nil
         }
     }
@@ -2089,6 +2110,12 @@ extension TourLayer {
             if next(1) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: CGPoint(x: $0.x + 60, y: $0.y)) } }
             if next(2) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
             if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
+            return nil
+        case (.zikr, .tryIt):
+            guard let c = t.frame("zikrCircle") else { return nil }
+            // Up the wheel beside the circle; then a hold on it.
+            if next(0) { return .init(kind: .swipe(dx: 0, dy: -110), at: CGPoint(x: c.maxX - 10, y: c.maxY + 30)) }
+            if next(1) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
             return nil
         case (.zikr, .go):
             guard sharedState.horizontalPage == .main, let c = circle else { return nil }
@@ -2165,6 +2192,8 @@ extension TourLayer {
             let rows = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].flatMap { f("prayerRow." + $0) }
             return f("doneFold") + rows
         case (.zikr, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
+        // Scroll the wheel, hold a task: the page under the bubble (taps start nothing — the wheel's own guard).
+        case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("zikrCircle").map { $0.minY - 20 }) : []
         case (.settings, .go): return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
         default: return []
         }
@@ -2589,6 +2618,77 @@ struct TourMenuRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("A short look around shukr")
+        }
+    }
+}
+
+/// The Zikr chapter's example tasks (owner, decision tour-zikr-practice A: "make it clear that these are not real tasks
+/// … they're just example tasks"): three tasks, their zikr and a few days of sessions in a store of their own, in
+/// memory only — never the user's store, gone when the chapter is. While they're up the wheel, its summary line and
+/// the page title read them instead of the user's tasks; each circle says "example"; nothing on them starts, edits or
+/// deletes anything.
+@MainActor @Observable final class TourExamples {
+    static let shared = TourExamples()
+    private(set) var tasks: [TaskModel]?
+    private(set) var sessions: [SessionDataModel]?
+    @ObservationIgnored private var container: ModelContainer?
+
+    func isExample(_ task: TaskModel) -> Bool { tasks?.contains { $0.id == task.id } ?? false }
+
+    func show() {
+        guard tasks == nil else { return }
+        guard let made = try? ModelContainer(for: Schema(ShukrSchemaV2.models),
+                                             configurations: ModelConfiguration("tourExamples", isStoredInMemoryOnly: true))
+        else { return }
+        let context = made.mainContext
+        context.autosaveEnabled = false
+        let today = PrayerDay.sessionDayStart().addingTimeInterval(2 * 3600)
+        func day(_ back: Int) -> Date { today.addingTimeInterval(Double(-back) * 86_400) }
+
+        // One done today (it has left the wheel; it counts in "1 of 3"), one halfway, one not started.
+        let plan: [(name: String, full: String, count: Bool, goal: Int, today: Int, days: Int)] = [
+            ("Subhanallah", "سُبْحَانَ ٱللَّٰهِ", true, 33, 33, 3),
+            ("Salawat", "اللَّهُمَّ صَلِّ عَلَى مُحَمَّدٍ", true, 100, 40, 5),
+            ("Astaghfirullah", "أَسْتَغْفِرُ ٱللَّٰهَ", false, 5, 0, 2),
+        ]
+        var tasks: [TaskModel] = []
+        var todays: [SessionDataModel] = []
+        for (i, p) in plan.enumerated() {
+            let mantra = MantraModel(name: p.name, fullText: p.full)
+            context.insert(mantra)
+            let task = TaskModel(mantra: mantra, isCountMode: p.count, goal: p.goal, sortOrder: i)
+            context.insert(task)
+            tasks.append(task)
+            let pace = 1.2   // seconds a count
+            func session(on date: Date, counts: Int) -> SessionDataModel {
+                let seconds = p.count ? Double(counts) * pace : Double(p.goal) * 60
+                let s = SessionDataModel(title: p.name, sessionMode: p.count ? 2 : 1,
+                                         targetMin: p.count ? 0 : p.goal, targetCount: p.count ? p.goal : 0,
+                                         totalCount: p.count ? counts : Int(seconds / pace), startTime: date,
+                                         secondsPassed: seconds, avgTimePerClick: pace, tasbeehRate: "",
+                                         task: task, mantra: mantra)
+                context.insert(s)
+                return s
+            }
+            // A run of earlier days that met the goal: the title shows a streak.
+            for back in 1...p.days { _ = session(on: day(back), counts: p.goal) }
+            if p.today > 0 { todays.append(session(on: today, counts: p.today)) }
+        }
+        container = made
+        self.sessions = todays
+        self.tasks = tasks
+    }
+
+    func hide() {
+        guard tasks != nil else { return }
+        tasks = nil
+        sessions = nil
+        // The store a little longer: a view drawn from the last frame may still read an example as it goes.
+        let going = container
+        container = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(5))
+            _ = going
         }
     }
 }

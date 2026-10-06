@@ -2043,7 +2043,8 @@ struct PrayerTimesView: View {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
         var body: some View {
-            let task = focus.taskID.flatMap { id in tasks.first { $0.id == id } }
+            // The tour's example tasks too (TourExamples): their streaks show like any task's.
+            let task = focus.taskID.flatMap { id in (TourExamples.shared.tasks ?? tasks).first { $0.id == id } }
             let down = focus.movedDown
             // Same metrics as TopBar's location row so the title sits where the city does.
             ZStack {

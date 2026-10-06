@@ -67,8 +67,11 @@ enum ZikrFocus {
 struct ZikrCircleWheel: View {
     @Environment(SharedStateClass.self) var sharedState
     @Environment(\.modelContext) private var context
-    @Query(sort: \TaskModel.sortOrder) private var tasks: [TaskModel]
-    @Query private var todaysSessions: [SessionDataModel]
+    @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
+    @Query private var storedSessions: [SessionDataModel]
+    /// The tour's Zikr chapter shows its example tasks instead (TourExamples, Tour.swift): never saved, never started.
+    private var tasks: [TaskModel] { TourExamples.shared.tasks ?? storedTasks }
+    private var todaysSessions: [SessionDataModel] { TourExamples.shared.sessions ?? storedSessions }
     @Binding var showTasbeehPage: Bool
 
     @State private var centered: String? = Item.freestyle.id
@@ -110,7 +113,7 @@ struct ZikrCircleWheel: View {
     init(showTasbeehPage: Binding<Bool>) {
         self._showTasbeehPage = showTasbeehPage
         let dayStart = PrayerDay.sessionDayStart()   // the prayer day (Fajr to Fajr)
-        _todaysSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= dayStart },
+        _storedSessions = Query(filter: #Predicate<SessionDataModel> { $0.startTime >= dayStart },
                                 sort: \.startTime)
     }
 
@@ -145,6 +148,8 @@ struct ZikrCircleWheel: View {
             .overlay(alignment: .bottom) {
                 // "2 of 9 tasks done" opens Your tasks (owner): the full list, what's finished.
                 Button {
+                    // The tour: the summary stays put (its example tasks have no page).
+                    guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
                     triggerSomeVibration(type: .light)
                     showTasksPage = true
                 } label: {
@@ -318,6 +323,7 @@ struct ZikrCircleWheel: View {
         .onChange(of: centered) { old, id in
             triggerSomeVibration(type: .light)
             ZikrWheelFocus.shared.centre(id, from: old, in: items.map(\.id))   // the top bar's title
+            if TourRuntime.shared.active { TourRuntime.shared.event(.wheelScrolled) }   // the Zikr chapter's to-do
         }
         .onAppear {
             ZikrWheelFocus.shared.centre(centered, from: nil, in: items.map(\.id))
@@ -451,13 +457,19 @@ struct ZikrCircleWheel: View {
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
             // Hold = the task's options, like every task row in the tab (tap still starts it).
+            let example = TourExamples.shared.isExample(task)
             face(for: task)
+                .overlay(alignment: .top) {
+                    // The tour's example tasks say so (owner: "make it clear that these are not real tasks").
+                    if example { NextTag(label: "example").padding(.top, 52) }
+                }
                 .contentShape(.contextMenuPreview, Circle())
                 .contextMenu {
+                    // An example's options change nothing: picking one is the tour's to-do (Tour.swift).
                     TaskMenu(task: task,
-                             onEdit: { tasksSheetOn = task },
-                             onOpenZikr: { wheelOpenZikr = task.mantra },
-                             onDelete: { wheelDelete = task })
+                             onEdit: { example ? TourRuntime.shared.event(.exampleOption) : (tasksSheetOn = task) },
+                             onOpenZikr: { example ? TourRuntime.shared.event(.exampleOption) : (wheelOpenZikr = task.mantra) },
+                             onDelete: { example ? TourRuntime.shared.event(.exampleOption) : (wheelDelete = task) })
                 }
         }
     }
@@ -607,6 +619,8 @@ struct ZikrCircleWheel: View {
             withAnimation(CircleMotion.wheelStep) { centered = item.id }
             return
         }
+        // The tour: nothing starts from the wheel (its example tasks least of all) — the circle pulses instead.
+        guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
         triggerSomeVibration(type: .light)
         switch item {
         case .freestyle:
