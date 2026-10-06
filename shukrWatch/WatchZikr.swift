@@ -743,7 +743,14 @@ struct WatchCounterView: View {
     // way reloads, never subtracts (− is on screen).
     @State private var crown: Double = 0
     @State private var crownGate = WatchCrownGate(direction: WatchCrownDirection.current.fixed)
-    @FocusState private var crownFocused: Bool
+    /// Who has the Crown's focus: the counter (WatchCrownGate) or the Double Tap pages. One place decides it
+    /// (`crownOwnerWanted`) — two separate focus states fought over it ~40 times in a second on Laraib's watch, and
+    /// the pages never got it back for pinch.
+    @FocusState private var crownOwner: WatchCrownOwner?
+    private var crownOwnerWanted: WatchCrownOwner? {
+        guard !paused, finished == nil else { return nil }
+        return crownOnCounter || crownMode ? .counter : .pages
+    }
     @Environment(\.isLuminanceReduced) private var wristDown
     /// "Pinch to count · or turn the Crown", once, on the first session.
     @AppStorage("watch.countHintSeen", store: WatchStore.defaults) private var hintSeen = false
@@ -752,12 +759,17 @@ struct WatchCounterView: View {
     /// holding the watch taps it by accident). The first crown count turns it on; the badge turns it
     /// off (owner: tap and pinch together, or the Crown alone — no setting for all three).
     @State private var crownMode = false
-    @State private var crownNote = false
+    @State private var modeNote = false
+    @State private var modeNoteToken = 0
+    /// A fresh Double Tap scroller after crown mode: the old one, once locked, never took the Crown back (12 tries,
+    /// Laraib's watch, round 10); a new one takes it as at the session's start.
+    @State private var scrollerGeneration = 0
     @AppStorage(WatchDoubleTapTarget.key) private var doubleTapRaw = WatchDoubleTapTarget.scroll.rawValue
     private var doubleTapTarget: WatchDoubleTapTarget { WatchDoubleTapTarget(rawValue: doubleTapRaw) ?? .scroll }
-    /// The Crown counts on the counter (WatchCrownGate, crown mode) only with the Double Tap button. With scrolling,
-    /// Double Tap needs the Crown's focus, so the Crown scrolls the same pages: a page a count, either way
-    /// (decision watch-double-tap-crown B).
+    /// Where the Crown is read: on the counter with the Double Tap button; on the Double Tap scroller with scrolling
+    /// (Double Tap needs the Crown's focus there). Either way it counts by WatchCrownGate and turns crown mode on
+    /// (owner, 2026-10-06: "if crown is moved i want it to go to crown only respecting the auto direction rule and
+    /// turning off taps … pinch still works").
     private var crownOnCounter: Bool { doubleTapTarget == .count }
     /// The pause screen's page: 0 the card, 1 haptics. Back to the card on every pause.
     @State private var pausePage = 0
@@ -823,10 +835,16 @@ struct WatchCounterView: View {
                     // or the Crown on its own). It was this whole background as a button, and watchOS zooms the
                     // button a Double Tap presses before pressing it — the whole display (owner). Two ways to compare
                     // on the wrist, Settings → Double Tap (decision watch-double-tap-target C).
+                    // Crown mode rests pinch, either way (owner, 2026-10-06: "we can just turn pinching off when crown
+                    // mode is active"); the counter takes the Crown.
                     WatchDoubleTapLayer(target: doubleTapTarget,
                                         enabled: !paused && finished == nil && !crownMode,
                                         fill: wristDown ? Color.black : WatchNeu.bg,
+                                        crown: $crown,
+                                        crownOwner: $crownOwner,
+                                        onCrownIdle: { crownGate.idle() },
                                         onCount: increment)
+                        .id(scrollerGeneration)
                         .opacity(paused ? 0 : 1)
                     counter
                     if paused {
@@ -881,7 +899,8 @@ struct WatchCounterView: View {
             if let draft = config.draft {
                 if let id = draft.sessionID { sessionID = id }
                 count = config.restoredCount
-                crownMode = (draft.crownMode ?? false) && crownOnCounter
+                crownMode = draft.crownMode ?? false
+                crownOwner = crownOwnerWanted
                 startedAt = draft.startedAt
                 pausedTotal = draft.pausedTotal
                 pausedAt = draft.pausedSince
@@ -891,9 +910,10 @@ struct WatchCounterView: View {
             }
             count = config.startCount
             startedAt = Date()
+            crownMode = WatchCountMode.current == .crown
             runtime.start()
             WatchPinchLog.begin("\(postSalah ? "Tasbih Fatimah" : task?.name ?? "freestyle") · Double Tap \(doubleTapTarget.rawValue)")
-            crownFocused = crownOnCounter
+            crownOwner = crownOwnerWanted
             if !hintSeen {
                 hintSeen = true
                 withAnimation(.easeOut(duration: 0.3).delay(0.6)) { showHint = true }
@@ -929,6 +949,8 @@ struct WatchCounterView: View {
             #endif
         }
         .onDisappear { runtime.stop() }
+        // The Crown's owner follows the state: the counter in crown mode, the pages otherwise, nobody while paused.
+        .onChange(of: crownOwnerWanted) { _, _ in giveCrown() }
         .onChange(of: scenePhase) { _, phase in
             // Leaving the app (the Crown to the watch face, another app) pauses, like the phone — only in the
             // background: inactive is the wrist down / a banner, and counting goes on through those (the runtime
@@ -964,28 +986,7 @@ struct WatchCounterView: View {
             WatchNeuProgressRing(progress: fraction, animating: !paused)
                 .allowsHitTesting(false)
             // Double Tap counts through the page's background (body).
-            if crownMode {
-                // Tap the badge (or the note) to let screen taps count again.
-                Button { setCrownMode(false) } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "digitalcrown.arrow.clockwise")
-                            .font(.system(size: 12, weight: .light))
-                        if crownNote {
-                            Text("Counting with the Crown")
-                                .font(.system(size: 11, weight: .light, design: .rounded))
-                            Text("tap here for tap & pinch")
-                                .font(.system(size: 9, weight: .light, design: .rounded))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .offset(y: crownNote ? 50 : 38)
-                .transition(.opacity)
-            } else if let task, !task.countMode, !postSalah {
+            if let task, !task.countMode, !postSalah {
                 // Timed task: a quiet "4:12 left" (owner: fine for privacy).
                 Text(timeLeftText(task))
                     .font(.system(size: 11, weight: .light, design: .rounded))
@@ -1002,12 +1003,10 @@ struct WatchCounterView: View {
             }
             if showHint {
                 VStack(spacing: 2) {
-                    Image(systemName: "hand.pinch")
-                    Text("Pinch to count, or turn the Crown")
-                    if crownOnCounter {
-                        Text("(turning it pauses screen taps)")
-                            .foregroundStyle(.tertiary)
-                    }
+                    Image(systemName: crownMode ? "digitalcrown.arrow.clockwise" : "hand.pinch")
+                    Text(crownMode ? "Turn the Crown to count" : "Tap or pinch to count")
+                    Text("(change it on the pause screen)")
+                        .foregroundStyle(.tertiary)
                 }
                 .font(.system(size: 11, weight: .light, design: .rounded))
                 .foregroundStyle(.secondary)
@@ -1020,6 +1019,7 @@ struct WatchCounterView: View {
         // The whole screen counts (tap-anywhere, like the phone): the touch layer covers it all, so no touch reaches
         // the background under it — Double Tap's button.
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) { modeLine }
         .contentShape(Rectangle())
         .gesture(countGesture)
         // DEBUG `-watchScrollFingerTest`: touches go through to the Double Tap scroller, so a finger's swipe in the
@@ -1028,8 +1028,8 @@ struct WatchCounterView: View {
         .scaleEffect(paused && !reduceMotion ? 0.94 : 1)
         // The crown counts here (nothing on this screen scrolls). Snapped to detents; detent
         // haptics are off, so the only buzz is the count's own — you feel exactly what counted.
-        .focusable(crownOnCounter && !paused && finished == nil)
-        .focused($crownFocused)
+        .focusable((crownOnCounter || crownMode) && !paused && finished == nil)
+        .focused($crownOwner, equals: .counter)
         .digitalCrownRotation(detent: $crown, from: -1_000_000, through: 1_000_000, by: 1,
                               sensitivity: .low, isContinuous: true, isHapticFeedbackEnabled: false,
                               onIdle: { crownGate.idle() })
@@ -1042,9 +1042,28 @@ struct WatchCounterView: View {
         return String(format: "%d:%02d left", left / 60, left % 60)
     }
 
+    /// The Crown to whoever should have it, retried for a second: a view that has just been unlocked can't take the
+    /// focus at once (the pages refused it, and a pinch shook — Laraib's watch, rounds 8 and 9).
+    private func giveCrown() {
+        Task { @MainActor in
+            for attempt in 1...12 {
+                try? await Task.sleep(for: .milliseconds(80))
+                let wanted = crownOwnerWanted
+                if crownOwner == wanted { return }
+                crownOwner = wanted
+                WatchPinchLog.add("give crown \(wanted.map { "\($0)" } ?? "none") try \(attempt) → \(crownOwner.map { "\($0)" } ?? "none")")
+            }
+        }
+    }
+
     private func setCrownMode(_ on: Bool) {
+        WatchPinchLog.add("mode → \(on ? "crown" : "tap & pinch")")
         WKInterfaceDevice.current().play(.click)
-        withAnimation(.easeInOut(duration: 0.25)) { crownMode = on; crownNote = false }
+        withAnimation(.easeInOut(duration: 0.25)) { crownMode = on; modeNote = false }
+        if !on && !crownOnCounter { scrollerGeneration += 1 }
+        // Off: the pages take the Crown back, for pinch — a moment later, once they're unlocked and focusable again
+        // (in the same turn the Crown went to nobody, and a pinch shook: "nothing to act on").
+        giveCrown()
         saveDraft()
     }
 
@@ -1053,16 +1072,74 @@ struct WatchCounterView: View {
         WatchPinchLog.add("tap")
         guard crownMode else { increment(); return }
         // No buzz (owner): it felt like a count that didn't happen. The note says why instead.
-        withAnimation(.easeOut(duration: 0.2)) { crownNote = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { withAnimation(.easeIn(duration: 0.3)) { crownNote = false } }
+        showModeNote()
+    }
+
+    /// The bottom edge's centre, on every watch size (owner: "always take a bottom edge … a pill shape … skinny but
+    /// long"): while counting with the Crown, a glass "Crown mode" pill — a tap on it goes back to tap & pinch (owner:
+    /// "if I tap the crown pill … goes back to tap and pinch"); the note for a touch that didn't count sits just above
+    /// it (with tap & pinch, a Crown turn's note sits there on its own; it takes no touch). The pause screen's second
+    /// page switches either way; the Crown never does (owner: "the user has to decide which mode").
+    private var modeLine: some View {
+        VStack(spacing: 4) {
+            if modeNote {
+                Text(crownMode ? "Taps are off · tap Crown mode to switch" : "Crown is off · pause to change")
+                    .font(.system(size: 11, weight: .light, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+            if crownMode {
+                Button { setCrownMode(false) } label: {
+                    Label("Crown mode", systemImage: "digitalcrown.arrow.clockwise")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .watchGlassCapsule()   // the glass of − and pause (owner)
+                        .padding(.vertical, 3)   // a finger-sized target round the thin pill
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Crown mode")
+                .accessibilityHint("Switches to tap and pinch")
+                .transition(.opacity)
+            }
+        }
+        .padding(.bottom, 1)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    /// "Taps are off" / "Crown is off", for 1.6 s.
+    private func showModeNote() {
+        withAnimation(.easeOut(duration: 0.2)) { modeNote = true }
+        modeNoteToken += 1
+        let token = modeNoteToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            if token == modeNoteToken { withAnimation(.easeIn(duration: 0.3)) { modeNote = false } }
+        }
     }
 
     /// A step the counting way counts once (WatchCrownGate); the other way reloads. Ignored with
     /// the wrist down (dimmed screen), so a sleeve brushing the crown doesn't count.
     private func crownTurned(to value: Double) {
         guard !paused, finished == nil, !wristDown else { crownGate.reset(to: value); return }
-        guard crownGate.turned(to: value, at: Date()) else { return }
-        if !crownMode { withAnimation(.easeOut(duration: 0.25)) { crownMode = true } }
+        // Only while counting with the Crown (owner: "the user has to decide which mode … Pinch and touch - or just
+        // crown"). With tap & pinch the pages hold the Crown for Double Tap; a turn scrolls them without counting
+        // and hands one step here (`crownHanded`), which only says so.
+        guard crownMode else {
+            crownGate.reset(to: value)
+            WatchPinchLog.add("crown turned, counting with tap & pinch")
+            showModeNote()
+            return
+        }
+        let counts = crownGate.turned(to: value, at: Date())
+        WatchPinchLog.add(counts ? "crown count" : "crown step, no count")
+        guard counts else { return }
         increment()
     }
 
@@ -1166,7 +1243,7 @@ struct WatchCounterView: View {
                 pausedAt = nil
                 resumedAt = Date()
                 runtime.start()
-                crownFocused = crownOnCounter
+                crownOwner = crownOwnerWanted
             } else {
                 pausedAt = Date()
                 pausePage = 0
@@ -1508,6 +1585,7 @@ final class WatchRuntime: NSObject, WKExtendedRuntimeSessionDelegate {
 struct WatchSettingsPage: View {
     @AppStorage(WatchCrownDirection.key) private var crown = WatchCrownDirection.auto.rawValue
     @AppStorage(WatchDoubleTapTarget.key) private var doubleTap = WatchDoubleTapTarget.scroll.rawValue
+    @AppStorage(WatchCountMode.key, store: WatchStore.defaults) private var countMode = WatchCountMode.touch.rawValue
     @State private var showHelp = false
     @State private var pinchLogSent: String?
 
@@ -1535,11 +1613,11 @@ struct WatchSettingsPage: View {
                     .accessibilityLabel("How counting works")
                 }
                 .padding(.top, 4)
-                // The Crown's own rules only with the Double Tap button; with scrolling it counts a click either way.
-                if doubleTap == WatchDoubleTapTarget.count.rawValue {
-                    row("Crown counts", (WatchCrownDirection(rawValue: crown) ?? .auto).short) {
-                        crown = (WatchCrownDirection(rawValue: crown) ?? .auto).next.rawValue
-                    }
+                row("Count with", (WatchCountMode(rawValue: countMode) ?? .touch).short) {
+                    countMode = (WatchCountMode(rawValue: countMode) ?? .touch).next.rawValue
+                }
+                row("Crown counts", (WatchCrownDirection(rawValue: crown) ?? .auto).short) {
+                    crown = (WatchCrownDirection(rawValue: crown) ?? .auto).next.rawValue
                 }
                 if WatchBeta.on {
                     row("Double Tap", (WatchDoubleTapTarget(rawValue: doubleTap) ?? .scroll).short) {
@@ -1613,7 +1691,7 @@ struct WatchSettingsPage: View {
 /// Settings' ⓘ: how counting works, and what each setting does — everything the page used to say, short.
 struct WatchCountingHelp: View {
     @AppStorage(WatchDoubleTapTarget.key) private var doubleTap = WatchDoubleTapTarget.scroll.rawValue
-    private var crownRules: Bool { doubleTap == WatchDoubleTapTarget.count.rawValue }
+    private var crownRules: Bool { true }
 
     var body: some View {
         ScrollView {
@@ -1624,7 +1702,7 @@ struct WatchCountingHelp: View {
                                  : "Turn the Crown: each click counts one, either way", systemImage: "digitalcrown.arrow.clockwise")
                 Group {
                     if crownRules {
-                        Text("Turning the Crown pauses screen taps for that session; tap its badge to switch back. It doesn't count with your wrist down.")
+                        Text("Count with: tap & pinch, or the Crown alone. Settings picks the default; the pause screen's second page changes it for a session. The Crown doesn't count with your wrist down.")
                         Text("Crown counts: Auto — your first turn picks the way.")
                     }
                     if WatchBeta.on {
@@ -1638,6 +1716,17 @@ struct WatchCountingHelp: View {
             .padding(.horizontal, 4)
         }
     }
+}
+
+/// What counts in a session: the screen and pinch, or the Crown alone (owner, 2026-10-06: "the user has to decide which
+/// mode they are gonna use. Pinch and touch - or just crown"). Settings sets the default; the pause screen's second
+/// page changes it for the session. The Crown never switches it.
+enum WatchCountMode: String, CaseIterable {
+    case touch, crown
+    static let key = "watch.countMode"
+    static var current: Self { Self(rawValue: WatchStore.defaults.string(forKey: key) ?? "") ?? .touch }
+    var short: String { self == .crown ? "Crown" : "Tap & pinch" }
+    var next: Self { self == .crown ? .touch : .crown }
 }
 
 /// Which way the Crown counts (owner, decision watch-crown-direction A): by default the session's
@@ -2158,11 +2247,29 @@ enum WatchDoubleTapTarget: String, CaseIterable {
 }
 
 /// Under the counter (which takes every touch): what Double Tap acts on.
+/// Who has the Digital Crown's focus during a session.
+enum WatchCrownOwner: Hashable { case counter, pages }
+
+private extension View {
+    /// The glass watchOS 26 draws behind toolbar buttons, as a capsule; a plain light capsule before it.
+    @ViewBuilder func watchGlassCapsule() -> some View {
+        if #available(watchOS 26.0, *) {
+            glassEffect(.regular, in: Capsule())
+        } else {
+            background(Capsule().fill(Color.white.opacity(0.14)))
+        }
+    }
+}
+
 struct WatchDoubleTapLayer: View {
     let target: WatchDoubleTapTarget
     let enabled: Bool
     /// The page's colour (a real, visible control: an invisible 2 pt one was pressed ~2 s late).
     let fill: Color
+    /// The Crown, for the scroller (it has the Crown's focus): read as the counter reads it (WatchCrownGate).
+    var crown: Binding<Double> = .constant(0)
+    var crownOwner: FocusState<WatchCrownOwner?>.Binding? = nil
+    var onCrownIdle: () -> Void = {}
     let onCount: () -> Void
 
     var body: some View {
@@ -2175,8 +2282,11 @@ struct WatchDoubleTapLayer: View {
             .handGestureShortcut(.primaryAction, isEnabled: enabled)
             .accessibilityLabel("Count")
         case .scroll, .scrollAuto:
-            WatchDoubleTapScroller(enabled: enabled, shortcut: target == .scroll, fill: fill, onCount: onCount)
-                .accessibilityHidden(true)
+            if let crownOwner {
+                WatchDoubleTapScroller(enabled: enabled, shortcut: target == .scroll, fill: fill, crown: crown,
+                                       crownOwner: crownOwner, onCrownIdle: onCrownIdle, onCount: onCount)
+                    .accessibilityHidden(true)
+            }
         }
     }
     private static var discSize: CGFloat { WatchScreen.width * 0.42 }
@@ -2225,14 +2335,22 @@ enum WatchPinchLog {
 /// 2026-10-04: "no need to have 2,000 … as soon as that item reaches the end … show a new list"). It rests on page 0;
 /// a move counts once, the moment it's a quarter of the way into the next page, and only forwards — never when it
 /// lands, so nothing arrives late in a batch, and a bounce back never counts (a tap after pinches counted "a few taps
-/// at once"). Once it has come to rest it's put back on page 0, quietly. A finger can't reach it (the counter is on
-/// top); the Crown scrolls it too, so a click forward is a count.
+/// at once"). The counting follows the page it rests on; near the end of the list it's put back on page 0, quietly. A
+/// finger can't reach it (the counter is on top); the Crown scrolls it too, so a click forward is a count.
 struct WatchDoubleTapScroller: View {
     let enabled: Bool
     /// Carries the primary-action shortcut (`scroll`); without it, watchOS's own Double Tap scrolling (`scrollAuto`).
     let shortcut: Bool
     /// The page's colour: clear pages had Double Tap find nothing — the gesture symbol shook at the top (owner).
     let fill: Color
+    /// The Crown, as steps: it scrolls these pages (they have its focus, which Double Tap needs), but its moves never
+    /// count as pages — each page it moves is a step on this value, read by the counter's rules (WatchCrownGate: the
+    /// way, the reload, crown mode — owner). A Crown move is the scroll view's own interaction (phase interacting /
+    /// decelerating); a Double Tap moves the pages with the phase idle throughout (Laraib's watch, round 5).
+    let crown: Binding<Double>
+    /// The Crown's focus, the session's (it hands it to the counter in crown mode and back).
+    let crownOwner: FocusState<WatchCrownOwner?>.Binding
+    let onCrownIdle: () -> Void
     let onCount: () -> Void
     static let fingerTest: Bool = {
         #if DEBUG
@@ -2241,84 +2359,123 @@ struct WatchDoubleTapScroller: View {
         return false
         #endif
     }()
-    /// Room for a few quick pinches before it's back on page 0.
-    private static let pages = 6
+    /// Room for many quick pinches before it's put back on page 0.
+    private static let pages = 40
     /// How far into the next page a move counts.
     private static let countAt = 0.25
-    @State private var position: Int? = 0
-    /// The furthest page counted since it was last put back on page 0.
-    @State private var counted = 0
-    /// Back to page 0 once it has rested `settle` on a page (at the end of a scroll the offset can touch the next page
-    /// and come back within a frame or two).
+    /// The page the counting runs from: a move a quarter of the way past it counts once and moves it on. It's the real
+    /// page, kept in step with where the scroll actually is (on Laraib's watch the `scrollPosition` binding stayed 0
+    /// while Double Tap scrolled on, so the old "back to page 0" never moved the list, and every pinch recounted all
+    /// the pages since: 10 pinches → 55).
+    @State private var base = 0
+    /// Settled on a page: re-sync `base` with it (a bounce back never counts, never uncounts).
     @State private var settling: Task<Void, Never>?
-    private static let settle: Duration = .milliseconds(60)
-    /// The Crown's focus: Double Tap scrolls only the view the Crown would (owner: a tap gave the counter the focus,
-    /// then a pinch shook — "nothing for pinch to act on").
-    @FocusState private var focused: Bool
+    private static let settle: Duration = .milliseconds(120)
+    /// Being turned (the Crown) or coasting from it: page moves are Crown steps, not counts.
+    @State private var crownMoving = false
+    /// The Crown's first move this turn has been handed on (once: the page edge jiggles back and forth under it).
+    @State private var crownHanded = false
+    /// Until when a page move is still the Crown's: a flicked Crown reports "idle" while the list is still sliding,
+    /// and the next pages counted as pinches (2 from one turn with tap & pinch — Laraib's watch, 2026-10-06; the same
+    /// strays in rounds 11 and 14). A pinch never reports a phase, so nothing counts until the list has been still
+    /// for `crownQuiet` after any Crown phase or move.
+    @State private var crownUntil = Date.distantPast
+    private static let crownQuiet: TimeInterval = 0.6
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(spacing: 0) {
-                ForEach(0..<Self.pages, id: \.self) { page in
-                    fill
-                        .containerRelativeFrame([.horizontal, .vertical])
-                        .id(page)
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(0..<Self.pages, id: \.self) { page in
+                        fill
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .id(page)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            // Locked while it isn't counting (crown mode, paused): scrolling, it took the Crown back from the counter
+            // ~40 times in a second (Laraib's watch).
+            .scrollDisabled(!enabled)
+            .focused(crownOwner, equals: .pages)
+            .handGestureShortcut(.primaryAction, isEnabled: enabled && shortcut)
+            .ignoresSafeArea()
+            .onScrollGeometryChange(for: Double?.self) { geo in
+                let height = geo.containerSize.height
+                guard height > 1 else { return nil }
+                return (geo.contentOffset.y + geo.contentInsets.top) / height
+            } action: { _, page in
+                guard let page else { return }
+                WatchPinchLog.add(String(format: "g %.3f", page))
+                if crownMoving || Date() < crownUntil {
+                    crownUntil = Date().addingTimeInterval(Self.crownQuiet)
+                    // Once per turn the first page it's moved goes to the counter as a step the way it went: it counts
+                    // only in crown mode, else it says the Crown is off (owner).
+                    if enabled, !crownHanded {
+                        if page >= Double(base) + Self.countAt {
+                            crownHanded = true
+                            WatchPinchLog.add("crown step +1 (hand over)")
+                            crown.wrappedValue += 1
+                        } else if page <= Double(base) - Self.countAt {
+                            crownHanded = true
+                            WatchPinchLog.add("crown step -1 (hand over)")
+                            crown.wrappedValue -= 1
+                        }
+                    }
+                    // The pages the Crown moves are never pinches: the counting runs on from wherever it leaves them.
+                    if crownHanded || !enabled { base = max(0, Int(page.rounded())) }
+                } else {
+                    // Double Tap. Forwards only: each page once, as soon as the move is a quarter of the way into it.
+                    while page >= Double(base) + Self.countAt, base < Self.pages - 1 {
+                        base += 1
+                        WatchPinchLog.add("count page \(base)\(enabled ? "" : " (off)")")
+                        if enabled { onCount() }
+                    }
+                }
+                settling?.cancel()
+                let resting = page.rounded()
+                guard abs(page - resting) < 0.01 else { return }
+                settling = Task { @MainActor in
+                    do { try await Task.sleep(for: Self.settle) } catch { return }
+                    settle(on: Int(resting), proxy: proxy)
                 }
             }
-            .scrollTargetLayout()
-        }
-        .scrollTargetBehavior(.paging)
-        .scrollIndicators(.hidden)
-        .scrollPosition(id: $position)
-        .focused($focused)
-        .handGestureShortcut(.primaryAction, isEnabled: enabled && shortcut)
-        .ignoresSafeArea()
-        .onScrollGeometryChange(for: Double?.self) { geo in
-            let height = geo.containerSize.height
-            guard height > 1 else { return nil }
-            return (geo.contentOffset.y + geo.contentInsets.top) / height
-        } action: { _, page in
-            guard let page else { return }
-            WatchPinchLog.add(String(format: "g %.3f", page))
-            // Forwards only: each page once, as soon as the move is a quarter of the way into it.
-            while page >= Double(counted) + Self.countAt, counted < Self.pages - 1 {
-                counted += 1
-                WatchPinchLog.add("count page \(counted)\(enabled ? "" : " (off)")")
-                if enabled { onCount() }
+            .onChange(of: crownOwner.wrappedValue) { _, o in WatchPinchLog.add("crown owner \(o.map { "\($0)" } ?? "none")") }
+            .onScrollPhaseChange { old, new in
+                WatchPinchLog.add("phase \(old) → \(new)")
+                crownMoving = new != .idle
+                crownUntil = Date().addingTimeInterval(Self.crownQuiet)
+                if new == .idle { onCrownIdle(); crownHanded = false }
             }
-            settling?.cancel()
-            let resting = page.rounded()
-            guard abs(page - resting) < 0.02 else { return }
-            settling = Task { @MainActor in
-                try? await Task.sleep(for: Self.settle)
-                guard !Task.isCancelled else { return }
-                backToStart()
+            .onChange(of: crown.wrappedValue) { _, v in WatchPinchLog.add(String(format: "crown %.0f", v)) }
+            #if DEBUG
+            // `-demoWatchDoubleTapScroll`: a page a second, as a Double Tap would (the simulator has no Double Tap).
+            .task {
+                guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
+                var next = 1
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(1))
+                    withAnimation { proxy.scrollTo(next, anchor: .top) }
+                    next = min(next + 1, Self.pages - 1)
+                }
             }
+            #endif
         }
-        .onAppear { focused = enabled }
-        .onChange(of: enabled) { _, on in if on { focused = true } }
-        .onScrollPhaseChange { old, new in WatchPinchLog.add("phase \(old) → \(new)") }
-        .onChange(of: focused) { _, f in WatchPinchLog.add("focus \(f)") }
-        #if DEBUG
-        // `-demoWatchDoubleTapScroll`: a page a second, as a Double Tap would (the simulator has no Double Tap).
-        .task {
-            guard ProcessInfo.processInfo.arguments.contains("-demoWatchDoubleTapScroll") else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                withAnimation { position = min((position ?? 0) + 1, Self.pages - 1) }
-            }
-        }
-        #endif
     }
 
-    /// Page 0 again, without a frame of movement; `counted` first, so the jump back never counts.
-    private func backToStart() {
-        WatchPinchLog.add("reset (counted \(counted), position \(position ?? -1))")
-        counted = 0
-        guard position != 0 else { return }
+    /// At rest on `page`: the counting runs from here. Near the end of the list it's put back on page 0, quietly, and
+    /// the counting runs from 0 (nothing counts on the jump: it moves backwards).
+    private func settle(on page: Int, proxy: ScrollViewProxy) {
+        WatchPinchLog.add("rest page \(page) (base \(base))")
+        base = page
+        guard page >= Self.pages - 8 else { return }
         var quiet = Transaction()
         quiet.disablesAnimations = true
-        withTransaction(quiet) { position = 0 }
+        withTransaction(quiet) { proxy.scrollTo(0, anchor: .top) }
+        base = 0
+        WatchPinchLog.add("back to page 0")
     }
 }
 
