@@ -1741,8 +1741,9 @@ struct BubbleShape: Shape {
         case (.circle, .tryIt, .marked(let prayer, _)):
             practicePrayer = prayer
             tick(2, flash: "circle")
+        // The swipe up is the `marked` sentence's ask, not a to-do line (three lines, counted by position — Ben's
+        // audit): no tick, on to the list.
         case (.circle, .tryIt, .listOpened) where ticked.contains(2):
-            tick(3)
             go(to: .list, after: 0.6)
 
         // 2 · The list: learn, then try.

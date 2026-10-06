@@ -50,7 +50,7 @@ enum TourCopy {
         ]
 
         static let coloursStep = "The colours"
-        static let coloursLead = "The ring fills with different colors based on how much time passes:"
+        static let coloursLead = "The ring fills with different colours based on how much time passes:"
         static let colours = ["First 30 min", "On time", "Late"]   // green, yellow, red
         static let seeItInAction = "See it in action"
         static let playAgain = "Play again"
@@ -61,7 +61,7 @@ enum TourCopy {
             "Hold the circle to mark Asr",
         ]
         static let noCompass = "No compass here? Skip it"
-        static let marked = "Marked and saved — Asr is in your prayer list now. Swipe up to see it."
+        static let marked = "Marked — Asr has moved to your list. Swipe up to see it."
     }
 
     // MARK: 2 · Prayer List
@@ -150,7 +150,7 @@ enum TourCopy {
         static let button = "Skip tour"
         static let confirm = "Tap again to skip"
         static let skippedTitle = "You skipped the tour"
-        static let skippedLine = "It’s in the ☰ menu whenever you want it."
+        static let skippedLine = "It’s in the ☰ menu and in Settings whenever you want it."
     }
 
     /// The invitation after the first-run setup.
