@@ -1030,9 +1030,11 @@ struct summaryCircle: View{
             refreshDay()
         }
         // A tapped fifth lets go after a while.
+        // A new tap restarts it: the old wait is cancelled and must stop there — `try?` swallowed the cancellation and
+        // cleared the new pick at once (Izhan: a second fifth flickered back to the score).
         .task(id: pickedAt) {
             guard picked != nil else { return }
-            try? await Task.sleep(for: .seconds(8))
+            do { try await Task.sleep(for: .seconds(8)) } catch { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
         }
     }

@@ -332,7 +332,10 @@ struct SalahLookListFrame: ViewModifier {
 
 /// The soft looks' card round the prayer rows (inside TodaysPrayerListView, so "N done" sits outside it).
 struct SalahLookCard: ViewModifier {
+    /// All five marked (the day's page): the well rises into a raised card (NeuLiftCard), only then.
+    var raised = false
     @Environment(\.circleTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func body(content: Content) -> some View {
         let card = RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -340,7 +343,10 @@ struct SalahLookCard: ViewModifier {
         case .card:
             content.clipShape(card).background(NeuRaised(shape: card, radius: 14, offset: 7))
         case .well:
-            content.clipShape(card).background(NeuPressed(shape: card, radius: 7, offset: 5))
+            content.clipShape(card)
+                .background(NeuLiftCard(shape: card, lift: raised ? 1 : 0))
+                .scaleEffect(raised && !reduceMotion ? 1.012 : 1)
+                .animation(reduceMotion ? .easeOut(duration: CircleMotion.quick) : .easeInOut(duration: 0.9), value: raised)
         case .today, .pills, .quiet:
             content
         }

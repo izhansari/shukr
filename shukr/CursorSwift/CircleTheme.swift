@@ -303,6 +303,32 @@ struct NeuPressed<S: Shape>: View {
     }
 }
 
+/// Pressed into the page at `lift` 0 (NeuPressed's well), raised off it at 1 — one shape whose shadows travel: the inner
+/// ones shrink to nothing by halfway, then the outer ones grow (the day's page, Izhan: "make it look like the card raises up
+/// off the page. not just a crossfade"). Animatable: `lift` is drawn at every step between.
+struct NeuLiftCard<S: Shape>: View, Animatable {
+    let shape: S
+    var lift: CGFloat
+    var animatableData: CGFloat {
+        get { lift }
+        set { lift = newValue }
+    }
+    @Environment(\.circleTheme) private var theme
+
+    var body: some View {
+        let sink = max(0, 1 - lift * 2), rise = max(0, lift * 2 - 1)
+        // Inner shadows only while they show: at zero size they filled the card with the light colour (white in dark).
+        let fill: AnyShapeStyle = sink > 0.01
+            ? AnyShapeStyle(theme.surface
+                .shadow(.inner(color: theme.shade.opacity(sink), radius: 7 * sink, x: 5 * sink, y: 5 * sink))
+                .shadow(.inner(color: theme.light.opacity(sink), radius: 7 * sink, x: -5 * sink, y: -5 * sink)))
+            : AnyShapeStyle(theme.surface)
+        shape.fill(fill)
+            .shadow(color: theme.shade.opacity(rise), radius: 12 * rise, x: 6 * rise, y: 6 * rise)
+            .shadow(color: theme.light.opacity(rise), radius: 12 * rise, x: -6 * rise, y: -6 * rise)
+    }
+}
+
 /// The page's surface (backdrop, bottom bar).
 struct NeuSurface: View {
     @Environment(\.circleTheme) private var theme

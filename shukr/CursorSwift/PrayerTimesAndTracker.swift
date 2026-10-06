@@ -2365,7 +2365,7 @@ struct TodaysPrayerListView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 12)
-                .modifier(SalahLookCard())
+                .modifier(SalahLookCard(raised: allDone && !TourRuntime.shared.active))
                 // The tour's list steps put their bubble above this, never over the rows (audit J).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("prayerList", $0) }
             }
