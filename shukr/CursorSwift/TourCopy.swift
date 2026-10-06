@@ -88,7 +88,7 @@ enum TourCopy {
             "Tap a coming prayer for the time until",
             "Unfold to see all your prayers",
             "Tap a marked prayer for its score",
-            "Hold a marked one, change its time, save",
+            "Hold Fajr, change its time, save",      // only Fajr opens until this is done
         ]
         static let allDone = "That’s your day — and it only ever says what’s true."
 

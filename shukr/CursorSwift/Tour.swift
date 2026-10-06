@@ -1189,12 +1189,14 @@ struct BubbleShape: Shape {
     /// The post-salah pill is on the page.
     @ObservationIgnored var pillVisible = false
 
-    /// Whether a prayer's time editor may open now. Outside the tour, always; in it, any marked practice prayer once the
-    /// list card's last to-do is open (owner: "let them keep editing whichever ones are done").
+    /// Whether a prayer's time editor may open now. Outside the tour, always. In it: the list card's last to-do opens
+    /// Fajr's only (the one it names and the thumbprint is on — testers held Asr and made it Qaza); once that's saved,
+    /// any marked practice prayer, to keep practising (owner, 2026-10-06).
     func allowsEditing(_ prayer: PrayerModel) -> Bool {
         guard active else { return true }
-        return step == .list && phase == .tryIt && !page.locked.contains(3) && prayer.isCompleted
-            && Self.isPracticeAnywhere(prayer)
+        guard step == .list && phase == .tryIt && !page.locked.contains(3) && prayer.isCompleted
+                && Self.isPracticeAnywhere(prayer) else { return false }
+        return ticked.contains(3) || prayer.name == "Fajr"
     }
 
     /// Whether a mark or an unmark may happen now. Outside the tour, always. In it, only the circle's hold, once its
