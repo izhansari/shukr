@@ -42,15 +42,15 @@ enum TourCopy {
         static let title = "Prayer Circle"
 
         static let showsStep = "What it shows"
-        static let showsLead = "It shows the prayer that matters to you:"
+        static let showsLead = "This is the heart of shukr. It always shows the prayer that matters right now:"
         static let situations = [
             "during a prayer?|the current one",
             "already prayed?|the upcoming one",
             "end of the day?|any you missed",
         ]
 
-        static let coloursStep = "The colours"
-        static let coloursLead = "The ring fills with different colours based on how much time passes:"
+        static let coloursStep = "The colors"
+        static let coloursLead = "The ring fills as the prayer’s time passes, and its color is the score you’d get if you prayed now:"
         static let colours = ["First 30 min", "On time", "Late"]   // green, yellow, red
         static let seeItInAction = "See it in action"
         static let playAgain = "Play again"
@@ -61,7 +61,7 @@ enum TourCopy {
             "Hold the circle to mark Asr",
         ]
         static let noCompass = "No compass here? Skip it"
-        static let marked = "Marked — Asr has moved to your list. Swipe up to see it."
+        static let marked = "Marked. Asr has moved to your list. Swipe up to see it."
     }
 
     // MARK: 2 · Prayer List
@@ -94,7 +94,7 @@ enum TourCopy {
 
         // The tip inside the time editor (opened by the last to-do).
         static let editorTitle = "When did you really pray?"
-        static let editorLine = "Drag the colour bar or turn the wheel, then save. It’s practice — nothing is kept."
+        static let editorLine = "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel, then save. It’s practice — nothing is kept."
         static let editorTodo = "Change the time, then save"
     }
 
@@ -103,11 +103,11 @@ enum TourCopy {
     enum Zikr {
         static let title = "Zikr"
 
-        static let getThereLead = "It’s one page over."
+        static let getThereLead = "Your zikr lives one page over."
         static let getThereTodo = "Swipe right"
 
         static let pageStep = "On this page"
-        static let pageLead = "The tasks here are examples."
+        static let pageLead = "These three are examples, so the wheel isn’t empty."
         static let page = [
             "your tasks on the wheel, freestyle first",
             "History top left, Azkar top right",
@@ -140,7 +140,7 @@ enum TourCopy {
         ]
 
         static let lastStep = "This tour"
-        static let last = "It lives here: tap “Show me around again” any time."
+        static let last = "That’s shukr. May it make your prayers easier. If you ever want this walk again, it lives here."
         static let doneButton = "Done"
     }
 
