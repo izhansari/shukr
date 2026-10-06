@@ -555,7 +555,7 @@ struct TourPageView: View {
                     .accessibilityLabel("Back")
                     .padding(.leading, -6)
                 }
-                if let place { TourDots(current: place.0, count: place.1) }
+                // No dots (user testing, 2026-10-06: they confused people) — the chapter's number and ring say where.
                 Spacer(minLength: 0)
                 if let secondary = page.secondary {
                     Button(secondary, action: onSecondary)
