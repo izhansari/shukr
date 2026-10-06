@@ -1524,9 +1524,12 @@ struct BubbleShape: Shape {
         return l
     }
     /// The list's: a marked prayer's score once they're unfolded; the fix once the three taps are done.
+    /// One at a time, in order (owner, 2026-10-06: a coming prayer first, the others greyed; then unfold; then the
+    /// marked one's score; then the hold) — so the thumbprint always follows the one open to-do.
     private var lockedList: Set<Int> {
         var l: Set<Int> = []
-        if !ticked.contains(1) { l.insert(2) }
+        if !ticked.contains(0) { l.insert(1) }
+        if !ticked.isSuperset(of: [0, 1]) { l.insert(2) }
         if !ticked.isSuperset(of: [0, 1, 2]) { l.insert(3) }
         return l
     }
@@ -2148,7 +2151,7 @@ extension TourLayer {
         case (.circle, .tryIt):
             guard let c = circle else { return nil }
             // On the thing to touch, not beside it (user testing, 2026-10-06: beside it misled).
-            if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX, y: c.midY)) }
+            if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX, y: c.midY + c.height * 0.3)) }   // low on the circle (owner)
             if next(1) { return nil }   // turning the phone: no touch
             if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX, y: c.midY)) }
             if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
@@ -2189,7 +2192,10 @@ extension TourLayer {
         case "qiblaArrow", "circle": return t.frame("circle")
         case "doneFold": return t.frame("doneFold")
         case "tourAgainRow": return t.frame("tourAgainRow")
-        case "markedRow", "comingRow": return t.lastTappedRow.flatMap { t.frame("prayerRow." + $0) }
+        // Only the time that changed, not the whole row (owner).
+        case "markedRow", "comingRow":
+            return t.lastTappedRow.flatMap { t.frame("prayerRow." + $0) }
+                .map { CGRect(x: $0.maxX - 116, y: $0.minY + 4, width: 108, height: $0.height - 8) }
         default: return nil
         }
     }
