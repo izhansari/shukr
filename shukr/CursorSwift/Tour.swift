@@ -443,7 +443,8 @@ struct TourCallout: View {
             // Measured and placed in one layout pass (`TourBubblePlacement`).
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
                                 // Nothing to point at (Settings' learn): low, clear of what it talks about.
-                                fallbackY: step == .settings ? size.height : size.height * 0.6, avoid: hole,
+                                // The welcome: dead centre (owner).
+                                fallbackY: step == .settings ? size.height : size.height * (step == .intro ? 0.5 : 0.6), avoid: hole,
                                 topLimit: typeSize.isAccessibilitySize ? 158 : 112,
                                 // A bubble asked to sit above (the circle once marked, the list, the wheel) never flips
                                 // under its target — under it covered the swipe up on a 13 Pro Max (owner); it overlaps
