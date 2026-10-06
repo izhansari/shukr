@@ -445,7 +445,7 @@ struct TourCallout: View {
                 bubble(below: below, tail: tail)
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
-                    .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
+                    .scaleEffect(shown || reduceMotion ? 1 : 0.96)
                     .opacity(shown ? 1 : 0)
             }
             .frame(width: size.width, height: size.height)
@@ -459,9 +459,9 @@ struct TourCallout: View {
                 withAnimation(.easeOut(duration: 0.25)) { shown = true }
                 return
             }
-            // A beat, then the bubble rises out of the page beside the control — once, for the whole tour.
-            try? await Task.sleep(for: .seconds(0.35))
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { shown = true }
+            // A beat (the last chapter's bubble fading), then this one comes in where it belongs — each chapter.
+            try? await Task.sleep(for: .seconds(0.25))
+            withAnimation(.easeOut(duration: 0.3)) { shown = true }
         }
     }
 
@@ -1930,6 +1930,10 @@ struct TourLayer: View {
                     onBack: { runtime.event(.back) },
                     onToggle: toggleSection,
                     onSkipQibla: { runtime.event(.skipQibla) })
+            // A new chapter is a new bubble (owner, 2026-10-06: "make the bubble disappear and the next one appear"):
+            // the old one fades where it is, then the new one comes in at its place (TourCallout's entrance).
+            .id(step)
+            .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(.easeIn(duration: 0.18))))
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
             .animation(.easeOut(duration: CircleMotion.quick), value: visible)
@@ -2102,7 +2106,7 @@ extension TourLayer {
         case (.circle, _): return "circle"
         case (.list, _): return "prayerList"
         case (.zikr, .go): return "circle"
-        case (.zikr, _): return "zikrCircle"
+        case (.zikr, _): return "zikrSlot"   // the wheel's centre, still while it scrolls (owner)
         case (.settings, .go): return "settingsTab"
         case (.settings, .last): return "tourAgainRow"
         case (.settings, _): return nil
@@ -2118,7 +2122,7 @@ extension TourLayer {
         // Marked: over the circle, so the swipe up has the page under it (the bubble there took the touches).
         case .circle where runtime.ticked.contains(2): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
         // Over the wheel: the tasks line under it is one of the things it talks about.
-        case .zikr where runtime.phase != .go: return TourTargets.shared.frame("zikrCircle").map { $0.minY - 10 }
+        case .zikr where runtime.phase != .go: return TourTargets.shared.frame("zikrSlot").map { $0.minY - 10 }
         default: return nil
         }
     }
@@ -2148,7 +2152,7 @@ extension TourLayer {
             if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
             return nil
         case (.zikr, .tryIt):
-            guard let c = t.frame("zikrCircle") else { return nil }
+            guard let c = t.frame("zikrSlot") else { return nil }
             // Up the wheel beside the circle; then a hold on it.
             if next(0) { return .init(kind: .swipe(dx: 0, dy: -110), at: CGPoint(x: c.maxX - 10, y: c.maxY + 30)) }
             if next(1) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
@@ -2229,7 +2233,7 @@ extension TourLayer {
             return f("doneFold") + rows
         case (.zikr, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
         // Scroll the wheel, hold a task: the page under the bubble (taps start nothing — the wheel's own guard).
-        case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("zikrCircle").map { $0.minY - 20 }) : []
+        case (.zikr, .tryIt): return sharedState.horizontalPage == .zikr ? swipeBand(from: t.frame("zikrSlot").map { $0.minY - 20 }) : []
         case (.settings, .go): return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
         default: return []
         }

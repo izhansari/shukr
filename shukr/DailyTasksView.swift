@@ -281,7 +281,14 @@ struct ZikrCircleWheel: View {
                         circle(for: item)
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
                                 circleFrames.byID[item.id] = frame
-                                if item.id == centered { TourTargets.shared.set("zikrCircle", frame) }
+                                if item.id == centered {
+                                    TourTargets.shared.set("zikrCircle", frame)
+                                    // The wheel's centre slot: where the centred circle rests, whatever the scroll is
+                                    // doing — the tour's bubble keeps to it (owner: it moved with the scroll).
+                                    let mid = geo.frame(in: .global).midY
+                                    TourTargets.shared.set("zikrSlot", CGRect(x: frame.minX, y: mid - frame.height / 2,
+                                                                              width: frame.width, height: frame.height))
+                                }
                             }
                             // Opening a session out of the centred ring (SessionHandoff): the others go the opening's
                             // way (sink / focus / fade); the centred one keeps its ring and lets its label go.
