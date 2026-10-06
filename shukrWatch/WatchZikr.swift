@@ -404,13 +404,14 @@ struct WatchZikrFace: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.14), lineWidth: 7)
+            // The phone's soft zikr ring (ZikrCircleFace under the soft look — owner: "our Zikr task rings should be
+            // using the soft look"): the raised band, and the tasbeeh arc — as wide as the band, round ends, its glow.
+            WatchSoftBand(width: 6)
             Circle()
                 .trim(from: 0, to: max(min(fraction, 1), 0.001))
-                .stroke(Color.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(Color.green, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .shadow(color: .green.opacity(0.5), radius: 3)
-                .shadow(color: .green.opacity(0.3), radius: 6)
+                .shadow(color: .green.opacity(0.45), radius: 5)
                 .opacity(fraction > 0 ? 1 : 0)
             VStack(spacing: 2) {
                 HStack(spacing: 4) {
@@ -487,10 +488,12 @@ struct WatchWheelFalloff: ViewModifier {
             let rows: CGFloat = (frame.midY - viewport / 2) / itemHeight
             let d: CGFloat = min(abs(rows), 3)
             let ease: CGFloat = 1 - exp(-1.1 * d)
-            let scale: CGFloat = 1 - 0.62 * ease
+            // Smaller than the phone's (0.62), pulled in less (0.12, not 0.45): room round the centred circle (owner:
+            // "a little smaller so there is more breathing space between the focused centered task and the rest").
+            let scale: CGFloat = 1 - 0.75 * ease
             let theta: CGFloat = min(max(rows, -2.2), 2.2) * perRow
             let arcX: CGFloat = -(1 - cos(theta)) * radius
-            let pullY: CGFloat = -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.45 * min(d, 1.5)
+            let pullY: CGFloat = -(rows >= 0 ? 1 : -1) * itemHeight * (1 - scale) * 0.12 * min(d, 1.5)
             return content
                 .scaleEffect(scale)
                 .opacity(1 - 0.7 * ease)
@@ -616,6 +619,9 @@ struct WatchZikrPage: View {
                     }
                 }
             }
+            // The centred circle in the middle of the screen, not of the space under the clock (owner: "our current
+            // focused ring should be in center of page").
+            .ignoresSafeArea(edges: .vertical)
         }
         #if DEBUG
         // `-demoWatchCounter N`: start the Nth circle (0 = Freestyle) as if tapped (simulator).

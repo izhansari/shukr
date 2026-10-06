@@ -538,6 +538,10 @@ struct WatchPrayerRing: View {
     /// Before it starts: "in 5m" / "in 1h 51m", the phone's `timeUntilStart` (to the minute: the
     /// page redraws once a minute).
     private var untilText: String { Self.until(prayer.start, now: now) }
+
+    /// A prayer's last hour, still not marked: time left is the default and the tap flips to "ends …", staying there
+    /// (the phone's PrayerTimeLine, `lastHourLeft`; owner: "in the last 60 minutes, it displays the time left").
+    private var lastHour: Bool { current && prayer.end.timeIntervalSince(now) <= 60 * 60 }
     static func until(_ start: Date, now: Date) -> String {
         let minutes = max(0, Int(start.timeIntervalSince(now) / 60))
         if minutes < 1 { return "in <1m" }
@@ -582,7 +586,7 @@ struct WatchPrayerRing: View {
                 Group {
                     // Tap flips it, in both states, like the phone's circle.
                     if current {
-                        if showLeft { Text(leftText) } else { Text("ends ") + Text(prayer.end, style: .time) }
+                        if showLeft != lastHour { Text(leftText) } else { Text("ends ") + Text(prayer.end, style: .time) }
                     } else {
                         if showLeft { Text(untilText) } else { Text("at ") + Text(prayer.start, style: .time) }
                     }
@@ -597,6 +601,7 @@ struct WatchPrayerRing: View {
         // A new prayer on the ring, or the one shown starting, goes back to "ends …" / "at …".
         .onChange(of: prayer.name) { _, _ in showLeft = false }
         .onChange(of: current) { _, _ in showLeft = false }
+        .onChange(of: lastHour) { _, _ in showLeft = false }   // the hour begins: its default
         #if DEBUG
         // `-demoWatchHold`: the hold's look, without marking (simulator screenshots).
         .onAppear {
@@ -610,7 +615,7 @@ struct WatchPrayerRing: View {
             WKInterfaceDevice.current().play(.click)
             withAnimation(.easeInOut(duration: 0.2)) { showLeft.toggle() }
             flipToken += 1
-            guard showLeft else { return }
+            guard showLeft, !lastHour else { return }
             let token = flipToken
             DispatchQueue.main.asyncAfter(deadline: .now() + WatchPrayerList.flipSeconds) {
                 guard token == flipToken else { return }
