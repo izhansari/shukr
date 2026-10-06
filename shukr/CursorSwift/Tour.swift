@@ -116,6 +116,8 @@ struct TourSection: Equatable, Identifiable {
     var blocks: [TourBlock] = []
     var tasks: [String] = []
     var note: String? = nil
+    /// The note as a quiet footnote (the welcome's last line, under its list).
+    var quietNote = false
     /// Something to open again once it's folded.
     var peekable: Bool { !blocks.isEmpty || !tasks.isEmpty }
 }
@@ -590,17 +592,25 @@ struct TourPageView: View {
 
     @ViewBuilder private var plainHeader: some View {
         if step == .intro {
-            // The welcome: its symbol beside the line, in the chapters' title type.
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: step.symbol)
-                    .font(.system(.subheadline, weight: .regular))
-                    .foregroundStyle(Color.primary.opacity(0.6))
-                    .accessibilityHidden(true)
-                Text(page.headline)
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
+            // The opening: "Bismillah" the biggest thing in the tour (owner), its symbol beside it, the line under it.
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: step.symbol)
+                        .font(.system(.title3, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .accessibilityHidden(true)
+                    Text(page.headline)
+                        .font(.system(.title, design: .rounded, weight: .semibold))
+                        .accessibilityAddTraits(.isHeader)
+                }
+                if let line = page.subline {
+                    Text(line)
+                        .font(.system(.body, design: .rounded, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.7))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .padding(.bottom, 4)
         } else {
             plainStack
         }
@@ -712,8 +722,10 @@ struct TourSectionView: View {
             }
             if let note = section.note {
                 Text(note)
-                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .font(.system(section.quietNote ? .footnote : .subheadline, design: .rounded, weight: .regular))
+                    .foregroundStyle(Color.primary.opacity(section.quietNote ? 0.6 : 1))
                     .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, section.quietNote ? 4 : 0)
             }
         }
     }
@@ -799,18 +811,19 @@ struct TourBullets: View {
     private func chapterLine(_ i: Int) -> some View {
         let parts = lines[i].split(separator: "|", maxSplits: 1).map(String.init)
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
+            // Under "Bismillah": the chapter a step down (callout, medium), its words a step further (footnote, light).
             Text("\(i + 1)")
-                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .font(.system(.callout, design: .rounded, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(Color.primary.opacity(0.4))
                 .frame(width: 14, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(parts[0])
-                    .font(.system(.headline, design: .rounded, weight: .semibold))
+                    .font(.system(.callout, design: .rounded, weight: .medium))
                 if parts.count > 1 {
                     Text(parts[1])
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .font(.system(.footnote, design: .rounded, weight: .light))
+                        .foregroundStyle(Color.primary.opacity(0.55))
                 }
             }
         }
@@ -1410,8 +1423,9 @@ struct BubbleShape: Shape {
                                                                "Prayer List|your whole day",
                                                                "Zikr|your daily remembrance",
                                                                "Settings|make it yours"], numbered: true)],
-                                    note: "A quick look at each, then you try it. It\u{2019}s a practice day \u{2014} nothing here is kept.")
-            return TourPage(headline: "Bismillah. Let\u{2019}s take a quick look around.", sections: [intro],
+                                    note: "A quick look at each, then you try it. It\u{2019}s a practice day \u{2014} nothing here is kept.",
+                                    quietNote: true)
+            return TourPage(headline: "Bismillah", subline: "Let\u{2019}s take a quick look around.", sections: [intro],
                             primary: "Let\u{2019}s begin")
         case .circle:
             var shows = TourSection(id: "circle.shows", title: "What it shows", blocks: [Self.circleBlocks[0]])
