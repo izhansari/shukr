@@ -1551,7 +1551,19 @@ struct BubbleShape: Shape {
     private func tick(_ i: Int, flash key: String? = nil) {
         guard step != nil, !page.locked.contains(i), !ticked.contains(i) else { return }
         withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
-        if let key { flashKey = key; flashes += 1 }
+        if let key { glow(key) }
+    }
+
+    /// The thing that changed glows once — then the glow is forgotten, so a bubble rebuilt later (a new chapter, a menu
+    /// closing) never plays it again somewhere stale (owner: a false glow lingered at the end of chapter 3).
+    private func glow(_ key: String) {
+        flashKey = key
+        flashes += 1
+        let mine = flashes
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            if flashes == mine { flashKey = nil }
+        }
     }
 
     /// A colour's note has happened: its line lights.
@@ -1723,6 +1735,7 @@ struct BubbleShape: Shape {
         qiblaSkippable = false
         sweeping = false
         colorSweep = nil   // the colours demo's ring goes with it (a skip, Back)
+        flashKey = nil     // no glow carried into the next chapter
     }
 
     func event(_ e: Event) {
@@ -1783,7 +1796,7 @@ struct BubbleShape: Shape {
         case (.list, .learn, .next): setPhase(.learnMore)
         case (.list, .learnMore, .next): setPhase(.tryIt)
         case (.list, .tryIt, .comingRowTapped): tick(0, flash: "comingRow")
-        case (.list, .tryIt, .foldTapped): tick(1, flash: "doneFold")
+        case (.list, .tryIt, .foldTapped): tick(1)   // no glow on unfolding (owner)
         case (.list, .tryIt, .markedRowTapped): tick(2, flash: "markedRow")
         case (.list, .tryIt, .editorSaved): tick(3)
         case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): go(to: .zikr)
@@ -1808,8 +1821,7 @@ struct BubbleShape: Shape {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.5))
                 guard run == thisRun, step == .settings, phase == .last else { return }
-                flashKey = "tourAgainRow"
-                flashes += 1
+                glow("tourAgainRow")
             }
         case (.settings, .last, .next): finish(completed: true)
         default: break
