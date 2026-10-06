@@ -863,8 +863,17 @@ struct WatchCounterView: View {
                             .accessibilityLabel("Resume")
                     }
                 } else {
-                // In the slot watchOS gives its own ✕ (which would drop the count in one tap).
+                // Pause on the left (owner, 2026-10-06: "switch the two buttons … the pause is on the left-hand side"),
+                // in the slot watchOS gives its own ✕ (which would drop the count in one tap) — where ‹ resumes, so a
+                // quick second tap on ‹ mustn't pause again.
                 ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        guard Date().timeIntervalSince(resumedAt) > 0.7 else { return }
+                        togglePause()
+                    } label: { Image(systemName: "pause.fill") }
+                    .accessibilityLabel("Pause")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 4) {
                         Button { minus() } label: { Image(systemName: "minus") }
                         if step > 1 {
@@ -879,9 +888,6 @@ struct WatchCounterView: View {
                             .background(Circle().fill(countingInSets ? Color.green.opacity(0.2) : .clear))
                         }
                     }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { togglePause() } label: { Image(systemName: "pause.fill") }
                 }
                 }
             }
@@ -1237,8 +1243,6 @@ struct WatchCounterView: View {
     }
 
     private func minus() {
-        // − sits where the pause screen's ‹ was: a quick second tap on ‹ mustn't take one off.
-        guard Date().timeIntervalSince(resumedAt) > 0.7 else { return }
         guard count > config.startCount else { return }
         count = max(count - tapWorth, config.startCount)
         WatchHaptics.minus()

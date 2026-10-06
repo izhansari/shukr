@@ -26,8 +26,9 @@ struct WatchQiblaMap: View {
     /// Where the line starts: the watch's own fix if it has a recent one, else where the phone last was.
     private let here: CLLocationCoordinate2D?
 
-    /// About the phone's `qiblaSpan` (0.002°, ~220 m across a phone) on a watch's narrower screen.
-    private static let distance: CLLocationDistance = 600
+    /// Opens zoomed all the way in (owner: "make it zoom in all the way"): MapKit stops at its closest; the Crown
+    /// zooms out.
+    private static let distance: CLLocationDistance = 120
     private static let kaaba = CLLocationCoordinate2D(latitude: WatchQibla.kaaba.lat, longitude: WatchQibla.kaaba.lon)
 
     init() {
