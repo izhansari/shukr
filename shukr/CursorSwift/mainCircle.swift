@@ -373,17 +373,12 @@ struct MainCircleView: View {
                                 let marking = !prayer.isCompleted
                                 // The tour lets only its own moves through (Ben's G1): a hold on step 1 marks nothing.
                                 guard TourRuntime.shared.allows(marking: marking, prayer) else {
-                                    triggerSomeVibration(type: .light)
+                                    TourRuntime.shared.nudge()   // the tour: not yet — a pulse, no buzz (owner)
                                     return
                                 }
                                 viewModel.togglePrayerCompletion(for: prayer)
                                 // The tour's Mark step (a practice the user undoes next), or a first mark's celebration.
                                 if marking { TourRuntime.shared.event(.marked(prayer, viewModel)) }
-                            } else if TourRuntime.shared.step == .mark {
-                                // The tour with no prayer in its window: the mark's preview (nothing written).
-                                NotificationCenter.default.post(name: SalahLookPlay.mark, object: nil)
-                                TourRuntime.shared.event(.markedPreview(viewModel))
-                                // The post-salah pill follows the flourish (.prayerCompleted).
                             }
                         }
                 )
@@ -396,7 +391,7 @@ struct MainCircleView: View {
                 QiblaArrow(onAligned: { checkToTriggerQiblaHaptic(aligned: $0) },
                            tap: {
                                // Inside the circle's opening, but not the tour's move (Sami): no map during the tour.
-                               guard !TourRuntime.shared.active else { triggerSomeVibration(type: .light); return }
+                               guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
                                TourRuntime.shared.event(.mapOpened); showQiblaMap = true
                            })
                 // "Compass needs a moment · tap" under the ring — laid out at zero size, so the circle

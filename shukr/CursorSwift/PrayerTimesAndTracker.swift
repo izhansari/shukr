@@ -680,8 +680,10 @@ struct PrayerTimesView: View {
 
             // The first-run tour (Tour.swift): its callout over the live app, never over a cover or a session.
             // Any stage cover too (the ☰ menu, the map, a row's time editor): the edit step's "Close it" is its close.
+            // Not the scene phase (owner: the tooltip went away and came back with Control Center / a notification):
+            // only something truly over the page hides it.
             TourLayer(covered: somethingCovers || showTasbeehPage || CircleStage.shared.lost != nil
-                      || morningSession != nil || !CircleStage.shared.sceneActive || !CircleStage.shared.covers.isEmpty)
+                      || morningSession != nil || !CircleStage.shared.covers.isEmpty)
             #if DEBUG
                 // What may hide the tour's callout (Sami's step 1 with nothing on screen): "TOUR cover …" on each change.
                 .onChange(of: "\(TourRuntime.shared.step?.rawValue ?? "-") · \(tourHiddenReason)", initial: true) { _, line in
@@ -702,9 +704,11 @@ struct PrayerTimesView: View {
         .onReceive(NotificationCenter.default.publisher(for: TourRuntime.start)) { _ in
             sharedState.go(to: .main)
             SalahSheetDrag.closeQuietly(sharedState)
+            // Settings → Show me around again: straight in, no invitation (owner: "clearly they do since they
+            // pressed that button").
             Task {
                 try? await Task.sleep(for: .seconds(0.6))
-                TourRuntime.shared.invite()
+                TourRuntime.shared.begin()
             }
         }
         .onChange(of: CircleStage.shared.pageHidden, initial: true) { _, hidden in
@@ -1822,7 +1826,7 @@ struct PrayerTimesView: View {
                         // Skip tour takes this corner while the tour runs (Tour.swift's TourSkipButton).
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .modifier(follow(.zikr(push: 0)))
-                            .opacity(TourRuntime.shared.active ? 0 : 1)
+                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : 1)
                             .allowsHitTesting(!TourRuntime.shared.active)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available && !TourRuntime.shared.active {
@@ -2494,7 +2498,7 @@ struct PrayerButton: View {
         if !isFuturePrayer {
             // The tour lets only its own moves through (Ben's G1 / G2): a light no otherwise.
             guard TourRuntime.shared.allows(marking: !prayerObject.isCompleted, prayerObject) else {
-                triggerSomeVibration(type: .light)
+                TourRuntime.shared.nudge()   // the tour: the thing to touch pulses (no buzz — owner)
                 return
             }
             if !prayerObject.isCompleted {
@@ -2675,7 +2679,8 @@ struct PrayerButton: View {
     /// A tap on the time: flip its text (a started prayer's time doesn't flip). A Jumu'ah shows its masjid instead.
     private func timeTap() {
         guard isFuturePrayer || prayerObject.isCompleted else { return }
-        TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's row steps
+        TourTargets.shared.lastTappedRow = prayerObject.name   // its change glows (the tour)
+        TourRuntime.shared.event(prayerObject.isCompleted ? .markedRowTapped : .comingRowTapped)   // the tour's list card
         if prayerObject.isJumuah && prayerObject.isCompleted {
             showMasjidLine(!masjidLine)
             return
@@ -2731,7 +2736,7 @@ struct PrayerButton: View {
         guard prayerObject.isCompleted else { return }
         // In the tour only the fix step's Fajr opens (a light no otherwise, as for a mark the tour doesn't want).
         guard TourRuntime.shared.allowsEditing(prayerObject) else {
-            triggerSomeVibration(type: .light)
+            TourRuntime.shared.nudge()   // the tour: not yet / not this one — a pulse, no buzz
             return
         }
         // Open on the prayer's own day. The wheel only edits hour/minute and keeps the date it

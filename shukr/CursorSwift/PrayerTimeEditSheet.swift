@@ -60,11 +60,8 @@ struct PrayerTimeEditSheet: View {
         guard let openedWith else { return false }
         return abs(draft.timeIntervalSince(openedWith)) >= 30
     }
-    private var canSave: Bool { isValid && (changed || draftSpot != nil) && (!tourTip || draftInYellow) }
-    /// The tour's fix step saves only a time in the yellow (owner: "only allow a save … if it's in the yellow").
-    private var draftInYellow: Bool {
-        PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)) == .onTime
-    }
+    /// The tour's fix step saves any changed time (tour v2, owner: "change its time, and save").
+    private var canSave: Bool { isValid && (changed || draftSpot != nil) }
 
     /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
     /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.
@@ -104,7 +101,7 @@ struct PrayerTimeEditSheet: View {
 
     @Environment(\.dynamicTypeSize) private var typeSize
     /// The tour's fix step is in this sheet: its tip continues here (audit J: "nothing goes silent").
-    private var tourTip: Bool { TourRuntime.shared.step == .edit && TourRuntime.isPracticeAnywhere(prayer) }
+    private var tourTip: Bool { TourRuntime.shared.step == .list && TourRuntime.isPracticeAnywhere(prayer) }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -148,11 +145,6 @@ struct PrayerTimeEditSheet: View {
         .task(id: shownSpot.map { "\($0.latitude),\($0.longitude)" }) {
             spotAddress = nil
             if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
-        }
-        // The tour's fix step: its score as the time moves (a time in the yellow ticks its to-do).
-        .onChange(of: draft, initial: true) { _, picked in
-            guard tourTip else { return }
-            TourRuntime.shared.event(.editorScored(PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: picked)))
         }
         // The tour's tip at the largest text: the full height, else Save fell off the sheet (Sami, AX XXXL).
         .presentationDetents([tourTip && typeSize.isAccessibilitySize

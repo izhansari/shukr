@@ -6,155 +6,105 @@ import TipKit
 /// Coach marks: a dim with a clear cut-out round the real control, one line beside it, the step ending on the real action.
 /// The dim takes no touches, so the control under the cut-out (and everything else) works as usual.
 enum TourStep: String, CaseIterable, Identifiable {
-    case circle, colors, qibla, list, rowTime, mark, fold, markedRow, edit, undo, zikr, settings, celebrate, firstPill, map, hintMark
+    // The tour itself, four cards (tour v2, Izhan's spec 2026-10-05, board/brief-tour-v2.md): each card is one topic —
+    // learn it where it lives, then try it — and the one bubble drifts from card to card, turning its page.
+    case circle, list, zikr, settings
+    // After the tour: the first real mark's celebration, the post-salah pill's card, the map hint.
+    case celebrate, firstPill, map, hintMark
     var id: String { rawValue }
 
-    /// The measured frame it points at (TourTargets), or nil for a page-wide step.
-    var target: String? {
-        switch self {
-        case .circle, .colors, .qibla, .celebrate, .map: "circle"
-        case .edit: "prayerRow.Fajr"
-        case .undo, .mark, .hintMark: "prayerDot."   // + the prayer's name (TourLayer)
-        case .fold: "doneFold"
-        case .rowTime, .markedRow: "prayerRow."      // + the row's name (TourLayer)
-        case .list: "chevron"
-        case .zikr, .settings: nil                   // the settings row once there (TourLayer)
-        case .firstPill: "pill"
-        }
-    }
-    var words: String { headline + ". " + subline }
+    /// The four cards, in order.
+    static let cards: [TourStep] = [.circle, .list, .zikr, .settings]
+    var isCard: Bool { Self.cards.contains(self) }
 
-    /// The ask's two lines: a short headline and a quiet line under it.
+    /// The post-tour steps' words (the cards' own are TourRuntime.page).
     var headline: String {
         switch self {
-        // The tour as a story in three chapters, one warm voice (Izhan: "warmer … a story"; Ben's script,
-        // board/brief-frank-tour-story.md).
-        case .circle: "This is the heart of shukr."
-        case .colors: "The ring is also a score."
-        case .qibla: "Which way to face."
-        case .list: "Your day, prayer by prayer."
-        case .rowTime: "Plan ahead."
-        case .mark: "A tracker is only worth having if it\u{2019}s true."
-        case .fold: "Out of the way."
-        case .markedRow: "How you did."
-        case .edit: "Say you really prayed Fajr on time."
-        case .undo: "Marked one by mistake?"
-        case .zikr: "There\u{2019}s more, one page over."
-        case .settings: "And that\u{2019}s the house."
         case .celebrate: "Your first prayer, marked."
         case .firstPill: "Tasbih Fatimah, after every prayer."
         case .map: "See where you prayed"
         case .hintMark: "Tap the dot"
-        }
-    }
-    /// The story's chapters, shown small over the first card of each (Ben's script).
-    var chapter: String? {
-        switch self {
-        case .circle: "Your day"
-        case .mark: "Keeping it honest"
-        case .zikr: "The rest of the house"
-        default: nil
+        default: ""
         }
     }
     var subline: String {
         switch self {
-        case .circle: "One circle: which prayer it is now, or the next one; how much of its time has gone; and the small arrow is your qibla. Most days, this is all you\u{2019}ll look at."
-        case .colors: "Pray early and it\u{2019}s green; later, yellow; late, red. Miss it, grey. We made it a colour so you never have to do the maths."
-        case .qibla: "Turn until the arrow points up. It goes green when you\u{2019}re facing Makkah."
-        case .list: "Swipe up. The five prayers are under the circle: a dot to mark each, its time to plan by."
-        case .rowTime: "A coming prayer\u{2019}s time can tell you how long you\u{2019}ve got."
-        case .mark: "So we made it easy to keep true. Start with the simplest thing: you prayed Asr, so mark it."
-        case .fold: "Marked prayers fold under \u{201C}done\u{201D}, so your list stays short."
-        case .markedRow: "Each marked prayer keeps when you prayed and what it scored."
-        case .edit: "Hold its row. Drag the colour bar, or pick a time in the yellow, to set when you actually prayed. Then save."
-        case .undo: "Take it back."
-        case .zikr: "Your zikr and daily tasks live to the right. Nothing to do here now \u{2014} just so you know where they are."
-        case .settings: "The bar at the bottom takes you anywhere, too."
         case .celebrate: "May there be many more."
         case .firstPill: "Each time you mark a prayer, this comes up for a little while \u{2014} 33\u{00A0}\u{00B7}\u{00A0}33\u{00A0}\u{00B7}\u{00A0}34, if you\u{2019}d like to say it. Tap it now."
         case .map: "Every prayer you mark is on the map, under Explore → Prayers."
         case .hintMark: "to mark it prayed. Hold it to change the time."
-        }
-    }
-    /// What the step was good for, shown once its to-dos are done, with Continue (owner, audit J: "do → insight →
-    /// continue"). nil: the ask stays, with Continue (a step with nothing to do).
-    var insight: (String, String)? {
-        switch self {
-        case .circle: ("Those two taps are the whole clock.", "Everything else in shukr is built around this circle.")
-        case .colors: ("Pray in the green.", "That\u{2019}s the whole idea.")
-        case .qibla: ("That\u{2019}s the qibla, wherever you are.", "Tap the arrow when you want the map.")
-        case .list: ("That\u{2019}s your day in one place.", "Tap a prayer\u{2019}s dot when you\u{2019}ve prayed; its time says when it starts.")
-        case .rowTime: ("How long until it starts, at a glance.", "It flips back by itself.")
-        case .mark: ("Marked.", "After each prayer that pill offers Tasbih Fatimah \u{2014} 33\u{00A0}\u{00B7}\u{00A0}33\u{00A0}\u{00B7}\u{00A0}34 \u{2014} if you want it. \u{2715} when you don\u{2019}t.")
-        case .fold: ("Short list, nothing lost.", "They\u{2019}re always one tap away.")
-        case .markedRow: ("Fajr says Qaza.", "It was marked after its time. That\u{2019}s not what happened \u{2014} so let\u{2019}s fix it.")
-        case .edit: ("Fixed \u{2014} and honest.", "You can change the time, and the place too. What the app first recorded is kept, so you can always go back.")
-        case .undo: ("Undone.", "That\u{2019}s the last of the fixing. Your tracker will only ever say what\u{2019}s true.")
-        case .zikr: ("Tap the circle there whenever you want to count.", "We\u{2019}ll show you round it the first time you do.")
-        case .settings: ("That\u{2019}s shukr.", "May it make your prayers easier. If you ever want this walk again, it lives here \u{2014} \u{201C}Show me around again\u{201D}.")
-        case .firstPill: ("It\u{2019}ll be there after every prayer.", "Mark a prayer and it comes up. \u{2715} when you\u{2019}d rather not.")
-        case .celebrate, .map, .hintMark: nil
-        }
-    }
-    /// The step's notes (owner, audit I: "two kinds of line"): bullets that light as they happen, nothing to do.
-    var notes: [String] {
-        switch self {
-        case .colors: ["Green \u{2014} the first 30 minutes", "Yellow \u{2014} on time", "Red \u{2014} late"]
-        case .qibla: ["It turns green when you face it"]
-        default: []
-        }
-    }
-    /// The step's to-dos: each ticked only by the user's own action (audit J: never by a state that changes by itself).
-    var tasks: [String] {
-        switch self {
-        case .circle: ["Tap it: how long is left", "Tap again: when it ends"]
-        case .qibla: ["Turn until it points up"]
-        case .list: ["Swipe up"]
-        case .rowTime: ["Tap Maghrib\u{2019}s time"]
-        case .mark: ["Tap Asr\u{2019}s dot (or hold the circle)", "Close the pill: \u{2715}"]
-        case .fold: ["Tap \u{201C}done\u{201D} to show them", "Tap it again to hide them"]   // the real count: TourLayer
-        case .markedRow: ["Tap Fajr\u{2019}s time"]
-        // Three ticks kept (owner: a save only in the yellow), in the script's voice.
-        case .edit: ["Hold Fajr\u{2019}s row", "Set a time in the yellow", "Save"]
-        // One tick (the unmark itself), so one line.
-        case .undo: ["Tap Asr\u{2019}s dot, then Yes"]
-        case .zikr: ["Swipe right"]
-        case .settings: ["Tap Settings below"]
-        case .firstPill: ["Tap \u{201C}Post-salah tasbih\u{201D}"]
-        case .map: ["Tap the arrow on the circle"]
-        case .colors, .celebrate, .hintMark: []
+        default: ""
         }
     }
     var symbol: String {
         switch self {
-        case .circle, .hintMark: "hand.tap"
-        case .mark, .fold: "checkmark.circle"
-        case .colors: "circle.lefthalf.filled"
-        case .edit: "clock.arrow.circlepath"
-        case .undo: "arrow.uturn.backward"
-        case .qibla: "location.north.line"
-        case .rowTime: "hourglass"
-        case .markedRow: "checkmark.seal"
-        case .celebrate: "sparkles"
-        case .firstPill: "hand.tap"
-        case .map: "map"
-        case .list: "arrow.up"
+        case .circle, .hintMark, .firstPill: "hand.tap"
+        case .list: "list.bullet"
         case .zikr: "circle.hexagongrid"
         case .settings: "gearshape"
+        case .celebrate: "sparkles"
+        case .map: "map"
         }
     }
-    /// The steps on the list (the bubble sits above the list, never over its rows — audit J).
-    var aboutTheList: Bool { [.rowTime, .mark, .fold, .markedRow, .edit, .undo].contains(self) }
-    /// The tour's place ("2 of 12") is the runtime's (`TourRuntime.place(of:)`).
+    /// The measured frame a post-tour step points at.
+    var target: String? {
+        switch self {
+        case .celebrate, .map: "circle"
+        case .hintMark: "prayerDot."
+        case .firstPill: "pill"
+        default: nil
+        }
+    }
+    var roundHole: Bool { self != .list }
+    /// The post-tour steps' to-dos and insights (the cards' own are TourRuntime.page).
+    var tasks: [String] {
+        switch self {
+        case .firstPill: ["Tap \u{201C}Post-salah tasbih\u{201D}"]
+        case .map: ["Tap the arrow on the circle"]
+        default: []
+        }
+    }
+    var insight: (String, String)? {
+        switch self {
+        case .firstPill: ("It\u{2019}ll be there after every prayer.", "Mark a prayer and it comes up. \u{2715} when you\u{2019}d rather not.")
+        default: nil
+        }
+    }
+    var words: String { headline + ". " + subline }
     var place: (Int, Int)? { nil }
-    /// A round cut-out (the circles, the dot) or a capsule (the chevron).
-    var roundHole: Bool { ![.list, .fold, .rowTime, .markedRow, .edit].contains(self) }
+}
+
+/// Where a card is: learn it first, then try it (the circle and the list), or go there first, then learn it (Zikr,
+/// Settings); Settings ends on its last line, the tour's own row.
+enum TourPhase: Equatable { case go, learn, tryIt, last }
+
+/// What the one bubble says right now: built by TourRuntime from the card and its phase.
+struct TourPage: Equatable {
+    var headline: String
+    var subline: String? = nil
+    /// The card's "what it's for": plain bullets (learn), folded to one line once they're trying it.
+    var bullets: [String] = []
+    /// The colours' lines: dim until the ring reaches them in the demo.
+    var notes: [String] = []
+    /// The to-dos; `locked` ones wait (greyed) until the ones before are done.
+    var tasks: [String] = []
+    var locked: Set<Int> = []
+    /// A line under the to-dos once they're done (what it was good for).
+    var insight: String? = nil
+    /// The folded "what it's for" while trying it (tap to open).
+    var foldedTitle: String? = nil
+    /// The main button (nil: none — the step ends on an action).
+    var primary: String? = nil
+    /// A quiet second button ("Play again").
+    var secondary: String? = nil
 }
 
 /// Where the tour's targets are on screen, reported by the views themselves (global frames, written only on change).
 @MainActor @Observable final class TourTargets {
     static let shared = TourTargets()
     private(set) var frames: [String: CGRect] = [:]
+    /// The list row the tour's last row tap was on (its change glows — tour v2).
+    @ObservationIgnored var lastTappedRow: String?
     func set(_ key: String, _ frame: CGRect) {
         guard frame.width > 0, frames[key] != frame else { return }
         frames[key] = frame
@@ -177,171 +127,68 @@ enum TourStep: String, CaseIterable, Identifiable {
     }
 }
 
-/// Two looks for the words, for the owner's pick (decision onboarding-tour-look): a small card by the cut-out, or a
-/// line near the bottom.
-enum TourCardStyle: String { case card, line, callout }
-
-/// The dim with its cut-out and the words. Touches pass through the dim to the real app; only "Skip tour" takes one.
+/// The tour's one bubble over the live app (tour v2): where its target is, in this view's space, and the callout.
+/// Touches pass through to the app; the input guard (TourLayer) decides which reach it.
 struct TourOverlay: View {
     let step: TourStep
-    var style: TourCardStyle = .card
-    /// A target in place of the step's own (the mark hint: "prayerDot.<the current prayer>").
+    let page: TourPage
     var target: String? = nil
-    /// The words in place of the step's (the practice mark's "That's it").
-    var override: (String, String)? = nil
-    /// No action can end the step right now: a "Next" instead.
-    var showsNext = false
-    /// The tour's place when it isn't the step's own (a tour without the undo step has 5).
     var place: (Int, Int)? = nil
-    /// The to-dos in place of the step's own (the mark step with no prayer due), and which are done.
-    var tasks: [String]? = nil
     var ticked: Set<Int> = []
-    /// The notes that have lit (shown while the step asks; hidden with its insight).
     var lit: Set<Int> = []
-    var showNotes = true
-    /// What the step was good for, added under its ticked to-dos once they're done.
-    var insight: (String, String)? = nil
-    var nextLabel = "Next"
+    /// While trying it: the card's "what it's for", folded to one line (tap to open).
+    var folded: (title: String, page: TourPage)? = nil
+    var learnOpen = false
     /// The touch to show (global).
     var hint: TouchHintSpec? = nil
-    /// The bubble's bottom here (global y), above what it talks about (the list steps — audit J); nil: by the hole.
+    /// The bubble's bottom here (global y), above what it talks about (the list — audit J); nil: by the target.
     var aboveY: CGFloat? = nil
     var showsBack = false
-    var onNext: () -> Void = {}
+    /// What just changed (global), glowing a moment; `flashes` counts the glows.
+    var flash: CGRect? = nil
+    var flashes = 0
+    /// Touches the tour didn't let through: the target pulses.
+    var nudges = 0
+    /// The qibla line's quiet "skip" (a compass that won't settle).
+    var qiblaSkip = false
+    /// The page turned forward (the next card in from the right) or back.
+    var forward = true
+    var onPrimary: () -> Void = {}
+    var onSecondary: () -> Void = {}
     var onBack: () -> Void = {}
-    var onSkip: () -> Void = {}
+    var onToggleLearn: () -> Void = {}
+    var onSkipQibla: () -> Void = {}
     private var targets: TourTargets { TourTargets.shared }
 
     var body: some View {
         GeometryReader { geo in
             let origin = geo.frame(in: .global).origin
-            let hole: CGRect? = (target ?? step.target).flatMap { targets.frame($0) }.map {
-                $0.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: step.roundHole ? -10 : -14, dy: step.roundHole ? -10 : -6)
+            let hole: CGRect? = target.flatMap { targets.frame($0) }.map {
+                Self.local($0, origin).insetBy(dx: step.roundHole ? -10 : -14, dy: step.roundHole ? -10 : -6)
             }
-            ZStack(alignment: .topLeading) {
-                if style == .callout {
-                    TourCallout(step: step, hole: hole, size: geo.size, override: override, showsNext: showsNext,
-                                place: place ?? step.place, tasks: tasks ?? step.tasks, ticked: ticked,
-                                notes: showNotes ? step.notes : [], lit: lit, insight: insight, nextLabel: nextLabel,
-                                hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
-                                aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
-                                onNext: onNext, onBack: onBack, onSkip: onSkip)
-                } else {
-                    dim(size: geo.size, hole: hole)
-                        .allowsHitTesting(false)
-                    if let hole {
-                        holeEdge(hole).allowsHitTesting(false)
-                    }
-                    switch style {
-                    case .card: card(in: geo.size, hole: hole)
-                    case .line: line(in: geo.size)
-                    case .callout: EmptyView()
-                    }
-                }
-            }
+            TourCallout(step: step, page: page, hole: hole, size: geo.size, place: place, ticked: ticked, lit: lit,
+                        folded: folded, learnOpen: learnOpen,
+                        hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
+                        aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
+                        flash: flash.map { Self.local($0, origin) }, flashes: flashes, nudges: nudges, qiblaSkip: qiblaSkip,
+                        forward: forward, onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
+                        onToggleLearn: onToggleLearn, onSkipQibla: onSkipQibla)
         }
         .ignoresSafeArea()
-        .transition(.opacity)
     }
 
-    private func dim(size: CGSize, hole: CGRect?) -> some View {
-        Path { p in
-            p.addRect(CGRect(origin: .zero, size: size))
-            if let hole {
-                if step.roundHole {
-                    let d = max(hole.width, hole.height)
-                    p.addEllipse(in: CGRect(x: hole.midX - d / 2, y: hole.midY - d / 2, width: d, height: d))
-                } else {
-                    p.addRoundedRect(in: hole, cornerSize: CGSize(width: hole.height / 2, height: hole.height / 2))
-                }
-            }
-        }
-        .fill(Color.black.opacity(0.5), style: FillStyle(eoFill: true))
-    }
-
-    @ViewBuilder private func holeEdge(_ hole: CGRect) -> some View {
-        if step.roundHole {
-            let d = max(hole.width, hole.height)
-            Circle().stroke(Color.white.opacity(0.55), lineWidth: 1.5)
-                .frame(width: d, height: d)
-                .position(x: hole.midX, y: hole.midY)
-        } else {
-            Capsule().stroke(Color.white.opacity(0.55), lineWidth: 1.5)
-                .frame(width: hole.width, height: hole.height)
-                .position(x: hole.midX, y: hole.midY)
-        }
-    }
-
-    /// A: a small card under the cut-out (above it when there's no room below), or low on the page for a page-wide step.
-    @ViewBuilder private func card(in size: CGSize, hole: CGRect?) -> some View {
-        let below = hole.map { size.height - $0.maxY > 230 } ?? true
-        let content = VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: step.symbol).font(.title3).foregroundStyle(Color(.systemGreen))
-                Text(step.words).font(.body).fixedSize(horizontal: false, vertical: true)
-            }
-            HStack {
-                if let place = step.place {
-                    Text("\(place.0) of \(place.1)").font(.footnote).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button(step.place == nil ? "Got it" : "Skip tour", action: onSkip)
-                    .font(.footnote).foregroundStyle(.secondary)
-            }
-        }
-        .padding(16)
-        .frame(width: min(size.width - 48, 320), alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial))
-        .fontDesign(.rounded)
-        VStack(spacing: 0) {
-            if below {
-                Color.clear.frame(height: hole.map { $0.maxY + 20 } ?? size.height * 0.58)
-                content
-                Spacer(minLength: 0)
-            } else {
-                Spacer(minLength: 0)
-                content
-                Color.clear.frame(height: hole.map { size.height - $0.minY + 20 } ?? 0)
-            }
-        }
-        .frame(width: size.width, height: size.height)
-    }
-
-    /// B: one line near the bottom, white on the dim, with Skip under it.
-    private func line(in size: CGSize) -> some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 10) {
-                Image(systemName: step.symbol)
-                Text(step.words).multilineTextAlignment(.center)
-            }
-            .font(.body)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 32)
-            Button(step.place == nil ? "Got it" : "Skip tour", action: onSkip)
-                .font(.footnote).foregroundStyle(.white.opacity(0.7))
-        }
-        .fontDesign(.rounded)
-        .frame(width: size.width)
-        .position(x: size.width / 2, y: size.height - 150)
-    }
+    private static func local(_ r: CGRect, _ origin: CGPoint) -> CGRect { r.offsetBy(dx: -origin.x, dy: -origin.y) }
 }
 
 #if DEBUG
-/// `-demoTour <step> [-tourStyle line]`: the overlay drawn over the live app for the pictures, a few seconds in (the
-/// targets measured), with the page the step needs.
+/// DEBUG launch arguments for the tour: `-tourStart`, `-tourSkipInvite`, `-tourFrom <card>[:learn|tryIt|go|last]`,
+/// `-tourWidgetWrote`, `-tourAwayAfter`; `-demoTourHint` / `-demoTourTip` for the old pictures.
 struct TourDemoLayer: View {
     @Environment(SharedStateClass.self) private var sharedState
     @EnvironmentObject private var viewModel: PrayerViewModel
-    @State private var step: TourStep?
-    private let style = TourCardStyle(rawValue: UserDefaults.standard.string(forKey: "tourStyle") ?? "") ?? .card
 
     var body: some View {
-        ZStack {
-            if let step {
-                TourOverlay(step: step, style: style,
-                            target: step == .hintMark ? viewModel.relevantPrayer.map { "prayerDot." + $0.name } : nil) { self.step = nil }
-            }
-        }
+        Color.clear.frame(width: 0, height: 0)
         .task {
             // `-armFirstMark YES`: the next real mark is celebrated (as after the first-run setup) — the pictures.
             if UserDefaults.standard.bool(forKey: "armFirstMark") {
@@ -352,16 +199,13 @@ struct TourDemoLayer: View {
                 let wait = UserDefaults.standard.double(forKey: "tourStartAfter")
                 try? await Task.sleep(for: .seconds(wait > 0 ? wait : 3))
                 NotificationCenter.default.post(name: TourRuntime.start, object: nil)
-                // `-tourSkipInvite YES` (or `-tourFrom`): Show me at once, past the invitation.
-                let from = UserDefaults.standard.string(forKey: "tourFrom").flatMap(TourStep.init(rawValue:))
-                if from != nil || UserDefaults.standard.bool(forKey: "tourSkipInvite") {
-                    try? await Task.sleep(for: .seconds(1.0))
-                    TourRuntime.shared.acceptInvite()
-                }
-                // `-tourFrom <step>`: straight to that step (its practice state set as on a Back).
+                // `-tourFrom <card>[:<phase>]`: straight to that card (and phase), its practice state set as on a Back.
+                let parts = (UserDefaults.standard.string(forKey: "tourFrom") ?? "").split(separator: ":").map(String.init)
+                let from = parts.first.flatMap(TourStep.init(rawValue:))
+                let phase: TourPhase? = parts.count > 1 ? ["learn": .learn, "tryIt": .tryIt, "go": .go, "last": .last][parts[1]] : nil
                 if let from {
                     try? await Task.sleep(for: .seconds(1.5))
-                    TourRuntime.shared.debugJump(to: from)
+                    TourRuntime.shared.debugJump(to: from, phase: phase)
                 }
                 // `-tourWidgetWrote YES`: as if a widget / banner had marked a prayer (the next activation reconciles):
                 // today's real score must stay as it was (Bradley's review).
@@ -383,11 +227,6 @@ struct TourDemoLayer: View {
                 TourHintDemo.start(sharedState)
                 return
             }
-            guard let raw = UserDefaults.standard.string(forKey: "demoTour"), let wanted = TourStep(rawValue: raw) else { return }
-            try? await Task.sleep(for: .seconds(2))
-            if wanted == .hintMark { sharedState.navPosition = .bottom }
-            try? await Task.sleep(for: .seconds(1.5))
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { step = wanted }
         }
     }
 }
@@ -487,47 +326,52 @@ private struct TourBubblePlacement: Layout {
     }
 }
 
-/// Round 3 (owner: "too subtle … not a fan of the stock apple tool tip"; Bradley's four changes): a shukr-made callout.
-/// A light spotlight (the rest of the page washes out a little, never grey), the control glowing twice, and a soft raised
-/// bubble that grows out of the control's edge with a soft tail: the gesture moving inside it, a headline and a quiet
-/// line, the tour's place (dots) and Continue.
+/// The tour's bubble (tour v2): one bubble for the whole tour. It drifts to the card's place (its position, tail and
+/// spotlight animate), turns its page inside itself between cards (the old words out to one side, the new in from the
+/// other), and grows or changes in place within a card. A light spotlight in the page's own colour, the thumbprint
+/// beside the thing to touch, a glow on what just changed, a pulse on the target when a touch wasn't let through.
 struct TourCallout: View {
     let step: TourStep
+    let page: TourPage
     let hole: CGRect?
     let size: CGSize
-    var override: (String, String)? = nil
-    var showsNext = false
     var place: (Int, Int)? = nil
-    /// The step's to-dos and which are done (TourRuntime.ticked); its notes and which have lit.
-    var tasks: [String] = []
     var ticked: Set<Int> = []
-    var notes: [String] = []
     var lit: Set<Int> = []
-    /// The insight, under the ticked to-dos (owner, Ben's section K: the card stays, the insight is added to it).
-    var insight: (String, String)? = nil
-    var nextLabel = "Next"
+    var folded: (title: String, page: TourPage)? = nil
+    var learnOpen = false
     /// The touch to show, in this view's space.
     var hint: TouchHintSpec? = nil
-    /// The bubble's bottom here (this view's space): above the list on its steps (audit J).
+    /// The bubble's bottom here (this view's space): above the list on its card (audit J).
     var aboveY: CGFloat? = nil
     var showsBack = false
-    var onNext: () -> Void = {}
+    var flash: CGRect? = nil
+    var flashes = 0
+    var nudges = 0
+    var qiblaSkip = false
+    var forward = true
+    var onPrimary: () -> Void = {}
+    var onSecondary: () -> Void = {}
     var onBack: () -> Void = {}
-    var onSkip: () -> Void
+    var onToggleLearn: () -> Void = {}
+    var onSkipQibla: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
     @State private var shown = false
     @AppStorage(TourInk.lookKey) private var lookRaw = TourBubbleLook.glass.rawValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// How the bubble drifts between places, and how its page turns.
+    static let drift = Animation.smooth(duration: 0.55)
+
     var body: some View {
         let center = hole.map { CGPoint(x: $0.midX, y: $0.midY) } ?? CGPoint(x: size.width / 2, y: size.height * 0.45)
-        // Below the control when there's room, else above it.
-        // Above or below from a fixed allowance, never from the bubble's own measured height: that fed back (a taller
-        // bubble flipped it, the flip re-measured it) and spun the main thread on Settings (Sami's round D run).
+        // Below the control when there's room, else above it — from a fixed allowance, never from the bubble's own
+        // measured height (that fed back and spun the main thread — Sami's round D run).
         let below = aboveY == nil && (hole.map { size.height - $0.maxY > 260 } ?? true)
-        let width = typeSize >= .xxLarge ? size.width - 32 : min(size.width - 48, 300)
-        // The tail points at the control (Settings' tab sits right of centre), kept clear of the corners.
+        let width = typeSize >= .xxLarge ? size.width - 32 : min(size.width - 40, 330)
+        // The tail points at the control, kept clear of the corners.
         let tail = hole.map { min(max($0.midX - size.width / 2, -(width / 2 - 40)), width / 2 - 40) } ?? 0
         ZStack(alignment: .topLeading) {
             // The spotlight: the page washes out a little away from the control, in the page's own colour (no grey).
@@ -536,30 +380,36 @@ struct TourCallout: View {
                            startRadius: 0, endRadius: max(size.width, size.height) * 0.75)
                 .opacity(shown ? 1 : 0)
                 .allowsHitTesting(false)
-            // Where to touch, and how: a grey thumbprint that taps, holds or slides (owner: "a grayish circle indicator
-            // about as big as a thumbprint that pulses slowly … that way we don't gotta show the green circle").
-            if let hint { TouchHint(spec: hint) }
-            // Measured and placed in one layout pass (`TourBubblePlacement`): never a stored height fed back into its
-            // position — that looped on Settings (Sami, 402 pt: 116 % CPU, the step never reached Done).
+                .animation(Self.drift, value: hole.map { "\(Int($0.midX)),\(Int($0.midY))" } ?? "-")
+            // What just changed: a soft glow round it, once (owner: "give attention to the areas being changed").
+            if let flash { ChangeGlow(frame: flash, token: flashes).id(flashes) }
+            // A touch that wasn't let through: the thing to touch pulses (no buzz — owner).
+            if let hole, nudges > 0 { TargetPulse(frame: hole, round: step.roundHole).id("pulse\(nudges)") }
+            // Where to touch, and how: a grey thumbprint beside the thing that changes.
+            if let hint { TouchHint(spec: hint).transition(.opacity) }
+            // Measured and placed in one layout pass (`TourBubblePlacement`).
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
-                                fallbackY: size.height * 0.62, avoid: hole,
-                                topLimit: place == nil ? 64 : typeSize.isAccessibilitySize ? 158 : 112) {
+                                // Nothing to point at (Settings' learn): low, clear of what it talks about.
+                                fallbackY: step == .settings ? size.height : size.height * 0.6, avoid: hole,
+                                topLimit: typeSize.isAccessibilitySize ? 158 : 100) {
                 bubble(below: below, tail: tail)
-                    // Larger text gets the screen's width (audit C13); kept on screen by the placement.
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
                     .scaleEffect(shown || reduceMotion ? 1 : 0.6, anchor: below ? .top : .bottom)
                     .opacity(shown ? 1 : 0)
             }
             .frame(width: size.width, height: size.height)
+            // The drift: the one bubble moves to the card's new place (owner: "visually moves or drifts smoothly").
+            .animation(reduceMotion ? .easeOut(duration: 0.2) : Self.drift,
+                       value: "\(hole.map { "\(Int($0.minX)),\(Int($0.minY)),\(Int($0.width)),\(Int($0.height))" } ?? "-")|\(aboveY.map { Int($0) } ?? -1)|\(below)")
         }
         .task {
-            // Reduce Motion (audit C14): the ring is simply there and the bubble fades in.
+            // Reduce Motion (audit C14): the bubble fades in.
             if reduceMotion {
                 withAnimation(.easeOut(duration: 0.25)) { shown = true }
                 return
             }
-            // A beat, then the bubble rises out of the page beside the control.
+            // A beat, then the bubble rises out of the page beside the control — once, for the whole tour.
             try? await Task.sleep(for: .seconds(0.35))
             withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) { shown = true }
         }
@@ -573,62 +423,129 @@ struct TourCallout: View {
     }
 
     private func bubble(below: Bool, tail: CGFloat) -> some View {
+        // The page turns inside the bubble: each card's content is its own view, sliding out one side and in the
+        // other (owner: "it pages over inside of the tooltip"); the bubble itself stays.
+        ZStack(alignment: .topLeading) {
+            TourPageView(step: step, page: page, place: place, ticked: ticked, lit: lit, folded: folded,
+                         learnOpen: learnOpen, showsBack: showsBack, qiblaSkip: qiblaSkip,
+                         onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
+                         onToggleLearn: onToggleLearn, onSkipQibla: onSkipQibla)
+                .id(step)
+                .transition(reduceMotion ? .opacity : .asymmetric(
+                    insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
+        }
+        .padding(16)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .tint(TourInk.green)   // never the system blue
+        .accessibilityElement(children: .contain)
+        .tourBubble(BubbleShape(tailUp: below, tailOffset: tail, tailScale: hole == nil && aboveY == nil ? 0 : 1), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
+                    scheme: scheme, backdrop: theme.backdrop)
+    }
+}
+
+/// One card's content in the bubble: its place ("1 of 4"), the headline and its line, the "what it's for" bullets (or
+/// their folded line), the colours' notes, the to-dos (waiting ones greyed), a line once they're done, and the row of
+/// Back · the dots · the buttons.
+struct TourPageView: View {
+    let step: TourStep
+    let page: TourPage
+    var place: (Int, Int)?
+    var ticked: Set<Int>
+    var lit: Set<Int>
+    var folded: (title: String, page: TourPage)?
+    var learnOpen: Bool
+    var showsBack: Bool
+    var qiblaSkip: Bool
+    var onPrimary: () -> Void
+    var onSecondary: () -> Void
+    var onBack: () -> Void
+    var onToggleLearn: () -> Void
+    var onSkipQibla: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                // The gesture, in the page's ink: green is kept for what's done (owner: "not too much of it").
-                Image(systemName: step.symbol)
-                    .font(.system(.title3, weight: .light))
-                    .foregroundStyle(Color.primary.opacity(0.7))
-                    .symbolEffect(.bounce, options: .repeat(.periodic(delay: 0.9)),
-                                  isActive: !reduceMotion && ticked.count < max(tasks.count, 1))
-                    .accessibilityHidden(true)
-                    .frame(width: 28)
-                    .padding(.top, 1)
-                VStack(alignment: .leading, spacing: 3) {
-                    // The story's chapter, small, over its first card (Ben's script).
-                    if let chapter = step.chapter {
-                        Text(chapter.uppercased())
-                            .font(.system(.caption2, design: .rounded, weight: .medium))
-                            .tracking(1.2)
-                            .fixedSize(horizontal: false, vertical: true)   // wraps at the largest sizes (Sami)
-                            .foregroundStyle(.secondary)
-                            .padding(.bottom, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                // Where they are, by the headline (owner: "an index number at the top by the headline").
+                HStack(spacing: 6) {
+                    Image(systemName: step.symbol)
+                        .font(.system(.caption, weight: .regular))
+                        .accessibilityHidden(true)
+                    if let place {
+                        Text("\(place.0) of \(place.1)")
+                            .monospacedDigit()
+                            .accessibilityLabel("Step \(place.0) of \(place.1)")
                     }
-                    // The app's own type: rounded, light (owner: "change the type face in tooltip to match"). A sentence
-                    // now, so it may wrap.
-                    Text(override?.0 ?? step.headline)
-                        .font(.system(.body, design: .rounded, weight: .regular))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(override?.1 ?? step.subline)
+                }
+                .font(.system(.caption, design: .rounded, weight: .medium))
+                .foregroundStyle(Color.primary.opacity(0.6))
+                Text(page.headline)
+                    .font(.system(.body, design: .rounded, weight: .regular))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                if let line = page.subline {
+                    Text(line)
                         .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.6))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if !tasks.isEmpty || !notes.isEmpty {
-                TourChecklist(tasks: tasks, ticked: ticked, notes: notes, lit: lit)
-                    .padding(.leading, 40)
-            }
-            if let insight {
-                VStack(alignment: .leading, spacing: 3) {
-                    // Not twice: the Zikr step's insight has the card's own headline (Sami's nit).
-                    if insight.0 != (override?.0 ?? step.headline) {
-                        Text(insight.0)
-                            .font(.system(.subheadline, design: .rounded, weight: .medium))
+            Group {
+                if !page.bullets.isEmpty { TourBullets(lines: page.bullets) }
+                if !page.notes.isEmpty { TourColorKey(notes: page.notes, lit: lit) }
+                // While trying it: what it's for, folded to one line (owner: collapsible so the card stays small).
+                if let folded {
+                    Button(action: onToggleLearn) {
+                        HStack(spacing: 5) {
+                            Text(folded.title)
+                            Image(systemName: "chevron.down")
+                                .font(.system(.caption2, weight: .semibold))
+                                .rotationEffect(.degrees(learnOpen ? 180 : 0))
+                        }
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .frame(minHeight: 28)
+                        .contentShape(Rectangle())
                     }
-                    Text(insight.1)
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(learnOpen ? "Hide: \(folded.title)" : "Show: \(folded.title)")
+                    if learnOpen {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let line = folded.page.subline {
+                                Text(line)
+                                    .font(.system(.footnote, design: .rounded, weight: .light))
+                                    .foregroundStyle(Color.primary.opacity(0.6))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            TourBullets(lines: folded.page.bullets, small: true)
+                            if !folded.page.notes.isEmpty {
+                                TourColorKey(notes: folded.page.notes, lit: Set(folded.page.notes.indices))
+                            }
+                        }
+                        .transition(.opacity)
+                    }
                 }
-                .padding(.leading, 40)
-                .padding(.top, 2)
-                // A fade only: sliding in from above drew it over the last to-do for a frame (Sami).
-                .transition(.opacity)
-                .accessibilityElement(children: .combine)
+                if !page.tasks.isEmpty {
+                    TourChecklist(tasks: page.tasks, ticked: ticked, locked: page.locked)
+                }
+                if qiblaSkip {
+                    Button("No compass here? Skip it", action: onSkipQibla)
+                        .buttonStyle(.plain)
+                        .font(.system(.footnote, design: .rounded, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .frame(minHeight: 28)
+                        .transition(.opacity)
+                }
+                if let insight = page.insight {
+                    Text(insight)
+                        .font(.system(.subheadline, design: .rounded, weight: .regular))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
+                        .transition(.opacity)
+                }
             }
-            HStack {
+            HStack(spacing: 12) {
                 if showsBack {
                     Button(action: onBack) {
                         Image(systemName: "chevron.left")
@@ -639,35 +556,148 @@ struct TourCallout: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Back")
-                    .padding(.leading, -34)   // in the icon's column
+                    .padding(.leading, -6)
                 }
-                if let place {
-                    HStack(spacing: 3) {
-                        ForEach(1...place.1, id: \.self) { i in
-                            Circle().fill(i <= place.0 ? Color.primary.opacity(i == place.0 ? 0.6 : 0.3) : Color(.tertiaryLabel).opacity(0.5))
-                                .frame(width: 4, height: 4)
-                        }
-                    }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Step \(place.0) of \(place.1)")
-                }
-                Spacer()
-                // No "Not now" here (owner): the way out is Skip tour at the top, two taps (TourSkipButton).
-                if showsNext {
-                    Button(nextLabel, action: onNext)
+                if let place { TourDots(current: place.0, count: place.1) }
+                Spacer(minLength: 0)
+                if let secondary = page.secondary {
+                    Button(secondary, action: onSecondary)
                         .buttonStyle(.plain)
-                        .font(.system(.footnote, design: .rounded, weight: .medium))
-                        .foregroundStyle(TourInk.green).fixedSize()
-                        .padding(.leading, 16)
+                        .font(.system(.footnote, design: .rounded, weight: .regular))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .fixedSize()
+                        .transition(.opacity)
+                }
+                if let primary = page.primary {
+                    Button(action: onPrimary) {
+                        Text(primary)
+                            .font(.system(.footnote, design: .rounded, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .frame(height: 32)
+                            .background(Capsule().fill(TourInk.green))
+                            .fixedSize()
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity)
                 }
             }
-            .padding(.leading, 40)
+            .frame(minHeight: 32)
         }
-        .padding(16)
-        .tint(TourInk.green)   // never the system blue
-        .accessibilityElement(children: .contain)
-        .tourBubble(BubbleShape(tailUp: below, tailOffset: tail), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
-                    scheme: scheme, backdrop: theme.backdrop)
+    }
+}
+
+/// The "what it's for" lines: a small dot each.
+struct TourBullets: View {
+    let lines: [String]
+    var small = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: small ? 4 : 6) {
+            ForEach(lines.indices, id: \.self) { i in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Circle().fill(Color.primary.opacity(0.3)).frame(width: 4, height: 4)
+                        .frame(width: 15)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+                    Text(lines[i])
+                        .font(.system(small ? .footnote : .subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(Color.primary.opacity(small ? 0.6 : 0.85))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The ring's colours as one compact row of keys, each lighting (green dot, full words) as the demo's ring reaches it.
+struct TourColorKey: View {
+    let notes: [String]
+    let lit: Set<Int>
+    private static let colors: [Color] = [PrayerScoring.color(for: 1), PrayerScoring.color(for: 0.9), PrayerScoring.color(for: 0.7)]
+    var body: some View {
+        // Two lines at most: the three keys side by side, wrapping only at large text.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) { keys }
+            VStack(alignment: .leading, spacing: 4) { keys }
+        }
+    }
+    @ViewBuilder private var keys: some View {
+        ForEach(notes.indices, id: \.self) { i in
+            let on = lit.contains(i)
+            HStack(spacing: 5) {
+                Circle().fill(Self.colors[min(i, 2)].opacity(on ? 1 : 0.45)).frame(width: on ? 8 : 7, height: on ? 8 : 7)
+                Text(notes[i])
+                    .font(.system(.footnote, design: .rounded, weight: on ? .medium : .light))
+                    .foregroundStyle(Color.primary.opacity(on ? 0.9 : 0.45))
+                    .fixedSize()
+            }
+            .animation(.snappy(duration: 0.3), value: on)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(["Green", "Yellow", "Red"][min(i, 2)]): \(notes[i])")
+        }
+    }
+}
+
+/// The tour's place: a dot per card, the current one a longer oval (owner).
+struct TourDots: View {
+    let current: Int
+    let count: Int
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(1...count, id: \.self) { i in
+                Capsule()
+                    .fill(i == current ? Color.primary.opacity(0.6) : Color.primary.opacity(i < current ? 0.3 : 0.15))
+                    .frame(width: i == current ? 16 : 5, height: 5)
+            }
+        }
+        .animation(.smooth(duration: CircleMotion.standard), value: current)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(current) of \(count)")
+    }
+}
+
+/// What just changed glows a moment: a soft green outline that breathes in and out once.
+struct ChangeGlow: View {
+    let frame: CGRect
+    let token: Int
+    @State private var on = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: min(frame.height, frame.width) / 2, style: .continuous)
+            .stroke(TourInk.green.opacity(on ? 0.55 : 0), lineWidth: 2)
+            .shadow(color: TourInk.green.opacity(on ? 0.45 : 0), radius: 10)
+            .frame(width: frame.width + 12, height: frame.height + 12)
+            .position(x: frame.midX, y: frame.midY)
+            .allowsHitTesting(false)
+            .task {
+                withAnimation(.easeOut(duration: 0.25)) { on = true }
+                try? await Task.sleep(for: .seconds(0.7))
+                withAnimation(.easeIn(duration: 0.5)) { on = false }
+            }
+    }
+}
+
+/// The target pulses once when a touch elsewhere wasn't let through ("over here").
+struct TargetPulse: View {
+    let frame: CGRect
+    let round: Bool
+    @State private var go = false
+    var body: some View {
+        Group {
+            if round {
+                let d = max(frame.width, frame.height)
+                Circle().stroke(Color.primary.opacity(go ? 0 : 0.35), lineWidth: 2)
+                    .frame(width: d, height: d)
+                    .scaleEffect(go ? 1.15 : 1)
+            } else {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.primary.opacity(go ? 0 : 0.35), lineWidth: 2)
+                    .frame(width: frame.width, height: frame.height)
+                    .scaleEffect(go ? 1.05 : 1)
+            }
+        }
+        .position(x: frame.midX, y: frame.midY)
+        .allowsHitTesting(false)
+        .onAppear { withAnimation(.easeOut(duration: 0.7)) { go = true } }
     }
 }
 
@@ -715,6 +745,9 @@ enum TourInk {
 struct TourChecklist: View {
     let tasks: [String]
     let ticked: Set<Int>
+    /// To-dos that wait on the ones before them: greyed, a dashed ring (owner: "graying it out until the previous one is
+    /// satisfied"), brightening when they open.
+    var locked: Set<Int> = []
     /// The drag tip's strokes, beside its one to-do ("2 of 3").
     var progress: (Int, Int)? = nil
     /// Notes: a bullet each, lit (green, the words full) as it happens; nothing to tick.
@@ -726,8 +759,9 @@ struct TourChecklist: View {
         VStack(alignment: .leading, spacing: 7) {
             ForEach(tasks.indices, id: \.self) { i in
                 let done = ticked.contains(i)
+                let waiting = locked.contains(i) && !done
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: done ? "checkmark.circle.fill" : (waiting ? "circle.dashed" : "circle"))
                         .font(.system(.subheadline, weight: .regular))
                         .foregroundStyle(done ? TourInk.green : Color.primary.opacity(0.35))
                         .contentTransition(.symbolEffect(.replace))
@@ -746,11 +780,12 @@ struct TourChecklist: View {
                             .contentTransition(.numericText())
                     }
                 }
+                .opacity(waiting ? 0.38 : 1)
                 .animation(.snappy(duration: 0.3), value: done)
+                .animation(.easeOut(duration: CircleMotion.standard), value: waiting)
                 // VoiceOver reads each to-do with its state (audit C15).
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel((done ? "Done: " : "To do: ") + tasks[i]
-                                    + (progress.map { done ? "" : ", \($0.0) of \($0.1)" } ?? ""))
+                .accessibilityLabel(label(i, done: done, waiting: waiting))
             }
             ForEach(notes.indices, id: \.self) { i in
                 let on = lit.contains(i)
@@ -773,14 +808,32 @@ struct TourChecklist: View {
     }
 }
 
+extension TourChecklist {
+    /// VoiceOver's words for a to-do: its state, its words, the drag tip's count.
+    func label(_ i: Int, done: Bool, waiting: Bool) -> String {
+        let state = done ? "Done: " : (waiting ? "Later: " : "To do: ")
+        var count = ""
+        if let progress, !done { count = ", \(progress.0) of \(progress.1)" }
+        return state + tasks[i] + count
+    }
+}
+
 /// A rounded bubble with a soft tail at the top or bottom (no hard triangle: the tail's sides are curves), `tailOffset`
 /// from the centre.
 struct BubbleShape: Shape {
     var tailUp: Bool
     var tailOffset: CGFloat = 0
+    /// 0: no tail (nothing to point at), growing back when there is.
+    var tailScale: CGFloat = 1
+    /// The tail slides with the bubble's drift (tour v2).
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(tailOffset, tailScale) }
+        set { tailOffset = newValue.first; tailScale = newValue.second }
+    }
     func path(in rect: CGRect) -> Path {
-        let r: CGFloat = 22, tw: CGFloat = 30, th: CGFloat = 10
+        let r: CGFloat = 22, tw: CGFloat = 30 * tailScale, th: CGFloat = 10 * tailScale
         var p = Path(roundedRect: rect, cornerRadius: r, style: .continuous)
+        guard tailScale > 0.01 else { return p }
         let mid = rect.midX + tailOffset
         if tailUp {
             p.move(to: CGPoint(x: mid - tw / 2, y: rect.minY + 1))
@@ -797,9 +850,10 @@ struct BubbleShape: Shape {
     }
 }
 
-/// The tour itself, on a practice day (Tour.swift's top; owner's rounds A–J). Every step: its to-dos, ticked only by the
-/// user's own action, and its notes, lit as they happen → once all are done, its insight with Continue (nothing moves on
-/// by itself) → the next step. Back returns to the previous step, its practice state put back.
+/// The tour itself, on a practice day (tour v2, Izhan's spec 2026-10-05, board/brief-tour-v2.md). Four cards — the
+/// circle, the list, Zikr, Settings — in one bubble that drifts to each card's place and turns its page. The circle and the
+/// list: learn first, then try (to-dos, ticked only by the user's own action; one waits, greyed, until the ones before it
+/// are done). Zikr and Settings: go there first, then learn it where it lives. Nothing moves on by itself.
 @MainActor @Observable final class TourRuntime {
     static let shared = TourRuntime()
     static let doneKey = "tour.v1.done"
@@ -814,52 +868,81 @@ struct BubbleShape: Shape {
             #endif
         }
     }
-    /// The prayer the practice marked (Asr; the undo step points at its dot).
+    /// Where the card is (learn / try / go / last).
+    private(set) var phase: TourPhase = .learn {
+        didSet {
+            #if DEBUG
+            if phase != oldValue { print("TOUR phase \(phase)") }
+            #endif
+        }
+    }
+    /// The way the bubble's page turned last (the next card in from the right; Back from the left).
+    private(set) var forward = true
+    /// The prayer the practice marked (Asr).
     private(set) var practicePrayer: PrayerModel?
     /// Bumped when the practice's post-salah pill should go (the page clears it).
     private(set) var clearPill = 0
-    /// The current step's to-dos that are done, and its notes that have lit.
+    /// The current card's to-dos that are done, and its notes (the colours) that have lit.
     private(set) var ticked: Set<Int> = []
     private(set) var lit: Set<Int> = []
-    /// Every to-do done and note lit: the ✓ shows a moment, then the insight.
+    /// Kept for the counting tips' and the time editor's checks: the post-tour steps' ✓ moment.
     private(set) var completing = false
-    /// The step's insight is up, with Continue (audit J).
+    /// A post-tour step's insight is up (the cards show theirs in `page`).
     private(set) var insight = false
-    /// Between begin() and finish(), gaps between steps included: events then belong to the tour, never to the
-    /// "first real mark" outside it (audit A7); the pager and the list are held (audit E17).
+    /// Between begin() and finish(): events belong to the tour, never to the "first real mark" outside it; the pager
+    /// and the list are held.
     private(set) var active = false
-    /// The invitation is up, on the real day (decision onboarding-start A — Izhan picked Ben's A): "Want a quick look
-    /// around?" Show me / Later. Not yet the tour: no practice day, nothing held.
+    /// The invitation is up, on the real day (decision onboarding-start A): Show me / Later. Only after the first-run
+    /// setup — Settings' "Show me around again" goes straight in (owner).
     private(set) var inviting = false
     /// How often the tour has started from the first-run setup: a kill mid-tour resumes it once (audit A3).
     static let startedKey = "tour.v1.started"
-    /// How long the ✓ shows before the insight.
-    static let acknowledge: TimeInterval = 0.9
 
-    /// The pager stays on the step's page, except where the step is about other pages.
-    /// The pager stays on the step's page; only the Zikr step swipes (Settings is reached by the bar — audit J).
-    var locksPager: Bool { active && step != .zikr }
-    /// The list stays open or closed as the step needs; the list step opens it, and the last two leave it be.
-    var holdsSheet: Bool { active && !(step == .list || step == .zikr || step == .settings) }
+    /// The circle's colours demo has played once (Continue appears), and is playing now.
+    private(set) var sweepPlayed = false
+    private(set) var sweeping = false
+    /// The folded "what it's for" line, opened by a tap while trying it.
+    var learnOpen = false
+    /// A touch the tour didn't let through (owner: no buzz — the thing to touch pulses instead).
+    private(set) var nudges = 0
+    /// A to-do just done: the thing that changed glows a moment (owner: "give attention to the areas being changed").
+    private(set) var flashes = 0
+    private(set) var flashKey: String?
+    /// Settings: where its page should be (the top on arriving, the tour's row at the end).
+    enum SettingsScroll: Equatable { case top, tourRow }
+    private(set) var settingsScroll: (SettingsScroll, Int) = (.top, 0)
+    /// The qibla line's "skip": a compass that won't settle (set by the layer after a wait).
+    var qiblaSkippable = false
+
+    /// The pager stays on the card's page, except while the Zikr card asks for the swipe.
+    var locksPager: Bool { active && !(step == .zikr && phase == .go) }
+    /// The list stays as the card needs it (TourLayer.sheetPosition); free only where the card is about other pages.
+    /// The Zikr card's learn page names Azkar, top right: its door shows then (not tappable — the tour's guard).
+    static var showsAzkarDoor: Bool { shared.step == .zikr && shared.phase == .learn }
+    /// Card 1 lets go once Asr is marked: its last to-do is the swipe up.
+    var holdsSheet: Bool {
+        active && !(step == .zikr && phase == .go) && step != .settings && !(step == .circle && ticked.contains(2))
+    }
     /// The post-salah pill is on the page.
     @ObservationIgnored var pillVisible = false
 
-    /// Whether a mark or an unmark may happen now (Ben's G1 / G2). Outside the tour, always. In it, only the step's own:
-    /// a mark on the mark step; Asr's undo on the undo step.
-    /// Whether a prayer's time editor may open now. Outside the tour, always; in it, only the fix step's own: the practice
-    /// Fajr, until it's saved (owner: "we should only limit it to the Fajr one … we gotta control this thing").
+    /// Whether a prayer's time editor may open now. Outside the tour, always; in it, any marked practice prayer once the
+    /// list card's last to-do is open (owner: "let them keep editing whichever ones are done").
     func allowsEditing(_ prayer: PrayerModel) -> Bool {
         guard active else { return true }
-        return step == .edit && prayer.name == "Fajr" && Self.isPracticeAnywhere(prayer) && !ticked.contains(2)
+        return step == .list && phase == .tryIt && !page.locked.contains(3) && prayer.isCompleted
+            && Self.isPracticeAnywhere(prayer)
     }
 
+    /// Whether a mark or an unmark may happen now. Outside the tour, always. In it, only the circle's hold, once its
+    /// first two to-dos are done (owner: the marking comes last — it moves the circle on). Unmarking: never in the tour
+    /// (the list's dots are mentioned, not tried).
     func allows(marking: Bool, _ prayer: PrayerModel) -> Bool {
         guard active else { return true }
-        if marking { return step == .mark && !ticked.contains(0) }
-        // The practice Asr by name: the row's object can be another instance than `practicePrayer` (Sami: 3/3 dead).
-        return step == .undo && prayer.name == "Asr" && Self.isPracticeAnywhere(prayer) && !completing
+        return marking && step == .circle && phase == .tryIt && ticked.isSuperset(of: [0, 1]) && !ticked.contains(2)
+            && prayer.name == "Asr" && Self.isPracticeAnywhere(prayer)
     }
-    /// Which run of the tour this is: a step scheduled by an earlier run (or after Not now) never shows.
+    /// Which run of the tour this is: anything scheduled by an earlier run never lands.
     @ObservationIgnored private var run = 0
 
     // MARK: The practice day
@@ -895,7 +978,7 @@ struct BubbleShape: Shape {
         viewModel?.loadTodaysPrayerObjects()
     }
 
-    /// Fajr marked after its time: Qaza, for the fix step (audit J).
+    /// Fajr marked after its time: Qaza — the obvious one to fix on the list card.
     private func markFajrLate() {
         guard let fajr = practiceFajr else { return }
         fajr.resetPrayer()
@@ -911,9 +994,9 @@ struct BubbleShape: Shape {
             .map { ($0.0, $0.1 - asrStart - 5, $0.2 - $0.1) }
     }()
 
-    /// The practice day kept round now (audit A5): a phone left on a step never lets Asr end or Maghrib come due.
+    /// The practice day kept round now (audit A5): a phone left on a card never lets Asr end or Maghrib come due.
     func repinPractice() {
-        guard let day = practiceDay else { return }
+        guard let day = practiceDay, !sweeping else { return }
         let now = Date()
         var quiet = Transaction(); quiet.disablesAnimations = true
         withTransaction(quiet) {
@@ -942,13 +1025,13 @@ struct BubbleShape: Shape {
         }
     }
 
-    /// The practice day as a step starts (forward or Back): Asr marked only from the fold step to the undo step, Fajr
-    /// late until it's fixed, "done" open on the marked-row steps, no pill, Asr just begun.
-    private func prepare(_ step: TourStep) {
+    /// The practice day as a card starts (forward or Back): Asr unmarked on the circle card, marked after it; Fajr late
+    /// until it's fixed; "done" closed; no pill.
+    private func prepare(_ card: TourStep) {
         guard practiceDay != nil else { return }
         repinPractice()
         if let asr = practiceAsr {
-            let marked = [.fold, .markedRow, .edit, .undo].contains(step)
+            let marked = card != .circle
             if marked && !asr.isCompleted {
                 asr.isCompleted = true
                 asr.setPrayerScore(atDate: asr.startTime.addingTimeInterval(5 * 60))
@@ -957,62 +1040,57 @@ struct BubbleShape: Shape {
             }
             practicePrayer = marked ? asr : nil
         }
-        if [.circle, .colors, .qibla, .list, .rowTime, .mark, .fold, .markedRow, .edit].contains(step) { markFajrLate() }
-        if step != .mark || !pillVisible { clearPill += 1 }
-        let open = [.markedRow, .edit, .undo].contains(step)
-        if PrayerListFold.shared.showDone != open { PrayerListFold.shared.showDone = open }
+        if card == .circle || card == .list { markFajrLate() }
+        clearPill += 1
+        if PrayerListFold.shared.showDone { PrayerListFold.shared.showDone = false }
         viewModel?.objectWillChange.send()
     }
 
-    /// The colours step: the practice ring goes green → yellow → red, each note lit as the ring gets there.
-    /// The colours step: the ring fills smoothly from just begun to nearly over in 7 s — green, then yellow, then red —
-    /// and again, until the card is dismissed (owner: "progress over 7 seconds. Smoothly, not in steps … continuously").
-    /// Each colour's note lights as the ring first reaches it.
+    /// The circle card's colours demo (owner: "user triggered … they see the whole sweep and then the continue button
+    /// turns on"): the ring fills smoothly from just begun to nearly over in 7 s — green, then yellow, then red — once,
+    /// each colour's line lighting as the ring first reaches it; then the ring is back where it was.
     private func playColors(run thisRun: Int) {
-        // The sweep's ring from the step's first frame, where the ring already is (just begun): the green zone's living
-        // fill gives way to it as the card comes in, not mid-step (it popped as the sweep began).
+        guard !sweeping else { return }
+        sweeping = true
+        lit = []
         let start = 5 * 60 / Self.practiceWindow
         colorSweep = start
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.2))   // the bubble first
-            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 60, rewind: TimeInterval = 0.7
+            let sweep: TimeInterval = 7, top = 0.97, frame: TimeInterval = 1.0 / 60
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
             // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
-            var playing: Bool { run == thisRun && step == .colors }
-            /// One stretch of the ring, `from` → `to` over `length`, eased by `curve`, each frame (60 a second).
-            @MainActor func play(_ from: Double, _ to: Double, _ length: TimeInterval, curve: (Double) -> Double, lighting: Bool) async {
-                var elapsed: TimeInterval = 0
-                var last = Date()
-                while playing, elapsed < length {
-                    // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
-                    if !CircleStage.shared.sceneActive {
-                        _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
-                        last = Date()
-                    }
-                    let now = Date()
-                    elapsed += now.timeIntervalSince(last)
-                    last = now
-                    let share = from + (to - from) * curve(min(elapsed / length, 1))
-                    colorSweep = share
-                    if lighting { for (i, at) in lights.enumerated() where share >= at { light(i) } }
-                    try? await Task.sleep(for: .seconds(frame))
+            var playing: Bool { run == thisRun && step == .circle && phase == .learn }
+            var elapsed: TimeInterval = 0
+            var last = Date()
+            while playing, elapsed < sweep {
+                // Paused while the app isn't in front (a call, the background): the colours are seen (Bradley).
+                if !CircleStage.shared.sceneActive {
+                    _ = await CircleStage.shared.until { CircleStage.shared.sceneActive }
+                    last = Date()
                 }
-            }
-            while playing {
-                await play(start, top, sweep, curve: { $0 }, lighting: true)                 // the fill, steady
-                try? await Task.sleep(for: .seconds(0.5))                                    // a beat in the red
-                await play(top, start, rewind, curve: { 0.5 - cos($0 * .pi) / 2 }, lighting: false)   // back, eased
-                try? await Task.sleep(for: .seconds(0.3))
+                let now = Date()
+                elapsed += now.timeIntervalSince(last)
+                last = now
+                let share = start + (top - start) * min(elapsed / sweep, 1)
+                colorSweep = share
+                for (i, at) in lights.enumerated() where share >= at { light(i) }
+                try? await Task.sleep(for: .seconds(frame))
             }
             guard run == thisRun else { return }
-            colorSweep = nil
+            try? await Task.sleep(for: .seconds(0.4))   // a beat in the red
+            guard run == thisRun else { return }
+            withAnimation(.easeInOut(duration: CircleMotion.standard)) {
+                colorSweep = nil
+                sweeping = false
+                sweepPlayed = true
+            }
             setPracticeProgress(5 * 60 / Self.practiceWindow)   // back to just begun (green)
         }
     }
 
-    /// The colours step's ring (owner: "progress over 7 seconds. Smoothly … the color changing to be smoother as well"):
-    /// a share of the window the practice ring draws directly, every frame, instead of its times — nil otherwise.
+    /// The colours demo's ring: a share of the window the practice ring draws directly, every frame, instead of its
+    /// times — nil otherwise.
     private(set) var colorSweep: Double?
     /// Where the practice window's colour changes (PrayerScoring.gradeChanges), as shares of it.
     static let sweepStops: (yellow: Double, red: Double) = {
@@ -1041,52 +1119,128 @@ struct BubbleShape: Shape {
         return Color(red)
     }
 
-    // MARK: To-dos, notes, insight
+    // MARK: What the bubble says
 
-    /// One to-do done (the green ✓).
-    private func tick(_ i: Int) {
-        guard let step, !completing, step.tasks.indices.contains(i), !ticked.contains(i) else { return }
-        withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
-        checkDone()
-    }
+    /// The practice day's marked prayers: the list's "N done".
+    var doneCount: Int { Self.practiceMirror?.filter(\.isCompleted).count ?? 0 }
 
-    /// A to-do undone by the user's own action (the fix step's time moved off the yellow before Save).
-    private func untick(_ i: Int) {
-        guard !completing, ticked.contains(i) else { return }
-        withAnimation(.snappy(duration: 0.3)) { _ = ticked.remove(i) }
-    }
+    /// The current card's words, to-dos and buttons (the post-tour steps have their own, in TourLayer).
+    var page: TourPage { page(for: step, phase: phase) }
+    /// A card's "what it's for", as it reads while learning it (folded to one line once they're trying it).
+    func learnPage(_ card: TourStep) -> TourPage { page(for: card, phase: .learn) }
 
-    /// A note has happened: its bullet lights.
-    private func light(_ i: Int) {
-        guard let step, step.notes.indices.contains(i), !lit.contains(i) else { return }
-        withAnimation(.snappy(duration: 0.3)) { _ = lit.insert(i) }
-        checkDone()
-    }
-
-    /// The next to-do not yet done (steps whose to-dos are done in order).
-    private func tickNext() {
-        guard let step, let i = step.tasks.indices.first(where: { !ticked.contains($0) }) else { return }
-        tick(i)
-    }
-
-    /// Every to-do ticked and every note lit: the ✓ a moment, then the insight and Continue.
-    private func checkDone() {
-        guard let step, !completing, ticked.count >= step.tasks.count, lit.count >= step.notes.count else { return }
-        completing = true
-        let thisRun = run
-        Task {
-            try? await Task.sleep(for: .seconds(Self.acknowledge))
-            guard run == thisRun, self.step == step else { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { insight = true }
+    private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
+        switch (step, phase) {
+        case (.circle, .learn):
+            return TourPage(
+                headline: "This is your prayer circle.",
+                subline: "It shows the prayer that matters now: the one that\u{2019}s on, the next once you\u{2019}ve marked it, any you missed by the day\u{2019}s end.",
+                bullets: ["The ring fills as time passes. Its colour is the score you\u{2019}d get if you prayed now:"],
+                notes: ["First 30 min", "On time", "Late"],
+                insight: "The small arrow points to the qibla. Hold the circle once you\u{2019}ve prayed to mark it.",
+                primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
+                secondary: sweepPlayed && !sweeping ? "Play again" : nil)
+        case (.circle, _) where ticked.contains(2):
+            // Marked: the payoff, small enough to sit above the circle — the whole page under it is free for the swipe.
+            return TourPage(
+                headline: "Marked and saved.",
+                subline: "The circle has moved on to Maghrib, and Asr is now in your prayer list.",
+                insight: "Swipe up to see your list.")
+        case (.circle, _):
+            return TourPage(
+                headline: "Try it.",
+                tasks: ["Tap the circle to flip its time", "Turn until the arrow points up",
+                        "Hold the circle to mark Asr"],
+                locked: lockedCircle,
+                foldedTitle: "What the circle shows")
+        case (.list, .learn):
+            return TourPage(
+                headline: "Your whole day, prayer by prayer.",
+                subline: "Every prayer and its time. Mark them done here, fix when and where you prayed, and see how well you\u{2019}re praying today.",
+                bullets: ["Prayers still to come are greyed out.",
+                          "Tap a prayer\u{2019}s dot to mark it done \u{2014} tap again to unmark it.",
+                          "A coming prayer\u{2019}s time tells you how long until it.",
+                          "A marked prayer shows when you prayed and its score.",
+                          "Marked prayers fold under \u{201C}done\u{201D}, so the list stays short.",
+                          "Hold a marked prayer to fix when and where you prayed."],
+                primary: "Continue")
+        case (.list, _):
+            let all = ticked.isSuperset(of: [0, 1, 2, 3])
+            return TourPage(
+                headline: "Try it.",
+                tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to show your marked prayers",
+                        "Tap a marked prayer to see its score",
+                        "Tap a coming prayer to see how long until it",
+                        "Hold a marked prayer, change its time, and save"],
+                locked: lockedList,
+                insight: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil,
+                foldedTitle: "What the list is for",
+                primary: all ? "Continue" : nil)
+        case (.zikr, .go):
+            return TourPage(headline: "There\u{2019}s more, one page over.", subline: "Your zikr and daily tasks.",
+                            tasks: ["Swipe right"])
+        case (.zikr, _):
+            return TourPage(
+                headline: "Your zikr.",
+                bullets: ["Your daily tasks sit on this wheel, freestyle first. Scroll for the rest.",
+                          "History is top left, your Azkar top right.",
+                          "With tasks, the line under the wheel says how many are done today and the time the rest will take. Tap it for them all."],
+                primary: "Continue")
+        case (.settings, .go):
+            return TourPage(headline: "Settings is one tap away.", tasks: ["Tap Settings"])
+        case (.settings, .learn):
+            return TourPage(
+                headline: "Your settings.",
+                bullets: ["Your location, and how prayer times are worked out.",
+                          "A reminder for each prayer.",
+                          "The Fajr alarm.",
+                          "How shukr looks."],
+                primary: "Continue")
+        case (.settings, _):
+            return TourPage(headline: "This tour lives here.",
+                            subline: "Tap \u{201C}Show me around again\u{201D} any time you want it.",
+                            primary: "Done")
+        default:
+            return TourPage(headline: step?.headline ?? "")
         }
     }
 
+    /// The circle's to-dos that wait: the hold until the tap and the qibla are done (marking moves the circle on, so
+    /// it comes last — owner); the swipe up until it's marked.
+    private var lockedCircle: Set<Int> {
+        var l: Set<Int> = []
+        if !ticked.isSuperset(of: [0, 1]) { l.insert(2) }
+        if !ticked.contains(2) { l.insert(3) }
+        return l
+    }
+    /// The list's: a marked prayer's score once they're shown; the fix once the three taps are done.
+    private var lockedList: Set<Int> {
+        var l: Set<Int> = []
+        if !ticked.contains(0) { l.insert(1) }
+        if !ticked.isSuperset(of: [0, 1, 2]) { l.insert(3) }
+        return l
+    }
+
+    // MARK: To-dos, notes
+
+    /// One to-do done (the green ✓) — only if it isn't waiting on another — and the thing that changed glows.
+    private func tick(_ i: Int, flash key: String? = nil) {
+        guard step != nil, !page.locked.contains(i), !ticked.contains(i) else { return }
+        withAnimation(.snappy(duration: 0.3)) { _ = ticked.insert(i) }
+        if let key { flashKey = key; flashes += 1 }
+    }
+
+    /// A colour's note has happened: its line lights.
+    private func light(_ i: Int) {
+        guard !lit.contains(i) else { return }
+        withAnimation(.snappy(duration: 0.3)) { _ = lit.insert(i) }
+    }
+
+    /// A touch the tour didn't let through: the thing to touch pulses (no buzz — owner).
+    func nudge() { nudges += 1 }
+
     // MARK: The steps
 
-    /// The tour's steps this time.
-    private(set) var steps: [TourStep] = TourRuntime.allSteps
-    static let allSteps: [TourStep] = [.circle, .colors, .qibla, .list, .rowTime, .mark, .fold, .markedRow, .edit, .undo,
-                                       .zikr, .settings]
     /// The first real mark gets a celebration (and then the map), once — armed by the first-run setup only.
     static let celebrateArmedKey = "tour.firstMark.armed"
     /// The first real mark's post-salah pill waits for the celebration's Continue (owner: "hold the post salah tasbih
@@ -1095,16 +1249,16 @@ struct BubbleShape: Shape {
     private(set) var heldPillName: String?
     /// Bumped when the held pill should come (the page raises it).
     private(set) var pillRelease = 0
-    /// Called where the pill would rise after a mark: true = held for the first-mark celebration.
+    /// Called where the pill would rise after a mark: true = held — for the first-mark celebration, and always during
+    /// the tour (owner: "the post salah tasbi pill doesn't actually appear in our onboarding").
     func holdPill(_ name: String) -> Bool {
+        if active { return true }
         guard firstMarkPending else { return false }
         heldPillName = name
         return true
     }
 
-    /// How it's celebrated (decision first-mark-celebration — the confetti goes, owner: "tacky"): A the edge glow,
-    /// B the perfect-day flourish, C nothing more than the mark's own flourish and the card. Confetti until he picks;
-    /// DEBUG `-celebrateStyle A|B|C` for the pictures.
+    /// How the first mark is celebrated (decision first-mark-celebration A: the edge glow).
     enum CelebrateStyle { case confetti, glow, perfectDay, quiet }
     static var celebrateStyle: CelebrateStyle {
         #if DEBUG
@@ -1121,25 +1275,28 @@ struct BubbleShape: Shape {
     enum Event {
         case circleTapped, listOpened, unmarked, mapOpened, foldTapped, qiblaAligned, next, back
         case comingRowTapped, markedRowTapped, pillClosed, pillOpened, zikrPage, settingsPage
+        /// The circle card's "See it in action" / "Play again"; the qibla line's skip (no compass).
+        case demo, skipQibla
         /// The time editor opened on a prayer; its score now (0…1); Save.
-        case editorOpened(String), editorScored(Double), editorSaved(String)
+        case editorOpened(String), editorSaved(String)
         /// A real mark (the circle held, or a dot tapped), or the mark's preview when no prayer is due.
         case marked(PrayerModel, PrayerViewModel), markedPreview(PrayerViewModel)
     }
 
+    /// The card's place in the tour ("1 of 4"); nil for the post-tour steps.
     func place(of step: TourStep) -> (Int, Int)? {
-        steps.firstIndex(of: step).map { ($0 + 1, steps.count) }
+        TourStep.cards.firstIndex(of: step).map { ($0 + 1, TourStep.cards.count) }
     }
-    /// A step to go back to.
-    var canGoBack: Bool { step.flatMap { steps.firstIndex(of: $0) }.map { $0 > 0 } ?? false }
+    /// A card to go back to.
+    var canGoBack: Bool { step.flatMap { TourStep.cards.firstIndex(of: $0) }.map { $0 > 0 } ?? false }
 
-    /// The tour's door: the invitation on the real day, after setup and from Settings alike (audit L).
+    /// The tour's door after the first-run setup: the invitation on the real day.
     func invite() {
         guard !active, step == nil else { return }
         withAnimation(.easeOut(duration: CircleMotion.quick)) { inviting = true }
     }
 
-    /// "Show me": the practice day comes in and step 1 with it.
+    /// "Show me": the practice day comes in and the first card with it.
     func acceptInvite() {
         guard inviting else { return }
         withAnimation(.easeOut(duration: CircleMotion.quick)) { inviting = false }
@@ -1155,22 +1312,22 @@ struct BubbleShape: Shape {
     }
 
     func begin() {
+        guard !active else { return }
         inviting = false
         practicePrayer = nil
-        steps = Self.allSteps
-        // The celebration is armed by the first-run setup only (FirstRunSetup.markDone): Show me around again never
-        // brings confetti to someone already using the app (audit A6).
         CountTips.rearm()   // the first counting session's tips come again too
         run += 1
         // `pendingKey` stays until finish(): a kill mid-tour starts it again on the next launch, once (audit A3).
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: Self.startedKey) + 1, forKey: Self.startedKey)
         active = true
+        sweepPlayed = false
         startPractice()
-        resetStepState()
+        resetCardState()
+        forward = true
+        phase = .learn
         prepare(.circle)
-        // Step 1 a turn later: the practice day's fetch (startPractice) could draw the layer mid-begin, and a step set
-        // in the same turn was then never drawn — no card, no Skip, until the next change (intermittent; Sami's and
-        // Frank's invisible step 1, TOURDBG logs 2026-10-05).
+        // The card a turn later: the practice day's fetch (startPractice) could draw the layer mid-begin, and a step set
+        // in the same turn was then never drawn (Frank's trap).
         let thisRun = run
         Task { @MainActor in
             guard run == thisRun, active, step == nil else { return }
@@ -1178,9 +1335,8 @@ struct BubbleShape: Shape {
         }
     }
 
-    /// Builds before 2026-10-05 could save the practice day's score as a real day's (a widget / banner mark mid-tour
-    /// re-scored "today" from the practice list — Bradley's review): once, the last few prayer days are scored again
-    /// from their real rows.
+    /// Builds before 2026-10-05 could save the practice day's score as a real day's: once, the last few prayer days
+    /// are scored again from their real rows.
     static func repairScoresOnce(_ viewModel: PrayerViewModel) {
         let key = "tour.scoreRepair.v1"
         var force = false
@@ -1211,25 +1367,28 @@ struct BubbleShape: Shape {
         UserDefaults.standard.set(true, forKey: Self.doneKey)
         UserDefaults.standard.removeObject(forKey: Self.pendingKey)
         practicePrayer = nil
-        // The practice mark's pill goes with the tour: left up, a tap opened a real, saved Tasbih Fatimah (Bradley).
         clearPill += 1
         endPractice()
-        resetStepState()
+        resetCardState()
+        sweepPlayed = false
         withAnimation(.easeOut(duration: CircleMotion.quick)) { step = nil }
     }
 
-    private func resetStepState() {
+    private func resetCardState() {
         ticked = []
         lit = []
         completing = false
         insight = false
-        colorSweep = nil   // the colours step's ring goes with it (a skip, Back, Continue)
+        learnOpen = false
+        qiblaSkippable = false
+        sweeping = false
+        colorSweep = nil   // the colours demo's ring goes with it (a skip, Back)
     }
 
     func event(_ e: Event) {
         // Outside the tour: the first real mark is celebrated (once), then the map is shown.
         guard let step else {
-            if active { return }   // between two steps: the tour's, not a "first real mark" (audit A7)
+            if active { return }   // between two cards: the tour's, not a "first real mark" (audit A7)
             if case .marked = e, UserDefaults.standard.bool(forKey: Self.celebrateArmedKey) {
                 UserDefaults.standard.set(false, forKey: Self.celebrateArmedKey)
                 firstMarkPending = true
@@ -1244,119 +1403,137 @@ struct BubbleShape: Shape {
             }
             return
         }
-        switch (step, e) {
-        // Continue, once the insight is up; Back, any time.
-        // After the tour (before the general Continue, which ends the tour): the held pill comes, with its card (or the map hint at once if no pill was held).
-        case (.celebrate, .next):
+        switch (step, phase, e) {
+        // After the tour (before the cards' cases): the held pill comes, with its card (or the map hint at once).
+        case (.celebrate, _, .next):
             firstMarkPending = false
             if heldPillName != nil {
                 pillRelease += 1
-                go(to: .firstPill)
+                post(.firstPill)
             } else {
-                go(to: .map)
+                post(.map)
             }
-        case (.firstPill, .pillOpened): tick(0)
-        case (.firstPill, .pillClosed) where !ticked.contains(0): go(to: .map)   // ✕ instead: on to the map hint
-        case (.firstPill, .next) where insight: go(to: .map)
-        case (_, .next) where insight || step.tasks.isEmpty && step.notes.isEmpty: advance(from: step)
-        case (_, .back): goBack(from: step)
-        // Only the user's own action ticks (audit J): the circle's tap, not its flip state.
-        // Two taps, two to-dos (owner): time left, then back to when it ends.
-        case (.circle, .circleTapped):
-            tickNext()
-        case (.qibla, .qiblaAligned):
-            tick(0)
-            light(0)
-        // No compass: Next is the way past it.
-        case (.qibla, .next): advance(from: step)
-        case (.list, .listOpened): tick(0)
-        case (.rowTime, .comingRowTapped): tick(0)
-        case (.mark, .marked(let prayer, _)):
+        case (.firstPill, _, .pillOpened): insight = true
+        case (.firstPill, _, .pillClosed) where !insight: post(.map)
+        case (.firstPill, _, .next): post(.map)
+        case (.map, _, .mapOpened), (.map, _, .next), (.hintMark, _, .next):
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
+
+        case (_, _, .back): goBack(from: step)
+
+        // 1 · The circle: learn (the colours demo, then Continue), then try.
+        case (.circle, .learn, .demo): playColors(run: run)
+        case (.circle, .learn, .next) where sweepPlayed: setPhase(.tryIt)
+        case (.circle, .learn, .next) where !sweeping: playColors(run: run)   // "See it in action"
+        case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
+        case (.circle, .tryIt, .qiblaAligned): tick(1, flash: "qiblaArrow")
+        case (.circle, .tryIt, .skipQibla): tick(1)
+        case (.circle, .tryIt, .marked(let prayer, _)):
             practicePrayer = prayer
-            tick(0)
-        case (.mark, .markedPreview):
-            // No prayer due (the practice day always has one; kept for safety): nothing to close or undo.
-            steps.removeAll { $0 == .undo }
-            tick(0)
-            tick(1)
-        // ✕ (or a flick), never the pill's own expiry (audit J).
-        case (.mark, .pillClosed) where ticked.contains(0): tick(1)
-        // The fold's tap, never a fold the app made itself (audit J).
-        case (.fold, .foldTapped): tickNext()
-        case (.markedRow, .markedRowTapped): tick(0)
-        case (.edit, .editorOpened(let name)) where name == "Fajr": tick(0)
-        // On time (yellow) or better.
-        // The yellow itself (not green, not red), and only while it's there: off the yellow, the to-do is undone and
-        // Save waits (the editor saves nothing else in this step — owner).
-        case (.edit, .editorScored(let score)) where ticked.contains(0):
-            if PrayerScoring.grade(for: score) == .onTime { tick(1) } else { untick(1) }
-        case (.edit, .editorSaved(let name)) where name == "Fajr" && ticked.contains(1): tick(2)
-        case (.undo, .unmarked):
-            clearPill += 1
-            tick(0)
-        case (.zikr, .zikrPage): tick(0)
-        case (.settings, .settingsPage): tick(0)
-        case (.map, .mapOpened), (.map, .next): withAnimation(.easeOut(duration: CircleMotion.quick)) { self.step = nil }
+            tick(2, flash: "circle")
+        case (.circle, .tryIt, .listOpened) where ticked.contains(2):
+            tick(3)
+            go(to: .list, after: 0.6)
+
+        // 2 · The list: learn, then try.
+        case (.list, .learn, .next): setPhase(.tryIt)
+        case (.list, .tryIt, .foldTapped): tick(0, flash: "doneFold")
+        case (.list, .tryIt, .markedRowTapped): tick(1, flash: "markedRow")
+        case (.list, .tryIt, .comingRowTapped): tick(2, flash: "comingRow")
+        case (.list, .tryIt, .editorSaved): tick(3)
+        case (.list, .tryIt, .next) where ticked.isSuperset(of: [0, 1, 2, 3]): go(to: .zikr)
+
+        // 3 · Zikr: go there, then learn it.
+        case (.zikr, .go, .zikrPage): setPhase(.learn)
+        case (.zikr, .learn, .next): go(to: .settings)
+
+        // 4 · Settings: go there, then learn it at the top, then the tour's own row.
+        case (.settings, .go, .settingsPage):
+            settingsScroll = (.top, settingsScroll.1 + 1)
+            setPhase(.learn)
+        case (.settings, .learn, .next):
+            settingsScroll = (.tourRow, settingsScroll.1 + 1)
+            setPhase(.last)
+            // Once it has scrolled there, the row glows (owner: "highlight it").
+            let thisRun = run
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(0.5))
+                guard run == thisRun, step == .settings, phase == .last else { return }
+                flashKey = "tourAgainRow"
+                flashes += 1
+            }
+        case (.settings, .last, .next): finish()
         default: break
         }
     }
 
-    /// The step after `step` in this run's list; after the last, the end.
-    private func advance(from step: TourStep) {
-        guard let i = steps.firstIndex(of: step), i + 1 < steps.count else { finish(); return }
-        go(to: steps[i + 1])
+    /// A phase within the card: the bubble grows or changes in place (no page turn).
+    private func setPhase(_ next: TourPhase) {
+        withAnimation(.smooth(duration: CircleMotion.standard)) {
+            if next == .tryIt { ticked = []; learnOpen = false }
+            phase = next
+        }
     }
 
-    /// The step before, as it starts (audit J: "Back").
+    /// A post-tour step (the celebration's followers): straight there, its own words.
+    private func post(_ next: TourStep) {
+        completing = false
+        insight = false
+        ticked = []
+        withAnimation(.smooth(duration: CircleMotion.standard)) { step = next }
+    }
+
+    /// Back: the card before, as it starts (its practice state put back).
     private func goBack(from step: TourStep) {
-        guard let i = steps.firstIndex(of: step), i > 0 else { return }
-        go(to: steps[i - 1])
+        guard let i = TourStep.cards.firstIndex(of: step), i > 0 else { return }
+        go(to: TourStep.cards[i - 1], back: true)
     }
 
     #if DEBUG
-    func debugJump(to target: TourStep) {
+    /// `-tourFrom <card>[:<phase>]`: straight to a card (and a phase), its practice state set as on a Back.
+    func debugJump(to target: TourStep, phase wanted: TourPhase? = nil) {
         go(to: target)
-        // `-tourShowPayoff YES`: the step as it ends — every to-do ticked, every note lit, its payoff up (the pictures).
-        guard UserDefaults.standard.bool(forKey: "tourShowPayoff") else { return }
+        guard let wanted else { return }
         let thisRun = run
         Task {
-            try? await Task.sleep(for: .seconds(0.8))
+            try? await Task.sleep(for: .seconds(0.6))
             guard run == thisRun, step == target else { return }
-            ticked = Set(target.tasks.indices)
-            lit = Set(target.notes.indices)
-            completing = true
-            insight = true
+            if target == .circle && wanted != .learn { sweepPlayed = true }
+            setPhase(wanted)
         }
     }
     #endif
 
-    /// Out, then in: the bubble goes, the practice day is set for the next step, then it comes at the next control.
-    private func go(to next: TourStep) {
-        withAnimation(.easeOut(duration: CircleMotion.quick)) { step = nil }
-        resetStepState()
+    /// The next card: the practice day set for it, then the bubble turns its page (the page turns inside the bubble, which
+    /// drifts to the card's place — it never goes away). `after`: a beat to see the last ✓ first.
+    private func go(to next: TourStep, back: Bool = false, after: TimeInterval = 0) {
         let thisRun = run
-        Task {
-            try? await Task.sleep(for: .seconds(0.45))
+        Task { @MainActor in
+            if after > 0 { try? await Task.sleep(for: .seconds(after)) }
             guard run == thisRun else { return }
             prepare(next)
-            // The step a turn after its practice state (as in begin(): a change in the same turn could go undrawn).
+            // The card a turn after its practice state (as in begin(): a change in the same turn could go undrawn).
             try? await Task.sleep(for: .milliseconds(1))
             guard run == thisRun else { return }
-            withAnimation(.easeOut(duration: CircleMotion.quick)) { step = next }
-            if next == .colors { playColors(run: thisRun) }
+            forward = !back
+            withAnimation(.smooth(duration: CircleMotion.standard)) {
+                resetCardState()
+                if next == .circle { sweepPlayed = true }   // back to the circle: its demo was seen
+                phase = (next == .zikr || next == .settings) ? .go : (next == .circle && sweepPlayed ? .tryIt : .learn)
+                step = next
+            }
         }
     }
 }
 
-/// The tour's layer over the pager: the callout for the current step, only on the page it belongs to and only when
-/// nothing covers the app. Watches the real state changes that end the steps.
+/// The tour's layer over the pager: the one bubble (tour v2 — it stays, drifting from card to card and turning its page;
+/// it only steps aside while something truly covers the page), the input guard, Skip tour, the invitation and Back to
+/// the tour. Watches the real state changes that tick the to-dos.
 struct TourLayer: View {
     let covered: Bool
     @Environment(SharedStateClass.self) private var sharedState
     @EnvironmentObject private var viewModel: PrayerViewModel
     @EnvironmentObject private var compass: CompassState
-    /// The qibla step has waited a while (a compass that won't settle): a Next appears.
-    @State private var qiblaWaited = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     /// "You skipped the tour" for a few seconds after a skip (owner: tell them where to find it again).
@@ -1364,278 +1541,329 @@ struct TourLayer: View {
     private var runtime: TourRuntime { TourRuntime.shared }
 
     var body: some View {
+        watching(layers)
+    }
+
+    /// The layers, front to back: the input guard, the invitation, the one bubble, Back to the tour, Skip tour, the
+    /// skipped note.
+    private var layers: some View {
         ZStack {
-            // Only the step's own move (owner: "make it so that it's only the intended thing"): while the tour runs,
-            // the app takes no touch except through the step's opening — its target until its to-dos are done, then
-            // nothing but the card. Sheets and alerts the step opens (the time editor, Yes) sit above it.
+            // Only the card's own moves (owner: "only the intended thing"): while the tour runs the app takes no touch
+            // except through the card's openings — no buzz on the others (owner): the thing to touch pulses instead.
             if runtime.active, !covered {
-                TourInputGuard(openings: openings(runtime.step))
+                TourInputGuard(openings: openings(runtime.step)) { runtime.nudge() }
             }
-            // The door, on the real day: Show me / Later (decision onboarding-start A).
-            if runtime.inviting, !covered, sharedState.horizontalPage == .main, sharedState.navPosition == .main {
-                GeometryReader { geo in
-                    let origin = geo.frame(in: .global).origin
-                    let below = TourTargets.shared.frame("circle").map { $0.maxY - origin.y + 24 } ?? geo.size.height * 0.62
-                    TourInviteCard(onShow: { runtime.acceptInvite() }, onLater: { runtime.declineInvite() })
-                        .frame(width: min(geo.size.width - 48, 320))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, below)
-                }
-                .transition(.asymmetric(insertion: .identity, removal: .opacity))
-                .onAppear {
-                    AccessibilityNotification.Announcement("Want a quick look around? Two minutes, on a practice prayer.").post()
-                }
+            inviteLayer
+            // The one bubble, for the whole tour: never rebuilt between cards (owner: "one tooltip that visually moves
+            // … to the next focus location"); out of sight only while a sheet or a cover is over the page, or the card's
+            // page isn't showing (Back to the tour then).
+            if let step = runtime.step {
+                bubble(step)
             }
-            // The way out, away from the tips (owner: no "Not now" in them): two taps, like Finish early. In the top
-            // bar's row, top right (owner: the DEBUG buttons there aren't in real builds).
-            // Not on the Settings step: Done is its way out, and Settings' own top right is a control (Sami: there it
-            // sat on the Fajr alarm switch).
-            if runtime.active, let step = runtime.step, step != .settings, !covered {
-                TourSkipButton {
-                    runtime.skip()
-                    withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                // Under the top bar at the largest sizes, where the city's name reaches the corner (Sami, AX XXXL).
-                .padding(.top, typeSize.isAccessibilitySize ? 56 : 12)
-                .padding(.trailing, 16)
-                .transition(.asymmetric(insertion: .identity, removal: .opacity))
-            }
-            if skippedNote {
-                TourSkippedNote { withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false } }
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, 52)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                    .task {
-                        try? await Task.sleep(for: .seconds(5))
-                        withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false }
-                    }
-            }
-            // Taken off the step's page (a widget or a control opened another page; the pager is held, so it was a
-            // dead end — Ben's round C): one way back.
-            if let step = runtime.step, !covered, !onItsPage(step) {
-                BackToTourPill { returnTo(step) }
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 150)   // above the Zikr page's "tasks done" line and the tab bar
-                    .transition(.opacity)
-            }
-            if let step = runtime.step, !covered, onItsPage(step) {
-                let insight = runtime.insight
-                // The ask stays as it was — headline, ticked to-dos, notes — and the insight is added under it (owner,
-                // Ben's section K: swapping the words read as a new card).
-                let words = override(step)
-                let nothingToDo = step.tasks.isEmpty && step.notes.isEmpty
-                TourOverlay(step: step, style: .callout,
-                            target: target(step),
-                            override: words,
-                            // Continue once the insight is up (or at once for a step with nothing to do); Next only
-                            // where no action can end it: a compass that can't settle.
-                            showsNext: insight || nothingToDo || step == .celebrate
-                                || (step == .qibla && !runtime.completing && (compass.status != .ok || qiblaWaited)),
-                            place: runtime.place(of: step),
-                            tasks: tasks(step),
-                            ticked: runtime.ticked,
-                            lit: runtime.lit,
-                            insight: insight ? step.insight : nil,
-                            nextLabel: nextLabel(step, insight: insight || nothingToDo),
-                            hint: runtime.completing || insight ? nil : hint(step),
-                            aboveY: aboveY(step),
-                            showsBack: runtime.canGoBack,
-                            onNext: { runtime.event(.next) },
-                            onBack: { runtime.event(.back) },
-                            onSkip: { runtime.skip() })
-                    .id(step)
-                    // In without the layer's own fade (the callout fades itself in, `shown`): an insertion riding the
-                    // step's animated change was left at nothing — no card, no Skip — until the next update (Sami's
-                    // and Frank's invisible step 1, intermittent).
-                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
-                if step == .celebrate && !reduceMotion {
-                    switch TourRuntime.celebrateStyle {
-                    case .confetti: ConfettiBurst().allowsHitTesting(false)
-                    case .glow: FirstMarkGlow()
-                    case .perfectDay, .quiet: EmptyView()   // the list's own flourish (onChange below) / nothing more
-                    }
-                }
-            }
-        }
-        // Decision first-mark-celebration B: the perfect-day flourish, once, in the list (opened, its done rows out).
-        .onChange(of: runtime.step) { _, step in
-            guard step == .celebrate, TourRuntime.celebrateStyle == .perfectDay, !reduceMotion else { return }
-            Task { @MainActor in
-                if sharedState.navPosition != .bottom {
-                    await CircleMotion.animate(CircleMotion.page) { sharedState.navPosition = .bottom }
-                }
-                await CircleMotion.animate(RowMotion.current.animation(springy: CircleMotion.spring)) {
-                    PrayerListFold.shared.showDone = true
-                }
-                NotificationCenter.default.post(name: .perfectDay, object: true)
-            }
-        }
-        .onChange(of: sharedState.navPosition) { _, position in
-            if position == .bottom { runtime.event(.listOpened) }
-            // Held: the list stays as the step needs it (audit E17) — a chevron tap or a stray swipe is put back.
-            if runtime.holdsSheet, let wanted = sheetPosition(runtime.step), position != wanted {
-                withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
-            }
-        }
-        // A page reached and at rest (not mid-swipe: ticking mid-move froze the pager — Sami's round D run).
-        .onChange(of: CircleStage.shared.restingPage) { _, page in
-            // The Zikr step frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
-            if runtime.active, runtime.step == .zikr, page == .settings {
-                triggerSomeVibration(type: .light)
-                withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
-                return
-            }
-            if page == .zikr { runtime.event(.zikrPage) }
-            if page == .settings { runtime.event(.settingsPage) }
-        }
-        .onAppear { runtime.viewModel = viewModel }
-        .onChange(of: runtime.step) { _, step in
-            guard let step else { return }
-            // The step's page and list as it starts (a Back from another page included).
-            if !onItsPage(step) { returnTo(step) }
-            // The last two are about other pages: the list closes for them.
-            if (step == .zikr || step == .settings) && sharedState.navPosition != .main {
-                withAnimation(CircleMotion.page) { sharedState.navPosition = .main }
-            }
-            // VoiceOver says each step as it comes, each to-do as it's done (audit C15); touches still pass through.
-            let todo = step.tasks.isEmpty ? "" : " To do: " + step.tasks.joined(separator: ", ") + "."
-            AccessibilityNotification.Announcement("\(step.headline). \(step.subline)\(todo)").post()
-        }
-        .onChange(of: runtime.insight) { _, on in
-            if on, let insight = runtime.step?.insight {
-                AccessibilityNotification.Announcement("\(insight.0). \(insight.1)").post()
-            }
-        }
-        .onChange(of: runtime.lit) { old, new in
-            guard let step = runtime.step, let i = new.subtracting(old).first, step.notes.indices.contains(i) else { return }
-            AccessibilityNotification.Announcement(step.notes[i]).post()
-        }
-        .onChange(of: runtime.ticked) { old, new in
-            guard let step = runtime.step, let i = new.subtracting(old).first, step.tasks.indices.contains(i) else { return }
-            AccessibilityNotification.Announcement("Done: \(step.tasks[i])").post()
-        }
-        // Back from the background: the practice day round now again (Ben's round C).
-        .onChange(of: CircleStage.shared.sceneActive) { _, active in
-            if active, runtime.active, runtime.step != .colors { runtime.repinPractice() }
-        }
-        // Facing the qibla (also if already facing it when the step comes up).
-        .onChange(of: compass.qibla.aligned) { _, aligned in
-            if aligned { runtime.event(.qiblaAligned) }
-        }
-        .task(id: runtime.step) {
-            qiblaWaited = false
-            guard runtime.step == .qibla else { return }
-            // Already facing it: ticked once the bubble is up, not before it (audit E18).
-            try? await Task.sleep(for: .seconds(1))
-            guard runtime.step == .qibla else { return }
-            if compass.qibla.aligned { runtime.event(.qiblaAligned); return }
-            try? await Task.sleep(for: .seconds(20))
-            qiblaWaited = true
-        }
-        // The practice mark undone by the user (its dot → Unmark).
-        .onChange(of: runtime.practicePrayer?.isCompleted) { _, done in
-            if done == false { runtime.event(.unmarked) }
+            backPill
+            skipLayer
         }
     }
 
-    private func nextLabel(_ step: TourStep, insight: Bool) -> String {
-        if step == .settings && insight { return "Done" }
-        if step == .celebrate { return "Continue" }
-        if step == .map { return "Got it" }
-        return insight ? "Continue" : "Next"
+    @ViewBuilder private var inviteLayer: some View {
+        // The door after the first-run setup, on the real day (decision onboarding-start A).
+        if runtime.inviting, !covered, sharedState.horizontalPage == .main, sharedState.navPosition == .main {
+            GeometryReader { geo in
+                let origin = geo.frame(in: .global).origin
+                let below = TourTargets.shared.frame("circle").map { $0.maxY - origin.y + 24 } ?? geo.size.height * 0.62
+                TourInviteCard(onShow: { runtime.acceptInvite() }, onLater: { runtime.declineInvite() })
+                    .frame(width: min(geo.size.width - 48, 320))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, below)
+            }
+            .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            .onAppear {
+                AccessibilityNotification.Announcement("Want a quick look around? Two minutes, on a practice prayer.").post()
+            }
+        }
     }
 
-    /// Words in place of the step's own: where the action can't happen right now.
-    private func override(_ step: TourStep) -> (String, String)? {
+    @ViewBuilder private func bubble(_ step: TourStep) -> some View {
+        let visible = !covered && onItsPage(step)
+        let tryingIt = step.isCard && runtime.phase == .tryIt
+        let skipQibla = step == .circle && tryingIt && runtime.qiblaSkippable && !runtime.ticked.contains(1)
+        TourOverlay(step: step, page: page(step), target: target(step), place: runtime.place(of: step),
+                    ticked: runtime.ticked, lit: runtime.lit,
+                    folded: tryingIt ? folded(step) : nil, learnOpen: runtime.learnOpen,
+                    hint: hint(step), aboveY: aboveY(step),
+                    showsBack: runtime.canGoBack && runtime.phase != .last,
+                    flash: flashFrame(), flashes: runtime.flashes, nudges: runtime.nudges,
+                    qiblaSkip: skipQibla, forward: runtime.forward,
+                    onPrimary: { runtime.event(.next) },
+                    onSecondary: { runtime.event(.demo) },
+                    onBack: { runtime.event(.back) },
+                    onToggleLearn: toggleLearn,
+                    onSkipQibla: { runtime.event(.skipQibla) })
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .animation(.easeOut(duration: CircleMotion.quick), value: visible)
+        if step == .celebrate && !reduceMotion {
+            switch TourRuntime.celebrateStyle {
+            case .confetti: ConfettiBurst().allowsHitTesting(false)
+            case .glow: FirstMarkGlow()
+            case .perfectDay, .quiet: EmptyView()
+            }
+        }
+    }
+
+    private func toggleLearn() {
+        withAnimation(.smooth(duration: CircleMotion.standard)) { runtime.learnOpen.toggle() }
+    }
+
+    @ViewBuilder private var backPill: some View {
+        // Taken off the card's page (a widget or a control opened another page; the pager is held): one way back.
+        if let step = runtime.step, step.isCard, !covered, !onItsPage(step) {
+            BackToTourPill { returnTo(step) }
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 150)   // above the Zikr page's "tasks done" line and the tab bar
+                .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder private var skipLayer: some View {
+        // The way out, for the whole tour, in one place (owner: "just keep it in the top right"): two taps, like
+        // Finish early. Where the page has its own top-right button it slides left beside it, in the same row: Zikr's
+        // Azkar (shown while its card names it), Settings' light / dark (a row lower sat on the location's refresh).
+        let besideCorner = (TourRuntime.showsAzkarDoor && sharedState.horizontalPage == .zikr)
+            || sharedState.horizontalPage == .settings
+        if runtime.active, !covered {
+            TourSkipButton {
+                runtime.skip()
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = true }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(.top, (typeSize.isAccessibilitySize ? 56 : 12) - (sharedState.horizontalPage == .settings ? 8 : 0))   // Settings' header sits higher
+            .padding(.trailing, besideCorner ? 60 : 16)
+            .animation(.smooth(duration: CircleMotion.standard), value: besideCorner)
+            .transition(.asymmetric(insertion: .identity, removal: .opacity))
+        }
+        if skippedNote {
+            TourSkippedNote { withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false } }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, 52)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+                .task {
+                    try? await Task.sleep(for: .seconds(5))
+                    withAnimation(.easeOut(duration: CircleMotion.quick)) { skippedNote = false }
+                }
+        }
+    }
+
+    /// The real state changes that move the tour on.
+    private func watching(_ content: some View) -> some View {
+        content
+            .onChange(of: runtime.step) { _, step in
+                guard let step else { return }
+                if step.isCard, !onItsPage(step) { returnTo(step) }
+                announce()
+            }
+            .onChange(of: runtime.phase) { _, _ in
+                guard let step = runtime.step, step.isCard else { return }
+                if !onItsPage(step) { returnTo(step) }
+                announce()
+            }
+            .onChange(of: sharedState.navPosition) { _, position in navChanged(position) }
+            // A page reached and at rest (not mid-swipe: ticking mid-move froze the pager — Sami's round D run).
+            .onChange(of: CircleStage.shared.restingPage) { _, page in pageRested(page) }
+            .onAppear { runtime.viewModel = viewModel }
+        .modifier(TourLayerWatchers2(runtime: runtime, compass: compass, qiblaWatch: qiblaWatch))
+    }
+}
+
+/// The rest of the layer's watchers (split for the type checker).
+private struct TourLayerWatchers2: ViewModifier {
+    let runtime: TourRuntime
+    @ObservedObject var compass: CompassState
+    let qiblaWatch: () async -> Void
+    private var watchKey: String { (runtime.step?.rawValue ?? "-") + "|" + String(describing: runtime.phase) }
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: runtime.lit) { old, new in
+                guard let i = new.subtracting(old).first, runtime.page.notes.indices.contains(i) else { return }
+                AccessibilityNotification.Announcement(runtime.page.notes[i]).post()
+            }
+            .onChange(of: runtime.ticked) { old, new in
+                guard let i = new.subtracting(old).first, runtime.page.tasks.indices.contains(i) else { return }
+                AccessibilityNotification.Announcement("Done: \(runtime.page.tasks[i])").post()
+            }
+            // Back from the background: the practice day round now again (Ben's round C).
+            .onChange(of: CircleStage.shared.sceneActive) { _, active in
+                if active, runtime.active { runtime.repinPractice() }
+            }
+            // Facing the qibla (also if already facing it when the line comes up).
+            .onChange(of: compass.qibla.aligned) { _, aligned in
+                if aligned, runtime.step == .circle, runtime.phase == .tryIt { runtime.event(.qiblaAligned) }
+            }
+            .task(id: watchKey) { await qiblaWatch() }
+            // The practice mark undone (never in the tour now, kept for safety): its pill goes too.
+            .onChange(of: runtime.practicePrayer?.isCompleted) { _, done in
+                if done == false { runtime.event(.unmarked) }
+            }
+    }
+}
+
+extension TourLayer {
+
+    private func navChanged(_ position: SharedStateClass.ViewPosition) {
+        if position == .bottom { runtime.event(.listOpened) }
+        // Held: the list stays as the card needs it — a chevron tap or a stray swipe is put back.
+        if runtime.holdsSheet, let wanted = sheetPosition(runtime.step), position != wanted {
+            withAnimation(CircleMotion.page) { sharedState.navPosition = wanted }
+        }
+    }
+
+    private func pageRested(_ page: SharedStateClass.HorizontalPage?) {
+        // The Zikr card frees the pager for its swipe right; a swipe left (to Settings) is put back (Sami).
+        if runtime.active, runtime.step == .zikr, runtime.phase == .go, page == .settings {
+            withAnimation(CircleMotion.page) { sharedState.horizontalPage = .main }
+            return
+        }
+        if page == .zikr { runtime.event(.zikrPage) }
+        if page == .settings { runtime.event(.settingsPage) }
+    }
+
+    /// The qibla line: already facing it ticks it once the bubble is up; a compass that can't settle gets a quiet
+    /// "skip" after a while (at once without a compass).
+    private func qiblaWatch() async {
+        runtime.qiblaSkippable = false
+        guard runtime.step == .circle, runtime.phase == .tryIt else { return }
+        try? await Task.sleep(for: .seconds(1))
+        guard runtime.step == .circle, runtime.phase == .tryIt else { return }
+        if compass.qibla.aligned { runtime.event(.qiblaAligned) }
+        try? await Task.sleep(for: .seconds(compass.status == .ok ? 15 : 0))
+        guard !Task.isCancelled, runtime.step == .circle, runtime.phase == .tryIt else { return }
+        withAnimation(.easeOut(duration: CircleMotion.quick)) { runtime.qiblaSkippable = true }
+    }
+
+    private func announce() {
+        let page = runtime.page
+        let todo = page.tasks.isEmpty ? "" : " To do: " + page.tasks.joined(separator: ", ") + "."
+        AccessibilityNotification.Announcement("\(page.headline) \(page.subline ?? "")\(todo)").post()
+    }
+
+    /// What the bubble says: a card's page, or a post-tour step's own words.
+    private func page(_ step: TourStep) -> TourPage {
+        if step.isCard { return runtime.page }
         switch step {
-        case .qibla where compass.status != .ok && runtime.ticked.isEmpty && !runtime.completing:
-            return ("Which way to face.", "Your compass needs a moment: move the phone in a figure 8, or tap Next.")
-        // "2 done" in the words is the list's real count (Ben's script).
-        case .fold:
-            return (step.headline, "Marked prayers fold under \u{201C}\(doneCount) done\u{201D}, so your list stays short.")
-        default:
-            return nil
+        case .celebrate: return TourPage(headline: step.headline, subline: step.subline, primary: "Continue")
+        case .firstPill:
+            return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks,
+                            insight: runtime.insight ? step.insight.map { $0.0 + " " + $0.1 } : nil,
+                            primary: runtime.insight ? "Continue" : nil)
+        case .map: return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks, primary: "Got it")
+        default: return TourPage(headline: step.headline, subline: step.subline, primary: "Got it")
         }
     }
 
-    /// The practice day's marked prayers: the list's "N done".
-    private var doneCount: Int { TourRuntime.practiceMirror?.filter(\.isCompleted).count ?? 0 }
-
-    /// The to-dos in place of the step's own: the fold's, with the list's real count.
-    private func tasks(_ step: TourStep) -> [String]? {
-        guard step == .fold else { return nil }
-        return ["Tap \u{201C}\(doneCount) done\u{201D} to show them", "Tap it again to hide them"]
+    /// The card's "what it's for", folded to one line while trying it (tap to open).
+    private func folded(_ step: TourStep) -> (title: String, page: TourPage)? {
+        guard let title = runtime.page.foldedTitle else { return nil }
+        var learn = runtime.learnPage(step)
+        learn.primary = nil
+        learn.secondary = nil
+        return (title, learn)
     }
 
-    /// Where the bubble's bottom goes on the list steps: above the list, over the circle — never over the rows (audit J).
-    private func aboveY(_ step: TourStep) -> CGFloat? {
-        let onList = step.aboutTheList || (step == .list && sharedState.navPosition == .bottom)
-        guard onList else { return nil }
-        return TourTargets.shared.frame("prayerList")?.minY
-    }
-
-    /// What a step points at.
+    /// What the bubble points at, for the card and its phase.
     private func target(_ step: TourStep) -> String? {
-        switch step {
-        case .mark: "prayerDot.Asr"
-        case .undo: "prayerDot.Asr"
-        case .rowTime: "prayerRow.Maghrib"
-        case .markedRow: "prayerRow.Fajr"
-        case .list where sharedState.navPosition == .bottom: "prayerList"
-        // On the Zikr page: under its circle (the taller card with its insight sat over the circle, centred on the page).
-        case .zikr where sharedState.horizontalPage == .zikr: "zikrCircle"
-        case .settings where sharedState.horizontalPage == .settings: "tourAgainRow"
-        case .settings: "settingsTab"
-        // The pill until it's tapped; then it's gone, and the card hangs under the circle (not over it).
-        case .firstPill where runtime.ticked.contains(0) || !runtime.pillVisible: "circle"
-        default: step.target
+        let ticked = runtime.ticked
+        switch (step, runtime.phase) {
+        case (.circle, _): return "circle"
+        case (.list, .learn): return "prayerList"
+        case (.list, _):
+            if !ticked.contains(0) { return "doneFold" }
+            return "prayerList"
+        case (.zikr, .go): return "circle"
+        case (.zikr, _): return "zikrCircle"
+        case (.settings, .go): return "settingsTab"
+        case (.settings, .last): return "tourAgainRow"
+        case (.settings, _): return nil
+        case (.firstPill, _) where runtime.insight || !runtime.pillVisible: return "circle"
+        default: return step.target
         }
     }
 
-    /// The touch each step asks for, where it goes (global): a tap, a hold or a swipe on the thing the words name.
+    /// Where the bubble's bottom goes on the list card: above the list, never over its rows (audit J).
+    private func aboveY(_ step: TourStep) -> CGFloat? {
+        switch step {
+        case .list: return TourTargets.shared.frame("prayerList")?.minY
+        // Marked: over the circle, so the swipe up has the page under it (the bubble there took the touches).
+        case .circle where runtime.ticked.contains(2): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
+        // Swipe right: over the circle too, the swipe's thumbprint under it in the clear.
+        case .zikr where runtime.phase == .go && sharedState.horizontalPage == .main:
+            return TourTargets.shared.frame("circle").map { $0.minY - 10 }
+        // Over the wheel: the tasks line under it is one of the things it talks about.
+        case .zikr where runtime.phase == .learn: return TourTargets.shared.frame("zikrCircle").map { $0.minY - 10 }
+        default: return nil
+        }
+    }
+
+    /// The touch the next to-do asks for, BESIDE the thing that changes (owner: the thumbprint sat on the circle's time
+    /// and hid the change) — one cue at a time: none once it's done (the change glows instead), none while learning.
     private func hint(_ step: TourStep) -> TouchHintSpec? {
         let t = TourTargets.shared
         let circle = t.frame("circle")
-        func mid(_ r: CGRect?) -> CGPoint? { r.map { CGPoint(x: $0.midX, y: $0.midY) } }
-        /// A row's time, at its trailing end.
+        let ticked = runtime.ticked, locked = runtime.page.locked
+        func next(_ i: Int) -> Bool { !ticked.contains(i) && !locked.contains(i) }
         func time(_ name: String) -> CGPoint? { t.frame("prayerRow." + name).map { CGPoint(x: $0.maxX - 44, y: $0.midY) } }
-        switch step {
-        // Low in the circle, clear of its words.
-        case .circle: return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY + $0.height * 0.3)) }
-        // Above the bubble (which sits over the chevron), in the open page: a swipe up works anywhere there.
-        case .list: return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 175)) }
-        case .rowTime: return time("Maghrib").map { .init(kind: .tap, at: $0) }
-        case .mark:
-            if !runtime.ticked.contains(0) { return mid(t.frame("prayerDot.Asr")).map { .init(kind: .tap, at: $0) } }
-            // The pill's ✕ sits on its top right corner.
-            return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.maxX - 25, y: $0.minY + 20)) }
-        case .fold: return mid(t.frame("doneFold")).map { .init(kind: .tap, at: $0) }
-        case .markedRow: return time("Fajr").map { .init(kind: .tap, at: $0) }
-        case .edit:
-            guard !runtime.ticked.contains(0) else { return nil }   // the editor's own tip takes it from there
-            return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) }
-        case .undo: return mid(t.frame("prayerDot.Asr")).map { .init(kind: .tap, at: $0) }
-        case .zikr:
-            guard sharedState.horizontalPage == .main else { return nil }
-            return circle.map { .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: $0.minX - 20, y: $0.minY - 56)) }
-        case .settings:
+        func mid(_ r: CGRect?) -> CGPoint? { r.map { CGPoint(x: $0.midX, y: $0.midY) } }
+        switch (step, runtime.phase) {
+        case (.circle, .tryIt):
+            guard let c = circle else { return nil }
+            // The tap low on the ring, clear of the words that flip; the hold in the middle (the whole circle changes).
+            if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
+            if next(1) { return nil }   // turning the phone: no touch
+            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
+            if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
+            return nil
+        case (.list, .tryIt):
+            if next(0) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: CGPoint(x: $0.x + 60, y: $0.y)) } }
+            if next(1) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
+            if next(2) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
+            if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
+            return nil
+        case (.zikr, .go):
+            guard sharedState.horizontalPage == .main, let c = circle else { return nil }
+            return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.maxY + 70))
+        case (.settings, .go):
             guard sharedState.horizontalPage != .settings else { return nil }
             return mid(t.frame("settingsTab")).map { .init(kind: .tap, at: $0) }
-        // The qibla arrow sits on the circle's upper right.
-        case .map: return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
-        // On the pill's words, left of its ✕.
-        case .firstPill: return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.midX - 20, y: $0.midY)) }
-        case .colors, .qibla, .celebrate, .hintMark: return nil
+        case (.map, _):
+            return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
+        case (.firstPill, _):
+            return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.midX - 20, y: $0.midY)) }
+        default: return nil
         }
     }
 
-    /// Back to where `step` happens: its page, and the list open or closed as it needs.
+    /// The thing that just changed (owner: "give attention to the areas that are being changed").
+    private func flashFrame() -> CGRect? {
+        let t = TourTargets.shared
+        switch runtime.flashKey {
+        case "circleTime":
+            return t.frame("circle").map { CGRect(x: $0.midX - $0.width * 0.36, y: $0.midY + 2, width: $0.width * 0.72, height: 30) }
+        case "qiblaArrow", "circle": return t.frame("circle")
+        case "doneFold": return t.frame("doneFold")
+        case "tourAgainRow": return t.frame("tourAgainRow")
+        case "markedRow", "comingRow": return t.lastTappedRow.flatMap { t.frame("prayerRow." + $0) }
+        default: return nil
+        }
+    }
+
+    /// Back to where the card happens: its page, and the list open or closed as it needs.
     private func returnTo(_ step: TourStep) {
-        let page: SharedStateClass.HorizontalPage = switch step {
-        case .zikr: runtime.ticked.contains(0) ? .zikr : .main
-        case .settings: runtime.ticked.contains(0) ? .settings : .zikr
+        let page: SharedStateClass.HorizontalPage = switch (step, runtime.phase) {
+        case (.zikr, .go): .main
+        case (.zikr, _): .zikr
+        case (.settings, .go): .zikr
+        case (.settings, _): .settings
         default: .main
         }
         sharedState.go(to: page)
@@ -1644,54 +1872,52 @@ struct TourLayer: View {
         }
     }
 
-    /// Where the list must be for a step (nil: either).
+    /// Where the list must be for a card (nil: either).
     private func sheetPosition(_ step: TourStep?) -> SharedStateClass.ViewPosition? {
         switch step {
-        case .circle, .colors, .qibla: .main
-        case .rowTime, .mark, .fold, .markedRow, .edit, .undo: .bottom
+        case .circle: runtime.ticked.contains(2) ? nil : .main   // marked: the swipe up opens it (the card's last move)
+        case .list: .bottom
+        case .zikr: .main
         default: nil
         }
     }
 
-    /// Where the step's move may happen (global frames): nothing between steps, nothing once its to-dos are done,
-    /// nothing off its page (Back to the tour is the way).
+    /// Where the card's moves may happen (global frames). A card's harmless taps stay open after their to-do is done
+    /// (owner: "those actions should be allowed over and over again, as long as they are in that step"); the ones that
+    /// change something are refused by `TourRuntime.allows` / `allowsEditing` (a pulse, no buzz).
     private func openings(_ step: TourStep?) -> [CGRect] {
-        guard let step, onItsPage(step), !runtime.completing, !runtime.insight else { return [] }
+        guard let step, onItsPage(step) else { return [] }
         let t = TourTargets.shared
-        let done = runtime.ticked
         func f(_ key: String) -> [CGRect] { t.frame(key).map { [$0] } ?? [] }
-        /// The page between the circle and the tab bar: where a swipe starts.
+        /// The page between `top` and the tab bar: where a swipe starts.
         func swipeBand(from top: CGFloat?) -> [CGRect] {
             guard let bottom = t.frame("settingsTab")?.minY else { return [] }
             let y = (top ?? 140)
             return [CGRect(x: 0, y: y, width: 10_000, height: max(bottom - 8 - y, 0))]
         }
-        switch step {
-        case .circle: return f("circle")
-        case .list: return swipeBand(from: t.frame("circle").map { $0.maxY + 8 })
-        case .rowTime: return f("prayerRow.Maghrib")
-        case .mark: return done.contains(0) ? f("pill") : f("prayerDot.Asr") + f("circle")
-        case .fold: return f("doneFold")
-        case .markedRow: return f("prayerRow.Fajr")
-        case .edit: return done.contains(2) ? [] : f("prayerRow.Fajr")
-        case .undo: return f("prayerDot.Asr")
-        // The whole page under the top bar: the swipe hint sits above the circle (a tap on the circle there only
-        // flips its time; a hold is refused by `allows(marking:)`).
-        case .zikr: return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
-        case .settings: return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
-        case .colors, .qibla, .celebrate, .firstPill, .map, .hintMark: return []
+        switch (step, runtime.phase) {
+        case (.circle, .tryIt):
+            return f("circle") + (runtime.ticked.contains(2) ? swipeBand(from: t.frame("circle").map { $0.maxY + 8 }) : [])
+        case (.list, .tryIt):
+            let rows = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"].flatMap { f("prayerRow." + $0) }
+            return f("doneFold") + rows
+        case (.zikr, .go): return sharedState.horizontalPage == .main ? swipeBand(from: 120) : []
+        case (.settings, .go): return sharedState.horizontalPage == .settings ? [] : f("settingsTab")
+        default: return []
         }
     }
 
     private func onItsPage(_ step: TourStep) -> Bool {
         let page = sharedState.horizontalPage, list = sharedState.navPosition
-        switch step {
-        case .circle, .colors, .qibla: return page == .main && list == .main
-        case .list: return page == .main && (list == .main || runtime.ticked.contains(0))
-        case .rowTime, .mark, .fold, .markedRow, .edit, .undo, .hintMark: return page == .main && list == .bottom
-        case .zikr: return page == .main || page == .zikr
-        case .settings: return page == .zikr || page == .settings
-        case .celebrate, .firstPill, .map: return page == .main
+        switch (step, runtime.phase) {
+        case (.circle, _): return page == .main && (list == .main || runtime.ticked.contains(2))
+        case (.list, _): return page == .main && list == .bottom
+        case (.zikr, .go): return page == .main || page == .zikr
+        case (.zikr, _): return page == .zikr
+        case (.settings, .go): return page == .zikr || page == .settings
+        case (.settings, _): return page == .settings
+        case (.hintMark, _): return page == .main && list == .bottom
+        default: return page == .main
         }
     }
 }
@@ -1845,6 +2071,8 @@ enum PracticeClock {
 /// `openings` (global frames), where the touch reaches the app beneath. A touch it takes gets a light no.
 struct TourInputGuard: View {
     let openings: [CGRect]
+    /// A touch it took (owner: no buzz — the tour makes the thing to touch pulse instead).
+    var onBlocked: () -> Void = {}
 
     var body: some View {
         GeometryReader { geo in
@@ -1859,7 +2087,7 @@ struct TourInputGuard: View {
             }
             Color.clear
                 .contentShape(shape, eoFill: true)
-                .gesture(DragGesture(minimumDistance: 0).onEnded { _ in triggerSomeVibration(type: .light) })
+                .gesture(DragGesture(minimumDistance: 0).onEnded { _ in onBlocked() })
                 .accessibilityHidden(true)
         }
         .ignoresSafeArea()
@@ -2038,15 +2266,14 @@ struct TourSheetTip: View {
     private var runtime: TourRuntime { .shared }
 
     var body: some View {
-        let done = Set([runtime.ticked.contains(1) ? 0 : nil, runtime.ticked.contains(2) ? 1 : nil].compactMap { $0 })
         VStack(alignment: .leading, spacing: 8) {
-            Text("When did you really pray Fajr?")
+            Text("When did you really pray?")
                 .font(.system(.body, design: .rounded, weight: .regular))
-            Text("Drag the colour bar, or pick a time in the yellow. Then save.")
+            Text("Drag the colour bar or turn the wheel, then save. It\u{2019}s practice \u{2014} nothing is kept.")
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            TourChecklist(tasks: ["Set a time in the yellow", "Save"], ticked: done)
+            TourChecklist(tasks: ["Change the time, then save"], ticked: runtime.ticked.contains(3) ? [0] : [])
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)

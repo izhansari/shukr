@@ -248,7 +248,7 @@ struct SettingsView: View {
                 Form {
                     
                     //MARK: - Location Info
-                    Section(header: Text("Location")) {
+                    Section(header: Text("Location").id("settingsTop")) {
                         // (Latitude / longitude are gone: the city says it — owner, settings-cleanup-1.)
                         if envLocationManager.isAuthorized {
                             // One row: the city, when it was last updated, and the row itself refreshes it
@@ -387,9 +387,13 @@ struct SettingsView: View {
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
                     }
                     .id("tourAgainRow")
-                    // Once the page has come to rest (scrolling it mid-swipe stalled the pager — Sami's round D run).
-                    .onChange(of: TourRuntime.shared.step == .settings && CircleStage.shared.restingPage == .settings) { _, there in
-                        if there { withAnimation { proxy.scrollTo("tourAgainRow", anchor: .center) } }
+                    // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling
+                    // mid-swipe stalled the pager, Sami's round D run) — then this row for its last step.
+                    .onChange(of: TourRuntime.shared.settingsScroll.1) { _, _ in
+                        let to = TourRuntime.shared.settingsScroll.0
+                        withAnimation(.smooth(duration: CircleMotion.standard)) {
+                            proxy.scrollTo(to == .top ? "settingsTop" : "tourAgainRow", anchor: to == .top ? .top : .center)
+                        }
                     }
 
                     if betaAccess.available {
