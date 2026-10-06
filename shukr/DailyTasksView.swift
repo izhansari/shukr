@@ -466,8 +466,11 @@ struct ZikrCircleWheel: View {
     }
 
     /// Freestyle's zikr (the watch's "Pick a zikr"): tap → pick one; ✕ → just count. Glass, over the ring.
+    /// Centred and still: the glass chip on the wheel shows (else the frosted one on the circle).
+    private var freestyleChipOnWheel: Bool { centered == "freestyle" && !wheelMoving && !openingSoft }
+
     private var freestyleChip: some View {
-        let shown = centered == "freestyle" && !wheelMoving && !openingSoft
+        let shown = freestyleChipOnWheel
         return HStack(spacing: 8) {
             Button {
                 guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
@@ -513,6 +516,15 @@ struct ZikrCircleWheel: View {
         switch item {
         case .freestyle:
             ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full)
+                // While it moves (or sits off the middle) the chip rides on the circle, frosted — glass can't be shrunk
+                // and tilted (it became a blob); centred and still, the glass chip on the wheel takes over.
+                .overlay(alignment: .bottom) {
+                    FreestyleChipFace(label: freestylePick.isEmpty ? "Pick a zikr" : freestylePick, chosen: !freestylePick.isEmpty)
+                        .offset(y: 16)
+                        .opacity(freestyleChipOnWheel ? 0 : 1)
+                        .animation(.easeOut(duration: 0.2), value: freestyleChipOnWheel)
+                        .allowsHitTesting(false)
+                }
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
@@ -1325,6 +1337,26 @@ struct AddDailyTaskView: View {
             Spacer()
         }
 //        AddDailyTaskView(isPresented: $testBool, scrollProxy: UUID())
+    }
+}
+
+/// Freestyle's chip as it rides on its circle while the wheel moves: the same words, frosted (a material, which takes
+/// the wheel's shrink and tilt; glass doesn't).
+struct FreestyleChipFace: View {
+    let label: String
+    let chosen: Bool
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(label).lineLimit(1)
+            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
+        }
+        .font(.subheadline)
+        .fontDesign(.rounded)
+        .foregroundStyle(chosen ? Color.sage : Color.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 180)
+        .background(Capsule().fill(.ultraThinMaterial))
     }
 }
 

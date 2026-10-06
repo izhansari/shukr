@@ -555,6 +555,14 @@ struct WatchZikrPage: View {
                             // is the target.
                             Button { tapped(item, now: context.date) } label: {
                                 face(item, now: context.date)
+                                    // Freestyle's chip, frosted, riding on its circle while it moves or sits off the
+                                    // middle (glass can't take the wheel's shrink and tilt); the glass one takes over
+                                    // when it's centred and still.
+                                    .overlay(alignment: .bottom) {
+                                        if case .freestyle = item, !store.azkar.isEmpty {
+                                            FrostedChip(centered: $centered, moving: $wheelMoving).offset(y: 10)
+                                        }
+                                    }
                                     .frame(maxWidth: .infinity)
                                     .frame(height: rowHeight)
                                     .contentShape(Circle().inset(by: -6))
@@ -728,6 +736,29 @@ struct WatchZikrPage: View {
             .opacity(shown ? 1 : 0)
             .allowsHitTesting(shown)
             .animation(.easeOut(duration: 0.2), value: shown)
+        }
+    }
+
+    /// The chip's moving self: the same words on a material capsule.
+    private struct FrostedChip: View {
+        @Binding var centered: String?
+        @Binding var moving: Bool
+        @ObservedObject private var store = WatchZikrStore.shared
+
+        var body: some View {
+            let onWheel = centered == "freestyle" && !moving
+            HStack(spacing: 2) {
+                Text(store.freestylePick ?? "Pick a zikr").lineLimit(1).minimumScaleFactor(0.8)
+                Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
+            }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(store.freestylePick != nil ? Color.watchSage : Color.secondary)
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .frame(maxWidth: 88)
+            .background(Capsule().fill(.ultraThinMaterial))
+            .opacity(onWheel ? 0 : 1)
+            .animation(.easeOut(duration: 0.2), value: onWheel)
+            .allowsHitTesting(false)
         }
     }
 

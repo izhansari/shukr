@@ -415,14 +415,19 @@ struct WatchPrayerList: View {
     }
 
     private func timeLabel(_ p: WatchPrayer, flip: String?) -> some View {
+        // The phone's flip (ExternalToggleText): one text blurs out as the other blurs in — a cross-fade of two widths
+        // left a ghost (owner).
         Group {
-            if let flip, flipped.contains(p.name) { Text(flip) } else { Text(p.start, style: .time) }
+            if let flip, flipped.contains(p.name) {
+                Text(flip).transition(.blurReplace)
+            } else {
+                Text(p.start, style: .time).transition(.blurReplace)
+            }
         }
         .font(.system(size: WatchScreen.small ? 13 : 14, weight: .light, design: .rounded))
         .foregroundStyle(.secondary)
         .lineLimit(1)
         .fixedSize()
-        .contentTransition(.opacity)
     }
 
     /// The dot marks (owner: "only tapping the circle on the list item marks the prayer complete"): one that has
@@ -449,13 +454,26 @@ struct WatchPrayerList: View {
         }
     }
 
+    private static let futureDashes: StrokeStyle = {
+        let period = CGFloat.pi * (12 - 1.2) / 8
+        return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.18, period * 0.82])
+    }()
+
     private func row(_ p: WatchPrayer, done: Bool, score: Double?) -> some View {
         let future = now < p.start
         let edge = Color.secondary.opacity(future ? 0.2 : 0.5)
         let flip = flipText(p, future: future, done: done, score: score)
         return HStack(spacing: 0) {
             ZStack {
-                Circle().strokeBorder(edge, lineWidth: 1)
+                if future {
+                    // The phone's future ring (decision list-future-ring H): 8 short dashes, each 18 % of its period,
+                    // in the row's grey, fitted so the last doesn't run into the first.
+                    Circle()
+                        .inset(by: 0.6)
+                        .stroke(Color.secondary.opacity(0.6), style: Self.futureDashes)
+                } else {
+                    Circle().strokeBorder(edge, lineWidth: 1)
+                }
                 if done {
                     Circle().fill(WatchScoring.color(forScore: score ?? 0).opacity(0.35)).padding(1)
                 }
@@ -539,6 +557,14 @@ struct WatchPrayerRing: View {
     /// page redraws once a minute).
     private var untilText: String { Self.until(prayer.start, now: now) }
 
+    /// 2 on, 3.5 off, fitted to the ring: a whole number of them round it.
+    static func fittedDashes(diameter: CGFloat) -> StrokeStyle {
+        let period: CGFloat = 5.5
+        let circumference = CGFloat.pi * max(diameter, 1)
+        let fitted = circumference / max((circumference / period).rounded(), 1)
+        return StrokeStyle(lineWidth: 1.25, dash: [fitted * 2 / 5.5, fitted * 3.5 / 5.5])
+    }
+
     /// A prayer's last hour, still not marked: time left is the default and the tap flips to "ends …", staying there
     /// (the phone's PrayerTimeLine, `lastHourLeft`; owner: "in the last 60 minutes, it displays the time left").
     private var lastHour: Bool { current && prayer.end.timeIntervalSince(now) <= 60 * 60 }
@@ -554,7 +580,11 @@ struct WatchPrayerRing: View {
             // the same width with its own glow; a prayer still to come draws its dashes inside the band.
             WatchSoftBand(width: band)
             if !current {
-                Circle().stroke(Color.primary.opacity(0.45), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))
+                // The phone's fix (UpcomingTrack.style(diameter:)): a whole number of dashes round the ring, so the
+                // last doesn't run into the first at 3 o'clock.
+                GeometryReader { g in
+                    Circle().stroke(Color.primary.opacity(0.45), style: Self.fittedDashes(diameter: g.size.width))
+                }
             }
             // Holding to mark: the score arc itself swells and glows in its own colour (no green —
             // nothing may suggest a grade the prayer doesn't have; owner).
