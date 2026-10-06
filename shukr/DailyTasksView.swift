@@ -72,8 +72,6 @@ struct ZikrCircleWheel: View {
     @AppStorage("freestylePick") private var freestylePick = ""
     @State private var showFreestylePicker = false
     @State private var pickedMantra: MantraModel?
-    /// The wheel is scrolling: the Freestyle chip steps aside.
-    @State private var wheelMoving = false
     @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
     @Query private var storedSessions: [SessionDataModel]
     /// The tour's Zikr chapter shows its example tasks instead (TourExamples, Tour.swift): never saved, never started.
@@ -329,11 +327,6 @@ struct ZikrCircleWheel: View {
             .overlay(alignment: .leading) {   // left edge (owner)
                 scrubber(items).opacity(openingSoft ? 0 : 1).allowsHitTesting(!openingSoft)
             }
-            // Freestyle's zikr: a glass chip on the wheel, where the centred circle's bottom edge sits — not on the circle,
-            // whose shrink and tilt as it scrolls away turned the glass into a big blob (owner). Only while Freestyle is
-            // centred and the wheel is still.
-            .overlay { freestyleChip.offset(y: 100) }
-            .onScrollPhaseChange { _, phase in wheelMoving = phase != .idle }
             // Centre the focused circle on the SCREEN (owner): the page starts under the status
             // bar and runs to the bottom edge, so its own middle sits a little low. Shift the
             // whole wheel up by the difference (scroll snapping always centres in its own frame).
@@ -465,13 +458,9 @@ struct ZikrCircleWheel: View {
                               note: done ? nil : estimateNote(task, p))
     }
 
-    /// Freestyle's zikr (the watch's "Pick a zikr"): tap → pick one; ✕ → just count. Glass, over the ring.
-    /// Centred and still: the glass chip on the wheel shows (else the frosted one on the circle).
-    private var freestyleChipOnWheel: Bool { centered == "freestyle" && !wheelMoving && !openingSoft }
-
+    /// Freestyle's zikr (the watch's "Pick a zikr"): tap → pick one; ✕ → just count. Frosted, over the ring.
     private var freestyleChip: some View {
-        let shown = freestyleChipOnWheel
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             Button {
                 guard !TourRuntime.shared.active else { TourRuntime.shared.nudge(); return }
                 triggerSomeVibration(type: .light)
@@ -496,10 +485,8 @@ struct ZikrCircleWheel: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .frame(maxWidth: 180)
-        .pickChipGlass()
-        .opacity(shown ? 1 : 0)
-        .allowsHitTesting(shown)
-        .animation(.easeOut(duration: 0.2), value: shown)
+        .background(Capsule().fill(.ultraThinMaterial))
+        .opacity(openingSoft ? 0 : 1)
         .sheet(isPresented: $showFreestylePicker) {
             MantraPickerView(isPresented: $showFreestylePicker, selectedMantraObject: $pickedMantra)
         }
@@ -516,15 +503,9 @@ struct ZikrCircleWheel: View {
         switch item {
         case .freestyle:
             ZikrCircleFace(title: "Zikr", icon: "circle.hexagonpath", subtitle: "click to freestyle", ring: .full)
-                // While it moves (or sits off the middle) the chip rides on the circle, frosted — glass can't be shrunk
-                // and tilted (it became a blob); centred and still, the glass chip on the wheel takes over.
-                .overlay(alignment: .bottom) {
-                    FreestyleChipFace(label: freestylePick.isEmpty ? "Pick a zikr" : freestylePick, chosen: !freestylePick.isEmpty)
-                        .offset(y: 16)
-                        .opacity(freestyleChipOnWheel ? 0 : 1)
-                        .animation(.easeOut(duration: 0.2), value: freestyleChipOnWheel)
-                        .allowsHitTesting(false)
-                }
+                // Freestyle's zikr (the watch's "Pick a zikr"), frosted, on the circle's bottom edge — it moves with the
+                // circle (owner: glass broke under the wheel's shrink and tilt; "Frosted always, on the circle").
+                .overlay(alignment: .bottom) { freestyleChip.offset(y: 16) }
         case .add:
             ZikrCircleFace(title: "New task", icon: "plus", subtitle: "a daily goal", ring: .dashed)
         case .task(let task):
@@ -1337,36 +1318,5 @@ struct AddDailyTaskView: View {
             Spacer()
         }
 //        AddDailyTaskView(isPresented: $testBool, scrollProxy: UUID())
-    }
-}
-
-/// Freestyle's chip as it rides on its circle while the wheel moves: the same words, frosted (a material, which takes
-/// the wheel's shrink and tilt; glass doesn't).
-struct FreestyleChipFace: View {
-    let label: String
-    let chosen: Bool
-    var body: some View {
-        HStack(spacing: 4) {
-            Text(label).lineLimit(1)
-            Image(systemName: "chevron.right").font(.caption2.weight(.semibold))
-        }
-        .font(.subheadline)
-        .fontDesign(.rounded)
-        .foregroundStyle(chosen ? Color.sage : Color.secondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .frame(maxWidth: 180)
-        .background(Capsule().fill(.ultraThinMaterial))
-    }
-}
-
-private extension View {
-    /// Freestyle's chip: glass over the ring (the watch's look; owner: "with glass again"), a light material before iOS 26.
-    @ViewBuilder func pickChipGlass() -> some View {
-        if #available(iOS 26.0, *) {
-            glassEffect(.regular.interactive(), in: Capsule())
-        } else {
-            background(Capsule().fill(.ultraThinMaterial))
-        }
     }
 }

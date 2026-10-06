@@ -528,8 +528,6 @@ struct WatchZikrPage: View {
     /// The task the open session belongs to, so closing it can move on once it's done.
     @State private var sessionTaskID: String?
     @State private var showZikrPicker = false
-    /// The wheel is scrolling: the Freestyle chip steps aside.
-    @State private var wheelMoving = false
     private let rowHeight: CGFloat = 122
 
     private enum Item: Identifiable {
@@ -555,12 +553,12 @@ struct WatchZikrPage: View {
                             // is the target.
                             Button { tapped(item, now: context.date) } label: {
                                 face(item, now: context.date)
-                                    // Freestyle's chip, frosted, riding on its circle while it moves or sits off the
-                                    // middle (glass can't take the wheel's shrink and tilt); the glass one takes over
-                                    // when it's centred and still.
+                                    // Freestyle's zikr chip on its circle's bottom edge (owner, YGF3), frosted so it
+                                    // moves with the circle (glass broke under the wheel's shrink and tilt — owner:
+                                    // "Frosted always, on the circle").
                                     .overlay(alignment: .bottom) {
                                         if case .freestyle = item, !store.azkar.isEmpty {
-                                            FrostedChip(centered: $centered, moving: $wheelMoving).offset(y: 10)
+                                            FrostedChip { showZikrPicker = true }.offset(y: 10)
                                         }
                                     }
                                     .frame(maxWidth: .infinity)
@@ -580,10 +578,7 @@ struct WatchZikrPage: View {
                 .scrollPosition(id: $centered, anchor: .center)
                 // The wheel's feel, measured on a wrist (beta builds' log; `-watchPinchLogPrint` streams it): each
                 // offset with its time (gaps = dropped frames), the phases, where it settles.
-                .onScrollPhaseChange { old, new in
-                    WatchPinchLog.add("wheel phase \(old) → \(new)")
-                    wheelMoving = new != .idle
-                }
+                .onScrollPhaseChange { old, new in WatchPinchLog.add("wheel phase \(old) → \(new)") }
                 .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y } action: { _, y in
                     WatchPinchLog.add(String(format: "wheel y %.1f", y))
                 }
@@ -596,15 +591,6 @@ struct WatchZikrPage: View {
                 // in a minute of hard flicks on Laraib's watch).
                 .overlay(alignment: .leading) {
                     if items.count > 1 { Scrubber(items: items, centered: $centered, now: context.date) }
-                }
-                // Freestyle's zikr chip (owner, YGF3: on the bottom edge, not where a thumb aims to start): on the wheel,
-                // where the centred circle's edge sits — not on the circle, whose shrink and tilt turned the glass into
-                // a blob (owner). Only while Freestyle is centred and the wheel is still.
-                .overlay {
-                    if !store.azkar.isEmpty {
-                        FreestyleChip(centered: $centered, moving: $wheelMoving) { showZikrPicker = true }
-                            .offset(y: 56)
-                    }
                 }
                 .overlay(alignment: .bottom) {
                     if !store.hasData {
@@ -711,15 +697,13 @@ struct WatchZikrPage: View {
     /// One dot per circle, the centred one bigger, tasks done today sage (the phone's `scrubber`). A finger on them
     /// flies through the circles — a click for each one passed, and a pill beside the finger naming it; the Crown
     /// moves the wheel, and the dots follow.
-    /// The picked zikr (or "Pick a zikr"), glass; its own view, so the page never redraws for `centered`.
-    private struct FreestyleChip: View {
-        @Binding var centered: String?
-        @Binding var moving: Bool
+    /// The picked zikr (or "Pick a zikr") on a frosted capsule; tap → the picker. Its own view: the page never reads
+    /// the pick.
+    private struct FrostedChip: View {
         let action: () -> Void
         @ObservedObject private var store = WatchZikrStore.shared
 
         var body: some View {
-            let shown = centered == "freestyle" && !moving
             Button(action: action) {
                 HStack(spacing: 2) {
                     Text(store.freestylePick ?? "Pick a zikr").lineLimit(1).minimumScaleFactor(0.8)
@@ -729,36 +713,10 @@ struct WatchZikrPage: View {
                 .foregroundStyle(store.freestylePick != nil ? Color.watchSage : Color.secondary)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .frame(maxWidth: 88)
-                .watchGlassCapsule()
+                .background(Capsule().fill(.ultraThinMaterial))
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .opacity(shown ? 1 : 0)
-            .allowsHitTesting(shown)
-            .animation(.easeOut(duration: 0.2), value: shown)
-        }
-    }
-
-    /// The chip's moving self: the same words on a material capsule.
-    private struct FrostedChip: View {
-        @Binding var centered: String?
-        @Binding var moving: Bool
-        @ObservedObject private var store = WatchZikrStore.shared
-
-        var body: some View {
-            let onWheel = centered == "freestyle" && !moving
-            HStack(spacing: 2) {
-                Text(store.freestylePick ?? "Pick a zikr").lineLimit(1).minimumScaleFactor(0.8)
-                Image(systemName: "chevron.right").font(.system(size: 7, weight: .semibold))
-            }
-            .font(.system(size: 10, design: .rounded))
-            .foregroundStyle(store.freestylePick != nil ? Color.watchSage : Color.secondary)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .frame(maxWidth: 88)
-            .background(Capsule().fill(.ultraThinMaterial))
-            .opacity(onWheel ? 0 : 1)
-            .animation(.easeOut(duration: 0.2), value: onWheel)
-            .allowsHitTesting(false)
         }
     }
 
