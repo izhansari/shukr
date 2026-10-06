@@ -324,8 +324,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   Double Tap (30 s of pinches, an empty log) and no Crown turn — watchOS takes them to wake the screen (a continuous
   buzz), and counting resumes once it's on; `screen dimmed` / `bright` lines in the log. `-watchPinchLogPrint` + `devicectl … process launch --console` streams
   `WatchPinchLog` live; DEBUG `-demoWatchCrown`, `-watchScrollFingerTest`, `-demoWatchDoubleTapScroll`; Tasbih Fatimah; complications. No schema change; the watch never creates or edits tasks; `WatchScoring` mirrors `PrayerScoring`.
-- Salah list (`WatchPrayerList`): a row's tap marks / asks to unmark; its time has its own tap that flips it like the
-  phone's `timeTap` (to come: "in 2h 5m"; prayed: `WatchScoring.summary`; current / missed: no flip), back after
+- Salah list (`WatchPrayerList`): only the dot marks / asks to unmark (its own tap: 20 pt wide, the row's height);
+  anywhere else on the row flips the time like the phone's `timeTap`; times `.fixedSize()` (scaled to fit, they came
+  out different sizes) (to come: "in 2h 5m"; prayed: `WatchScoring.summary`; current / missed: no flip), back after
   `flipSeconds` 3 s; the ring's flip goes back after 3 s too. DEBUG `-demoWatchFlip "Fajr,Asr"`.
 - Qibla map (WatchQiblaMap.swift, ask watch-qibla-map): the ring's Qibla arrow has its own tap → a full-screen SwiftUI
   `Map`, the phone's qibla mode only (no Explore / prayers / mosques): north, then Qibla-up after 0.35 s, the camera a

@@ -350,17 +350,6 @@ struct WatchPrayerList: View {
                 if index > 0 { Divider().padding(.horizontal, 10) }
                 let isDone = done.contains(p.name)
                 row(p, done: isDone, score: scores[p.name])
-                    .contentShape(Rectangle())
-                    // Tap an outstanding prayer (started) → marked at once, with the moment + Undo.
-                    // Tap a done one → "Unmark X?".
-                    .onTapGesture {
-                        if isDone {
-                            WKInterfaceDevice.current().play(.click)
-                            unmarking = p
-                        } else if p.start <= now {
-                            WatchPrayerMarker.mark(p)
-                        }
-                    }
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
             if !done.isEmpty && !allDone {
@@ -418,30 +407,32 @@ struct WatchPrayerList: View {
         }
     }
 
-    /// The row's time; tapped (its own tap, before the row's mark / unmark), it flips for a prayer still to come or a
-    /// prayed one, with a click — owner: "clicking the prayer list times to toggle", like the phone.
-    @ViewBuilder
-    private func timeLabel(_ p: WatchPrayer, future: Bool, done: Bool, score: Double?) -> some View {
-        let flip: String? = future ? WatchPrayerRing.until(p.start, now: now)
-            : done ? score.map { WatchScoring.summary(forScore: $0) } : nil
-        let showFlip = flip != nil && flipped.contains(p.name)
-        let label = Group {
-            if showFlip, let flip { Text(flip) } else { Text(p.start, style: .time) }
+    /// The row's time, or what it flips to: a prayer still to come → "in 2h 5m", a prayed one → its grade and score
+    /// (the phone's PrayerButton `timeTap`); the current and missed ones don't flip. Never shrunk: every row's time the
+    /// same size (owner: "the first four are really small, and the last one is really big" — they were scaled to fit).
+    private func flipText(_ p: WatchPrayer, future: Bool, done: Bool, score: Double?) -> String? {
+        future ? WatchPrayerRing.until(p.start, now: now) : done ? score.map { WatchScoring.summary(forScore: $0) } : nil
+    }
+
+    private func timeLabel(_ p: WatchPrayer, flip: String?) -> some View {
+        Group {
+            if let flip, flipped.contains(p.name) { Text(flip) } else { Text(p.start, style: .time) }
         }
         .font(.system(size: WatchScreen.small ? 13 : 14, weight: .light, design: .rounded))
         .foregroundStyle(.secondary)
         .lineLimit(1)
-        .minimumScaleFactor(0.75)
+        .fixedSize()
         .contentTransition(.opacity)
-        if flip != nil {
-            label
-                .padding(.leading, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-                .padding(.vertical, -6)
-                .onTapGesture { flipTime(p.name) }
-        } else {
-            label
+    }
+
+    /// The dot marks (owner: "only tapping the circle on the list item marks the prayer complete"): one that has
+    /// started → marked at once, with the moment + Undo; a done one → "Unmark X?"; one still to come → nothing.
+    private func markTap(_ p: WatchPrayer, done: Bool) {
+        if done {
+            WKInterfaceDevice.current().play(.click)
+            unmarking = p
+        } else if p.start <= now {
+            WatchPrayerMarker.mark(p)
         }
     }
 
@@ -461,7 +452,8 @@ struct WatchPrayerList: View {
     private func row(_ p: WatchPrayer, done: Bool, score: Double?) -> some View {
         let future = now < p.start
         let edge = Color.secondary.opacity(future ? 0.2 : 0.5)
-        return HStack(spacing: 8) {
+        let flip = flipText(p, future: future, done: done, score: score)
+        return HStack(spacing: 0) {
             ZStack {
                 Circle().strokeBorder(edge, lineWidth: 1)
                 if done {
@@ -469,13 +461,24 @@ struct WatchPrayerList: View {
                 }
             }
             .frame(width: 12, height: 12)
+            // The dot's own tap: the dot and the gap to the name, the row's full height (as before: name at 20 pt).
+            .frame(width: 20, alignment: .leading)
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture { markTap(p, done: done) }
             Text(p.name)
                 .font(.system(size: WatchScreen.small ? 14 : 15, weight: .light, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer(minLength: 4)
-            timeLabel(p, future: future, done: done, score: score)
+            timeLabel(p, flip: flip)
         }
-        // Five rows + the "done" row fit one screen on 41 mm and up (no scrolling).
-        .padding(.vertical, WatchScreen.small ? 4.5 : 6)
+        // Five rows + the "done" row fit one screen on 41 mm and up (no scrolling): the text plus the old 4.5 / 6 pt
+        // padding above and below, as the row's height (so the dot's tap area is the row's whole height).
+        .frame(minHeight: WatchScreen.small ? 26 : 30)
+        // Anywhere else on the row flips the time, like the phone (only where there's something to flip to).
+        .contentShape(Rectangle())
+        .onTapGesture { if flip != nil { flipTime(p.name) } }
     }
 }
 
