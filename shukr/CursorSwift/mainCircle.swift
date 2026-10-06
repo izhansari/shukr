@@ -109,6 +109,15 @@ struct MainCircleView: View {
         return nil
     }
     /// The prayer the circle draws, if its face is a prayer.
+    /// Whether the clock moving to `next` changes the ring's colour (its grade, as `progressColor` reads it).
+    private func tickChangesColor(to next: Date) -> Bool {
+        guard let p = shownPrayer else { return false }
+        func grade(_ at: Date) -> PrayerScoring.Grade {
+            PrayerScoring.grade(for: PrayerScoring.score(start: p.startTime, end: p.endTime, markedAt: at))
+        }
+        return grade(currentTime) != grade(next)
+    }
+
     private var shownPrayer: PrayerModel? {
         if case .prayer(let p, _, _) = displayedFace ?? derivedFace { return p }
         return nil
@@ -523,7 +532,14 @@ struct MainCircleView: View {
         // timer was replaced before it ever fired: `currentTime` froze and a prayer that had started
         // showed an empty ring (owner, 2026-09-27: Isha 8:28 PM, empty; fixed by leaving the app).
         .onReceive(Self.ticker) { newTime in
-            currentTime = newTime
+            // A plain tick moves the arc a fraction of a pixel: no animation. Its spring (`animationStyle`) ran most of
+            // every second, so the idle page drew at the display's rate (idle-cpu). A tick into a new colour keeps it.
+            if tickChangesColor(to: newTime) {
+                currentTime = newTime
+            } else {
+                var still = Transaction(); still.disablesAnimations = true
+                withTransaction(still) { currentTime = newTime }
+            }
 //            prayer = viewModel.relevantPrayer
         }
     }
