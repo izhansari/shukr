@@ -583,7 +583,9 @@ struct WatchZikrPage: View {
                     }
                     .scrollTargetLayout()
                 }
-                .scrollTargetBehavior(.viewAligned)
+                // A flick glides on and settles on a circle (owner: "when I flick, it kind of just stops … at some
+                // item"): the default limit let one flick move only one item on a watch-sized screen.
+                .scrollTargetBehavior(.viewAligned(limitBehavior: .never))
                 .scrollPosition(id: $centered, anchor: .center)
                 .contentMargins(.vertical, max((geo.size.height - rowHeight) / 2, 0), for: .scrollContent)
                 .scrollIndicators(.hidden)
@@ -1600,6 +1602,7 @@ struct WatchSettingsPage: View {
     @AppStorage(WatchCountMode.key, store: WatchStore.defaults) private var countMode = WatchCountMode.touch.rawValue
     @AppStorage(WatchLookChoice.key, store: WatchStore.defaults) private var look = WatchLookChoice.sync.rawValue
     @State private var showHelp = false
+    @State private var showLookHelp = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1628,12 +1631,25 @@ struct WatchSettingsPage: View {
                 row("Count with", (WatchCountMode(rawValue: countMode) ?? .touch).short) {
                     countMode = (WatchCountMode(rawValue: countMode) ?? .touch).next.rawValue
                 }
-                Text("look")
-                    .font(.system(size: 10, design: .rounded))
-                    .tracking(1.2)
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                HStack {
+                    Text("look")
+                        .font(.system(size: 10, design: .rounded))
+                        .tracking(1.2)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // What each look means (owner: "we assume that the user understands from that one word").
+                    Button { showLookHelp = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 22)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("What each look means")
+                }
+                .padding(.top, 8)
                 // Light / Dark / Auto of its own, or the iPhone's (WatchLook).
                 row("Look", (WatchLookChoice(rawValue: look) ?? .sync).short) {
                     look = (WatchLookChoice(rawValue: look) ?? .sync).next.rawValue
@@ -1655,10 +1671,12 @@ struct WatchSettingsPage: View {
             let args = ProcessInfo.processInfo.arguments
             if args.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) }
             if args.contains("-watchSettingsHelp") { showHelp = true }
+            if args.contains("-watchLookHelp") { showLookHelp = true }
         }
         #endif
         }
         .sheet(isPresented: $showHelp) { WatchCountingHelp().watchLookRoot() }
+        .sheet(isPresented: $showLookHelp) { WatchLookHelp().watchLookRoot() }
     }
 
     /// One line: the setting, its value on the right; a tap steps to the next value.
@@ -1693,6 +1711,24 @@ struct WatchSettingsPage: View {
         }
         .buttonStyle(.plain)
         .accessibilityValue(value)
+    }
+}
+
+/// Look's ⓘ: each choice in a line.
+struct WatchLookHelp: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("iPhone — the same as shukr on your iPhone (Settings there)", systemImage: "iphone")
+                Label("Light — always light", systemImage: "sun.max")
+                Label("Dark — always dark", systemImage: "moon")
+                Label("Auto — follows the sun: light from sunrise, dark from Maghrib", systemImage: "sun.horizon")
+                Text("With your wrist down the watch always goes dark.")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.system(size: 12, design: .rounded))
+            .padding(.horizontal, 4)
+        }
     }
 }
 
