@@ -2036,9 +2036,6 @@ extension TourLayer {
         case .list: return TourTargets.shared.frame("prayerList")?.minY
         // Marked: over the circle, so the swipe up has the page under it (the bubble there took the touches).
         case .circle where runtime.ticked.contains(2): return TourTargets.shared.frame("circle").map { $0.minY - 10 }
-        // Swipe right: over the circle too, the swipe's thumbprint under it in the clear.
-        case .zikr where runtime.phase == .go && sharedState.horizontalPage == .main:
-            return TourTargets.shared.frame("circle").map { $0.minY - 10 }
         // Over the wheel: the tasks line under it is one of the things it talks about.
         case .zikr where runtime.phase == .learn: return TourTargets.shared.frame("zikrCircle").map { $0.minY - 10 }
         default: return nil
@@ -2071,7 +2068,8 @@ extension TourLayer {
             return nil
         case (.zikr, .go):
             guard sharedState.horizontalPage == .main, let c = circle else { return nil }
-            return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.maxY + 70))
+            // Across the circle: the bubble sits under it (no room above once the list's rows show).
+            return .init(kind: .swipe(dx: 170, dy: 0), at: CGPoint(x: c.minX - 20, y: c.midY))
         case (.settings, .go):
             guard sharedState.horizontalPage != .settings else { return nil }
             return mid(t.frame("settingsTab")).map { .init(kind: .tap, at: $0) }
