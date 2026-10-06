@@ -461,7 +461,7 @@ struct ZikrCircleWheel: View {
             face(for: task)
                 .overlay(alignment: .top) {
                     // The tour's example tasks say so (owner: "make it clear that these are not real tasks").
-                    if example { NextTag(label: "example").padding(.top, 52) }
+                    if example { NextTag(label: TourCopy.Zikr.exampleTag).padding(.top, 52) }
                 }
                 .contentShape(.contextMenuPreview, Circle())
                 .contextMenu {

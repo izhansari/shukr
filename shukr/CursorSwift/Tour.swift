@@ -24,10 +24,10 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// A card's chapter title, led by its number in the bubble (owner).
     var chapterTitle: String {
         switch self {
-        case .circle: "Prayer Circle"
-        case .list: "Prayer List"
-        case .zikr: "Zikr"
-        case .settings: "Settings"
+        case .circle: TourCopy.Circle.title
+        case .list: TourCopy.List.title
+        case .zikr: TourCopy.Zikr.title
+        case .settings: TourCopy.Settings.title
         default: ""
         }
     }
@@ -35,19 +35,19 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The post-tour steps' words (the cards' own are TourRuntime.page).
     var headline: String {
         switch self {
-        case .celebrate: "Your first prayer, marked."
-        case .firstPill: "Tasbih Fatimah, after every prayer."
-        case .map: "See where you prayed"
-        case .hintMark: "Tap the dot"
+        case .celebrate: TourCopy.AfterTour.celebrateTitle
+        case .firstPill: TourCopy.AfterTour.pillTitle
+        case .map: TourCopy.AfterTour.mapTitle
+        case .hintMark: TourCopy.AfterTour.markTitle
         default: ""
         }
     }
     var subline: String {
         switch self {
-        case .celebrate: "May there be many more."
-        case .firstPill: "Each time you mark a prayer, this comes up for a little while \u{2014} 33\u{00A0}\u{00B7}\u{00A0}33\u{00A0}\u{00B7}\u{00A0}34, if you\u{2019}d like to say it. Tap it now."
-        case .map: "Every prayer you mark is on the map, under Explore → Prayers."
-        case .hintMark: "to mark it prayed. Hold it to change the time."
+        case .celebrate: TourCopy.AfterTour.celebrateLine
+        case .firstPill: TourCopy.AfterTour.pillLine
+        case .map: TourCopy.AfterTour.mapLine
+        case .hintMark: TourCopy.AfterTour.markLine
         default: ""
         }
     }
@@ -75,14 +75,14 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The post-tour steps' to-dos and insights (the cards' own are TourRuntime.page).
     var tasks: [String] {
         switch self {
-        case .firstPill: ["Tap \u{201C}Post-salah tasbih\u{201D}"]
-        case .map: ["Tap the arrow on the circle"]
+        case .firstPill: [TourCopy.AfterTour.pillTodo]
+        case .map: [TourCopy.AfterTour.mapTodo]
         default: []
         }
     }
     var insight: (String, String)? {
         switch self {
-        case .firstPill: ("It\u{2019}ll be there after every prayer.", "Mark a prayer and it comes up. \u{2715} when you\u{2019}d rather not.")
+        case .firstPill: (TourCopy.AfterTour.pillDoneTitle, TourCopy.AfterTour.pillDoneLine)
         default: nil
         }
     }
@@ -348,6 +348,9 @@ private struct TourBubblePlacement: Layout {
     var avoid: CGRect? = nil
     /// The highest the bubble goes: under Skip tour during the tour (Sami: card 9's payoff covered it).
     var topLimit: CGFloat = 64
+    /// It may move to its target's other side when it doesn't fit; never while a finished step is open again — it
+    /// grows where it is (owner: opening Try it sent it from over the circle to under it).
+    var mayFlip = true
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         proposal.replacingUnspecifiedDimensions()
@@ -362,7 +365,7 @@ private struct TourBubblePlacement: Layout {
         let top = topLimit + h / 2, bottom = bounds.height - 24 - h / 2
         func clamp(_ y: CGFloat) -> CGFloat { bottom > top ? min(max(y, top), bottom) : bounds.height / 2 }
         var y = clamp(wanted)
-        if let avoid, avoid.intersects(CGRect(x: 0, y: y - h / 2, width: bounds.width, height: h)) {
+        if mayFlip, let avoid, avoid.intersects(CGRect(x: 0, y: y - h / 2, width: bounds.width, height: h)) {
             // Its other side, if that's clear: under the target, else over it.
             let options = [avoid.maxY + 14 + h / 2, avoid.minY - 14 - h / 2].map(clamp)
             if let clear = options.first(where: { !avoid.intersects(CGRect(x: 0, y: $0 - h / 2, width: bounds.width, height: h)) }) {
@@ -438,7 +441,7 @@ struct TourCallout: View {
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
                                 // Nothing to point at (Settings' learn): low, clear of what it talks about.
                                 fallbackY: step == .settings ? size.height : size.height * 0.6, avoid: hole,
-                                topLimit: typeSize.isAccessibilitySize ? 158 : 112) {
+                                topLimit: typeSize.isAccessibilitySize ? 158 : 112, mayFlip: openSection == nil) {
                 bubble(below: below, tail: tail)
                     .frame(width: width)
                     .dynamicTypeSize(...DynamicTypeSize.xxxLarge)   // taller couldn't clear its target (Sami, AX XXXL)
@@ -486,7 +489,8 @@ struct TourCallout: View {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .tint(TourInk.green)   // never the system blue
         .accessibilityElement(children: .contain)
-        .tourBubble(BubbleShape(tailUp: below, tailOffset: tail, tailScale: hole == nil && aboveY == nil ? 0 : 1), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
+        // No tail (owner: "a complete rounded rectangle, no pointy").
+        .tourBubble(BubbleShape(tailUp: below, tailOffset: tail, tailScale: 0), look: TourBubbleLook(rawValue: lookRaw) ?? .glass,
                     scheme: scheme, backdrop: theme.backdrop)
     }
 }
@@ -525,7 +529,7 @@ struct TourPageView: View {
                 }
             }
             if qiblaSkip {
-                Button("No compass here? Skip it", action: onSkipQibla)
+                Button(TourCopy.Circle.noCompass, action: onSkipQibla)
                     .buttonStyle(.plain)
                     .font(.system(.footnote, design: .rounded, weight: .regular))
                     .foregroundStyle(Color.primary.opacity(0.6))
@@ -1402,11 +1406,8 @@ struct BubbleShape: Shape {
     /// The owner's words for the circle (2026-10-05), as he laid them out.
     static let circleBlocks = [
         // When → what it shows (owner's words, 2026-10-05): the situation, an arrow, the prayer.
-        TourBlock(lead: "It shows the prayer that matters to you:",
-                  items: ["during a prayer?|the current one", "already prayed?|the upcoming one",
-                          "end of the day?|any you missed"], pairs: true),
-        TourBlock(lead: "The ring fills with different colors based on how much time passes:",
-                  items: ["First 30 min", "On time", "Late"], colours: true),
+        TourBlock(lead: TourCopy.Circle.showsLead, items: TourCopy.Circle.situations, pairs: true),
+        TourBlock(lead: TourCopy.Circle.coloursLead, items: TourCopy.Circle.colours, colours: true),
     ]
 
     /// A chapter's page: its number and title, how far through it, its steps (the finished ones first).
@@ -1425,28 +1426,23 @@ struct BubbleShape: Shape {
             // Before the chapters: how the tour goes (owner). No greeting — the setup has said welcome, salam and
             // Bismillah already; this just begins (owner: "just make it say Bismillah. Let's take a quick look around").
             let intro = TourSection(id: "intro",
-                                    blocks: [TourBlock(items: ["Prayer Circle|the prayer that matters now",
-                                                               "Prayer List|your whole day",
-                                                               "Zikr|your daily remembrance",
-                                                               "Settings|make it yours"], numbered: true)],
-                                    note: "A quick look at each, then you try it. It\u{2019}s a practice day \u{2014} nothing here is kept.",
+                                    blocks: [TourBlock(items: TourCopy.Welcome.chapters, numbered: true)],
+                                    note: TourCopy.Welcome.footnote,
                                     quietNote: true)
-            return TourPage(headline: "Bismillah", subline: "Let\u{2019}s take a quick look around.", sections: [intro],
-                            primary: "Let\u{2019}s begin")
+            return TourPage(headline: TourCopy.Welcome.title, subline: TourCopy.Welcome.line, sections: [intro],
+                            primary: TourCopy.Welcome.button)
         case .circle:
-            var shows = TourSection(id: "circle.shows", title: "What it shows", blocks: [Self.circleBlocks[0]])
-            var colours = TourSection(id: "circle.colours", title: "The colours", blocks: [Self.circleBlocks[1]])
-            var tryIt = TourSection(id: "circle.try", title: "Try it",
-                                    tasks: ["Tap the circle to flip its time", "Turn until the qibla arrow points up",
-                                            "Hold the circle to mark Asr"])
+            var shows = TourSection(id: "circle.shows", title: TourCopy.Circle.showsStep, blocks: [Self.circleBlocks[0]])
+            var colours = TourSection(id: "circle.colours", title: TourCopy.Circle.coloursStep, blocks: [Self.circleBlocks[1]])
+            var tryIt = TourSection(id: "circle.try", title: TourCopy.tryIt, tasks: TourCopy.Circle.todos)
             switch phase {
             case .learn:
-                return chapter(.circle, 0, of: 5, [shows], primary: "Continue")
+                return chapter(.circle, 0, of: 5, [shows], primary: TourCopy.continueButton)
             case .learnMore:
                 shows.done = true
                 return chapter(.circle, 1, of: 5, [shows, colours],
-                               primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
-                               secondary: sweepPlayed && !sweeping ? "Play again" : nil)
+                               primary: sweeping ? nil : (sweepPlayed ? TourCopy.continueButton : TourCopy.Circle.seeItInAction),
+                               secondary: sweepPlayed && !sweeping ? TourCopy.Circle.playAgain : nil)
             default:
                 shows.done = true
                 colours.done = true
@@ -1457,71 +1453,56 @@ struct BubbleShape: Shape {
                 // under it free for the swipe.
                 tryIt.done = true
                 let payoff = TourSection(id: "circle.marked",
-                                         note: "Marked and saved \u{2014} Asr is in your prayer list now. Swipe up to see it.")
+                                         note: TourCopy.Circle.marked)
                 return chapter(.circle, 5, of: 5, [shows, colours, tryIt, payoff], locked: lockedCircle)
             }
         case .list:
             // Two short steps (owner: the first was still too long), one line a bullet.
-            var shows = TourSection(id: "list.shows", title: "What it shows",
+            var shows = TourSection(id: "list.shows", title: TourCopy.List.showsStep,
                                     // Marked ones tuck away — said with how to get them back (owner: "only unmarked ones are
                                     // shown" alone sounded like losing them).
-                                    blocks: [TourBlock(items: ["your day\u{2019}s prayers and their times",
-                                                               "coming ones greyed, with time until",
-                                                               "marked ones show your time and score",
-                                                               "marked ones tuck below, one tap away"])])
-            var can = TourSection(id: "list.can", title: "What you can do",
+                                    blocks: [TourBlock(items: TourCopy.List.shows)])
+            var can = TourSection(id: "list.can", title: TourCopy.List.canStep,
                                   // What, not how (owner): the gestures are the to-dos' job.
-                                  blocks: [TourBlock(items: ["complete a prayer, or undo it",
-                                                             "edit when and where you prayed",
-                                                             "see how well you\u{2019}re praying today"])])
-            guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: "Continue") }
+                                  blocks: [TourBlock(items: TourCopy.List.can)])
+            guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: TourCopy.continueButton) }
             shows.done = true
-            guard phase != .learnMore else { return chapter(.list, 1, of: 6, [shows, can], primary: "Continue") }
+            guard phase != .learnMore else { return chapter(.list, 1, of: 6, [shows, can], primary: TourCopy.continueButton) }
             can.done = true
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
-            let tryIt = TourSection(id: "list.try", title: "Try it",
+            let tryIt = TourSection(id: "list.try", title: TourCopy.tryIt,
                                     // The ones they can do now first, the waiting (greyed) ones after (owner).
-                                    tasks: ["Tap a coming prayer for the time until",
-                                            "Unfold to see all your prayers",
-                                            "Tap a marked prayer for its score",
-                                            "Hold a marked one, change its time, save"],
-                                    note: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil)
+                                    tasks: TourCopy.List.todos,
+                                    note: all ? TourCopy.List.allDone : nil)
             return chapter(.list, 2 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 6, [shows, can, tryIt],
-                           locked: lockedList, primary: all ? "Continue" : nil)
+                           locked: lockedList, primary: all ? TourCopy.continueButton : nil)
         case .zikr:
-            var there = TourSection(id: "zikr.go", title: "Get there", lead: "It\u{2019}s one page over.", tasks: ["Swipe right"])
+            var there = TourSection(id: "zikr.go", title: TourCopy.getThere, lead: TourCopy.Zikr.getThereLead,
+                                    tasks: [TourCopy.Zikr.getThereTodo])
             guard phase != .go else { return chapter(.zikr, 0, of: 4, [there]) }
             there.done = true
             // Example tasks on the wheel (TourExamples), said so (owner: "not real tasks … just example tasks").
-            var page = TourSection(id: "zikr.shows", title: "On this page",
-                                   lead: "The tasks here are examples.",
-                                   blocks: [TourBlock(items: ["your tasks on the wheel, freestyle first",
-                                                              "History top left, Azkar top right",
-                                                              "under it: tasks done and time left"])])
-            guard phase != .learn else { return chapter(.zikr, 1, of: 4, [there, page], primary: "Continue") }
+            var page = TourSection(id: "zikr.shows", title: TourCopy.Zikr.pageStep, lead: TourCopy.Zikr.pageLead,
+                                   blocks: [TourBlock(items: TourCopy.Zikr.page)])
+            guard phase != .learn else { return chapter(.zikr, 1, of: 4, [there, page], primary: TourCopy.continueButton) }
             page.done = true
             let all = ticked.isSuperset(of: [0, 1])
             // Done: the to-dos fold to their ✓ line (as the circle's do), so the bubble stays over the wheel.
-            let tryIt = TourSection(id: "zikr.try", title: "Try it", done: all,
-                                    tasks: ["Scroll the wheel", "Hold a task, then pick an option"])
-            let after = TourSection(id: "zikr.after",
-                                    note: "On your own tasks, that\u{2019}s how you edit or delete them.")
+            let tryIt = TourSection(id: "zikr.try", title: TourCopy.tryIt, done: all, tasks: TourCopy.Zikr.todos)
+            let after = TourSection(id: "zikr.after", note: TourCopy.Zikr.allDone)
             return chapter(.zikr, 2 + Double(ticked.intersection([0, 1]).count), of: 4,
-                           [there, page, tryIt] + (all ? [after] : []), primary: all ? "Continue" : nil)
+                           [there, page, tryIt] + (all ? [after] : []), primary: all ? TourCopy.continueButton : nil)
         case .settings:
-            var there = TourSection(id: "settings.go", title: "Get there", lead: "One tap away.", tasks: ["Tap Settings"])
+            var there = TourSection(id: "settings.go", title: TourCopy.getThere, lead: TourCopy.Settings.getThereLead,
+                                    tasks: [TourCopy.Settings.getThereTodo])
             guard phase != .go else { return chapter(.settings, 0, of: 2, [there]) }
             there.done = true
-            var here = TourSection(id: "settings.shows", title: "What you set here",
-                                   blocks: [TourBlock(items: ["your location and how prayer times are worked out",
-                                                              "a reminder for each prayer",
-                                                              "the Fajr alarm",
-                                                              "how shukr looks"])])
-            guard phase == .last else { return chapter(.settings, 1, of: 2, [there, here], primary: "Continue") }
+            var here = TourSection(id: "settings.shows", title: TourCopy.Settings.hereStep,
+                                   blocks: [TourBlock(items: TourCopy.Settings.here)])
+            guard phase == .last else { return chapter(.settings, 1, of: 2, [there, here], primary: TourCopy.continueButton) }
             here.done = true
-            let again = TourSection(id: "settings.again", title: "This tour",
-                                    note: "It lives here: tap \u{201C}Show me around again\u{201D} any time.")
-            return chapter(.settings, 2, of: 2, [there, here, again], primary: "Done")
+            let again = TourSection(id: "settings.again", title: TourCopy.Settings.lastStep, note: TourCopy.Settings.last)
+            return chapter(.settings, 2, of: 2, [there, here, again], primary: TourCopy.Settings.doneButton)
         default:
             return TourPage(headline: step?.headline ?? "")
         }
@@ -1754,7 +1735,7 @@ struct BubbleShape: Shape {
         case (.circle, .learnMore, .demo): playColors(run: run)
         case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
         case (.circle, .learnMore, .next) where !sweeping: playColors(run: run)   // "See it in action"
-        case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
+        case (.circle, .tryIt, .circleTapped): tick(0)   // no glow on the time words (owner)
         case (.circle, .tryIt, .qiblaAligned): tick(1, flash: "qiblaArrow")
         case (.circle, .tryIt, .skipQibla): tick(1)
         case (.circle, .tryIt, .marked(let prayer, _)):
@@ -1928,7 +1909,7 @@ struct TourLayer: View {
             }
             .transition(.asymmetric(insertion: .identity, removal: .opacity))
             .onAppear {
-                AccessibilityNotification.Announcement("Want a quick look around? Two minutes, on a practice prayer.").post()
+                AccessibilityNotification.Announcement(TourCopy.Invite.title).post()
             }
         }
     }
@@ -2105,13 +2086,13 @@ extension TourLayer {
     private func page(_ step: TourStep) -> TourPage {
         if step.isTourPage { return runtime.page }
         switch step {
-        case .celebrate: return TourPage(headline: step.headline, subline: step.subline, primary: "Continue")
+        case .celebrate: return TourPage(headline: step.headline, subline: step.subline, primary: TourCopy.continueButton)
         case .firstPill:
             return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks,
                             insight: runtime.insight ? step.insight.map { $0.0 + " " + $0.1 } : nil,
-                            primary: runtime.insight ? "Continue" : nil)
-        case .map: return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks, primary: "Got it")
-        default: return TourPage(headline: step.headline, subline: step.subline, primary: "Got it")
+                            primary: runtime.insight ? TourCopy.continueButton : nil)
+        case .map: return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks, primary: TourCopy.AfterTour.gotIt)
+        default: return TourPage(headline: step.headline, subline: step.subline, primary: TourCopy.AfterTour.gotIt)
         }
     }
 
@@ -2450,28 +2431,35 @@ struct TourSkipButton: View {
     @State private var shown = false
     @State private var armed = false
     @State private var token = 0
+    /// The words, out while the capsule changes (out, then in — the two labels never cross).
+    @State private var wordsAway = false
 
     var body: some View {
         // One capsule whose words and colour change, with its own tap: what's drawn is what takes the tap (as a system
         // Button, the armed capsule's left part took no tap — Sami, Frank).
+        // Armed: a green edge and green words, grown into (owner: "animate when it changes states … a green border").
         HStack(spacing: 5) {
             if armed {
                 Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
             }
-            Text(armed ? "Tap again to skip" : "Skip tour")
+            Text(armed ? TourCopy.Skip.confirm : TourCopy.Skip.button)
                 .font(.system(.footnote, design: .rounded, weight: armed ? .semibold : .medium))
         }
-        .foregroundStyle(armed ? Color.white : Color.primary.opacity(0.6))
+        .opacity(wordsAway ? 0 : 1)
+        .foregroundStyle(armed ? TourInk.green : Color.primary.opacity(0.6))
         .padding(.horizontal, 14)
         .frame(height: 32)
-        .background(Capsule().fill(armed ? Color.sage : Color.primary.opacity(0.06)))
+        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .overlay(Capsule().strokeBorder(TourInk.green, lineWidth: 1.5).opacity(armed ? 1 : 0))
         .fixedSize()
+        .animation(.smooth(duration: CircleMotion.quick), value: armed)
         .contentShape(Capsule())
         .onTapGesture(perform: tap)
         .opacity(shown ? 1 : 0)
         .task { withAnimation(.easeOut(duration: CircleMotion.quick)) { shown = true } }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(armed ? "Tap again to skip the tour" : "Skip tour")
+        .accessibilityLabel(armed ? TourCopy.Skip.confirm : TourCopy.Skip.button)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, tap)
     }
@@ -2485,9 +2473,20 @@ struct TourSkipButton: View {
             triggerSomeVibration(type: .light)
             token += 1
             let mine = token
-            armed = true
+            change(to: true)
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {   // an input timeout, not a motion
-                if mine == token { armed = false }
+                if mine == token { change(to: false) }
+            }
+        }
+    }
+
+    /// Out, then in: the words fade, the capsule grows (or shrinks) and turns, the new words fade in.
+    private func change(to on: Bool) {
+        withAnimation(.easeOut(duration: 0.1)) { wordsAway = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            armed = on   // the capsule's own animation (CircleMotion.quick)
+            DispatchQueue.main.asyncAfter(deadline: .now() + CircleMotion.quick * 0.6) {
+                withAnimation(.easeIn(duration: 0.15)) { wordsAway = false }
             }
         }
     }
@@ -2502,9 +2501,9 @@ struct TourSkippedNote: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("You skipped the tour")
+            Text(TourCopy.Skip.skippedTitle)
                 .font(.system(.subheadline, design: .rounded, weight: .medium))
-            Text("It\u{2019}s in the \u{2630} menu whenever you want it.")
+            Text(TourCopy.Skip.skippedLine)
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -2535,15 +2534,15 @@ struct TourInviteCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Want a quick look around?")
+                Text(TourCopy.Invite.title)
                     .font(.system(.body, design: .rounded, weight: .regular))
-                Text("Two minutes, on a practice prayer — nothing you do here is saved. You can run it again any time from Settings.")
+                Text(TourCopy.Invite.line)
                     .font(.system(.subheadline, design: .rounded, weight: .light))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack {
-                Button("Later", action: onLater)
+                Button(TourCopy.Invite.later, action: onLater)
                     .buttonStyle(.plain)
                     .font(.system(.footnote, design: .rounded, weight: .regular))
                     .foregroundStyle(Color(.secondaryLabel))
@@ -2551,7 +2550,7 @@ struct TourInviteCard: View {
                     .contentShape(Rectangle())
                 Spacer()
                 Button(action: onShow) {
-                    Text("Show me")
+                    Text(TourCopy.Invite.showMe)
                         .font(.system(.subheadline, design: .rounded, weight: .medium))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 18)
@@ -2594,7 +2593,7 @@ struct BackToTourPill: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Text("Back to the tour")
+                Text(TourCopy.backToTour)
                 Image(systemName: "chevron.right").font(.footnote.weight(.semibold))
             }
             .font(.system(.subheadline, design: .rounded, weight: .medium))
@@ -2614,13 +2613,13 @@ struct TourSheetTip: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("When did you really pray?")
+            Text(TourCopy.List.editorTitle)
                 .font(.system(.body, design: .rounded, weight: .regular))
-            Text("Drag the colour bar or turn the wheel, then save. It\u{2019}s practice \u{2014} nothing is kept.")
+            Text(TourCopy.List.editorLine)
                 .font(.system(.subheadline, design: .rounded, weight: .light))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            TourChecklist(tasks: ["Change the time, then save"], ticked: runtime.ticked.contains(3) ? [0] : [])
+            TourChecklist(tasks: [TourCopy.List.editorTodo], ticked: runtime.ticked.contains(3) ? [0] : [])
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2657,7 +2656,7 @@ struct TourMenuRow: View {
         if !completed {
             Button(action: action) {
                 Label {
-                    Text("App Tour")
+                    Text(TourCopy.menuRow)
                 } icon: {
                     Image(systemName: "sparkles")
                         .overlay(alignment: .topTrailing) {
