@@ -1603,6 +1603,7 @@ struct WatchSettingsPage: View {
     @AppStorage(WatchLookChoice.key, store: WatchStore.defaults) private var look = WatchLookChoice.sync.rawValue
     @State private var showHelp = false
     @State private var showLookHelp = false
+    @State private var showHaptics = false
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1655,6 +1656,16 @@ struct WatchSettingsPage: View {
                     look = (WatchLookChoice(rawValue: look) ?? .sync).next.rawValue
                     WatchLook.shared.refresh()
                 }
+                if WatchBeta.on {
+                    // Every haptic the watch can play, to feel before choosing a session's (owner; beta only).
+                    Text("testing")
+                        .font(.system(size: 10, design: .rounded))
+                        .tracking(1.2)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 8)
+                    row("Haptics lab", "14") { showHaptics = true }
+                }
                 // The build on this watch, like the phone's line (owner: tell a fresh install apart).
                 Text(WatchBuildInfo.line)
                     .font(.system(size: 9, design: .rounded))
@@ -1672,11 +1683,13 @@ struct WatchSettingsPage: View {
             if args.contains("-watchSettingsBottom") { proxy.scrollTo("bottom", anchor: .bottom) }
             if args.contains("-watchSettingsHelp") { showHelp = true }
             if args.contains("-watchLookHelp") { showLookHelp = true }
+            if args.contains("-watchHapticsLab") { showHaptics = true }
         }
         #endif
         }
         .sheet(isPresented: $showHelp) { WatchCountingHelp().watchLookRoot() }
         .sheet(isPresented: $showLookHelp) { WatchLookHelp().watchLookRoot() }
+        .sheet(isPresented: $showHaptics) { NavigationStack { WatchHapticsLab() }.watchLookRoot() }
     }
 
     /// One line: the setting, its value on the right; a tap steps to the next value.
