@@ -436,8 +436,9 @@ struct TourCallout: View {
             // What just changed: a soft glow round it, once (owner: "give attention to the areas being changed").
             if let flash { ChangeGlow(frame: flash, token: flashes).id(flashes) }
             // A touch that wasn't let through: the thing to touch pulses (no buzz — owner).
-            if let hole, nudges > 0 { TargetPulse(frame: hole, round: step.roundHole).id("pulse\(nudges)") }
-            // Where to touch, and how: a grey thumbprint beside the thing that changes.
+            // A touch the tour didn't let through: nothing shows (user testing, 2026-10-06 — the pulse round the target
+            // read as "tap here"; no buzz either).
+            // Where to touch, and how: a grey thumbprint on the thing to touch (user testing: beside it misled).
             if let hint { TouchHint(spec: hint).transition(.opacity) }
             // Measured and placed in one layout pass (`TourBubblePlacement`).
             TourBubblePlacement(edge: bubbleEdge(below: below), below: aboveY != nil ? false : below,
@@ -2146,15 +2147,15 @@ extension TourLayer {
         switch (step, runtime.phase) {
         case (.circle, .tryIt):
             guard let c = circle else { return nil }
-            // The tap low on the ring, clear of the words that flip; the hold in the middle (the whole circle changes).
-            if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
+            // On the thing to touch, not beside it (user testing, 2026-10-06: beside it misled).
+            if next(0) { return .init(kind: .tap, at: CGPoint(x: c.midX, y: c.midY)) }
             if next(1) { return nil }   // turning the phone: no touch
-            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
+            if next(2) { return .init(kind: .hold, at: CGPoint(x: c.midX, y: c.midY)) }
             if next(3) { return t.frame("chevron").map { .init(kind: .swipe(dx: 0, dy: -100), at: CGPoint(x: $0.midX, y: $0.minY - 40)) } }
             return nil
         case (.list, .tryIt):
             if next(0) { return time("Maghrib").map { .init(kind: .tap, at: $0) } }
-            if next(1) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: CGPoint(x: $0.x + 60, y: $0.y)) } }
+            if next(1) { return mid(t.frame("doneFold")).map { .init(kind: .tap, at: $0) } }   // on "3 done"
             if next(2) { return time("Fajr").map { .init(kind: .tap, at: $0) } }
             if next(3) { return t.frame("prayerRow.Fajr").map { .init(kind: .hold, at: CGPoint(x: $0.midX, y: $0.midY)) } }
             return nil
@@ -2162,7 +2163,7 @@ extension TourLayer {
             guard let c = t.frame("zikrSlot") else { return nil }
             // Up the wheel beside the circle; then a hold on it.
             if next(0) { return .init(kind: .swipe(dx: 0, dy: -110), at: CGPoint(x: c.maxX - 10, y: c.maxY + 30)) }
-            if next(1) { return .init(kind: .hold, at: CGPoint(x: c.midX + c.width * 0.3, y: c.midY + c.height * 0.3)) }
+            if next(1) { return .init(kind: .hold, at: CGPoint(x: c.midX, y: c.midY)) }
             return nil
         case (.zikr, .go):
             guard sharedState.horizontalPage == .main, let c = circle else { return nil }
@@ -2174,7 +2175,7 @@ extension TourLayer {
         case (.map, _):
             return circle.map { .init(kind: .tap, at: CGPoint(x: $0.midX + $0.width * 0.315, y: $0.midY - $0.height * 0.235)) }
         case (.firstPill, _):
-            return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.midX - 20, y: $0.midY)) }
+            return t.frame("pill").map { .init(kind: .tap, at: CGPoint(x: $0.midX, y: $0.midY)) }
         default: return nil
         }
     }
