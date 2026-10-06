@@ -104,6 +104,8 @@ struct TourBlock: Equatable {
     var colours = false
     /// Numbered instead of dotted (the welcome's four chapters).
     var numbered = false
+    /// "situation|what happens" each: the two in columns with an arrow between (the circle's "what it shows").
+    var pairs = false
 }
 
 /// One step of a chapter (owner: steps that collapse as you go): open while it's the current one, then folded to a ✓
@@ -771,6 +773,8 @@ struct TourLearnBlocks: View {
                     }
                     if blocks[i].colours {
                         TourColorKey(notes: blocks[i].items, lit: lit, vertical: true)
+                    } else if blocks[i].pairs {
+                        TourPairs(lines: blocks[i].items)
                     } else {
                         TourBullets(lines: blocks[i].items, numbered: blocks[i].numbered)
                     }
@@ -1397,8 +1401,10 @@ struct BubbleShape: Shape {
 
     /// The owner's words for the circle (2026-10-05), as he laid them out.
     static let circleBlocks = [
+        // When → what it shows (owner's words, 2026-10-05): the situation, an arrow, the prayer.
         TourBlock(lead: "It shows the prayer that matters to you:",
-                  items: ["the current one", "the upcoming one", "any you missed"]),
+                  items: ["during a prayer|the current one", "already prayed?|the upcoming one",
+                          "end of the day|any you missed"], pairs: true),
         TourBlock(lead: "The ring fills with different colors based on how much time passes:",
                   items: ["First 30 min", "On time", "Late"], colours: true),
     ]
@@ -2739,5 +2745,32 @@ struct TourMenuRow: View {
             try? await Task.sleep(for: .seconds(5))
             _ = going
         }
+    }
+}
+
+/// "during a prayer → the current one": the situation in a heavier weight, a quiet arrow, what it does lighter — in
+/// columns, so the arrows line up and the pattern reads at a glance (owner).
+struct TourPairs: View {
+    let lines: [String]
+    var body: some View {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
+            ForEach(lines.indices, id: \.self) { i in
+                let parts = lines[i].split(separator: "|", maxSplits: 1).map(String.init)
+                GridRow(alignment: .firstTextBaseline) {
+                    Text(parts[0])
+                        .font(.system(.subheadline, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(0.95))
+                    Image(systemName: "arrow.right")
+                        .font(.system(.caption, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(0.35))
+                    Text(parts.count > 1 ? parts[1] : "")
+                        .font(.system(.subheadline, design: .rounded, weight: .light))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(parts.joined(separator: ": "))
+            }
+        }
+        .padding(.leading, 4)
     }
 }
