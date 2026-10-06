@@ -1390,8 +1390,7 @@ struct BubbleShape: Shape {
                                                                "marked ones tuck below, one tap away"])])
             var can = TourSection(id: "list.can", title: "What you can do",
                                   // What, not how (owner): the gestures are the to-dos' job.
-                                  blocks: [TourBlock(items: ["see all your prayers, marked ones too",
-                                                             "complete a prayer, or undo it",
+                                  blocks: [TourBlock(items: ["complete a prayer, or undo it",
                                                              "edit when and where you prayed",
                                                              "see how well you\u{2019}re praying today"])])
             guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: "Continue") }
