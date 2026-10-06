@@ -255,6 +255,18 @@ struct PrayersWidgetTimelineProvider: AppIntentTimelineProvider {
                     shown.style = style
                     render(shown, size: size, phoneDark: phoneDark, "\(px)-style-\(style.rawValue)-\(phone)")
                 }
+                // The soft ring, on the soft surface (to show the owner before it's switched on).
+                PrayersWidgetView.softRing = true
+                PrayersWidgetView.LiveArc.snapshotAt = entry.date
+                let soft = PrayersWidgetView(entry: entry.at(entry.date, list: false))
+                    .frame(width: size, height: size)
+                    .background(WidgetSoft.surface(phoneDark ? .dark : .light))
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .environment(\.colorScheme, phoneDark ? .dark : .light)
+                let r = ImageRenderer(content: soft)
+                r.scale = 3
+                if let data = r.uiImage?.pngData() { try? data.write(to: dir.appendingPathComponent("\(px)-soft-\(phone).png")) }
+                PrayersWidgetView.softRing = false
                 // The times list, and with only the first prayer marked (the others that started
                 // show as empty circles to tap).
                 render(entry.at(entry.date, list: true), size: size, phoneDark: phoneDark, "\(px)-list-\(phone)")
@@ -519,8 +531,9 @@ struct PrayersWidgetView: View {
                 // A tappable row's dot is a bigger circle to tap: empty = not marked
                 // yet, filled = marked. Upcoming prayers keep the small dot (nothing to tap).
                 let tappable = !sunrise && start <= entry.date
+                // A prayer still to come: the app's dashed ring, as big as the others (dashes need the room).
                 PrayerDot(score: score, started: start <= entry.date, current: current, colored: entry.scoreColors,
-                          size: tappable ? 11 : 7)
+                          size: tappable || !sunrise ? 11 : 7)
                     .frame(width: 11)
                     .opacity(sunrise ? 0 : 1)
                 // The NEXT tag gives way on a narrow widget: at 158 pt "Dhuhr NEXT" truncated both
@@ -572,10 +585,19 @@ struct PrayersWidgetView: View {
                 } else if started {
                     Circle().strokeBorder(current ? Brand.sage : Color.secondary.opacity(0.7), lineWidth: 1)
                 } else {
-                    Circle().fill(Color.primary.opacity(0.12))
+                    // The app's future ring (decision list-future-ring H): 8 short dashes, each 18 % of its period, in
+                    // the row's grey, fitted so the last doesn't run into the first.
+                    Circle()
+                        .inset(by: 0.6)
+                        .stroke(Color.secondary.opacity(0.6), style: Self.futureDashes(size))
                 }
             }
             .frame(width: size, height: size)
+        }
+
+        static func futureDashes(_ size: CGFloat) -> StrokeStyle {
+            let period = CGFloat.pi * (size - 1.2) / 8
+            return StrokeStyle(lineWidth: 1.2, lineCap: .round, dash: [period * 0.18, period * 0.82])
         }
     }
 
@@ -678,18 +700,28 @@ struct PrayersWidgetView: View {
                             // The track, like the app's (CircleTrack): the solid band for a prayer
                             // that's on, the thin dashed ring for one that hasn't started (with
                             // "NEXT" over a dimmed name below).
-                            if relevantPrayer.current {
+                            if PrayersWidgetView.softRing {
+                                // The app's soft ring (its public look): the raised band in the page's surface; a prayer
+                                // still to come draws its dashes inside the band.
+                                WidgetSoftBand(width: 4.5)
+                                if !relevantPrayer.current {
+                                    Circle().stroke(Color.secondary.opacity(0.5), style: PrayersWidgetView.upcomingDashes(diameter: 90))
+                                }
+                            } else if relevantPrayer.current {
                                 Circle()
                                     .stroke(Color.gray.opacity(0.2), lineWidth: 6)
                             } else {
                                 // Stronger than the app's (0.35 / 0.75 pt): at widget size, in dark
                                 // mode especially, the ring was hard to see (owner, 2026-09-27).
+                                // The app's dashes (UpcomingTrack.style(diameter:): 3 on, 5 off, a whole number of them
+                                // round the ring, so the last doesn't run into the first at 3 o'clock).
                                 Circle()
-                                    .stroke(Color.secondary.opacity(0.75), style: StrokeStyle(lineWidth: 1.25, dash: [2, 3.5]))   // a touch stronger, like the app (2026-09-28)
+                                    .stroke(Color.secondary.opacity(0.75), style: PrayersWidgetView.upcomingDashes(diameter: 90))   // a touch stronger, like the app (2026-09-28)
                             }
 
                             if relevantPrayer.current {
-                                LiveArc(start: relevantPrayer.start, end: relevantPrayer.end, color: progressColor)
+                                LiveArc(start: relevantPrayer.start, end: relevantPrayer.end, color: progressColor,
+                                        soft: PrayersWidgetView.softRing)
                             }
                             
                             // Same type as the app's main circle and Insights ring (light, rounded,
@@ -833,10 +865,24 @@ struct PrayersWidgetView: View {
     /// (owner, BB277A98: "we never had the background ring colored"). Masking twice (fa63e22) only
     /// squared the tint to ~9 % and made a reload dim the arc; one plain mask (8a6f160) showed it
     /// at ~30 %.
+    /// The soft ring (the app's public look) instead of the grey band: off until the owner has seen it (DEBUG renders
+    /// draw both — `-demoWidgetShots`).
+    static var softRing = false
+
+    static func upcomingDashes(diameter: CGFloat) -> StrokeStyle {
+        let period: CGFloat = 8, dashShare: CGFloat = 3 / 8
+        let circumference = CGFloat.pi * diameter
+        let fitted = circumference / max((circumference / period).rounded(), 1)
+        return StrokeStyle(lineWidth: 1.3, dash: [fitted * dashShare, fitted * (1 - dashShare)])
+    }
+
     struct LiveArc: View {
         let start: Date
         let end: Date
         let color: Color
+        /// The soft ring's arc: as wide as its band, round ends, a glow (the app's public look).
+        var soft = false
+        private var stroke: StrokeStyle { soft ? StrokeStyle(lineWidth: 4.5, lineCap: .round) : StrokeStyle(lineWidth: 2.5, lineCap: .butt) }
         #if DEBUG
         /// The DEBUG renders draw a static arc at this time (ImageRenderer can't run the timer).
         static var snapshotAt: Date?
@@ -860,7 +906,7 @@ struct PrayersWidgetView: View {
             if let at = Self.snapshotAt {
                 let f = end > start ? min(max(at.timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
                 Circle().trim(from: 0, to: f)
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                    .stroke(color, style: stroke)
                     .rotationEffect(.degrees(-90))
             } else {
                 live
@@ -876,7 +922,7 @@ struct PrayersWidgetView: View {
             if WidgetSpeedTest.stillRing {
                 let f = end > start ? min(max(Date().timeIntervalSince(start) / end.timeIntervalSince(start), 0), 1) : 1
                 Circle().trim(from: 0, to: f)
-                    .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                    .stroke(color, style: stroke)
                     .rotationEffect(.degrees(-90))
             } else {
                 masked
@@ -888,8 +934,9 @@ struct PrayersWidgetView: View {
 
         private var masked: some View {
             Circle()
-                .stroke(color, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                .stroke(color, style: stroke)
                 .mask { liveRing }
+                .shadow(color: soft ? color.opacity(0.45) : .clear, radius: 3)
         }
 
         private var liveRing: some View {
@@ -1421,5 +1468,26 @@ struct PrayerLockScreenView: View {
         } icon: {
             Image(systemName: prayerIcon(for: prayer.name))
         }
+    }
+}
+
+/// The app's soft surfaces (CircleTheme.publicLook, greyBlue): grey-blue in light, charcoal in dark.
+enum WidgetSoft {
+    static func surface(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(white: 0.10) : Color(red: 0.890, green: 0.898, blue: 0.933)
+    }
+    static func shade(_ scheme: ColorScheme) -> Color { scheme == .dark ? .black.opacity(0.75) : .black.opacity(0.25) }
+    static func light(_ scheme: ColorScheme) -> Color { scheme == .dark ? .white.opacity(0.06) : .white }
+}
+
+/// The soft ring's raised band: the surface, lifted — shade down-right, light up-left.
+struct WidgetSoftBand: View {
+    var width: CGFloat
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        Circle()
+            .stroke(WidgetSoft.surface(scheme), lineWidth: width)
+            .shadow(color: WidgetSoft.shade(scheme), radius: width * 0.6, x: width * 0.3, y: width * 0.3)
+            .shadow(color: WidgetSoft.light(scheme), radius: width * 0.9, x: -width * 0.3, y: -width * 0.3)
     }
 }
