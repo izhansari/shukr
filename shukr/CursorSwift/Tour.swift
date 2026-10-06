@@ -110,7 +110,7 @@ struct TourBlock: Equatable {
 
 /// One step of a chapter (owner: steps that collapse as you go): open while it's the current one, then folded to a ✓
 /// line that opens it again.
-struct TourSection: Equatable, Identifiable {
+struct TourSection: Identifiable {
     let id: String
     var title: String? = nil
     var done = false
@@ -120,6 +120,8 @@ struct TourSection: Equatable, Identifiable {
     var note: String? = nil
     /// The note as a quiet footnote (the welcome's last line, under its list).
     var quietNote = false
+    /// "2 of 3" beside its one to-do (the counting session's tips).
+    var progress: (Int, Int)? = nil
     /// Something to open again once it's folded.
     var peekable: Bool { !blocks.isEmpty || !tasks.isEmpty }
 }
@@ -127,7 +129,7 @@ struct TourSection: Equatable, Identifiable {
 /// What the one bubble says right now: built by TourRuntime from the card and its phase. A card is a chapter (owner):
 /// its index and title, a ring for how far through it you are, and its steps; a post-tour step is a plain headline,
 /// line and to-dos.
-struct TourPage: Equatable {
+struct TourPage {
     var headline: String
     var subline: String? = nil
     /// The chapter's number (cards only).
@@ -724,7 +726,7 @@ struct TourSectionView: View {
             }
             if !section.tasks.isEmpty {
                 TourChecklist(tasks: section.tasks, ticked: section.done ? Set(section.tasks.indices) : ticked,
-                              locked: section.done ? [] : locked)
+                              locked: section.done ? [] : locked, progress: section.done ? nil : section.progress)
             }
             if let note = section.note {
                 Text(note)
@@ -1029,7 +1031,7 @@ struct TourChecklist: View {
                         Text("\(progress.0) of \(progress.1)")
                             .font(.system(.footnote, design: .rounded, weight: .light))
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.primary.opacity(0.55))   // not .secondary: lost on the glass
                             .contentTransition(.numericText())
                     }
                 }
@@ -2431,6 +2433,9 @@ struct TourInputGuard: View {
 /// "✓ Tap again to skip" in sage, growing leftwards (it's placed by its trailing edge) — the second skips; it lets go
 /// after 3 s.
 struct TourSkipButton: View {
+    /// Its words: the tour's, or the counting session's tips' ("Skip tips").
+    var label = TourCopy.Skip.button
+    var confirm = TourCopy.Skip.confirm
     let action: () -> Void
     /// Its own fade in (the layer inserts it without one).
     @State private var shown = false
@@ -2451,7 +2456,7 @@ struct TourSkipButton: View {
                 Image(systemName: "checkmark").font(.system(size: 11, weight: .bold))
                     .transition(.scale(scale: 0.4).combined(with: .opacity))
             }
-            Text(armed ? TourCopy.Skip.confirm : TourCopy.Skip.button)
+            Text(armed ? confirm : label)
                 .font(.system(.footnote, design: .rounded, weight: armed ? .semibold : .medium))
         }
         .opacity(wordsAway ? 0 : 1)
@@ -2468,7 +2473,7 @@ struct TourSkipButton: View {
         .opacity(shown ? 1 : 0)
         .task { withAnimation(.easeOut(duration: CircleMotion.quick)) { shown = true } }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(armed ? TourCopy.Skip.confirm : TourCopy.Skip.button)
+        .accessibilityLabel(armed ? confirm : label)
         .accessibilityAddTraits(.isButton)
         .accessibilityAction(.default, tap)
     }

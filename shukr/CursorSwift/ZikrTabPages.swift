@@ -113,6 +113,12 @@ struct ZikrHistoryPage: View {
                     CountTipCard(tip: .delete).padding(.top, 70)
                 }
             }
+            // Skip tips, top right (over Select, which waits during the delete tip anyway).
+            .overlay(alignment: .topTrailing) {
+                if CountTips.shared.tip == .delete {
+                    CountTipsSkip().padding(.trailing, 16).padding(.top, 14)
+                }
+            }
             .onAppear { CountTips.shared.historyOpened() }
             .onChange(of: CountTips.shared.popHistory) { _, _ in dismiss() }
     }

@@ -15,7 +15,11 @@ import SwiftUI
 /// Reached from the hamburger menu. Rows show what the results screen showed for the session:
 /// mantra, time, mode + target, count, duration and pace.
 struct HistoryPageView: View {
-    @Query(sort: \SessionDataModel.startTime, order: .reverse) private var sessions: [SessionDataModel]
+    @Query(sort: \SessionDataModel.startTime, order: .reverse) private var storedSessions: [SessionDataModel]
+    /// The first-session tips' practice session on top (never saved: CountTips holds it) until its pretend delete.
+    private var sessions: [SessionDataModel] {
+        (CountTips.shared.practiceSession.map { [$0] } ?? []) + storedSessions
+    }
     @Environment(\.modelContext) private var context
     /// Tap a row's Zikr → that session's mantra (its stats + editor).
     @State private var mantraToOpen: MantraModel?
@@ -71,7 +75,7 @@ struct HistoryPageView: View {
                 )
             } else {
                 Section {
-                    ZikrHistoryHeader(sessions: sessions)
+                    ZikrHistoryHeader(sessions: storedSessions)   // the totals: real sessions only
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 8, trailing: 0))
@@ -131,7 +135,11 @@ struct HistoryPageView: View {
         .alert("Delete this session?", isPresented: Binding(get: { sessionToDelete != nil },
                                                            set: { if !$0 { sessionToDelete = nil } })) {
             Button("Delete", role: .destructive) {
-                if let s = sessionToDelete { SessionDeletion.delete([s], in: context) }
+                if let s = sessionToDelete {
+                    // The practice session: a pretend delete (it was never saved).
+                    if CountTips.shared.isPractice(s.id) { CountTips.shared.practiceDeleted() }
+                    else { SessionDeletion.delete([s], in: context) }
+                }
                 sessionToDelete = nil
             }
             Button("Cancel", role: .cancel) { sessionToDelete = nil }

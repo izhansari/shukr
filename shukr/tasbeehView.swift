@@ -1471,9 +1471,12 @@ struct tasbeehView: View {
         // and the post-salah sequence never link, even if a card is still "selected" underneath.
         let linkedTask = (sharedState.selectedMode != 0 && !sharedState.isDoingPostNamazZikr)
             ? sharedState.selectedTask : nil
-        
+        // The first-session tips' practice session (decision count-tips-session B): never saved — held in memory by
+        // CountTips, "Practice" in History until its pretend delete; no task, no zikr (another store's rows).
+        let practice = linkedTask == nil && CountTips.shared.takesPractice(count: sessionCount)
+
         let item = SessionDataModel(
-            title: placeholderTitle,
+            title: practice ? TourCopy.Session.practiceTitle : placeholderTitle,
             sessionMode: sharedState.selectedMode,
             targetMin: sharedState.selectedMinutes,
             targetCount: Int(sharedState.targetCount) ?? 0,
@@ -1482,11 +1485,16 @@ struct tasbeehView: View {
             secondsPassed: secsToReport,
             avgTimePerClick: newAvrgTPC,
             tasbeehRate: tasbeehRate,
-            task: linkedTask,
+            task: practice ? nil : linkedTask,
             // Picked from a task/picker (or Tasbih Fatimah for post-salah) → we have the row.
-            mantra: sharedState.mantraForSession ?? MantraModel.find(named: placeholderTitle, in: context)
+            mantra: practice ? nil : (sharedState.mantraForSession ?? MantraModel.find(named: placeholderTitle, in: context))
         )
         item.endedAsleep = endedAsleep
+        if practice {
+            CountTips.shared.holdPractice(item)
+            SessionDraft.clear()
+            return item
+        }
         print("adding a session card")
         context.insert(item)
         SessionDraft.clear()   // saved for real (audit A7)
@@ -1777,6 +1785,8 @@ struct tasbeehView: View {
                     sharedState.titleForSession = newName
                     sharedState.mantraForSession = chosenMantraObject
                     savedSession.title = newName   // the saved session moves to that mantra
+                    // The tips' practice session lives in a store of its own: its name only, never a link to a row here.
+                    guard !CountTips.shared.isPractice(savedSession.id) else { return }
                     savedSession.mantra = chosenMantraObject
                     do { try context.save() } catch { print("Error saving context: \(error)") }
                 }
@@ -3642,6 +3652,8 @@ struct SessionDoneFace: View {
                     sharedState.titleForSession = newName
                     sharedState.mantraForSession = chosenMantraObject
                     session.title = newName   // the saved session moves to that zikr
+                    // The tips' practice session lives in a store of its own: its name only, never a link to a row here.
+                    guard !CountTips.shared.isPractice(session.id) else { return }
                     session.mantra = chosenMantraObject
                     do { try context.save() } catch { print("Error saving context: \(error)") }
                 }

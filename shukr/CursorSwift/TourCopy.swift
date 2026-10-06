@@ -144,6 +144,51 @@ enum TourCopy {
         static let doneButton = "Done"
     }
 
+    // MARK: The first counting session's tips (a freestyle session, after the tour)
+
+    enum Session {
+        static let skip = "Skip tips"
+        static let skipConfirm = "Tap again to skip"
+
+        // 1 · Counting
+        static let countingTitle = "Counting"
+        static let tapStep = "Tap"
+        static let tapLead = "The whole screen is your counter."
+        static let tapTodo = "Tap anywhere, 3 times"
+        static let dragStep = "Drag"
+        static let dragLead = "Drag down anywhere, then lift your finger."
+        static let dragTodo = "3 separate drags"
+        static let strokeStep = "Without lifting"
+        static let strokeLead = "Keep your finger down and move it down and up."
+        static let strokeTodo = "3 drags without lifting"
+
+        // 2 · Pausing
+        static let pausingTitle = "Pausing"
+        static let pauseStep = "Pause"
+        static let pauseLead = "The pause button is at the top left."
+        static let pauseTodo = "Tap pause"
+        static let pausedStep = "The pause screen"
+        static let pausedLead = "Your session’s stats, notes for the zikr, and a few more things at the bottom — explore them any time. For now, let’s finish."
+        static let pausedTodo = "Tap Finish, then again"
+
+        // 3 · After
+        static let afterTitle = "After"
+        static let resultsStep = "Saved"
+        static let resultsLead = "Every session you finish goes into your history."
+        static let resultsTodo = "Tap Done"
+        static let historyStep = "Your history"
+        static let historyLead = "It’s top left on the Zikr page."
+        static let historyTodo = "Open History"
+        static let deleteStep = "Tidy up"
+        static let deleteLead = "That was practice — delete it."
+        static let deleteTodo = "Swipe “Practice” left, then Delete"
+        static let keptStep = "That one counts"
+        static let keptLead = "You counted for real, so it’s kept."
+        static let endLine = "Now the real one: tap the circle when you’re ready."
+        static let endButton = "Done"
+        static let practiceTitle = "Practice"   // the practice session's name in History
+    }
+
     // MARK: Around the tour
 
     enum Skip {
