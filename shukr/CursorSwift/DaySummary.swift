@@ -14,6 +14,13 @@ extension DayPrayer {
     }
 }
 
+/// Whether the circle is showing the day's page (summaryCircle is up): the list's card rises with it, not at the mark
+/// (Izhan: "have it rise together with the page").
+@MainActor @Observable final class DayPageState {
+    static let shared = DayPageState()
+    var up = false
+}
+
 /// The day's five prayers round the circle (Fajr at the top, clockwise), on the ring's own band.
 struct DayRing: View {
     let day: [DayPrayer]
