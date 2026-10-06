@@ -86,9 +86,9 @@ enum TourStep: String, CaseIterable, Identifiable {
 
 /// Where a card is: learn it first, then try it (the circle and the list), or go there first, then learn it (Zikr,
 /// Settings); Settings ends on its last line, the tour's own row.
-/// Where a chapter is: `go` (get to its page), `learn` (its first "what it's for" step), `colours` (the circle's second:
-/// the demo ring), `tryIt` (the to-dos), `last` (Settings' closing words).
-enum TourPhase: Equatable { case go, learn, colours, tryIt, last }
+/// Where a chapter is: `go` (get to its page), `learn` (its first "what it's for" step), `learnMore` (its second: the
+/// circle's colours with the demo ring, the list's what you can do), `tryIt` (the to-dos), `last` (Settings' closing words).
+enum TourPhase: Equatable { case go, learn, learnMore, tryIt, last }
 
 /// One part of a step's "what it's for": a short lead and its list (owner: glanceable, never a paragraph).
 struct TourBlock: Equatable {
@@ -217,7 +217,7 @@ struct TourOverlay: View {
 }
 
 #if DEBUG
-/// DEBUG launch arguments for the tour: `-tourStart`, `-tourSkipInvite`, `-tourFrom <card>[:learn|colours|tryIt|go|last]`,
+/// DEBUG launch arguments for the tour: `-tourStart`, `-tourSkipInvite`, `-tourFrom <card>[:learn|learnMore|tryIt|go|last]`,
 /// `-tourWidgetWrote`, `-tourAwayAfter`; `-demoTourHint` / `-demoTourTip` for the old pictures.
 struct TourDemoLayer: View {
     @Environment(SharedStateClass.self) private var sharedState
@@ -238,7 +238,7 @@ struct TourDemoLayer: View {
                 // `-tourFrom <card>[:<phase>]`: straight to that card (and phase), its practice state set as on a Back.
                 let parts = (UserDefaults.standard.string(forKey: "tourFrom") ?? "").split(separator: ":").map(String.init)
                 let from = parts.first.flatMap(TourStep.init(rawValue:))
-                let phase: TourPhase? = parts.count > 1 ? ["learn": .learn, "colours": .colours, "tryIt": .tryIt, "go": .go, "last": .last][parts[1]] : nil
+                let phase: TourPhase? = parts.count > 1 ? ["learn": .learn, "learnMore": .learnMore, "colours": .learnMore, "tryIt": .tryIt, "go": .go, "last": .last][parts[1]] : nil
                 if let from {
                     try? await Task.sleep(for: .seconds(1.5))
                     TourRuntime.shared.debugJump(to: from, phase: phase)
@@ -1249,7 +1249,7 @@ struct BubbleShape: Shape {
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
             // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
-            var playing: Bool { run == thisRun && step == .circle && phase == .colours }
+            var playing: Bool { run == thisRun && step == .circle && phase == .learnMore }
             var elapsed: TimeInterval = 0
             var last = Date()
             while playing, elapsed < sweep {
@@ -1364,7 +1364,7 @@ struct BubbleShape: Shape {
             switch phase {
             case .learn:
                 return chapter(.circle, 0, of: 5, [shows], primary: "Continue")
-            case .colours:
+            case .learnMore:
                 shows.done = true
                 return chapter(.circle, 1, of: 5, [shows, colours],
                                primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
@@ -1383,25 +1383,28 @@ struct BubbleShape: Shape {
                 return chapter(.circle, 5, of: 5, [shows, colours, tryIt, payoff], locked: lockedCircle)
             }
         case .list:
-            var shows = TourSection(id: "list.shows", title: "What it\u{2019}s for",
-                                    blocks: [TourBlock(lead: "Every prayer and its time:",
-                                                       items: ["coming ones are greyed out, with the time until",
-                                                               "marked ones show when you prayed and the score",
-                                                               "marked ones fold under \u{201C}done\u{201D}"]),
-                                             TourBlock(lead: "Here you can:",
-                                                       items: ["tap a dot to mark or unmark a prayer",
-                                                               "hold a marked prayer to fix when and where you prayed",
-                                                               "see how well you\u{2019}re praying today"])])
-            guard phase != .learn else { return chapter(.list, 0, of: 5, [shows], primary: "Continue") }
+            // Two short steps (owner: the first was still too long), one line a bullet.
+            var shows = TourSection(id: "list.shows", title: "What it shows",
+                                    blocks: [TourBlock(items: ["every prayer of the day, with its time",
+                                                               "coming ones greyed, with the time until",
+                                                               "marked ones with your time and score",
+                                                               "marked ones fold under \u{201C}done\u{201D}"])])
+            var can = TourSection(id: "list.can", title: "What you can do",
+                                  blocks: [TourBlock(items: ["tap a dot to mark or unmark",
+                                                             "hold a marked one to fix time or place",
+                                                             "see how well you\u{2019}re praying today"])])
+            guard phase != .learn else { return chapter(.list, 0, of: 6, [shows], primary: "Continue") }
             shows.done = true
+            guard phase != .learnMore else { return chapter(.list, 1, of: 6, [shows, can], primary: "Continue") }
+            can.done = true
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
             let tryIt = TourSection(id: "list.try", title: "Try it",
-                                    tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to show your marked prayers",
-                                            "Tap a marked prayer to see its score",
-                                            "Tap a coming prayer to see how long until it",
-                                            "Hold a marked prayer, change its time, and save"],
+                                    tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to open them",
+                                            "Tap a marked prayer for its score",
+                                            "Tap a coming prayer for the time until",
+                                            "Hold a marked one, change its time, save"],
                                     note: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil)
-            return chapter(.list, 1 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 5, [shows, tryIt],
+            return chapter(.list, 2 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 6, [shows, can, tryIt],
                            locked: lockedList, primary: all ? "Continue" : nil)
         case .zikr:
             var there = TourSection(id: "zikr.go", title: "Get there", lead: "It\u{2019}s one page over.", tasks: ["Swipe right"])
@@ -1650,10 +1653,10 @@ struct BubbleShape: Shape {
         case (_, _, .back): goBack(from: step)
 
         // 1 · The circle: learn (the colours demo, then Continue), then try.
-        case (.circle, .learn, .next): setPhase(.colours)
-        case (.circle, .colours, .demo): playColors(run: run)
-        case (.circle, .colours, .next) where sweepPlayed: setPhase(.tryIt)
-        case (.circle, .colours, .next) where !sweeping: playColors(run: run)   // "See it in action"
+        case (.circle, .learn, .next): setPhase(.learnMore)
+        case (.circle, .learnMore, .demo): playColors(run: run)
+        case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
+        case (.circle, .learnMore, .next) where !sweeping: playColors(run: run)   // "See it in action"
         case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
         case (.circle, .tryIt, .qiblaAligned): tick(1, flash: "qiblaArrow")
         case (.circle, .tryIt, .skipQibla): tick(1)
@@ -1665,7 +1668,8 @@ struct BubbleShape: Shape {
             go(to: .list, after: 0.6)
 
         // 2 · The list: learn, then try.
-        case (.list, .learn, .next): setPhase(.tryIt)
+        case (.list, .learn, .next): setPhase(.learnMore)
+        case (.list, .learnMore, .next): setPhase(.tryIt)
         case (.list, .tryIt, .foldTapped): tick(0, flash: "doneFold")
         case (.list, .tryIt, .markedRowTapped): tick(1, flash: "markedRow")
         case (.list, .tryIt, .comingRowTapped): tick(2, flash: "comingRow")
@@ -2015,7 +2019,7 @@ extension TourLayer {
         let ticked = runtime.ticked
         switch (step, runtime.phase) {
         case (.circle, _): return "circle"
-        case (.list, .learn): return "prayerList"
+        case (.list, .learn), (.list, .learnMore): return "prayerList"
         case (.list, _):
             if !ticked.contains(0) { return "doneFold" }
             return "prayerList"
