@@ -16,6 +16,16 @@ enum TourStep: String, CaseIterable, Identifiable {
     /// The four cards, in order.
     static let cards: [TourStep] = [.circle, .list, .zikr, .settings]
     var isCard: Bool { Self.cards.contains(self) }
+    /// A card's chapter title, led by its number in the bubble (owner).
+    var chapterTitle: String {
+        switch self {
+        case .circle: "Prayer Circle"
+        case .list: "Prayer List"
+        case .zikr: "Zikr"
+        case .settings: "Settings"
+        default: ""
+        }
+    }
 
     /// The post-tour steps' words (the cards' own are TourRuntime.page).
     var headline: String {
@@ -76,36 +86,54 @@ enum TourStep: String, CaseIterable, Identifiable {
 
 /// Where a card is: learn it first, then try it (the circle and the list), or go there first, then learn it (Zikr,
 /// Settings); Settings ends on its last line, the tour's own row.
-enum TourPhase: Equatable { case go, learn, tryIt, last }
+/// Where a chapter is: `go` (get to its page), `learn` (its first "what it's for" step), `colours` (the circle's second:
+/// the demo ring), `tryIt` (the to-dos), `last` (Settings' closing words).
+enum TourPhase: Equatable { case go, learn, colours, tryIt, last }
 
-/// One part of a card's "what it's for": a short lead and its list (owner: glanceable, never a paragraph).
+/// One part of a step's "what it's for": a short lead and its list (owner: glanceable, never a paragraph).
 struct TourBlock: Equatable {
-    let lead: String
+    var lead: String? = nil
     let items: [String]
     /// The ring's colours: each item gets its colour's dot, lit as the demo's ring reaches it.
     var colours = false
 }
 
-/// What the one bubble says right now: built by TourRuntime from the card and its phase. The headline is the card's
-/// chapter title, the same the whole way through (owner); what's under it folds and grows in place.
+/// One step of a chapter (owner: steps that collapse as you go): open while it's the current one, then folded to a ✓
+/// line that opens it again.
+struct TourSection: Equatable, Identifiable {
+    let id: String
+    var title: String? = nil
+    var done = false
+    var lead: String? = nil
+    var blocks: [TourBlock] = []
+    var tasks: [String] = []
+    var note: String? = nil
+    /// Something to open again once it's folded.
+    var peekable: Bool { !blocks.isEmpty || !tasks.isEmpty }
+}
+
+/// What the one bubble says right now: built by TourRuntime from the card and its phase. A card is a chapter (owner):
+/// its index and title, a ring for how far through it you are, and its steps; a post-tour step is a plain headline,
+/// line and to-dos.
 struct TourPage: Equatable {
     var headline: String
     var subline: String? = nil
-    /// The card's "what it's for" (learn), folded to one line (`foldedTitle`) once they're trying it.
-    var blocks: [TourBlock] = []
-    /// The to-dos are all done: folded to one "All done" line.
-    var tasksDone = false
-    /// The to-dos; `locked` ones wait (greyed) until the ones before are done.
+    /// The chapter's number (cards only).
+    var index: Int? = nil
+    /// How far through the chapter, 0…1.
+    var progress: Double = 0
+    var sections: [TourSection] = []
+    /// A post-tour step's to-dos (a chapter's are in its sections); `locked` ones wait (greyed) until the ones before.
     var tasks: [String] = []
     var locked: Set<Int> = []
-    /// A line under the to-dos once they're done (what it was good for).
+    /// A post-tour step's closing line.
     var insight: String? = nil
-    /// The folded "what it's for" while trying it (tap to open).
-    var foldedTitle: String? = nil
     /// The main button (nil: none — the step ends on an action).
     var primary: String? = nil
     /// A quiet second button ("Play again").
     var secondary: String? = nil
+    /// The to-dos, wherever they are (a chapter's step or the post-tour page).
+    var todo: [String] { sections.first(where: { !$0.tasks.isEmpty })?.tasks ?? tasks }
 }
 
 /// Where the tour's targets are on screen, reported by the views themselves (global frames, written only on change).
@@ -145,9 +173,8 @@ struct TourOverlay: View {
     var place: (Int, Int)? = nil
     var ticked: Set<Int> = []
     var lit: Set<Int> = []
-    /// While trying it: the card's "what it's for", folded to one line (tap to open).
-    var folded: (title: String, page: TourPage)? = nil
-    var learnOpen = false
+    /// A finished step opened again (its id).
+    var openSection: String? = nil
     /// The touch to show (global).
     var hint: TouchHintSpec? = nil
     /// The bubble's bottom here (global y), above what it talks about (the list — audit J); nil: by the target.
@@ -165,7 +192,7 @@ struct TourOverlay: View {
     var onPrimary: () -> Void = {}
     var onSecondary: () -> Void = {}
     var onBack: () -> Void = {}
-    var onToggleLearn: () -> Void = {}
+    var onToggle: (String) -> Void = { _ in }
     var onSkipQibla: () -> Void = {}
     private var targets: TourTargets { TourTargets.shared }
 
@@ -176,12 +203,12 @@ struct TourOverlay: View {
                 Self.local($0, origin).insetBy(dx: step.roundHole ? -10 : -14, dy: step.roundHole ? -10 : -6)
             }
             TourCallout(step: step, page: page, hole: hole, size: geo.size, place: place, ticked: ticked, lit: lit,
-                        folded: folded, learnOpen: learnOpen,
+                        openSection: openSection,
                         hint: hint.map { TouchHintSpec(kind: $0.kind, at: CGPoint(x: $0.at.x - origin.x, y: $0.at.y - origin.y)) },
                         aboveY: aboveY.map { $0 - origin.y }, showsBack: showsBack,
                         flash: flash.map { Self.local($0, origin) }, flashes: flashes, nudges: nudges, qiblaSkip: qiblaSkip,
                         forward: forward, onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
-                        onToggleLearn: onToggleLearn, onSkipQibla: onSkipQibla)
+                        onToggle: onToggle, onSkipQibla: onSkipQibla)
         }
         .ignoresSafeArea()
     }
@@ -190,7 +217,7 @@ struct TourOverlay: View {
 }
 
 #if DEBUG
-/// DEBUG launch arguments for the tour: `-tourStart`, `-tourSkipInvite`, `-tourFrom <card>[:learn|tryIt|go|last]`,
+/// DEBUG launch arguments for the tour: `-tourStart`, `-tourSkipInvite`, `-tourFrom <card>[:learn|colours|tryIt|go|last]`,
 /// `-tourWidgetWrote`, `-tourAwayAfter`; `-demoTourHint` / `-demoTourTip` for the old pictures.
 struct TourDemoLayer: View {
     @Environment(SharedStateClass.self) private var sharedState
@@ -211,7 +238,7 @@ struct TourDemoLayer: View {
                 // `-tourFrom <card>[:<phase>]`: straight to that card (and phase), its practice state set as on a Back.
                 let parts = (UserDefaults.standard.string(forKey: "tourFrom") ?? "").split(separator: ":").map(String.init)
                 let from = parts.first.flatMap(TourStep.init(rawValue:))
-                let phase: TourPhase? = parts.count > 1 ? ["learn": .learn, "tryIt": .tryIt, "go": .go, "last": .last][parts[1]] : nil
+                let phase: TourPhase? = parts.count > 1 ? ["learn": .learn, "colours": .colours, "tryIt": .tryIt, "go": .go, "last": .last][parts[1]] : nil
                 if let from {
                     try? await Task.sleep(for: .seconds(1.5))
                     TourRuntime.shared.debugJump(to: from, phase: phase)
@@ -347,8 +374,7 @@ struct TourCallout: View {
     var place: (Int, Int)? = nil
     var ticked: Set<Int> = []
     var lit: Set<Int> = []
-    var folded: (title: String, page: TourPage)? = nil
-    var learnOpen = false
+    var openSection: String? = nil
     /// The touch to show, in this view's space.
     var hint: TouchHintSpec? = nil
     /// The bubble's bottom here (this view's space): above the list on its card (audit J).
@@ -362,7 +388,7 @@ struct TourCallout: View {
     var onPrimary: () -> Void = {}
     var onSecondary: () -> Void = {}
     var onBack: () -> Void = {}
-    var onToggleLearn: () -> Void = {}
+    var onToggle: (String) -> Void = { _ in }
     var onSkipQibla: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
     @Environment(\.circleTheme) private var theme
@@ -435,10 +461,10 @@ struct TourCallout: View {
         // The page turns inside the bubble: each card's content is its own view, sliding out one side and in the
         // other (owner: "it pages over inside of the tooltip"); the bubble itself stays.
         ZStack(alignment: .topLeading) {
-            TourPageView(step: step, page: page, place: place, ticked: ticked, lit: lit, folded: folded,
-                         learnOpen: learnOpen, showsBack: showsBack, qiblaSkip: qiblaSkip,
+            TourPageView(step: step, page: page, place: place, ticked: ticked, lit: lit, openSection: openSection,
+                         showsBack: showsBack, qiblaSkip: qiblaSkip,
                          onPrimary: onPrimary, onSecondary: onSecondary, onBack: onBack,
-                         onToggleLearn: onToggleLearn, onSkipQibla: onSkipQibla)
+                         onToggle: onToggle, onSkipQibla: onSkipQibla)
                 .id(step)
                 .transition(reduceMotion ? .opacity : .asymmetric(
                     insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
@@ -453,114 +479,46 @@ struct TourCallout: View {
     }
 }
 
-/// One card's content in the bubble: its place ("1 of 4"), the headline and its line, the "what it's for" bullets (or
-/// their folded line), the colours' notes, the to-dos (waiting ones greyed), a line once they're done, and the row of
-/// Back · the dots · the buttons.
+/// One card's content in the bubble. A chapter (owner): "1  Prayer Circle" with a ring top right for how far through it
+/// you are, then its steps — the current one open, the finished ones folded to a ✓ line each (tap to open again). A
+/// post-tour step: its symbol, headline, line, to-dos. Then the row of Back · the dots · the buttons.
 struct TourPageView: View {
     let step: TourStep
     let page: TourPage
     var place: (Int, Int)?
     var ticked: Set<Int>
     var lit: Set<Int>
-    var folded: (title: String, page: TourPage)?
-    var learnOpen: Bool
+    var openSection: String?
     var showsBack: Bool
     var qiblaSkip: Bool
     var onPrimary: () -> Void
     var onSecondary: () -> Void
     var onBack: () -> Void
-    var onToggleLearn: () -> Void
+    var onToggle: (String) -> Void
     var onSkipQibla: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                // Where they are, by the headline (owner: "an index number at the top by the headline").
-                HStack(spacing: 6) {
-                    Image(systemName: step.symbol)
-                        .font(.system(.caption, weight: .regular))
-                        .accessibilityHidden(true)
-                    if let place {
-                        Text("\(place.0) of \(place.1)")
-                            .monospacedDigit()
-                            .accessibilityLabel("Step \(place.0) of \(place.1)")
+            if let index = page.index { chapterHeader(index) } else { plainHeader }
+            if page.sections.isEmpty {
+                plainBody
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(page.sections) { section in
+                        TourSectionView(section: section, open: openSection == section.id, ticked: ticked,
+                                        locked: page.locked, lit: lit) { onToggle(section.id) }
+                            .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
+                                                    removal: .opacity))
                     }
-                }
-                .font(.system(.caption, design: .rounded, weight: .medium))
-                .foregroundStyle(Color.primary.opacity(0.6))
-                Text(page.headline)
-                    .font(.system(.body, design: .rounded, weight: .regular))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                if let line = page.subline {
-                    Text(line)
-                        .font(.system(.subheadline, design: .rounded, weight: .light))
-                        .foregroundStyle(Color.primary.opacity(0.6))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            Group {
-                // What it's for: open while learning; on Continue it folds into its one line (the same card the whole
-                // way — owner), which opens it again.
-                if let folded {
-                    Button(action: onToggleLearn) {
-                        HStack(spacing: 5) {
-                            Text(folded.title)
-                            Image(systemName: "chevron.down")
-                                .font(.system(.caption2, weight: .semibold))
-                                .rotationEffect(.degrees(learnOpen ? 180 : 0))
-                        }
-                        .font(.system(.footnote, design: .rounded, weight: .medium))
-                        .foregroundStyle(Color.primary.opacity(0.6))
-                        .frame(minHeight: 28)
-                        .contentShape(Rectangle())
-                    }
+            if qiblaSkip {
+                Button("No compass here? Skip it", action: onSkipQibla)
                     .buttonStyle(.plain)
-                    .accessibilityLabel(learnOpen ? "Hide: \(folded.title)" : "Show: \(folded.title)")
-                    .transition(.opacity.animation(.easeOut(duration: CircleMotion.quick).delay(0.15)))   // as the words roll up
-                }
-                // One view the whole card: on Continue it rolls up under its line (clipped to a height that animates to
-                // nothing), and the line opens it again.
-                let blocks = folded?.page.blocks ?? page.blocks
-                if !blocks.isEmpty {
-                    let open = folded == nil || learnOpen
-                    TourLearnBlocks(blocks: blocks, lit: folded == nil ? lit : Set(0..<3))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(height: open ? nil : 0, alignment: .top)
-                        .clipped()
-                        .opacity(open ? 1 : 0)
-                        .padding(.top, open ? 0 : -10)   // no gap left in the stack
-                        .accessibilityHidden(!open)
-                }
-                if page.tasksDone {
-                    // Done: the to-dos fold to one line.
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(TourInk.green)
-                        Text("All done").foregroundStyle(Color.primary.opacity(0.6))
-                    }
-                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .font(.system(.footnote, design: .rounded, weight: .regular))
+                    .foregroundStyle(Color.primary.opacity(0.6))
+                    .frame(minHeight: 28)
                     .transition(.opacity)
-                } else if !page.tasks.isEmpty {
-                    TourChecklist(tasks: page.tasks, ticked: ticked, locked: page.locked)
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
-                                                removal: .opacity.combined(with: .scale(scale: 0.9, anchor: .top))))
-                }
-                if qiblaSkip {
-                    Button("No compass here? Skip it", action: onSkipQibla)
-                        .buttonStyle(.plain)
-                        .font(.system(.footnote, design: .rounded, weight: .regular))
-                        .foregroundStyle(Color.primary.opacity(0.6))
-                        .frame(minHeight: 28)
-                        .transition(.opacity)
-                }
-                if let insight = page.insight {
-                    Text(insight)
-                        .font(.system(.subheadline, design: .rounded, weight: .regular))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 2)
-                        .transition(.opacity)
-                }
             }
             HStack(spacing: 12) {
                 if showsBack {
@@ -602,6 +560,161 @@ struct TourPageView: View {
             .frame(minHeight: 32)
         }
     }
+
+    /// "1  Prayer Circle", the chapter's ring at the right.
+    private func chapterHeader(_ index: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(index)")
+                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(Color.primary.opacity(0.4))
+            Text(page.headline)
+                .font(.system(.headline, design: .rounded, weight: .semibold))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            TourChapterRing(progress: page.progress)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 5 }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Chapter \(index): \(page.headline), \(Int((page.progress * 100).rounded())) percent done")
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var plainHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Image(systemName: step.symbol)
+                .font(.system(.caption, weight: .regular))
+                .foregroundStyle(Color.primary.opacity(0.6))
+                .accessibilityHidden(true)
+            Text(page.headline)
+                .font(.system(.body, design: .rounded, weight: .regular))
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            if let line = page.subline {
+                Text(line)
+                    .font(.system(.subheadline, design: .rounded, weight: .light))
+                    .foregroundStyle(Color.primary.opacity(0.6))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder private var plainBody: some View {
+        if !page.tasks.isEmpty {
+            TourChecklist(tasks: page.tasks, ticked: ticked, locked: page.locked)
+        }
+        if let insight = page.insight {
+            Text(insight)
+                .font(.system(.subheadline, design: .rounded, weight: .regular))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 2)
+                .transition(.opacity)
+        }
+    }
+}
+
+/// One step of a chapter. Current: a small label, then its content. Finished: a ✓ line (tap to open it again). The
+/// content is one view all along, clipped to a height that animates to nothing, so finishing a step rolls it up into
+/// its line (owner: "the current content collapsing into a line item").
+struct TourSectionView: View {
+    let section: TourSection
+    let open: Bool
+    let ticked: Set<Int>
+    let locked: Set<Int>
+    let lit: Set<Int>
+    let onToggle: () -> Void
+
+    private var shown: Bool { !section.done || open }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title = section.title {
+                if section.done {
+                    Button(action: onToggle) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(TourInk.green)
+                            Text(title)
+                            if section.peekable {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(.caption2, weight: .semibold))
+                                    .rotationEffect(.degrees(open ? 180 : 0))
+                            }
+                        }
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(Color.primary.opacity(0.6))
+                        .frame(minHeight: 24)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!section.peekable)
+                    .accessibilityLabel(section.peekable ? (open ? "Hide: \(title)" : "Show again: \(title)") : "Done: \(title)")
+                    .transition(.opacity.animation(.easeOut(duration: CircleMotion.quick).delay(0.15)))
+                } else {
+                    Text(title.uppercased())
+                        .font(.system(.caption2, design: .rounded, weight: .semibold))
+                        .tracking(0.8)
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .accessibilityAddTraits(.isHeader)
+                        .transition(.opacity)
+                }
+            }
+            content
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(height: shown ? nil : 0, alignment: .top)
+                .clipped()
+                .opacity(shown ? 1 : 0)
+                .padding(.top, shown ? 0 : -6)   // no gap left under the line
+                .accessibilityHidden(!shown)
+        }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let lead = section.lead {
+                Text(lead)
+                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !section.blocks.isEmpty {
+                TourLearnBlocks(blocks: section.blocks, lit: section.done ? Set(0..<3) : lit)
+            }
+            if !section.tasks.isEmpty {
+                TourChecklist(tasks: section.tasks, ticked: section.done ? Set(section.tasks.indices) : ticked,
+                              locked: section.done ? [] : locked)
+            }
+            if let note = section.note {
+                Text(note)
+                    .font(.system(.subheadline, design: .rounded, weight: .regular))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// How far through the chapter: a small ring top right of the bubble (owner).
+struct TourChapterRing: View {
+    let progress: Double
+    var body: some View {
+        ZStack {
+            Circle().stroke(Color.primary.opacity(0.15), lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: max(0.001, min(progress, 1)))
+                .stroke(TourInk.green, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .opacity(progress > 0 ? 1 : 0)   // nothing yet: the track alone
+            if progress >= 1 {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(TourInk.green)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .frame(width: 18, height: 18)
+        .animation(.smooth(duration: CircleMotion.slow), value: progress)
+        .accessibilityHidden(true)
+    }
 }
 
 /// A card's "what it's for": each block a lead, then its short list (the colours with their dots).
@@ -612,10 +725,12 @@ struct TourLearnBlocks: View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(blocks.indices, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(blocks[i].lead)
-                        .font(.system(.subheadline, design: .rounded, weight: .regular))
-                        .foregroundStyle(Color.primary.opacity(0.85))
-                        .fixedSize(horizontal: false, vertical: true)
+                    if let lead = blocks[i].lead {
+                        Text(lead)
+                            .font(.system(.subheadline, design: .rounded, weight: .regular))
+                            .foregroundStyle(Color.primary.opacity(0.85))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if blocks[i].colours {
                         TourColorKey(notes: blocks[i].items, lit: lit, vertical: true)
                     } else {
@@ -965,8 +1080,8 @@ struct BubbleShape: Shape {
     /// The circle's colours demo has played once (Continue appears), and is playing now.
     private(set) var sweepPlayed = false
     private(set) var sweeping = false
-    /// The folded "what it's for" line, opened by a tap while trying it.
-    var learnOpen = false
+    /// A finished step opened again by a tap on its ✓ line (its id); one at a time.
+    var openSection: String?
     /// A touch the tour didn't let through (owner: no buzz — the thing to touch pulses instead).
     private(set) var nudges = 0
     /// A to-do just done: the thing that changed glows a moment (owner: "give attention to the areas being changed").
@@ -1134,7 +1249,7 @@ struct BubbleShape: Shape {
             // Where the ring turns each colour: green at once, then the scoring rule's own changes (30 min in, then
             // halfway through the rest — PrayerScoring.gradeChanges), as shares of the practice window.
             let lights: [Double] = [0.005, Self.sweepStops.yellow, Self.sweepStops.red]
-            var playing: Bool { run == thisRun && step == .circle && phase == .learn }
+            var playing: Bool { run == thisRun && step == .circle && phase == .colours }
             var elapsed: TimeInterval = 0
             var last = Date()
             while playing, elapsed < sweep {
@@ -1206,28 +1321,21 @@ struct BubbleShape: Shape {
 
     /// The current card's words, to-dos and buttons (the post-tour steps have their own, in TourLayer).
     var page: TourPage {
-        // Continue from learning, its first half: what it's for rolls up into its one line, nothing new yet.
+        // A step finishing, its first beat: it rolls up into its ✓ line, nothing new under it yet.
         if let into = folding {
             var p = page(for: step, phase: into)
-            p.tasks = []
-            p.insight = nil
+            if let last = p.sections.last, !last.done { p.sections.removeLast() }
             p.primary = nil
             p.secondary = nil
             return p
         }
         return page(for: step, phase: phase)
     }
-    /// Continue from learning is in two beats (owner: the content collapses into its line item, one card the whole
-    /// way): first the fold (this, the phase it's folding into), then what comes next under the line.
+    /// A step finishing is two beats (owner: the content collapses into its line item, one card the whole way): first
+    /// the fold (this, the phase it's folding into), then the next step under it.
     private(set) var folding: TourPhase?
-    /// A card's "what it's for", as it reads while learning it (folded to one line once they're trying it).
-    func learnPage(_ card: TourStep) -> TourPage { page(for: card, phase: .learn) }
 
-    static let circleTitle = "This is your prayer circle."
-    static let listTitle = "Your whole day, prayer by prayer."
-    static let zikrTitle = "Your zikr."
-    static let settingsTitle = "Your settings."
-    /// The owner's words for card 1 (2026-10-05), as he laid them out.
+    /// The owner's words for the circle (2026-10-05), as he laid them out.
     static let circleBlocks = [
         TourBlock(lead: "It shows the prayer that matters to you:",
                   items: ["the current one", "the upcoming one", "any you missed"]),
@@ -1235,78 +1343,90 @@ struct BubbleShape: Shape {
                   items: ["First 30 min", "On time", "Late"], colours: true),
     ]
 
+    /// A chapter's page: its number and title, how far through it, its steps (the finished ones first).
+    private func chapter(_ card: TourStep, _ done: Double, of units: Double, _ sections: [TourSection],
+                         locked: Set<Int> = [], primary: String? = nil, secondary: String? = nil) -> TourPage {
+        TourPage(headline: card.chapterTitle, index: (TourStep.cards.firstIndex(of: card) ?? 0) + 1,
+                 progress: min(done / units, 1), sections: sections, locked: locked,
+                 primary: primary, secondary: secondary)
+    }
+
+    // Each card is a chapter (owner): "1  Prayer Circle", a ring for how far through it, and its steps — each open while
+    // it's the one, then folded to a ✓ line. Learning is short lists (owner's layout), never a paragraph.
     private func page(for step: TourStep?, phase: TourPhase) -> TourPage {
-        switch (step, phase) {
-        // Each card's headline is its chapter title, the same the whole way through (owner); learning is a few short
-        // blocks (owner's own layout for card 1: a lead, then a short list), folded to one line once they try it.
-        case (.circle, .learn):
-            return TourPage(
-                headline: Self.circleTitle,
-                blocks: Self.circleBlocks,
-                primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
-                secondary: sweepPlayed && !sweeping ? "Play again" : nil)
-        case (.circle, _):
-            // Marked: the to-dos fold to "All done" and the payoff — small enough to sit above the circle, the whole
-            // page under it free for the swipe.
-            let marked = ticked.contains(2)
-            return TourPage(
-                headline: Self.circleTitle,
-                tasksDone: marked,
-                tasks: ["Tap the circle to flip its time", "Turn until the qibla arrow points up",
-                        "Hold the circle to mark Asr"],
-                locked: lockedCircle,
-                insight: marked ? "Marked and saved \u{2014} Asr is in your prayer list now. Swipe up to see it." : nil,
-                foldedTitle: "What the circle shows")
-        case (.list, .learn):
-            return TourPage(
-                headline: Self.listTitle,
-                blocks: [TourBlock(lead: "Every prayer and its time:",
-                                   items: ["coming ones are greyed out, with the time until",
-                                           "marked ones show when you prayed and the score",
-                                           "marked ones fold under \u{201C}done\u{201D}"]),
-                         TourBlock(lead: "Here you can:",
-                                   items: ["tap a dot to mark or unmark a prayer",
-                                           "hold a marked prayer to fix when and where you prayed",
-                                           "see how well you\u{2019}re praying today"])],
-                primary: "Continue")
-        case (.list, _):
+        switch step {
+        case .circle:
+            var shows = TourSection(id: "circle.shows", title: "What it shows", blocks: [Self.circleBlocks[0]])
+            var colours = TourSection(id: "circle.colours", title: "The colours", blocks: [Self.circleBlocks[1]])
+            var tryIt = TourSection(id: "circle.try", title: "Try it",
+                                    tasks: ["Tap the circle to flip its time", "Turn until the qibla arrow points up",
+                                            "Hold the circle to mark Asr"])
+            switch phase {
+            case .learn:
+                return chapter(.circle, 0, of: 5, [shows], primary: "Continue")
+            case .colours:
+                shows.done = true
+                return chapter(.circle, 1, of: 5, [shows, colours],
+                               primary: sweeping ? nil : (sweepPlayed ? "Continue" : "See it in action"),
+                               secondary: sweepPlayed && !sweeping ? "Play again" : nil)
+            default:
+                shows.done = true
+                colours.done = true
+                let marked = ticked.contains(2)
+                let done = Double(ticked.intersection([0, 1, 2]).count)
+                guard marked else { return chapter(.circle, 2 + done, of: 5, [shows, colours, tryIt], locked: lockedCircle) }
+                // Marked: the to-dos fold too, and the payoff — small enough to sit above the circle, the whole page
+                // under it free for the swipe.
+                tryIt.done = true
+                let payoff = TourSection(id: "circle.marked",
+                                         note: "Marked and saved \u{2014} Asr is in your prayer list now. Swipe up to see it.")
+                return chapter(.circle, 5, of: 5, [shows, colours, tryIt, payoff], locked: lockedCircle)
+            }
+        case .list:
+            var shows = TourSection(id: "list.shows", title: "What it\u{2019}s for",
+                                    blocks: [TourBlock(lead: "Every prayer and its time:",
+                                                       items: ["coming ones are greyed out, with the time until",
+                                                               "marked ones show when you prayed and the score",
+                                                               "marked ones fold under \u{201C}done\u{201D}"]),
+                                             TourBlock(lead: "Here you can:",
+                                                       items: ["tap a dot to mark or unmark a prayer",
+                                                               "hold a marked prayer to fix when and where you prayed",
+                                                               "see how well you\u{2019}re praying today"])])
+            guard phase != .learn else { return chapter(.list, 0, of: 5, [shows], primary: "Continue") }
+            shows.done = true
             let all = ticked.isSuperset(of: [0, 1, 2, 3])
-            return TourPage(
-                headline: Self.listTitle,
-                tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to show your marked prayers",
-                        "Tap a marked prayer to see its score",
-                        "Tap a coming prayer to see how long until it",
-                        "Hold a marked prayer, change its time, and save"],
-                locked: lockedList,
-                insight: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil,
-                foldedTitle: "What the list is for",
-                primary: all ? "Continue" : nil)
-        case (.zikr, .go):
-            return TourPage(headline: Self.zikrTitle, subline: "It\u{2019}s one page over.", tasks: ["Swipe right"])
-        case (.zikr, _):
-            return TourPage(
-                headline: Self.zikrTitle,
-                blocks: [TourBlock(lead: "On this page:",
-                                   items: ["your tasks on the wheel, freestyle first \u{2014} scroll for more",
-                                           "History top left, Azkar top right",
-                                           "under the wheel: tasks done today and the time left \u{2014} tap it for all"])],
-                primary: "Continue")
-        case (.settings, .go):
-            return TourPage(headline: Self.settingsTitle, subline: "One tap away.", tasks: ["Tap Settings"])
-        case (.settings, .learn):
-            return TourPage(
-                headline: Self.settingsTitle,
-                blocks: [TourBlock(lead: "Here you set:",
-                                   items: ["your location and how prayer times are worked out",
-                                           "a reminder for each prayer",
-                                           "the Fajr alarm",
-                                           "how shukr looks"])],
-                primary: "Continue")
-        case (.settings, _):
-            return TourPage(headline: Self.settingsTitle,
-                            insight: "This tour lives here: tap \u{201C}Show me around again\u{201D} any time.",
-                            foldedTitle: "What\u{2019}s in Settings",
-                            primary: "Done")
+            let tryIt = TourSection(id: "list.try", title: "Try it",
+                                    tasks: ["Tap \u{201C}\(doneCount) done\u{201D} to show your marked prayers",
+                                            "Tap a marked prayer to see its score",
+                                            "Tap a coming prayer to see how long until it",
+                                            "Hold a marked prayer, change its time, and save"],
+                                    note: all ? "That\u{2019}s your day \u{2014} and it only ever says what\u{2019}s true." : nil)
+            return chapter(.list, 1 + Double(ticked.intersection([0, 1, 2, 3]).count), of: 5, [shows, tryIt],
+                           locked: lockedList, primary: all ? "Continue" : nil)
+        case .zikr:
+            var there = TourSection(id: "zikr.go", title: "Get there", lead: "It\u{2019}s one page over.", tasks: ["Swipe right"])
+            guard phase != .go else { return chapter(.zikr, 0, of: 2, [there]) }
+            there.done = true
+            let page = TourSection(id: "zikr.shows", title: "On this page",
+                                   blocks: [TourBlock(items: ["your tasks on the wheel, freestyle first",
+                                                              "scroll the wheel for the rest",
+                                                              "History top left, Azkar top right",
+                                                              "under it: tasks done and time left"])])
+            return chapter(.zikr, 1, of: 2, [there, page], primary: "Continue")
+        case .settings:
+            var there = TourSection(id: "settings.go", title: "Get there", lead: "One tap away.", tasks: ["Tap Settings"])
+            guard phase != .go else { return chapter(.settings, 0, of: 2, [there]) }
+            there.done = true
+            var here = TourSection(id: "settings.shows", title: "What you set here",
+                                   blocks: [TourBlock(items: ["your location and how prayer times are worked out",
+                                                              "a reminder for each prayer",
+                                                              "the Fajr alarm",
+                                                              "how shukr looks"])])
+            guard phase == .last else { return chapter(.settings, 1, of: 2, [there, here], primary: "Continue") }
+            here.done = true
+            let again = TourSection(id: "settings.again", title: "This tour",
+                                    note: "It lives here: tap \u{201C}Show me around again\u{201D} any time.")
+            return chapter(.settings, 2, of: 2, [there, here, again], primary: "Done")
         default:
             return TourPage(headline: step?.headline ?? "")
         }
@@ -1486,7 +1606,7 @@ struct BubbleShape: Shape {
         lit = []
         completing = false
         insight = false
-        learnOpen = false
+        openSection = nil
         folding = nil
         qiblaSkippable = false
         sweeping = false
@@ -1530,9 +1650,10 @@ struct BubbleShape: Shape {
         case (_, _, .back): goBack(from: step)
 
         // 1 · The circle: learn (the colours demo, then Continue), then try.
-        case (.circle, .learn, .demo): playColors(run: run)
-        case (.circle, .learn, .next) where sweepPlayed: setPhase(.tryIt)
-        case (.circle, .learn, .next) where !sweeping: playColors(run: run)   // "See it in action"
+        case (.circle, .learn, .next): setPhase(.colours)
+        case (.circle, .colours, .demo): playColors(run: run)
+        case (.circle, .colours, .next) where sweepPlayed: setPhase(.tryIt)
+        case (.circle, .colours, .next) where !sweeping: playColors(run: run)   // "See it in action"
         case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
         case (.circle, .tryIt, .qiblaAligned): tick(1, flash: "qiblaArrow")
         case (.circle, .tryIt, .skipQibla): tick(1)
@@ -1580,14 +1701,15 @@ struct BubbleShape: Shape {
         guard folding == nil else { return }
         func land() {
             withAnimation(.smooth(duration: CircleMotion.standard)) {
-                if next == .tryIt { ticked = []; learnOpen = false }
+                if next == .tryIt { ticked = [] }
+                openSection = nil
                 folding = nil
                 phase = next
             }
         }
-        // Learning folds away first, then the to-dos (or the last words) come in under its line.
-        guard phase == .learn, next == .tryIt || next == .last, step?.isCard == true else { return land() }
-        learnOpen = false
+        // The step that's done rolls up into its ✓ line first, then the next comes in under it.
+        guard step?.isCard == true, next != phase else { return land() }
+        openSection = nil
         withAnimation(.smooth(duration: CircleMotion.standard)) { folding = next }
         let thisRun = run, card = step
         Task { @MainActor in
@@ -1620,7 +1742,7 @@ struct BubbleShape: Shape {
         Task {
             try? await Task.sleep(for: .seconds(0.6))
             guard run == thisRun, step == target else { return }
-            if target == .circle && wanted != .learn { sweepPlayed = true }
+            if target == .circle && wanted == .tryIt { sweepPlayed = true }
             setPhase(wanted)
         }
     }
@@ -1712,7 +1834,7 @@ struct TourLayer: View {
         let skipQibla = step == .circle && tryingIt && runtime.qiblaSkippable && !runtime.ticked.contains(1)
         TourOverlay(step: step, page: page(step), target: target(step), place: runtime.place(of: step),
                     ticked: runtime.ticked, lit: runtime.lit,
-                    folded: step.isCard ? folded(step) : nil, learnOpen: runtime.learnOpen,   // the card's page says when
+                    openSection: runtime.openSection,
                     hint: hint(step), aboveY: aboveY(step),
                     showsBack: runtime.canGoBack && runtime.phase != .last,
                     flash: flashFrame(), flashes: runtime.flashes, nudges: runtime.nudges,
@@ -1720,7 +1842,7 @@ struct TourLayer: View {
                     onPrimary: { runtime.event(.next) },
                     onSecondary: { runtime.event(.demo) },
                     onBack: { runtime.event(.back) },
-                    onToggleLearn: toggleLearn,
+                    onToggle: toggleSection,
                     onSkipQibla: { runtime.event(.skipQibla) })
             .opacity(visible ? 1 : 0)
             .allowsHitTesting(visible)
@@ -1734,8 +1856,11 @@ struct TourLayer: View {
         }
     }
 
-    private func toggleLearn() {
-        withAnimation(.smooth(duration: CircleMotion.standard)) { runtime.learnOpen.toggle() }
+    /// A finished step's ✓ line: open it again, or fold it back.
+    private func toggleSection(_ id: String) {
+        withAnimation(.smooth(duration: CircleMotion.standard)) {
+            runtime.openSection = runtime.openSection == id ? nil : id
+        }
     }
 
     @ViewBuilder private var backPill: some View {
@@ -1813,8 +1938,8 @@ private struct TourLayerWatchers2: ViewModifier {
                 AccessibilityNotification.Announcement(colours[i]).post()
             }
             .onChange(of: runtime.ticked) { old, new in
-                guard let i = new.subtracting(old).first, runtime.page.tasks.indices.contains(i) else { return }
-                AccessibilityNotification.Announcement("Done: \(runtime.page.tasks[i])").post()
+                guard let i = new.subtracting(old).first, runtime.page.todo.indices.contains(i) else { return }
+                AccessibilityNotification.Announcement("Done: \(runtime.page.todo[i])").post()
             }
             // Back from the background: the practice day round now again (Ben's round C).
             .onChange(of: CircleStage.shared.sceneActive) { _, active in
@@ -1867,7 +1992,7 @@ extension TourLayer {
 
     private func announce() {
         let page = runtime.page
-        let todo = page.tasks.isEmpty ? "" : " To do: " + page.tasks.joined(separator: ", ") + "."
+        let todo = page.todo.isEmpty ? "" : " To do: " + page.todo.joined(separator: ", ") + "."
         AccessibilityNotification.Announcement("\(page.headline) \(page.subline ?? "")\(todo)").post()
     }
 
@@ -1883,15 +2008,6 @@ extension TourLayer {
         case .map: return TourPage(headline: step.headline, subline: step.subline, tasks: step.tasks, primary: "Got it")
         default: return TourPage(headline: step.headline, subline: step.subline, primary: "Got it")
         }
-    }
-
-    /// The card's "what it's for", folded to one line while trying it (tap to open).
-    private func folded(_ step: TourStep) -> (title: String, page: TourPage)? {
-        guard let title = runtime.page.foldedTitle else { return nil }
-        var learn = runtime.learnPage(step)
-        learn.primary = nil
-        learn.secondary = nil
-        return (title, learn)
     }
 
     /// What the bubble points at, for the card and its phase.
