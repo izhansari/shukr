@@ -1193,6 +1193,13 @@ struct BubbleShape: Shape {
     /// Whether a prayer's time editor may open now. Outside the tour, always. In it: the list card's last to-do opens
     /// Fajr's only (the one it names and the thumbprint is on — testers held Asr and made it Qaza); once that's saved,
     /// any marked practice prayer, to keep practising (owner, 2026-10-06).
+    /// The list's last to-do, still to do: Fajr's save needs a time in the yellow (owner, 2026-10-06 — "they have to put
+    /// it in yellow, either by the time wheel or the color bar"); after it, any time saves.
+    func needsYellow(_ prayer: PrayerModel) -> Bool {
+        active && step == .list && phase == .tryIt && !ticked.contains(3) && prayer.name == "Fajr"
+            && Self.isPracticeAnywhere(prayer)
+    }
+
     func allowsEditing(_ prayer: PrayerModel) -> Bool {
         guard active else { return true }
         guard step == .list && phase == .tryIt && !page.locked.contains(3) && prayer.isCompleted
@@ -1451,7 +1458,8 @@ struct BubbleShape: Shape {
             case .learnMore:
                 shows.done = true
                 return chapter(.circle, 1, of: 5, [shows, colours],
-                               primary: sweeping ? nil : (sweepPlayed ? TourCopy.continueButton : TourCopy.Circle.seeItInAction),
+                               // The demo starts by itself (owner, 2026-10-06): no button until it has played.
+                               primary: sweepPlayed && !sweeping ? TourCopy.continueButton : nil,
                                secondary: sweepPlayed && !sweeping ? TourCopy.Circle.playAgain : nil)
             default:
                 shows.done = true
@@ -1748,12 +1756,13 @@ struct BubbleShape: Shape {
         case (.circle, .learnMore, .demo): playColors(run: run)
         case (.circle, .learnMore, .next) where sweepPlayed: setPhase(.tryIt)
         case (.circle, .learnMore, .next) where !sweeping: playColors(run: run)   // "See it in action"
-        case (.circle, .tryIt, .circleTapped): tick(0)   // no glow on the time words (owner)
-        case (.circle, .tryIt, .qiblaAligned): tick(1, flash: "qiblaArrow")
+        // The glow only on the time words when they flip; none for the qibla or the mark (owner, 2026-10-06).
+        case (.circle, .tryIt, .circleTapped): tick(0, flash: "circleTime")
+        case (.circle, .tryIt, .qiblaAligned): tick(1)
         case (.circle, .tryIt, .skipQibla): tick(1)
         case (.circle, .tryIt, .marked(let prayer, _)):
             practicePrayer = prayer
-            tick(2, flash: "circle")
+            tick(2)
         // The swipe up is the `marked` sentence's ask, not a to-do line (three lines, counted by position — Ben's
         // audit): no tick, on to the list.
         case (.circle, .tryIt, .listOpened) where ticked.contains(2):
@@ -1806,6 +1815,8 @@ struct BubbleShape: Shape {
                 folding = nil
                 phase = next
             }
+            // The circle's colours: the demo plays as the step opens (owner: "just start it").
+            if step == .circle, next == .learnMore, !sweepPlayed { playColors(run: run) }
         }
         // The step that's done rolls up into its ✓ line first, then the next comes in under it.
         guard step?.isCard == true, next != phase else { return land() }

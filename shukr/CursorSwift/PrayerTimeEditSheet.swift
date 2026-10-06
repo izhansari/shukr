@@ -61,7 +61,13 @@ struct PrayerTimeEditSheet: View {
         return abs(draft.timeIntervalSince(openedWith)) >= 30
     }
     /// The tour's fix step saves any changed time (tour v2, owner: "change its time, and save").
-    private var canSave: Bool { isValid && (changed || draftSpot != nil) }
+    /// The tour's Fajr fix saves only a time in the yellow (owner, 2026-10-06), until it's done.
+    private var canSave: Bool {
+        isValid && (changed || draftSpot != nil) && (!TourRuntime.shared.needsYellow(prayer) || draftInYellow)
+    }
+    private var draftInYellow: Bool {
+        PrayerScoring.grade(for: PrayerScoring.score(start: prayer.startTime, end: prayer.endTime, markedAt: draft)) == .onTime
+    }
 
     /// Where it was prayed, as a quiet chip under "when did you pray?" (owner, 2026-09-26: a full
     /// row above the buttons sat oddly): the masjid, else the address; tap to move the pin.

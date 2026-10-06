@@ -52,7 +52,6 @@ enum TourCopy {
         static let coloursStep = "The colors"
         static let coloursLead = "The ring fills as the prayer’s time passes, and its color is the score you’d get if you prayed now:"
         static let colours = ["First 30 min", "On time", "Late"]   // green, yellow, red
-        static let seeItInAction = "See it in action"
         static let playAgain = "Play again"
 
         static let todos = [
@@ -88,14 +87,14 @@ enum TourCopy {
             "Tap a coming prayer for the time until",
             "Unfold to see all your prayers",
             "Tap a marked prayer for its score",
-            "Hold Fajr, change its time, save",      // only Fajr opens until this is done
+            "Hold Fajr, move it into the yellow, save",      // only Fajr opens, and saves only in the yellow, until this is done
         ]
         static let allDone = "That’s your day — and it only ever says what’s true."
 
         // The tip inside the time editor (opened by the last to-do).
         static let editorTitle = "When did you really pray?"
-        static let editorLine = "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel, then save. It’s practice — nothing is kept."
-        static let editorTodo = "Change the time, then save"
+        static let editorLine = "Say you prayed Fajr on time but marked it late: drag the color bar or turn the wheel into the yellow, then save. It’s practice — nothing is kept."
+        static let editorTodo = "Move it into the yellow, then save"
     }
 
     // MARK: 3 · Zikr
