@@ -386,6 +386,8 @@ struct SettingsView: View {
                         }
                         // The tour ends here (audit J): its last bubble points at this row.
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("tourAgainRow", $0) }
+                        // The first freestyle session's tips again (owner: a way to see them without the whole tour).
+                        CountingTipsAgainRow()
                     }
                     .id("tourAgainRow")
                     // The tour's Settings card (v2): the top on arrival — the page has come to rest by then (scrolling

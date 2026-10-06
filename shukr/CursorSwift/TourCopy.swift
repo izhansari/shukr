@@ -187,6 +187,9 @@ enum TourCopy {
         static let endLine = "Now the real one: tap the circle when you’re ready."
         static let endButton = "Done"
         static let practiceTitle = "Practice"   // the practice session's name in History
+        // Settings, under "Show me around again"
+        static let againRow = "Show counting tips again"
+        static let againArmed = "Ready — start a freestyle session"
     }
 
     // MARK: Around the tour

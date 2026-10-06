@@ -416,3 +416,24 @@ struct ZikrPageTipsLayer: View {
         }
     }
 }
+
+/// Settings, beside "Show me around again": the first-session tips again, on the next freestyle session (owner,
+/// 2026-10-06). The row says so for a few seconds after the tap.
+struct CountingTipsAgainRow: View {
+    @State private var armed = false
+    var body: some View {
+        Button {
+            CountTips.rearm()
+            triggerSomeVibration(type: .light)
+            withAnimation(.easeOut(duration: CircleMotion.quick)) { armed = true }
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(4))
+                withAnimation(.easeOut(duration: CircleMotion.quick)) { armed = false }
+            }
+        } label: {
+            Label(armed ? TourCopy.Session.againArmed : TourCopy.Session.againRow,
+                  systemImage: armed ? "checkmark" : "hand.tap")
+                .contentTransition(.opacity)
+        }
+    }
+}
