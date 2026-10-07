@@ -273,12 +273,9 @@ struct PrayerPhotoViewer: View {
                     .opacity(shown ? 1 - min(drag / 400, 0.6) : 0)
                     .onTapGesture { close() }
                 VStack(spacing: 22) {
-                    PrayerPhotoBranded(back: swapped ? images.front : images.back,
-                                       front: swapped ? images.back : images.front,
-                                       key: key, place: place, width: width)
-                        .padding(14)
-                        .background(RoundedRectangle(cornerRadius: width * 0.22 * 0.9 + 14, style: .continuous)
-                            .fill(Color(white: 0.09)))
+                    PrayerPhotoFramed(back: swapped ? images.front : images.back,
+                                      front: swapped ? images.back : images.front,
+                                      key: key, place: place, width: width)
                         .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
                         .onTapGesture {
                             guard images.front != nil else { return }
@@ -349,55 +346,234 @@ struct PrayerPhotoViewer: View {
     @MainActor private func sharedImage() -> UIImage? {
         guard images.back != nil else { return nil }
         let w: CGFloat = 1080 / 3
-        let renderer = ImageRenderer(content: PrayerPhotoBranded(back: images.back, front: images.front,
-                                                                 key: key, place: place, width: w)
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: w * 0.22 * 0.9 + 14, style: .continuous).fill(Color(white: 0.09)))
+        let renderer = ImageRenderer(content: PrayerPhotoFramed(back: images.back, front: images.front,
+                                                                key: key, place: place, width: w)
             .padding(18))
         renderer.scale = 3
         return renderer.uiImage
     }
 }
 
-/// The photo with its footer: "shukr" on the left; on the right the prayer's symbol and name, the day under it in
-/// grey (owner: "put the sf symbol of the prayer along with its name. then put the date under it as secondary text"),
-/// and where it was prayed under that when Show where is on.
-struct PrayerPhotoBranded: View {
+/// How a prayer photo is framed when it opens and when it's shared (owner: "more designs … more modern and cute").
+/// `dark` is the first one; the others are the options he's choosing from (DEBUG `-photoStyle polaroid|glass|sticker|
+/// ticket|tint`).
+enum PrayerPhotoStyle: String, CaseIterable {
+    case dark, polaroid, glass, sticker, ticket, tint
+
+    static var current: Self {
+        #if DEBUG
+        if let s = UserDefaults.standard.string(forKey: "photoStyle"), let style = Self(rawValue: s) { return style }
+        #endif
+        return .dark
+    }
+}
+
+/// The photo in its frame, with shukr, the prayer's symbol and name, the day (and the place, with Show where on) —
+/// everything kept inside the frame's corners (owner: the footer ran out past the rounded corner).
+struct PrayerPhotoFramed: View {
     let back: UIImage?
     let front: UIImage?
     let key: String
     var place: String? = nil
     let width: CGFloat
+    var style: PrayerPhotoStyle = .current
+
+    private var name: String { PrayerPhotos.parts(key).name }
+    private var day: String { PrayerPhotos.parts(key).day }
 
     var body: some View {
-        let p = PrayerPhotos.parts(key)
-        VStack(alignment: .leading, spacing: 12) {
-            PrayerPhotoFace(back: back, front: front, width: width)
+        switch style {
+        case .dark: dark
+        case .polaroid: polaroid
+        case .glass: glass
+        case .sticker: sticker
+        case .ticket: ticket
+        case .tint: tint
+        }
+    }
+
+    private func photo(_ w: CGFloat) -> some View { PrayerPhotoFace(back: back, front: front, width: w) }
+
+    private var prayerLine: some View {
+        HStack(spacing: 5) {
+            Image(systemName: prayerIcon(for: name)).font(.system(size: 14))
+            Text(name).font(.system(size: 17, weight: .medium, design: .rounded))
+        }
+    }
+
+    private var placeLine: some View {
+        Group {
+            if let place {
+                Label(place, systemImage: "mappin").font(.system(size: 12, design: .rounded)).lineLimit(1)
+            }
+        }
+    }
+
+    private var wordmark: some View {
+        Text("shukr").font(.system(size: 18, weight: .semibold, design: .rounded))
+    }
+
+    /// The first: a dark card, the footer under the photo — its corners now follow the padding, so nothing runs out.
+    private var dark: some View {
+        let pad: CGFloat = 16, inner = width - pad * 2
+        return VStack(alignment: .leading, spacing: 14) {
+            photo(inner)
             HStack(alignment: .top) {
-                Text("shukr")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.sage)
+                wordmark.foregroundStyle(Color.sage)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 5) {
-                        Image(systemName: prayerIcon(for: p.name)).font(.system(size: 14, weight: .regular))
-                        Text(p.name).font(.system(size: 17, weight: .medium, design: .rounded))
-                    }
-                    .foregroundStyle(.white)
-                    Text(p.day)
-                        .font(.system(size: 13, weight: .regular, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.6))
-                    if let place {
-                        Label(place, systemImage: "mappin")
-                            .font(.system(size: 12, weight: .regular, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1)
-                    }
+                    prayerLine.foregroundStyle(.white)
+                    Text(day).font(.system(size: 13, design: .rounded)).foregroundStyle(.white.opacity(0.6))
+                    placeLine.foregroundStyle(.white.opacity(0.6))
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
+        }
+        .padding(pad)
+        .frame(width: width)
+        .background(RoundedRectangle(cornerRadius: inner * 0.22 + pad, style: .continuous).fill(Color(white: 0.09)))
+    }
+
+    /// A: a soft white polaroid; the caption written under the photo.
+    private var polaroid: some View {
+        let pad: CGFloat = 14, inner = width - pad * 2
+        return VStack(alignment: .leading, spacing: 12) {
+            photo(inner)
+            HStack(alignment: .lastTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    prayerLine.foregroundStyle(Color(white: 0.15))
+                    Text(day).font(.system(size: 13, design: .rounded)).foregroundStyle(Color(white: 0.45))
+                    placeLine.foregroundStyle(Color(white: 0.45))
+                }
+                Spacer()
+                wordmark.font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(Color.sage)
+            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 10)
+        }
+        .padding(pad)
+        .frame(width: width)
+        .background(RoundedRectangle(cornerRadius: 34, style: .continuous).fill(Color(red: 0.99, green: 0.98, blue: 0.96)))
+    }
+
+    /// B: just the photo; the prayer and its day on a glass tag inside it, a small shukr in the corner.
+    private var glass: some View {
+        photo(width)
+            .overlay(alignment: .bottomLeading) {
+                VStack(alignment: .leading, spacing: 1) {
+                    prayerLine
+                    Text(day).font(.system(size: 12, design: .rounded)).opacity(0.75)
+                    placeLine.opacity(0.75)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.ultraThinMaterial))
+                .environment(\.colorScheme, .dark)
+                .padding(width * 0.06)
+            }
+            .overlay(alignment: .topTrailing) {
+                Text("shukr")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(.ultraThinMaterial))
+                    .environment(\.colorScheme, .dark)
+                    .padding(width * 0.06)
+            }
+    }
+
+    /// C: a sticker — a thick white edge, tilted a touch; the caption under it.
+    private var sticker: some View {
+        let inner = width * 0.84
+        return VStack(spacing: 18) {
+            photo(inner)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: inner * 0.22 + 10, style: .continuous).fill(.white))
+                .rotationEffect(.degrees(-3))
+            VStack(spacing: 3) {
+                prayerLine.foregroundStyle(.white)
+                Text("\(day) · shukr").font(.system(size: 13, design: .rounded)).foregroundStyle(.white.opacity(0.7))
+                placeLine.foregroundStyle(.white.opacity(0.7))
+            }
         }
         .frame(width: width)
+    }
+
+    /// D: a ticket — the photo, a perforated line, a stub with the prayer, its day and shukr.
+    private var ticket: some View {
+        let pad: CGFloat = 14, inner = width - pad * 2
+        return VStack(spacing: 0) {
+            photo(inner).padding([.top, .horizontal], pad).padding(.bottom, 16)
+            Line().stroke(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1.5, dash: [5, 6]))
+                .frame(height: 1).padding(.horizontal, 22)
+            HStack {
+                Image(systemName: prayerIcon(for: name)).font(.system(size: 26, weight: .light))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name).font(.system(size: 18, weight: .semibold, design: .rounded))
+                    Text(day).font(.system(size: 13, design: .rounded)).opacity(0.6)
+                    placeLine.opacity(0.6)
+                }
+                Spacer()
+                Text("shukr").font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(Color.sage)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 22).padding(.vertical, 16)
+        }
+        .frame(width: width)
+        .background(TicketShape(notchY: inner + pad + 16, radius: 30).fill(Color(white: 0.1)))
+    }
+
+    /// E: the frame in the prayer's own colours (dawn for Fajr … night for Isha).
+    private var tint: some View {
+        let pad: CGFloat = 14, inner = width - pad * 2
+        let colors = Self.colors(name)
+        return VStack(alignment: .leading, spacing: 12) {
+            photo(inner)
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    prayerLine
+                    Text(day).font(.system(size: 13, design: .rounded)).opacity(0.8)
+                    placeLine.opacity(0.8)
+                }
+                Spacer()
+                wordmark.font(.system(size: 15, weight: .semibold, design: .rounded)).opacity(0.9)
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 6)
+            .padding(.bottom, 8)
+        }
+        .padding(pad)
+        .frame(width: width)
+        .background(RoundedRectangle(cornerRadius: 36, style: .continuous)
+            .fill(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)))
+    }
+
+    static func colors(_ name: String) -> [Color] {
+        switch name {
+        case "Fajr": [Color(red: 0.36, green: 0.47, blue: 0.75), Color(red: 0.93, green: 0.62, blue: 0.66)]
+        case "Dhuhr": [Color(red: 0.96, green: 0.70, blue: 0.25), Color(red: 0.93, green: 0.52, blue: 0.20)]
+        case "Asr": [Color(red: 0.87, green: 0.55, blue: 0.25), Color(red: 0.64, green: 0.36, blue: 0.22)]
+        case "Maghrib": [Color(red: 0.93, green: 0.45, blue: 0.40), Color(red: 0.55, green: 0.27, blue: 0.52)]
+        default: [Color(red: 0.20, green: 0.22, blue: 0.48), Color(red: 0.10, green: 0.10, blue: 0.24)]
+        }
+    }
+}
+
+private struct Line: Shape {
+    func path(in rect: CGRect) -> Path { Path { $0.move(to: CGPoint(x: 0, y: rect.midY)); $0.addLine(to: CGPoint(x: rect.maxX, y: rect.midY)) } }
+}
+
+/// A rounded card with a half-circle notch on each side at `notchY` (the ticket's tear line).
+private struct TicketShape: Shape {
+    let notchY: CGFloat
+    let radius: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var p = Path(roundedRect: rect, cornerRadius: radius, style: .continuous)
+        let r: CGFloat = 12
+        p.addEllipse(in: CGRect(x: rect.minX - r, y: notchY - r, width: r * 2, height: r * 2))
+        p.addEllipse(in: CGRect(x: rect.maxX - r, y: notchY - r, width: r * 2, height: r * 2))
+        return p.normalized(eoFill: true)
     }
 }
 
@@ -679,6 +855,9 @@ struct PrayerPhotoCapture: View {
     }
 
     private func shoot() {
+        #if DEBUG
+        print("PHOTOCAM shoot available=\(DualCamera.available) running=\(camera.running)")
+        #endif
         triggerSomeVibration(type: .medium)
         #if DEBUG
         if !DualCamera.available { take(Self.demoPhoto(.systemTeal), Self.demoPhoto(.systemOrange)); return }
@@ -687,6 +866,9 @@ struct PrayerPhotoCapture: View {
     }
 
     private func take(_ back: Data?, _ front: Data?) {
+        #if DEBUG
+        print("PHOTOCAM take back=\(back?.count ?? -1) front=\(front?.count ?? -1)")
+        #endif
         guard let back, let backImage = UIImage(data: back) else { return }
         let frontImage = front.flatMap(UIImage.init(data:))
         withAnimation(.easeOut(duration: 0.2)) { shot = (backImage, frontImage, back, front) }
@@ -695,10 +877,17 @@ struct PrayerPhotoCapture: View {
     #if DEBUG
     /// The simulator has no camera: a plain photo of a colour, to walk the flow.
     static func demoPhoto(_ color: UIColor) -> Data? {
-        UIGraphicsImageRenderer(size: CGSize(width: 900, height: 1200)).image { ctx in
-            color.setFill()
-            ctx.fill(CGRect(x: 0, y: 0, width: 900, height: 1200))
-        }.jpegData(compressionQuality: 0.8)
+        let size = CGSize(width: 1200, height: 1200)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            let top = color == .systemTeal ? UIColor(red: 0.10, green: 0.12, blue: 0.30, alpha: 1) : UIColor(red: 0.95, green: 0.75, blue: 0.55, alpha: 1)
+            let bottom = color == .systemTeal ? UIColor(red: 0.85, green: 0.45, blue: 0.35, alpha: 1) : UIColor(red: 0.80, green: 0.50, blue: 0.40, alpha: 1)
+            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [top.cgColor, bottom.cgColor] as CFArray, locations: [0, 1])!
+            ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            let symbol = color == .systemTeal ? "moon.stars.fill" : "face.smiling.inverse"
+            if let img = UIImage(systemName: symbol)?.withTintColor(.white.withAlphaComponent(0.9), renderingMode: .alwaysOriginal) {
+                img.draw(in: CGRect(x: 380, y: 300, width: 440, height: 440))
+            }
+        }.jpegData(compressionQuality: 0.85)
     }
     #endif
 }
