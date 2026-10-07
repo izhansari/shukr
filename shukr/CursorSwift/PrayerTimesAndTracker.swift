@@ -1795,7 +1795,7 @@ struct PrayerTimesView: View {
                                     .padding(.bottom, 10)
                                 Divider()
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
-                                menuRow("Journal", "book.closed") { MemoriesPresenter.shared.open = true }
+                                menuRow("Memories", "photo.stack") { MemoriesPresenter.shared.open = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 CompassMenuRow {

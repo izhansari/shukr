@@ -109,7 +109,7 @@ struct MemoriesPage: View {
                         VStack(spacing: 10) {
                             Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
                             Text("No photos yet").font(.headline)
-                            Text("After you mark a prayer, take a photo from the pill; your journal keeps it here.")
+                            Text("After you mark a prayer, take a photo from the pill; it shows up here.")
                                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }
                         .padding(.top, 140).padding(.horizontal, 40)
@@ -142,7 +142,7 @@ struct MemoriesPage: View {
                 }
             }
             .sensoryFeedback(.selection, trigger: level)
-            .navigationTitle("Journal")
+            .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -451,7 +451,7 @@ struct MemoriesDeck: View {
                 ZStack {
                     pile(range, width: width, screen: geo.size.width)
                         .id(current?.dayKey ?? "")
-                        .transition(.push(from: wentBack ? .leading : .trailing))
+                        .transition(slide(70))
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
@@ -478,14 +478,28 @@ struct MemoriesDeck: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .alert("Note", isPresented: $editingNote) {
-            TextField("A few words", text: $noteDraft, axis: .vertical)
-            Button("Save") {
-                guard photos.indices.contains(index) else { return }
-                PrayerPhotos.setNote(photos[index].key, noteDraft)
-                note = PrayerPhotos.note(photos[index].key)
+        .sheet(isPresented: $editingNote) {
+            // The whole note, to read and edit (the pile shows three lines of it).
+            NavigationStack {
+                TextEditor(text: $noteDraft)
+                    .font(.system(size: 17, design: .rounded))
+                    .padding(.horizontal, 12)
+                    .navigationTitle(photos.indices.contains(index) ? PrayerPhotos.caption(photos[index].key) : "Note")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editingNote = false } }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Save") {
+                                if photos.indices.contains(index) {
+                                    PrayerPhotos.setNote(photos[index].key, noteDraft)
+                                    note = PrayerPhotos.note(photos[index].key)
+                                }
+                                editingNote = false
+                            }
+                        }
+                    }
             }
-            Button("Cancel", role: .cancel) {}
+            .presentationDetents([.medium, .large])
         }
         .task(id: "\(index)|\(showPlace)") { await loadDetail() }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
@@ -494,13 +508,21 @@ struct MemoriesDeck: View {
         .onDisappear { PrayerPhotoViewing.shared.closed() }
     }
 
+    /// A short slide with a fade, from the side the cards came from (owner: "more subtle … instead of going the whole
+    /// width of the page").
+    private func slide(_ distance: CGFloat) -> AnyTransition {
+        let from = wentBack ? -distance : distance
+        return .asymmetric(insertion: .offset(x: from).combined(with: .opacity),
+                           removal: .offset(x: -from).combined(with: .opacity))
+    }
+
     /// The day at the top; it slides only when the day changes.
     private func dateLine(_ current: MemoryPhoto) -> some View {
         ZStack {
             Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
                 .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .id(current.dayKey)
-                .transition(.push(from: wentBack ? .leading : .trailing))
+                .transition(slide(36))
         }
         .frame(maxWidth: .infinity)
         .clipped()
@@ -539,28 +561,36 @@ struct MemoriesDeck: View {
                         Text(" ").font(.system(size: 13))
                     }
                 }
+                // Three lines' room whether there's a note or not, so nothing on the page moves from photo to photo
+                // (owner's note: a long one pushed the pile and the buttons, which clicked up and down on each swipe).
                 Button {
                     noteDraft = note ?? ""
                     editingNote = true
                 } label: {
-                    if let note {
-                        Text(note)
-                            .font(.system(size: 14, design: .rounded)).italic()
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.center)
-                            .lineLimit(3)
-                    } else {
-                        Label("Add a note", systemImage: "square.and.pencil")
-                            .font(.system(size: 13, design: .rounded))
-                            .foregroundStyle(.secondary)
+                    Group {
+                        if let note {
+                            Text(note)
+                                .font(.system(size: 14, design: .rounded)).italic()
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.center)
+                                .lineLimit(3)
+                                .truncationMode(.tail)
+                        } else {
+                            Label("Add a note", systemImage: "square.and.pencil")
+                                .font(.system(size: 13, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .frame(height: 58, alignment: .top)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 36)
                 .padding(.top, 6)
             }
             .id(current.key)
-            .transition(.push(from: wentBack ? .leading : .trailing))
+            .transition(slide(36))
         }
         .frame(maxWidth: .infinity)
         .clipped()
@@ -579,7 +609,8 @@ struct MemoriesDeck: View {
             parts.append("\(PrayerScoring.grade(for: score).rawValue) \(Int((score * 100).rounded()))")
         }
         detail = parts.isEmpty ? nil : parts.joined(separator: " · ")
-        if showPlace, let place = await PrayerPhotos.placeText(facts, cityOnly: false), key == photos[index].key {
+        if showPlace, let place = await (facts.masjid != nil ? facts.masjid : PrayerPhotos.placeText(facts, cityOnly: true)),
+           key == photos[index].key {
             parts.append(place)
             detail = parts.joined(separator: " · ")
         }
@@ -706,8 +737,8 @@ struct PrayerPhotoShareComposer: View {
     @State private var city: String?
     @State private var score: Double?
     @State private var addPlace = false
-    /// The place as the address (the masjid, else the street) or just the city and state (owner).
-    @State private var cityOnly = false
+    /// The place as the address (the masjid, else the street) or just the city and state — the city by default (owner).
+    @State private var cityOnly = true
     @State private var addScore = false
     @State private var picture: UIImage?
     @State private var looked = false
