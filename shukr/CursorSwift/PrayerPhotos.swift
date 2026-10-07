@@ -99,6 +99,16 @@ enum PrayerPhotos {
     }
 }
 
+/// A photo is open (the floating card): whatever it was opened from waits for it — the day page let go of its fifth
+/// after 8 s and the card closed with it (owner: "the window seems to close itself abruptly").
+@MainActor @Observable final class PrayerPhotoViewing {
+    static let shared = PrayerPhotoViewing()
+    private(set) var open = 0
+    var isOpen: Bool { open > 0 }
+    func opened() { open += 1 }
+    func closed() { open = max(0, open - 1) }
+}
+
 /// Bumps when a photo is saved or removed, so every view showing one reloads it.
 @MainActor @Observable final class PrayerPhotoRevision {
     static let shared = PrayerPhotoRevision()
@@ -236,6 +246,7 @@ struct PrayerPhotoViewer: View {
     @State private var swapped = false
     @State private var place: String?
     @State private var shown = false
+    @State private var closing = false
     @State private var drag: CGFloat = 0
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     @Environment(\.modelContext) private var context
@@ -301,7 +312,19 @@ struct PrayerPhotoViewer: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .onAppear { withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } }
+        .onAppear {
+            #if DEBUG
+            print("PHOTOCARD open \(key)")
+            #endif
+            PrayerPhotoViewing.shared.opened()
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true }
+        }
+        .onDisappear {
+            #if DEBUG
+            print("PHOTOCARD gone \(key) (\(closing ? "closed by the user" : "closed from under it"))")
+            #endif
+            PrayerPhotoViewing.shared.closed()
+        }
         .task { images = await PrayerPhotos.load(key) }
         .task(id: showPlace) { await lookUpPlace() }
     }
@@ -316,6 +339,7 @@ struct PrayerPhotoViewer: View {
     }
 
     private func close() {
+        closing = true
         triggerSomeVibration(type: .light)
         withAnimation(.easeIn(duration: 0.2)) { shown = false }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onClose() }

@@ -1043,7 +1043,14 @@ struct summaryCircle: View{
         // cleared the new pick at once (Izhan: a second fifth flickered back to the score).
         .task(id: pickedAt) {
             guard picked != nil else { return }
-            do { try await Task.sleep(for: .seconds(8)) } catch { return }
+            do {
+                try await Task.sleep(for: .seconds(8))
+                // Its photo open (the floating card): held until it's closed, then 8 s more.
+                while PrayerPhotoViewing.shared.isOpen {
+                    try await Task.sleep(for: .milliseconds(500))
+                    if !PrayerPhotoViewing.shared.isOpen { try await Task.sleep(for: .seconds(8)) }
+                }
+            } catch { return }
             withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = nil }
         }
     }
