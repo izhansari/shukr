@@ -281,29 +281,31 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
   over the blurred page (a clear `fullScreenCover`, no system slide; springs in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
-  `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). Day ring: a
+  `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
+  (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
+  hold editor's photo, Memories' pile or the share page; `load` / `mainURL` / thumbnails follow it. Day ring: a
   photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 - **Memories** (PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
-  any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` as an overlay over
-  the blurred page, like the hold editor's photo: the photo flies out of its square (`matchedGeometryEffect` in `pinch`,
-  `heroKey`; the square steps aside while it's out — `heroThumb`; the card is laid out at full size and scaled to the
-  flying frame — `ScaledToFrame`; the deck's top `index` is set in `init`, or it came a frame late and just appeared) and
-  back into the top one's square on close (`heroKey = top` quietly first; the overlay's removal is `.opacity` — with
-  `.identity` nothing flew back). One pile in the strips' order: swipe left = the newer one comes in from the right onto
-  the top; swipe right = the top one goes back off to the right. The seen ones lie under it (4 shown), each at a random
-  `Lie` (nudge + tilt, not stored — owner); the top one is centred, 0.3 × its tilt. Cards are `PrayerPhotoFramed` (glass
-  tag, shukr; place with Show where); Share (the framed card, rendered once per top) and ✕ under them; a tap swaps front /
-  back; drag down or a tap outside closes (the deck's own drag
+  any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in a
+  `fullScreenCover` with the system's zoom (`.navigationTransition(.zoom(sourceID: deckSource))`, the source the tapped
+  day / square, `matchedTransitionSource`; fixed while open — owner: "apple documented apis", the hand-made hero version
+  was laggy). One pile in the strips' order: swipe left = the newer one comes in from the right onto the top; swipe
+  right = the top one goes back off to the right. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
+  tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
+  plain photo (no text — owner), the prayer + day under the pile; ⌄ and a fixed Share in the bar → `PrayerPhotoShareComposer`
+  (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; Location and Prayer score — a ring,
+  `score:` — as toggles; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
+  on a card swaps the pictures; drag down closes (the deck's own drag
   picks the axis on its first move). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
   · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the segmented
   control at the bottom too; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
   on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its
   newest three). Each level has its own ScrollView, swapped whole (one shared ScrollView scrolled under the change and
-  nothing flew). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-heicSelfTest` (encode + decode
+  nothing flew). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode
   times, run on a phone with `devicectl … process launch --console`). **Sim trap:** the simulator hangs decoding HEIC
   (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 

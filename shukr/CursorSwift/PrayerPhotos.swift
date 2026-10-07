@@ -151,21 +151,38 @@ enum PrayerPhotos {
     }
 
     static func delete(_ key: String) {
+        Task { @MainActor in PrayerPhotoMain.shared.set(key, selfie: false) }
         for isFront in [false, true] {
             for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
         }
         Task { @MainActor in PrayerPhotoRevision.shared.bump() }
     }
 
-    /// Decoded off the main thread, ready to draw.
+    /// Decoded off the main thread, ready to draw: `back` is the main picture (the selfie when it was made the main one
+    /// — `PrayerPhotoMain`), `front` the one in the corner.
     static func load(_ key: String) async -> (back: UIImage?, front: UIImage?) {
         await Task.detached(priority: .userInitiated) {
             func image(_ front: Bool) -> UIImage? {
                 guard let data = try? Data(contentsOf: url(key, front: front)) else { return nil }
                 return UIImage(data: data)?.preparingForDisplay()
             }
-            return (image(false), image(true))
+            let back = image(false), front = image(true)
+            return PrayerPhotoMain.selfieIsMain(key) && front != nil ? (front, back) : (back, front)
         }.value
+    }
+
+    /// The main picture's file (the thumbnails').
+    static func mainURL(_ key: String) -> URL {
+        let front = url(key, front: true)
+        return PrayerPhotoMain.selfieIsMain(key) && FileManager.default.fileExists(atPath: front.path) ? front : url(key, front: false)
+    }
+
+    /// The prayer's score (0…1) for the share card's ring; Jumu'ah counts as 1.
+    @MainActor static func score(for key: String, in context: ModelContext) -> Double? {
+        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == dayKey }))) ?? []
+        let row = rows.first { $0.isCompleted && ($0.name == name || (name == "Dhuhr" && $0.name == "Jumu'ah")) }
+        return row?.numberScore
     }
 
     /// The photo the right way up, its longest side at most `maxPixels`, as HEIC (a JPEG where HEIC can't be written).
@@ -333,7 +350,6 @@ struct PrayerPhotoViewer: View {
     let key: String
     let onClose: () -> Void
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
-    @State private var swapped = false
     @State private var place: String?
     @State private var shown = false
     @State private var closing = false
@@ -356,14 +372,14 @@ struct PrayerPhotoViewer: View {
                     .opacity(shown ? 1 - min(drag / 400, 0.6) : 0)
                     .onTapGesture { close() }
                 VStack(spacing: 22) {
-                    PrayerPhotoFramed(back: swapped ? images.front : images.back,
-                                      front: swapped ? images.back : images.front,
+                    PrayerPhotoFramed(back: images.back, front: images.front,
                                       key: key, place: place, width: width)
                         .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
                         .onTapGesture {
                             guard images.front != nil else { return }
                             triggerSomeVibration(type: .light)
-                            withAnimation(.snappy(duration: 0.25)) { swapped.toggle() }
+                            withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
+                            PrayerPhotoMain.shared.toggle(key)
                         }
                     HStack(spacing: 18) {
                         if let shared = sharedImage() {
@@ -445,12 +461,15 @@ struct PrayerPhotoFramed: View {
     let front: UIImage?
     let key: String
     var place: String? = nil
+    /// The prayer's score as a ring in the tag (the share page's option).
+    var score: Double? = nil
     let width: CGFloat
 
     var body: some View {
         let p = PrayerPhotos.parts(key)
         PrayerPhotoFace(back: back, front: front, width: width)
             .overlay(alignment: .bottomLeading) {
+                HStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 5) {
                         Image(systemName: prayerIcon(for: p.name)).font(.system(size: 14))
@@ -461,6 +480,18 @@ struct PrayerPhotoFramed: View {
                         Label(place, systemImage: "mappin")
                             .font(.system(size: 12, design: .rounded)).lineLimit(1).opacity(0.75)
                     }
+                }
+                if let score {
+                    ZStack {
+                        Circle().stroke(.white.opacity(0.25), lineWidth: 3)
+                        Circle().trim(from: 0, to: max(score, 0.02))
+                            .stroke(PrayerScoring.color(for: score), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                        Text("\(Int((score * 100).rounded()))")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    }
+                    .frame(width: 32, height: 32)
+                }
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 14).padding(.vertical, 10)
@@ -635,6 +666,8 @@ struct PrayerPhotoCapture: View {
     @StateObject private var camera = DualCamera()
     @State private var shot: (back: UIImage, front: UIImage?, backData: Data, frontData: Data?)?
     @State private var saving = false
+    /// The selfie as the main picture (a tap on the review swaps them; kept with the photo).
+    @State private var selfieMain = false
 
     var body: some View {
         ZStack {
@@ -725,7 +758,13 @@ struct PrayerPhotoCapture: View {
     private func review(_ shot: (back: UIImage, front: UIImage?, backData: Data, frontData: Data?)) -> some View {
         VStack(spacing: 28) {
             GeometryReader { geo in
-                PrayerPhotoFace(back: shot.back, front: shot.front, width: geo.size.width)
+                PrayerPhotoFace(back: selfieMain ? shot.front ?? shot.back : shot.back,
+                                front: selfieMain ? shot.back : shot.front, width: geo.size.width)
+                    .onTapGesture {
+                        guard shot.front != nil else { return }
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.snappy(duration: 0.25)) { selfieMain.toggle() }
+                    }
             }
             .aspectRatio(1, contentMode: .fit)
             .padding(.horizontal, 12)
@@ -743,6 +782,7 @@ struct PrayerPhotoCapture: View {
                     triggerSomeVibration(type: .success)
                     Task {
                         await PrayerPhotos.save(target.key, back: shot.backData, front: shot.frontData)
+                        PrayerPhotoMain.shared.set(target.key, selfie: selfieMain && shot.frontData != nil)
                         camera.stop()
                         onClose()
                     }
@@ -794,6 +834,31 @@ struct PrayerPhotoCapture: View {
         }.jpegData(compressionQuality: 0.85)
     }
     #endif
+}
+
+/// Which picture is the main one, per photo (owner: "however they last toggled the main photo, save it as such … if
+/// they want selfie to be the primary pic"): the keys whose selfie leads, in UserDefaults. Set by a tap that swaps the
+/// two — in the camera's review, the hold editor's photo, Memories' pile and the share page; nothing asks to save.
+@MainActor @Observable final class PrayerPhotoMain {
+    static let shared = PrayerPhotoMain()
+    nonisolated private static let defaultsKey = "prayerPhotos.selfieMain"
+    private(set) var selfieMain: Set<String> = Set(UserDefaults.standard.stringArray(forKey: defaultsKey) ?? [])
+
+    func isSelfie(_ key: String) -> Bool { selfieMain.contains(key) }
+
+    func set(_ key: String, selfie: Bool) {
+        guard selfie != selfieMain.contains(key) else { return }
+        if selfie { selfieMain.insert(key) } else { selfieMain.remove(key) }
+        UserDefaults.standard.set(Array(selfieMain), forKey: Self.defaultsKey)
+        PrayerPhotoRevision.shared.bump()
+    }
+
+    func toggle(_ key: String) { set(key, selfie: !isSelfie(key)) }
+
+    /// For the loaders, off the main thread.
+    nonisolated static func selfieIsMain(_ key: String) -> Bool {
+        UserDefaults.standard.stringArray(forKey: defaultsKey)?.contains(key) ?? false
+    }
 }
 
 /// "42 photos · 9.3 MB" in Memories' settings.

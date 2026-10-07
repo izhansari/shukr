@@ -43,10 +43,10 @@ extension PrayerPhotos {
 
     /// A small copy of the back photo (ImageIO's thumbnail, decoded off the main thread, cached).
     static func thumbnail(_ key: String, side: Int = 160) async -> UIImage? {
-        let cacheKey = "\(key)-\(side)" as NSString
+        let cacheKey = "\(key)-\(side)-\(PrayerPhotoMain.selfieIsMain(key))" as NSString
         if let hit = thumbs.object(forKey: cacheKey) { return hit }
         let image: UIImage? = await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithURL(url(key, front: false) as CFURL, nil) else { return nil }
+            guard let source = CGImageSourceCreateWithURL(mainURL(key) as CFURL, nil) else { return nil }
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                             kCGImageSourceCreateThumbnailWithTransform: true,
                                             kCGImageSourceThumbnailMaxPixelSize: side]
@@ -64,13 +64,12 @@ struct MemoriesPage: View {
     /// The squares that fly into their day's or month's stack on a pinch, and back.
     @Namespace private var pinch
     @State private var photos: [MemoryPhoto] = []
-    /// The pile, open over the page from this photo.
+    /// The pile, open from this photo.
     @State private var deckStart: MemoryPhoto?
-    /// The photo on top of the pile.
-    @State private var top: String = ""
-    /// The one photo that flies between its square and the pile: the tapped one as it opens, the one on top as it closes
-    /// (its square steps aside while it's out — `heroThumb`).
-    @State private var heroKey: String?
+    /// What it zoomed out of (a day's stack or a prayer's square), and back into on close — fixed while it's open
+    /// (owner: "prioritize being clean … apple documented apis": the system's zoom transition, nothing hand-made).
+    @State private var deckSource = ""
+    @Namespace private var zoom
     @State private var showSettings = false
 
     /// Three levels, like Photos' Years / Months / Days (owner: "the most granular is every single prayer photo. The one
@@ -157,16 +156,9 @@ struct MemoriesPage: View {
             }
             .sheet(isPresented: $showSettings) { MemoriesSettings() }
         }
-        .overlay {
-            // The pile, over the blurred page (like a photo opened from the hold editor), out of the tapped square.
-            if let start = deckStart {
-                MemoriesDeck(photos: photos, start: start, hero: pinch, heroKey: heroKey, top: $top,
-                             onClose: closeDeck)
-                    // Its own parts fade in and out (`shown`); only the flying card moves with the page's change. Going, it
-                    // stays for the change (fading) so the card has somewhere to fly back from — gone at once, the
-                    // square just reappeared.
-                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
-            }
+        .fullScreenCover(item: $deckStart) { start in
+            NavigationStack { MemoriesDeck(photos: photos, start: start) }
+                .navigationTransition(.zoom(sourceID: deckSource, in: zoom))
         }
         .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
     }
@@ -190,38 +182,9 @@ struct MemoriesPage: View {
         withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
     }
 
-    private func openDeck(_ photo: MemoryPhoto) {
-        triggerSomeVibration(type: .light)
-        top = photo.key
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-            heroKey = photo.key
-            deckStart = photo
-        }
-    }
-
-    /// The photo now on top flies back into its square (if it has one on screen; else it fades).
-    private func closeDeck() {
-        var quiet = Transaction()
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { heroKey = top }
-        DispatchQueue.main.async {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-                deckStart = nil
-            } completion: {
-                heroKey = nil
-            }
-        }
-    }
-
-    /// A photo's square, or nothing while it's out in the pile (so it flies there and back).
-    @ViewBuilder
-    private func heroThumb(_ key: String, side: Int = 160, corner: CGFloat = 12) -> some View {
-        if deckStart != nil && heroKey == key {
-            Color.clear
-        } else {
-            MemoryThumb(key: key, side: side, corner: corner)
-                .matchedGeometryEffect(id: key, in: pinch)
-        }
+    private func openDeck(_ photo: MemoryPhoto, from source: String) {
+        deckSource = source
+        deckStart = photo
     }
 
     private func monthHeader(_ month: Month) -> some View {
@@ -282,9 +245,10 @@ struct MemoriesPage: View {
                 number.foregroundStyle(.tertiary)
             }
         } else {
-            Button { if let newest = dayPhotos.last { openDeck(newest) } } label: {
+            Button { if let newest = dayPhotos.last { openDeck(newest, from: dayKey) } } label: {
                 VStack(spacing: 4) {
                     stack(dayPhotos, side: 38, corner: 10).frame(height: 40)
+                        .matchedTransitionSource(id: dayKey, in: zoom)
                     number.foregroundStyle(.primary)
                 }
             }
@@ -341,7 +305,8 @@ struct MemoriesPage: View {
         return ZStack {
             ForEach(Array(shown.enumerated()), id: \.element.key) { n, photo in
                 let onTop = n == shown.count - 1
-                heroThumb(photo.key, side: Int(side * 3), corner: corner)
+                MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
+                    .matchedGeometryEffect(id: photo.key, in: pinch)
                     .frame(width: side, height: side)
                     .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
                     .rotationEffect(.degrees(onTop ? 0 : Self.looseTilt(photo.key)))
@@ -369,10 +334,14 @@ struct MemoriesPage: View {
             HStack(spacing: 7) {
                 ForEach(0..<5, id: \.self) { slot in
                     if let photo = dayPhotos.first(where: { $0.slot == slot }) {
-                        heroThumb(photo.key)
+                        MemoryThumb(key: photo.key)
+                            .matchedGeometryEffect(id: photo.key, in: pinch)
                             .frame(width: 52, height: 52)
+                            .matchedTransitionSource(id: photo.key, in: zoom) { source in
+                                source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
                             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .onTapGesture { openDeck(photo) }
+                            .onTapGesture { openDeck(photo, from: photo.key) }
                     } else {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
@@ -408,7 +377,7 @@ private struct MemoryThumb: View {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
             }
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .task(id: key) { image = await PrayerPhotos.thumbnail(key, side: side) }
+            .task(id: "\(key)-\(PrayerPhotoMain.shared.isSelfie(key))") { image = await PrayerPhotos.thumbnail(key, side: side) }
             .accessibilityLabel(PrayerPhotos.caption(key))
             .accessibilityAddTraits(.isButton)
     }
@@ -416,51 +385,35 @@ private struct MemoryThumb: View {
 
 // MARK: - The pile
 
-/// The loose pile (Deck 2), over the blurred page, in the strip's order: older under, newer on top. `index` is the photo
-/// on top, centred and nearly straight; the ones already seen lie under it, each at its own random nudge and tilt (owner:
-/// "make it so the stack looks like a stack … the focused one always comes back to center"). Swipe left: the next newer
-/// one comes in from the right and lands on top; swipe right: the top one goes back off to the right. The cards are the
-/// framed photo (glass tag, shukr), with Share and ✕ under them like a photo opened from the hold editor. It zooms out of
-/// the tapped square and back into the top one's (`hero` — the page's namespace).
+/// The loose pile (Deck 2), in the strips' order: older under, newer on top. `index` is the photo on top, centred and
+/// nearly straight; the ones already seen lie under it, each at its own random nudge and tilt (owner: "make it so the
+/// stack looks like a stack … the focused one always comes back to center"). Swipe left: the next newer one comes in
+/// from the right and lands on top; swipe right: the top one goes back off to the right. Just the photos, the prayer and
+/// day under them (owner: "no text or badges in the photo at time of viewing"); Share opens the share page. Presented
+/// full screen with the system's zoom from the day or square it was opened from.
 struct MemoriesDeck: View {
     let photos: [MemoryPhoto]
     let start: MemoryPhoto
-    let hero: Namespace.ID
-    let heroKey: String?
-    @Binding var top: String
-    let onClose: () -> Void
-    @Environment(\.modelContext) private var context
-    @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
-    @State private var index = 0
+    @Environment(\.dismiss) private var dismiss
+    @State private var index: Int
     @State private var drag: CGFloat = 0
-    /// A drag down: the pile follows the finger and shrinks a little, then closes into its square.
+    /// A drag down: the pile follows the finger and shrinks a little, then closes.
     @State private var down: CGFloat = 0
     /// Which way this drag went, fixed by its first move.
     @State private var vertical: Bool?
     /// Where each card lies in the pile, picked at random the first time it's needed (owner: "just do random angles …
     /// feel more hand made"); not stored.
-    @State private var lie: [String: Lie] = [:]
-    @State private var swapped: Set<String> = []
-    /// The page behind, the cards under the top one and the buttons: in after the zoom starts, out before it closes.
-    @State private var shown = false
-    @State private var place: String?
-    @State private var shareImage: UIImage?
+    @State private var lie: [String: Lie]
+    @State private var sharing: String?
 
     struct Lie { var dx: CGFloat; var dy: CGFloat; var tilt: Double }
 
     /// How many seen cards show under the top one.
     private static let pileDepth = 4
 
-    init(photos: [MemoryPhoto], start: MemoryPhoto, hero: Namespace.ID, heroKey: String?, top: Binding<String>,
-         onClose: @escaping () -> Void) {
+    init(photos: [MemoryPhoto], start: MemoryPhoto) {
         self.photos = photos
         self.start = start
-        self.hero = hero
-        self.heroKey = heroKey
-        self._top = top
-        self.onClose = onClose
-        // On top from the first frame, so it's there to fly out of its square (set in onAppear it came a frame late
-        // and simply appeared).
         let first = photos.firstIndex(of: start) ?? 0
         _index = State(initialValue: first)
         _lie = State(initialValue: Self.lies(around: first, in: photos, keeping: [:]))
@@ -469,80 +422,54 @@ struct MemoriesDeck: View {
     var body: some View {
         GeometryReader { geo in
             let width = min(geo.size.width - 72, 360)
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.25))
-                    .ignoresSafeArea()
-                    .opacity(shown ? 1 - min(max(down, 0) / 400, 0.6) : 0)
-                    .onTapGesture { close() }
-                VStack(spacing: 22) {
-                    ZStack {
-                        ForEach(cardIndices, id: \.self) { i in
-                            card(i, width: width, screen: geo.size.width)
-                        }
+            let current = photos.indices.contains(index) ? photos[index] : nil
+            VStack(spacing: 26) {
+                Spacer(minLength: 0)
+                ZStack {
+                    ForEach(cardIndices, id: \.self) { i in
+                        card(i, width: width, screen: geo.size.width)
                     }
-                    .frame(width: geo.size.width, height: width + 30)
-                    .contentShape(Rectangle())
-                    .offset(y: max(down, 0))
-                    .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
-                    .gesture(pileDrag(screen: geo.size.width))
-                    HStack(spacing: 18) {
-                        if let shareImage, photos.indices.contains(index) {
-                            ShareLink(item: Image(uiImage: shareImage),
-                                      preview: SharePreview(PrayerPhotos.caption(photos[index].key), image: Image(uiImage: shareImage))) {
-                                circleIcon("square.and.arrow.up")
-                            }
-                            .tint(.primary)
-                            .accessibilityLabel("Share")
-                        }
-                        Button(action: close) { circleIcon("xmark") }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Close")
-                    }
-                    .frame(height: 50)
-                    .opacity(shown && down < 10 ? 1 : 0)
                 }
+                .frame(width: geo.size.width, height: width + 30)
+                .contentShape(Rectangle())
+                .offset(y: max(down, 0))
+                .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
+                .gesture(pileDrag(screen: geo.size.width))
+                if let current {
+                    VStack(spacing: 3) {
+                        HStack(spacing: 6) {
+                            Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
+                            Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
+                        }
+                        Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
+                            .font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                    .contentTransition(.opacity)
+                    .animation(.easeOut(duration: 0.2), value: index)
+                    .opacity(1 - min(max(down, 0) / 120, 1))
+                }
+                Spacer(minLength: 0)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .frame(width: geo.size.width)
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { dismiss() } label: { Image(systemName: "chevron.down") }
+                    .accessibilityLabel("Close")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                // Always there, never redrawn per photo: the share page makes the picture.
+                Button { if photos.indices.contains(index) { sharing = photos[index].key } } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share")
+            }
+        }
+        .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
         .sensoryFeedback(.selection, trigger: index)
-        .onChange(of: index) { _, i in if photos.indices.contains(i) { top = photos[i].key } }
-        .onAppear {
-            PrayerPhotoViewing.shared.opened()
-            withAnimation(.easeOut(duration: 0.3)) { shown = true }
-        }
+        .onAppear { PrayerPhotoViewing.shared.opened() }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
-        .task(id: "\(top)|\(showPlace)") { await prepareTop() }
-    }
-
-    /// The top card's place (Show where) and the picture Share sends — the framed card, as from the hold editor.
-    private func prepareTop() async {
-        guard photos.indices.contains(index) else { return }
-        let key = photos[index].key
-        shareImage = nil
-        place = showPlace ? await PrayerPhotos.place(for: key, in: context) : nil
-        let images = await PrayerPhotos.load(key)
-        guard images.back != nil, key == top else { return }
-        let renderer = ImageRenderer(content: PrayerPhotoFramed(back: images.back, front: images.front,
-                                                                key: key, place: place, width: 1080 / 3).padding(18))
-        renderer.scale = 3
-        shareImage = renderer.uiImage
-    }
-
-    private func circleIcon(_ symbol: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.primary)
-            .frame(width: 50, height: 50)
-            .background(Circle().fill(.regularMaterial))
-            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
-    }
-
-    /// The pile and the buttons go first; then the page brings the top card back into its square.
-    private func close() {
-        triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.14)) { shown = false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { onClose() }
     }
 
     /// The pile under the top one, the top one, and the next newer one waiting off to the right.
@@ -567,23 +494,17 @@ struct MemoriesDeck: View {
                 return (l.dx, l.dy, l.tilt)
             }
         }()
-        let isHero = key == heroKey
-        ScaledToFrame(width: width) {
-            MemoryCard(key: key, width: width, swapped: swapped.contains(key), place: i == index ? place : nil)
-        }
-        .matchedGeometryEffect(id: isHero ? key : "card-\(key)", in: hero)
-        .frame(width: width, height: width)
-        .shadow(color: .black.opacity(isHero || shown ? 0.28 : 0), radius: 22, y: 10)
-        .opacity(isHero || shown ? 1 : 0)
-        .rotationEffect(.degrees(angle))
-        .offset(x: x, y: y)
-        .zIndex(Double(i))
-        .allowsHitTesting(i == index)
-        .onTapGesture {
-            withAnimation(.snappy(duration: 0.25)) {
-                if swapped.contains(key) { swapped.remove(key) } else { swapped.insert(key) }
+        MemoryCard(key: key, width: width)
+            .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+            .rotationEffect(.degrees(angle))
+            .offset(x: x, y: y)
+            .zIndex(Double(i))
+            .allowsHitTesting(i == index)
+            .onTapGesture {
+                // The other picture becomes the main one, and stays so (owner).
+                triggerSomeVibration(type: .light)
+                PrayerPhotoMain.shared.toggle(key)
             }
-        }
     }
 
     private func pileDrag(screen: CGFloat) -> some Gesture {
@@ -601,7 +522,7 @@ struct MemoriesDeck: View {
                 defer { vertical = nil }
                 if vertical == true {
                     if value.translation.height > 120 || value.predictedEndTranslation.height > 320 {
-                        close()
+                        dismiss()
                     } else {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0 }
                     }
@@ -636,33 +557,131 @@ struct MemoriesDeck: View {
     }
 }
 
-/// Lays its content out at `width` and scales it to whatever frame it's given — so the card shrinks with the zoom
-/// into a 52 pt square instead of keeping its size.
-private struct ScaledToFrame<Content: View>: View {
-    let width: CGFloat
-    @ViewBuilder let content: Content
-    var body: some View {
-        GeometryReader { g in
-            content
-                .frame(width: width, height: width)
-                .scaleEffect(g.size.width / width, anchor: .topLeading)
-        }
-    }
-}
-
-/// One card in the pile: the framed photo (glass tag, shukr), a tap swaps front and back.
+/// One card in the pile: the photo as it is (rounded square, the other picture in the corner), no text on it.
 private struct MemoryCard: View {
     let key: String
     let width: CGFloat
-    let swapped: Bool
-    var place: String?
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
 
     var body: some View {
-        PrayerPhotoFramed(back: swapped ? images.front ?? images.back : images.back,
-                          front: swapped ? images.back : images.front,
-                          key: key, place: place, width: width)
+        let selfie = PrayerPhotoMain.shared.isSelfie(key)
+        PrayerPhotoFace(back: images.back, front: images.front, width: width)
             .task(id: key) { images = await PrayerPhotos.load(key) }
+            .onChange(of: selfie) { _, _ in
+                withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
+            }
+    }
+}
+
+/// Share: the picture that will be sent, with what goes on it (owner: "shukr and prayer name and date always stay. but
+/// give them option to add location, prayer score as progress ring, choose primary pic by tapping the image").
+struct PrayerPhotoShareComposer: View {
+    let key: String
+    @Environment(\.modelContext) private var context
+    @AppStorage(PrayerPhotos.showPlaceKey) private var showPlaceDefault = false
+    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var place: String?
+    @State private var score: Double?
+    @State private var addPlace = false
+    @State private var addScore = false
+    @State private var picture: UIImage?
+    @State private var looked = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = min(geo.size.width - 48, 420)
+            ScrollView {
+                VStack(spacing: 22) {
+                    framed(width: width)
+                        .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
+                        .onTapGesture {
+                            guard images.front != nil else { return }
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
+                            PrayerPhotoMain.shared.toggle(key)
+                        }
+                    if images.front != nil {
+                        Text("Tap the photo to choose the main picture")
+                            .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 0) {
+                        option("Location", detail: looked && place == nil ? "Not recorded for this prayer" : place,
+                               isOn: $addPlace, enabled: place != nil)
+                        Divider().padding(.leading, 16)
+                        option("Prayer score", detail: score.map { PrayerScoring.summary(for: $0) } ?? (looked ? "Not marked" : nil),
+                               isOn: $addScore, enabled: score != nil)
+                    }
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+                    .padding(.horizontal, 24)
+                }
+                .padding(.top, 12)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .safeAreaInset(edge: .bottom) {
+            Group {
+                if let picture {
+                    ShareLink(item: Image(uiImage: picture),
+                              preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: picture))) {
+                        shareLabel
+                    }
+                } else {
+                    shareLabel.opacity(0.5)
+                }
+            }
+            .padding(.horizontal, 24).padding(.bottom, 8)
+        }
+        .navigationTitle("Share")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            images = await PrayerPhotos.load(key)
+            score = PrayerPhotos.score(for: key, in: context)
+            place = await PrayerPhotos.place(for: key, in: context)
+            #if DEBUG
+            // `-demoShareScore 0.86`: a score and a place for the stand-in photos (no prayer rows behind them).
+            let demo = UserDefaults.standard.double(forKey: "demoShareScore")
+            if demo > 0 { score = score ?? demo; place = place ?? "Masjid Al-Noor" }
+            #endif
+            addPlace = showPlaceDefault && place != nil
+            #if DEBUG
+            if demo > 0 { addPlace = true; addScore = true }   // the simulator's taps miss Toggles
+            #endif
+            looked = true
+        }
+        // The picture that's sent, made again only when what's on it changes (kept on screen meanwhile).
+        .task(id: "\(addPlace)|\(addScore)|\(images.back?.hash ?? 0)") { render() }
+    }
+
+    private func framed(width: CGFloat) -> some View {
+        PrayerPhotoFramed(back: images.back, front: images.front, key: key,
+                          place: addPlace ? place : nil, score: addScore ? score : nil, width: width)
+    }
+
+    private var shareLabel: some View {
+        Label("Share", systemImage: "square.and.arrow.up")
+            .font(.system(size: 17, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).frame(height: 52)
+            .background(Capsule().fill(Color.sage))
+    }
+
+    private func option(_ title: String, detail: String?, isOn: Binding<Bool>, enabled: Bool) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        }
+        .disabled(!enabled)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+
+    @MainActor private func render() {
+        guard images.back != nil else { return }
+        let renderer = ImageRenderer(content: framed(width: 1080 / 3).padding(18))
+        renderer.scale = 3
+        if let image = renderer.uiImage { picture = image }
     }
 }
 
