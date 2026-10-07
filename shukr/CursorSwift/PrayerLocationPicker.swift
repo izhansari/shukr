@@ -464,6 +464,18 @@ enum PrayerSpotAddress {
         cache[key] = place
         return place
     }
+
+    /// "Cary, NC" for a spot (the Journal's share page, "City" instead of the address).
+    static func city(_ c: CLLocationCoordinate2D) async -> String? {
+        let key = String(format: "city-%.3f,%.3f", c.latitude, c.longitude)
+        if let hit = cache[key] { return hit }
+        let placemark = try? await CLGeocoder()
+            .reverseGeocodeLocation(CLLocation(latitude: c.latitude, longitude: c.longitude)).first
+        let city = [placemark?.locality, placemark?.administrativeArea].compactMap { $0 }.joined(separator: ", ")
+        guard !city.isEmpty else { return nil }
+        cache[key] = city
+        return city
+    }
 }
 
 #if DEBUG

@@ -60,6 +60,50 @@ enum PrayerPhotos {
         return await PrayerSpotAddress.lookUp(CLLocationCoordinate2D(latitude: lat, longitude: lon))
     }
 
+    // MARK: Notes (owner: "after taking a photo let them write a small text of notes so we fit the journal vibe")
+
+    private static func noteURL(_ key: String) -> URL { directory.appendingPathComponent("\(key)-note.txt") }
+
+    static func note(_ key: String) -> String? {
+        (try? String(contentsOf: noteURL(key), encoding: .utf8)).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static func setNote(_ key: String, _ text: String?) {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if trimmed.isEmpty {
+            try? FileManager.default.removeItem(at: noteURL(key))
+        } else {
+            try? trimmed.write(to: noteURL(key), atomically: true, encoding: .utf8)
+        }
+    }
+
+    // MARK: The prayer behind a photo
+
+    struct Facts {
+        var markedAt: Date?
+        var score: Double?
+        var masjid: String?
+        var spot: CLLocationCoordinate2D?
+    }
+
+    /// When it was marked, its score, and where (the Journal's line under a photo, the share page).
+    @MainActor static func facts(for key: String, in context: ModelContext) -> Facts? {
+        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == dayKey }))) ?? []
+        guard let row = rows.first(where: { $0.isCompleted && ($0.name == name || (name == "Dhuhr" && $0.name == "Jumu'ah")) })
+        else { return nil }
+        let spot = row.latPrayedAt.flatMap { lat in row.longPrayedAt.map { CLLocationCoordinate2D(latitude: lat, longitude: $0) } }
+        return Facts(markedAt: row.timeAtComplete, score: row.numberScore,
+                     masjid: (row.mosqueName ?? "").isEmpty ? nil : row.mosqueName, spot: spot)
+    }
+
+    /// The place as words: the masjid, else the spot's address — or just its city and state.
+    static func placeText(_ facts: Facts, cityOnly: Bool) async -> String? {
+        if cityOnly { return await facts.spot.asyncMap { await PrayerSpotAddress.city($0) } ?? nil }
+        if let masjid = facts.masjid { return masjid }
+        return await facts.spot.asyncMap { await PrayerSpotAddress.lookUp($0) } ?? nil
+    }
+
     /// How many photos there are and the space they take (Memories' settings).
     static func usage() async -> (count: Int, bytes: Int64) {
         await Task.detached(priority: .utility) {
@@ -152,6 +196,7 @@ enum PrayerPhotos {
 
     static func delete(_ key: String) {
         Task { @MainActor in PrayerPhotoMain.shared.set(key, selfie: false) }
+        setNote(key, nil)
         for isFront in [false, true] {
             for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
         }
@@ -668,6 +713,8 @@ struct PrayerPhotoCapture: View {
     @State private var saving = false
     /// The selfie as the main picture (a tap on the review swaps them; kept with the photo).
     @State private var selfieMain = false
+    /// A few words with it, optional (the Journal shows them under the photo).
+    @State private var note = ""
 
     var body: some View {
         ZStack {
@@ -768,6 +815,13 @@ struct PrayerPhotoCapture: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .padding(.horizontal, 12)
+            TextField("Add a note", text: $note, axis: .vertical)
+                .lineLimit(1...3)
+                .font(.system(size: 16, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16).padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(.white.opacity(0.12)))
+                .padding(.horizontal, 24)
             HStack(spacing: 14) {
                 Button {
                     triggerSomeVibration(type: .light)
@@ -783,6 +837,7 @@ struct PrayerPhotoCapture: View {
                     Task {
                         await PrayerPhotos.save(target.key, back: shot.backData, front: shot.frontData)
                         PrayerPhotoMain.shared.set(target.key, selfie: selfieMain && shot.frontData != nil)
+                        PrayerPhotos.setNote(target.key, note)
                         camera.stop()
                         onClose()
                     }

@@ -109,7 +109,7 @@ struct MemoriesPage: View {
                         VStack(spacing: 10) {
                             Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
                             Text("No photos yet").font(.headline)
-                            Text("After you mark a prayer, the pill's camera saves one here.")
+                            Text("After you mark a prayer, take a photo from the pill; your journal keeps it here.")
                                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }
                         .padding(.top, 140).padding(.horizontal, 40)
@@ -142,7 +142,7 @@ struct MemoriesPage: View {
                 }
             }
             .sensoryFeedback(.selection, trigger: level)
-            .navigationTitle("Memories")
+            .navigationTitle("Journal")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -395,6 +395,17 @@ struct MemoriesDeck: View {
     let photos: [MemoryPhoto]
     let start: MemoryPhoto
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var context
+    @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
+    /// Which way the last move went: back in time (to the left of the strips) or forward — the day's line is pushed
+    /// out sideways that way, the prayer's name up or down (owner: "so the user knows that they're staying in the same
+    /// day and just going through those prayers, or when they've jumped from one day to another").
+    @State private var wentBack = false
+    /// "Prayed 1:12 PM · On time 88 · Masjid Al-Noor" for the top photo.
+    @State private var detail: String?
+    @State private var note: String?
+    @State private var editingNote = false
+    @State private var noteDraft = ""
     @State private var index: Int
     @State private var drag: CGFloat = 0
     /// A drag down: the pile follows the finger and shrinks a little, then closes.
@@ -435,19 +446,7 @@ struct MemoriesDeck: View {
                 .offset(y: max(down, 0))
                 .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
                 .gesture(pileDrag(screen: geo.size.width))
-                if let current {
-                    VStack(spacing: 3) {
-                        HStack(spacing: 6) {
-                            Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
-                            Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
-                        }
-                        Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
-                            .font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
-                    }
-                    .contentTransition(.opacity)
-                    .animation(.easeOut(duration: 0.2), value: index)
-                    .opacity(1 - min(max(down, 0) / 120, 1))
-                }
+                if let current { caption(current) }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
@@ -466,10 +465,86 @@ struct MemoriesDeck: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
+        .alert("Note", isPresented: $editingNote) {
+            TextField("A few words", text: $noteDraft, axis: .vertical)
+            Button("Save") {
+                guard photos.indices.contains(index) else { return }
+                PrayerPhotos.setNote(photos[index].key, noteDraft)
+                note = PrayerPhotos.note(photos[index].key)
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .task(id: "\(index)|\(showPlace)") { await loadDetail() }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
         .sensoryFeedback(.selection, trigger: index)
         .onAppear { PrayerPhotoViewing.shared.opened() }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
+    }
+
+    /// The prayer and the day under the pile. Within a day only the prayer's name moves (down for an earlier one, up for
+    /// a later one); a new day pushes the day's line out sideways, the way the cards went.
+    private func caption(_ current: MemoryPhoto) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
+                Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
+            }
+            .id(current.key)
+            .transition(.push(from: wentBack ? .top : .bottom))
+            Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
+                .font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                .id(current.dayKey)
+                .transition(.push(from: wentBack ? .leading : .trailing))
+            Group {
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else {
+                    Text(" ").font(.system(size: 13))
+                }
+            }
+            .padding(.top, 2)
+            Button {
+                noteDraft = note ?? ""
+                editingNote = true
+            } label: {
+                if let note {
+                    Text(note)
+                        .font(.system(size: 14, design: .rounded)).italic()
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(3)
+                } else {
+                    Label("Add a note", systemImage: "square.and.pencil")
+                        .font(.system(size: 13, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 36)
+            .padding(.top, 4)
+        }
+        .clipped()
+        .opacity(1 - min(max(down, 0) / 120, 1))
+    }
+
+    /// The top photo's line: when it was marked, its grade and score, and where (with Show where on), and its note.
+    private func loadDetail() async {
+        guard photos.indices.contains(index) else { return }
+        let key = photos[index].key
+        note = PrayerPhotos.note(key)
+        guard let facts = PrayerPhotos.facts(for: key, in: context) else { detail = nil; return }
+        var parts: [String] = []
+        if let at = facts.markedAt { parts.append("Prayed \(at.formatted(date: .omitted, time: .shortened))") }
+        if let score = facts.score {
+            parts.append("\(PrayerScoring.grade(for: score).rawValue) \(Int((score * 100).rounded()))")
+        }
+        detail = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        if showPlace, let place = await PrayerPhotos.placeText(facts, cityOnly: false), key == photos[index].key {
+            parts.append(place)
+            detail = parts.joined(separator: " · ")
+        }
     }
 
     private func circleIcon(_ symbol: String) -> some View {
@@ -541,10 +616,12 @@ struct MemoriesDeck: View {
                 let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
                 if (far < -90 || flung < -240), index < photos.count - 1 {
                     // The newer one lands on top; the old top settles into the pile.
+                    wentBack = false
                     withAnimation(settle) { index += 1; drag = 0 }
                     pickLies()
                 } else if (far > 90 || flung > 240), index > 0 {
                     // The top one goes back off to the right; the one under it comes up to the centre.
+                    wentBack = true
                     withAnimation(settle) { index -= 1; drag = 0 }
                     pickLies()
                 } else {
@@ -590,8 +667,11 @@ struct PrayerPhotoShareComposer: View {
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlaceDefault = false
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
     @State private var place: String?
+    @State private var city: String?
     @State private var score: Double?
     @State private var addPlace = false
+    /// The place as the address (the masjid, else the street) or just the city and state (owner).
+    @State private var cityOnly = false
     @State private var addScore = false
     @State private var picture: UIImage?
     @State private var looked = false
@@ -614,8 +694,16 @@ struct PrayerPhotoShareComposer: View {
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
                     }
                     VStack(spacing: 0) {
-                        option("Location", detail: looked && place == nil ? "Not recorded for this prayer" : place,
+                        option("Location", detail: looked && place == nil ? "Not recorded for this prayer" : shownPlace,
                                isOn: $addPlace, enabled: place != nil)
+                        if addPlace && city != nil {
+                            Picker("Show", selection: $cityOnly) {
+                                Text("Address").tag(false)
+                                Text("City").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .padding(.horizontal, 16).padding(.bottom, 10)
+                        }
                         Divider().padding(.leading, 16)
                         option("Prayer score", detail: score.map { PrayerScoring.summary(for: $0) } ?? (looked ? "Not marked" : nil),
                                isOn: $addScore, enabled: score != nil)
@@ -646,11 +734,14 @@ struct PrayerPhotoShareComposer: View {
         .task {
             images = await PrayerPhotos.load(key)
             score = PrayerPhotos.score(for: key, in: context)
-            place = await PrayerPhotos.place(for: key, in: context)
+            if let facts = PrayerPhotos.facts(for: key, in: context) {
+                place = await PrayerPhotos.placeText(facts, cityOnly: false)
+                city = await PrayerPhotos.placeText(facts, cityOnly: true)
+            }
             #if DEBUG
             // `-demoShareScore 0.86`: a score and a place for the stand-in photos (no prayer rows behind them).
             let demo = UserDefaults.standard.double(forKey: "demoShareScore")
-            if demo > 0 { score = score ?? demo; place = place ?? "Masjid Al-Noor" }
+            if demo > 0 { score = score ?? demo; place = place ?? "Masjid Al-Noor"; city = city ?? "Cary, NC" }
             #endif
             addPlace = showPlaceDefault && place != nil
             #if DEBUG
@@ -659,12 +750,14 @@ struct PrayerPhotoShareComposer: View {
             looked = true
         }
         // The picture that's sent, made again only when what's on it changes (kept on screen meanwhile).
-        .task(id: "\(addPlace)|\(addScore)|\(images.back?.hash ?? 0)") { render() }
+        .task(id: "\(addPlace)|\(addScore)|\(cityOnly)|\(images.back?.hash ?? 0)") { render() }
     }
+
+    private var shownPlace: String? { cityOnly ? city ?? place : place }
 
     private func framed(width: CGFloat) -> some View {
         PrayerPhotoFramed(back: images.back, front: images.front, key: key,
-                          place: addPlace ? place : nil, score: addScore ? score : nil, width: width)
+                          place: addPlace ? shownPlace : nil, score: addScore ? score : nil, width: width)
     }
 
     private var shareLabel: some View {

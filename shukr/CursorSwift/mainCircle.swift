@@ -900,8 +900,8 @@ struct summaryCircle: View{
                 MemoriesPresenter.shared.open = true
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "photo.stack").font(.system(size: 13))
-                    Text("Memories").font(.system(size: 14, weight: .regular, design: .rounded))
+                    Image(systemName: "book.closed").font(.system(size: 13))
+                    Text("Journal").font(.system(size: 14, weight: .regular, design: .rounded))
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(.secondary)
