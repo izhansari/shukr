@@ -87,6 +87,10 @@ struct WatchDraft: Codable {
     var postSalah: Bool? = nil
     /// Which counter session wrote it (a reopened one keeps it).
     var sessionID: String? = nil
+    /// The set size picked on the pause screen for this session (nil = the zikr's own).
+    var setSize: Int? = nil
+    /// Continuous: past the goal it keeps counting (the pause screen's chip).
+    var keepsGoing: Bool? = nil
 
     /// Paused since (a draft saved mid-count counts as paused from its last save).
     var pausedSince: Date { pausedAt ?? savedAt }
@@ -861,6 +865,14 @@ struct WatchCounterView: View {
     @State private var pausedTotal: TimeInterval = 0
     @State private var lastCountAt: Date?
     @State private var countingInSets = false
+    /// This session's set size from the pause screen (the zikr's own until changed; the phone's stays as it is —
+    /// the watch never edits the phone's zikr).
+    @State private var setSize: Int?
+    /// Continuous (the phone's "Keeps going"): reaching the goal buzzes and counting carries on (owner: "add continuos
+    /// as a toggle on the second page"). A task session only; locked once past the goal, like the phone's.
+    @State private var keepsGoing = false
+    @State private var goalBuzzed = false
+    private var pastGoal: Bool { task != nil && !postSalah && fraction >= 1 }
     @State private var finished: WatchZikrRecord?
     @State private var finishArmed = false
     @State private var finishArmToken = 0
@@ -922,8 +934,11 @@ struct WatchCounterView: View {
         let demo = UserDefaults.standard.integer(forKey: "demoWatchStep")   // `-demoWatchStep 3`
         if demo > 1 { return demo }
         #endif
-        return task?.step ?? WatchZikrStore.shared.freestyleStep
+        return setSize ?? task?.step ?? WatchZikrStore.shared.freestyleStep
     }
+    /// Sets on the pause screen: a session with a zikr (a task, or Freestyle under a picked one), not Tasbih Fatimah
+    /// (owner: "change the set size in pause screen … for a session that has a zikr. then activate it too").
+    private var setsOffered: Bool { !postSalah && (task != nil || config.zikrName != nil) }
     private var tapWorth: Int { countingInSets && step > 1 ? step : 1 }
     private var sessionCount: Int { count - config.startCount }
     /// Time spent counting, pauses excluded.
@@ -1036,6 +1051,8 @@ struct WatchCounterView: View {
                 pausedAt = draft.pausedSince
                 lastCountActive = draft.lastCountActive
                 countingInSets = draft.countingInSets
+                setSize = draft.setSize
+                keepsGoing = draft.keepsGoing ?? false
                 return
             }
             count = config.startCount
@@ -1101,8 +1118,10 @@ struct WatchCounterView: View {
                 return
             }
             now = date
-            // A timed goal stops itself, like the phone.
-            if let task, !task.countMode, fraction >= 1 { reachedGoal() }
+            // A timed goal stops itself, like the phone — unless it's continuous: one buzz as it's reached.
+            if let task, !task.countMode, fraction >= 1 {
+                if !keepsGoing { reachedGoal() } else if !goalBuzzed { goalBuzzed = true; WatchHaptics.milestone() }
+            }
         }
     }
 
@@ -1333,7 +1352,8 @@ struct WatchCounterView: View {
                                   : (task.map { $0.countMode && count >= $0.goal && before < $0.goal } ?? false)
         let milestone = postSalah ? WatchPostSalah.phase(at: count).index > WatchPostSalah.phase(at: before).index
                                   : count / 100 > before / 100
-        if finishing { reachedGoal(); return }
+        if finishing && !keepsGoing { reachedGoal(); return }
+        if finishing { WatchHaptics.milestone(); saveDraft(); return }   // continuous: the goal's buzz, counting on
         if milestone { WatchHaptics.milestone() } else if tapWorth > 1 { WatchHaptics.set() } else { WatchHaptics.count() }
         saveDraft()
     }
@@ -1372,7 +1392,8 @@ struct WatchCounterView: View {
             startedAt: startedAt, pausedTotal: pausedTotal, pausedAt: pausedAt,
             lastCountActive: lastCountActive, countingInSets: countingInSets,
             dayStart: WatchZikrStore.shared.dayStart(at: startedAt), savedAt: Date(), crownMode: crownMode,
-            postSalah: postSalah ? true : nil, sessionID: sessionID)
+            postSalah: postSalah ? true : nil, sessionID: sessionID, setSize: setSize,
+            keepsGoing: keepsGoing ? true : nil)
     }
 
     private func minus() {
@@ -1457,7 +1478,22 @@ struct WatchCounterView: View {
             WatchPauseSettings(
                 finish: WatchScreen.roomy ? nil : finishEstimate,
                 crownOnly: crownMode,
-                setCrownOnly: setCrownMode)
+                setCrownOnly: setCrownMode,
+                sets: setsOffered ? (size: step > 1 ? step : 10, on: countingInSets && step > 1) : nil,
+                setSetSize: { size in
+                    setSize = size
+                    saveDraft()
+                },
+                setInSets: { on in
+                    if on && step <= 1 { setSize = 10 }
+                    withAnimation(.easeInOut(duration: 0.2)) { countingInSets = on }
+                    saveDraft()
+                },
+                continuous: task != nil && !postSalah ? (on: keepsGoing, locked: pastGoal && keepsGoing) : nil,
+                setContinuous: { on in
+                    withAnimation(.easeInOut(duration: 0.2)) { keepsGoing = on }
+                    saveDraft()
+                })
                 .tag(1)
         }
         .tabViewStyle(.page)
@@ -2307,6 +2343,13 @@ struct WatchPauseSettings: View {
     let finish: (left: TimeInterval, at: Date)?
     let crownOnly: Bool
     let setCrownOnly: (Bool) -> Void
+    /// Count in sets (a session with a zikr): its size, and whether it's on. Nil: not offered.
+    var sets: (size: Int, on: Bool)? = nil
+    var setSetSize: (Int) -> Void = { _ in }
+    var setInSets: (Bool) -> Void = { _ in }
+    /// Continuous (a task session): on, and locked once past the goal. Nil: not offered.
+    var continuous: (on: Bool, locked: Bool)? = nil
+    var setContinuous: (Bool) -> Void = { _ in }
     @State private var showFinishTime = false
 
     var body: some View {
@@ -2338,6 +2381,25 @@ struct WatchPauseSettings: View {
                      crownOnly ? "digitalcrown.arrow.clockwise" : "hand.tap",
                      lit: crownOnly) { setCrownOnly(!crownOnly) }
             }
+            if let sets {
+                // − / + set the size; the chip turns counting in sets on or off (the phone's sets chip).
+                section("count in sets") {
+                    HStack(spacing: 6) {
+                        stepButton("minus", enabled: sets.size > 2) { setSetSize(max(2, sets.size - 1)) }
+                        chip("sets of \(sets.size)", "square.stack", lit: sets.on) { setInSets(!sets.on) }
+                        stepButton("plus", enabled: sets.size < 100) { setSetSize(min(100, sets.size + 1)) }
+                    }
+                }
+            }
+            if let continuous {
+                // The phone's goal chip: stops at the goal, or keeps going past it.
+                section("at the goal") {
+                    chip(continuous.on ? "Keeps going" : "Stops at goal",
+                         continuous.on ? "infinity" : "flag.checkered",
+                         lit: continuous.on) { if !continuous.locked { setContinuous(!continuous.on) } }
+                        .opacity(continuous.locked ? 0.6 : 1)
+                }
+            }
         }
         .frame(maxHeight: .infinity)
         .padding(.horizontal, 4)
@@ -2355,6 +2417,22 @@ struct WatchPauseSettings: View {
         }
     }
 
+    private func stepButton(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            WatchHaptics.tick()
+            action()
+        } label: {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: 30, height: WatchScreen.small ? 28 : 34)
+                .background(Circle().fill(Color.primary.opacity(0.08)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.35)
+    }
+
     private func chip(_ text: String, _ symbol: String, lit: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(text, systemImage: symbol)
@@ -2363,7 +2441,8 @@ struct WatchPauseSettings: View {
                 .minimumScaleFactor(0.8)
                 .foregroundStyle(lit ? Color.green : .secondary)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 9)
+                // Three rows (count with, sets, the goal) plus a 41 mm's finish tile on one screen.
+                .padding(.vertical, WatchScreen.small ? 6 : 9)
                 .background(Capsule().fill(lit ? Color.green.opacity(0.15) : Color.primary.opacity(0.08)))
                 .contentTransition(.opacity)
         }
