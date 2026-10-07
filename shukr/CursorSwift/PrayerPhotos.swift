@@ -161,9 +161,18 @@ struct PrayerPhotoCard: View {
             .onTapGesture {
                 guard opens, images.back != nil else { return }
                 triggerSomeVibration(type: .light)
-                open = true
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { open = true }
             }
-            .fullScreenCover(isPresented: $open) { PrayerPhotoViewer(key: key) { open = false } }
+            .fullScreenCover(isPresented: $open) {
+                PrayerPhotoViewer(key: key) {
+                    var quiet = Transaction()
+                    quiet.disablesAnimations = true
+                    withTransaction(quiet) { open = false }
+                }
+                .presentationBackground(.clear)
+            }
             .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { images = await PrayerPhotos.load(key) }
             .accessibilityLabel("Your \(PrayerPhotos.caption(key)) photo")
             .accessibilityAddTraits(opens ? .isButton : [])
@@ -216,14 +225,18 @@ struct PrayerPhotoThumb: View {
     }
 }
 
-/// Full screen: the photo big, a tap swaps front and back; branded underneath — shukr, the prayer and its day (owner:
-/// "brand the image with shukr and the prayers name and date at least"); Share sends that branded picture.
+/// The photo as a card floating over the app (owner: "instead of showing it full screen on a black page … like just the
+/// image. And like a modal … cute and modern"): the page blurred and dimmed behind, the photo and its footer on a dark
+/// rounded card that springs in; a tap on the photo swaps front and back; Share and ✕ under it as small glass circles;
+/// a tap outside or a swipe down closes it.
 struct PrayerPhotoViewer: View {
     let key: String
     let onClose: () -> Void
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
     @State private var swapped = false
     @State private var place: String?
+    @State private var shown = false
+    @State private var drag: CGFloat = 0
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     @Environment(\.modelContext) private var context
 
@@ -240,56 +253,83 @@ struct PrayerPhotoViewer: View {
 
     var body: some View {
         GeometryReader { geo in
-            let width = min(geo.size.width - 32, 520)
-            VStack(spacing: 18) {
-                Spacer(minLength: 0)
-                PrayerPhotoBranded(back: swapped ? images.front : images.back,
-                                   front: swapped ? images.back : images.front,
-                                   key: key, place: place, width: width)
-                    .onTapGesture {
-                        guard images.front != nil else { return }
-                        triggerSomeVibration(type: .light)
-                        withAnimation(.snappy(duration: 0.25)) { swapped.toggle() }
+            let width = min(geo.size.width - 72, 420)
+            ZStack {
+                // The page behind, blurred and dimmed; a tap there closes.
+                Rectangle().fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.25))
+                    .ignoresSafeArea()
+                    .opacity(shown ? 1 - min(drag / 400, 0.6) : 0)
+                    .onTapGesture { close() }
+                VStack(spacing: 22) {
+                    PrayerPhotoBranded(back: swapped ? images.front : images.back,
+                                       front: swapped ? images.back : images.front,
+                                       key: key, place: place, width: width)
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: width * 0.22 * 0.9 + 14, style: .continuous)
+                            .fill(Color(white: 0.09)))
+                        .shadow(color: .black.opacity(0.35), radius: 30, y: 14)
+                        .onTapGesture {
+                            guard images.front != nil else { return }
+                            triggerSomeVibration(type: .light)
+                            withAnimation(.snappy(duration: 0.25)) { swapped.toggle() }
+                        }
+                    HStack(spacing: 18) {
+                        if let shared = sharedImage() {
+                            ShareLink(item: Image(uiImage: shared),
+                                      preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: shared))) {
+                                circleIcon("square.and.arrow.up")
+                            }
+                            .tint(.primary)
+                            .accessibilityLabel("Share")
+                        }
+                        Button(action: close) { circleIcon("xmark") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Close")
                     }
-                Spacer(minLength: 0)
-                if let shared = sharedImage(width: width) {
-                    ShareLink(item: Image(uiImage: shared),
-                              preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: shared))) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .font(.system(size: 17, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity).frame(height: 52)
-                            .background(Capsule().fill(.white.opacity(0.16)))
-                    }
-                    .padding(.horizontal, 24)
+                    .opacity(drag > 10 ? 0 : 1)
                 }
+                .offset(y: drag)
+                .scaleEffect(shown ? 1 : 0.86)
+                .opacity(shown ? 1 : 0)
+                .gesture(DragGesture()
+                    .onChanged { drag = max(0, $0.translation.height) }
+                    .onEnded { value in
+                        if value.translation.height > 120 || value.predictedEndTranslation.height > 260 { close() }
+                        else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = 0 } }
+                    })
             }
-            .frame(maxWidth: .infinity)
+            .frame(width: geo.size.width, height: geo.size.height)
         }
-        .background(Color.black.ignoresSafeArea())
-        .overlay(alignment: .topTrailing) {
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(.white.opacity(0.18)))
-            }
-            .accessibilityLabel("Close")
-            .padding(.trailing, 20)
-            .padding(.top, 8)
-        }
+        .onAppear { withAnimation(.spring(response: 0.42, dampingFraction: 0.78)) { shown = true } }
         .task { images = await PrayerPhotos.load(key) }
         .task(id: showPlace) { await lookUpPlace() }
-        .preferredColorScheme(.dark)
     }
 
-    /// The branded picture as an image, for Share.
-    @MainActor private func sharedImage(width: CGFloat) -> UIImage? {
+    private func circleIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(.regularMaterial))
+            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+    }
+
+    private func close() {
+        triggerSomeVibration(type: .light)
+        withAnimation(.easeIn(duration: 0.2)) { shown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onClose() }
+    }
+
+    /// The branded picture as an image, for Share (the same dark card).
+    @MainActor private func sharedImage() -> UIImage? {
         guard images.back != nil else { return nil }
+        let w: CGFloat = 1080 / 3
         let renderer = ImageRenderer(content: PrayerPhotoBranded(back: images.back, front: images.front,
-                                                                 key: key, place: place, width: 1080 / 3)
-            .padding(18).background(Color.black))
+                                                                 key: key, place: place, width: w)
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: w * 0.22 * 0.9 + 14, style: .continuous).fill(Color(white: 0.09)))
+            .padding(18))
         renderer.scale = 3
         return renderer.uiImage
     }

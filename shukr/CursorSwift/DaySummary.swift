@@ -21,6 +21,9 @@ extension DayPrayer {
 @MainActor @Observable final class DayPageState {
     static let shared = DayPageState()
     private(set) var up = false
+    /// A prayer's photo is in the ring's centre: the circle's own tap layer lets taps through to it (owner: "still
+    /// can't click on the image while it's in the center of my ring").
+    var photoInCentre = false
     /// The list's card is raised: set `CircleMotion.dayCardLiftDelay` after the page comes up (its rows unfold first —
     /// Izhan: "let it expand first then raise the card"), cleared with it. Kept here, not in the card's view: the list
     /// rebuilds its card as the page swaps, and a view's own state started out raised.
@@ -138,6 +141,8 @@ struct DayCentre: View {
             // A tapped prayer with a photo: the photo, its name and when (prayer photos, decision prayer-photos-day A).
             VStack(spacing: 6) {
                 PrayerPhotoCard(key: key, width: 92)
+                    .onAppear { DayPageState.shared.photoInCentre = true }
+                    .onDisappear { DayPageState.shared.photoInCentre = false }
                 Text("\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
                     .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
             }

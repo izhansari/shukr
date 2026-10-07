@@ -1946,7 +1946,9 @@ struct PrayerTimesView: View {
             #if DEBUG
             // `-demoPhotoViewer`: the newest saved prayer photo, full screen (the simulator's look at the viewer).
             .fullScreenCover(isPresented: $demoViewer) {
-                if let key = PrayerPhotos.newestKey { PrayerPhotoViewer(key: key) { demoViewer = false } }
+                if let key = PrayerPhotos.newestKey {
+                    PrayerPhotoViewer(key: key) { demoViewer = false }.presentationBackground(.clear)
+                }
             }
             .task {
                 if ProcessInfo.processInfo.arguments.contains("-demoPhotoViewer") {

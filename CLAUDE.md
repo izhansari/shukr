@@ -276,11 +276,11 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   once (`AVCaptureMultiCamSession`, iPhone XS+; else the back), run on its own queue; review → Save. Files only, no
   schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.jpg` (`PrayerPhotos.key`, Jumu'ah = Dhuhr);
   private, never synced. Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
-  and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`
-  full screen; `PrayerPhotoBranded`, also what Share sends: shukr left, the prayer's symbol + name with the day
+  and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
+  over the blurred page (a clear `fullScreenCover`, no system slide; springs in; tap outside / swipe down / ✕ close); `PrayerPhotoBranded`, also what Share sends: shukr left, the prayer's symbol + name with the day
   under it right, and the place (masjid, else the spot's address) when Settings → Prayer photos → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). Day ring: a
-  photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the strip
+  photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 

@@ -372,6 +372,8 @@ struct MainCircleView: View {
                 .onTapGesture {
                     handleTap()  // Toggle the trigger
                 }
+                // A prayer's photo in the day page's centre takes its own tap (it opens).
+                .allowsHitTesting(!(daySummaryShowing && DayPageState.shared.photoInCentre))
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.5)
                         .onEnded { _ in
