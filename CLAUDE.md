@@ -300,9 +300,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (laggy), the system zoom (whole page)
   was laggy). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
   onto the top, swipe right = the top one goes back off to the right; past the day's last (first) photo the whole pile
-  changes day thrown whole like a card (owner): a later day's pile flies in from the right onto the current one; back, the
-  current pile follows the finger and is thrown off to the right, the earlier day's under it (`.id(dayKey)` + `dayChange`;
-  `dayLayer` +1 / −1 keeps the right pile on top — the leaving one keeps its value), landing on
+  changes day like pages, in the strip's order (owner: forward must move the pile left): the previous day's pile waits off
+  the left edge, the next day's off the right (`neighbour`, drawn exactly as they'll be — `restingPile`, lies picked for
+  them too); past a day's edge all three follow the finger, then `page(to:)` slides them a width (`paging`) and `land`
+  makes the new day current in place, quietly; a strip jump stands in on its side (`incoming`); `pendingTop` /
+  `shownIndex` let the caption and strip move at once; `MemoryCard` keeps the last 40 decoded pairs so nothing flashes on
+  landing. Landing on
   its first (last) photo. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
   plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom, under a 1 pt line (primary 22 %; the system Divider was too faint on the frost):

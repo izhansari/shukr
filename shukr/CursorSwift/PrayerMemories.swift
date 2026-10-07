@@ -510,9 +510,17 @@ struct MemoriesDeck: View {
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     /// Which way the last move went: back in time or forward — everything that changes slides in from that side.
     @State private var wentBack = false
-    /// Which day's pile is drawn above which while one is thrown: up one for a later day (it lands on top), down one for
-    /// an earlier day (the current one is thrown off it). The pile going away keeps the value it had.
-    @State private var dayLayer: Double = 0
+    /// Days sit side by side like the strip's (owner: "respect previous days and next days so that the stack moves to the
+    /// left or the stack moves to the right"): the previous day's pile waits off the left edge, the next day's off the
+    /// right, and a day change moves all three — `paging` goes to −width going forward, +width going back — then the new
+    /// day becomes the current one in place. `incoming` stands in on that side for a jump from the strip.
+    @State private var paging: CGFloat = 0
+    @State private var incoming: Incoming?
+    /// The photo a day change is landing on (the caption and the strip already show it).
+    @State private var pendingTop: Int?
+    @State private var pagingToken = UUID()
+
+    struct Incoming { var range: ClosedRange<Int>; var top: Int; var fromRight: Bool }
     /// "Prayed 1:12 PM · Masjid Al-Noor" for the top photo, and its score (the badge under it).
     @State private var prayed: String?
     @State private var score: Double?
@@ -553,10 +561,15 @@ struct MemoriesDeck: View {
     }
 
     /// The top photo's day, as indices into `photos`.
-    private var day: ClosedRange<Int> {
-        guard photos.indices.contains(index) else { return 0...0 }
-        let key = photos[index].dayKey
-        var lo = index, hi = index
+    private var day: ClosedRange<Int> { dayRange(of: index) }
+
+    /// The photo the page shows as current: the one a day change is landing on, else the top one.
+    private var shownIndex: Int { pendingTop ?? index }
+
+    private func dayRange(of i: Int) -> ClosedRange<Int> {
+        guard photos.indices.contains(i) else { return 0...0 }
+        let key = photos[i].dayKey
+        var lo = i, hi = i
         while lo > 0 && photos[lo - 1].dayKey == key { lo -= 1 }
         while hi < photos.count - 1 && photos[hi + 1].dayKey == key { hi += 1 }
         return lo...hi
@@ -565,15 +578,22 @@ struct MemoriesDeck: View {
     var body: some View {
         GeometryReader { geo in
             let width = min(geo.size.width - 72, 360)
-            let current = photos.indices.contains(index) ? photos[index] : nil
+            let current = photos.indices.contains(shownIndex) ? photos[shownIndex] : nil
             let range = day
+            let shift = edgeShift(range)
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
                 ZStack {
+                    if let left = neighbour(range, right: false) {
+                        restingPile(left.range, top: left.top, width: width, screen: geo.size.width)
+                            .offset(x: -geo.size.width + shift + paging)
+                    }
                     pile(range, width: width, screen: geo.size.width)
-                        .id(current?.dayKey ?? "")
-                        .transition(dayChange)
-                        .zIndex(dayLayer)
+                        .offset(x: shift + paging)
+                    if let right = neighbour(range, right: true) {
+                        restingPile(right.range, top: right.top, width: width, screen: geo.size.width)
+                            .offset(x: geo.size.width + shift + paging)
+                    }
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
@@ -621,9 +641,9 @@ struct MemoriesDeck: View {
                         ToolbarItem(placement: .cancellationAction) { Button("Cancel") { editingNote = false } }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Save") {
-                                if photos.indices.contains(index) {
-                                    PrayerPhotos.setNote(photos[index].key, noteDraft)
-                                    note = PrayerPhotos.note(photos[index].key)
+                                if photos.indices.contains(shownIndex) {
+                                    PrayerPhotos.setNote(photos[shownIndex].key, noteDraft)
+                                    note = PrayerPhotos.note(photos[shownIndex].key)
                                 }
                                 editingNote = false
                             }
@@ -632,15 +652,18 @@ struct MemoriesDeck: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .task(id: "\(index)|\(showPlace)") { await loadDetail() }
+        .task(id: "\(shownIndex)|\(showPlace)") { await loadDetail() }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
-        .sensoryFeedback(.selection, trigger: index)
-        .onChange(of: index) { _, i in
+        .sensoryFeedback(.selection, trigger: shownIndex)
+        .onChange(of: shownIndex) { _, i in
             // The strip follows the pile.
             guard photos.indices.contains(i), photos[i].dayKey != stripDay else { return }
             withAnimation(.snappy(duration: 0.35)) { stripDay = photos[i].dayKey }
         }
-        .onAppear { PrayerPhotoViewing.shared.opened() }
+        .onAppear {
+            PrayerPhotoViewing.shared.opened()
+            pickLies()
+        }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
     }
 
@@ -649,26 +672,72 @@ struct MemoriesDeck: View {
         onClose(photos[index].key, photos[index].dayKey)
     }
 
-    /// A day's pile changing, thrown whole the way a card is (owner: "just throw the whole stack the same way we do when
-    /// we swipe"): a later day's pile flies in from the right and lands on the current one; going back, the current pile
-    /// is thrown off to the right and the earlier day's is there under it.
-    private var dayChange: AnyTransition {
+    /// The day waiting off one edge: the strip's jump if it's coming from that side, else the next day (on its first
+    /// photo) or the previous day (on its last).
+    private func neighbour(_ range: ClosedRange<Int>, right: Bool) -> Incoming? {
+        if let incoming, incoming.fromRight == right { return incoming }
+        if right, range.upperBound < photos.count - 1 {
+            let next = dayRange(of: range.upperBound + 1)
+            return Incoming(range: next, top: next.lowerBound, fromRight: true)
+        }
+        if !right, range.lowerBound > 0 {
+            let previous = dayRange(of: range.lowerBound - 1)
+            return Incoming(range: previous, top: previous.upperBound, fromRight: false)
+        }
+        return nil
+    }
+
+    /// Past the day's last (or first) photo, every pile follows the finger, the next (previous) day's coming in.
+    private func edgeShift(_ range: ClosedRange<Int>) -> CGFloat {
+        (index == range.upperBound && drag < 0) || (index == range.lowerBound && drag > 0) ? drag : 0
+    }
+
+    /// To another day: all the piles slide a page over, then that day is the current one, on `top`.
+    private func page(to top: Int, fromRight: Bool, jump: Bool, response: Double = 0.42) {
+        finishPaging()
+        guard photos.indices.contains(top) else { return }
         let screen = UIScreen.main.bounds.width
-        let under = AnyTransition.scale(scale: 0.94).combined(with: .opacity)
-        return wentBack
-            ? .asymmetric(insertion: under, removal: .offset(x: screen * 1.2))
-            : .asymmetric(insertion: .offset(x: screen * 1.2), removal: under)
+        if jump { incoming = Incoming(range: dayRange(of: top), top: top, fromRight: fromRight) }
+        lie = Self.lies(around: top, in: photos, keeping: lie)
+        let token = UUID()
+        pagingToken = token
+        withAnimation(.spring(response: response, dampingFraction: 0.9)) {
+            wentBack = !fromRight
+            pendingTop = top
+            paging = fromRight ? -screen : screen
+            drag = 0
+        } completion: {
+            guard pagingToken == token else { return }
+            land(top)
+        }
+    }
+
+    /// The day that slid in becomes the current one where it is (no movement, no fade).
+    private func land(_ top: Int) {
+        var quiet = Transaction()
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            index = top
+            paging = 0
+            incoming = nil
+            pendingTop = nil
+        }
+        pickLies()
+    }
+
+    /// A day change still moving lands at once (a new swipe, or the strip moving on).
+    private func finishPaging() {
+        guard let top = pendingTop else { return }
+        pagingToken = UUID()
+        land(top)
     }
 
     /// The strip passing a day under the finger: that day's pile at once, if it has photos (owner: "the scrubber … isn't
     /// updating as we scroll"); days without photos are passed over until the strip comes to rest.
     private func scrubTo(_ dayKey: String) {
-        guard photos.indices.contains(index), dayKey != photos[index].dayKey,
+        guard photos.indices.contains(shownIndex), dayKey != photos[shownIndex].dayKey,
               let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else { return }
-        wentBack = dayKey < photos[index].dayKey
-        dayLayer += wentBack ? -1 : 1
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { index = newest; drag = 0 }
-        pickLies()
+        page(to: newest, fromRight: dayKey > photos[shownIndex].dayKey, jump: true, response: 0.3)
     }
 
     /// A short slide with a fade, from the side the cards came from (owner: "more subtle … instead of going the whole
@@ -682,12 +751,9 @@ struct MemoriesDeck: View {
     /// The strip came to rest on `dayKey`: that day's pile, on its newest photo; a day without photos sends the strip
     /// on to the nearest day that has some.
     private func goToDay(_ dayKey: String) {
-        guard photos.indices.contains(index), dayKey != photos[index].dayKey else { return }
+        guard photos.indices.contains(shownIndex), dayKey != photos[shownIndex].dayKey else { return }
         if let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) {
-            wentBack = dayKey < photos[index].dayKey
-            dayLayer += wentBack ? -1 : 1
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = newest; drag = 0 }
-            pickLies()
+            page(to: newest, fromRight: dayKey > photos[shownIndex].dayKey, jump: true)
             return
         }
         let before = photos.last { $0.dayKey < dayKey }?.dayKey
@@ -706,9 +772,6 @@ struct MemoriesDeck: View {
     /// day's edge the whole pile follows the finger (a little only, at the very first and last photo).
     private func pile(_ range: ClosedRange<Int>, width: CGFloat, screen: CGFloat) -> some View {
         let atStart = index == range.lowerBound, atEnd = index == range.upperBound
-        // Back past the day's first photo the whole pile follows the finger (it's about to be thrown off to the right);
-        // forward past its last it only gives a little (the next day's pile will land on it).
-        let shift: CGFloat = atStart && drag > 0 ? drag : (atEnd && drag < 0 ? drag / 5 : 0)
         let shown = Array(max(range.lowerBound, index - Self.pileDepth)...min(index + 1, range.upperBound))
         return ZStack {
             ForEach(shown, id: \.self) { i in
@@ -716,7 +779,25 @@ struct MemoriesDeck: View {
             }
         }
         .frame(width: screen, height: width + 30)
-        .offset(x: shift)
+    }
+
+    /// A neighbouring day's pile as it will be once it's the current one: `top` straight on top, the earlier ones under
+    /// it at their lies — drawn the same, so landing on it changes nothing on screen.
+    private func restingPile(_ range: ClosedRange<Int>, top: Int, width: CGFloat, screen: CGFloat) -> some View {
+        let cards = Array(max(range.lowerBound, top - Self.pileDepth)...top)
+        return ZStack {
+            ForEach(cards, id: \.self) { i in
+                let l = lie[photos[i].key] ?? Lie(dx: 0, dy: 0, tilt: 0)
+                MemoryCard(key: photos[i].key, width: width)
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+                    .rotationEffect(.degrees(i == top ? 0 : l.tilt))
+                    .offset(x: i == top ? 0 : l.dx, y: i == top ? 0 : l.dy)
+                    .zIndex(Double(i))
+            }
+        }
+        .frame(width: screen, height: width + 30)
+        .opacity(shown ? 1 : 0)
+        .allowsHitTesting(false)
     }
 
     /// The prayer's name, its line and its note — they slide sideways with every photo.
@@ -789,8 +870,8 @@ struct MemoriesDeck: View {
 
     /// The top photo's line: when it was marked, its grade and score, and where (with Show where on), and its note.
     private func loadDetail() async {
-        guard photos.indices.contains(index) else { return }
-        let key = photos[index].key
+        guard photos.indices.contains(shownIndex) else { return }
+        let key = photos[shownIndex].key
         note = PrayerPhotos.note(key)
         guard let facts = PrayerPhotos.facts(for: key, in: context) else { prayed = nil; score = nil; return }
         var parts: [String] = []
@@ -798,7 +879,7 @@ struct MemoriesDeck: View {
         score = facts.score
         prayed = parts.isEmpty ? nil : parts.joined(separator: " · ")
         if showPlace, let place = await (facts.masjid != nil ? facts.masjid : PrayerPhotos.placeText(facts, cityOnly: true)),
-           key == photos[index].key {
+           key == photos[shownIndex].key {
             parts.append(place)
             prayed = parts.joined(separator: " · ")
         }
@@ -855,6 +936,7 @@ struct MemoriesDeck: View {
                     vertical = abs(value.translation.height) > abs(value.translation.width)
                 }
                 if vertical == true { down = value.translation.height; return }
+                finishPaging()
                 let t = value.translation.width
                 // At the very first and last photo the pile gives a little and comes back.
                 if t < 0, index >= photos.count - 1 { drag = t / 6 } else if t > 0, index == 0 { drag = t / 6 } else { drag = t }
@@ -873,27 +955,40 @@ struct MemoriesDeck: View {
                 let far = value.translation.width, flung = value.predictedEndTranslation.width
                 let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
                 if (far < -90 || flung < -240), index < photos.count - 1 {
-                    // The day's next one lands on top — or, past the day's last, the next day's pile flies in from the
-                    // right and lands on this one, on its first photo.
-                    wentBack = false
-                    if photos[index + 1].dayKey != photos[index].dayKey { dayLayer += 1 }
-                    withAnimation(settle) { index += 1; drag = 0 }
-                    pickLies()
+                    if index == range.upperBound {
+                        // Past the day's last: this day goes off to the left, the next comes in from the right.
+                        page(to: index + 1, fromRight: true, jump: false)
+                    } else {
+                        // The day's next one lands on top.
+                        wentBack = false
+                        withAnimation(settle) { index += 1; drag = 0 }
+                        pickLies()
+                    }
                 } else if (far > 90 || flung > 240), index > 0 {
-                    // The top one goes back off to the right — or, at the day's first, the whole pile is thrown off to the
-                    // right and the previous day's is there under it, on its last photo.
-                    wentBack = true
-                    if photos[index - 1].dayKey != photos[index].dayKey { dayLayer -= 1 }
-                    withAnimation(settle) { index -= 1; drag = 0 }
-                    pickLies()
+                    if index == range.lowerBound {
+                        // Past the day's first: this day goes off to the right, the previous comes in from the left.
+                        page(to: index - 1, fromRight: false, jump: false)
+                    } else {
+                        // The top one goes back off to the right.
+                        wentBack = true
+                        withAnimation(settle) { index -= 1; drag = 0 }
+                        pickLies()
+                    }
                 } else {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { drag = 0 }
                 }
             }
     }
 
-    /// A random lie for each card near the top, the first time it shows.
-    private func pickLies() { lie = Self.lies(around: index, in: photos, keeping: lie) }
+    /// A random lie for each card near the top — and for the neighbouring days' piles waiting off the edges, so a day
+    /// sliding in already lies the way it will once it's the current one.
+    private func pickLies() {
+        var all = Self.lies(around: index, in: photos, keeping: lie)
+        let r = day
+        if r.lowerBound > 0 { all = Self.lies(around: r.lowerBound - 1, in: photos, keeping: all) }
+        if r.upperBound < photos.count - 1 { all = Self.lies(around: r.upperBound + 1, in: photos, keeping: all) }
+        lie = all
+    }
 
     private static func lies(around index: Int, in photos: [MemoryPhoto], keeping: [String: Lie]) -> [String: Lie] {
         var lie = keeping
@@ -1080,14 +1175,31 @@ struct MemoriesDayStrip: View {
 private struct MemoryCard: View {
     let key: String
     let width: CGFloat
-    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var images: (back: UIImage?, front: UIImage?)
+
+    /// The last few photos decoded, so a pile drawn again (a neighbouring day becoming the current one) shows its
+    /// pictures from the first frame.
+    private final class Pair { let images: (back: UIImage?, front: UIImage?); init(_ i: (back: UIImage?, front: UIImage?)) { images = i } }
+    private static let cache: NSCache<NSString, Pair> = { let c = NSCache<NSString, Pair>(); c.countLimit = 40; return c }()
+    private static func cacheKey(_ key: String) -> NSString { "\(key)-\(PrayerPhotoMain.selfieIsMain(key))" as NSString }
+
+    init(key: String, width: CGFloat) {
+        self.key = key
+        self.width = width
+        _images = State(initialValue: Self.cache.object(forKey: Self.cacheKey(key))?.images ?? (nil, nil))
+    }
 
     var body: some View {
         let selfie = PrayerPhotoMain.shared.isSelfie(key)
         PrayerPhotoFace(back: images.back, front: images.front, width: width)
-            .task(id: key) { images = await PrayerPhotos.load(key) }
+            .task(id: key) {
+                guard images.back == nil else { return }
+                images = await PrayerPhotos.load(key)
+                Self.cache.setObject(Pair(images), forKey: Self.cacheKey(key))
+            }
             .onChange(of: selfie) { _, _ in
                 withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
+                Self.cache.setObject(Pair(images), forKey: Self.cacheKey(key))
             }
     }
 }
