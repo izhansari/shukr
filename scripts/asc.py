@@ -6,6 +6,7 @@
     scripts/asc.py notes 8 notes.txt           # build 8 → "What to Test" only: internal group only (the default)
     scripts/asc.py release 8 notes.txt         # build 8 → "What to Test" = notes.txt,
                                                #   add to every external group, submit for beta review
+    scripts/asc.py newgroup "Everyone"         # a new external group with its own public link (no tester limit)
     scripts/asc.py GET /v1/apps                # raw call
 
 The key file never leaves ~/.appstoreconnect/private_keys and is never printed.
@@ -77,6 +78,16 @@ def groups():
     return data["data"]
 
 
+def new_group(name: str):
+    """An external group anyone can join from its public link (owner, 2026-10-06: "make a new group … public")."""
+    g = call("POST", "/v1/betaGroups",
+             {"data": {"type": "betaGroups",
+                       "attributes": {"name": name, "publicLinkEnabled": True, "publicLinkLimitEnabled": False,
+                                      "feedbackEnabled": True},
+                       "relationships": {"app": {"data": {"type": "apps", "id": APP_ID}}}}})["data"]
+    print(f"✓ {name}: publicLink={g['attributes'].get('publicLink')} id={g['id']}")
+    return g
+
 def valid_build(number: str) -> str:
     match = call("GET", f"/v1/builds?filter[app]={APP_ID}&filter[version]={number}&fields[builds]=version,processingState")["data"]
     if not match:
@@ -137,4 +148,5 @@ if __name__ == "__main__":
     elif cmd == "groups": groups()
     elif cmd == "notes": notes_only(sys.argv[2], sys.argv[3])   # internal only (the default)
     elif cmd == "release": release(sys.argv[2], sys.argv[3])
+    elif cmd == "newgroup": new_group(sys.argv[2])
     else: print(json.dumps(call(cmd, sys.argv[2], json.loads(sys.argv[3]) if len(sys.argv) > 3 else None), indent=1)[:4000])
