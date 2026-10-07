@@ -63,54 +63,76 @@ extension PrayerPhotos {
 struct MemoriesPage: View {
     let onClose: () -> Void
     @Namespace private var zoom
+    /// The squares that fly into their month's stack on a pinch, and back.
+    @Namespace private var pinch
     @State private var photos: [MemoryPhoto] = []
     @State private var opened: MemoryPhoto?
     /// The photo on top of the pile, so closing zooms back into its own square.
     @State private var top: String = ""
+    /// Days, or each month as a stack (owner: "pinching the screen so each month becomes a stack of its own").
+    @State private var showMonths = false
+    /// The month at the top of the days, kept while the months show; a tap on a month's stack sets it, so the days
+    /// open there.
+    @State private var dayTop: String?
+    /// The days open at the bottom (today) unless a month was picked.
+    @State private var daysFromMonth = false
+
+    typealias Month = (id: String, title: String, days: [(dayKey: String, photos: [MemoryPhoto])], photos: [MemoryPhoto])
 
     /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos).
-    private var months: [(title: String, days: [(dayKey: String, photos: [MemoryPhoto])])] {
+    private var months: [Month] {
         let byDay = Dictionary(grouping: photos, by: \.dayKey)
         let days = byDay.keys.sorted(by: <).map { ($0, byDay[$0] ?? []) }
         let byMonth = Dictionary(grouping: days, by: { String($0.0.prefix(7)) })
         return byMonth.keys.sorted(by: <).map { month in
-            (Self.monthTitle(month), (byMonth[month] ?? []).sorted { $0.0 < $1.0 })
+            let monthDays = (byMonth[month] ?? []).sorted { $0.0 < $1.0 }
+            return (month, Self.monthTitle(month), monthDays, monthDays.flatMap(\.1))
         }
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            // Two scroll views, one per level, swapped whole: a shared one scrolled under the change and the squares
+            // never flew into their stacks.
+            Group {
                 if photos.isEmpty {
-                    VStack(spacing: 10) {
-                        Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
-                        Text("No photos yet").font(.headline)
-                        Text("After you mark a prayer, the pill's camera saves one here.")
-                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    }
-                    .padding(.top, 140).padding(.horizontal, 40)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        ForEach(months, id: \.title) { month in
-                            Text(month.title)
-                                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                                .padding(.top, 8)
-                            ForEach(month.days, id: \.dayKey) { day in
-                                dayRow(day.dayKey, day.photos)
-                            }
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
+                            Text("No photos yet").font(.headline)
+                            Text("After you mark a prayer, the pill's camera saves one here.")
+                                .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                         }
+                        .padding(.top, 140).padding(.horizontal, 40)
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 40)
+                } else if showMonths {
+                    ScrollView { monthStacks }
+                        .defaultScrollAnchor(.bottom)
+                } else {
+                    ScrollView { dayStrips }
+                        .scrollPosition(id: $dayTop, anchor: .top)
+                        .defaultScrollAnchor(daysFromMonth ? .top : .bottom)
                 }
             }
-            .defaultScrollAnchor(.bottom)
+            .simultaneousGesture(
+                MagnifyGesture().onEnded { value in
+                    if value.magnification < 0.8, !showMonths { switchLevel(months: true) }
+                    if value.magnification > 1.25, showMonths { switchLevel(months: false) }
+                }
+            )
+            .sensoryFeedback(.selection, trigger: showMonths)
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onClose) { Image(systemName: "chevron.left") }
                         .accessibilityLabel("Back")
+                }
+                if !photos.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        // For anyone who never finds the pinch.
+                        Button(showMonths ? "Days" : "Months") { switchLevel(months: !showMonths) }
+                    }
                 }
             }
             .navigationDestination(item: $opened) { start in
@@ -121,6 +143,70 @@ struct MemoriesPage: View {
         }
         .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
     }
+
+    private func switchLevel(months: Bool, to month: String? = nil) {
+        if let month { dayTop = month; daysFromMonth = true }
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) {
+            showMonths = months
+        }
+    }
+
+    private var dayStrips: some View {
+        LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(months, id: \.id) { month in
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(month.title)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .padding(.top, 8)
+                    ForEach(month.days, id: \.dayKey) { day in
+                        dayRow(day.dayKey, day.photos)
+                    }
+                }
+                .id(month.id)
+            }
+        }
+        .scrollTargetLayout()
+        .padding(.horizontal, 20)
+        .padding(.bottom, 40)
+    }
+
+    /// Each month as a small pile: its newest three, loose, with the month and how many under it.
+    private var monthStacks: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 28) {
+            ForEach(months, id: \.id) { month in
+                Button { switchLevel(months: false, to: month.id) } label: {
+                    VStack(spacing: 12) {
+                        ZStack {
+                            ForEach(Array(month.photos.suffix(3).enumerated()), id: \.element.key) { n, photo in
+                                MemoryThumb(key: photo.key, side: 360, corner: 22)
+                                    .matchedGeometryEffect(id: photo.key, in: pinch)
+                                    .frame(width: 118, height: 118)
+                                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                                    .rotationEffect(.degrees(n == 2 ? 0 : Self.looseTilt(photo.key)))
+                                    .offset(x: n == 2 ? 0 : Self.looseNudge(photo.key), y: CGFloat(2 - n) * -3)
+                            }
+                        }
+                        .frame(height: 140)
+                        VStack(spacing: 2) {
+                            Text(month.title).font(.system(size: 16, weight: .semibold, design: .rounded))
+                            Text(month.photos.count == 1 ? "1 photo" : "\(month.photos.count) photos")
+                                .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                        }
+                        .foregroundStyle(.primary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .id(month.id)
+            }
+        }
+        .scrollTargetLayout()
+        .padding(.horizontal, 20)
+        .padding(.vertical, 24)
+    }
+
+    /// A loose angle and nudge for a card in a month's stack, the same each time it's drawn.
+    private static func looseTilt(_ key: String) -> Double { Double(abs(key.hashValue) % 19) - 9 }
+    private static func looseNudge(_ key: String) -> CGFloat { CGFloat(abs(key.hashValue / 19) % 25) - 12 }
 
     /// "6 / Tue", then five squares, Fajr → Isha.
     private func dayRow(_ dayKey: String, _ dayPhotos: [MemoryPhoto]) -> some View {
@@ -137,9 +223,12 @@ struct MemoriesPage: View {
                 ForEach(0..<5, id: \.self) { slot in
                     if let photo = dayPhotos.first(where: { $0.slot == slot }) {
                         MemoryThumb(key: photo.key)
+                            .matchedGeometryEffect(id: photo.key, in: pinch)
+                            .frame(width: 52, height: 52)
                             .matchedTransitionSource(id: photo.key, in: zoom) { source in
                                 source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .onTapGesture { top = photo.key; opened = photo }
                     } else {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -163,20 +252,22 @@ struct MemoriesPage: View {
     }
 }
 
-/// A day's square: the back photo, small, a rounded square.
+/// A photo's back picture as a rounded square that fills whatever frame it's given (so a pinch can grow it into its
+/// month's stack and back).
 private struct MemoryThumb: View {
     let key: String
+    var side: Int = 160
+    var corner: CGFloat = 12
     @State private var image: UIImage?
     var body: some View {
-        Group {
-            if let image { Image(uiImage: image).resizable().scaledToFill() } else { Color.primary.opacity(0.08) }
-        }
-        .frame(width: 52, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .task(id: key) { image = await PrayerPhotos.thumbnail(key) }
-        .accessibilityLabel(PrayerPhotos.caption(key))
-        .accessibilityAddTraits(.isButton)
+        Color.primary.opacity(0.08)
+            .overlay {
+                if let image { Image(uiImage: image).resizable().scaledToFill() }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .task(id: key) { image = await PrayerPhotos.thumbnail(key, side: side) }
+            .accessibilityLabel(PrayerPhotos.caption(key))
+            .accessibilityAddTraits(.isButton)
     }
 }
 
