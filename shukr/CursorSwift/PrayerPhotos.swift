@@ -10,6 +10,8 @@
 //
 
 import SwiftUI
+import SwiftData
+import CoreLocation
 import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -122,15 +124,24 @@ struct PrayerPhotoTarget: Identifiable {
 // MARK: - The card
 
 extension PrayerPhotos {
-    /// "Asr · Tue, Oct 7" from a key ("2026-10-07-Asr").
-    static func caption(_ key: String) -> String {
-        let day = String(key.prefix(10)), name = String(key.dropFirst(11))
+    /// The prayer's name and its day ("Tue, Oct 7") from a key ("2026-10-07-Asr").
+    static func parts(_ key: String) -> (name: String, day: String) {
+        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
         let parser = DateFormatter()
         parser.dateFormat = "yyyy-MM-dd"
         parser.locale = Locale(identifier: "en_US_POSIX")
-        guard let date = parser.date(from: day) else { return name }
-        return "\(name) · \(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
+        let day = parser.date(from: dayKey).map { $0.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()) } ?? dayKey
+        return (name, day)
     }
+
+    /// "Asr · Tue, Oct 7".
+    static func caption(_ key: String) -> String {
+        let p = parts(key)
+        return "\(p.name) · \(p.day)"
+    }
+
+    /// Settings → Prayer photos → Show where (owner, decision prayer-photo-location A: off by default).
+    static let showPlaceKey = "prayerPhotos.showPlace"
 }
 
 /// The photo the Locket / BeReal way (owner: "rounded squares for the back camera too"): the back camera's in a rounded
@@ -212,6 +223,20 @@ struct PrayerPhotoViewer: View {
     let onClose: () -> Void
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
     @State private var swapped = false
+    @State private var place: String?
+    @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
+    @Environment(\.modelContext) private var context
+
+    /// Where it was prayed: the masjid's name, else the spot's address (only with Show where on).
+    private func lookUpPlace() async {
+        guard showPlace else { place = nil; return }
+        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == dayKey && $0.name == name }))) ?? []
+        guard let row = rows.first(where: \.isCompleted) ?? rows.first else { return }
+        if let masjid = row.mosqueName, !masjid.isEmpty { place = masjid; return }
+        guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return }
+        place = await PrayerSpotAddress.lookUp(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -220,7 +245,7 @@ struct PrayerPhotoViewer: View {
                 Spacer(minLength: 0)
                 PrayerPhotoBranded(back: swapped ? images.front : images.back,
                                    front: swapped ? images.back : images.front,
-                                   caption: PrayerPhotos.caption(key), width: width)
+                                   key: key, place: place, width: width)
                     .onTapGesture {
                         guard images.front != nil else { return }
                         triggerSomeVibration(type: .light)
@@ -255,6 +280,7 @@ struct PrayerPhotoViewer: View {
             .padding(.top, 8)
         }
         .task { images = await PrayerPhotos.load(key) }
+        .task(id: showPlace) { await lookUpPlace() }
         .preferredColorScheme(.dark)
     }
 
@@ -262,31 +288,48 @@ struct PrayerPhotoViewer: View {
     @MainActor private func sharedImage(width: CGFloat) -> UIImage? {
         guard images.back != nil else { return nil }
         let renderer = ImageRenderer(content: PrayerPhotoBranded(back: images.back, front: images.front,
-                                                                 caption: PrayerPhotos.caption(key), width: 1080 / 3)
+                                                                 key: key, place: place, width: 1080 / 3)
             .padding(18).background(Color.black))
         renderer.scale = 3
         return renderer.uiImage
     }
 }
 
-/// The photo with its line under it: "shukr" and "Asr · Tue, Oct 7".
+/// The photo with its footer: "shukr" on the left; on the right the prayer's symbol and name, the day under it in
+/// grey (owner: "put the sf symbol of the prayer along with its name. then put the date under it as secondary text"),
+/// and where it was prayed under that when Show where is on.
 struct PrayerPhotoBranded: View {
     let back: UIImage?
     let front: UIImage?
-    let caption: String
+    let key: String
+    var place: String? = nil
     let width: CGFloat
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let p = PrayerPhotos.parts(key)
+        VStack(alignment: .leading, spacing: 12) {
             PrayerPhotoFace(back: back, front: front, width: width)
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .top) {
                 Text("shukr")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.sage)
                 Spacer()
-                Text(caption)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
+                VStack(alignment: .trailing, spacing: 2) {
+                    HStack(spacing: 5) {
+                        Image(systemName: prayerIcon(for: p.name)).font(.system(size: 14, weight: .regular))
+                        Text(p.name).font(.system(size: 17, weight: .medium, design: .rounded))
+                    }
+                    .foregroundStyle(.white)
+                    Text(p.day)
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.6))
+                    if let place {
+                        Label(place, systemImage: "mappin")
+                            .font(.system(size: 12, weight: .regular, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1)
+                    }
+                }
             }
             .padding(.horizontal, 4)
         }
