@@ -448,28 +448,37 @@ struct MemoriesDeck: View {
                     .animation(.easeOut(duration: 0.2), value: index)
                     .opacity(1 - min(max(down, 0) / 120, 1))
                 }
+                // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
+                // never redrawn per photo: the share page makes the picture.
+                HStack(spacing: 18) {
+                    Button { if photos.indices.contains(index) { sharing = photos[index].key } } label: {
+                        circleIcon("square.and.arrow.up")
+                    }
+                    .accessibilityLabel("Share")
+                    Button { dismiss() } label: { circleIcon("xmark") }
+                        .accessibilityLabel("Close")
+                }
+                .buttonStyle(.plain)
+                .opacity(down > 10 ? 0 : 1)
                 Spacer(minLength: 0)
             }
             .frame(width: geo.size.width)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { dismiss() } label: { Image(systemName: "chevron.down") }
-                    .accessibilityLabel("Close")
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                // Always there, never redrawn per photo: the share page makes the picture.
-                Button { if photos.indices.contains(index) { sharing = photos[index].key } } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .accessibilityLabel("Share")
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
         .sensoryFeedback(.selection, trigger: index)
         .onAppear { PrayerPhotoViewing.shared.opened() }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
+    }
+
+    private func circleIcon(_ symbol: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 17, weight: .medium))
+            .foregroundStyle(.primary)
+            .frame(width: 50, height: 50)
+            .background(Circle().fill(.regularMaterial))
+            .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
     }
 
     /// The pile under the top one, the top one, and the next newer one waiting off to the right.

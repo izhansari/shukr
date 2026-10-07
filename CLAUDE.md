@@ -295,7 +295,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   was laggy). One pile in the strips' order: swipe left = the newer one comes in from the right onto the top; swipe
   right = the top one goes back off to the right. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
-  plain photo (no text — owner), the prayer + day under the pile; ⌄ and a fixed Share in the bar → `PrayerPhotoShareComposer`
+  plain photo (no text — owner), the prayer + day under the pile, then Share and ✕ (grey circles, no nav bar) → `PrayerPhotoShareComposer`
   (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; Location and Prayer score — a ring,
   `score:` — as toggles; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag
