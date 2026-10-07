@@ -35,8 +35,7 @@ extension PrayerPhotos {
     /// Every saved photo, oldest first (by day, then Fajr → Isha) — the strip's reading order.
     static func all() -> [MemoryPhoto] {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-        return files.filter { $0.hasSuffix("-back.jpg") }
-            .map { MemoryPhoto(key: String($0.dropLast("-back.jpg".count))) }
+        return Set(files.compactMap(key(fromFile:))).map { MemoryPhoto(key: $0) }
             .sorted { $0.dayKey != $1.dayKey ? $0.dayKey < $1.dayKey : $0.slot < $1.slot }
     }
 

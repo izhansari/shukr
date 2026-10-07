@@ -274,8 +274,10 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 **Prayer photos** (PrayerPhotos.swift; decisions (a) pill section, prayer-photos-day A)
 - After a mark, the post-salah pill's second section (camera) → `PrayerPhotoCapture`: `DualCamera` = front + back at
   once (`AVCaptureMultiCamSession`, iPhone XS+; else the back), run on its own queue; review → Save. Files only, no
-  schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.jpg` (`PrayerPhotos.key`, Jumu'ah = Dhuhr);
-  private, never synced. Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
+  schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.heic` (`PrayerPhotos.key`, Jumu'ah = Dhuhr; HEIC at
+  1200 / 700 px since decision prayer-photo-storage A, ~210 KB a prayer; older .jpg ones still read — go through `url` /
+  `key(fromFile:)`, never a fixed extension); private, never synced, in the phone's backup; Settings → Prayer photos →
+  Space used (`PrayerPhotoStorageRow`). Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
   and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
   over the blurred page (a clear `fullScreenCover`, no system slide; springs in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Settings → Prayer photos → Show where is on —

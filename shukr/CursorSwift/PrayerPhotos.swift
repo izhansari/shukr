@@ -32,8 +32,31 @@ enum PrayerPhotos {
         return dir
     }
 
+    /// HEIC since decision prayer-photo-storage A (about a third of the old JPEGs); a photo saved before keeps its .jpg.
     static func url(_ key: String, front: Bool) -> URL {
-        directory.appendingPathComponent("\(key)-\(front ? "front" : "back").jpg")
+        let heic = file(key, front: front, "heic")
+        if FileManager.default.fileExists(atPath: heic.path) { return heic }
+        let jpg = file(key, front: front, "jpg")
+        return FileManager.default.fileExists(atPath: jpg.path) ? jpg : heic
+    }
+
+    private static func file(_ key: String, front: Bool, _ ext: String) -> URL {
+        directory.appendingPathComponent("\(key)-\(front ? "front" : "back").\(ext)")
+    }
+
+    /// The photo's key from a back picture's file name ("2026-10-06-Asr-back.heic" → "2026-10-06-Asr"), else nil.
+    static func key(fromFile name: String) -> String? {
+        for suffix in ["-back.heic", "-back.jpg"] where name.hasSuffix(suffix) { return String(name.dropLast(suffix.count)) }
+        return nil
+    }
+
+    /// How many photos there are and the space they take (Settings → Prayer photos).
+    static func usage() async -> (count: Int, bytes: Int64) {
+        await Task.detached(priority: .utility) {
+            let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            let bytes = files.reduce(Int64(0)) { $0 + Int64((try? $1.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+            return (Set(files.compactMap { key(fromFile: $0.lastPathComponent) }).count, bytes)
+        }.value
     }
 
     #if DEBUG
@@ -72,13 +95,13 @@ enum PrayerPhotos {
     /// The most recently saved photo's key (`-demoPhotoViewer`).
     static var newestKey: String? {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let backs = files.filter { $0.lastPathComponent.hasSuffix("-back.jpg") }
+        let backs = files.filter { key(fromFile: $0.lastPathComponent) != nil }
         let newest = backs.max { a, b in
             let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
             return da < db
         }
-        return newest.map { String($0.lastPathComponent.dropLast("-back.jpg".count)) }
+        return newest.flatMap { key(fromFile: $0.lastPathComponent) }
     }
     #endif
 
@@ -88,22 +111,24 @@ enum PrayerPhotos {
 
     /// Downscaled and written off the main thread; the views showing photos redraw after.
     static func save(_ key: String, back: Data, front: Data?) async {
-        let backJPEG = await jpeg(back, maxPixels: 1600)
-        let frontJPEG: Data? = if let front { await jpeg(front, maxPixels: 900) } else { nil }
+        // The card shows the back picture at most ~1000 px across, the front inset ~350 (decision prayer-photo-storage A).
+        let backFile = await encoded(back, maxPixels: 1200)
+        let frontFile: (data: Data, ext: String)? = if let front { await encoded(front, maxPixels: 700) } else { nil }
         await Task.detached(priority: .userInitiated) {
-            if let backJPEG { try? backJPEG.write(to: url(key, front: false), options: .atomic) }
-            if let frontJPEG {
-                try? frontJPEG.write(to: url(key, front: true), options: .atomic)
-            } else {
-                try? FileManager.default.removeItem(at: url(key, front: true))
+            guard let backFile else { return }
+            for isFront in [false, true] {
+                for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
             }
+            try? backFile.data.write(to: file(key, front: false, backFile.ext), options: .atomic)
+            if let frontFile { try? frontFile.data.write(to: file(key, front: true, frontFile.ext), options: .atomic) }
         }.value
         await PrayerPhotoRevision.shared.bump()
     }
 
     static func delete(_ key: String) {
-        try? FileManager.default.removeItem(at: url(key, front: false))
-        try? FileManager.default.removeItem(at: url(key, front: true))
+        for isFront in [false, true] {
+            for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
+        }
         Task { @MainActor in PrayerPhotoRevision.shared.bump() }
     }
 
@@ -118,15 +143,17 @@ enum PrayerPhotos {
         }.value
     }
 
-    /// The photo the right way up, its longest side at most `maxPixels`, as a JPEG.
-    static func jpeg(_ data: Data, maxPixels: Int) async -> Data? {
+    /// The photo the right way up, its longest side at most `maxPixels`, as HEIC (a JPEG where HEIC can't be written).
+    static func encoded(_ data: Data, maxPixels: Int) async -> (data: Data, ext: String)? {
         await Task.detached(priority: .userInitiated) {
             guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                             kCGImageSourceCreateThumbnailWithTransform: true,
                                             kCGImageSourceThumbnailMaxPixelSize: maxPixels]
             guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
-            return UIImage(cgImage: cg).jpegData(compressionQuality: 0.82)
+            let image = UIImage(cgImage: cg)
+            if let heic = image.heicData() { return (heic, "heic") }
+            return image.jpegData(compressionQuality: 0.82).map { ($0, "jpg") }
         }.value
     }
 }
@@ -745,4 +772,18 @@ struct PrayerPhotoCapture: View {
         }.jpegData(compressionQuality: 0.85)
     }
     #endif
+}
+
+/// "42 photos · 9.3 MB" in Settings → Prayer photos.
+struct PrayerPhotoStorageRow: View {
+    @State private var usage: (count: Int, bytes: Int64)?
+    var body: some View {
+        LabeledContent("Space used") {
+            if let usage {
+                Text(usage.count == 0 ? "No photos" :
+                     "\(usage.count == 1 ? "1 photo" : "\(usage.count) photos") · \(usage.bytes.formatted(.byteCount(style: .file)))")
+            }
+        }
+        .task(id: PrayerPhotoRevision.shared.value) { usage = await PrayerPhotos.usage() }
+    }
 }

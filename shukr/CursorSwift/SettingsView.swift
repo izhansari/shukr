@@ -292,8 +292,9 @@ struct SettingsView: View {
                     
                     // Prayer photos (PrayerPhotos.swift; decision prayer-photo-location A: off by default).
                     Section(header: Text("Prayer photos"),
-                            footer: Text("Adds where you prayed under your photos, and to the ones you share. Your photos stay on your iPhone.")) {
+                            footer: Text("Show where adds the place under your photos, and to the ones you share. Your photos stay on your iPhone, and in its backup.")) {
                         Toggle("Show where", isOn: $prayerPhotosShowPlace)
+                        PrayerPhotoStorageRow()
                     }
 
                     //MARK: - Notifications
