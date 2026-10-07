@@ -416,6 +416,9 @@ struct MemoriesDeck: View {
     /// feel more hand made"); not stored.
     @State private var lie: [String: Lie]
     @State private var sharing: String?
+    /// The day centred in the strip at the bottom: follows the pile, and a drag on the strip moves the pile there once
+    /// it comes to rest.
+    @State private var stripDay: String?
 
     struct Lie { var dx: CGFloat; var dy: CGFloat; var tilt: Double }
 
@@ -428,6 +431,7 @@ struct MemoriesDeck: View {
         let first = photos.firstIndex(of: start) ?? 0
         _index = State(initialValue: first)
         _lie = State(initialValue: Self.lies(around: first, in: photos, keeping: [:]))
+        _stripDay = State(initialValue: photos.indices.contains(first) ? photos[first].dayKey : nil)
     }
 
     /// The top photo's day, as indices into `photos`.
@@ -446,7 +450,6 @@ struct MemoriesDeck: View {
             let current = photos.indices.contains(index) ? photos[index] : nil
             let range = day
             VStack(spacing: 0) {
-                if let current { dateLine(current).padding(.top, 14) }
                 Spacer(minLength: 0)
                 ZStack {
                     pile(range, width: width, screen: geo.size.width)
@@ -473,6 +476,9 @@ struct MemoriesDeck: View {
                 .opacity(down > 10 ? 0 : 1)
                 .padding(.top, 22)
                 Spacer(minLength: 0)
+                MemoriesDayStrip(photos: photos, centred: $stripDay, onRest: goToDay)
+                    .opacity(1 - min(max(down, 0) / 120, 1))
+                    .padding(.bottom, 6)
             }
             .frame(width: geo.size.width)
         }
@@ -504,6 +510,11 @@ struct MemoriesDeck: View {
         .task(id: "\(index)|\(showPlace)") { await loadDetail() }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
         .sensoryFeedback(.selection, trigger: index)
+        .onChange(of: index) { _, i in
+            // The strip follows the pile.
+            guard photos.indices.contains(i), photos[i].dayKey != stripDay else { return }
+            withAnimation(.snappy(duration: 0.35)) { stripDay = photos[i].dayKey }
+        }
         .onAppear { PrayerPhotoViewing.shared.opened() }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
     }
@@ -516,17 +527,26 @@ struct MemoriesDeck: View {
                            removal: .offset(x: -from).combined(with: .opacity))
     }
 
-    /// The day at the top; it slides only when the day changes.
-    private func dateLine(_ current: MemoryPhoto) -> some View {
-        ZStack {
-            Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .id(current.dayKey)
-                .transition(slide(36))
+    /// The strip came to rest on `dayKey`: that day's pile, on its newest photo; a day without photos sends the strip
+    /// on to the nearest day that has some.
+    private func goToDay(_ dayKey: String) {
+        guard photos.indices.contains(index), dayKey != photos[index].dayKey else { return }
+        if let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) {
+            wentBack = dayKey < photos[index].dayKey
+            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = newest; drag = 0 }
+            pickLies()
+            return
         }
-        .frame(maxWidth: .infinity)
-        .clipped()
-        .opacity(1 - min(max(down, 0) / 120, 1))
+        let before = photos.last { $0.dayKey < dayKey }?.dayKey
+        let after = photos.first { $0.dayKey > dayKey }?.dayKey
+        let gap: (String?) -> Int = { other in
+            guard let other, let a = MemoriesPage.parse(other), let b = MemoriesPage.parse(dayKey) else { return .max }
+            return abs(Calendar.current.dateComponents([.day], from: a, to: b).day ?? .max)
+        }
+        if let nearest = gap(before) <= gap(after) ? before ?? after : after ?? before {
+            withAnimation(.snappy(duration: 0.35)) { stripDay = nearest }
+            goToDay(nearest)
+        }
     }
 
     /// One day's cards: the seen ones under, the top one, and the day's next one waiting off to the right. Past the
@@ -707,6 +727,167 @@ struct MemoriesDeck: View {
             lie[photos[i].key] = Lie(dx: .random(in: -22...22), dy: .random(in: -14...14), tilt: .random(in: -9...9))
         }
         return lie
+    }
+}
+
+/// The days along the bottom of the pile (owner, decision memories-day-strip A): every day from the first photo to
+/// today, the number with its weekday under it; the centred one is the pile's, full and a little bigger, the others
+/// shrink and fade with their distance from the centre (`visualEffect` in the scroll view's space); days without photos
+/// are faint and the pile skips them. Each month's name and its photo count sit above its 1st, and the month in view
+/// stays pinned at the left edge until the next month's name pushes it out. Lazy: only numbers, only what's on screen.
+struct MemoriesDayStrip: View {
+    let photos: [MemoryPhoto]
+    @Binding var centred: String?
+    let onRest: (String) -> Void
+    /// Built before the first layout, so the strip opens on the pile's day (built later, `scrollPosition` had nothing to
+    /// find and it opened elsewhere).
+    @State private var days: [String]
+    @State private var photoDays: Set<String>
+    @State private var monthCounts: [String: Int]
+
+    init(photos: [MemoryPhoto], centred: Binding<String?>, onRest: @escaping (String) -> Void) {
+        self.photos = photos
+        self._centred = centred
+        self.onRest = onRest
+        let model = Self.model(photos)
+        _days = State(initialValue: model.days)
+        _photoDays = State(initialValue: model.photoDays)
+        _monthCounts = State(initialValue: model.monthCounts)
+    }
+    /// The earliest day in view (its month is the pinned one), and where each month's 1st sits in the view.
+    @State private var leftmost: String?
+    @State private var firstX: [String: CGFloat] = [:]
+    @State private var pinnedWidth: CGFloat = 80
+    @State private var phase: ScrollPhase = .idle
+    @State private var tick = 0
+
+    private static let cell: CGFloat = 50
+    private static let labelHeight: CGFloat = 34
+
+    var body: some View {
+        GeometryReader { geo in
+            let margin = (geo.size.width - Self.cell) / 2
+            ZStack(alignment: .topLeading) {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(days, id: \.self) { day in
+                            dayCell(day).id(day)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollIndicators(.hidden)
+                .contentMargins(.horizontal, margin, for: .scrollContent)
+                .scrollTargetBehavior(.viewAligned)
+                .scrollPosition(id: $centred)
+                .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in leftmost = ids.min() }
+                .onScrollPhaseChange { _, new in
+                    phase = new
+                    if new == .idle, let centred { onRest(centred) }
+                }
+                pinnedMonth
+            }
+            .coordinateSpace(name: "dayStrip")
+        }
+        .frame(height: Self.labelHeight + 50)
+        .sensoryFeedback(.selection, trigger: tick)
+        .onChange(of: centred) { _, _ in
+            // A tick for each day that passes the centre under the finger (not when the pile moves the strip).
+            if phase == .interacting || phase == .decelerating { tick += 1 }
+        }
+    }
+
+    private func dayCell(_ day: String) -> some View {
+        let date = MemoriesPage.parse(day)
+        let has = photoDays.contains(day)
+        return VStack(spacing: 2) {
+            Text(date.map { "\(Calendar.current.component(.day, from: $0))" } ?? "")
+                .font(.system(size: 19, weight: .semibold, design: .rounded))
+            Text(date.map { $0.formatted(.dateTime.weekday(.abbreviated)) } ?? "")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .opacity(has ? 1 : 0.3)
+        .visualEffect { content, proxy in
+            let frame = proxy.frame(in: .scrollView(axis: .horizontal))
+            let width = proxy.bounds(of: .scrollView(axis: .horizontal))?.width ?? 0
+            let distance = min(abs(frame.midX - width / 2) / 110, 1)
+            return content
+                .scaleEffect(1.2 - 0.35 * distance)
+                .opacity(1 - 0.6 * distance)
+        }
+        .frame(width: Self.cell, height: 50)
+        .padding(.top, Self.labelHeight)
+        .overlay(alignment: .topLeading) {
+            // The month's name over its 1st — unless it's the month pinned at the left edge.
+            if day.hasSuffix("-01") {
+                let month = String(day.prefix(7))
+                monthLabel(month).fixedSize().padding(.leading, 8)
+                    .opacity(month == pinnedMonthKey ? 0 : 1)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .named("dayStrip")).minX
+        } action: { x in
+            if day.hasSuffix("-01") { firstX[String(day.prefix(7))] = x }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard has else { return }
+            withAnimation(.snappy(duration: 0.35)) { centred = day }
+            onRest(day)
+        }
+    }
+
+    private func monthLabel(_ month: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(MemoriesPage.parse(month + "-01").map { $0.formatted(.dateTime.month(.wide)) } ?? month)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+            let n = monthCounts[month] ?? 0
+            Text(n == 1 ? "1 photo" : "\(n) photos")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var pinnedMonthKey: String? { leftmost.map { String($0.prefix(7)) } }
+
+    /// The month of the earliest day in view, at the left edge; the next month's 1st pushes it out as it arrives.
+    @ViewBuilder
+    private var pinnedMonth: some View {
+        if let month = pinnedMonthKey {
+            let next = firstX.filter { $0.key > month }.min { $0.key < $1.key }?.value ?? .infinity
+            let push = min(0, next + 8 - (16 + pinnedWidth + 14))
+            #if DEBUG
+            let _ = ProcessInfo.processInfo.arguments.contains("-logDayStrip") ? print("STRIPDBG \(month) next=\(next) push=\(push)") : ()
+            #endif
+            monthLabel(month)
+                .fixedSize()
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pinnedWidth = $0 }
+                .padding(.leading, 16)
+                .offset(x: push)
+                .allowsHitTesting(false)
+        }
+    }
+
+    /// Every day from the first photo to today, the days with photos, and each month's photo count.
+    private static func model(_ photos: [MemoryPhoto]) -> (days: [String], photoDays: Set<String>, monthCounts: [String: Int]) {
+        let photoDays = Set(photos.map(\.dayKey))
+        let monthCounts = Dictionary(grouping: photos, by: { String($0.dayKey.prefix(7)) }).mapValues(\.count)
+        guard let firstKey = photos.first?.dayKey, let start = MemoriesPage.parse(firstKey) else { return ([], photoDays, monthCounts) }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let today = Calendar.current.startOfDay(for: Date())
+        var list: [String] = []
+        var d = Calendar.current.startOfDay(for: start)
+        while d <= today {
+            list.append(f.string(from: d))
+            guard let next = Calendar.current.date(byAdding: .day, value: 1, to: d) else { break }
+            d = next
+        }
+        if let last = photos.last?.dayKey, last > (list.last ?? "") { list.append(last) }
+        return (list, photoDays, monthCounts)
     }
 }
 

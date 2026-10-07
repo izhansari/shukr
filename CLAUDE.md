@@ -298,8 +298,16 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   offset with a fade, never the page's whole width — owner), landing on
   its first (last) photo. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
-  plain photo (no text — owner); the date at the top (slides sideways only when the day changes); under the pile the
-  prayer's name, "Prayed 1:12 PM · On time 88"
+  plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom:
+  every day from the first photo to today (days without photos faint; a rest on one moves on to the nearest photo day),
+  the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
+  (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO
+  anchor (`.center` with the margins landed 4 days off); its days are built in `init` (built on appear it opened
+  elsewhere). The pile moves the strip; a drag on the strip moves the pile when it comes to rest (`onScrollPhaseChange`
+  .idle), a tap jumps, a tick per day under the finger. Month name + "N photos" over each 1st; the month of the earliest
+  visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
+  (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
+  Under the pile the prayer's name, "Prayed 1:12 PM · On time 88"
   (+ the place with Show where; `PrayerPhotos.facts` / `placeText`) and the note (tap → edit in an alert; notes are
   `<key>-note.txt` beside the photos, written from the camera's review — "Add a note" — or the pile; the pile shows 3 lines in
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide
