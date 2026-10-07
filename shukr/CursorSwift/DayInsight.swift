@@ -7,6 +7,8 @@ struct DayPrayer {
     let end: Date
     let markedAt: Date?
     let score: Double?
+    /// Its photo, if one was taken (PrayerPhotos.swift).
+    var photoKey: String? = nil
 
     var done: Bool { markedAt != nil && score != nil }
     /// In its window (Perfect, On time or Late) — not Qaza, not missed.

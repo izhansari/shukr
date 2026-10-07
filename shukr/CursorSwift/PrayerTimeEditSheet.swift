@@ -38,6 +38,53 @@ struct PrayerTimeEditSheet: View {
     }
     private var shownSpot: CLLocationCoordinate2D? { draftSpot ?? savedSpot }
 
+    /// The prayer's photo (PrayerPhotos.swift): added or retaken while the prayer's window is on and it's marked (owner:
+    /// "they can add photos any time in that window so long as its marked"), seen any time after.
+    @State private var photoTarget: PrayerPhotoTarget?
+    private var photoKey: String { PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name) }
+    private var photoInWindow: Bool { prayer.isCompleted && Date() < prayer.endTime }
+    private var showsPhotoRow: Bool {
+        let _ = PrayerPhotoRevision.shared.value
+        return !tourTip && prayer.isCompleted && (photoInWindow || PrayerPhotos.has(photoKey))
+    }
+
+    @ViewBuilder private var photoRow: some View {
+        let has = PrayerPhotos.has(photoKey)
+        HStack(spacing: 14) {
+            if has {
+                PrayerPhotoCard(key: photoKey, width: 48, swappable: false)
+            } else {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .frame(width: 48, height: 64)
+                    .overlay(Image(systemName: "camera").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary))
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(has ? "Your photo" : "Add a photo").font(.subheadline)
+                if photoInWindow {
+                    HStack(spacing: 14) {
+                        Button(has ? "Retake" : "Take one") {
+                            triggerSomeVibration(type: .light)
+                            photoTarget = PrayerPhotoTarget.forMarked(prayer)
+                        }
+                        if has {
+                            Button("Remove", role: .destructive) {
+                                triggerSomeVibration(type: .light)
+                                PrayerPhotos.delete(photoKey)
+                            }
+                        }
+                    }
+                    .font(.footnote)
+                } else {
+                    Text("only while \(prayer.displayName) is on").font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.primary.opacity(0.05)))
+    }
+
     init(prayer: PrayerModel, time: Binding<Date>, range: ClosedRange<Date>, showsLocation: Bool = true,
          onCancel: @escaping () -> Void, onSave: @escaping (Date, CLLocationCoordinate2D?) -> Void) {
         self.prayer = prayer
@@ -132,6 +179,8 @@ struct PrayerTimeEditSheet: View {
 
             PrayerTimeEditor(prayer: prayer, draft: $draft, range: range)
 
+            if showsPhotoRow { photoRow }
+
             Spacer(minLength: 0)
 
             SaveCancelButtons(canSave: canSave, onCancel: onCancel) { onSave(draft, draftSpot) }
@@ -153,8 +202,12 @@ struct PrayerTimeEditSheet: View {
             if let spot = shownSpot { spotAddress = await PrayerSpotAddress.lookUp(spot) }
         }
         // The tour's tip at the largest text: the full height, else Save fell off the sheet (Sami, AX XXXL).
+        .fullScreenCover(item: $photoTarget) { target in
+            PrayerPhotoCapture(target: target) { photoTarget = nil }
+        }
         .presentationDetents([tourTip && typeSize.isAccessibilitySize
-                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0))])
+                              ? .large : .height((showsLocation && !tourTip ? 572 : 540) + (tourTip ? 132 : 0)
+                                                 + (showsPhotoRow ? 104 : 0))])
         .presentationDragIndicator(.visible)
         .presentationCornerRadius(28)
     }

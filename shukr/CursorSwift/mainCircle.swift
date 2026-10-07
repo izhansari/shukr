@@ -890,6 +890,38 @@ struct summaryCircle: View{
         showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
     }
 
+    /// The day's photos under its line (decision prayer-photos-day A), once there's at least one: five rounded slots in
+    /// the ring's order, a tap picks that prayer (its photo comes to the centre).
+    @ViewBuilder private var photoStrip: some View {
+        let _ = PrayerPhotoRevision.shared.value
+        if shownDay.contains(where: { $0.photoKey != nil }) {
+            HStack(spacing: 10) {
+                ForEach(Array(DayRing.order.enumerated()), id: \.offset) { i, name in
+                    let p = shownDay.first { $0.name == name }
+                    Group {
+                        if let key = p?.photoKey {
+                            PrayerPhotoCard(key: key, width: 38, swappable: false)
+                                .overlay(RoundedRectangle(cornerRadius: 38 * 0.14, style: .continuous)
+                                    .stroke(Color.green, lineWidth: picked == i ? 2 : 0))
+                        } else {
+                            RoundedRectangle(cornerRadius: 38 * 0.14, style: .continuous)
+                                .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                                .frame(width: 38, height: 38 * 4 / 3)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard p?.photoKey != nil else { return }
+                        withAnimation(.easeOut(duration: CircleMotion.quick)) { picked = picked == i ? nil : i }
+                        pickedAt = Date()
+                        triggerSomeVibration(type: .light)
+                    }
+                    .accessibilityLabel("\(name) photo")
+                }
+            }
+        }
+    }
+
     @ViewBuilder private var dayLine: some View {
         if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
             Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
@@ -980,7 +1012,11 @@ struct summaryCircle: View{
                     .opacity(glow ? 1 : 0).allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
-                dayLine.frame(width: 310).offset(y: 222)
+                VStack(spacing: 14) {
+                    dayLine
+                    photoStrip
+                }
+                .frame(width: 310).offset(y: 222)
             }
             .modifier(CircleWordsAway(away: away || !showsScore))
             .allowsHitTesting(showsScore && !away)

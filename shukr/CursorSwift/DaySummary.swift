@@ -8,9 +8,11 @@ import SwiftData
 
 extension DayPrayer {
     init(_ row: PrayerModel) {
+        let key = PrayerPhotos.key(dayKey: row.dayKey, name: row.name)
         self.init(name: row.name, start: row.startTime, end: row.endTime,
                   markedAt: row.isCompleted ? row.timeAtComplete : nil,
-                  score: row.isCompleted ? row.numberScore : nil)
+                  score: row.isCompleted ? row.numberScore : nil,
+                  photoKey: row.isCompleted && PrayerPhotos.has(key) ? key : nil)
     }
 }
 
@@ -122,7 +124,16 @@ struct DayCentre: View {
     let yesterday: Bool
 
     var body: some View {
-        if let i = picked, DayRing.order.indices.contains(i) {
+        if let i = picked, DayRing.order.indices.contains(i),
+           let p = day.first(where: { $0.name == DayRing.order[i] }), let key = p.photoKey {
+            // A tapped prayer with a photo: the photo, its name and when (prayer photos, decision prayer-photos-day A).
+            VStack(spacing: 6) {
+                PrayerPhotoCard(key: key, width: 74)
+                Text("\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
+                    .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
+            }
+            .transition(.opacity)
+        } else if let i = picked, DayRing.order.indices.contains(i) {
             let name = DayRing.order[i]
             let p = day.first { $0.name == name }
             VStack(spacing: 3) {

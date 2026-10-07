@@ -465,6 +465,9 @@ extension View {
 struct PostSalahNudge: View {
     let onOpen: () -> Void
     let onDismiss: () -> Void
+    /// The pill's second section: a photo of the prayer just marked (owner, prayer photos, decision (a): "Tasbih
+    /// Fatimah | 📷" in the same pill). Nil: no camera section.
+    var onPhoto: (() -> Void)? = nil
     /// The host's page is the one showing (not paged to Zikr / Settings).
     var shown = true
 
@@ -531,8 +534,24 @@ struct PostSalahNudge: View {
             Text("Post-salah tasbih?")
                 .font(.system(size: 17, weight: .regular, design: .rounded))
                 .foregroundStyle(.primary)
+            if let onPhoto {
+                Rectangle().fill(Color.primary.opacity(0.15)).frame(width: 0.75, height: 28)
+                Button {
+                    triggerSomeVibration(type: .light)
+                    onPhoto()
+                } label: {
+                    Image(systemName: "camera")
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(.primary)
+                        .frame(width: 40, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Take a photo of this prayer")
+            }
         }
-        .padding(.horizontal, 24)
+        .padding(.leading, 24)
+        .padding(.trailing, onPhoto == nil ? 24 : 12)
         .frame(height: 56)
         .mapGlass(Capsule())
         .overlay(alignment: .topTrailing) {

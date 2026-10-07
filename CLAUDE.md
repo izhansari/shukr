@@ -271,6 +271,15 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   The list's well rises into a raised card with the day's page (all five marked and `DayPageState.lifted`, set `CircleMotion.dayCardLiftDelay` after summaryCircle mounts so the rows unfold first; kept in DayPageState because the list rebuilds its card at the swap) (`SalahLookCard(raised:)`, `NeuLiftCard`: one
   animatable `lift`, inner shadows shrink to nothing, then outer ones grow — never a crossfade; decision list-raised-card).
 
+**Prayer photos** (PrayerPhotos.swift; decisions (a) pill section, prayer-photos-day A)
+- After a mark, the post-salah pill's second section (camera) → `PrayerPhotoCapture`: `DualCamera` = front + back at
+  once (`AVCaptureMultiCamSession`, iPhone XS+; else the back), run on its own queue; review → Save. Files only, no
+  schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.jpg` (`PrayerPhotos.key`, Jumu'ah = Dhuhr);
+  private, never synced. Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
+  and marked; seen any time. `PrayerPhotoCard` = the BeReal / Locket look (rounded back photo, front inset, tap
+  swaps). Day page: a strip of five under the line once there's a photo; a picked fifth with a photo shows it in the
+  centre. DEBUG `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo).
+
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.
 - Streaks: a day counts once; earlier days are recounted from rows (`refreshStreaksFromHistory`); "in-time days" = no Qaza (≥ 60); perfect day = five Perfect. The day turns at Fajr (`PrayerDay.fajr`; no location → 3 AM); Isha ends 11:59 PM; zikr sessions follow the day (`sessionDayStart()`).

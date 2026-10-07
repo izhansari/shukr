@@ -11,7 +11,7 @@
 	<key>NSAlarmKitUsageDescription</key>
 	<string>shukr sets your Fajr alarm for you, so it rings at the right time every day as Fajr moves.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>To photograph a written dua or a teacher's handwriting and keep it with your zikr. The photo stays on your iPhone.</string>
+	<string>To take a photo after you pray, or of a written dua to keep with your zikr. Your photos stay on your iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>To record how a zikr is said, so you can listen and practise it. The recording stays on your iPhone.</string>
 	<key>ShukrBuildStamp</key>

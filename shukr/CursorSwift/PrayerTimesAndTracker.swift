@@ -1691,6 +1691,23 @@ struct PrayerTimesView: View {
         @State private var showWhatsNew = false
         /// The compass calibration sheet (the line under the circle, or ☰ → Calibrate compass).
         @State private var showCalibration = false
+        @EnvironmentObject private var viewModel: PrayerViewModel
+        /// The pill's camera is open for this prayer (PrayerPhotos.swift).
+        @State private var prayerPhoto: PrayerPhotoTarget?
+        /// The pill's prayer, marked and still in its window: its camera section (owner: photos "any time in that window so
+        /// long as its marked").
+        private var pillPhotoTarget: PrayerPhotoTarget? {
+            #if DEBUG
+            // `-demoPostSalahOffer -demoPillPhoto`: the pill's camera without a marked prayer (the simulator's walk).
+            if let name = live.postSalahNudge, ProcessInfo.processInfo.arguments.contains("-demoPillPhoto") {
+                return PrayerPhotoTarget(key: PrayerPhotos.key(dayKey: PrayerDay.key(), name: name), title: "\(name) · 4:52 PM")
+            }
+            #endif
+            guard let name = live.postSalahNudge,
+                  let row = viewModel.todaysPrayers.first(where: { ($0.name == name || $0.displayName == name) && $0.isCompleted }),
+                  Date() < row.endTime else { return nil }
+            return PrayerPhotoTarget.forMarked(row)
+        }
 
         /// One row of the hamburger popover; closes it and runs `action` after it's gone.
         private func menuRow(_ title: String, _ symbol: String, action: @escaping () -> Void) -> some View {
@@ -1895,7 +1912,9 @@ struct PrayerTimesView: View {
             // post-salah-pill-place C). Chrome, above the pager: dragging it never moves a page.
             .overlay(alignment: .top) {
                 if live.postSalahNudge != nil {
-                    PostSalahNudgeOnPage(live: live) {
+                    PostSalahNudgeOnPage(live: live, onPhoto: pillPhotoTarget.map { target in
+                        { live.postSalahNudge = nil; prayerPhoto = target }
+                    }) {
                         // The tour's pill came from a practice mark: it never opens a real, saved session (audit A1);
                         // ✕ closes it.
                         guard !TourRuntime.shared.active else { return }
@@ -1916,6 +1935,10 @@ struct PrayerTimesView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     .id(live.postSalahNudge)   // a new mark: a new pill, its 15 s from the start (audit A)
                 }
+            }
+            // The pill's camera: a photo of the prayer just marked (PrayerPhotos.swift).
+            .fullScreenCover(item: $prayerPhoto) { target in
+                PrayerPhotoCapture(target: target) { prayerPhoto = nil }
             }
             // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
             .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
@@ -2029,6 +2052,7 @@ struct PrayerTimesView: View {
     /// The post-salah pill under the top bar, on the Salah page only.
     private struct PostSalahNudgeOnPage: View {
         let live: PagerLiveState
+        var onPhoto: (() -> Void)? = nil
         let onOpen: () -> Void
         var body: some View {
             let zikr = min(max(1 - live.scrollProgress, 0), 1)
@@ -2038,6 +2062,7 @@ struct PrayerTimesView: View {
                                live.postSalahNudge = nil   // the pill animates (or not) itself
                                TourRuntime.shared.event(.pillClosed)   // ✕ or a flick: the tour's to-do (never its expiry)
                            },
+                           onPhoto: TourRuntime.shared.active ? nil : onPhoto,
                            shown: zikr < 0.5 && settings < 0.5)
                 // The tour's post-salah step points at it, and ends when it goes (Tour.swift).
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("pill", $0) }
