@@ -209,7 +209,7 @@ struct PrayerPhotoFace: View {
                     .frame(width: small, height: small)
                     .clipShape(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous)
-                        .stroke(Color.white, lineWidth: max(1, width * 0.012)))
+                        .stroke(Color.white, lineWidth: max(0.75, width * 0.006)))   // thin (owner: "less thickness")
                     .padding(width * 0.05)
             }
         }
