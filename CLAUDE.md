@@ -292,11 +292,15 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   in the same order: swipe left = the newer one comes in from the right onto the top; swipe right = the top one goes back
   off to the right. The seen ones lie under it (4 shown), each at a random `Lie` (nudge + tilt, not stored — owner); the
   top one is centred, 0.3 × its tilt. A tap swaps front / back; drag down closes into its square (the deck's own drag
-  picks the axis on its first move). **Months** (decision memories-round2): a pinch in (`MagnifyGesture`, < 0.8) or the
-  Days / Months button → each month as a little stack (its newest three; `matchedGeometryEffect` in `pinch` flies the
-  squares in); a tap on a stack or a pinch out (> 1.25) → its days, from that month (`dayTop`). Each level has its own
-  ScrollView, swapped whole (one shared ScrollView scrolled under the change and nothing flew). DEBUG `-demoMemories`
-  (seeds stand-in photos), `-demoMemoriesOpen`.
+  picks the axis on its first move). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
+  calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number)
+  · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the segmented
+  control at the bottom too; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
+  on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its
+  newest three). Each level has its own ScrollView, swapped whole (one shared ScrollView scrolled under the change and
+  nothing flew). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-heicSelfTest` (encode + decode
+  times, run on a phone with `devicectl … process launch --console`). **Sim trap:** the simulator hangs decoding HEIC
+  (never returns, starving the task pool so even JPEGs stop loading), so `encoded` writes JPEG there; phones decode it in ~30 ms.
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

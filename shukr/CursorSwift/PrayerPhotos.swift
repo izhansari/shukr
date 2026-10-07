@@ -92,6 +92,21 @@ enum PrayerPhotos {
         }.jpegData(compressionQuality: 0.8)
     }
 
+    /// `-heicSelfTest`: encode a stand-in picture the way `save` does, decode it the way Memories does, print the times.
+    static func heicSelfTest() async {
+        guard let sample = demoScene(top: .systemTeal, bottom: .systemOrange, symbol: "sun.max.fill") else { return }
+        let start = Date()
+        guard let file = await encoded(sample, maxPixels: 1200) else { print("HEICTEST encode failed"); return }
+        print("HEICTEST encoded \(file.ext) \(file.data.count / 1024) KB in \(Int(Date().timeIntervalSince(start) * 1000)) ms")
+        let t = Date()
+        let decoded: Bool = await Task.detached {
+            guard let src = CGImageSourceCreateWithData(file.data as CFData, nil) else { return false }
+            let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 160]
+            return CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) != nil && UIImage(data: file.data) != nil
+        }.value
+        print("HEICTEST decoded=\(decoded) in \(Int(Date().timeIntervalSince(t) * 1000)) ms")
+    }
+
     /// The most recently saved photo's key (`-demoPhotoViewer`).
     static var newestKey: String? {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
@@ -152,7 +167,11 @@ enum PrayerPhotos {
                                             kCGImageSourceThumbnailMaxPixelSize: maxPixels]
             guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
             let image = UIImage(cgImage: cg)
+            #if !targetEnvironment(simulator)
+            // The simulator hangs decoding HEIC (every decode, never returning — a phone reads it in ~30 ms,
+            // `-heicSelfTest`), so it keeps JPEG.
             if let heic = image.heicData() { return (heic, "heic") }
+            #endif
             return image.jpegData(compressionQuality: 0.82).map { ($0, "jpg") }
         }.value
     }

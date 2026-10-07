@@ -62,21 +62,28 @@ extension PrayerPhotos {
 struct MemoriesPage: View {
     let onClose: () -> Void
     @Namespace private var zoom
-    /// The squares that fly into their month's stack on a pinch, and back.
+    /// The squares that fly into their day's or month's stack on a pinch, and back.
     @Namespace private var pinch
     @State private var photos: [MemoryPhoto] = []
     @State private var opened: MemoryPhoto?
     /// The photo on top of the pile, so closing zooms back into its own square.
     @State private var top: String = ""
-    /// Days, or each month as a stack (owner: "pinching the screen so each month becomes a stack of its own").
-    @State private var showMonths = false
-    /// The month at the top of the days, kept while the months show; a tap on a month's stack sets it, so the days
-    /// open there.
-    @State private var dayTop: String?
-    /// The days open at the bottom (today) unless a month was picked.
-    @State private var daysFromMonth = false
 
-    typealias Month = (id: String, title: String, days: [(dayKey: String, photos: [MemoryPhoto])], photos: [MemoryPhoto])
+    /// Three levels, like Photos' Years / Months / Days (owner: "the most granular is every single prayer photo. The one
+    /// level up is every single day is a stack. And then the next level up is every single month as a stack").
+    enum Level: Int, CaseIterable, Identifiable {
+        case months, days, prayers
+        var id: Int { rawValue }
+        var title: String { ["Months", "Days", "Prayers"][rawValue] }
+    }
+    @State private var level: Level = .prayers
+    /// The id at the top of each level's screen (a month "2026-10" or, on Prayers, a day "2026-10-06"); a level opens
+    /// there when it was picked from another, else at the bottom (today).
+    @State private var tops: [Level: String] = [:]
+    @State private var pinned: Set<Level> = []
+
+    typealias Day = (dayKey: String, photos: [MemoryPhoto])
+    typealias Month = (id: String, title: String, days: [Day], photos: [MemoryPhoto])
 
     /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos).
     private var months: [Month] {
@@ -91,8 +98,8 @@ struct MemoriesPage: View {
 
     var body: some View {
         NavigationStack {
-            // Two scroll views, one per level, swapped whole: a shared one scrolled under the change and the squares
-            // never flew into their stacks.
+            // One scroll view per level, swapped whole: a shared one scrolled under the change and the squares never
+            // flew into their stacks.
             Group {
                 if photos.isEmpty {
                     ScrollView {
@@ -104,34 +111,40 @@ struct MemoriesPage: View {
                         }
                         .padding(.top, 140).padding(.horizontal, 40)
                     }
-                } else if showMonths {
-                    ScrollView { monthStacks }
-                        .defaultScrollAnchor(.bottom)
                 } else {
-                    ScrollView { dayStrips }
-                        .scrollPosition(id: $dayTop, anchor: .top)
-                        .defaultScrollAnchor(daysFromMonth ? .top : .bottom)
+                    switch level {
+                    case .months: levelScroll(.months) { monthStacks }
+                    case .days: levelScroll(.days) { dayStacks }
+                    case .prayers: levelScroll(.prayers) { prayerStrips }
+                    }
                 }
             }
             .simultaneousGesture(
                 MagnifyGesture().onEnded { value in
-                    if value.magnification < 0.8, !showMonths { switchLevel(months: true) }
-                    if value.magnification > 1.25, showMonths { switchLevel(months: false) }
+                    if value.magnification < 0.8, let up = Level(rawValue: level.rawValue - 1) { go(up) }
+                    if value.magnification > 1.25, let down = Level(rawValue: level.rawValue + 1) { go(down) }
                 }
             )
-            .sensoryFeedback(.selection, trigger: showMonths)
+            .safeAreaInset(edge: .bottom) {
+                if !photos.isEmpty {
+                    // For anyone who never finds the pinch (Photos' own control, at the bottom).
+                    Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
+                        ForEach(Level.allCases) { Text($0.title).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 260)
+                    .padding(6)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 4)
+                }
+            }
+            .sensoryFeedback(.selection, trigger: level)
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: onClose) { Image(systemName: "chevron.left") }
                         .accessibilityLabel("Back")
-                }
-                if !photos.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        // For anyone who never finds the pinch.
-                        Button(showMonths ? "Days" : "Months") { switchLevel(months: !showMonths) }
-                    }
                 }
             }
             .navigationDestination(item: $opened) { start in
@@ -143,49 +156,115 @@ struct MemoriesPage: View {
         .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
     }
 
-    private func switchLevel(months: Bool, to month: String? = nil) {
-        if let month { dayTop = month; daysFromMonth = true }
-        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) {
-            showMonths = months
-        }
+    private func levelScroll<Content: View>(_ l: Level, @ViewBuilder content: () -> Content) -> some View {
+        ScrollView { content() }
+            .scrollPosition(id: Binding(get: { tops[l] }, set: { tops[l] = $0 }), anchor: .top)
+            .defaultScrollAnchor(pinned.contains(l) ? .top : .bottom)
     }
 
-    private var dayStrips: some View {
+    /// To another level, opening at `id` (a tapped stack), else at the month that's on screen now.
+    private func go(_ new: Level, at id: String? = nil) {
+        guard new != level else { return }
+        if let target = id ?? tops[level].map({ String($0.prefix(7)) }) {
+            tops[new] = target
+            pinned.insert(new)
+        } else {
+            tops[new] = nil
+            pinned.remove(new)
+        }
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
+    }
+
+    private func monthHeader(_ month: Month) -> some View {
+        Text(month.title)
+            .font(.system(size: 20, weight: .semibold, design: .rounded))
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Every prayer: a row per day, five squares.
+    private var prayerStrips: some View {
         LazyVStack(alignment: .leading, spacing: 18) {
             ForEach(months, id: \.id) { month in
-                VStack(alignment: .leading, spacing: 18) {
-                    Text(month.title)
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .padding(.top, 8)
-                    ForEach(month.days, id: \.dayKey) { day in
-                        dayRow(day.dayKey, day.photos)
-                    }
+                monthHeader(month).id(month.id)
+                ForEach(month.days, id: \.dayKey) { day in
+                    dayRow(day.dayKey, day.photos).id(day.dayKey)
                 }
-                .id(month.id)
             }
         }
         .scrollTargetLayout()
         .padding(.horizontal, 20)
-        .padding(.bottom, 40)
+        .padding(.bottom, 24)
     }
 
-    /// Each month as a small pile: its newest three, loose, with the month and how many under it.
+    /// Each month as a calendar, a week to a row (owner: "organized the same way a calendar would be"); a day with photos
+    /// is a small pile, a tap opens that day's prayers; a day without is just its number, faint.
+    private var dayStacks: some View {
+        LazyVStack(alignment: .leading, spacing: 18) {
+            ForEach(months, id: \.id) { month in
+                monthHeader(month).id(month.id)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 12) {
+                    ForEach(Self.weekdayLetters.indices, id: \.self) { i in
+                        Text(Self.weekdayLetters[i])
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(Self.calendarCells(month.id).enumerated()), id: \.offset) { _, cell in
+                        if let dayKey = cell {
+                            calendarDay(dayKey, month.days.first { $0.dayKey == dayKey }?.photos ?? [])
+                        } else {
+                            Color.clear.frame(height: 1)
+                        }
+                    }
+                }
+            }
+        }
+        .scrollTargetLayout()
+        .padding(.horizontal, 16)
+        .padding(.bottom, 24)
+    }
+
+    @ViewBuilder
+    private func calendarDay(_ dayKey: String, _ dayPhotos: [MemoryPhoto]) -> some View {
+        let number = Text(String(Int(dayKey.suffix(2)) ?? 0)).font(.system(size: 11, weight: .medium, design: .rounded))
+        if dayPhotos.isEmpty {
+            VStack(spacing: 4) {
+                Color.clear.frame(height: 40)
+                number.foregroundStyle(.tertiary)
+            }
+        } else {
+            Button { go(.prayers, at: dayKey) } label: {
+                VStack(spacing: 4) {
+                    stack(dayPhotos, side: 38, corner: 10).frame(height: 40)
+                    number.foregroundStyle(.primary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// The week's day letters, from the calendar's first weekday (Sunday in the US).
+    private static let weekdayLetters: [String] = {
+        let cal = Calendar.current
+        let symbols = cal.veryShortStandaloneWeekdaySymbols
+        return (0..<7).map { symbols[(cal.firstWeekday - 1 + $0) % 7] }
+    }()
+
+    /// A month's cells, week by week: nil before the 1st, then each day's key.
+    private static func calendarCells(_ month: String) -> [String?] {
+        let cal = Calendar.current
+        guard let first = parse(month + "-01"), let days = cal.range(of: .day, in: .month, for: first)?.count else { return [] }
+        let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
+        return Array(repeating: nil, count: lead) + (1...days).map { String(format: "%@-%02d", month, $0) }
+    }
+
+    /// Each month as a small pile, with the month and how many under it; a tap opens its days.
     private var monthStacks: some View {
         LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 28) {
             ForEach(months, id: \.id) { month in
-                Button { switchLevel(months: false, to: month.id) } label: {
+                Button { go(.days, at: month.id) } label: {
                     VStack(spacing: 12) {
-                        ZStack {
-                            ForEach(Array(month.photos.suffix(3).enumerated()), id: \.element.key) { n, photo in
-                                MemoryThumb(key: photo.key, side: 360, corner: 22)
-                                    .matchedGeometryEffect(id: photo.key, in: pinch)
-                                    .frame(width: 118, height: 118)
-                                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
-                                    .rotationEffect(.degrees(n == 2 ? 0 : Self.looseTilt(photo.key)))
-                                    .offset(x: n == 2 ? 0 : Self.looseNudge(photo.key), y: CGFloat(2 - n) * -3)
-                            }
-                        }
-                        .frame(height: 140)
+                        stack(month.photos, side: 118, corner: 22).frame(height: 140)
                         VStack(spacing: 2) {
                             Text(month.title).font(.system(size: 16, weight: .semibold, design: .rounded))
                             Text(month.photos.count == 1 ? "1 photo" : "\(month.photos.count) photos")
@@ -203,7 +282,24 @@ struct MemoriesPage: View {
         .padding(.vertical, 24)
     }
 
-    /// A loose angle and nudge for a card in a month's stack, the same each time it's drawn.
+    /// The newest three, loose, the newest straight on top; the squares fly in and out of it (`pinch`).
+    private func stack(_ photos: [MemoryPhoto], side: CGFloat, corner: CGFloat) -> some View {
+        let shown = Array(photos.suffix(3))
+        return ZStack {
+            ForEach(Array(shown.enumerated()), id: \.element.key) { n, photo in
+                let onTop = n == shown.count - 1
+                MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
+                    .matchedGeometryEffect(id: photo.key, in: pinch)
+                    .frame(width: side, height: side)
+                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                    .rotationEffect(.degrees(onTop ? 0 : Self.looseTilt(photo.key)))
+                    .offset(x: onTop ? 0 : Self.looseNudge(photo.key) * side / 118,
+                            y: CGFloat(shown.count - 1 - n) * -3)
+            }
+        }
+    }
+
+    /// A loose angle and nudge for a card in a stack, the same each time it's drawn.
     private static func looseTilt(_ key: String) -> Double { Double(abs(key.hashValue) % 19) - 9 }
     private static func looseNudge(_ key: String) -> CGFloat { CGFloat(abs(key.hashValue / 19) % 25) - 12 }
 

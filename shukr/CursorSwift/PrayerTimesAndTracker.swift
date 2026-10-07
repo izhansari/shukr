@@ -1959,6 +1959,7 @@ struct PrayerTimesView: View {
             .task {
                 // `-demoMemories`: three weeks of stand-in photos; `-demoMemoriesOpen`: then Memories opens.
                 if ProcessInfo.processInfo.arguments.contains("-demoMemories") { await PrayerPhotos.seedDemo() }
+                if ProcessInfo.processInfo.arguments.contains("-heicSelfTest") { await PrayerPhotos.heicSelfTest() }
                 if ProcessInfo.processInfo.arguments.contains("-demoMemoriesOpen") {
                     try? await Task.sleep(for: .seconds(2))
                     MemoriesPresenter.shared.open = true
