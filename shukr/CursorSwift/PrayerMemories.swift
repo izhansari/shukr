@@ -510,6 +510,9 @@ struct MemoriesDeck: View {
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     /// Which way the last move went: back in time or forward — everything that changes slides in from that side.
     @State private var wentBack = false
+    /// Which day's pile is drawn above which while one is thrown: up one for a later day (it lands on top), down one for
+    /// an earlier day (the current one is thrown off it). The pile going away keeps the value it had.
+    @State private var dayLayer: Double = 0
     /// "Prayed 1:12 PM · Masjid Al-Noor" for the top photo, and its score (the badge under it).
     @State private var prayed: String?
     @State private var score: Double?
@@ -570,6 +573,7 @@ struct MemoriesDeck: View {
                     pile(range, width: width, screen: geo.size.width)
                         .id(current?.dayKey ?? "")
                         .transition(dayChange)
+                        .zIndex(dayLayer)
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
@@ -595,7 +599,7 @@ struct MemoriesDeck: View {
                     // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
                     // faint on the frosted page).
                     Rectangle().fill(Color.primary.opacity(0.22)).frame(height: 1)
-                    MemoriesDayStrip(photos: photos, centred: $stripDay, onRest: goToDay)
+                    MemoriesDayStrip(photos: photos, centred: $stripDay, onScrub: scrubTo, onRest: goToDay)
                 }
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
                 .padding(.bottom, 6)
@@ -645,14 +649,26 @@ struct MemoriesDeck: View {
         onClose(photos[index].key, photos[index].dayKey)
     }
 
-    /// A day's pile changing: the old one sinks toward the strip and shrinks away, the new one rises out of it, a little
-    /// to the side the days went (owner: "a little different … it feels like it disappears and looks too similar to card
-    /// swiping").
+    /// A day's pile changing, thrown whole the way a card is (owner: "just throw the whole stack the same way we do when
+    /// we swipe"): a later day's pile flies in from the right and lands on the current one; going back, the current pile
+    /// is thrown off to the right and the earlier day's is there under it.
     private var dayChange: AnyTransition {
-        let side: CGFloat = wentBack ? -60 : 60
-        return .asymmetric(
-            insertion: .offset(x: side, y: 180).combined(with: .scale(scale: 0.55, anchor: .bottom)).combined(with: .opacity),
-            removal: .offset(x: -side, y: 180).combined(with: .scale(scale: 0.55, anchor: .bottom)).combined(with: .opacity))
+        let screen = UIScreen.main.bounds.width
+        let under = AnyTransition.scale(scale: 0.94).combined(with: .opacity)
+        return wentBack
+            ? .asymmetric(insertion: under, removal: .offset(x: screen * 1.2))
+            : .asymmetric(insertion: .offset(x: screen * 1.2), removal: under)
+    }
+
+    /// The strip passing a day under the finger: that day's pile at once, if it has photos (owner: "the scrubber … isn't
+    /// updating as we scroll"); days without photos are passed over until the strip comes to rest.
+    private func scrubTo(_ dayKey: String) {
+        guard photos.indices.contains(index), dayKey != photos[index].dayKey,
+              let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) else { return }
+        wentBack = dayKey < photos[index].dayKey
+        dayLayer += wentBack ? -1 : 1
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { index = newest; drag = 0 }
+        pickLies()
     }
 
     /// A short slide with a fade, from the side the cards came from (owner: "more subtle … instead of going the whole
@@ -669,6 +685,7 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(index), dayKey != photos[index].dayKey else { return }
         if let newest = photos.lastIndex(where: { $0.dayKey == dayKey }) {
             wentBack = dayKey < photos[index].dayKey
+            dayLayer += wentBack ? -1 : 1
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) { index = newest; drag = 0 }
             pickLies()
             return
@@ -689,7 +706,9 @@ struct MemoriesDeck: View {
     /// day's edge the whole pile follows the finger (a little only, at the very first and last photo).
     private func pile(_ range: ClosedRange<Int>, width: CGFloat, screen: CGFloat) -> some View {
         let atStart = index == range.lowerBound, atEnd = index == range.upperBound
-        let shift: CGFloat = (atEnd && drag < 0) || (atStart && drag > 0) ? drag : 0
+        // Back past the day's first photo the whole pile follows the finger (it's about to be thrown off to the right);
+        // forward past its last it only gives a little (the next day's pile will land on it).
+        let shift: CGFloat = atStart && drag > 0 ? drag : (atEnd && drag < 0 ? drag / 5 : 0)
         let shown = Array(max(range.lowerBound, index - Self.pileDepth)...min(index + 1, range.upperBound))
         return ZStack {
             ForEach(shown, id: \.self) { i in
@@ -854,15 +873,17 @@ struct MemoriesDeck: View {
                 let far = value.translation.width, flung = value.predictedEndTranslation.width
                 let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
                 if (far < -90 || flung < -240), index < photos.count - 1 {
-                    // The day's next one lands on top — or, past the day's last, the next day's pile comes in, on its
-                    // first photo.
+                    // The day's next one lands on top — or, past the day's last, the next day's pile flies in from the
+                    // right and lands on this one, on its first photo.
                     wentBack = false
+                    if photos[index + 1].dayKey != photos[index].dayKey { dayLayer += 1 }
                     withAnimation(settle) { index += 1; drag = 0 }
                     pickLies()
                 } else if (far > 90 || flung > 240), index > 0 {
-                    // The top one goes back off to the right — or, at the day's first, the previous day's pile comes in
-                    // from the left, on its last photo.
+                    // The top one goes back off to the right — or, at the day's first, the whole pile is thrown off to the
+                    // right and the previous day's is there under it, on its last photo.
                     wentBack = true
+                    if photos[index - 1].dayKey != photos[index].dayKey { dayLayer -= 1 }
                     withAnimation(settle) { index -= 1; drag = 0 }
                     pickLies()
                 } else {
@@ -892,6 +913,8 @@ struct MemoriesDeck: View {
 struct MemoriesDayStrip: View {
     let photos: [MemoryPhoto]
     @Binding var centred: String?
+    /// A day passing the centre under the finger.
+    let onScrub: (String) -> Void
     let onRest: (String) -> Void
     /// Built before the first layout, so the strip opens on the pile's day (built later, `scrollPosition` had nothing to
     /// find and it opened elsewhere).
@@ -899,7 +922,9 @@ struct MemoriesDayStrip: View {
     @State private var photoDays: Set<String>
     @State private var monthCounts: [String: Int]
 
-    init(photos: [MemoryPhoto], centred: Binding<String?>, onRest: @escaping (String) -> Void) {
+    init(photos: [MemoryPhoto], centred: Binding<String?>, onScrub: @escaping (String) -> Void,
+         onRest: @escaping (String) -> Void) {
+        self.onScrub = onScrub
         self.photos = photos
         self._centred = centred
         self.onRest = onRest
@@ -935,6 +960,15 @@ struct MemoriesDayStrip: View {
                 .scrollTargetBehavior(.viewAligned)
                 .scrollPosition(id: $centred)
                 .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in leftmost = ids.min() }
+                // The day under the centre as the finger moves, from the offset itself (the position binding only
+                // caught up once the strip stopped).
+                .onScrollGeometryChange(for: Int.self) { geo in
+                    Int(((geo.contentOffset.x + geo.contentInsets.leading) / Self.cell).rounded())
+                } action: { _, i in
+                    guard phase == .interacting || phase == .decelerating, days.indices.contains(i) else { return }
+                    tick += 1
+                    onScrub(days[i])
+                }
                 .onScrollPhaseChange { _, new in
                     phase = new
                     if new == .idle, let centred { onRest(centred) }
@@ -945,10 +979,7 @@ struct MemoriesDayStrip: View {
         }
         .frame(height: Self.labelHeight + 50)
         .sensoryFeedback(.selection, trigger: tick)
-        .onChange(of: centred) { _, _ in
-            // A tick for each day that passes the centre under the finger (not when the pile moves the strip).
-            if phase == .interacting || phase == .decelerating { tick += 1 }
-        }
+
     }
 
     private func dayCell(_ day: String) -> some View {

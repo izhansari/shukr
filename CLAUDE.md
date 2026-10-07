@@ -300,8 +300,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (laggy), the system zoom (whole page)
   was laggy). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
   onto the top, swipe right = the top one goes back off to the right; past the day's last (first) photo the whole pile
-  follows the finger and the next (previous) day's pile rises out of the strip as the old one sinks into it (`.id(dayKey)` +
-  `dayChange`: offset down + to the side, scale 0.55 from the bottom, fade — owner: not a fade or a card swipe), landing on
+  changes day thrown whole like a card (owner): a later day's pile flies in from the right onto the current one; back, the
+  current pile follows the finger and is thrown off to the right, the earlier day's under it (`.id(dayKey)` + `dayChange`;
+  `dayLayer` +1 / −1 keeps the right pile on top — the leaving one keeps its value), landing on
   its first (last) photo. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
   plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom, under a 1 pt line (primary 22 %; the system Divider was too faint on the frost):
@@ -309,8 +310,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
   (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO
   anchor (`.center` with the margins landed 4 days off); its days are built in `init` (built on appear it opened
-  elsewhere). The pile moves the strip; a drag on the strip moves the pile when it comes to rest (`onScrollPhaseChange`
-  .idle), a tap jumps, a tick per day under the finger. Month name + "N photos" over each 1st; the month of the earliest
+  elsewhere). The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
+  the centred index from `onScrollGeometryChange` contentOffset + insets — the position binding only caught up at rest;
+  photo days only), and at rest an empty day snaps to the nearest (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
   Under the pile the prayer's name, "Prayed 1:12 PM" (+ place), then the score as a ring in its grade colour + the grade
