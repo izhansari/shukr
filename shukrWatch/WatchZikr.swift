@@ -2376,70 +2376,15 @@ struct WatchPauseSettings: View {
                 }
                 .buttonStyle(.plain)
             }
-            switch Self.layout {
-            case "b":
-                setsSection
-                goalSection
-                countWithSection
-            case "c":
-                roundSwitches
-            case "d":
-                settingsRows
-            default:
-                countWithSection
-                setsSection
-                goalSection
-            }
+            roundSwitches
         }
         .frame(maxHeight: .infinity)
         .padding(.horizontal, 4)
         .padding(.bottom, 10)   // the page dots
     }
 
-    /// DEBUG `-demoPauseLayout a|b|c|d`: arrangements to compare (owner: "mockups of ordering that pause page in a
-    /// different way"); a (headed chips, count with first) otherwise.
-    static var layout: String {
-        #if DEBUG
-        return UserDefaults.standard.string(forKey: "demoPauseLayout") ?? "a"
-        #else
-        return "a"
-        #endif
-    }
-
-    @ViewBuilder private var countWithSection: some View {
-        section("count with") {
-            chip(crownOnly ? "Crown only" : "Tap & pinch",
-                 crownOnly ? "digitalcrown.arrow.clockwise" : "hand.tap",
-                 lit: crownOnly) { setCrownOnly(!crownOnly) }
-        }
-    }
-
-    @ViewBuilder private var setsSection: some View {
-        if let sets {
-            // − / + set the size; the chip turns counting in sets on or off (the phone's sets chip).
-            section("count in sets") {
-                HStack(spacing: 6) {
-                    stepButton("minus", enabled: sets.size > 2) { setSetSize(max(2, sets.size - 1)) }
-                    chip("sets of \(sets.size)", "square.stack", lit: sets.on) { setInSets(!sets.on) }
-                    stepButton("plus", enabled: sets.size < 100) { setSetSize(min(100, sets.size + 1)) }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder private var goalSection: some View {
-        if let continuous {
-            // The phone's goal chip: stops at the goal, or keeps going past it.
-            section("at the goal") {
-                chip(continuous.on ? "Keeps going" : "Stops at goal",
-                     continuous.on ? "infinity" : "flag.checkered",
-                     lit: continuous.on) { if !continuous.locked { setContinuous(!continuous.on) } }
-                    .opacity(continuous.locked ? 0.6 : 1)
-            }
-        }
-    }
-
-    /// c: the phone's round switches in a row, a word under each; the set size's − / + under them.
+    /// The phone's round switches in a row, a word under each (owner, decision watch-pause-layout C); the set size's
+    /// − / + appear under them once sets are on ("doesn't pop up until it's been set on").
     @ViewBuilder private var roundSwitches: some View {
         HStack(alignment: .top, spacing: 10) {
             roundSwitch(crownOnly ? "Crown" : "Tap & pinch", crownOnly ? "digitalcrown.arrow.clockwise" : "hand.tap",
@@ -2452,7 +2397,7 @@ struct WatchPauseSettings: View {
                             lit: continuous.on) { if !continuous.locked { setContinuous(!continuous.on) } }
             }
         }
-        if let sets {
+        if let sets, sets.on {
             HStack(spacing: 8) {
                 stepButton("minus", enabled: sets.size > 2) { setSetSize(max(2, sets.size - 1)) }
                 Text("set size \(sets.size)")
@@ -2483,49 +2428,6 @@ struct WatchPauseSettings: View {
         .buttonStyle(.plain)
     }
 
-    /// d: watch Settings' rows — the name left, its value right; a tap steps it.
-    @ViewBuilder private var settingsRows: some View {
-        settingsRow("Count with", crownOnly ? "Crown" : "Tap & pinch", lit: crownOnly) { setCrownOnly(!crownOnly) }
-        if let sets {
-            HStack(spacing: 6) {
-                settingsRow("Sets", sets.on ? "of \(sets.size)" : "off", lit: sets.on) { setInSets(!sets.on) }
-                stepButton("minus", enabled: sets.size > 2) { setSetSize(max(2, sets.size - 1)) }
-                stepButton("plus", enabled: sets.size < 100) { setSetSize(min(100, sets.size + 1)) }
-            }
-        }
-        if let continuous {
-            settingsRow("At goal", continuous.on ? "Keep going" : "Stop", lit: continuous.on) {
-                if !continuous.locked { setContinuous(!continuous.on) }
-            }
-        }
-    }
-
-    private func settingsRow(_ title: String, _ value: String, lit: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Text(title).lineLimit(1)
-                Spacer(minLength: 4)
-                Text(value).foregroundStyle(lit ? Color.green : .secondary).lineLimit(1)
-            }
-            .font(.system(size: 13, design: .rounded))
-            .padding(.horizontal, 10)
-            .padding(.vertical, WatchScreen.small ? 6 : 8)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.08)))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(spacing: 4) {
-            Text(title)
-                .font(.system(size: 10, design: .rounded))
-                .tracking(1.2)
-                .textCase(.uppercase)
-                .foregroundStyle(.tertiary)
-            content()
-        }
-    }
-
     private func stepButton(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button {
             WatchHaptics.tick()
@@ -2542,21 +2444,6 @@ struct WatchPauseSettings: View {
         .opacity(enabled ? 1 : 0.35)
     }
 
-    private func chip(_ text: String, _ symbol: String, lit: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(text, systemImage: symbol)
-                .font(.system(size: 14, design: .rounded))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .foregroundStyle(lit ? Color.green : .secondary)
-                .frame(maxWidth: .infinity)
-                // Three rows (count with, sets, the goal) plus a 41 mm's finish tile on one screen.
-                .padding(.vertical, WatchScreen.small ? 6 : 9)
-                .background(Capsule().fill(lit ? Color.green.opacity(0.15) : Color.primary.opacity(0.08)))
-                .contentTransition(.opacity)
-        }
-        .buttonStyle(.plain)
-    }
 }
 
 
