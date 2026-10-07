@@ -321,16 +321,15 @@ struct WatchHomeView: View {
     }
 }
 
-/// The phone's prayer list (TodaysPrayerListView), small: only the prayers still to pray, each with
-/// the phone's status dot, name and time; the prayed ones fold into "✓ 3 done ⌄" (tap to show
-/// them, dots in their score colour, faded); all five come back once the day is done.
+/// The phone's prayer list (TodaysPrayerListView), small: all five, always, each with the phone's status dot, name and
+/// time; the prayed ones with their dots in their score colour, faded. No "N done" fold (owner, 2026-10-07: two rows
+/// alone looked funny — "just keep the full list").
 struct WatchPrayerList: View {
     let prayers: [WatchPrayer]
     let now: Date
     /// Watched directly: what's done comes from the stored marks, not from `prayers` / `now`,
     /// so without it SwiftUI kept the old list after a mark (its inputs hadn't changed).
     @EnvironmentObject private var session: WatchSession
-    @State private var showDone = false
     @State private var unmarking: WatchPrayer?
     /// Rows whose time is flipped (the phone's PrayerButton `timeTap`): one still to come shows "in 2h 5m", a prayed
     /// one its grade and score ("On time · 88"); the current and missed ones don't flip. Back by itself after 3 s.
@@ -343,36 +342,10 @@ struct WatchPrayerList: View {
         let dayStart = prayers[0].start
         let done = WatchPrayers.completed(dayStart: dayStart)
         let scores = WatchPrayers.scores(dayStart: dayStart)
-        let allDone = done.count >= prayers.count
-        let visible = prayers.filter { !done.contains($0.name) || showDone || allDone }
         VStack(spacing: 0) {
-            ForEach(Array(visible.enumerated()), id: \.element.name) { index, p in
+            ForEach(Array(prayers.enumerated()), id: \.element.name) { index, p in
                 if index > 0 { Divider().padding(.horizontal, 10) }
-                let isDone = done.contains(p.name)
-                row(p, done: isDone, score: scores[p.name])
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-            if !done.isEmpty && !allDone {
-                if !visible.isEmpty { Divider().padding(.horizontal, 10) }
-                Button {
-                    WKInterfaceDevice.current().play(.click)
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { showDone.toggle() }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle")
-                        Text("\(done.count) done")
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                            .rotationEffect(.degrees(showDone ? 180 : 0))
-                    }
-                    .font(.system(size: 12, weight: .light, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, WatchScreen.small ? 4.5 : 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+                row(p, done: done.contains(p.name), score: scores[p.name])
             }
         }
         #if DEBUG
@@ -380,7 +353,6 @@ struct WatchPrayerList: View {
         // Asr`: mark one (simulator checks).
         .onAppear {
             let done = WatchPrayers.completed(dayStart: prayers[0].start)
-            if UserDefaults.standard.bool(forKey: "demoWatchShowDone") { showDone = true }
             // `-demoWatchFlip "Fajr,Asr"`: flip those rows' times, as a tap would.
             for name in (UserDefaults.standard.string(forKey: "demoWatchFlip") ?? "").split(separator: ",") {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { flipTime(String(name)) }
