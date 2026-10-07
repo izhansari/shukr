@@ -6,8 +6,9 @@
 //  feeling like data … sleek … simple"). The page is a film strip of days (decision prayer-memories-layout, Strip 2:
 //  the day's number and weekday, five squares Fajr → Isha, an empty one where there's no photo, no letters); a photo
 //  zooms into a loose pile (Deck 2: "it looks like a loosely organized stack … cute and intimate and like memorabilia")
-//  — flick the top one left for older, pull one back with a swipe right; each card lands at a random tilt ("feel less
-//  computer generated"); a tap swaps front and back; swipe down closes it back into its square. Apple's own zoom
+//  in the strip's order (oldest at the top of the page, newest at the bottom, like Photos): swipe left for newer, right
+//  to go back; each card lies at a random nudge and tilt ("feel less computer generated"), the top one centred; a tap
+//  swaps front and back; swipe down closes it back into its square. Apple's own zoom
 //  transition (iOS 18 `matchedTransitionSource` / `.navigationTransition(.zoom)`), `sensoryFeedback` for the clicks.
 //
 
@@ -31,12 +32,12 @@ struct MemoryPhoto: Identifiable, Hashable {
 }
 
 extension PrayerPhotos {
-    /// Every saved photo, newest first (by day, then Isha → Fajr).
+    /// Every saved photo, oldest first (by day, then Fajr → Isha) — the strip's reading order.
     static func all() -> [MemoryPhoto] {
         let files = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
         return files.filter { $0.hasSuffix("-back.jpg") }
             .map { MemoryPhoto(key: String($0.dropLast("-back.jpg".count))) }
-            .sorted { $0.dayKey != $1.dayKey ? $0.dayKey > $1.dayKey : $0.slot > $1.slot }
+            .sorted { $0.dayKey != $1.dayKey ? $0.dayKey < $1.dayKey : $0.slot < $1.slot }
     }
 
     private static let thumbs = NSCache<NSString, UIImage>()
@@ -67,13 +68,13 @@ struct MemoriesPage: View {
     /// The photo on top of the pile, so closing zooms back into its own square.
     @State private var top: String = ""
 
-    /// Days with at least one photo, newest first, grouped by month.
+    /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos).
     private var months: [(title: String, days: [(dayKey: String, photos: [MemoryPhoto])])] {
         let byDay = Dictionary(grouping: photos, by: \.dayKey)
-        let days = byDay.keys.sorted(by: >).map { ($0, byDay[$0] ?? []) }
+        let days = byDay.keys.sorted(by: <).map { ($0, byDay[$0] ?? []) }
         let byMonth = Dictionary(grouping: days, by: { String($0.0.prefix(7)) })
-        return byMonth.keys.sorted(by: >).map { month in
-            (Self.monthTitle(month), (byMonth[month] ?? []).sorted { $0.0 > $1.0 })
+        return byMonth.keys.sorted(by: <).map { month in
+            (Self.monthTitle(month), (byMonth[month] ?? []).sorted { $0.0 < $1.0 })
         }
     }
 
@@ -103,6 +104,7 @@ struct MemoriesPage: View {
                     .padding(.bottom, 40)
                 }
             }
+            .defaultScrollAnchor(.bottom)
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -180,8 +182,10 @@ private struct MemoryThumb: View {
 
 // MARK: - The pile
 
-/// The loose pile (Deck 2). `index` is the photo on top; the next two peek out under it. Flick the top one left to put
-/// it away (older); swipe right to pull the one before back on top (newer).
+/// The loose pile (Deck 2), in the strip's order: older under, newer on top. `index` is the photo on top, centred and
+/// nearly straight; the ones already seen lie under it, each at its own random nudge and tilt, so it reads as a pile
+/// (owner: "make it so the stack looks like a stack … the focused one always comes back to center"). Swipe left: the
+/// next newer one comes in from the right and lands on top. Swipe right: the top one goes back off to the right.
 struct MemoriesDeck: View {
     let photos: [MemoryPhoto]
     let start: MemoryPhoto
@@ -193,11 +197,15 @@ struct MemoriesDeck: View {
     @State private var down: CGFloat = 0
     /// Which way this drag went, fixed by its first move.
     @State private var vertical: Bool?
-    /// Random tilts, picked as a card first shows (owner: "just do random angles … feel more hand made").
-    @State private var tilts: [String: Double] = [:]
+    /// Where each card lies in the pile, picked at random the first time it's needed (owner: "just do random angles …
+    /// feel more hand made"); not stored.
+    @State private var lie: [String: Lie] = [:]
     @State private var swapped: Set<String> = []
 
-    private func tilt(_ key: String) -> Double { tilts[key] ?? 0 }
+    struct Lie { var dx: CGFloat; var dy: CGFloat; var tilt: Double }
+
+    /// How many seen cards show under the top one.
+    private static let pileDepth = 4
 
     var body: some View {
         GeometryReader { geo in
@@ -206,69 +214,15 @@ struct MemoriesDeck: View {
             VStack(spacing: 28) {
                 Spacer(minLength: 0)
                 ZStack {
-                    // Under the top one: the next two, in their tilts.
-                    ForEach(Array(stackKeys.enumerated().reversed()), id: \.element) { depth, key in
-                        let isTop = depth == 0
-                        MemoryCard(key: key, width: width, swapped: swapped.contains(key))
-                            .rotationEffect(.degrees(tilt(key) + (isTop ? Double(drag) / 18 : 0)))
-                            .offset(x: isTop ? min(drag, 0) : 0, y: isTop ? 0 : CGFloat(depth) * 4)
-                            .scaleEffect(isTop ? 1 : 1 - CGFloat(depth) * 0.03)
-                            .zIndex(Double(10 - depth))
-                            .onTapGesture {
-                                guard isTop else { return }
-                                withAnimation(.snappy(duration: 0.25)) {
-                                    if swapped.contains(key) { swapped.remove(key) } else { swapped.insert(key) }
-                                }
-                            }
-                    }
-                    // Pulled back: the newer one comes in from the right, over the pile.
-                    if drag > 0, index > 0 {
-                        let key = photos[index - 1].key
-                        MemoryCard(key: key, width: width, swapped: swapped.contains(key))
-                            .rotationEffect(.degrees(tilt(key)))
-                            .offset(x: geo.size.width - drag * 1.2)
-                            .zIndex(20)
+                    ForEach(cardIndices, id: \.self) { i in
+                        card(i, width: width, screen: geo.size.width)
                     }
                 }
+                .frame(width: geo.size.width, height: width + 30)
+                .contentShape(Rectangle())
                 .offset(y: max(down, 0))
                 .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
-                .gesture(
-                    DragGesture(minimumDistance: 12)
-                        .onChanged { value in
-                            if vertical == nil {
-                                vertical = abs(value.translation.height) > abs(value.translation.width)
-                            }
-                            if vertical == true { down = value.translation.height } else { drag = value.translation.width }
-                        }
-                        .onEnded { value in
-                            defer { vertical = nil }
-                            if vertical == true {
-                                if value.translation.height > 120 || value.predictedEndTranslation.height > 320 {
-                                    dismiss()
-                                } else {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0 }
-                                }
-                                return
-                            }
-                            let far = value.translation.width, flung = value.predictedEndTranslation.width
-                            if (far < -110 || flung < -260), index < photos.count - 1 {
-                                // Put it away: off to the left, then the next is on top.
-                                withAnimation(.easeIn(duration: 0.18)) { drag = -geo.size.width * 1.2 }
-                                Task { @MainActor in
-                                    try? await Task.sleep(for: .milliseconds(180))
-                                    var quiet = Transaction(); quiet.disablesAnimations = true
-                                    withTransaction(quiet) { index += 1; drag = 0 }
-                                    pickTilts()
-                                }
-                            } else if (far > 110 || flung > 260), index > 0 {
-                                // Pull one back on top.
-                                withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) { index -= 1; drag = 0 }
-                                pickTilts()
-                            } else {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { drag = 0 }
-                            }
-                        }
-                )
+                .gesture(pileDrag(screen: geo.size.width))
                 if let current {
                     VStack(spacing: 3) {
                         HStack(spacing: 6) {
@@ -302,20 +256,86 @@ struct MemoriesDeck: View {
         .onChange(of: index) { _, i in if photos.indices.contains(i) { top = photos[i].key } }
         .onAppear {
             index = photos.firstIndex(of: start) ?? 0
-            pickTilts()
+            pickLies()
         }
     }
 
-    /// The top card and the two under it.
-    private var stackKeys: [String] {
-        (index..<min(index + 3, photos.count)).map { photos[$0].key }
+    /// The pile under the top one, the top one, and the next newer one waiting off to the right.
+    private var cardIndices: [Int] {
+        Array(max(index - Self.pileDepth, 0)...min(index + 1, photos.count - 1))
     }
 
-    /// A new random tilt for each card as it joins the pile (the one on top a touch straighter).
-    private func pickTilts() {
-        let around = max(index - 1, 0)..<min(index + 4, photos.count)
-        for i in around where tilts[photos[i].key] == nil {
-            tilts[photos[i].key] = Double.random(in: -7...7)
+    @ViewBuilder
+    private func card(_ i: Int, width: CGFloat, screen: CGFloat) -> some View {
+        let key = photos[i].key
+        let l = lie[key] ?? Lie(dx: 0, dy: 0, tilt: 0)
+        let (x, y, angle): (CGFloat, CGFloat, Double) = {
+            if i > index {
+                // Waiting off to the right; a swipe left pulls it in.
+                let x = screen + min(drag, 0)
+                return (x, 0, l.tilt * 0.3 + Double(x) / 40)
+            } else if i == index {
+                // On top: centred, nearly straight; a swipe right takes it back off to the right.
+                let x = max(drag, 0)
+                return (x, 0, l.tilt * 0.3 + Double(x) / 40)
+            } else {
+                return (l.dx, l.dy, l.tilt)
+            }
+        }()
+        MemoryCard(key: key, width: width, swapped: swapped.contains(key))
+            .rotationEffect(.degrees(angle))
+            .offset(x: x, y: y)
+            .zIndex(Double(i))
+            .allowsHitTesting(i == index)
+            .onTapGesture {
+                withAnimation(.snappy(duration: 0.25)) {
+                    if swapped.contains(key) { swapped.remove(key) } else { swapped.insert(key) }
+                }
+            }
+    }
+
+    private func pileDrag(screen: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                if vertical == nil {
+                    vertical = abs(value.translation.height) > abs(value.translation.width)
+                }
+                if vertical == true { down = value.translation.height; return }
+                let t = value.translation.width
+                // At either end the pile gives a little and comes back.
+                if t < 0, index >= photos.count - 1 { drag = t / 6 } else if t > 0, index == 0 { drag = 0 } else { drag = t }
+            }
+            .onEnded { value in
+                defer { vertical = nil }
+                if vertical == true {
+                    if value.translation.height > 120 || value.predictedEndTranslation.height > 320 {
+                        dismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0 }
+                    }
+                    return
+                }
+                let far = value.translation.width, flung = value.predictedEndTranslation.width
+                let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
+                if (far < -90 || flung < -240), index < photos.count - 1 {
+                    // The newer one lands on top; the old top settles into the pile.
+                    withAnimation(settle) { index += 1; drag = 0 }
+                    pickLies()
+                } else if (far > 90 || flung > 240), index > 0 {
+                    // The top one goes back off to the right; the one under it comes up to the centre.
+                    withAnimation(settle) { index -= 1; drag = 0 }
+                    pickLies()
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { drag = 0 }
+                }
+            }
+    }
+
+    /// A random lie for each card near the top, the first time it shows.
+    private func pickLies() {
+        let around = max(index - Self.pileDepth - 1, 0)..<min(index + 3, photos.count)
+        for i in around where lie[photos[i].key] == nil {
+            lie[photos[i].key] = Lie(dx: .random(in: -22...22), dy: .random(in: -14...14), tilt: .random(in: -9...9))
         }
     }
 }

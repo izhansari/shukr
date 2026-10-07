@@ -285,10 +285,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 - **Memories** (PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
   exists — `PrayerPhotoRevision.hasPhotos`): a strip per day (day number + weekday, five 52 pt squares Fajr→Isha, empty
-  outlines; no letters, no dots), months as headers. A tap zooms (`.navigationTransition(.zoom)`; the source follows the
-  pile's top, `top`) into `MemoriesDeck`, one loose pile across days: random tilts per card (not stored — owner), flick
-  left = older, swipe right pulls the newer one back, a tap swaps front / back, drag down closes into its square (the
-  deck's own drag decides the axis on its first move). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`.
+  outlines; no letters, no dots), months as headers, oldest at the top, opening at the bottom (`defaultScrollAnchor`, like
+  Photos). A tap zooms (`.navigationTransition(.zoom)`; the source follows the pile's `top`) into `MemoriesDeck`, one pile
+  in the same order: swipe left = the newer one comes in from the right onto the top; swipe right = the top one goes back
+  off to the right. The seen ones lie under it (4 shown), each at a random `Lie` (nudge + tilt, not stored — owner); the
+  top one is centred, 0.3 × its tilt. A tap swaps front / back; drag down closes into its square (the deck's own drag
+  picks the axis on its first move). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`.
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.
