@@ -20,6 +20,7 @@ enum TourCopy {
     static let continueButton = "Continue"
     static let getThere = "Get there"        // the first step of Zikr and Settings
     static let tryIt = "Try it"              // the to-dos step's label
+    static func doneCount(_ n: Int) -> String { "\(n) done" }   // finished steps folded into one line
 
     // MARK: The welcome (before chapter 1)
 

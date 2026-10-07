@@ -530,13 +530,22 @@ struct TourPageView: View {
                 plainBody
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(page.sections) { section in
+                    // Two or more finished steps fold into one "✓ N done" line (decision tour-bubble-size A: the
+                    // bubble was half a tester's screen); a tap lists them again, each still openable.
+                    let done = page.sections.filter(\.done)
+                    let folded = done.count >= 2 && !showDone && !done.contains { $0.id == openSection }
+                    if folded {
+                        doneLine(done.count)
+                            .transition(.opacity)
+                    }
+                    ForEach(folded ? page.sections.filter { !$0.done } : page.sections) { section in
                         TourSectionView(section: section, open: openSection == section.id, ticked: ticked,
                                         locked: page.locked, lit: lit) { onToggle(section.id) }
                             .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .top)),
                                                     removal: .opacity))
                     }
                 }
+                .onChange(of: page.sections.filter(\.done).count) { _, _ in showDone = false }
             }
             if qiblaSkip {
                 Button(TourCopy.Circle.noCompass, action: onSkipQibla)
@@ -588,6 +597,38 @@ struct TourPageView: View {
             .frame(minHeight: 32)
             }
         }
+        // One text size smaller than the phone's (decision tour-bubble-size A), still following its setting.
+        .dynamicTypeSize(Self.oneSmaller(typeSize))
+    }
+
+    @State private var showDone = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    static func oneSmaller(_ size: DynamicTypeSize) -> DynamicTypeSize {
+        let all = DynamicTypeSize.allCases
+        guard let i = all.firstIndex(of: size), i > 0 else { return size }
+        return all[i - 1]
+    }
+
+    /// "✓ 4 done ⌄": the finished steps in one line, in the look of a single ✓ line.
+    private func doneLine(_ count: Int) -> some View {
+        Button {
+            withAnimation(.smooth(duration: CircleMotion.standard)) { showDone = true }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(TourInk.green)
+                Text(TourCopy.doneCount(count))
+                Image(systemName: "chevron.down")
+                    .font(.system(.caption2, weight: .semibold))
+            }
+            .font(.system(.footnote, design: .rounded, weight: .medium))
+            .foregroundStyle(Color.primary.opacity(0.6))
+            .frame(minHeight: 24)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(TourCopy.doneCount(count)). Show them")
     }
 
     /// "1  Prayer Circle", the chapter's ring at the right.
