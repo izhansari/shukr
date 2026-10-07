@@ -327,7 +327,14 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag
-  picks the axis on its first move). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
+  picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
+  (`PrayerPhotoFavorites`, UserDefaults); 🔍 beside the levels at the bottom opens the search field there (Apple Music
+  style) with chips Favorites · Jumu'ah · At a masjid · With a note; words (all must match, folded: no case / accents /
+  apostrophes) search `buildIndex`'s text per photo — prayer, note, masjid, Gregorian + Hijri (`islamicUmmAlQura`) dates,
+  the place's name (`PrayerPlaceNames`: the prayer's own spot named once per ~1 km and kept as words only — no location
+  copied, owner); results feed `visible` (levels and pile); toggling search re-ids the level's ScrollView so it starts at
+  the bottom. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
+  `-demoMemories`). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
   · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the segmented
   control at the bottom too; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month

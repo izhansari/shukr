@@ -116,6 +116,16 @@ enum PrayerPhotos {
     #if DEBUG
     /// `-demoMemories`: stand-in photos for the last three weeks, some prayers each day (Memories in the simulator).
     static func seedDemo() async {
+        if ProcessInfo.processInfo.arguments.contains("-demoOnThisDay") {
+            // "On this day": a photo from a year ago today, and two years ago.
+            let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
+            for years in [1, 2] {
+                guard let day = Calendar.current.date(byAdding: .year, value: -years, to: Date()) else { continue }
+                let key = PrayerPhotos.key(dayKey: f.string(from: day), name: years == 1 ? "Maghrib" : "Fajr")
+                guard !has(key), let back = demoScene(top: .systemIndigo, bottom: .systemPink, symbol: "sparkles") else { continue }
+                await save(key, back: back, front: nil)
+            }
+        }
         let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
         let symbols = ["sunrise.fill", "sun.max.fill", "cloud.sun.fill", "sunset.fill", "moon.stars.fill"]
         let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
@@ -195,7 +205,10 @@ enum PrayerPhotos {
     }
 
     static func delete(_ key: String) {
-        Task { @MainActor in PrayerPhotoMain.shared.set(key, selfie: false) }
+        Task { @MainActor in
+            PrayerPhotoMain.shared.set(key, selfie: false)
+            PrayerPhotoFavorites.shared.set(key, false)
+        }
         setNote(key, nil)
         for isFront in [false, true] {
             for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
@@ -913,6 +926,55 @@ struct PrayerPhotoCapture: View {
     /// For the loaders, off the main thread.
     nonisolated static func selfieIsMain(_ key: String) -> Bool {
         UserDefaults.standard.stringArray(forKey: defaultsKey)?.contains(key) ?? false
+    }
+}
+
+/// The photos marked with a heart (Memories' Favorites filter): their keys, in UserDefaults.
+@MainActor @Observable final class PrayerPhotoFavorites {
+    static let shared = PrayerPhotoFavorites()
+    private static let defaultsKey = "prayerPhotos.favorites"
+    private(set) var keys: Set<String> = Set(UserDefaults.standard.stringArray(forKey: defaultsKey) ?? [])
+
+    func contains(_ key: String) -> Bool { keys.contains(key) }
+
+    func set(_ key: String, _ on: Bool) {
+        guard on != keys.contains(key) else { return }
+        if on { keys.insert(key) } else { keys.remove(key) }
+        UserDefaults.standard.set(Array(keys), forKey: Self.defaultsKey)
+    }
+
+    func toggle(_ key: String) { set(key, !contains(key)) }
+}
+
+/// The names of the places prayers were marked at, for search ("Cary, NC"): looked up once per place (about a km) from
+/// the prayer's own spot and remembered as words only — no location is copied (owner: "can't we just use the address of
+/// the prayer that was marked?").
+@MainActor enum PrayerPlaceNames {
+    private static let defaultsKey = "prayerPhotos.placeNames"
+    private static var names: [String: String] = UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: String] ?? [:]
+    private static var looking = false
+
+    static func key(_ c: CLLocationCoordinate2D) -> String { String(format: "%.2f,%.2f", c.latitude, c.longitude) }
+    static func name(_ c: CLLocationCoordinate2D) -> String? { names[key(c)] }
+
+    /// Looks up the places not named yet, one at a time (Apple's lookup is rate-limited); `onEach` after each new name.
+    static func fill(_ spots: [CLLocationCoordinate2D], onEach: @escaping () -> Void) {
+        guard !looking else { return }
+        var seen = Set<String>()
+        let missing = spots.filter { names[key($0)] == nil && seen.insert(key($0)).inserted }
+        guard !missing.isEmpty else { return }
+        looking = true
+        Task {
+            for spot in missing {
+                if let city = await PrayerSpotAddress.city(spot) {
+                    names[key(spot)] = city
+                    UserDefaults.standard.set(names, forKey: defaultsKey)
+                    onEach()
+                }
+                try? await Task.sleep(for: .milliseconds(600))
+            }
+            looking = false
+        }
     }
 }
 

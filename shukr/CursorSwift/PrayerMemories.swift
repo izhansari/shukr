@@ -14,6 +14,8 @@
 
 import SwiftUI
 import ImageIO
+import SwiftData
+import CoreLocation
 
 /// One saved photo, as Memories lists it.
 struct MemoryPhoto: Identifiable, Hashable {
@@ -93,6 +95,234 @@ struct MemoriesPage: View {
     }
     @State private var showSettings = false
 
+    // MARK: Search (decision memories-finding C): a magnifying glass beside the levels opens a field at the bottom, like
+    // Apple Music's; words match notes, masjids, places, prayers and months (Gregorian and Hijri); chips filter.
+    @Environment(\.modelContext) private var context
+    @State private var searching = false
+    @State private var query = ""
+    @State private var filters: Set<SearchFilter> = []
+    @State private var searchIndex: [String: SearchEntry] = [:]
+    @State private var placeNamesLearned = 0
+    @FocusState private var searchFocused: Bool
+
+    enum SearchFilter: String, CaseIterable, Identifiable {
+        case favorites = "Favorites", jumuah = "Jumu'ah", masjid = "At a masjid", note = "With a note"
+        var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .favorites: "heart.fill"
+            case .jumuah: "building.columns"
+            case .masjid: "mappin.and.ellipse"
+            case .note: "text.quote"
+            }
+        }
+    }
+
+    struct SearchEntry { var text: String; var jumuah: Bool; var masjid: Bool; var note: Bool }
+
+    private var filtering: Bool {
+        searching && (!query.trimmingCharacters(in: .whitespaces).isEmpty || !filters.isEmpty)
+    }
+
+    /// What the levels and the pile show: everything, or the matches while searching.
+    private var visible: [MemoryPhoto] { filtering ? photos.filter(matches) : photos }
+
+    private func matches(_ photo: MemoryPhoto) -> Bool {
+        let entry = searchIndex[photo.key]
+        if filters.contains(.favorites), !PrayerPhotoFavorites.shared.contains(photo.key) { return false }
+        if filters.contains(.jumuah), entry?.jumuah != true { return false }
+        if filters.contains(.masjid), entry?.masjid != true { return false }
+        if filters.contains(.note), entry?.note != true { return false }
+        let words = Self.fold(query).split(separator: " ")
+        guard !words.isEmpty else { return true }
+        let text = entry?.text ?? Self.fold(photo.name)
+        return words.allSatisfy { text.contains($0) }
+    }
+
+    /// Lowercase, no accents or apostrophes — "Jumu'ah", "jumuah" and "JUMUAH" all match.
+    static func fold(_ s: String) -> String {
+        s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: "'", with: "").replacingOccurrences(of: "’", with: "")
+            .replacingOccurrences(of: "ʻ", with: "").replacingOccurrences(of: "ʿ", with: "")
+    }
+
+    /// What each photo can be found by, from what's already on the phone: its prayer (masjid, Jumu'ah, the place's name
+    /// once looked up), its note, its day in both calendars.
+    private func buildIndex() {
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.isCompleted }))) ?? []
+        var byKey: [String: PrayerModel] = [:]
+        for row in rows { byKey["\(row.dayKey)-\(row.name)"] = row }
+        let gregorian = DateFormatter()
+        gregorian.dateFormat = "EEEE MMMM d yyyy"
+        let hijri = DateFormatter()
+        hijri.calendar = Calendar(identifier: .islamicUmmAlQura)
+        hijri.dateFormat = "MMMM y"
+        var spots: [CLLocationCoordinate2D] = []
+        var index: [String: SearchEntry] = [:]
+        for photo in photos {
+            let row = byKey[photo.key]
+            var parts = [photo.name]
+            if let date = Self.parse(photo.dayKey) {
+                parts.append(gregorian.string(from: date))
+                parts.append(hijri.string(from: date))
+            }
+            let note = PrayerPhotos.note(photo.key)
+            if let note { parts.append(note) }
+            let jumuah = row?.isJumuah ?? false
+            if jumuah { parts.append("jumuah jummah friday") }
+            let masjid = row.flatMap { ($0.mosqueName ?? "").isEmpty ? nil : $0.mosqueName }
+            if let masjid { parts.append(masjid + " masjid mosque") }
+            if let lat = row?.latPrayedAt, let lon = row?.longPrayedAt {
+                let spot = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+                spots.append(spot)
+                if let place = PrayerPlaceNames.name(spot) { parts.append(place) }
+            }
+            index[photo.key] = SearchEntry(text: Self.fold(parts.joined(separator: " ")), jumuah: jumuah,
+                                           masjid: masjid != nil, note: note != nil)
+        }
+        searchIndex = index
+        PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
+    }
+
+    private func openSearch() {
+        pinned.remove(level)
+        tops[level] = nil
+        buildIndex()
+        withAnimation(.snappy(duration: 0.3)) { searching = true }
+        searchFocused = true
+    }
+
+    private func closeSearch() {
+        searchFocused = false
+        pinned.remove(level)
+        tops[level] = nil
+        withAnimation(.snappy(duration: 0.3)) {
+            searching = false
+            query = ""
+            filters = []
+        }
+    }
+
+    /// The bar at the bottom: the levels and a magnifying glass; searching, the field and the filters instead.
+    @ViewBuilder
+    private var bottomBar: some View {
+        if searching {
+            VStack(spacing: 8) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 8) {
+                        ForEach(SearchFilter.allCases) { filter in
+                            let on = filters.contains(filter)
+                            Button {
+                                withAnimation(.snappy(duration: 0.25)) {
+                                    if on { filters.remove(filter) } else { filters.insert(filter) }
+                                }
+                            } label: {
+                                Label(filter.rawValue, systemImage: filter.symbol)
+                                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                                    .padding(.horizontal, 12).frame(height: 32)
+                                    .foregroundStyle(on ? Color.white : Color.primary)
+                                    .background(Capsule().fill(on ? AnyShapeStyle(Color.sage) : AnyShapeStyle(.regularMaterial)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .scrollIndicators(.hidden)
+                HStack(spacing: 10) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField("Notes, places, prayers, months", text: $query)
+                            .focused($searchFocused)
+                            .submitLabel(.search)
+                            .autocorrectionDisabled()
+                        if !query.isEmpty {
+                            Button { query = "" } label: {
+                                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 14).frame(height: 44)
+                    .background(.regularMaterial, in: Capsule())
+                    Button(action: closeSearch) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .background(.regularMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close search")
+                }
+                .padding(.horizontal, 16)
+            }
+            .padding(.bottom, 4)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else {
+            HStack(spacing: 10) {
+                // For anyone who never finds the pinch (Photos' own control, at the bottom).
+                Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
+                    ForEach(Level.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 250)
+                .padding(6)
+                .background(.regularMaterial, in: Capsule())
+                Button(action: openSearch) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 17, weight: .medium))
+                        .frame(width: 44, height: 44)
+                        .background(.regularMaterial, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Search")
+            }
+            .padding(.bottom, 4)
+            .transition(.opacity)
+        }
+    }
+
+    // MARK: On this day (decision memories-finding C)
+
+    /// Earlier years' photos from today's date, the newest year first.
+    private var onThisDay: [[MemoryPhoto]] {
+        let f = DateFormatter()
+        f.dateFormat = "MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let today = f.string(from: Date())
+        let year = Calendar.current.component(.year, from: Date())
+        let matches = photos.filter { $0.dayKey.dropFirst(5) == today && (Int($0.dayKey.prefix(4)) ?? year) < year }
+        return Dictionary(grouping: matches, by: \.dayKey).sorted { $0.key > $1.key }.map(\.value)
+    }
+
+    private func onThisDayCard(_ dayPhotos: [MemoryPhoto]) -> some View {
+        let dayKey = dayPhotos.first?.dayKey ?? ""
+        let years = Calendar.current.component(.year, from: Date()) - (Int(dayKey.prefix(4)) ?? 0)
+        return Button {
+            if let newest = dayPhotos.last { openDeck(newest, from: "otd-" + dayKey) }
+        } label: {
+            HStack(spacing: 14) {
+                stack(dayPhotos, side: 52, corner: 13)
+                    .frame(width: 66, height: 66)
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        let f = proxy.frame(in: .global)
+                        return CGRect(x: f.midX - 26, y: f.midY - 26, width: 52, height: 52)
+                    } action: { frames.frames["otd-" + dayKey] = $0 }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("On this day").font(.system(size: 17, weight: .semibold, design: .rounded))
+                    Text("\(years == 1 ? "1 year" : "\(years) years") ago · "
+                         + (Self.parse(dayKey)?.formatted(.dateTime.weekday(.wide).month(.abbreviated).day().year()) ?? ""))
+                        .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(.tertiary)
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        }
+        .buttonStyle(.plain)
+    }
+
     /// Three levels, like Photos' Years / Months / Days (owner: "the most granular is every single prayer photo. The one
     /// level up is every single day is a stack. And then the next level up is every single month as a stack").
     enum Level: Int, CaseIterable, Identifiable {
@@ -111,7 +341,7 @@ struct MemoriesPage: View {
 
     /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos).
     private var months: [Month] {
-        let byDay = Dictionary(grouping: photos, by: \.dayKey)
+        let byDay = Dictionary(grouping: visible, by: \.dayKey)
         let days = byDay.keys.sorted(by: <).map { ($0, byDay[$0] ?? []) }
         let byMonth = Dictionary(grouping: days, by: { String($0.0.prefix(7)) })
         return byMonth.keys.sorted(by: <).map { month in
@@ -150,18 +380,14 @@ struct MemoriesPage: View {
                 }
             )
             .safeAreaInset(edge: .bottom) {
-                if !photos.isEmpty {
-                    // For anyone who never finds the pinch (Photos' own control, at the bottom).
-                    Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
-                        ForEach(Level.allCases) { Text($0.title).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 260)
-                    .padding(6)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, 4)
+                if !photos.isEmpty { bottomBar }
+            }
+            .overlay {
+                if filtering && visible.isEmpty {
+                    ContentUnavailableView.search(text: query)
                 }
             }
+            .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
             .sensoryFeedback(.selection, trigger: level)
             .navigationTitle("Memories")
             .navigationBarTitleDisplayMode(.inline)
@@ -185,7 +411,7 @@ struct MemoriesPage: View {
                         .ignoresSafeArea()
                         .opacity(deckShown ? 1 : 0)
                     NavigationStack {
-                        MemoriesDeck(photos: photos, start: start, shown: deckShown, hideTop: flight != nil,
+                        MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
                                      onTopFrame: deckTopMoved, onClose: closeDeck)
                             .containerBackground(.clear, for: .navigation)
                     }
@@ -210,6 +436,8 @@ struct MemoriesPage: View {
         ScrollView { content() }
             .scrollPosition(id: Binding(get: { tops[l] }, set: { tops[l] = $0 }), anchor: .top)
             .defaultScrollAnchor(pinned.contains(l) ? .top : .bottom)
+            // Search on or off starts the list afresh at the bottom (kept, it was left scrolled to the top).
+            .id("\(l.rawValue)-\(filtering)")
     }
 
     /// To another level, opening at `id` (a tapped stack), else at the month that's on screen now.
@@ -268,8 +496,9 @@ struct MemoriesPage: View {
         triggerSomeVibration(type: .light)
         guard let top = frames.deckTop else { deckStart = nil; return }
         let screen = UIScreen.main.bounds
-        let target = frames.frames[level == .prayers ? key : dayKey]
-            .flatMap { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width ? $0 : nil }
+        let onScreen: (CGRect) -> Bool = { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width }
+        let target = ["otd-" + dayKey, level == .prayers ? key : dayKey]
+            .compactMap { frames.frames[$0] }.first(where: onScreen)
         Task {
             let images = await PrayerPhotos.load(key)
             flight = Flight(key: key, rect: top, images: images)
@@ -329,6 +558,12 @@ struct MemoriesPage: View {
                             Color.clear.frame(height: 1)
                         }
                     }
+                }
+            }
+            // Under today's month, where the page opens: earlier years' photos from today's date.
+            if !filtering {
+                ForEach(onThisDay, id: \.first?.key) { dayPhotos in
+                    onThisDayCard(dayPhotos).padding(.top, 6)
                 }
             }
         }
@@ -608,6 +843,15 @@ struct MemoriesDeck: View {
                         circleIcon("square.and.arrow.up")
                     }
                     .accessibilityLabel("Share")
+                    let favorite = photos.indices.contains(shownIndex) && PrayerPhotoFavorites.shared.contains(photos[shownIndex].key)
+                    Button {
+                        guard photos.indices.contains(shownIndex) else { return }
+                        triggerSomeVibration(type: .light)
+                        PrayerPhotoFavorites.shared.toggle(photos[shownIndex].key)
+                    } label: {
+                        circleIcon(favorite ? "heart.fill" : "heart", tint: favorite ? .pink : .primary)
+                    }
+                    .accessibilityLabel(favorite ? "Remove from favorites" : "Favorite")
                     Button(action: close) { circleIcon("xmark") }
                         .accessibilityLabel("Close")
                 }
@@ -885,10 +1129,11 @@ struct MemoriesDeck: View {
         }
     }
 
-    private func circleIcon(_ symbol: String) -> some View {
+    private func circleIcon(_ symbol: String, tint: Color = .primary) -> some View {
         Image(systemName: symbol)
             .font(.system(size: 17, weight: .medium))
-            .foregroundStyle(.primary)
+            .foregroundStyle(tint)
+            .contentTransition(.symbolEffect(.replace))
             .frame(width: 50, height: 50)
             .background(Circle().fill(.regularMaterial))
             .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
