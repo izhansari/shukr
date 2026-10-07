@@ -50,7 +50,17 @@ enum PrayerPhotos {
         return nil
     }
 
-    /// How many photos there are and the space they take (Settings → Prayer photos).
+    /// Where it was prayed: the masjid's name, else the spot's address (callers check Show where).
+    @MainActor static func place(for key: String, in context: ModelContext) async -> String? {
+        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == dayKey && $0.name == name }))) ?? []
+        guard let row = rows.first(where: \.isCompleted) ?? rows.first else { return nil }
+        if let masjid = row.mosqueName, !masjid.isEmpty { return masjid }
+        guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return nil }
+        return await PrayerSpotAddress.lookUp(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+    }
+
+    /// How many photos there are and the space they take (Memories' settings).
     static func usage() async -> (count: Int, bytes: Int64) {
         await Task.detached(priority: .utility) {
             let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey])) ?? []
@@ -331,15 +341,8 @@ struct PrayerPhotoViewer: View {
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     @Environment(\.modelContext) private var context
 
-    /// Where it was prayed: the masjid's name, else the spot's address (only with Show where on).
     private func lookUpPlace() async {
-        guard showPlace else { place = nil; return }
-        let dayKey = String(key.prefix(10)), name = String(key.dropFirst(11))
-        let rows = (try? context.fetch(FetchDescriptor<PrayerModel>(predicate: #Predicate { $0.prayerDayKey == dayKey && $0.name == name }))) ?? []
-        guard let row = rows.first(where: \.isCompleted) ?? rows.first else { return }
-        if let masjid = row.mosqueName, !masjid.isEmpty { place = masjid; return }
-        guard let lat = row.latPrayedAt, let lon = row.longPrayedAt else { return }
-        place = await PrayerSpotAddress.lookUp(CLLocationCoordinate2D(latitude: lat, longitude: lon))
+        place = showPlace ? await PrayerPhotos.place(for: key, in: context) : nil
     }
 
     var body: some View {
@@ -793,7 +796,7 @@ struct PrayerPhotoCapture: View {
     #endif
 }
 
-/// "42 photos · 9.3 MB" in Settings → Prayer photos.
+/// "42 photos · 9.3 MB" in Memories' settings.
 struct PrayerPhotoStorageRow: View {
     @State private var usage: (count: Int, bytes: Int64)?
     var body: some View {

@@ -43,7 +43,6 @@ struct SettingsView: View {
 
     
     @AppStorage("modeToggle") var colorModeToggle = false
-    @AppStorage(PrayerPhotos.showPlaceKey) private var prayerPhotosShowPlace = false
     @AppStorage("modeToggleNew") var colorModeToggleNew: Int = 0 // 0 = Light, 1 = Dark, 2 = SunBased
     
     
@@ -290,12 +289,7 @@ struct SettingsView: View {
                     }
                     
                     
-                    // Prayer photos (PrayerPhotos.swift; decision prayer-photo-location A: off by default).
-                    Section(header: Text("Prayer photos"),
-                            footer: Text("Show where adds the place under your photos, and to the ones you share. Your photos stay on your iPhone, and in its backup.")) {
-                        Toggle("Show where", isOn: $prayerPhotosShowPlace)
-                        PrayerPhotoStorageRow()
-                    }
+                    // Prayer photos' settings (Show where, Space used) live in Memories' own settings (owner).
 
                     //MARK: - Notifications
                     Section(header: headerWithInfoButton(title: "Notifications", isPopupVisible: $isNotifPopupVisible) ) {
