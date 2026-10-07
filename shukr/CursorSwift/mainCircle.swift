@@ -892,6 +892,26 @@ struct summaryCircle: View{
         showingYesterday ? (history.first ?? []) : viewModel.todaysPrayers.map(DayPrayer.init)
     }
 
+    /// "Memories ›" under the day's line, once there's a photo (PrayerMemories.swift).
+    @ViewBuilder private var memoriesLink: some View {
+        if PrayerPhotoRevision.shared.hasPhotos {
+            Button {
+                triggerSomeVibration(type: .light)
+                MemoriesPresenter.shared.open = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "photo.stack").font(.system(size: 13))
+                    Text("Memories").font(.system(size: 14, weight: .regular, design: .rounded))
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     @ViewBuilder private var dayLine: some View {
         if let i = picked, DayRing.order.indices.contains(i), let p = shownDay.first(where: { $0.name == DayRing.order[i] }) {
             Text("\(p.name)'s window: \(p.start.formatted(date: .omitted, time: .shortened)) – \(p.end.formatted(date: .omitted, time: .shortened))")
@@ -982,7 +1002,11 @@ struct summaryCircle: View{
                     .opacity(glow ? 1 : 0).allowsHitTesting(false)
             }
             .overlay(alignment: .top) {
-                dayLine.frame(width: 310).offset(y: 222)
+                VStack(spacing: 14) {
+                    dayLine
+                    memoriesLink
+                }
+                .frame(width: 310).offset(y: 222)
             }
             .modifier(CircleWordsAway(away: away || !showsScore))
             .allowsHitTesting(showsScore && !away)

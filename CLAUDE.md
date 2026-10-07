@@ -283,6 +283,12 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
+- **Memories** (PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
+  exists — `PrayerPhotoRevision.hasPhotos`): a strip per day (day number + weekday, five 52 pt squares Fajr→Isha, empty
+  outlines; no letters, no dots), months as headers. A tap zooms (`.navigationTransition(.zoom)`; the source follows the
+  pile's top, `top`) into `MemoriesDeck`, one loose pile across days: random tilts per card (not stored — owner), flick
+  left = older, swipe right pulls the newer one back, a tap swaps front / back, drag down closes into its square (the
+  deck's own drag decides the axis on its first move). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`.
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

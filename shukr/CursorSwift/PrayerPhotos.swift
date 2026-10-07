@@ -37,6 +37,38 @@ enum PrayerPhotos {
     }
 
     #if DEBUG
+    /// `-demoMemories`: stand-in photos for the last three weeks, some prayers each day (Memories in the simulator).
+    static func seedDemo() async {
+        let names = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]
+        let symbols = ["sunrise.fill", "sun.max.fill", "cloud.sun.fill", "sunset.fill", "moon.stars.fill"]
+        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.locale = Locale(identifier: "en_US_POSIX")
+        for d in 0..<21 {
+            guard let day = Calendar.current.date(byAdding: .day, value: -d, to: Date()) else { continue }
+            for (i, name) in names.enumerated() where Int.random(in: 0..<10) < 6 {
+                let key = PrayerPhotos.key(dayKey: f.string(from: day), name: name)
+                guard !has(key) else { continue }
+                let hue = Double.random(in: 0...1)
+                let back = demoScene(top: UIColor(hue: hue, saturation: 0.55, brightness: 0.55, alpha: 1),
+                                     bottom: UIColor(hue: fmod(hue + 0.12, 1), saturation: 0.6, brightness: 0.85, alpha: 1),
+                                     symbol: symbols[i])
+                let front = demoScene(top: UIColor(hue: 0.07, saturation: 0.45, brightness: 0.9, alpha: 1),
+                                      bottom: UIColor(hue: 0.04, saturation: 0.5, brightness: 0.7, alpha: 1),
+                                      symbol: "face.smiling")
+                if let back { await save(key, back: back, front: front) }
+            }
+        }
+    }
+
+    private static func demoScene(top: UIColor, bottom: UIColor, symbol: String) -> Data? {
+        let size = CGSize(width: 900, height: 900)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: [top.cgColor, bottom.cgColor] as CFArray, locations: [0, 1])!
+            ctx.cgContext.drawLinearGradient(g, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            UIImage(systemName: symbol)?.withTintColor(.white.withAlphaComponent(0.9), renderingMode: .alwaysOriginal)
+                .draw(in: CGRect(x: 300, y: 260, width: 300, height: 300))
+        }.jpegData(compressionQuality: 0.8)
+    }
+
     /// The most recently saved photo's key (`-demoPhotoViewer`).
     static var newestKey: String? {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
@@ -113,7 +145,9 @@ enum PrayerPhotos {
 @MainActor @Observable final class PrayerPhotoRevision {
     static let shared = PrayerPhotoRevision()
     private(set) var value = 0
-    func bump() { value += 1 }
+    /// Any photo saved at all (the day page's Memories link), re-read only when one is saved or removed.
+    private(set) var hasPhotos = !PrayerPhotos.all().isEmpty
+    func bump() { value += 1; hasPhotos = !PrayerPhotos.all().isEmpty }
 }
 
 /// What the camera is for: the prayer's key and its line ("Asr · 4:52 PM").

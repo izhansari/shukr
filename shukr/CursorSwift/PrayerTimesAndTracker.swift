@@ -1795,6 +1795,7 @@ struct PrayerTimesView: View {
                                     .padding(.bottom, 10)
                                 Divider()
                                 menuRow("Insights", "chart.bar.xaxis") { showInsightsPage = true }
+                                menuRow("Memories", "photo.stack") { MemoriesPresenter.shared.open = true }
                                 menuRow("Daily Ayah", "book") { showDailyAyahPage = true }
                                 menuRow("99 Names", "moon.stars") { showNamesPage = true }
                                 CompassMenuRow {
@@ -1943,6 +1944,11 @@ struct PrayerTimesView: View {
             .fullScreenCover(item: $prayerPhoto) { target in
                 PrayerPhotoCapture(target: target) { prayerPhoto = nil }
             }
+            // Memories (PrayerMemories.swift): from the ☰ menu or the day page's link.
+            .fullScreenCover(isPresented: Binding(get: { MemoriesPresenter.shared.open },
+                                                  set: { MemoriesPresenter.shared.open = $0 })) {
+                MemoriesPage { MemoriesPresenter.shared.open = false }
+            }
             #if DEBUG
             // `-demoPhotoViewer`: the newest saved prayer photo, full screen (the simulator's look at the viewer).
             .fullScreenCover(isPresented: $demoViewer) {
@@ -1951,6 +1957,12 @@ struct PrayerTimesView: View {
                 }
             }
             .task {
+                // `-demoMemories`: three weeks of stand-in photos; `-demoMemoriesOpen`: then Memories opens.
+                if ProcessInfo.processInfo.arguments.contains("-demoMemories") { await PrayerPhotos.seedDemo() }
+                if ProcessInfo.processInfo.arguments.contains("-demoMemoriesOpen") {
+                    try? await Task.sleep(for: .seconds(2))
+                    MemoriesPresenter.shared.open = true
+                }
                 if ProcessInfo.processInfo.arguments.contains("-demoPhotoViewer") {
                     try? await Task.sleep(for: .seconds(2))
                     demoViewer = PrayerPhotos.newestKey != nil
