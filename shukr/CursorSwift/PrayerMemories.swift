@@ -385,21 +385,21 @@ private struct MemoryThumb: View {
 
 // MARK: - The pile
 
-/// The loose pile (Deck 2), in the strips' order: older under, newer on top. `index` is the photo on top, centred and
-/// nearly straight; the ones already seen lie under it, each at its own random nudge and tilt (owner: "make it so the
-/// stack looks like a stack … the focused one always comes back to center"). Swipe left: the next newer one comes in
-/// from the right and lands on top; swipe right: the top one goes back off to the right. Just the photos, the prayer and
-/// day under them (owner: "no text or badges in the photo at time of viewing"); Share opens the share page. Presented
-/// full screen with the system's zoom from the day or square it was opened from.
+/// One day's loose pile at a time (owner: "make it one stack for a day"): its photos in order, older under, newer on
+/// top. `index` is the photo on top, centred and nearly straight; the ones already seen lie under it, each at its own
+/// random nudge and tilt. Swipe left: the day's next one comes in from the right; swipe right: the top one goes back off
+/// to the right. Past the day's last (or first) photo the whole pile follows the finger and the next (previous) day's
+/// pile slides in from that side — landing on its first photo going forward, its last going back. The day's date sits
+/// at the top and slides only when the day changes; the prayer's name, its line and its note slide sideways with every
+/// photo. Just the photos (owner: "no text or badges in the photo at time of viewing"); Share opens the share page.
+/// Presented full screen with the system's zoom from the day or square it was opened from.
 struct MemoriesDeck: View {
     let photos: [MemoryPhoto]
     let start: MemoryPhoto
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
-    /// Which way the last move went: back in time (to the left of the strips) or forward — the day's line is pushed
-    /// out sideways that way, the prayer's name up or down (owner: "so the user knows that they're staying in the same
-    /// day and just going through those prayers, or when they've jumped from one day to another").
+    /// Which way the last move went: back in time or forward — everything that changes slides in from that side.
     @State private var wentBack = false
     /// "Prayed 1:12 PM · On time 88 · Masjid Al-Noor" for the top photo.
     @State private var detail: String?
@@ -430,23 +430,35 @@ struct MemoriesDeck: View {
         _lie = State(initialValue: Self.lies(around: first, in: photos, keeping: [:]))
     }
 
+    /// The top photo's day, as indices into `photos`.
+    private var day: ClosedRange<Int> {
+        guard photos.indices.contains(index) else { return 0...0 }
+        let key = photos[index].dayKey
+        var lo = index, hi = index
+        while lo > 0 && photos[lo - 1].dayKey == key { lo -= 1 }
+        while hi < photos.count - 1 && photos[hi + 1].dayKey == key { hi += 1 }
+        return lo...hi
+    }
+
     var body: some View {
         GeometryReader { geo in
             let width = min(geo.size.width - 72, 360)
             let current = photos.indices.contains(index) ? photos[index] : nil
-            VStack(spacing: 26) {
+            let range = day
+            VStack(spacing: 0) {
+                if let current { dateLine(current).padding(.top, 14) }
                 Spacer(minLength: 0)
                 ZStack {
-                    ForEach(cardIndices, id: \.self) { i in
-                        card(i, width: width, screen: geo.size.width)
-                    }
+                    pile(range, width: width, screen: geo.size.width)
+                        .id(current?.dayKey ?? "")
+                        .transition(.push(from: wentBack ? .leading : .trailing))
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
                 .offset(y: max(down, 0))
                 .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
-                .gesture(pileDrag(screen: geo.size.width))
-                if let current { caption(current) }
+                .gesture(pileDrag(range))
+                if let current { caption(current).padding(.top, 24) }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
@@ -459,6 +471,7 @@ struct MemoriesDeck: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(down > 10 ? 0 : 1)
+                .padding(.top, 22)
                 Spacer(minLength: 0)
             }
             .frame(width: geo.size.width)
@@ -481,50 +494,75 @@ struct MemoriesDeck: View {
         .onDisappear { PrayerPhotoViewing.shared.closed() }
     }
 
-    /// The prayer and the day under the pile. Within a day only the prayer's name moves (down for an earlier one, up for
-    /// a later one); a new day pushes the day's line out sideways, the way the cards went.
-    private func caption(_ current: MemoryPhoto) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 6) {
-                Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
-                Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
-            }
-            .id(current.key)
-            .transition(.push(from: wentBack ? .top : .bottom))
+    /// The day at the top; it slides only when the day changes.
+    private func dateLine(_ current: MemoryPhoto) -> some View {
+        ZStack {
             Text(MemoriesPage.parse(current.dayKey)?.formatted(.dateTime.weekday(.wide).month(.wide).day()) ?? "")
-                .font(.system(size: 15, design: .rounded)).foregroundStyle(.secondary)
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
                 .id(current.dayKey)
                 .transition(.push(from: wentBack ? .leading : .trailing))
-            Group {
-                if let detail {
-                    Text(detail)
-                        .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
-                        .lineLimit(1)
-                } else {
-                    Text(" ").font(.system(size: 13))
-                }
-            }
-            .padding(.top, 2)
-            Button {
-                noteDraft = note ?? ""
-                editingNote = true
-            } label: {
-                if let note {
-                    Text(note)
-                        .font(.system(size: 14, design: .rounded)).italic()
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                } else {
-                    Label("Add a note", systemImage: "square.and.pencil")
-                        .font(.system(size: 13, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 36)
-            .padding(.top, 4)
         }
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .opacity(1 - min(max(down, 0) / 120, 1))
+    }
+
+    /// One day's cards: the seen ones under, the top one, and the day's next one waiting off to the right. Past the
+    /// day's edge the whole pile follows the finger (a little only, at the very first and last photo).
+    private func pile(_ range: ClosedRange<Int>, width: CGFloat, screen: CGFloat) -> some View {
+        let atStart = index == range.lowerBound, atEnd = index == range.upperBound
+        let shift: CGFloat = (atEnd && drag < 0) || (atStart && drag > 0) ? drag : 0
+        let shown = Array(max(range.lowerBound, index - Self.pileDepth)...min(index + 1, range.upperBound))
+        return ZStack {
+            ForEach(shown, id: \.self) { i in
+                card(i, width: width, screen: screen, atStart: atStart, atEnd: atEnd)
+            }
+        }
+        .frame(width: screen, height: width + 30)
+        .offset(x: shift)
+    }
+
+    /// The prayer's name, its line and its note — they slide sideways with every photo.
+    private func caption(_ current: MemoryPhoto) -> some View {
+        ZStack {
+            VStack(spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
+                    Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
+                }
+                Group {
+                    if let detail {
+                        Text(detail)
+                            .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    } else {
+                        Text(" ").font(.system(size: 13))
+                    }
+                }
+                Button {
+                    noteDraft = note ?? ""
+                    editingNote = true
+                } label: {
+                    if let note {
+                        Text(note)
+                            .font(.system(size: 14, design: .rounded)).italic()
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(3)
+                    } else {
+                        Label("Add a note", systemImage: "square.and.pencil")
+                            .font(.system(size: 13, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 36)
+                .padding(.top, 6)
+            }
+            .id(current.key)
+            .transition(.push(from: wentBack ? .leading : .trailing))
+        }
+        .frame(maxWidth: .infinity)
         .clipped()
         .opacity(1 - min(max(down, 0) / 120, 1))
     }
@@ -556,23 +594,19 @@ struct MemoriesDeck: View {
             .overlay(Circle().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
     }
 
-    /// The pile under the top one, the top one, and the next newer one waiting off to the right.
-    private var cardIndices: [Int] {
-        Array(max(index - Self.pileDepth, 0)...min(index + 1, photos.count - 1))
-    }
-
     @ViewBuilder
-    private func card(_ i: Int, width: CGFloat, screen: CGFloat) -> some View {
+    private func card(_ i: Int, width: CGFloat, screen: CGFloat, atStart: Bool, atEnd: Bool) -> some View {
         let key = photos[i].key
         let l = lie[key] ?? Lie(dx: 0, dy: 0, tilt: 0)
         let (x, y, angle): (CGFloat, CGFloat, Double) = {
             if i > index {
-                // Waiting off to the right; a swipe left pulls it in.
-                let x = screen + min(drag, 0)
+                // The day's next one, waiting off to the right; a swipe left pulls it in.
+                let x = screen + (atEnd ? 0 : min(drag, 0))
                 return (x, 0, l.tilt * 0.3 + Double(x) / 40)
             } else if i == index {
-                // On top: centred, nearly straight; a swipe right takes it back off to the right.
-                let x = max(drag, 0)
+                // On top: centred, nearly straight; a swipe right takes it back off to the right (at the day's first
+                // photo the whole pile moves instead).
+                let x = atStart ? 0 : max(drag, 0)
                 return (x, 0, l.tilt * 0.3 + Double(x) / 40)
             } else {
                 return (l.dx, l.dy, l.tilt)
@@ -591,7 +625,7 @@ struct MemoriesDeck: View {
             }
     }
 
-    private func pileDrag(screen: CGFloat) -> some Gesture {
+    private func pileDrag(_ range: ClosedRange<Int>) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
                 if vertical == nil {
@@ -599,8 +633,8 @@ struct MemoriesDeck: View {
                 }
                 if vertical == true { down = value.translation.height; return }
                 let t = value.translation.width
-                // At either end the pile gives a little and comes back.
-                if t < 0, index >= photos.count - 1 { drag = t / 6 } else if t > 0, index == 0 { drag = 0 } else { drag = t }
+                // At the very first and last photo the pile gives a little and comes back.
+                if t < 0, index >= photos.count - 1 { drag = t / 6 } else if t > 0, index == 0 { drag = t / 6 } else { drag = t }
             }
             .onEnded { value in
                 defer { vertical = nil }
@@ -615,12 +649,14 @@ struct MemoriesDeck: View {
                 let far = value.translation.width, flung = value.predictedEndTranslation.width
                 let settle = Animation.spring(response: 0.42, dampingFraction: 0.82)
                 if (far < -90 || flung < -240), index < photos.count - 1 {
-                    // The newer one lands on top; the old top settles into the pile.
+                    // The day's next one lands on top — or, past the day's last, the next day's pile comes in, on its
+                    // first photo.
                     wentBack = false
                     withAnimation(settle) { index += 1; drag = 0 }
                     pickLies()
                 } else if (far > 90 || flung > 240), index > 0 {
-                    // The top one goes back off to the right; the one under it comes up to the centre.
+                    // The top one goes back off to the right — or, at the day's first, the previous day's pile comes in
+                    // from the left, on its last photo.
                     wentBack = true
                     withAnimation(settle) { index -= 1; drag = 0 }
                     pickLies()
