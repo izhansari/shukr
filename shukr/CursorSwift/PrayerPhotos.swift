@@ -34,6 +34,20 @@ enum PrayerPhotos {
         directory.appendingPathComponent("\(key)-\(front ? "front" : "back").jpg")
     }
 
+    #if DEBUG
+    /// The most recently saved photo's key (`-demoPhotoViewer`).
+    static var newestKey: String? {
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let backs = files.filter { $0.lastPathComponent.hasSuffix("-back.jpg") }
+        let newest = backs.max { a, b in
+            let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+            return da < db
+        }
+        return newest.map { String($0.lastPathComponent.dropLast("-back.jpg".count)) }
+    }
+    #endif
+
     static func has(_ key: String) -> Bool {
         FileManager.default.fileExists(atPath: url(key, front: false).path)
     }
@@ -107,48 +121,176 @@ struct PrayerPhotoTarget: Identifiable {
 
 // MARK: - The card
 
-/// The photo the BeReal / Locket way: the back camera's in a soft rounded rectangle, the front camera's small in its
-/// top corner, rounded too, with a white edge; a tap swaps them.
+extension PrayerPhotos {
+    /// "Asr · Tue, Oct 7" from a key ("2026-10-07-Asr").
+    static func caption(_ key: String) -> String {
+        let day = String(key.prefix(10)), name = String(key.dropFirst(11))
+        let parser = DateFormatter()
+        parser.dateFormat = "yyyy-MM-dd"
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = parser.date(from: day) else { return name }
+        return "\(name) · \(date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))"
+    }
+}
+
+/// The photo the Locket / BeReal way (owner: "rounded squares for the back camera too"): the back camera's in a rounded
+/// square, the front camera's small in its top corner, a rounded square too, with a white edge. A tap opens it full
+/// screen (owner: "let me click on the pic to open it full screen").
 struct PrayerPhotoCard: View {
     let key: String
     var width: CGFloat = 120
-    /// The small one swaps with the big one on a tap.
-    var swappable = true
+    /// A tap opens it full screen (off where the whole row already does something).
+    var opens = true
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
-    @State private var swapped = false
+    @State private var open = false
 
     var body: some View {
-        let height = width * 4 / 3
-        let main = swapped ? images.front : images.back
-        let inset = swapped ? images.back : images.front
+        PrayerPhotoFace(back: images.back, front: images.front, width: width)
+            .contentShape(RoundedRectangle(cornerRadius: width * 0.22, style: .continuous))
+            .onTapGesture {
+                guard opens, images.back != nil else { return }
+                triggerSomeVibration(type: .light)
+                open = true
+            }
+            .fullScreenCover(isPresented: $open) { PrayerPhotoViewer(key: key) { open = false } }
+            .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { images = await PrayerPhotos.load(key) }
+            .accessibilityLabel("Your \(PrayerPhotos.caption(key)) photo")
+            .accessibilityAddTraits(opens ? .isButton : [])
+    }
+}
+
+/// The two photos drawn the card's way (also what the full-screen view and a share are made of).
+struct PrayerPhotoFace: View {
+    let back: UIImage?
+    let front: UIImage?
+    let width: CGFloat
+
+    var body: some View {
+        let corner = width * 0.22
+        let small = width * 0.34
         ZStack(alignment: .topLeading) {
             Group {
-                if let main {
-                    Image(uiImage: main).resizable().scaledToFill()
-                } else {
-                    Color.primary.opacity(0.08)
-                }
+                if let back { Image(uiImage: back).resizable().scaledToFill() } else { Color.primary.opacity(0.08) }
             }
-            .frame(width: width, height: height)
-            .clipShape(RoundedRectangle(cornerRadius: width * 0.14, style: .continuous))
-            if let inset {
-                Image(uiImage: inset).resizable().scaledToFill()
-                    .frame(width: width * 0.32, height: width * 0.32 * 4 / 3)
-                    .clipShape(RoundedRectangle(cornerRadius: width * 0.07, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: width * 0.07, style: .continuous)
+            .frame(width: width, height: width)
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            if let front {
+                Image(uiImage: front).resizable().scaledToFill()
+                    .frame(width: small, height: small)
+                    .clipShape(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: small * 0.26, style: .continuous)
                         .stroke(Color.white, lineWidth: max(1, width * 0.012)))
                     .padding(width * 0.05)
             }
         }
-        .frame(width: width, height: height)
-        .contentShape(RoundedRectangle(cornerRadius: width * 0.14, style: .continuous))
-        .onTapGesture {
-            guard swappable, images.front != nil else { return }
-            triggerSomeVibration(type: .light)
-            withAnimation(.snappy(duration: 0.25)) { swapped.toggle() }
+        .frame(width: width, height: width)
+    }
+}
+
+/// A prayer's photo very small (the day ring's dot): the back camera's alone, a rounded square with an edge.
+struct PrayerPhotoThumb: View {
+    let key: String
+    var size: CGFloat = 18
+    var edge: Color = .white
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image { Image(uiImage: image).resizable().scaledToFill() } else { Color.primary.opacity(0.2) }
         }
-        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { images = await PrayerPhotos.load(key) }
-        .accessibilityLabel("Your prayer photo")
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(edge, lineWidth: 2))
+        .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { image = await PrayerPhotos.load(key).back }
+    }
+}
+
+/// Full screen: the photo big, a tap swaps front and back; branded underneath — shukr, the prayer and its day (owner:
+/// "brand the image with shukr and the prayers name and date at least"); Share sends that branded picture.
+struct PrayerPhotoViewer: View {
+    let key: String
+    let onClose: () -> Void
+    @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
+    @State private var swapped = false
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = min(geo.size.width - 32, 520)
+            VStack(spacing: 18) {
+                Spacer(minLength: 0)
+                PrayerPhotoBranded(back: swapped ? images.front : images.back,
+                                   front: swapped ? images.back : images.front,
+                                   caption: PrayerPhotos.caption(key), width: width)
+                    .onTapGesture {
+                        guard images.front != nil else { return }
+                        triggerSomeVibration(type: .light)
+                        withAnimation(.snappy(duration: 0.25)) { swapped.toggle() }
+                    }
+                Spacer(minLength: 0)
+                if let shared = sharedImage(width: width) {
+                    ShareLink(item: Image(uiImage: shared),
+                              preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: shared))) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 17, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 52)
+                            .background(Capsule().fill(.white.opacity(0.16)))
+                    }
+                    .padding(.horizontal, 24)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color.black.ignoresSafeArea())
+        .overlay(alignment: .topTrailing) {
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(.white.opacity(0.18)))
+            }
+            .accessibilityLabel("Close")
+            .padding(.trailing, 20)
+            .padding(.top, 8)
+        }
+        .task { images = await PrayerPhotos.load(key) }
+        .preferredColorScheme(.dark)
+    }
+
+    /// The branded picture as an image, for Share.
+    @MainActor private func sharedImage(width: CGFloat) -> UIImage? {
+        guard images.back != nil else { return nil }
+        let renderer = ImageRenderer(content: PrayerPhotoBranded(back: images.back, front: images.front,
+                                                                 caption: PrayerPhotos.caption(key), width: 1080 / 3)
+            .padding(18).background(Color.black))
+        renderer.scale = 3
+        return renderer.uiImage
+    }
+}
+
+/// The photo with its line under it: "shukr" and "Asr · Tue, Oct 7".
+struct PrayerPhotoBranded: View {
+    let back: UIImage?
+    let front: UIImage?
+    let caption: String
+    let width: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PrayerPhotoFace(back: back, front: front, width: width)
+            HStack(alignment: .firstTextBaseline) {
+                Text("shukr")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.sage)
+                Spacer()
+                Text(caption)
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+            .padding(.horizontal, 4)
+        }
+        .frame(width: width)
     }
 }
 
@@ -352,14 +494,14 @@ struct PrayerPhotoCapture: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .aspectRatio(3 / 4, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 60, style: .continuous))
                 if camera.dual {
                     CameraPreview(layer: camera.frontPreview)
-                        .frame(width: 104, height: 138)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(.white, lineWidth: 2))
-                        .padding(14)
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(.white, lineWidth: 2))
+                        .padding(16)
                 }
             }
             .padding(.horizontal, 12)
@@ -395,19 +537,10 @@ struct PrayerPhotoCapture: View {
 
     private func review(_ shot: (back: UIImage, front: UIImage?, backData: Data, frontData: Data?)) -> some View {
         VStack(spacing: 28) {
-            ZStack(alignment: .topLeading) {
-                Image(uiImage: shot.back).resizable().scaledToFill()
-                    .frame(maxWidth: .infinity)
-                    .aspectRatio(3 / 4, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                if let front = shot.front {
-                    Image(uiImage: front).resizable().scaledToFill()
-                        .frame(width: 104, height: 138)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(.white, lineWidth: 2))
-                        .padding(14)
-                }
+            GeometryReader { geo in
+                PrayerPhotoFace(back: shot.back, front: shot.front, width: geo.size.width)
             }
+            .aspectRatio(1, contentMode: .fit)
             .padding(.horizontal, 12)
             HStack(spacing: 14) {
                 Button {

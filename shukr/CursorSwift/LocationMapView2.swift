@@ -2146,6 +2146,7 @@ struct PrayerSpotDetail: View {
 
     private var editing: Bool { viewModel.spotMode != .browse }
     private var picking: Bool { viewModel.spotMode == .pickSpot }
+    private var photoKey: String { PrayerPhotos.key(dayKey: prayer.dayKey, name: prayer.name) }
 
     private var spot: CLLocationCoordinate2D? {
         guard let lat = prayer.latPrayedAt, let lon = prayer.longPrayedAt else { return nil }
@@ -2314,6 +2315,15 @@ struct PrayerSpotDetail: View {
             timeSection
             Divider()
             locationSection
+            // Its photo, if one was taken (owner: "show it in the prayer item when in maps too … or else there's really
+            // no way to find it"); a tap opens it full screen.
+            if prayer.isCompleted, PrayerPhotos.has(photoKey) {
+                Divider()
+                HStack(spacing: 14) {
+                    PrayerPhotoCard(key: photoKey, width: 76)
+                    Text("Your photo").font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
             Button {
                 draftTime = prayer.timeAtComplete.map { min(max($0, editRange.lowerBound), editRange.upperBound) } ?? editRange.upperBound
                 draftSpot = nil

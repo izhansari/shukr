@@ -52,11 +52,11 @@ struct PrayerTimeEditSheet: View {
         let has = PrayerPhotos.has(photoKey)
         HStack(spacing: 14) {
             if has {
-                PrayerPhotoCard(key: photoKey, width: 48, swappable: false)
+                PrayerPhotoCard(key: photoKey, width: 56)
             } else {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .strokeBorder(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    .frame(width: 48, height: 64)
+                    .frame(width: 56, height: 56)
                     .overlay(Image(systemName: "camera").font(.system(size: 16, weight: .light)).foregroundStyle(.secondary))
             }
             VStack(alignment: .leading, spacing: 4) {

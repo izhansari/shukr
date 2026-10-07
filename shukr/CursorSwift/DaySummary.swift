@@ -78,12 +78,21 @@ struct DayRing: View {
                         Circle().trim(from: from, to: to)
                             .stroke(color.opacity(picked == i ? 1 : 0.72), style: style)
                         if let share = p.share {
-                            // When in its window it was prayed.
-                            Circle().fill(color)
-                                .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
-                                .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
-                                .offset(x: 100)
-                                .rotationEffect(.degrees(360 * (from + (to - from) * share)))
+                            let angle = 360 * (from + (to - from) * share)
+                            if let key = p.photoKey {
+                                // A prayer with a photo: the dot is the photo, tiny and upright (tap the fifth to see it).
+                                PrayerPhotoThumb(key: key, size: picked == i ? 24 : 20, edge: color)
+                                    .rotationEffect(.degrees(90 - angle))
+                                    .offset(x: 100)
+                                    .rotationEffect(.degrees(angle))
+                            } else {
+                                // When in its window it was prayed.
+                                Circle().fill(color)
+                                    .frame(width: picked == i ? 13 : 9, height: picked == i ? 13 : 9)
+                                    .overlay(Circle().stroke(theme.backdrop, lineWidth: 2.5))
+                                    .offset(x: 100)
+                                    .rotationEffect(.degrees(angle))
+                            }
                         }
                     } else {
                         // Not marked: the fifth stays a faint track.
@@ -128,7 +137,7 @@ struct DayCentre: View {
            let p = day.first(where: { $0.name == DayRing.order[i] }), let key = p.photoKey {
             // A tapped prayer with a photo: the photo, its name and when (prayer photos, decision prayer-photos-day A).
             VStack(spacing: 6) {
-                PrayerPhotoCard(key: key, width: 74)
+                PrayerPhotoCard(key: key, width: 92)
                 Text("\(p.name) · \(p.markedAt.map { $0.formatted(date: .omitted, time: .shortened) } ?? "")")
                     .font(.footnote).fontWeight(.light).fontDesign(.rounded).foregroundStyle(.secondary)
             }

@@ -276,9 +276,11 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   once (`AVCaptureMultiCamSession`, iPhone XS+; else the back), run on its own queue; review → Save. Files only, no
   schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.jpg` (`PrayerPhotos.key`, Jumu'ah = Dhuhr);
   private, never synced. Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
-  and marked; seen any time. `PrayerPhotoCard` = the BeReal / Locket look (rounded back photo, front inset, tap
-  swaps). Day page: a strip of five under the line once there's a photo; a picked fifth with a photo shows it in the
-  centre. DEBUG `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo).
+  and marked; seen any time. `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`
+  full screen, branded "shukr · Asr · Tue, Oct 7" — `PrayerPhotoBranded`, also what Share sends). Day ring: a
+  photographed prayer's dot is `PrayerPhotoThumb` (upright); its fifth tapped shows the photo in the centre (the strip
+  under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
+  `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 
 **Scoring, streaks, prayer day** (Models/PrayerScoring.swift, PrayerDay.swift)
 - One rule for app, widget, notification action and editor: Perfect (≤ 30 min) 100 · On time 99–80 · Late 79–60 · Qaza 40 · Missed 0; day = mean of five. Jumu'ah (Friday Dhuhr at a masjid) = 100, no grade word.

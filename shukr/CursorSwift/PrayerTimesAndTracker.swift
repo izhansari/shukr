@@ -1692,6 +1692,9 @@ struct PrayerTimesView: View {
         /// The compass calibration sheet (the line under the circle, or ☰ → Calibrate compass).
         @State private var showCalibration = false
         @EnvironmentObject private var viewModel: PrayerViewModel
+        #if DEBUG
+        @State private var demoViewer = false
+        #endif
         /// The pill's camera is open for this prayer (PrayerPhotos.swift).
         @State private var prayerPhoto: PrayerPhotoTarget?
         /// The pill's prayer, marked and still in its window: its camera section (owner: photos "any time in that window so
@@ -1940,6 +1943,18 @@ struct PrayerTimesView: View {
             .fullScreenCover(item: $prayerPhoto) { target in
                 PrayerPhotoCapture(target: target) { prayerPhoto = nil }
             }
+            #if DEBUG
+            // `-demoPhotoViewer`: the newest saved prayer photo, full screen (the simulator's look at the viewer).
+            .fullScreenCover(isPresented: $demoViewer) {
+                if let key = PrayerPhotos.newestKey { PrayerPhotoViewer(key: key) { demoViewer = false } }
+            }
+            .task {
+                if ProcessInfo.processInfo.arguments.contains("-demoPhotoViewer") {
+                    try? await Task.sleep(for: .seconds(2))
+                    demoViewer = PrayerPhotos.newestKey != nil
+                }
+            }
+            #endif
             // The sheet popping (whoever changed it): the chevron, "N done" and the bar fade with the page's own move.
             .animation(CircleMotion.movement(CircleMotion.page, reduced: reduceMotion), value: showBottom)
             // The pill comes and goes the same way whoever sets it (rule 6); a flick and the timer fade it themselves
