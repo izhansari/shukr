@@ -546,6 +546,8 @@ struct TourPageView: View {
                     .frame(minHeight: 28)
                     .transition(.opacity)
             }
+            // The buttons' row only when there's something in it: an empty one left a 40 pt strip under every to-do.
+            if showsBack || page.secondary != nil || page.primary != nil {
             HStack(spacing: 12) {
                 if showsBack {
                     Button(action: onBack) {
@@ -584,6 +586,7 @@ struct TourPageView: View {
                 }
             }
             .frame(minHeight: 32)
+            }
         }
     }
 
@@ -976,14 +979,11 @@ extension View {
     func tourBubble<S: Shape>(_ shape: S, look: TourBubbleLook, scheme: ColorScheme, backdrop: Color) -> some View {
         switch look {
         case .glass:
-            if #available(iOS 26.0, *) {
-                self.glassEffect(.regular, in: shape)
-                    .shadow(color: .black.opacity(scheme == .dark ? 0.4 : 0.12), radius: 16, y: 8)
-            } else {
-                self.background(.regularMaterial, in: shape)
-                    .overlay(shape.stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.14), radius: 14, y: 6)
-            }
+            // Frosted (owner, 2026-10-06: "at least turn it frosted if we cant do glass"): iOS 26's glassEffect drew
+            // these opaque, a solid slab over half the screen; the thin material lets the page show through, blurred.
+            self.background(.ultraThinMaterial, in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.12), lineWidth: 0.5))
+                .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.12), radius: 14, y: 6)
         case .ink:
             // The page's opposite: dark on a light page, light on a dark one; the words follow.
             self.environment(\.colorScheme, scheme == .dark ? .light : .dark)
