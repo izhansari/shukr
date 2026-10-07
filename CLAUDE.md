@@ -336,8 +336,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   the bottom. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
   `-demoMemories`). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
-  · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the segmented
-  control at the bottom too; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
+  · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the level
+  switch at the bottom too (three plain Buttons + a `matchedGeometryEffect` pill through `go` — the system segmented
+  control changed the level un-animated, so nothing flew); a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
   on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its
   newest three). Each level has its own ScrollView, swapped whole (one shared ScrollView scrolled under the change and
   nothing flew). DEBUG `-demoMemories` (seeds stand-in photos), `-demoMemoriesOpen`, `-demoShareScore 0.86` (a score, a place and both share options on for stand-ins), `-heicSelfTest` (encode + decode

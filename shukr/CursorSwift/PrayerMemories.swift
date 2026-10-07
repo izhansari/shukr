@@ -260,11 +260,27 @@ struct MemoriesPage: View {
             .transition(.move(edge: .bottom).combined(with: .opacity))
         } else {
             HStack(spacing: 10) {
-                // For anyone who never finds the pinch (Photos' own control, at the bottom).
-                Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
-                    ForEach(Level.allCases) { Text($0.title).tag($0) }
+                // For anyone who never finds the pinch. Plain buttons through the same `go` as the pinch, so the squares
+                // fly into their stacks the same way (the system segmented control changed the level un-animated).
+                HStack(spacing: 0) {
+                    ForEach(Level.allCases) { l in
+                        Button { go(l) } label: {
+                            Text(l.title)
+                                .font(.system(size: 14, weight: level == l ? .semibold : .medium, design: .rounded))
+                                .foregroundStyle(level == l ? Color.primary : Color.secondary)
+                                .frame(maxWidth: .infinity).frame(height: 32)
+                                .background {
+                                    if level == l {
+                                        Capsule().fill(Color(.systemBackground).opacity(0.9))
+                                            .shadow(color: .black.opacity(0.08), radius: 3, y: 1)
+                                            .matchedGeometryEffect(id: "levelPill", in: pinch)
+                                    }
+                                }
+                                .contentShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .pickerStyle(.segmented)
                 .frame(width: 250)
                 .padding(6)
                 .background(.regularMaterial, in: Capsule())
