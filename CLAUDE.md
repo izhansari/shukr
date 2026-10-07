@@ -289,16 +289,22 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
 - **Memories** (briefly "Journal" — the owner went back to Memories and its photo.stack icon; PrayerMemories.swift, ask prayer-memories; ☰ → Memories, or "Memories ›" under the day's line while any photo
   exists — `PrayerPhotoRevision.hasPhotos`; ⚙ top right = `MemoriesSettings`: Show where, Space used — not in Settings
-  any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in a
-  `fullScreenCover` with the system's zoom (`.navigationTransition(.zoom(sourceID: deckSource))`, the source the tapped
-  day / square, `matchedTransitionSource`; fixed while open — owner: "apple documented apis", the hand-made hero version
+  any more). Opens on Days. A tap on a day's stack (its newest) or a prayer's square opens `MemoriesDeck` in the page's
+  own overlay over a frosted backdrop (owner: "only take the image back into that square … frosted"; the system zoom
+  scaled the whole page): ONE `PrayerPhotoFace` flies — `Flight`, a rect animated with `scaleEffect` + `position`, global
+  frames from `FrameBook` (not observed: scrolling never redraws) — from the square to the pile's top card (hidden
+  meanwhile; it reports its frame, the first report is empty — ignored — and each report while opening re-aims the
+  spring) and back to the top photo's square on close (its day's on Days; off screen → shrinks and fades). The top card
+  is straight so nothing twists on landing; the pile's other parts fade with `deckShown`; the share page is pushed on the
+  overlay's own NavigationStack (`.containerBackground(.clear, for: .navigation)`). Earlier tries: a matchedGeometry hero
+  (laggy), the system zoom (whole page)
   was laggy). **One day's pile at a time** (owner): within a day swipe left = the day's next one comes in from the right
   onto the top, swipe right = the top one goes back off to the right; past the day's last (first) photo the whole pile
-  follows the finger and the next (previous) day's pile comes in from that side (`.id(dayKey)` + `slide(70)`: a short
-  offset with a fade, never the page's whole width — owner), landing on
+  follows the finger and the next (previous) day's pile rises out of the strip as the old one sinks into it (`.id(dayKey)` +
+  `dayChange`: offset down + to the side, scale 0.55 from the bottom, fade — owner: not a fade or a card swipe), landing on
   its first (last) photo. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
-  plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom:
+  plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom, under a `Divider`:
   every day from the first photo to today (days without photos faint; a rest on one moves on to the nearest photo day),
   the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
   (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO
@@ -307,7 +313,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   .idle), a tap jumps, a tick per day under the finger. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
-  Under the pile the prayer's name, "Prayed 1:12 PM · On time 88"
+  Under the pile the prayer's name, "Prayed 1:12 PM" (+ place), then the score as a ring in its grade colour + the grade
+  word (fixed heights, so nothing moves)
   (+ the place with Show where; `PrayerPhotos.facts` / `placeText`) and the note (tap → edit in an alert; notes are
   `<key>-note.txt` beside the photos, written from the camera's review — "Add a note" — or the pile; the pile shows 3 lines in
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide

@@ -68,8 +68,29 @@ struct MemoriesPage: View {
     @State private var deckStart: MemoryPhoto?
     /// What it zoomed out of (a day's stack or a prayer's square), and back into on close — fixed while it's open
     /// (owner: "prioritize being clean … apple documented apis": the system's zoom transition, nothing hand-made).
-    @State private var deckSource = ""
-    @Namespace private var zoom
+    /// The pile's backdrop and its other parts, faded in after the photo starts flying out.
+    @State private var deckShown = false
+    /// The one photo in flight between its square and the pile (owner: "only take the image back into that square"):
+    /// a single face moved and scaled, the page frosted behind it like the hold editor's photo.
+    @State private var flight: Flight?
+    /// Where the squares and the day piles sit on screen, and the pile's top card — not observed, so scrolling the page
+    /// never redraws it.
+    @State private var frames = FrameBook()
+
+    struct Flight {
+        var key: String
+        var rect: CGRect
+        var images: (back: UIImage?, front: UIImage?)
+        var opacity: Double = 1
+    }
+
+    final class FrameBook {
+        var frames: [String: CGRect] = [:]
+        var deckTop: CGRect?
+        var opening = false
+        /// The newest flight animation; an older one's completion leaves the flight alone.
+        var flightToken = UUID()
+    }
     @State private var showSettings = false
 
     /// Three levels, like Photos' Years / Months / Days (owner: "the most granular is every single prayer photo. The one
@@ -156,9 +177,31 @@ struct MemoriesPage: View {
             }
             .sheet(isPresented: $showSettings) { MemoriesSettings() }
         }
-        .fullScreenCover(item: $deckStart) { start in
-            NavigationStack { MemoriesDeck(photos: photos, start: start) }
-                .navigationTransition(.zoom(sourceID: deckSource, in: zoom))
+        .overlay {
+            if let start = deckStart {
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                        .overlay(Color.black.opacity(0.12))
+                        .ignoresSafeArea()
+                        .opacity(deckShown ? 1 : 0)
+                    NavigationStack {
+                        MemoriesDeck(photos: photos, start: start, shown: deckShown, hideTop: flight != nil,
+                                     onTopFrame: deckTopMoved, onClose: closeDeck)
+                            .containerBackground(.clear, for: .navigation)
+                    }
+                    if let flight {
+                        let base = flight.rect.width > 0 ? Self.cardWidth : 1
+                        PrayerPhotoFace(back: flight.images.back, front: flight.images.front, width: base)
+                            .shadow(color: .black.opacity(0.18 * flight.opacity), radius: 14, y: 8)
+                            .scaleEffect(flight.rect.width / base)
+                            .position(x: flight.rect.midX, y: flight.rect.midY)
+                            .opacity(flight.opacity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
         }
         .task(id: PrayerPhotoRevision.shared.value) { photos = PrayerPhotos.all() }
     }
@@ -182,9 +225,67 @@ struct MemoriesPage: View {
         withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
     }
 
+    /// The pile's card width (`MemoriesDeck` uses the same).
+    static var cardWidth: CGFloat { min(UIScreen.main.bounds.width - 72, 360) }
+
+    /// The photo leaves its square: the pile mounts with its top card hidden, and once the pile has laid out the photo
+    /// flies onto it while the page frosts over.
     private func openDeck(_ photo: MemoryPhoto, from source: String) {
-        deckSource = source
-        deckStart = photo
+        triggerSomeVibration(type: .light)
+        let from = frames.frames[source]
+        Task {
+            let images = await PrayerPhotos.load(photo.key)
+            frames.opening = true
+            flight = Flight(key: photo.key, rect: from ?? .zero, images: images, opacity: from == nil ? 0 : 1)
+            deckShown = false
+            deckStart = photo
+        }
+    }
+
+    /// The pile reports its top card. While opening, every report (re)aims the photo at it — the pile settles over a
+    /// frame or two, and its first report is empty (aimed at that, the photo flew into nothing).
+    private func deckTopMoved(_ rect: CGRect) {
+        guard rect.width > 1 else { return }
+        frames.deckTop = rect
+        guard frames.opening, flight != nil else { return }
+        let token = UUID()
+        frames.flightToken = token
+        if flight?.rect == .zero { flight?.rect = rect.insetBy(dx: rect.width * 0.1, dy: rect.height * 0.1) }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+            flight?.rect = rect
+            flight?.opacity = 1
+            deckShown = true
+        } completion: {
+            guard frames.flightToken == token else { return }
+            frames.opening = false
+            flight = nil
+        }
+    }
+
+    /// The photo on top flies back into its square (its day's pile on Days, its own square on Prayers) — or, when that
+    /// isn't on screen, shrinks and fades where it is — while the frost lifts.
+    private func closeDeck(_ key: String, _ dayKey: String) {
+        triggerSomeVibration(type: .light)
+        guard let top = frames.deckTop else { deckStart = nil; return }
+        let screen = UIScreen.main.bounds
+        let target = frames.frames[level == .prayers ? key : dayKey]
+            .flatMap { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width ? $0 : nil }
+        Task {
+            let images = await PrayerPhotos.load(key)
+            flight = Flight(key: key, rect: top, images: images)
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
+                if let target {
+                    flight?.rect = target
+                } else {
+                    flight?.rect = top.insetBy(dx: top.width * 0.12, dy: top.height * 0.12)
+                    flight?.opacity = 0
+                }
+                deckShown = false
+            } completion: {
+                deckStart = nil
+                flight = nil
+            }
+        }
     }
 
     private func monthHeader(_ month: Month) -> some View {
@@ -248,7 +349,10 @@ struct MemoriesPage: View {
             Button { if let newest = dayPhotos.last { openDeck(newest, from: dayKey) } } label: {
                 VStack(spacing: 4) {
                     stack(dayPhotos, side: 38, corner: 10).frame(height: 40)
-                        .matchedTransitionSource(id: dayKey, in: zoom)
+                        .onGeometryChange(for: CGRect.self) { proxy in
+                            let f = proxy.frame(in: .global)
+                            return CGRect(x: f.midX - 19, y: f.midY - 19, width: 38, height: 38)
+                        } action: { frames.frames[dayKey] = $0 }
                     number.foregroundStyle(.primary)
                 }
             }
@@ -337,9 +441,7 @@ struct MemoriesPage: View {
                         MemoryThumb(key: photo.key)
                             .matchedGeometryEffect(id: photo.key, in: pinch)
                             .frame(width: 52, height: 52)
-                            .matchedTransitionSource(id: photo.key, in: zoom) { source in
-                                source.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
+                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[photo.key] = $0 }
                             .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .onTapGesture { openDeck(photo, from: photo.key) }
                     } else {
@@ -396,13 +498,21 @@ private struct MemoryThumb: View {
 struct MemoriesDeck: View {
     let photos: [MemoryPhoto]
     let start: MemoryPhoto
-    @Environment(\.dismiss) private var dismiss
+    /// The page shows the pile's other parts once the photo is on its way (and hides them as it flies back).
+    let shown: Bool
+    /// The top card is the one in flight.
+    let hideTop: Bool
+    /// Where the top card is, for the photo's flight.
+    let onTopFrame: (CGRect) -> Void
+    /// Close with this photo (and its day) on top.
+    let onClose: (_ key: String, _ dayKey: String) -> Void
     @Environment(\.modelContext) private var context
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     /// Which way the last move went: back in time or forward — everything that changes slides in from that side.
     @State private var wentBack = false
-    /// "Prayed 1:12 PM · On time 88 · Masjid Al-Noor" for the top photo.
-    @State private var detail: String?
+    /// "Prayed 1:12 PM · Masjid Al-Noor" for the top photo, and its score (the badge under it).
+    @State private var prayed: String?
+    @State private var score: Double?
     @State private var note: String?
     @State private var editingNote = false
     @State private var noteDraft = ""
@@ -425,9 +535,14 @@ struct MemoriesDeck: View {
     /// How many seen cards show under the top one.
     private static let pileDepth = 4
 
-    init(photos: [MemoryPhoto], start: MemoryPhoto) {
+    init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool,
+         onTopFrame: @escaping (CGRect) -> Void, onClose: @escaping (_ key: String, _ dayKey: String) -> Void) {
         self.photos = photos
         self.start = start
+        self.shown = shown
+        self.hideTop = hideTop
+        self.onTopFrame = onTopFrame
+        self.onClose = onClose
         let first = photos.firstIndex(of: start) ?? 0
         _index = State(initialValue: first)
         _lie = State(initialValue: Self.lies(around: first, in: photos, keeping: [:]))
@@ -454,14 +569,14 @@ struct MemoriesDeck: View {
                 ZStack {
                     pile(range, width: width, screen: geo.size.width)
                         .id(current?.dayKey ?? "")
-                        .transition(slide(70))
+                        .transition(dayChange)
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
                 .offset(y: max(down, 0))
                 .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
                 .gesture(pileDrag(range))
-                if let current { caption(current).padding(.top, 24) }
+                if let current { caption(current).padding(.top, 24).opacity(shown ? 1 : 0) }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
@@ -469,20 +584,25 @@ struct MemoriesDeck: View {
                         circleIcon("square.and.arrow.up")
                     }
                     .accessibilityLabel("Share")
-                    Button { dismiss() } label: { circleIcon("xmark") }
+                    Button(action: close) { circleIcon("xmark") }
                         .accessibilityLabel("Close")
                 }
                 .buttonStyle(.plain)
-                .opacity(down > 10 ? 0 : 1)
+                .opacity(down > 10 || !shown ? 0 : 1)
                 .padding(.top, 22)
                 Spacer(minLength: 0)
-                MemoriesDayStrip(photos: photos, centred: $stripDay, onRest: goToDay)
-                    .opacity(1 - min(max(down, 0) / 120, 1))
-                    .padding(.bottom, 6)
+                VStack(spacing: 8) {
+                    // The strip is its own bar (owner: "put a separator for that new bottom bar").
+                    Divider()
+                    MemoriesDayStrip(photos: photos, centred: $stripDay, onRest: goToDay)
+                }
+                .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
+                .padding(.bottom, 6)
             }
             .frame(width: geo.size.width)
+            // A tap on the frosted page around the pile closes, as on a photo opened from the hold editor.
+            .background(Color.clear.contentShape(Rectangle()).onTapGesture(perform: close))
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $editingNote) {
             // The whole note, to read and edit (the pile shows three lines of it).
@@ -517,6 +637,21 @@ struct MemoriesDeck: View {
         }
         .onAppear { PrayerPhotoViewing.shared.opened() }
         .onDisappear { PrayerPhotoViewing.shared.closed() }
+    }
+
+    private func close() {
+        guard photos.indices.contains(index) else { return }
+        onClose(photos[index].key, photos[index].dayKey)
+    }
+
+    /// A day's pile changing: the old one sinks toward the strip and shrinks away, the new one rises out of it, a little
+    /// to the side the days went (owner: "a little different … it feels like it disappears and looks too similar to card
+    /// swiping").
+    private var dayChange: AnyTransition {
+        let side: CGFloat = wentBack ? -60 : 60
+        return .asymmetric(
+            insertion: .offset(x: side, y: 180).combined(with: .scale(scale: 0.55, anchor: .bottom)).combined(with: .opacity),
+            removal: .offset(x: -side, y: 180).combined(with: .scale(scale: 0.55, anchor: .bottom)).combined(with: .opacity))
     }
 
     /// A short slide with a fade, from the side the cards came from (owner: "more subtle … instead of going the whole
@@ -572,15 +707,30 @@ struct MemoriesDeck: View {
                     Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
                     Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
                 }
+                // When (and where), then the score as a small ring in its grade's colour — each a line, always there.
+                Text(prayed ?? " ")
+                    .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Group {
-                    if let detail {
-                        Text(detail)
-                            .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
-                            .lineLimit(1)
+                    if let score {
+                        HStack(spacing: 6) {
+                            ZStack {
+                                Circle().stroke(Color.primary.opacity(0.12), lineWidth: 2.5)
+                                Circle().trim(from: 0, to: max(score, 0.02))
+                                    .stroke(PrayerScoring.color(for: score), style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                                    .rotationEffect(.degrees(-90))
+                                Text("\(Int((score * 100).rounded()))")
+                                    .font(.system(size: 9, weight: .semibold, design: .rounded))
+                            }
+                            .frame(width: 24, height: 24)
+                            Text(PrayerScoring.grade(for: score).rawValue)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                        }
                     } else {
-                        Text(" ").font(.system(size: 13))
+                        Color.clear
                     }
                 }
+                .frame(height: 26)
                 // Three lines' room whether there's a note or not, so nothing on the page moves from photo to photo
                 // (owner's note: a long one pushed the pile and the buttons, which clicked up and down on each swipe).
                 Button {
@@ -622,17 +772,15 @@ struct MemoriesDeck: View {
         guard photos.indices.contains(index) else { return }
         let key = photos[index].key
         note = PrayerPhotos.note(key)
-        guard let facts = PrayerPhotos.facts(for: key, in: context) else { detail = nil; return }
+        guard let facts = PrayerPhotos.facts(for: key, in: context) else { prayed = nil; score = nil; return }
         var parts: [String] = []
         if let at = facts.markedAt { parts.append("Prayed \(at.formatted(date: .omitted, time: .shortened))") }
-        if let score = facts.score {
-            parts.append("\(PrayerScoring.grade(for: score).rawValue) \(Int((score * 100).rounded()))")
-        }
-        detail = parts.isEmpty ? nil : parts.joined(separator: " · ")
+        score = facts.score
+        prayed = parts.isEmpty ? nil : parts.joined(separator: " · ")
         if showPlace, let place = await (facts.masjid != nil ? facts.masjid : PrayerPhotos.placeText(facts, cityOnly: true)),
            key == photos[index].key {
             parts.append(place)
-            detail = parts.joined(separator: " · ")
+            prayed = parts.joined(separator: " · ")
         }
     }
 
@@ -653,18 +801,22 @@ struct MemoriesDeck: View {
             if i > index {
                 // The day's next one, waiting off to the right; a swipe left pulls it in.
                 let x = screen + (atEnd ? 0 : min(drag, 0))
-                return (x, 0, l.tilt * 0.3 + Double(x) / 40)
+                return (x, 0, Double(x) / 40)
             } else if i == index {
-                // On top: centred, nearly straight; a swipe right takes it back off to the right (at the day's first
-                // photo the whole pile moves instead).
+                // On top: centred and straight (so the photo flies onto it and off it without a twist); a swipe right
+                // takes it back off to the right (at the day's first photo the whole pile moves instead).
                 let x = atStart ? 0 : max(drag, 0)
-                return (x, 0, l.tilt * 0.3 + Double(x) / 40)
+                return (x, 0, Double(x) / 40)
             } else {
                 return (l.dx, l.dy, l.tilt)
             }
         }()
         MemoryCard(key: key, width: width)
             .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
+                if i == index { onTopFrame(rect) }
+            }
+            .opacity(i == index ? (hideTop ? 0 : 1) : (shown ? 1 : 0))
             .rotationEffect(.degrees(angle))
             .offset(x: x, y: y)
             .zIndex(Double(i))
@@ -691,7 +843,8 @@ struct MemoriesDeck: View {
                 defer { vertical = nil }
                 if vertical == true {
                     if value.translation.height > 120 || value.predictedEndTranslation.height > 320 {
-                        dismiss()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { down = 0 }
+                        close()
                     } else {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0 }
                     }
