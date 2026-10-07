@@ -304,7 +304,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   `dayChange`: offset down + to the side, scale 0.55 from the bottom, fade — owner: not a fade or a card swipe), landing on
   its first (last) photo. The seen ones lie under it (4 shown), each at a random `Lie` (nudge +
   tilt, not stored — owner); the top one is centred, 0.3 × its tilt; the deck's `index` is set in `init`. Cards are the
-  plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom, under a `Divider`:
+  plain photo (no text — owner). **The day strip** (`MemoriesDayStrip`, decision memories-day-strip A) along the bottom, under a 1 pt line (primary 22 %; the system Divider was too faint on the frost):
   every day from the first photo to today (days without photos faint; a rest on one moves on to the nearest photo day),
   the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
   (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO

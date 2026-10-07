@@ -592,8 +592,9 @@ struct MemoriesDeck: View {
                 .padding(.top, 22)
                 Spacer(minLength: 0)
                 VStack(spacing: 8) {
-                    // The strip is its own bar (owner: "put a separator for that new bottom bar").
-                    Divider()
+                    // The strip is its own bar (owner: "put a separator for that new bottom bar"; the system Divider was too
+                    // faint on the frosted page).
+                    Rectangle().fill(Color.primary.opacity(0.22)).frame(height: 1)
                     MemoriesDayStrip(photos: photos, centred: $stripDay, onRest: goToDay)
                 }
                 .opacity(shown ? 1 - min(max(down, 0) / 120, 1) : 0)
