@@ -293,7 +293,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   off to the right. The seen ones lie under it (4 shown), each at a random `Lie` (nudge + tilt, not stored — owner); the
   top one is centred, 0.3 × its tilt. A tap swaps front / back; drag down closes into its square (the deck's own drag
   picks the axis on its first move). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
-  calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number)
+  calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
   · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the segmented
   control at the bottom too; a tap on a stack goes down into it (`go(_:at:)`, the level opens at that id, else at the month
   on screen; `tops` / `pinned`). `matchedGeometryEffect` in `pinch` flies the squares into the stacks (each stack = its

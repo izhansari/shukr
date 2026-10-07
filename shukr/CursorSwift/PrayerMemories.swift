@@ -250,12 +250,16 @@ struct MemoriesPage: View {
         return (0..<7).map { symbols[(cal.firstWeekday - 1 + $0) % 7] }
     }()
 
-    /// A month's cells, week by week: nil before the 1st, then each day's key.
+    /// A month's cells, week by week: nil before the 1st, then each day's key up to today (days still to come aren't
+    /// shown — owner).
     private static func calendarCells(_ month: String) -> [String?] {
         let cal = Calendar.current
         guard let first = parse(month + "-01"), let days = cal.range(of: .day, in: .month, for: first)?.count else { return [] }
         let lead = (cal.component(.weekday, from: first) - cal.firstWeekday + 7) % 7
-        return Array(repeating: nil, count: lead) + (1...days).map { String(format: "%@-%02d", month, $0) }
+        // The local date (the ISO style alone is in UTC: after 8 PM in New York it was already tomorrow).
+        let today = Date().formatted(Date.ISO8601FormatStyle(timeZone: .current).year().month().day().dateSeparator(.dash))
+        return Array(repeating: nil, count: lead)
+            + (1...days).map { String(format: "%@-%02d", month, $0) }.filter { $0 <= today }
     }
 
     /// Each month as a small pile, with the month and how many under it; a tap opens its days.
