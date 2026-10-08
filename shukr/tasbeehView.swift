@@ -1788,6 +1788,9 @@ struct tasbeehView: View {
                             .frame(maxWidth: .infinity)
                             .contentShape(Rectangle())
                     }
+                    // History is the Zikr tab's: shut while it's locked (a session from the post-salah pill — ZikrLock).
+                    .opacity(ZikrLock.shared.locked ? 0 : 1)
+                    .disabled(ZikrLock.shared.locked)
                     .buttonStyle(.plain)
                     .padding(.bottom, 4)
                 }
@@ -2578,6 +2581,9 @@ struct tasbeehView: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            // History is the Zikr tab's: shut while it's locked (ZikrLock).
+                            .opacity(ZikrLock.shared.locked ? 0 : 1)
+                            .disabled(ZikrLock.shared.locked)
                         }
                         // Lower than the switches sat, and — like the tiles — as high as with a finish line, so every
                         // results screen has it in the same place.

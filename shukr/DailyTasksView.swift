@@ -24,6 +24,13 @@ struct ZikrPageView: View {
     var body: some View {
         ZikrCircleWheel(showTasbeehPage: $showTasbeehPage)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Locked until the Zikr Tour is done (ZikrLock.swift): frosted glass and the way in.
+            .overlay {
+                if ZikrLock.shared.locked {
+                    ZikrLockCover().transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.45), value: ZikrLock.shared.locked)
     }
 }
 
@@ -225,6 +232,8 @@ struct ZikrCircleWheel: View {
     /// A start asked for from a zikr's page: centre that task, then start it (no second question —
     /// the page already asked).
     private func startPending() {
+        // Locked (ZikrLock): nothing starts from outside; the page shows its lock.
+        if ZikrLock.shared.locked { _ = ZikrFocus.takeStart(); return }
         guard let request = ZikrFocus.pendingStart,
               let task = tasks.first(where: { $0.id.uuidString == request.id }) else { return }
         _ = ZikrFocus.takeStart()
@@ -368,8 +377,9 @@ struct ZikrCircleWheel: View {
         #if DEBUG
         .task { await TaskSharing.demo(context) }
         #endif
-        .onChange(of: TaskSharing.shared.ready, initial: true) { _, ready in
-            if ready, let shared = TaskSharing.shared.take(in: context) { importing = shared }
+        // A shared task waits until Zikr is unlocked and no tour runs (ZikrLock), then opens.
+        .onChange(of: TaskSharing.shared.ready && ZikrLock.shared.unlocked && !ZikrTour.shared.active, initial: true) { _, open in
+            if open, let shared = TaskSharing.shared.take(in: context) { importing = shared }
         }
         .sheet(isPresented: $showAddTask, onDismiss: { ZikrTour.shared.taskFlowClosed() }) {
             NewTaskFlow {

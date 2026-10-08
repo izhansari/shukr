@@ -69,6 +69,18 @@ import SwiftData
         go(.offer)
     }
 
+    /// The lock card's "Unlock with the tour" (ZikrLock): straight into the steps, as Show me — their Astaghfirullah task
+    /// if they have one (done today: straight to how long tasks take), else making it.
+    func begin(in context: ModelContext) {
+        UserDefaults.standard.set(true, forKey: Self.offeredKey)
+        inAppTour = false
+        let tasks = (try? context.fetch(FetchDescriptor<TaskModel>(sortBy: [SortDescriptor(\.sortOrder)]))) ?? []
+        let task = tasks.first { Self.isAstaghfirullah($0.mantra?.name ?? $0.mantraName) }
+        let dayStart = PrayerDay.sessionDayStart()
+        let today = (try? context.fetch(FetchDescriptor<SessionDataModel>(predicate: #Predicate { $0.startTime >= dayStart }))) ?? []
+        showMe(existing: task, doneToday: task.map { $0.isCompleted(with: $0.progress(in: today)) } ?? false)
+    }
+
     /// Show me: their Astaghfirullah task if they have one (no duplicate), else making it.
     /// Already done for today: it's off the wheel and there's nothing left to count, so straight to how long tasks take.
     func showMe(existing: TaskModel?, doneToday: Bool = false) {
@@ -97,6 +109,7 @@ import SwiftData
 
     private func finish() {
         UserDefaults.standard.set(true, forKey: Self.completedKey)
+        ZikrLock.shared.unlock()   // the Zikr tab is theirs now (ZikrLock.swift)
         let wasInTour = inAppTour
         end()
         if wasInTour { TourRuntime.shared.zikrTourEnded() }
@@ -439,9 +452,10 @@ struct ZikrTourLayer: View {
             }
         }
         #endif
-        // The first Zikr visit: offered once, if the tour hasn't been seen (not over the app tour, not before setup).
+        // The first Zikr visit: offered once, if the tour hasn't been seen (not over the app tour, not before setup) —
+        // and not while the page is locked: the lock's card is the offer then (ZikrLock).
         .onChange(of: onZikr, initial: true) { _, on in
-            guard on, !covered, !tour.active, !TourRuntime.shared.active, FirstRunSetup.isDone,
+            guard on, !covered, !tour.active, !TourRuntime.shared.active, FirstRunSetup.isDone, !ZikrLock.shared.locked,
                   !ZikrTour.completed, !UserDefaults.standard.bool(forKey: ZikrTour.offeredKey) else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(0.6))

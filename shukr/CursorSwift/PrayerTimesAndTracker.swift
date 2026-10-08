@@ -882,7 +882,8 @@ struct PrayerTimesView: View {
                 }, onHistory: {
                     SleepMorning.clear()
                     self.morningSession = nil
-                    showZikrHistory = true
+                    // History is the Zikr tab's: locked, the Zikr page and its lock instead (ZikrLock).
+                    if ZikrLock.shared.locked { sharedState.go(to: .zikr) } else { showZikrHistory = true }
                 })
                 .transition(.identity)
             }
@@ -1790,6 +1791,9 @@ struct PrayerTimesView: View {
                         ZikrDoor(title: "History", symbol: "clock.arrow.circlepath") { showZikrHistory = true }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("historyDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
+                            // Locked with the page (ZikrLock): faint and shut.
+                            .opacity(ZikrLock.shared.locked ? 0.25 : 1)
+                            .allowsHitTesting(!ZikrLock.shared.locked)
 
                         Button { showMenu = true } label: {
                             Image(systemName: "line.3.horizontal")
@@ -1901,9 +1905,9 @@ struct PrayerTimesView: View {
                         ZikrDoor(title: "Azkar", symbol: "books.vertical") { showMantrasPage = true }
                             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { TourTargets.shared.set("azkarDoor", $0) }
                             .modifier(follow(.zikr(push: 0)))
-                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : 1)
-                            // The Zikr Tour's Azkar step opens it (its guard lets only that through).
-                            .allowsHitTesting(!TourRuntime.shared.active || ZikrTour.shared.step == .azkar)
+                            .opacity(TourRuntime.shared.active && !TourRuntime.showsAzkarDoor ? 0 : ZikrLock.shared.locked ? 0.25 : 1)
+                            // The Zikr Tour's Azkar step opens it (its guard lets only that through); shut while locked.
+                            .allowsHitTesting((!TourRuntime.shared.active || ZikrTour.shared.step == .azkar) && !ZikrLock.shared.locked)
                         // Salah page, top right, owner only: the look prototype's switcher (SalahLook.swift).
                         if access.available && !TourRuntime.shared.active {
                             HStack(spacing: 0) {
