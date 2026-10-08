@@ -401,6 +401,15 @@ struct PrayerTimesView: View {
     /// gone (each cover reports itself gone once its dismissal has finished — `stageCover`, the pushed pages below), then
     /// go, so the new page isn't pushed under the leaving one. One open at a time: a newer one replaces this. A running
     /// tasbeeh session is never closed from a widget tap.
+    private func openSharedTask() {
+        guard TaskSharing.shared.pending != nil, !showTasbeehPage, FirstRunSetup.isDone, !FirstRunSetup.isShowing else { return }
+        clearCovers {
+            for _ in 0..<40 where WelcomeTarget.playing { try? await Task.sleep(for: .milliseconds(150)) }   // the opening first
+            guard await sharedState.navigate(to: .zikr) else { return }
+            TaskSharing.shared.zikrPageReady()
+        }
+    }
+
     private func clearCovers(then go: @escaping @MainActor () async -> Void) {
         guard !showTasbeehPage else { return }
         pendingOpen?.cancel()
@@ -789,6 +798,12 @@ struct PrayerTimesView: View {
                   sharedState.mantraForSession?.persistentModelID == gone else { return }
             sharedState.mantraForSession = nil   // audit A8
         }
+        // A shared task opened in shukr (TaskSharing): to the Zikr page, where the wheel opens its review — after a
+        // session or the setup, if one is up.
+        .onReceive(NotificationCenter.default.publisher(for: TaskSharing.received)) { _ in openSharedTask() }
+        .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.finished)) { _ in openSharedTask() }
+        .onChange(of: showTasbeehPage) { _, open in if !open { openSharedTask() } }
+        .onAppear { openSharedTask() }
         // A zikr's page asked to start one of its tasks: close what covers the pager, then the
         // Zikr page's wheel starts it.
         .onReceive(NotificationCenter.default.publisher(for: ZikrFocus.startNotification)) { _ in

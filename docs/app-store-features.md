@@ -66,6 +66,8 @@ keywords, "What's New" and screenshot captions.
   where you left off or start over; a Tasks list to reorder, edit and delete them.
 - Streaks for every zikr task: a day counts when you meet its goal; the flame lights up as the
   session that keeps it ends, and your best is kept.
+- Share a zikr task with a friend by Messages: the task, its zikr's words, notes, voice memo and
+  photo travel together, and one tap in shukr adds it to their day.
 - Azkar: your own library of zikr with the full Arabic / transliteration and notes (who
   taught you, why), shown right on the pause screen; lifetime count, time and pace per zikr.
 - Each zikr can keep a voice memo (how it's said — you, a teacher; slow 0.75× and loop) and a

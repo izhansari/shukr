@@ -71,6 +71,7 @@ struct ZikrCircleWheel: View {
     /// "i love the pick a zikr thing in the watch. but its not in the ios app"). Kept until changed, like the watch's.
     @AppStorage("freestylePick") private var freestylePick = ""
     @State private var showFreestylePicker = false
+    @State private var importing: ImportedTask?
     @State private var pickedMantra: MantraModel?
     @Query(sort: \TaskModel.sortOrder) private var storedTasks: [TaskModel]
     @Query private var storedSessions: [SessionDataModel]
@@ -356,6 +357,19 @@ struct ZikrCircleWheel: View {
         #endif
         .onAppear {
             if let task = sharedState.selectedTask { centered = task.id.uuidString }
+        }
+        // A task someone shared, on its review (TaskSharing); on a layer of its own beside the New task sheet.
+        .background {
+            Color.clear
+                .sheet(item: $importing) { shared in
+                    NewTaskFlow(importing: shared) { newTaskScrollTarget = $0.id }   // the wheel centres it
+                }
+        }
+        #if DEBUG
+        .task { await TaskSharing.demo(context) }
+        #endif
+        .onChange(of: TaskSharing.shared.ready, initial: true) { _, ready in
+            if ready, let shared = TaskSharing.shared.take(in: context) { importing = shared }
         }
         .sheet(isPresented: $showAddTask, onDismiss: { ZikrTour.shared.taskFlowClosed() }) {
             NewTaskFlow {

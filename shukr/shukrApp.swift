@@ -289,6 +289,13 @@ struct shukrApp: App {
             // reactively, without it (audit F, U5).
             .circleThemeRoot()
             .task { await StoreFallback.alertOnce() }   // the store couldn't be opened: say so, once per launch
+            // A shared task opened in shukr (TaskSharing): PrayerTimesView takes it to the Zikr page's review.
+            .onOpenURL { TaskSharing.shared.receive($0) }
+            .alert("This task couldn't be opened", isPresented: Bindable(TaskSharing.shared).failed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The file may be from a newer shukr, or damaged. Ask them to share it again.")
+            }
             .onReceive(NotificationCenter.default.publisher(for: FirstRunSetup.rerun)) { _ in
                 // Back to the Salah page (sheet closed) under it, so the hand-off lands on the circle.
                 sharedState.horizontalPage = .main

@@ -53,6 +53,9 @@ struct NewTaskFlow: View {
     @State private var returnToReview = false
     @State private var confirmDelete = false
     private var isEditing: Bool { editing != nil }
+    /// A task someone shared (TaskSharing): opens on its review like an edit; its zikr, if new here, is saved only with
+    /// the task.
+    private var imported = false
     private static let review = 4
 
     init(locked: MantraModel? = nil, onCreated: @escaping (TaskModel) -> Void = { _ in }) {
@@ -65,6 +68,19 @@ struct NewTaskFlow: View {
         let n = UserDefaults.standard.integer(forKey: "demoNewTaskStep")   // -demoNewTaskStep N (with -demoZikrPage)
         if n > 0 { _step = State(initialValue: n) }
         #endif
+    }
+
+    /// A shared task (owner, 2026-10-08): its review first, ready to add — ✕ closes it and nothing is kept.
+    init(importing shared: ImportedTask, onCreated: @escaping (TaskModel) -> Void = { _ in }) {
+        self.onCreated = onCreated
+        self.imported = true
+        _mantra = State(initialValue: shared.mantra)
+        _step = State(initialValue: Self.review)
+        _arrivedStep = State(initialValue: Self.review)
+        _countMode = State(initialValue: shared.task.isCountMode)
+        _goal = State(initialValue: shared.task.goal)
+        _goalText = State(initialValue: "\(shared.task.goal)")
+        _name = State(initialValue: shared.task.taskName ?? "")
     }
 
     /// Editing `task`: its review first, the draft taken from it.
@@ -139,7 +155,7 @@ struct NewTaskFlow: View {
     private func next() { if let i = steps.firstIndex(of: step), i + 1 < steps.count { go(steps[i + 1]) } }
     private func back() {
         if returnToReview { backToReview(); return }
-        if isEditing { dismiss(); return }
+        if isEditing || imported { dismiss(); return }
         if let i = steps.firstIndex(of: step), i > 0 { go(steps[i - 1]) } else { dismiss() }
     }
     /// From the review into one step; its button then reads "Done".
@@ -173,7 +189,7 @@ struct NewTaskFlow: View {
             Button {
                 if editingReminder { openReminder(false) } else { back() }
             } label: {
-                Image(systemName: editingReminder || returnToReview || (step > firstStep && !isEditing) ? "chevron.left" : "xmark")
+                Image(systemName: editingReminder || returnToReview || (step > firstStep && !isEditing && !imported) ? "chevron.left" : "xmark")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 36, height: 36)
@@ -183,7 +199,7 @@ struct NewTaskFlow: View {
             Spacer()
             HStack(spacing: 6) {
                 // No dots once there's a review to come back to: the steps are no longer a sequence.
-                ForEach(isEditing || returnToReview ? [] : steps, id: \.self) { i in
+                ForEach(isEditing || imported || returnToReview ? [] : steps, id: \.self) { i in
                     Capsule()
                         .fill(i <= step ? Color.sage : Color.primary.opacity(0.12))
                         .frame(width: i == step ? 22 : 8, height: 8)
@@ -432,7 +448,7 @@ struct NewTaskFlow: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 22) {
-                    heading(isEditing ? "Your task" : "Looks good", "Tap anything to change it")
+                    heading(isEditing ? "Your task" : imported ? "Shared with you" : "Looks good", "Tap anything to change it")
                     ZikrCircleFace(title: previewTitle, icon: nil,
                                    subtitle: countMode ? "\(today.count) of \(goal)" : "\(today.minutes) of \(goal) min",
                                    ring: .progress(today.fraction),
@@ -563,6 +579,7 @@ struct NewTaskFlow: View {
 
     private func create() {
         guard let mantra else { return }
+        if mantra.modelContext == nil { context.insert(mantra) }   // a shared task's zikr, new here
         let task = TaskModel(mantra: mantra, isCountMode: countMode, goal: goal,
                              sortOrder: TaskModel.nextSortOrder(in: context))
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)

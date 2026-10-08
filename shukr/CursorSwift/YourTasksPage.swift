@@ -258,6 +258,16 @@ struct TaskMenu: View {
         if let onOpenZikr, task.mantra != nil {
             Button(action: onOpenZikr) { Label("Open zikr", systemImage: "text.quote") }
         }
+        // Sends the task and its zikr whole (TaskSharing); not on the tour's example tasks.
+        if TourExamples.shared.tasks == nil {
+            Button {
+                // After the menu has gone: a sheet presented while it closes can be refused.
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.35))
+                    TaskSharing.share(task)
+                }
+            } label: { Label("Share task…", systemImage: "square.and.arrow.up") }
+        }
         Divider()
         Button(role: .destructive, action: onDelete) { Label("Delete…", systemImage: "trash") }
     }
