@@ -404,9 +404,12 @@ struct MemoriesPage: View {
             Tab("Months", systemImage: "square.stack", value: MemoriesTab.level(.months)) { tabPage { levelPage(.months) } }
             Tab("Days", systemImage: "calendar", value: MemoriesTab.level(.days)) { tabPage { levelPage(.days) } }
             Tab("Prayers", systemImage: "photo.on.rectangle", value: MemoriesTab.level(.prayers)) { tabPage { levelPage(.prayers) } }
-            Tab(value: MemoriesTab.search, role: .search) { tabPage { resultsList } }
+            // The search tab's own page carries the search (the field lives in the tab bar while it's open).
+            Tab(value: MemoriesTab.search, role: .search) {
+                tabPage { resultsList.searchable(text: $query, prompt: "Notes, places, prayers, months") }
+            }
         }
-        .searchable(text: $query, prompt: "Notes, places, prayers, months")
+        .modifier(TabBarSearchBehaviour())
         .onChange(of: searching) { _, on in
             if on {
                 buildIndex()
@@ -1783,5 +1786,18 @@ struct PrayerPlaceMapSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+/// Tapping the search tab opens its field at once, and the tab bar shrinks while scrolling down (iOS 26+).
+private struct TabBarSearchBehaviour: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .tabViewSearchActivation(.searchTabSelection)
+                .tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
     }
 }
