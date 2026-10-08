@@ -41,11 +41,27 @@ extension PrayerPhotos {
             .sorted { $0.dayKey != $1.dayKey ? $0.dayKey < $1.dayKey : $0.slot < $1.slot }
     }
 
-    private static let thumbs = NSCache<NSString, UIImage>()
+    private static let thumbs: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
+
+    /// Two sizes only — 180 px for the squares and day piles, 360 px for the month piles — so switching levels finds
+    /// them already decoded (each level asking its own size missed the cache and decoded mid-animation).
+    private static func thumbSide(_ side: Int) -> Int { side <= 180 ? 180 : 360 }
+
+    private static func thumbKey(_ key: String, _ side: Int) -> NSString {
+        "\(key)-\(thumbSide(side))-\(PrayerPhotoMain.selfieIsMain(key))" as NSString
+    }
+
+    /// Already decoded? (A square drawn again shows its picture from the first frame.)
+    static func cachedThumbnail(_ key: String, side: Int = 180) -> UIImage? { thumbs.object(forKey: thumbKey(key, side)) }
 
     /// A small copy of the back photo (ImageIO's thumbnail, decoded off the main thread, cached).
-    static func thumbnail(_ key: String, side: Int = 160) async -> UIImage? {
-        let cacheKey = "\(key)-\(side)-\(PrayerPhotoMain.selfieIsMain(key))" as NSString
+    static func thumbnail(_ key: String, side: Int = 180) async -> UIImage? {
+        let side = thumbSide(side)
+        let cacheKey = thumbKey(key, side)
         if let hit = thumbs.object(forKey: cacheKey) { return hit }
         let image: UIImage? = await Task.detached(priority: .userInitiated) {
             guard let source = CGImageSourceCreateWithURL(mainURL(key) as CFURL, nil) else { return nil }
@@ -54,7 +70,7 @@ extension PrayerPhotos {
                                             kCGImageSourceThumbnailMaxPixelSize: side]
             return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map(UIImage.init(cgImage:))
         }.value
-        if let image { thumbs.setObject(image, forKey: cacheKey) }
+        if let image { thumbs.setObject(image, forKey: cacheKey, cost: side * side * 4) }
         return image
     }
 }
@@ -90,6 +106,7 @@ struct MemoriesPage: View {
         var frames: [String: CGRect] = [:]
         var deckTop: CGRect?
         var opening = false
+        var months: (signature: String, value: [Month])?
         /// The newest flight animation; an older one's completion leaves the flight alone.
         var flightToken = UUID()
     }
@@ -375,10 +392,7 @@ struct MemoriesPage: View {
 
     /// Earlier years' photos from today's date, the newest year first.
     private var onThisDay: [[MemoryPhoto]] {
-        let f = DateFormatter()
-        f.dateFormat = "MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        let today = f.string(from: Date())
+        let today = String(Self.dayKeyFormatter.string(from: Date()).dropFirst(5))
         let year = Calendar.current.component(.year, from: Date())
         let matches = photos.filter { $0.dayKey.dropFirst(5) == today && (Int($0.dayKey.prefix(4)) ?? year) < year }
         return Dictionary(grouping: matches, by: \.dayKey).sorted { $0.key > $1.key }.map(\.value)
@@ -428,8 +442,18 @@ struct MemoriesPage: View {
     typealias Day = (dayKey: String, photos: [MemoryPhoto])
     typealias Month = (id: String, title: String, days: [Day], photos: [MemoryPhoto])
 
-    /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos).
+    /// Days with at least one photo, oldest first, grouped by month (newest at the bottom, like Photos) — worked out
+    /// once per change of what's shown (it was regrouped every time a level read it, several times a redraw).
     private var months: [Month] {
+        let shown = visible
+        let signature = "\(shown.count)|\(shown.first?.key ?? "")|\(shown.last?.key ?? "")|\(shown.reduce(0) { $0 &+ $1.key.hashValue })"
+        if let cached = frames.months, cached.signature == signature { return cached.value }
+        let value = Self.group(shown)
+        frames.months = (signature, value)
+        return value
+    }
+
+    private static func group(_ visible: [MemoryPhoto]) -> [Month] {
         let byDay = Dictionary(grouping: visible, by: \.dayKey)
         let days = byDay.keys.sorted(by: <).map { ($0, byDay[$0] ?? []) }
         let byMonth = Dictionary(grouping: days, by: { String($0.0.prefix(7)) })
@@ -741,7 +765,8 @@ struct MemoriesPage: View {
                 MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
                     .matchedGeometryEffect(id: photo.key, in: pinch)
                     .frame(width: side, height: side)
-                    .shadow(color: .black.opacity(0.16), radius: 8, y: 4)
+                    // Small piles get a small shadow (dozens of 8 pt blurs were the costliest thing to draw mid-switch).
+                    .shadow(color: .black.opacity(side < 60 ? 0.12 : 0.16), radius: side < 60 ? 2 : 8, y: side < 60 ? 1 : 4)
                     .rotationEffect(.degrees(onTop ? 0 : Self.looseTilt(photo.key)))
                     .offset(x: onTop ? 0 : Self.looseNudge(photo.key) * side / 118,
                             y: CGFloat(shown.count - 1 - n) * -3)
@@ -783,15 +808,29 @@ struct MemoriesPage: View {
         }
     }
 
-    static func parse(_ dayKey: String) -> Date? {
+    /// One formatter for every day key (a new one per call — hundreds per level switch — was slow).
+    private static let dayKeyFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         f.locale = Locale(identifier: "en_US_POSIX")
-        return f.date(from: dayKey)
+        return f
+    }()
+    private static var parsed: [String: Date] = [:]
+
+    static func parse(_ dayKey: String) -> Date? {
+        if let hit = parsed[dayKey] { return hit }
+        let date = dayKeyFormatter.date(from: dayKey)
+        if let date { parsed[dayKey] = date }
+        return date
     }
 
+    private static var monthTitles: [String: String] = [:]
+
     static func monthTitle(_ month: String) -> String {
-        parse(month + "-01").map { $0.formatted(.dateTime.month(.wide).year()) } ?? month
+        if let hit = monthTitles[month] { return hit }
+        let title = parse(month + "-01").map { $0.formatted(.dateTime.month(.wide).year()) } ?? month
+        monthTitles[month] = title
+        return title
     }
 }
 
@@ -799,16 +838,27 @@ struct MemoriesPage: View {
 /// month's stack and back).
 private struct MemoryThumb: View {
     let key: String
-    var side: Int = 160
+    var side: Int = 180
     var corner: CGFloat = 12
     @State private var image: UIImage?
+
+    init(key: String, side: Int = 180, corner: CGFloat = 12) {
+        self.key = key
+        self.side = side
+        self.corner = corner
+        _image = State(initialValue: PrayerPhotos.cachedThumbnail(key, side: side))
+    }
+
     var body: some View {
         Color.primary.opacity(0.08)
             .overlay {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
             }
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .task(id: "\(key)-\(PrayerPhotoMain.shared.isSelfie(key))") { image = await PrayerPhotos.thumbnail(key, side: side) }
+            .task(id: "\(key)-\(PrayerPhotoMain.shared.isSelfie(key))") {
+                let fresh = await PrayerPhotos.thumbnail(key, side: side)
+                if fresh !== image { image = fresh }
+            }
             .accessibilityLabel(PrayerPhotos.caption(key))
             .accessibilityAddTraits(.isButton)
     }

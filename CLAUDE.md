@@ -338,7 +338,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   apostrophes) search `buildIndex`'s text per photo — prayer, note, masjid, Gregorian + Hijri (`islamicUmmAlQura`) dates,
   the place's name (`PrayerPlaceNames`: the prayer's own spot named once per ~1 km and kept as words only — no location
   copied, owner); results feed `visible` (levels and pile); toggling search re-ids the level's ScrollView so it starts at
-  the bottom. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
+  the bottom. **Smooth switches:** thumbnails come in two sizes only (180 / 360 px, cost-limited NSCache) and a
+  re-drawn square takes its cached image in `init`; `parse` / `monthTitle` share one formatter and memo; `months` is
+  grouped once per change (`FrameBook.months`); piles under 60 pt get a 2 pt shadow. "On this day" cards (earlier years, today's date) under today's month (DEBUG `-demoOnThisDay` with
   `-demoMemories`). **Three levels** (`MemoriesPage.Level`, like Photos): Prayers (the strips) · Days (a
   calendar per month, Sun–Sat rows from `Calendar.firstWeekday`; a day with photos = a small stack, else its faint number; up to today only)
   · Months (a stack per month). A pinch in (`MagnifyGesture` < 0.8) goes up a level, out (> 1.25) down; the level
