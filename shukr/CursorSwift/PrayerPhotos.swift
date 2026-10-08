@@ -395,6 +395,9 @@ struct PrayerPhotoFace: View {
             }
         }
         .frame(width: width, height: width)
+        // Taps only on the rounded square you see: a tall photo filling it is cut off for the eye, not for touch
+        // (taps above it and beside the viewer's buttons swapped the pictures — owner).
+        .contentShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
     }
 }
 
