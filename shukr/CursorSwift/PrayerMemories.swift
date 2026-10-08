@@ -90,6 +90,9 @@ struct MemoriesPage: View {
     /// The pile fades in over the page and out again (owner: "get rid of zoom in zoom out … just make it fade in to
     /// that page and back out"); the photo no longer flies from its square.
     @State private var deckShown = false
+    /// The frosted backdrop, in before the pile and out after it (owner: "make the background come in first then bring
+    /// in the photos").
+    @State private var backdropShown = false
 
     final class FrameBook {
         var months: (signature: String, value: [Month])?
@@ -482,14 +485,18 @@ struct MemoriesPage: View {
                 Rectangle().fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.12))
                     .ignoresSafeArea()
+                    .opacity(backdropShown ? 1 : 0)
                 // Its own stack, so Share pushes its page inside the layer.
                 NavigationStack {
+                    // Faded as ONE flattened picture (`compositingGroup`): faded card by card, the cards under the top
+                    // one showed through it (the owner's ghosting).
                     MemoriesDeck(photos: visible, start: start, shown: true, hideTop: false, folded: false,
                                  onTopFrame: { _ in }, onClose: closeDeck)
+                        .compositingGroup()
+                        .opacity(deckShown ? 1 : 0)
                         .containerBackground(.clear, for: .navigation)
                 }
             }
-            .opacity(deckShown ? 1 : 0)
             .presentationBackground(.clear)
         }
         .task(id: PrayerPhotoRevision.shared.value) {
@@ -539,24 +546,31 @@ struct MemoriesPage: View {
     private func openDeck(_ photo: MemoryPhoto) {
         triggerSomeVibration(type: .light)
         deckShown = false
+        backdropShown = false
         var quiet = Transaction()
         quiet.disablesAnimations = true
         withTransaction(quiet) { deckStart = photo }
         Task {
             await Task.yield()
-            withAnimation(.easeOut(duration: 0.25)) { deckShown = true }
+            withAnimation(.easeOut(duration: 0.2)) { backdropShown = true }
+            try? await Task.sleep(for: .milliseconds(140))
+            withAnimation(.easeOut(duration: 0.22)) { deckShown = true }
         }
     }
 
     /// The pile fades out where it is.
     private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
         triggerSomeVibration(type: .light)
-        withAnimation(.easeOut(duration: 0.22)) {
+        withAnimation(.easeOut(duration: 0.18)) {
             deckShown = false
         } completion: {
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) { deckStart = nil }
+            withAnimation(.easeOut(duration: 0.18)) {
+                backdropShown = false
+            } completion: {
+                var quiet = Transaction()
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { deckStart = nil }
+            }
         }
     }
 
