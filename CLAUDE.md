@@ -283,7 +283,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   over the blurred page (a clear `fullScreenCover`, no system slide; zooms out of the small photo and back — the card is
   scaled / moved from the small photo's global frame, the small photo hidden while it's out, the tag fading in; it
   follows a drag in any direction (shrinking a little) and zooms home past 120 pt; Share fades the share options up at
-  the bottom over the page — the card previews them; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
+  the bottom over the page — the card previews them; a tap on the page around it always closes; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
   (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
