@@ -104,13 +104,8 @@ struct ZikrLockCover: View {
     @State private var stage = 0
     /// What's inside's items shown (one after another).
     @State private var itemsShown = 0
-    /// Page 2's lines shown: 1 the heading, 2…5 the narration's lines, 6 the source, 7 Begin.
+    /// Page 2's parts shown: 1 the heading, 2…5 the narration's lines, 6 the source, 7 the bridge to shukr, 8 Begin.
     @State private var linesShown = 0
-    /// Page 2's second half: what it means, then the way into the tour (owner: "it just goes straight into the tour…
-    /// seems like an abrupt entrance").
-    @State private var reflecting = false
-    /// Its lines shown: 1 the heading, 2… the lines, then the bridge, then Begin.
-    @State private var reflectShown = 0
     /// Begin was tapped: everything fades away before the tour comes in.
     @State private var leaving = false
     @State private var armed = false
@@ -120,16 +115,20 @@ struct ZikrLockCover: View {
     @State private var verseHeight: CGFloat = 0
     /// Page 1's content under the verse (what's inside, Unlock now), laid out from the start.
     @State private var pageOneHeight: CGFloat = 0
-    /// The verse's place, kept while page 2 is up (the verse never moves between the pages).
-    @State private var frozenTop: CGFloat?
+    /// Page 2's content under the verse (the narration, the bridge), laid out from the start too, so the verse can glide
+    /// to page 2's centred place as it opens.
+    @State private var pageTwoHeight: CGFloat = 0
+    /// Begin's room at the bottom (page 2's stack is centred in what's left).
+    private static let beginRoom: CGFloat = 68
     @State private var run: Task<Void, Never>?
 
     var body: some View {
         GeometryReader { geo in
-            // Page 1 whole — the verse, what's inside, Unlock now — centred on the page (owner: "the whole stack is
-            // centered vertically"); page 2 keeps the verse where page 1 left it.
-            let centred = max(24, (geo.size.height - verseHeight - pageOneHeight) / 2)
-            let topPad = frozenTop ?? centred
+            // Each page's whole stack centred on the page (owner: "the whole stack is centered vertically"); the verse
+            // glides from page 1's place to page 2's as it opens (owner: "we can move the verse up if we need to").
+            let pageOneTop = max(24, (geo.size.height - verseHeight - pageOneHeight) / 2)
+            let pageTwoTop = max(24, (geo.size.height - Self.beginRoom - verseHeight - pageTwoHeight) / 2)
+            let topPad = lock.focus ? pageTwoTop : pageOneTop
             // The verse alone starts in the very middle, then rises to its place.
             let fromMiddle = geo.size.height / 2 - (topPad + verseHeight / 2)
             ZStack {
@@ -151,12 +150,10 @@ struct ZikrLockCover: View {
                             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageOneHeight = $0 }
                             .opacity(lock.focus || leaving ? 0 : 1)
                             .allowsHitTesting(!lock.focus && !leaving)
-                        if lock.focus && !reflecting {
-                            narration.transition(.opacity)
-                        }
-                        if lock.focus && reflecting {
-                            reflection.transition(.opacity)
-                        }
+                        pageTwo
+                            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageTwoHeight = $0 }
+                            .opacity(lock.focus && !leaving ? 1 : 0)
+                            .allowsHitTesting(false)
                     }
                     .frame(maxHeight: .infinity, alignment: .top)
                     begin
@@ -166,7 +163,6 @@ struct ZikrLockCover: View {
                 if lock.focus { close }
             }
         }
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .fontDesign(.rounded)
         .onChange(of: sharedState.horizontalPage == .zikr, initial: true) { _, here in
@@ -242,93 +238,62 @@ struct ZikrLockCover: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Page 2: one size, one light weight (owner: the mixed sizes didn't sit well); its heart a shade darker. Scrolls if
-    /// it can't fit (a small phone, large text).
-    private var narration: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                Text(ZikrLockWords.narrationHeading.uppercased())
-                    .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
-                    .foregroundStyle(Color.sage)
-                    .opacity(linesShown >= 1 ? 1 : 0)
-                VStack(spacing: 12) {
-                    ForEach(Array(ZikrLockWords.narration.enumerated()), id: \.offset) { i, line in
-                        Text(line)
-                            .font(.system(size: 16, weight: .light, design: .rounded))
-                            .foregroundStyle(Color.primary.opacity(i == 0 ? 0.88 : 0.62))
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .opacity(linesShown >= i + 2 ? 1 : 0)
-                            .offset(y: linesShown >= i + 2 || reduceMotion ? 0 : 6)
-                    }
+    /// Page 2: the narration in one size and one shade (owner: "keep the narration the same font"), its source, then —
+    /// after some room — the bridge to shukr (owner: keep only the bottom part of the old third page, on this one).
+    private var pageTwo: some View {
+        VStack(spacing: 0) {
+            Text(ZikrLockWords.narrationHeading.uppercased())
+                .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
+                .foregroundStyle(Color.sage)
+                .padding(.top, 34)
+                .opacity(linesShown >= 1 ? 1 : 0)
+            VStack(spacing: 12) {
+                ForEach(Array(ZikrLockWords.narration.enumerated()), id: \.offset) { i, line in
+                    Text(line)
+                        .font(.system(size: 16, weight: .light, design: .rounded))
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .opacity(linesShown >= i + 2 ? 1 : 0)
+                        .offset(y: linesShown >= i + 2 || reduceMotion ? 0 : 6)
                 }
-                Text(ZikrLockWords.narrationSource.uppercased())
-                    .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
-                    .foregroundStyle(Color.primary.opacity(0.35))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .opacity(linesShown >= ZikrLockWords.narration.count + 2 ? 1 : 0)
             }
-            .padding(.top, 34)
-            .frame(maxWidth: .infinity)
+            .padding(.top, 16)
+            Text(ZikrLockWords.narrationSource.uppercased())
+                .font(.system(size: 10, weight: .semibold, design: .rounded)).tracking(1.2)
+                .foregroundStyle(Color.primary.opacity(0.35))
+                .padding(.top, 16)
+                .opacity(linesShown >= ZikrLockWords.narration.count + 2 ? 1 : 0)
+            Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 36, height: 1)
+                .padding(.top, 30)
+                .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
+            Text(ZikrLockWords.bridge)
+                .font(.system(size: 15, weight: .light, design: .rounded))
+                .foregroundStyle(Color.primary.opacity(0.6))
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 300)
+                .padding(.top, 30)
+                .opacity(linesShown >= ZikrLockWords.narration.count + 3 ? 1 : 0)
+                .offset(y: linesShown >= ZikrLockWords.narration.count + 3 || reduceMotion ? 0 : 6)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.hidden)
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 
-    /// Page 2's second half, in the narration's place: what it means for them, then shukr as the way to keep it.
-    private var reflection: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                Text(ZikrLockWords.reflectionHeading.uppercased())
-                    .font(.system(size: 11, weight: .semibold, design: .rounded)).tracking(1.4)
-                    .foregroundStyle(Color.sage)
-                    .opacity(reflectShown >= 1 ? 1 : 0)
-                VStack(spacing: 14) {
-                    ForEach(Array(ZikrLockWords.reflection.enumerated()), id: \.offset) { i, line in
-                        Text(line)
-                            .font(.system(size: 17, weight: .light, design: .rounded))
-                            .foregroundStyle(Color.primary.opacity(0.85))
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                            .opacity(reflectShown >= i + 2 ? 1 : 0)
-                            .offset(y: reflectShown >= i + 2 || reduceMotion ? 0 : 6)
-                    }
-                }
-                Text(ZikrLockWords.bridge)
-                    .font(.system(size: 15, weight: .light, design: .rounded))
-                    .foregroundStyle(Color.primary.opacity(0.58))
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, 10)
-                    .opacity(reflectShown >= ZikrLockWords.reflection.count + 2 ? 1 : 0)
-                    .offset(y: reflectShown >= ZikrLockWords.reflection.count + 2 || reduceMotion ? 0 : 6)
-            }
-            .padding(.top, 34)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.hidden)
-        .accessibilityElement(children: .combine)
-    }
+    private var pageTwoDone: Bool { linesShown >= ZikrLockWords.narration.count + 4 }
 
-    private var narrationDone: Bool { linesShown >= ZikrLockWords.narration.count + 3 }
-    private var reflectionDone: Bool { reflectShown >= ZikrLockWords.reflection.count + 3 }
-
-    /// Continue (after the narration) → what it means; Begin (after that) → the Zikr Tour, once everything here has faded.
+    /// Begin → the Zikr Tour, once everything here has faded.
     private var begin: some View {
         Button {
             triggerSomeVibration(type: .medium)
             run?.cancel()
-            if reflecting { startTour() } else { reflect() }
+            startTour()
         } label: {
             HStack(spacing: 6) {
-                Text(reflecting ? "Begin" : "Continue")
-                    .contentTransition(.opacity)
+                Text("Begin")
                 Image(systemName: "arrow.right").font(.system(size: 14, weight: .semibold))
             }
             .font(.system(size: 17, weight: .semibold, design: .rounded))
@@ -339,9 +304,8 @@ struct ZikrLockCover: View {
         }
         .buttonStyle(.plain)
         .padding(.bottom, 24)
-        .opacity(lock.focus && !leaving && (reflecting ? reflectionDone : narrationDone) ? 1 : 0)
-        .allowsHitTesting(lock.focus && !leaving && (reflecting ? reflectionDone : narrationDone))
-        .animation(.easeInOut(duration: 0.5), value: reflecting)
+        .opacity(lock.focus && !leaving && pageTwoDone ? 1 : 0)
+        .allowsHitTesting(lock.focus && !leaving && pageTwoDone)
     }
 
     /// ✕: back to page 1, still locked.
@@ -349,13 +313,10 @@ struct ZikrLockCover: View {
         Button {
             triggerSomeVibration(type: .light)
             run?.cancel()
-            withAnimation(.easeInOut(duration: 0.4)) {
+            withAnimation(.easeInOut(duration: 0.9)) {
                 lock.focus = false
                 linesShown = 0
-                reflecting = false
-                reflectShown = 0
             }
-            frozenTop = nil
         } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 14, weight: .semibold))
@@ -432,16 +393,11 @@ struct ZikrLockCover: View {
 
     // MARK: the moves
 
-    @State private var pageHeight: CGFloat = 0
-    /// Page 1's centred place for the verse (what page 2 keeps).
-    private var currentTop: CGFloat { max(24, (pageHeight - verseHeight - pageOneHeight) / 2) }
-
     /// Arriving on the Zikr page: page 1 builds itself up (Reduce Motion: it's all there, faded in).
     private func arrive() {
         run?.cancel()
         guard !lock.focus else { return }
-        stage = 0; itemsShown = 0; armed = false
-        reflecting = false; reflectShown = 0; leaving = false
+        stage = 0; itemsShown = 0; armed = false; leaving = false
         if reduceMotion {
             withAnimation(.easeOut(duration: 0.3)) { stage = 4; itemsShown = ZikrLockWords.inside.count }
             return
@@ -469,24 +425,6 @@ struct ZikrLockCover: View {
         }
     }
 
-    /// Continue: the narration fades and, in its place, what it means for them a line at a time, then the bridge to shukr.
-    private func reflect() {
-        withAnimation(.easeInOut(duration: 0.6)) { reflecting = true }
-        let lines = ZikrLockWords.reflection.count + 3   // heading, the lines, the bridge, Begin
-        if reduceMotion {
-            withAnimation(.easeOut(duration: 0.4).delay(0.4)) { reflectShown = lines }
-            return
-        }
-        run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(700))
-            for i in 1...lines {
-                guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.8)) { reflectShown = i }
-                try? await Task.sleep(for: .milliseconds(i == lines - 1 ? 1300 : 1050))
-            }
-        }
-    }
-
     /// Begin: everything here fades away, the bars come back, and then — a beat later, not all at once — the tour.
     private func startTour() {
         withAnimation(.easeInOut(duration: 0.7)) {
@@ -503,7 +441,6 @@ struct ZikrLockCover: View {
     /// Leaving the page: ready to build again next time.
     private func leave() {
         run?.cancel()
-        frozenTop = nil
         withAnimation(.easeIn(duration: 0.15)) { stage = 0; itemsShown = 0 }
         armed = false
     }
@@ -513,20 +450,20 @@ struct ZikrLockCover: View {
         triggerSomeVibration(type: .medium)
         run?.cancel()
         armed = false
-        frozenTop = currentTop
-        withAnimation(.easeInOut(duration: 0.5)) { lock.focus = true }
-        let lines = ZikrLockWords.narration.count + 3   // heading, the lines, the source, Begin
+        // Page 1 fades, the bars step away, and the verse glides to page 2's centred place.
+        withAnimation(.easeInOut(duration: 1.1)) { lock.focus = true }
+        let lines = ZikrLockWords.narration.count + 4   // heading, the lines, the source, the bridge, Begin
         if reduceMotion {
             withAnimation(.easeOut(duration: 0.4).delay(0.3)) { linesShown = lines }
             return
         }
         run = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(650))
+            try? await Task.sleep(for: .milliseconds(1100))
             for i in 1...lines {
                 guard !Task.isCancelled else { return }
-                withAnimation(.easeOut(duration: 0.7)) { linesShown = i }
-                // The heart of it (the first line) is held a beat longer.
-                try? await Task.sleep(for: .milliseconds(i == 2 ? 1500 : 950))
+                withAnimation(.easeInOut(duration: 0.9)) { linesShown = i }
+                // The first line held a beat longer; a pause before the bridge to shukr.
+                try? await Task.sleep(for: .milliseconds(i == 2 ? 1600 : i == lines - 2 ? 1500 : 1050))
             }
         }
     }
@@ -545,7 +482,7 @@ enum ZikrLockWords {
         ("flame", "Streaks that\nkeep you going"),
     ]
     /// Ibn Kathir's tafsir of 2:152 cites this hadith qudsi to explain the verse; the hadith itself wasn't said about it,
-    /// so the heading doesn't claim it was, and the source line says who joins them.
+    /// so the heading doesn't claim it was.
     static let narrationHeading = "And in a hadith qudsi, Allah says"
     static let narration = [
         "I am as My servant thinks I am,\nand I am with him when he remembers Me.",
@@ -553,13 +490,6 @@ enum ZikrLockWords {
         "If he remembers Me in a gathering,\nI remember him in a gathering better than theirs.",
         "If he comes to Me walking,\nI come to him running.",
     ]
-    static let narrationSource = "Sahih al-Bukhari 7405\ncited by Ibn Kathir on this verse"
-    static let reflectionHeading = "What this means for you"
-    /// Plain words for what the verse and the hadith promise (never set as a quote).
-    static let reflection = [
-        "Every time you remember Him,\nHe remembers you.",
-        "Take one step toward Him,\nand He comes closer still.",
-        "A few minutes a day is all it takes.",
-    ]
-    static let bridge = "shukr helps you keep it: one daily zikr, counted, with a streak that grows. Next, we'll set up your first one together. It takes about two minutes."
+    static let narrationSource = "Sahih al-Bukhari 7405"
+    static let bridge = "shukr helps you keep it: one zikr a day, counted, with a streak that grows. Let's set up your first one together."
 }
