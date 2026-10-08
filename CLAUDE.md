@@ -318,13 +318,14 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   every day from the first photo to today (days without photos faint; a rest on one moves on to the nearest photo day),
   the number + weekday; the centred day is the pile's — bigger and full, the rest shrink and fade by distance
   (`visualEffect` in `.scrollView` space); `viewAligned` + `contentMargins` centre it and `scrollPosition(id:)` has NO
-  anchor (`.center` with the margins landed 4 days off); its days are built in `init` (built on appear it opened
-  elsewhere). The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
+  anchor (`.center` with the margins landed 4 days off); its days are built in `init`; it's positioned by us — `ScrollPosition.scrollTo(x: index × cell)` from
+  its measured width (the id binding left a short strip, three days, on the wrong day). The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
   the centred index from `onScrollGeometryChange` contentOffset + insets — the position binding only caught up at rest;
   photo days only), and at rest an empty day snaps to the nearest (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
-  Under the pile the prayer's name, "Prayed 1:12 PM", the place on its own line (always: the masjid, else
+  Captions come from `infos` (`prepareInfo`: the day and both neighbours worked out before they show, so the caption
+  moves as one view — filled in afterwards its lines moved separately). Under the pile the prayer's name, "Prayed 1:12 PM", the place on its own line (always: the masjid, else
   `PrayerPlaceNames`, looked up once), then the score as a ring in its grade colour + the grade word (fixed heights, so
   nothing moves); the caption follows a horizontal drag (0.35 × drag, ±90, fading) and hands over to the next on landing;
   a tap on the place opens `PrayerPlaceMapSheet` (SwiftUI Map: the prayer's Marker in its grade colour, masjid / hands
@@ -338,7 +339,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; one shared `PrayerShareOptions` + `PrayerShareControls` +
   `PrayerShareButton` for this page and the viewer's panel — edit them once; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
-  on a card swaps the pictures; drag down closes (the deck's own drag
+  on a card swaps the pictures; a drag down follows the finger anywhere (`freeDrag`), the cards under the top gathering in (`fold`), and closes;
+  closing folds the pile first (`folding`) and starts the flight a turn later (set and moved in one turn it never flew) (the deck's own drag
   picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile
   (`PrayerPhotoFavorites`, UserDefaults); the bottom bar: on iOS 26+ the system bottom toolbar (Liquid Glass) — `levelSwitch`
   + a magnifying-glass button; searching, our own `searchField` + ✕ as bottom-bar items (NO `.searchable`: pushed onto the

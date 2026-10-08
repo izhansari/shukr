@@ -89,6 +89,8 @@ struct MemoriesPage: View {
     /// (owner: "prioritize being clean … apple documented apis": the system's zoom transition, nothing hand-made).
     /// The pile's backdrop and its other parts, faded in after the photo starts flying out.
     @State private var deckShown = false
+    /// Closing: the pile gathers into its top card before that card flies home.
+    @State private var folding = false
     /// The one photo in flight between its square and the pile (owner: "only take the image back into that square"):
     /// a single face moved and scaled, the page frosted behind it like the hold editor's photo.
     @State private var flight: Flight?
@@ -574,7 +576,7 @@ struct MemoriesPage: View {
                     // Its own stack, so Share pushes its page inside the layer.
                     NavigationStack {
                         MemoriesDeck(photos: visible, start: start, shown: deckShown, hideTop: flight != nil,
-                                     onTopFrame: deckTopMoved, onClose: closeDeck)
+                                     folded: folding, onTopFrame: deckTopMoved, onClose: closeDeck)
                             .containerBackground(.clear, for: .navigation)
                     }
                     if let flight {
@@ -628,6 +630,7 @@ struct MemoriesPage: View {
             frames.opening = true
             flight = Flight(key: photo.key, rect: from ?? .zero, images: images, opacity: from == nil ? 0 : 1)
             deckShown = false
+            folding = false
             var quiet = Transaction()
             quiet.disablesAnimations = true
             withTransaction(quiet) { deckStart = photo }
@@ -656,7 +659,7 @@ struct MemoriesPage: View {
 
     /// The photo on top flies back into its square (its day's pile on Days, its own square on Prayers) — or, when that
     /// isn't on screen, shrinks and fades where it is — while the frost lifts.
-    private func closeDeck(_ key: String, _ dayKey: String) {
+    private func closeDeck(_ key: String, _ dayKey: String, _ scale: CGFloat) {
         triggerSomeVibration(type: .light)
         var quiet = Transaction()
         quiet.disablesAnimations = true
@@ -665,14 +668,22 @@ struct MemoriesPage: View {
         let onScreen: (CGRect) -> Bool = { $0.minY > 90 && $0.maxY < screen.height - 70 && $0.minX >= 0 && $0.maxX <= screen.width }
         let target = (searching ? ["result-" + key] : ["otd-" + dayKey, level == .prayers ? key : dayKey])
             .compactMap { frames.frames[$0] }.first(where: onScreen)
+        // The pile gathers into its top card at once, so only that photo is left to fly.
+        withAnimation(.easeOut(duration: 0.18)) { folding = true }
+        // Where the top card is now, shrunk as the drag left it.
+        let start = CGRect(x: top.midX - top.width * scale / 2, y: top.midY - top.height * scale / 2,
+                           width: top.width * scale, height: top.height * scale)
         Task {
             let images = await PrayerPhotos.load(key)
-            flight = Flight(key: key, rect: top, images: images)
+            flight = Flight(key: key, rect: start, images: images)
+            // A turn later, so the flight is drawn where it starts (set and moved in one turn, it never showed moving).
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(16))
             withAnimation(.spring(response: 0.38, dampingFraction: 0.9)) {
                 if let target {
                     flight?.rect = target
                 } else {
-                    flight?.rect = top.insetBy(dx: top.width * 0.12, dy: top.height * 0.12)
+                    flight?.rect = start.insetBy(dx: start.width * 0.12, dy: start.height * 0.12)
                     flight?.opacity = 0
                 }
                 deckShown = false
@@ -934,7 +945,10 @@ struct MemoriesDeck: View {
     /// Where the top card is, for the photo's flight.
     let onTopFrame: (CGRect) -> Void
     /// Close with this photo (and its day) on top.
-    let onClose: (_ key: String, _ dayKey: String) -> Void
+    /// Close with this photo (and its day) on top, and how far the pile is shrunk right now (it flies home from there).
+    let onClose: (_ key: String, _ dayKey: String, _ scale: CGFloat) -> Void
+    /// Closing: the cards under the top one gather into it and fade, so only the top photo flies home (no ghost pile).
+    let folded: Bool
     @Environment(\.modelContext) private var context
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     /// Which way the last move went: back in time or forward — everything that changes slides in from that side.
@@ -951,20 +965,20 @@ struct MemoriesDeck: View {
 
     struct Incoming { var range: ClosedRange<Int>; var top: Int; var fromRight: Bool }
     /// "Prayed 1:12 PM · Masjid Al-Noor" for the top photo, and its score (the badge under it).
-    @State private var prayed: String?
-    @State private var score: Double?
-    /// Where it was prayed: the masjid, else the place's name (always on the view page — owner).
-    @State private var place: String?
-    /// The prayer behind the top photo (its spot opens the map sheet).
-    @State private var facts: PrayerPhotos.Facts?
+    /// Each photo's caption details, by key (`prepareInfo`).
+    @State private var infos: [String: CaptionInfo] = [:]
     @State private var showingPlace = false
-    @State private var note: String?
     @State private var editingNote = false
     @State private var noteDraft = ""
     @State private var index: Int
     @State private var drag: CGFloat = 0
     /// A drag down: the pile follows the finger and shrinks a little, then closes.
     @State private var down: CGFloat = 0
+    /// The drag-to-close follows the finger anywhere (owner: as on the today page's photo).
+    @State private var freeDrag: CGSize = .zero
+    /// How far the pile has gathered into its top card: with the drag, and all the way while closing.
+    private var fold: CGFloat { folded ? 1 : min(down / 220, 1) }
+    private var dragScale: CGFloat { 1 - min(down / 1600, 0.2) }
     /// Which way this drag went, fixed by its first move.
     @State private var vertical: Bool?
     /// Where each card lies in the pile, picked at random the first time it's needed (owner: "just do random angles …
@@ -980,8 +994,10 @@ struct MemoriesDeck: View {
     /// How many seen cards show under the top one.
     private static let pileDepth = 4
 
-    init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool,
-         onTopFrame: @escaping (CGRect) -> Void, onClose: @escaping (_ key: String, _ dayKey: String) -> Void) {
+    init(photos: [MemoryPhoto], start: MemoryPhoto, shown: Bool, hideTop: Bool, folded: Bool,
+         onTopFrame: @escaping (CGRect) -> Void,
+         onClose: @escaping (_ key: String, _ dayKey: String, _ scale: CGFloat) -> Void) {
+        self.folded = folded
         self.photos = photos
         self.start = start
         self.shown = shown
@@ -1031,8 +1047,8 @@ struct MemoriesDeck: View {
                 }
                 .frame(width: geo.size.width, height: width + 30)
                 .contentShape(Rectangle())
-                .offset(y: max(down, 0))
-                .scaleEffect(1 - min(max(down, 0) / 1600, 0.2))
+                .offset(freeDrag)
+                .scaleEffect(dragScale)
                 .gesture(pileDrag(range))
                 if let current { caption(current).padding(.top, 24).opacity(shown ? 1 : 0) }
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
@@ -1089,7 +1105,7 @@ struct MemoriesDeck: View {
                             Button("Save") {
                                 if photos.indices.contains(shownIndex) {
                                     PrayerPhotos.setNote(photos[shownIndex].key, noteDraft)
-                                    note = PrayerPhotos.note(photos[shownIndex].key)
+                                    infos[photos[shownIndex].key]?.note = PrayerPhotos.note(photos[shownIndex].key)
                                 }
                                 editingNote = false
                             }
@@ -1098,11 +1114,12 @@ struct MemoriesDeck: View {
             }
             .presentationDetents([.medium, .large])
         }
-        .task(id: "\(shownIndex)|\(showPlace)") { await loadDetail() }
+        .onAppear { prepareInfo(around: shownIndex) }
+        .onChange(of: shownIndex) { _, i in prepareInfo(around: i) }
         .sheet(isPresented: $showingPlace) {
-            if let spot = facts?.spot, photos.indices.contains(shownIndex) {
-                PrayerPlaceMapSheet(caption: PrayerPhotos.caption(photos[shownIndex].key), place: place ?? "",
-                                    spot: spot, score: facts?.score, atMasjid: facts?.masjid != nil)
+            if photos.indices.contains(shownIndex), let info = infos[photos[shownIndex].key], let spot = info.facts?.spot {
+                PrayerPlaceMapSheet(caption: PrayerPhotos.caption(photos[shownIndex].key), place: info.place ?? "",
+                                    spot: spot, score: info.score, atMasjid: info.facts?.masjid != nil)
             }
         }
         .navigationDestination(item: $sharing) { key in PrayerPhotoShareComposer(key: key) }
@@ -1121,7 +1138,7 @@ struct MemoriesDeck: View {
 
     private func close() {
         guard photos.indices.contains(index) else { return }
-        onClose(photos[index].key, photos[index].dayKey)
+        onClose(photos[index].key, photos[index].dayKey, dragScale)
     }
 
     /// The day waiting off one edge: the strip's jump if it's coming from that side, else the next day (on its first
@@ -1151,6 +1168,7 @@ struct MemoriesDeck: View {
         let screen = UIScreen.main.bounds.width
         if jump { incoming = Incoming(range: dayRange(of: top), top: top, fromRight: fromRight) }
         lie = Self.lies(around: top, in: photos, keeping: lie)
+        prepareInfo(around: top)
         let token = UUID()
         pagingToken = token
         moving(back: !fromRight) {
@@ -1293,23 +1311,26 @@ struct MemoriesDeck: View {
 
     /// The prayer's name, its line and its note — they slide sideways with every photo.
     private func caption(_ current: MemoryPhoto) -> some View {
-        ZStack {
+        // Its own photo's details, worked out before it shows (`prepareInfo`): the whole caption is one view that moves
+        // as one — filled in after it slid in, its lines changed separately and seemed to move at their own speeds.
+        let info = infos[current.key] ?? CaptionInfo()
+        return ZStack {
             VStack(spacing: 4) {
                 HStack(spacing: 6) {
                     Image(systemName: prayerIcon(for: current.name)).font(.system(size: 17))
                     Text(current.name).font(.system(size: 22, weight: .medium, design: .rounded))
                 }
                 // When (and where), then the score as a small ring in its grade's colour — each a line, always there.
-                Text(prayed ?? " ")
+                Text(info.prayed ?? " ")
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
                     .lineLimit(1)
                 Group {
-                    if let place {
+                    if let place = info.place {
                         // A tap shows it on a map (owner).
-                        Button { if facts?.spot != nil { showingPlace = true } } label: {
+                        Button { if info.facts?.spot != nil { showingPlace = true } } label: {
                             HStack(spacing: 4) {
                                 Label(place, systemImage: "mappin.and.ellipse")
-                                if facts?.spot != nil {
+                                if info.facts?.spot != nil {
                                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                                 }
                             }
@@ -1323,7 +1344,7 @@ struct MemoriesDeck: View {
                 .lineLimit(1)
                 .padding(.horizontal, 36)
                 Group {
-                    if let score {
+                    if let score = info.score {
                         HStack(spacing: 6) {
                             ZStack {
                                 Circle().stroke(Color.primary.opacity(0.12), lineWidth: 2.5)
@@ -1345,11 +1366,11 @@ struct MemoriesDeck: View {
                 // Three lines' room whether there's a note or not, so nothing on the page moves from photo to photo
                 // (owner's note: a long one pushed the pile and the buttons, which clicked up and down on each swipe).
                 Button {
-                    noteDraft = note ?? ""
+                    noteDraft = info.note ?? ""
                     editingNote = true
                 } label: {
                     Group {
-                        if let note {
+                        if let note = info.note {
                             Text(note)
                                 .font(.system(size: 14, design: .rounded)).italic()
                                 .foregroundStyle(.primary)
@@ -1381,37 +1402,47 @@ struct MemoriesDeck: View {
         .opacity(1 - min(max(down, 0) / 120, 1))
     }
 
-    /// The top photo's line: when it was marked, its grade and score, and where (with Show where on), and its note.
-    private func loadDetail() async {
-        guard photos.indices.contains(shownIndex) else { return }
-        let key = photos[shownIndex].key
-        note = PrayerPhotos.note(key)
-        var found = PrayerPhotos.facts(for: key, in: context)
-        #if DEBUG
-        // `-demoPlace`: a marked time, a score and a spot in Manhattan for the stand-in photos (no prayer rows).
-        if found == nil, ProcessInfo.processInfo.arguments.contains("-demoPlace") {
-            found = PrayerPhotos.Facts(markedAt: Date(), score: 0.86, masjid: nil,
-                                       spot: CLLocationCoordinate2D(latitude: 40.7536, longitude: -73.9832))
-        }
-        #endif
-        guard let facts = found else {
-            prayed = nil; score = nil; place = nil; self.facts = nil
-            return
-        }
-        self.facts = facts
-        prayed = facts.markedAt.map { "Prayed \($0.formatted(date: .omitted, time: .shortened))" }
-        score = facts.score
-        // The masjid at once; else the place's name, remembered or looked up once (`PrayerPlaceNames`).
-        if let masjid = facts.masjid {
-            place = masjid
-        } else if let spot = facts.spot {
-            place = PrayerPlaceNames.name(spot)
-            if place == nil {
-                let looked = await PrayerPhotos.placeText(facts, cityOnly: true)
-                if photos.indices.contains(shownIndex), key == photos[shownIndex].key { place = looked }
+    struct CaptionInfo {
+        var prayed: String?
+        var place: String?
+        var score: Double?
+        var note: String?
+        var facts: PrayerPhotos.Facts?
+    }
+
+    /// The details of every photo in the day of `i` and the days either side, worked out now (the database and the
+    /// notes are on the phone); a place's name the phone hasn't learnt yet is looked up once and filled in after.
+    private func prepareInfo(around i: Int) {
+        guard photos.indices.contains(i) else { return }
+        let r = dayRange(of: i)
+        var lo = r.lowerBound, hi = r.upperBound
+        if lo > 0 { lo = dayRange(of: lo - 1).lowerBound }
+        if hi < photos.count - 1 { hi = dayRange(of: hi + 1).upperBound }
+        var lookups: [(String, PrayerPhotos.Facts)] = []
+        for index in lo...hi {
+            let key = photos[index].key
+            guard infos[key] == nil else { continue }
+            var found = PrayerPhotos.facts(for: key, in: context)
+            #if DEBUG
+            // `-demoPlace`: a marked time, a score and a spot in Manhattan for the stand-in photos (no prayer rows).
+            if found == nil, ProcessInfo.processInfo.arguments.contains("-demoPlace") {
+                found = PrayerPhotos.Facts(markedAt: Date(), score: 0.86, masjid: nil,
+                                           spot: CLLocationCoordinate2D(latitude: 40.7536, longitude: -73.9832))
             }
-        } else {
-            place = nil
+            #endif
+            var info = CaptionInfo(note: PrayerPhotos.note(key), facts: found)
+            if let facts = found {
+                info.prayed = facts.markedAt.map { "Prayed \($0.formatted(date: .omitted, time: .shortened))" }
+                info.score = facts.score
+                info.place = facts.masjid ?? facts.spot.flatMap { PrayerPlaceNames.name($0) }
+                if info.place == nil, facts.spot != nil { lookups.append((key, facts)) }
+            }
+            infos[key] = info
+        }
+        for (key, facts) in lookups {
+            Task {
+                if let city = await PrayerPhotos.placeText(facts, cityOnly: true) { infos[key]?.place = city }
+            }
         }
     }
 
@@ -1440,7 +1471,7 @@ struct MemoriesDeck: View {
                 let x = atStart ? 0 : max(drag, 0)
                 return (x, 0, Double(x) / 40)
             } else {
-                return (l.dx, l.dy, l.tilt)
+                return (l.dx * (1 - fold), l.dy * (1 - fold), l.tilt * (1 - fold))
             }
         }()
         MemoryCard(key: key, width: width)
@@ -1448,7 +1479,7 @@ struct MemoriesDeck: View {
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                 if i == index { onTopFrame(rect) }
             }
-            .opacity(i == index ? (hideTop ? 0 : 1) : (shown ? 1 : 0))
+            .opacity(i == index ? (hideTop ? 0 : 1) : (shown ? 1 - fold : 0))
             .rotationEffect(.degrees(angle))
             .offset(x: x, y: y)
             .zIndex(Double(i))
@@ -1466,7 +1497,11 @@ struct MemoriesDeck: View {
                 if vertical == nil {
                     vertical = abs(value.translation.height) > abs(value.translation.width)
                 }
-                if vertical == true { down = value.translation.height; return }
+                if vertical == true {
+                    freeDrag = value.translation
+                    down = hypot(value.translation.width, value.translation.height)
+                    return
+                }
                 finishPaging()
                 let t = value.translation.width
                 // At the very first and last photo the pile gives a little and comes back.
@@ -1475,11 +1510,12 @@ struct MemoriesDeck: View {
             .onEnded { value in
                 defer { vertical = nil }
                 if vertical == true {
-                    if value.translation.height > 120 || value.predictedEndTranslation.height > 320 {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) { down = 0 }
+                    let flung = hypot(value.predictedEndTranslation.width, value.predictedEndTranslation.height)
+                    if down > 120 || flung > 320 {
+                        // Home from right where it is (the page flies it; the pile stays put and gathers).
                         close()
                     } else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0 }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { down = 0; freeDrag = .zero }
                     }
                     return
                 }
@@ -1571,6 +1607,24 @@ struct MemoriesDayStrip: View {
     private static let cell: CGFloat = 50
     private static let labelHeight: CGFloat = 34
 
+    /// Where the strip is scrolled, set by us from the day's place in the list (the id-based position didn't move a
+    /// short strip — three days on the owner's phone — so the pile's day and the strip's drifted apart).
+    @State private var position = ScrollPosition()
+    @State private var margin: CGFloat = 0
+    /// The day under the centre now, from the scroll offset.
+    @State private var centreIndex = 0
+
+    private func scroll(to day: String?, animated: Bool) {
+        guard let day, let i = days.firstIndex(of: day), margin > 0 else { return }
+        // ScrollPosition's x counts from the content's start, margins excluded (the content offset reads −margin there).
+        let x = CGFloat(i) * Self.cell
+        if animated {
+            withAnimation(.snappy(duration: 0.35)) { position.scrollTo(x: x) }
+        } else {
+            position.scrollTo(x: x)
+        }
+    }
+
     var body: some View {
         GeometryReader { geo in
             let margin = (geo.size.width - Self.cell) / 2
@@ -1586,24 +1640,37 @@ struct MemoriesDayStrip: View {
                 .scrollIndicators(.hidden)
                 .contentMargins(.horizontal, margin, for: .scrollContent)
                 .scrollTargetBehavior(.viewAligned)
-                .scrollPosition(id: $centred)
+                .scrollPosition($position)
                 .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in leftmost = ids.min() }
                 // The day under the centre as the finger moves, from the offset itself (the position binding only
                 // caught up once the strip stopped).
                 .onScrollGeometryChange(for: Int.self) { geo in
                     Int(((geo.contentOffset.x + geo.contentInsets.leading) / Self.cell).rounded())
                 } action: { _, i in
+                    centreIndex = i
                     guard phase == .interacting || phase == .decelerating, days.indices.contains(i) else { return }
                     tick += 1
                     onScrub(days[i])
                 }
                 .onScrollPhaseChange { _, new in
                     phase = new
-                    if new == .idle, let centred { onRest(centred) }
+                    if new == .idle, days.indices.contains(centreIndex) { onRest(days[centreIndex]) }
                 }
                 pinnedMonth
             }
             .coordinateSpace(name: "dayStrip")
+            // The strip's real width (at its first appearance the reader still read 0, and nothing scrolled), then
+            // straight onto the pile's day.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width in
+                let first = self.margin <= 0
+                self.margin = (width - Self.cell) / 2
+                if first { scroll(to: centred, animated: false) }
+            }
+        }
+        // The pile moved to another day: the strip follows (not while a finger is on it).
+        .onChange(of: centred) { _, day in
+            guard phase != .interacting, phase != .decelerating else { return }
+            scroll(to: day, animated: true)
         }
         .frame(height: Self.labelHeight + 50)
         .sensoryFeedback(.selection, trigger: tick)
@@ -1654,7 +1721,7 @@ struct MemoriesDayStrip: View {
 
     private func monthLabel(_ month: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(MemoriesPage.parse(month + "-01").map { $0.formatted(.dateTime.month(.wide)) } ?? month)
+            Text(MemoriesPage.parse(month + "-01").map { $0.formatted(.dateTime.month(.wide).year()) } ?? month)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
             let n = monthCounts[month] ?? 0
             Text(n == 1 ? "1 photo" : "\(n) photos")
