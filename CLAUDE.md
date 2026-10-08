@@ -276,7 +276,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
 - After a mark, the post-salah pill's second section (camera) → `PrayerPhotoCapture`: `DualCamera` = front + back at
   once (`AVCaptureMultiCamSession`, iPhone XS+; else the back), run on its own queue; review → Save. Files only, no
   schema: Application Support/PrayerPhotos/`<dayKey>-<name>-back|front.heic` (`PrayerPhotos.key`, Jumu'ah = Dhuhr; HEIC at
-  1200 / 700 px since decision prayer-photo-storage A, ~210 KB a prayer; older .jpg ones still read — go through `url` /
+  1200 / 700 px since decision prayer-photo-storage A, cropped to the centre square on save (every view shows a square; owner 2026-10-08); older .jpg ones still read — go through `url` /
   `key(fromFile:)`, never a fixed extension); private, never synced, in the phone's backup; Memories' ⚙ → Space used
   (`PrayerPhotoStorageRow`). Add / Retake / Remove from the hold editor's "Your photo" row only while the prayer is on
   and marked; seen any time. **Unmarking deletes the photo** (`PrayerPhotos.discard(for:)` on every unmark path — the app's
@@ -287,9 +287,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   the bottom over the page — the card previews them; a tap on the page around it puts the share options away, else closes; `PrayerPhotoFace` takes taps only on its rounded square (`contentShape` — a
   tall photo's cut-off parts caught taps above it and beside the buttons); tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
-  `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
-  (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
-  hold editor's photo, Memories' pile or the share page; `load` / `mainURL` / thumbnails follow it. Day ring: dots
+  `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The back photo is always the main
+  picture** (owner 2026-10-08; the stored choice `PrayerPhotoMain` is gone, its key cleared once): a tap in the camera's
+  review, the viewer, Memories' pile (`swapped`, back as the pile closes) or the share page swaps them on that screen only. Day ring: dots
   only (photos on the ring went back to dots — owner); a photographed prayer's fifth tapped shows the photo in the centre (the circle's own tap layer steps aside: `DayPageState.photoInCentre`) (the strip
   under the line was dropped — it fought the list card). Map: the prayer's page shows it. DEBUG
   `-demoPostSalahOffer -demoPillPhoto` (the simulator's shutter makes a stand-in photo), `-demoPhotoViewer`.
@@ -321,7 +321,7 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   anchor (`.center` with the margins landed 4 days off); its days are built in `init`; it's positioned by us — `ScrollPosition.scrollTo(x: index × cell)` from
   its measured width (the id binding left a short strip, three days, on the wrong day). The pile moves the strip; dragging the strip moves the pile live, day by day under the finger (`onScrub`,
   the centred index from `onScrollGeometryChange` contentOffset + insets — the position binding only caught up at rest;
-  photo days only), and at rest an empty day snaps to the nearest (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
+  photo days only), and at rest — only after a finger moved it (`touched`; the strip's own scrolls also came to rest, and one at its start sent the pile to the first day) — an empty day snaps the strip and pile to the nearest photo day (`onRest`); a tap jumps; a tick per day. Month name + "N photos" over each 1st; the month of the earliest
   visible day (`onScrollTargetVisibilityChange`) is pinned at the left edge and pushed out by the next month's 1st
   (positions measured in the strip's own named space — `.scrollView` space reported a stale 50). DEBUG `-logDayStrip`.
   Captions come from `infos` (`prepareInfo`: the day and both neighbours worked out before they show, so the caption

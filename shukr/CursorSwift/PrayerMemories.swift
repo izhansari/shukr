@@ -53,7 +53,7 @@ extension PrayerPhotos {
     private static func thumbSide(_ side: Int) -> Int { side <= 180 ? 180 : 360 }
 
     private static func thumbKey(_ key: String, _ side: Int) -> NSString {
-        "\(key)-\(thumbSide(side))-\(PrayerPhotoMain.selfieIsMain(key))" as NSString
+        "\(key)-\(thumbSide(side))" as NSString
     }
 
     /// Already decoded? (A square drawn again shows its picture from the first frame.)
@@ -805,7 +805,7 @@ private struct MemoryThumb: View {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
             }
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .task(id: "\(key)-\(PrayerPhotoMain.shared.isSelfie(key))") {
+            .task(id: key) {
                 let fresh = await PrayerPhotos.thumbnail(key, side: side)
                 if fresh !== image { image = fresh }
             }
@@ -874,6 +874,8 @@ struct MemoriesDeck: View {
     /// feel more hand made"); not stored.
     @State private var lie: [String: Lie]
     @State private var sharing: String?
+    /// Cards showing their selfie big after a tap — on this screen only; it swaps back as the pile closes.
+    @State private var swapped: Set<String> = []
     /// The day centred in the strip at the bottom: follows the pile, and a drag on the strip moves the pile there once
     /// it comes to rest.
     @State private var stripDay: String?
@@ -1027,6 +1029,8 @@ struct MemoriesDeck: View {
 
     private func close() {
         guard photos.indices.contains(index) else { return }
+        // The top card turns back to its main picture as it folds, so the photo flying home matches its square.
+        withAnimation(.snappy(duration: 0.18)) { swapped = [] }
         onClose(photos[index].key, photos[index].dayKey, dragScale)
     }
 
@@ -1363,7 +1367,7 @@ struct MemoriesDeck: View {
                 return (l.dx * (1 - fold), l.dy * (1 - fold), l.tilt * (1 - fold))
             }
         }()
-        MemoryCard(key: key, width: width)
+        MemoryCard(key: key, width: width, swapped: swapped.contains(key))
             .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                 if i == index { onTopFrame(rect) }
@@ -1374,9 +1378,11 @@ struct MemoriesDeck: View {
             .zIndex(Double(i))
             .allowsHitTesting(i == index)
             .onTapGesture {
-                // The other picture becomes the main one, and stays so (owner).
+                // The other picture big for a look; the back photo stays the main one (owner, 2026-10-08).
                 triggerSomeVibration(type: .light)
-                PrayerPhotoMain.shared.toggle(key)
+                withAnimation(.snappy(duration: 0.25)) {
+                    if swapped.contains(key) { swapped.remove(key) } else { swapped.insert(key) }
+                }
             }
     }
 
@@ -1502,6 +1508,12 @@ struct MemoriesDayStrip: View {
     @State private var margin: CGFloat = 0
     /// The day under the centre now, from the scroll offset.
     @State private var centreIndex = 0
+    /// A finger moved the strip since it last came to rest.
+    @State private var touched = false
+
+    private func nearestPhotoDay(to i: Int) -> String? {
+        days.indices.filter { photoDays.contains(days[$0]) }.min { abs($0 - i) < abs($1 - i) }.map { days[$0] }
+    }
 
     private func scroll(to day: String?, animated: Bool) {
         guard let day, let i = days.firstIndex(of: day), margin > 0 else { return }
@@ -1543,7 +1555,20 @@ struct MemoriesDayStrip: View {
                 }
                 .onScrollPhaseChange { _, new in
                     phase = new
-                    if new == .idle, days.indices.contains(centreIndex) { onRest(days[centreIndex]) }
+                    if new == .interacting { touched = true }
+                    // Only a rest after the finger moved it: the strip's own scrolls (opening on the pile's day, following
+                    // the pile) came to rest too, and one caught at the strip's start sent the pile to the first day
+                    // (owner: every photo opened on the 6th).
+                    guard new == .idle, touched, days.indices.contains(centreIndex) else { return }
+                    touched = false
+                    let day = days[centreIndex]
+                    if photoDays.contains(day) {
+                        onRest(day)
+                    } else if let nearest = nearestPhotoDay(to: centreIndex) {
+                        // An empty day (today before its Fajr photo, owner): back onto the nearest day with photos.
+                        scroll(to: nearest, animated: true)
+                        onRest(nearest)
+                    }
                 }
                 pinnedMonth
             }
@@ -1670,24 +1695,24 @@ private struct MemoryCard: View {
     /// pictures from the first frame.
     private final class Pair { let images: (back: UIImage?, front: UIImage?); init(_ i: (back: UIImage?, front: UIImage?)) { images = i } }
     private static let cache: NSCache<NSString, Pair> = { let c = NSCache<NSString, Pair>(); c.countLimit = 40; return c }()
-    private static func cacheKey(_ key: String) -> NSString { "\(key)-\(PrayerPhotoMain.selfieIsMain(key))" as NSString }
+    private static func cacheKey(_ key: String) -> NSString { key as NSString }
+    /// Showing the selfie big (a tap in the pile), for this look only.
+    var swapped = false
 
-    init(key: String, width: CGFloat) {
+    init(key: String, width: CGFloat, swapped: Bool = false) {
         self.key = key
         self.width = width
+        self.swapped = swapped
         _images = State(initialValue: Self.cache.object(forKey: Self.cacheKey(key))?.images ?? (nil, nil))
     }
 
     var body: some View {
-        let selfie = PrayerPhotoMain.shared.isSelfie(key)
-        PrayerPhotoFace(back: images.back, front: images.front, width: width)
+        let showSelfie = swapped && images.front != nil
+        PrayerPhotoFace(back: showSelfie ? images.front : images.back, front: showSelfie ? images.back : images.front,
+                        width: width)
             .task(id: key) {
                 guard images.back == nil else { return }
                 images = await PrayerPhotos.load(key)
-                Self.cache.setObject(Pair(images), forKey: Self.cacheKey(key))
-            }
-            .onChange(of: selfie) { _, _ in
-                withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
                 Self.cache.setObject(Pair(images), forKey: Self.cacheKey(key))
             }
     }
@@ -1717,10 +1742,9 @@ struct PrayerPhotoShareComposer: View {
                             guard images.front != nil else { return }
                             triggerSomeVibration(type: .light)
                             withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
-                            PrayerPhotoMain.shared.toggle(key)
                         }
                     if images.front != nil {
-                        Text("Tap the photo to choose the main picture")
+                        Text("Tap the photo to swap the pictures")
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
                     }
                     PrayerShareControls(options: options).padding(.horizontal, 24)

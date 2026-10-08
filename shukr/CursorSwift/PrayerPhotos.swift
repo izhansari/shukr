@@ -215,10 +215,7 @@ enum PrayerPhotos {
     static func exists(for row: PrayerModel) -> Bool { has(key(dayKey: row.dayKey, name: row.name)) }
 
     static func delete(_ key: String) {
-        Task { @MainActor in
-            PrayerPhotoMain.shared.set(key, selfie: false)
-            PrayerPhotoFavorites.shared.set(key, false)
-        }
+        Task { @MainActor in PrayerPhotoFavorites.shared.set(key, false) }
         setNote(key, nil)
         for isFront in [false, true] {
             for ext in ["heic", "jpg"] { try? FileManager.default.removeItem(at: file(key, front: isFront, ext)) }
@@ -226,24 +223,20 @@ enum PrayerPhotos {
         Task { @MainActor in PrayerPhotoRevision.shared.bump() }
     }
 
-    /// Decoded off the main thread, ready to draw: `back` is the main picture (the selfie when it was made the main one
-    /// — `PrayerPhotoMain`), `front` the one in the corner.
+    /// Decoded off the main thread, ready to draw: `back` is always the main picture (owner: "the back camera photo is
+    /// always the primary photo"; a tap swaps them only on the screen it's on), `front` the one in the corner.
     static func load(_ key: String) async -> (back: UIImage?, front: UIImage?) {
         await Task.detached(priority: .userInitiated) {
             func image(_ front: Bool) -> UIImage? {
                 guard let data = try? Data(contentsOf: url(key, front: front)) else { return nil }
                 return UIImage(data: data)?.preparingForDisplay()
             }
-            let back = image(false), front = image(true)
-            return PrayerPhotoMain.selfieIsMain(key) && front != nil ? (front, back) : (back, front)
+            return (image(false), image(true))
         }.value
     }
 
     /// The main picture's file (the thumbnails').
-    static func mainURL(_ key: String) -> URL {
-        let front = url(key, front: true)
-        return PrayerPhotoMain.selfieIsMain(key) && FileManager.default.fileExists(atPath: front.path) ? front : url(key, front: false)
-    }
+    static func mainURL(_ key: String) -> URL { url(key, front: false) }
 
     /// The prayer's score (0…1) for the share card's ring; Jumu'ah counts as 1.
     @MainActor static func score(for key: String, in context: ModelContext) -> Double? {
@@ -260,7 +253,12 @@ enum PrayerPhotos {
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                             kCGImageSourceCreateThumbnailWithTransform: true,
                                             kCGImageSourceThumbnailMaxPixelSize: maxPixels]
-            guard let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            guard let full = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+            // Every place shows the photo as a square (cards, squares, the share card), so only the centre square is
+            // kept — the rest was never seen (owner: "the part of the image that get clipped off, let's not store it").
+            let side = min(full.width, full.height)
+            let square = CGRect(x: (full.width - side) / 2, y: (full.height - side) / 2, width: side, height: side)
+            let cg = full.cropping(to: square) ?? full
             let image = UIImage(cgImage: cg)
             #if !targetEnvironment(simulator)
             // The simulator hangs decoding HEIC (every decode, never returning — a phone reads it in ~30 ms,
@@ -288,6 +286,7 @@ enum PrayerPhotos {
     private(set) var value = 0
     /// Any photo saved at all (the day page's Memories link), re-read only when one is saved or removed.
     private(set) var hasPhotos = !PrayerPhotos.all().isEmpty
+    init() { PrayerPhotoMainCleanup.run() }
     func bump() { value += 1; hasPhotos = !PrayerPhotos.all().isEmpty }
 }
 
@@ -488,7 +487,6 @@ struct PrayerPhotoViewer: View {
                             guard images.front != nil else { return }
                             triggerSomeVibration(type: .light)
                             withAnimation(.snappy(duration: 0.25)) { images = (images.front, images.back) }
-                            PrayerPhotoMain.shared.toggle(key)
                         }
                     HStack(spacing: 18) {
                         Button { setSharing(!sharing) } label: {
@@ -936,7 +934,7 @@ struct PrayerPhotoCapture: View {
     @StateObject private var camera = DualCamera()
     @State private var shot: (back: UIImage, front: UIImage?, backData: Data, frontData: Data?)?
     @State private var saving = false
-    /// The selfie as the main picture (a tap on the review swaps them; kept with the photo).
+    /// The selfie shown big for a look (a tap swaps them); the back photo is saved as the main one whatever this is.
     @State private var selfieMain = false
     /// A few words with it, optional (the Journal shows them under the photo).
     @State private var note = ""
@@ -1061,7 +1059,6 @@ struct PrayerPhotoCapture: View {
                     triggerSomeVibration(type: .success)
                     Task {
                         await PrayerPhotos.save(target.key, back: shot.backData, front: shot.frontData)
-                        PrayerPhotoMain.shared.set(target.key, selfie: selfieMain && shot.frontData != nil)
                         PrayerPhotos.setNote(target.key, note)
                         camera.stop()
                         onClose()
@@ -1116,29 +1113,10 @@ struct PrayerPhotoCapture: View {
     #endif
 }
 
-/// Which picture is the main one, per photo (owner: "however they last toggled the main photo, save it as such … if
-/// they want selfie to be the primary pic"): the keys whose selfie leads, in UserDefaults. Set by a tap that swaps the
-/// two — in the camera's review, the hold editor's photo, Memories' pile and the share page; nothing asks to save.
-@MainActor @Observable final class PrayerPhotoMain {
-    static let shared = PrayerPhotoMain()
-    nonisolated private static let defaultsKey = "prayerPhotos.selfieMain"
-    private(set) var selfieMain: Set<String> = Set(UserDefaults.standard.stringArray(forKey: defaultsKey) ?? [])
-
-    func isSelfie(_ key: String) -> Bool { selfieMain.contains(key) }
-
-    func set(_ key: String, selfie: Bool) {
-        guard selfie != selfieMain.contains(key) else { return }
-        if selfie { selfieMain.insert(key) } else { selfieMain.remove(key) }
-        UserDefaults.standard.set(Array(selfieMain), forKey: Self.defaultsKey)
-        PrayerPhotoRevision.shared.bump()
-    }
-
-    func toggle(_ key: String) { set(key, selfie: !isSelfie(key)) }
-
-    /// For the loaders, off the main thread.
-    nonisolated static func selfieIsMain(_ key: String) -> Bool {
-        UserDefaults.standard.stringArray(forKey: defaultsKey)?.contains(key) ?? false
-    }
+/// The old "main picture" choice is gone (owner, 2026-10-08: the back photo is always the main one); its stored keys
+/// are cleared once.
+enum PrayerPhotoMainCleanup {
+    static func run() { UserDefaults.standard.removeObject(forKey: "prayerPhotos.selfieMain") }
 }
 
 /// The photos marked with a heart (Memories' Favorites filter): their keys, in UserDefaults.
