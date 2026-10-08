@@ -15,6 +15,7 @@ import CoreLocation
 import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
+import CoreImage
 
 // MARK: - Store
 
@@ -226,8 +227,11 @@ enum PrayerPhotos {
     /// Decoded off the main thread, ready to draw: `back` is always the main picture (owner: "the back camera photo is
     /// always the primary photo"; a tap swaps them only on the screen it's on), `front` the one in the corner.
     static func load(_ key: String) async -> (back: UIImage?, front: UIImage?) {
-        await Task.detached(priority: .userInitiated) {
+        // Still developing: only a wash of its colours ever leaves the file (PhotoDevelop).
+        let developing = !PhotoDevelop.isDeveloped(key: key)
+        return await Task.detached(priority: .userInitiated) {
             func image(_ front: Bool) -> UIImage? {
+                if developing { return PhotoDevelop.veil(url: url(key, front: front)) }
                 guard let data = try? Data(contentsOf: url(key, front: front)) else { return nil }
                 return UIImage(data: data)?.preparingForDisplay()
             }
@@ -270,6 +274,195 @@ enum PrayerPhotos {
     }
 }
 
+// MARK: - Developing (owner, 2026-10-08: "like laps where there's a black room … you're not allowed to see it and it's
+// blurred out until the end of the day … even if they never pray Isha, at the end of the day, the rest of the photos get
+// developed"; decisions photo-develop-time A (midnight), photo-develop-notify B (no notification), photo-develop-reveal A)
+
+/// A prayer day's photos develop when its five are all marked (`check`, from every reload of today's rows) or when the
+/// clock passes midnight (Isha's window ends at 11:59 PM), whichever is first; once developed, always. Until then every
+/// photo of the day is shown only as `veil` — a 10 px copy, softened — so nothing on screen (or in a screenshot) can be
+/// sharpened back into the picture. The first time a developed day's photos are seen, their blur clears like film
+/// (`DevelopReveal`). Files and UserDefaults only; no schema.
+enum PhotoDevelop {
+    /// The latest prayer day whose five were all marked ("YYYY-MM-DD"); every day up to it is developed.
+    static let developedDayKey = "prayerPhotos.developedDay"
+    /// Days whose clearing has played (the reveal shows once per day).
+    static let revealedKey = "prayerPhotos.revealedDays"
+
+    static func isDeveloped(key photoKey: String, now: Date = Date()) -> Bool {
+        isDeveloped(day: String(photoKey.prefix(10)), now: now)
+    }
+
+    static func isDeveloped(day dayKey: String, now: Date = Date()) -> Bool {
+        #if DEBUG
+        // `-photosDeveloping`: today's photos stay developing whatever is marked (until `-photosDevelopAfter s`).
+        if ProcessInfo.processInfo.arguments.contains("-photosDeveloping"), dayKey >= PrayerNotificationID.dayKey(now) {
+            return debugDeveloped
+        }
+        #endif
+        // Past midnight: the day is over.
+        if dayKey < PrayerNotificationID.dayKey(now) { return true }
+        if let all = UserDefaults.standard.string(forKey: developedDayKey), dayKey <= all { return true }
+        return false
+    }
+
+    #if DEBUG
+    nonisolated(unsafe) static var debugDeveloped = false
+    #endif
+
+    /// Today's rows reloaded or a mark changed: all five marked develops the day (and the views showing it reload).
+    /// Never called with the tour's practice day (both callers return before it).
+    static func check(_ rows: [PrayerModel]) {
+        guard rows.count >= 5, rows.allSatisfy(\.isCompleted), let day = rows.first?.dayKey else { return }
+        let done = UserDefaults.standard.string(forKey: developedDayKey) ?? ""
+        guard day > done else { return }
+        UserDefaults.standard.set(day, forKey: developedDayKey)
+        Task { @MainActor in PrayerPhotoRevision.shared.bump() }
+    }
+
+    /// Developed, with its clearing still to play.
+    static func needsReveal(day dayKey: String) -> Bool {
+        isDeveloped(day: dayKey) && !(UserDefaults.standard.stringArray(forKey: revealedKey) ?? []).contains(dayKey)
+    }
+
+    static func markRevealed(day dayKey: String) {
+        var days = UserDefaults.standard.stringArray(forKey: revealedKey) ?? []
+        guard !days.contains(dayKey) else { return }
+        days.append(dayKey)
+        UserDefaults.standard.set(Array(days.suffix(60)), forKey: revealedKey)
+    }
+
+    /// Today has photos still developing (the day page says when they'll be ready).
+    static func todayDeveloping(now: Date = Date()) -> Bool {
+        let today = PrayerDay.key(for: now)
+        return !isDeveloped(day: today, now: now) && PrayerPhotos.all().contains { $0.dayKey == today }
+    }
+
+    /// Today's photos have developed and haven't been looked at yet (the day page's "developed" link).
+    static func todayReady(now: Date = Date()) -> Bool {
+        let today = PrayerDay.key(for: now)
+        return needsReveal(day: today) && PrayerPhotos.all().contains { $0.dayKey == today }
+    }
+
+    nonisolated(unsafe) private static let context = CIContext(options: [.useSoftwareRenderer: false])
+
+    /// The picture as only its colours: a 10 px copy, scaled up and softened (about 120 px).
+    static func veil(url: URL) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return veil(source)
+    }
+
+    static func veil(data: Data) -> UIImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return veil(source)
+    }
+
+    private static func veil(_ source: CGImageSource) -> UIImage? {
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                        kCGImageSourceCreateThumbnailWithTransform: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: 10]
+        guard let tiny = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { return nil }
+        let scale = 120 / CGFloat(max(tiny.width, tiny.height, 1))
+        let extent = CGRect(x: 0, y: 0, width: CGFloat(tiny.width) * scale, height: CGFloat(tiny.height) * scale)
+        let soft = CIImage(cgImage: tiny).samplingLinear()
+            .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            .clampedToExtent()
+            .applyingGaussianBlur(sigma: 9)
+            .cropped(to: extent)
+        guard let cg = context.createCGImage(soft, from: extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+
+    /// Midnight develops the day: the photos on screen reload then (and on every return to the app).
+    @MainActor static func watchMidnight() {
+        #if DEBUG
+        // `-photosDeveloping -photosDevelopAfter s`: today's photos develop s seconds in (the reveal in the simulator).
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-photosDevelopAfter"), i + 1 < args.count, let after = Double(args[i + 1]) {
+            UserDefaults.standard.removeObject(forKey: revealedKey)
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(after))
+                debugDeveloped = true
+                PrayerPhotoRevision.shared.bump()
+            }
+        }
+        #endif
+        midnightTask?.cancel()
+        midnightTask = Task { @MainActor in
+            while !Task.isCancelled {
+                let now = Date()
+                guard let next = Calendar.current.nextDate(after: now, matching: DateComponents(hour: 0, minute: 0, second: 1),
+                                                            matchingPolicy: .nextTime) else { return }
+                try? await Task.sleep(for: .seconds(next.timeIntervalSince(now)))
+                guard !Task.isCancelled else { return }
+                PrayerPhotoRevision.shared.bump()
+            }
+        }
+    }
+    @MainActor private static var midnightTask: Task<Void, Never>?
+}
+
+/// "Developing" on a photo that is (owner: "you're not allowed to see it"): an hourglass, and "after Isha" when there's
+/// room.
+struct DevelopingTag: View {
+    var width: CGFloat
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "hourglass")
+            if width >= 100 { Text("Developing") }
+        }
+        .font(.system(size: width >= 100 ? 12 : 7, weight: .bold, design: .rounded))
+        .foregroundStyle(.white)
+        .padding(.horizontal, width >= 100 ? 9 : 3)
+        .padding(.vertical, width >= 100 ? 5 : 3)
+        .background(Capsule().fill(.black.opacity(0.32)))
+        .accessibilityLabel("Developing — it shows after Isha")
+    }
+}
+
+/// A developed day's photos, the first time they're seen: the blur clears over ~2.4 s, a little bright and grey at
+/// first, like a print coming up (decision photo-develop-reveal A); the day is marked revealed as it starts.
+struct DevelopReveal: ViewModifier {
+    let dayKey: String
+    @State private var phase: Double = 0     // 1 = still veiled, 0 = clear
+    @State private var started = false
+
+    func body(content: Content) -> some View {
+        content
+            .blur(radius: 26 * phase)
+            .saturation(1 - 0.6 * phase)
+            .brightness(0.12 * phase)
+            .onAppear {
+                guard !started, PhotoDevelop.needsReveal(day: dayKey) else { return }
+                started = true
+                phase = 1
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(350))
+                    withAnimation(.easeOut(duration: 2.4)) { phase = 0 }
+                    // A beat later, so every square of the day on screen together gets to play it.
+                    try? await Task.sleep(for: .milliseconds(600))
+                    PhotoDevelop.markRevealed(day: dayKey)
+                }
+            }
+    }
+}
+
+extension View {
+    func developReveal(_ photoKey: String) -> some View { modifier(DevelopReveal(dayKey: String(photoKey.prefix(10)))) }
+    /// The developing tag over a photo of a day that hasn't developed.
+    @ViewBuilder func developingTag(_ photoKey: String, width: CGFloat, shown: Bool = true) -> some View {
+        let _ = PrayerPhotoRevision.shared.value   // re-read when photos change or the day develops
+        if !shown || PhotoDevelop.isDeveloped(key: photoKey) {
+            self
+        } else {
+            overlay(alignment: .bottomTrailing) {
+                DevelopingTag(width: width).padding(width >= 100 ? 8 : 3)
+            }
+        }
+    }
+}
+
 /// A photo is open (the floating card): whatever it was opened from waits for it — the day page let go of its fifth
 /// after 8 s and the card closed with it (owner: "the window seems to close itself abruptly").
 @MainActor @Observable final class PrayerPhotoViewing {
@@ -286,7 +479,7 @@ enum PrayerPhotos {
     private(set) var value = 0
     /// Any photo saved at all (the day page's Memories link), re-read only when one is saved or removed.
     private(set) var hasPhotos = !PrayerPhotos.all().isEmpty
-    init() { PrayerPhotoMainCleanup.run() }
+    init() { PrayerPhotoMainCleanup.run(); PhotoDevelop.watchMidnight() }
     func bump() { value += 1; hasPhotos = !PrayerPhotos.all().isEmpty }
 }
 
@@ -364,6 +557,8 @@ struct PrayerPhotoCard: View {
                 .presentationBackground(.clear)
             }
             .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { images = await PrayerPhotos.load(key) }
+            .developReveal(key)
+            .developingTag(key, width: width)
             .accessibilityLabel("Your \(PrayerPhotos.caption(key)) photo")
             .accessibilityAddTraits(opens ? .isButton : [])
     }
@@ -416,6 +611,7 @@ struct PrayerPhotoThumb: View {
         .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).stroke(edge, lineWidth: 2))
         // A small cached thumbnail (decoding the full photo for a 20 pt dot, five times over, was wasted work).
         .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") { image = await PrayerPhotos.thumbnail(key, side: Int(size * 3)) }
+        .developReveal(key)
     }
 }
 
@@ -474,6 +670,8 @@ struct PrayerPhotoViewer: View {
                                       place: sharing ? (share.addPlace ? share.shownPlace : nil) : place,
                                       score: sharing && share.addScore ? share.score : nil,
                                       tagOpacity: shown ? 1 : 0, width: width)
+                        .developReveal(key)
+                        .developingTag(key, width: width)
                         .shadow(color: .black.opacity(shown ? 0.35 : 0), radius: 30, y: 14)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                             guard cardFrame == nil, rect.width > 1 else { return }
@@ -496,6 +694,9 @@ struct PrayerPhotoViewer: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Share")
+                        // Nothing to share until it has developed.
+                        .disabled(!PhotoDevelop.isDeveloped(key: key))
+                        .opacity(PhotoDevelop.isDeveloped(key: key) ? 1 : 0.35)
                         Button(action: close) { circleIcon("xmark") }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
@@ -1038,6 +1239,17 @@ struct PrayerPhotoCapture: View {
             }
             .aspectRatio(1, contentMode: .fit)
             .padding(.horizontal, 12)
+            // Developing (owner: "as soon as the picture is taken, we blur it"): say so, so it never reads as broken.
+            .overlay(alignment: .bottom) {
+                if !PhotoDevelop.isDeveloped(key: target.key) {
+                    Label("Developing — you'll see it after Isha", systemImage: "hourglass")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Capsule().fill(.black.opacity(0.35)))
+                        .padding(.bottom, 14)
+                }
+            }
             TextField("Add a note", text: $note, axis: .vertical)
                 .lineLimit(1...3)
                 .font(.system(size: 16, design: .rounded))
@@ -1090,8 +1302,13 @@ struct PrayerPhotoCapture: View {
         #if DEBUG
         print("PHOTOCAM take back=\(back?.count ?? -1) front=\(front?.count ?? -1)")
         #endif
-        guard let back, let backImage = UIImage(data: back) else { return }
-        let frontImage = front.flatMap(UIImage.init(data:))
+        guard let back, var backImage = UIImage(data: back) else { return }
+        var frontImage = front.flatMap(UIImage.init(data:))
+        // Developing (owner: "as soon as the picture is taken, we blur it"): the review shows only its colours too.
+        if !PhotoDevelop.isDeveloped(key: target.key) {
+            backImage = PhotoDevelop.veil(data: back) ?? backImage
+            frontImage = front.flatMap { PhotoDevelop.veil(data: $0) }
+        }
         withAnimation(.easeOut(duration: 0.2)) { shot = (backImage, frontImage, back, front) }
     }
 

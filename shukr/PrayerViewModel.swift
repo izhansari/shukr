@@ -620,6 +620,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
             calculateDayScore(for: prayer.startTime)
 //            updatePrayerStreak()
             pushCompletionsToWidget()
+            PhotoDevelop.check(todaysPrayers)   // the last of the five develops the day's photos
             // Prayed at a masjid? (Jumu'ah gets full marks.)
             if prayer.isCompleted {
                 Task { @MainActor in
@@ -1322,6 +1323,7 @@ class PrayerViewModel: ObservableObject{ //letsgoooo i removed the CLLocationMan
 
         do {
             todaysPrayers = Self.onePerPrayer(try context.fetch(fetchDescriptor))
+            PhotoDevelop.check(todaysPrayers)   // all five marked develops the day's photos
         } catch {
             print("❌ (loadLast5Prayers) Error occured during the fetch attempt. \(error.localizedDescription)")
         }

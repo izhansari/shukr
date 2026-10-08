@@ -893,15 +893,21 @@ struct summaryCircle: View{
     }
 
     /// "Memories ›" under the day's line, once there's a photo (PrayerMemories.swift).
+    /// Today's photos once they've developed (and before they're looked at): "Today's photos have developed ›"; while
+    /// they develop, "Developing · after Isha" (decision photo-develop-*).
     @ViewBuilder private var memoriesLink: some View {
+        let _ = PrayerPhotoRevision.shared.value
         if PrayerPhotoRevision.shared.hasPhotos {
+            let ready = PhotoDevelop.todayReady()
+            let developing = PhotoDevelop.todayDeveloping()
             Button {
                 triggerSomeVibration(type: .light)
                 MemoriesPresenter.shared.open = true
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "photo.stack").font(.system(size: 13))
-                    Text("Memories").font(.system(size: 14, weight: .regular, design: .rounded))
+                    Image(systemName: ready ? "sparkles" : developing ? "hourglass" : "photo.stack").font(.system(size: 13))
+                    Text(ready ? "Today's photos have developed" : developing ? "Memories · today's develop after Isha" : "Memories")
+                        .font(.system(size: 14, weight: .regular, design: .rounded))
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                 }
                 .foregroundStyle(.secondary)

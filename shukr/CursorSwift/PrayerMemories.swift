@@ -52,8 +52,9 @@ extension PrayerPhotos {
     /// them already decoded (each level asking its own size missed the cache and decoded mid-animation).
     private static func thumbSide(_ side: Int) -> Int { side <= 180 ? 180 : 360 }
 
+    /// Developing and developed copies are cached apart (the day develops under the cache).
     private static func thumbKey(_ key: String, _ side: Int) -> NSString {
-        "\(key)-\(thumbSide(side))" as NSString
+        "\(key)-\(thumbSide(side))-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
     }
 
     /// Already decoded? (A square drawn again shows its picture from the first frame.)
@@ -64,7 +65,9 @@ extension PrayerPhotos {
         let side = thumbSide(side)
         let cacheKey = thumbKey(key, side)
         if let hit = thumbs.object(forKey: cacheKey) { return hit }
+        let developing = !PhotoDevelop.isDeveloped(key: key)
         let image: UIImage? = await Task.detached(priority: .userInitiated) {
+            if developing { return PhotoDevelop.veil(url: mainURL(key)) }
             guard let source = CGImageSourceCreateWithURL(mainURL(key) as CFURL, nil) else { return nil }
             let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
                                             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -792,8 +795,10 @@ private struct MemoryThumb: View {
             .overlay {
                 if let image { Image(uiImage: image).resizable().scaledToFill() }
             }
+            .developReveal(key)
             .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
-            .task(id: key) {
+            .developingTag(key, width: CGFloat(side) / 2.4)
+            .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") {
                 let fresh = await PrayerPhotos.thumbnail(key, side: side)
                 if fresh !== image { image = fresh }
             }
@@ -933,10 +938,14 @@ struct MemoriesDeck: View {
                 // Share and ✕ under it, the grey circles of a photo opened from the hold editor (owner). Always there,
                 // never redrawn per photo: the share page makes the picture.
                 HStack(spacing: 18) {
+                    let canShare = photos.indices.contains(index) && PhotoDevelop.isDeveloped(key: photos[index].key)
                     Button { if photos.indices.contains(index) { sharing = photos[index].key } } label: {
                         circleIcon("square.and.arrow.up")
                     }
                     .accessibilityLabel("Share")
+                    // Nothing to share until it has developed.
+                    .disabled(!canShare)
+                    .opacity(canShare ? 1 : 0.35)
                     let favorite = photos.indices.contains(shownIndex) && PrayerPhotoFavorites.shared.contains(photos[shownIndex].key)
                     Button {
                         guard photos.indices.contains(shownIndex) else { return }
@@ -1178,7 +1187,7 @@ struct MemoriesDeck: View {
         return ZStack {
             ForEach(cards, id: \.self) { i in
                 let l = lie[photos[i].key] ?? Lie(dx: 0, dy: 0, tilt: 0)
-                MemoryCard(key: photos[i].key, width: width)
+                MemoryCard(key: photos[i].key, width: width, tagged: i == top)
                     .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
                     .rotationEffect(.degrees(i == top ? 0 : l.tilt))
                     .offset(x: i == top ? 0 : l.dx, y: i == top ? 0 : l.dy)
@@ -1355,7 +1364,7 @@ struct MemoriesDeck: View {
                 return (l.dx * (1 - fold), l.dy * (1 - fold), l.tilt * (1 - fold))
             }
         }()
-        MemoryCard(key: key, width: width, swapped: swapped.contains(key))
+        MemoryCard(key: key, width: width, swapped: swapped.contains(key), tagged: i == index)
             .shadow(color: .black.opacity(0.18), radius: 14, y: 8)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                 if i == index { onTopFrame(rect) }
@@ -1683,14 +1692,19 @@ private struct MemoryCard: View {
     /// pictures from the first frame.
     private final class Pair { let images: (back: UIImage?, front: UIImage?); init(_ i: (back: UIImage?, front: UIImage?)) { images = i } }
     private static let cache: NSCache<NSString, Pair> = { let c = NSCache<NSString, Pair>(); c.countLimit = 40; return c }()
-    private static func cacheKey(_ key: String) -> NSString { key as NSString }
+    private static func cacheKey(_ key: String) -> NSString {
+        "\(key)-\(PhotoDevelop.isDeveloped(key: key) ? "d" : "v")" as NSString
+    }
     /// Showing the selfie big (a tap in the pile), for this look only.
     var swapped = false
+    /// The top card wears the developing tag (the ones under it would peek theirs out round its edges).
+    var tagged = false
 
-    init(key: String, width: CGFloat, swapped: Bool = false) {
+    init(key: String, width: CGFloat, swapped: Bool = false, tagged: Bool = false) {
         self.key = key
         self.width = width
         self.swapped = swapped
+        self.tagged = tagged
         _images = State(initialValue: Self.cache.object(forKey: Self.cacheKey(key))?.images ?? (nil, nil))
     }
 
@@ -1698,8 +1712,10 @@ private struct MemoryCard: View {
         let showSelfie = swapped && images.front != nil
         PrayerPhotoFace(back: showSelfie ? images.front : images.back, front: showSelfie ? images.back : images.front,
                         width: width)
-            .task(id: key) {
-                guard images.back == nil else { return }
+            .developReveal(key)
+            .developingTag(key, width: tagged ? width : 0, shown: tagged)
+            .task(id: "\(key)-\(PrayerPhotoRevision.shared.value)") {
+                if let hit = Self.cache.object(forKey: Self.cacheKey(key)) { images = hit.images; return }
                 images = await PrayerPhotos.load(key)
                 Self.cache.setObject(Pair(images), forKey: Self.cacheKey(key))
             }
