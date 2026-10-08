@@ -190,16 +190,6 @@ struct MemoriesPage: View {
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
     }
 
-    /// Months · Days · Prayers, the system's segmented control; a plain change.
-    private var levelPicker: some View {
-        Picker("Show", selection: Binding(get: { level }, set: { go($0) })) {
-            ForEach(Level.allCases) { Text($0.title).tag($0) }
-        }
-        .pickerStyle(.segmented)
-        .fixedSize()
-        .disabled(!hasPhotos)
-    }
-
     // MARK: Search results, as a list (owner: "display the search results as a list")
 
     private var resultsList: some View {
@@ -349,52 +339,74 @@ struct MemoriesPage: View {
         }
     }
 
-    var body: some View {
-        Group {
-            if photos.isEmpty {
-                ScrollView {
-                    VStack(spacing: 10) {
-                        Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
-                        Text("No photos yet").font(.headline)
-                        Text("After you mark a prayer, take a photo from the pill; it shows up here.")
-                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+    /// The tab bar's tabs: the three levels, and search.
+    enum MemoriesTab: Hashable { case level(Level), search }
+
+    private var tabSelection: Binding<MemoriesTab> {
+        Binding(get: { searching ? .search : .level(level) }, set: { new in
+            switch new {
+            case .search: searching = true
+            case .level(let l):
+                searching = false
+                go(l)
+            }
+        })
+    }
+
+    @Environment(\.dismiss) private var dismiss
+
+    /// One tab's page: its own navigation bar — ‹ closes Memories, ⚙ opens its settings.
+    private func tabPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        NavigationStack {
+            content()
+                .navigationTitle("Memories")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { dismiss() } label: { Image(systemName: "chevron.left") }
+                            .accessibilityLabel("Back")
                     }
-                    .padding(.top, 140).padding(.horizontal, 40)
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                            .accessibilityLabel("Photo settings")
+                    }
                 }
-            } else if searching {
-                resultsList
-            } else {
-                switch level {
-                case .months: levelScroll(.months) { monthStacks }
-                case .days: levelScroll(.days) { dayStacks }
-                case .prayers: levelScroll(.prayers) { prayerStrips }
+        }
+    }
+
+    @ViewBuilder
+    private func levelPage(_ l: Level) -> some View {
+        if photos.isEmpty {
+            ScrollView {
+                VStack(spacing: 10) {
+                    Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
+                    Text("No photos yet").font(.headline)
+                    Text("After you mark a prayer, take a photo from the pill; it shows up here.")
+                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
+                .padding(.top, 140).padding(.horizontal, 40)
+            }
+        } else {
+            switch l {
+            case .months: levelScroll(.months) { monthStacks }
+            case .days: levelScroll(.days) { dayStacks }
+            case .prayers: levelScroll(.prayers) { prayerStrips }
             }
         }
-        // Apple's bottom bar for a pushed page (Memories isn't the app's root, so it has no tab bar of its own — as a
-        // TabView here, search folded into the tabs and never opened): the system segmented control, then the system
-        // search button — iOS's own (`.searchable` minimized to a button, put in the bottom bar by
-        // `DefaultToolbarItem`; without it iOS puts it top right). Each brings its own glass, so neither gets the bar's.
-        .searchable(text: $query, isPresented: $searching, prompt: "Notes, places, prayers, months")
-        .modifier(MinimizedSearch())
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel("Photo settings")
-            }
-            if #available(iOS 26.0, *) {
-                // The segmented control has its own glass; the bar's shared one round it drew a second capsule.
-                ToolbarItem(placement: .bottomBar) { levelPicker }
-                    .sharedBackgroundVisibility(.hidden)
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                // The search button brings its own glass too: the bar's shared one behind it was the second circle on the
-                // owner's phone (holding one grew both — one button, two layers).
-                DefaultToolbarItem(kind: .search, placement: .bottomBar)
-                    .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .bottomBar) { levelPicker }
-            }
+    }
+
+    var body: some View {
+        // The iOS 26 tab bar, as in Photos (owner: "3 diff tabs. a search button. ios26 way of doing bottom bar …
+        // however the photos app does it"): the levels are tabs, search is the tab bar's own search tab. Memories is
+        // its own full screen (a tab bar only works as the root of its screen — pushed, search folded into the tabs
+        // and never opened), closed with ‹.
+        TabView(selection: tabSelection) {
+            Tab("Months", systemImage: "square.stack", value: MemoriesTab.level(.months)) { tabPage { levelPage(.months) } }
+            Tab("Days", systemImage: "calendar", value: MemoriesTab.level(.days)) { tabPage { levelPage(.days) } }
+            Tab("Prayers", systemImage: "photo.on.rectangle", value: MemoriesTab.level(.prayers)) { tabPage { levelPage(.prayers) } }
+            Tab(value: MemoriesTab.search, role: .search) { tabPage { resultsList } }
         }
+        .searchable(text: $query, prompt: "Notes, places, prayers, months")
         .onChange(of: searching) { _, on in
             if on {
                 buildIndex()
@@ -404,8 +416,6 @@ struct MemoriesPage: View {
             }
         }
         .onChange(of: placeNamesLearned) { _, _ in if searching { buildIndex() } }
-        .navigationTitle("Memories")
-        .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showSettings) { MemoriesSettings() }
         // The pile in its own clear layer over everything, presented without a slide (like a prayer photo from the hold
         // editor): the page's bars stay as they are underneath. Hiding them for the pile and bringing them back left a
@@ -642,18 +652,21 @@ struct MemoriesPage: View {
                     .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
             }
             .frame(width: 38)
-            HStack(spacing: 7) {
+            // The five squares share the row's width (owner: "spread out … to take up the width properly").
+            HStack(spacing: 8) {
                 ForEach(0..<5, id: \.self) { slot in
-                    if let photo = dayPhotos.first(where: { $0.slot == slot }) {
-                        MemoryThumb(key: photo.key)
-                                    .frame(width: 52, height: 52)
-                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .onTapGesture { openDeck(photo) }
-                    } else {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
-                            .frame(width: 52, height: 52)
+                    Group {
+                        if let photo = dayPhotos.first(where: { $0.slot == slot }) {
+                            MemoryThumb(key: photo.key, side: 240)
+                                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .onTapGesture { openDeck(photo) }
+                        } else {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.secondary.opacity(0.25), lineWidth: 1)
+                        }
                     }
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(1, contentMode: .fit)
                 }
             }
         }
@@ -1770,12 +1783,5 @@ struct PrayerPlaceMapSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
-    }
-}
-
-/// The search as a button in the bottom bar until tapped, on iOS 26+.
-private struct MinimizedSearch: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) { content.searchToolbarBehavior(.minimize) } else { content }
     }
 }
