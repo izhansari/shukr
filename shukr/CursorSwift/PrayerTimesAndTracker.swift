@@ -2167,8 +2167,8 @@ struct PrayerTimesView: View {
             if let task {
                 let streak = task.streak()
                 HStack(alignment: .center) {
-                    Image(systemName: streak.keptToday ? "flame.fill" : "flame")
-                        .foregroundColor(streak.keptToday ? Color.sage : .secondary)
+                    Image(systemName: streak.keptToday && streak.current > 0 ? "flame.fill" : "flame")
+                        .foregroundColor(streak.keptToday && streak.current > 0 ? Color.sage : .secondary)
                     Group {
                         if showBest {
                             Text("Best \(streak.best) Days").transition(.blurReplace)

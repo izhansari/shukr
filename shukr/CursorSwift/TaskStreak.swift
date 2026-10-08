@@ -103,15 +103,15 @@ struct TaskStreakBadge: View {
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: streak.keptToday ? "flame.fill" : "flame")
+            Image(systemName: streak.keptToday && streak.current > 0 ? "flame.fill" : "flame")
                 .font(.system(size: 12, weight: .semibold))
             Text("\(streak.current)")
                 .font(.system(size: 15, weight: .medium, design: .rounded))
                 .monospacedDigit()
         }
-        .foregroundStyle(streak.keptToday ? Color.sage : Color.secondary)
+        .foregroundStyle(streak.keptToday && streak.current > 0 ? Color.sage : Color.secondary)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(streak.current) day streak\(streak.keptToday ? "" : ", not done today")")
+        .accessibilityLabel("\(streak.current) day streak\(streak.keptToday && streak.current > 0 ? "" : ", not done today")")
     }
 }
 

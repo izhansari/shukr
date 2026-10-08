@@ -3166,6 +3166,7 @@ struct StreakLabel: View {
 
     private func celebrateStreak() async {
         typealias T = CircleMotion.Streak
+        guard streak > 0 else { return }   // a 0-day streak is nothing to light up (owner: no green at 0)
         show(.streak, for: nil)
         shownStreak = max(streak - 1, 0)          // start from yesterday's count…
         defer { shownStreak = nil }
@@ -3180,6 +3181,7 @@ struct StreakLabel: View {
 
     private func celebrateOnTime() async {
         typealias T = CircleMotion.Streak
+        guard onTimeStreak > 0 else { return }
         shownOnTime = max(onTimeStreak - 1, 0)
         defer { shownOnTime = nil }
         show(.onTime, for: T.heldDuration)

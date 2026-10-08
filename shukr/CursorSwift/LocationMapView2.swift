@@ -1050,6 +1050,11 @@ struct LocationMapContentView: View {
     /// A layer is on: its sheet is up.
     private var layerSheetUp: Bool { viewModel.showPrayers || viewModel.showMosques }
     private var sheetSmall: Bool { viewModel.sheetDetent == LocationViewModel.sheetSmall }
+    /// The verse shows on the prayers' home with the sheet at its small height (nothing open, nothing being moved).
+    private var showsPrayerVerse: Bool {
+        viewModel.showPrayers && !viewModel.showMosques && sheetSmall && viewModel.spotMode == .browse
+            && viewModel.selection == nil && viewModel.movingPrayer == nil && !viewModel.focusDrifted
+    }
 
     /// What the one sheet shows: the layer's home (the list) or one pin's page, swapped in place.
     @ViewBuilder private var layerSheet: some View {
@@ -1254,8 +1259,12 @@ struct LocationMapContentView: View {
             // "How this works", bottom right (swapped with Explore — owner, map-one-sheet); with a
             // layer's sheet up it floats just above it, like Apple Maps' controls.
             AboveSheet(metrics: viewModel.sheet, sheetUp: layerSheetUp) {
-                HStack {
-                    Spacer()
+                HStack(alignment: .bottom, spacing: 10) {
+                    // Prayers on, the sheet down: Az-Zalzalah 99:4 beside the ? (owner, decision map-prayer-verse B3).
+                    if showsPrayerVerse {
+                        PrayerSpotsVerse().transition(.opacity)
+                    }
+                    Spacer(minLength: 0)
                     Button { guide = currentGuideTopic } label: {
                         Image(systemName: "questionmark")
                             .mapControlIcon()
@@ -1271,6 +1280,7 @@ struct LocationMapContentView: View {
             .opacity(viewModel.movingPrayer == nil && !exploreOpen ? 1 : 0)
             .allowsHitTesting(viewModel.movingPrayer == nil && !exploreOpen)
             .animation(ExploreDock.motion, value: exploreOpen)
+            .animation(.easeInOut(duration: 0.25), value: showsPrayerVerse)
 
             if let moving = viewModel.movingPrayer {
                 MapPickOverlay(prayer: moving, pick: viewModel.pick)
@@ -2564,4 +2574,38 @@ private struct ScoreDot: View {
         PrayerScoring.color(for: score)
     }
     var body: some View { Circle().fill(color).frame(width: 9, height: 9) }
+}
+
+/// A quiet verse over the prayers map (owner, 2026-10-08: "every single place that you pray … will testify for you";
+/// decision map-prayer-verse B3): Az-Zalzalah 99:4, the earth telling its news, tied to the pins on screen. Only what
+/// the verse says — the testifying itself has no authentic source.
+struct PrayerSpotsVerse: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("“On that Day, the earth will tell its news.”")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.primary)
+            Text("Every pin here is part of that story. · 99:4")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .fontDesign(.rounded)
+        .multilineTextAlignment(.leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background { verseGlass }
+        .allowsHitTesting(false)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("On that Day, the earth will tell its news. Every pin here is part of that story. Surah Az-Zalzalah, verse 4")
+    }
+
+    @ViewBuilder private var verseGlass: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        if #available(iOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: shape)
+        } else {
+            shape.fill(.regularMaterial)
+        }
+    }
 }
