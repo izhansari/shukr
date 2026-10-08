@@ -436,11 +436,18 @@ struct PrayerPhotoViewer: View {
         self.from = from
         self.onClose = onClose
         _images = State(initialValue: initial)
+        _share = State(initialValue: PrayerShareOptions(key: key))
     }
+
+    private var dragDistance: CGFloat { hypot(drag.width, drag.height) }
     @State private var place: String?
     @State private var shown = false
     @State private var closing = false
-    @State private var drag: CGFloat = 0
+    /// The card follows the finger anywhere (owner: "moving it naturally with my finger, not just rigid down").
+    @State private var drag: CGSize = .zero
+    /// Share's options, faded up at the bottom over the page (owner: not a new page).
+    @State private var share: PrayerShareOptions
+    @State private var sharing = false
     @AppStorage(PrayerPhotos.showPlaceKey) private var showPlace = false
     @Environment(\.modelContext) private var context
 
@@ -456,11 +463,14 @@ struct PrayerPhotoViewer: View {
                 Rectangle().fill(.ultraThinMaterial)
                     .overlay(Color.black.opacity(0.25))
                     .ignoresSafeArea()
-                    .opacity(shown ? 1 - min(drag / 400, 0.6) : 0)
-                    .onTapGesture { close() }
+                    .opacity(shown ? 1 - min(dragDistance / 400, 0.6) : 0)
+                    .onTapGesture { if sharing { setSharing(false) } else { close() } }
                 VStack(spacing: 22) {
-                    PrayerPhotoFramed(back: images.back, front: images.front,
-                                      key: key, place: place, tagOpacity: shown ? 1 : 0, width: width)
+                    // Sharing: the card shows what will be sent.
+                    PrayerPhotoFramed(back: images.back, front: images.front, key: key,
+                                      place: sharing ? (share.addPlace ? share.shownPlace : nil) : place,
+                                      score: sharing && share.addScore ? share.score : nil,
+                                      tagOpacity: shown ? 1 : 0, width: width)
                         .shadow(color: .black.opacity(shown ? 0.35 : 0), radius: 30, y: 14)
                         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { rect in
                             guard cardFrame == nil, rect.width > 1 else { return }
@@ -477,30 +487,44 @@ struct PrayerPhotoViewer: View {
                             PrayerPhotoMain.shared.toggle(key)
                         }
                     HStack(spacing: 18) {
-                        if let shared = sharedImage() {
-                            ShareLink(item: Image(uiImage: shared),
-                                      preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: shared))) {
-                                circleIcon("square.and.arrow.up")
-                            }
-                            .tint(.primary)
-                            .accessibilityLabel("Share")
+                        Button { setSharing(!sharing) } label: {
+                            circleIcon(sharing ? "square.and.arrow.up.fill" : "square.and.arrow.up")
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Share")
                         Button(action: close) { circleIcon("xmark") }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Close")
                     }
-                    .opacity(drag > 10 || !shown ? 0 : 1)
+                    .opacity(dragDistance > 10 || !shown ? 0 : 1)
                 }
-                .offset(y: drag)
+                // Room for the share options under it.
+                .offset(y: sharing ? -110 : 0)
+                .offset(drag)
+                .scaleEffect(1 - min(dragDistance / 1400, 0.22))
                 // Opened from a small photo: the card zooms (above); else the old spring-in.
                 .scaleEffect(from == nil && !shown ? 0.86 : 1)
                 .opacity(from == nil && !shown ? 0 : 1)
                 .gesture(DragGesture()
-                    .onChanged { drag = max(0, $0.translation.height) }
+                    .onChanged { value in if !sharing { drag = value.translation } }
                     .onEnded { value in
-                        if value.translation.height > 120 || value.predictedEndTranslation.height > 260 { close() }
-                        else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = 0 } }
+                        guard !sharing else { return }
+                        let far = hypot(value.translation.width, value.translation.height)
+                        let flung = hypot(value.predictedEndTranslation.width, value.predictedEndTranslation.height)
+                        if far > 120 || flung > 280 { close() }
+                        else { withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { drag = .zero } }
                     })
+                if sharing {
+                    VStack(spacing: 12) {
+                        PrayerShareControls(options: share)
+                        PrayerShareButton(options: share)
+                    }
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(.regularMaterial))
+                    .padding(.horizontal, 14).padding(.bottom, 10)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
@@ -517,8 +541,9 @@ struct PrayerPhotoViewer: View {
             #endif
             PrayerPhotoViewing.shared.closed()
         }
-        .task { images = await PrayerPhotos.load(key) }
+        .task { if images.back == nil { images = await PrayerPhotos.load(key) } }
         .task(id: showPlace) { await lookUpPlace() }
+        .task(id: "\(sharing)|\(share.signature)|\(images.back?.hash ?? 0)") { if sharing { share.render(images) } }
     }
 
     private func circleIcon(_ symbol: String) -> some View {
@@ -543,14 +568,21 @@ struct PrayerPhotoViewer: View {
         }
     }
 
+    private func setSharing(_ on: Bool) {
+        triggerSomeVibration(type: .light)
+        if on { Task { await share.load(in: context) } }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) { sharing = on }
+    }
+
     private func close() {
         closing = true
+        sharing = false
         triggerSomeVibration(type: .light)
         if from != nil, cardFrame != nil {
             // Back into the small photo, then the cover goes (and the small photo shows again in the same moment).
             withAnimation(.spring(response: 0.36, dampingFraction: 0.92)) {
                 shown = false
-                drag = 0
+                drag = .zero
             } completion: { onClose() }
             return
         }
@@ -558,16 +590,6 @@ struct PrayerPhotoViewer: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { onClose() }
     }
 
-    /// The branded picture as an image, for Share (the same dark card).
-    @MainActor private func sharedImage() -> UIImage? {
-        guard images.back != nil else { return nil }
-        let w: CGFloat = 1080 / 3
-        let renderer = ImageRenderer(content: PrayerPhotoFramed(back: images.back, front: images.front,
-                                                                key: key, place: place, width: w)
-            .padding(18))
-        renderer.scale = 3
-        return renderer.uiImage
-    }
 }
 
 /// The photo framed for opening and sharing (owner, decision prayer-photo-style C: "i like C"): just the photo, the
@@ -630,6 +652,122 @@ struct PrayerPhotoFramed: View {
                     .padding(width * 0.06)
                     .opacity(tagOpacity)
             }
+    }
+}
+
+// MARK: - Sharing (one set of options and controls, for the share page and the opened photo's panel)
+
+/// What goes on a shared picture (owner: shukr, the prayer and the day always; the place — the address or just the city,
+/// city by default — and the score as a ring are options; "make them synched … so if we edit one in the future, the
+/// other updates too"). Both share places use this and `PrayerShareControls` / `PrayerShareButton`.
+@MainActor @Observable final class PrayerShareOptions {
+    let key: String
+    var place: String?
+    var city: String?
+    var score: Double?
+    var addPlace = false
+    var addScore = false
+    var cityOnly = true
+    var looked = false
+    /// The picture that's sent, made again only when what's on it changes.
+    var picture: UIImage?
+
+    init(key: String) { self.key = key }
+
+    var shownPlace: String? { cityOnly ? city ?? place : place }
+
+    /// Changes whenever the picture would.
+    var signature: String { "\(addPlace)|\(addScore)|\(cityOnly)|\(place ?? "")|\(score ?? -1)" }
+
+    func load(in context: ModelContext) async {
+        guard !looked else { return }
+        score = PrayerPhotos.score(for: key, in: context)
+        if let facts = PrayerPhotos.facts(for: key, in: context) {
+            place = await PrayerPhotos.placeText(facts, cityOnly: false)
+            city = await PrayerPhotos.placeText(facts, cityOnly: true)
+        }
+        #if DEBUG
+        // `-demoShareScore 0.86`: a score and a place for the stand-in photos (no prayer rows behind them).
+        let demo = UserDefaults.standard.double(forKey: "demoShareScore")
+        if demo > 0 { score = score ?? demo; place = place ?? "Masjid Al-Noor"; city = city ?? "Cary, NC" }
+        #endif
+        addPlace = UserDefaults.standard.bool(forKey: PrayerPhotos.showPlaceKey) && place != nil
+        #if DEBUG
+        if demo > 0 { addPlace = true; addScore = true }   // the simulator's taps miss Toggles
+        #endif
+        looked = true
+    }
+
+    func framed(_ images: (back: UIImage?, front: UIImage?), width: CGFloat) -> PrayerPhotoFramed {
+        PrayerPhotoFramed(back: images.back, front: images.front, key: key,
+                          place: addPlace ? shownPlace : nil, score: addScore ? score : nil, width: width)
+    }
+
+    func render(_ images: (back: UIImage?, front: UIImage?)) {
+        guard images.back != nil else { return }
+        let renderer = ImageRenderer(content: framed(images, width: 1080 / 3).padding(18))
+        renderer.scale = 3
+        if let image = renderer.uiImage { picture = image }
+    }
+}
+
+/// Location (with Address / City) and Prayer score, as toggles.
+struct PrayerShareControls: View {
+    @Bindable var options: PrayerShareOptions
+
+    var body: some View {
+        VStack(spacing: 0) {
+            option("Location", detail: options.looked && options.place == nil ? "Not recorded for this prayer" : options.shownPlace,
+                   isOn: $options.addPlace, enabled: options.place != nil)
+            if options.addPlace && options.city != nil {
+                Picker("Show", selection: $options.cityOnly) {
+                    Text("City").tag(true)
+                    Text("Address").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16).padding(.bottom, 10)
+            }
+            Divider().padding(.leading, 16)
+            option("Prayer score",
+                   detail: options.score.map { PrayerScoring.summary(for: $0) } ?? (options.looked ? "Not marked" : nil),
+                   isOn: $options.addScore, enabled: options.score != nil)
+        }
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+    }
+
+    private func option(_ title: String, detail: String?, isOn: Binding<Bool>, enabled: Bool) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
+            }
+        }
+        .disabled(!enabled)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+    }
+}
+
+/// The big Share button: the system share sheet with the picture as the options make it.
+struct PrayerShareButton: View {
+    let options: PrayerShareOptions
+
+    var body: some View {
+        if let picture = options.picture {
+            ShareLink(item: Image(uiImage: picture),
+                      preview: SharePreview(PrayerPhotos.caption(options.key), image: Image(uiImage: picture))) {
+                label
+            }
+        } else {
+            label.opacity(0.5)
+        }
+    }
+
+    private var label: some View {
+        Label("Share", systemImage: "square.and.arrow.up")
+            .font(.system(size: 17, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity).frame(height: 52)
+            .background(Capsule().fill(Color.sage))
     }
 }
 

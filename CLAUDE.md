@@ -281,7 +281,9 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   and marked; seen any time. **Unmarking deletes the photo** (`PrayerPhotos.discard(for:)` on every unmark path — the app's
   list, the widget's alert, the watch's unmark and undo; both prompts add "Its photo will be deleted too." when there is one). `PrayerPhotoCard` = the Locket look (rounded squares, the front inset; a tap → `PrayerPhotoViewer`, a card
   over the blurred page (a clear `fullScreenCover`, no system slide; zooms out of the small photo and back — the card is
-  scaled / moved from the small photo's global frame, the small photo hidden while it's out, the tag fading in; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
+  scaled / moved from the small photo's global frame, the small photo hidden while it's out, the tag fading in; it
+  follows a drag in any direction (shrinking a little) and zooms home past 120 pt; Share fades the share options up at
+  the bottom over the page — the card previews them; tap outside / swipe down / ✕ close); `PrayerPhotoFramed` (decision prayer-photo-style C), also what Share sends: the prayer's symbol,
   name and day on a glass tag inside the photo, a shukr pill top right, and the place (masjid, else the spot's address) when Memories' ⚙ (`MemoriesSettings`) → Show where is on —
   `PrayerPhotos.showPlaceKey`, off by default, decision prayer-photo-location A). **The main picture**
   (`PrayerPhotoMain`, UserDefaults `prayerPhotos.selfieMain`): the last swap is kept — a tap in the camera's review, the
@@ -331,7 +333,8 @@ The archive `docs/history/claude-md-2026-09-29.md` holds the history and reasoni
   a fixed 58 pt box so nothing moves from photo to photo, a tap opens a TextEditor sheet) — the three slide
   sideways together with every photo (`wentBack` picks the side, flipped a turn before the move — `moving(back:)` — or the leaving name took the old side),
   above the strip the day's five prayer symbols (`prayerMarks`: the top one bright, others with a photo dim, without faint; tap → it), then Share and ✕ (grey circles, no nav bar) → `PrayerPhotoShareComposer`
-  (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; Location and Prayer score — a ring,
+  (pushed): the framed card (`PrayerPhotoFramed`: shukr + prayer + day always; one shared `PrayerShareOptions` + `PrayerShareControls` +
+  `PrayerShareButton` for this page and the viewer's panel — edit them once; Location and Prayer score — a ring,
   `score:` — as toggles; the place as City (default — owner) or Address — `PrayerSpotAddress.city`, "Cary, NC"; the pile's line uses the masjid, else the city; tap the picture to choose the main one), the picture rendered only when an option changes. A tap
   on a card swaps the pictures; drag down closes (the deck's own drag
   picks the axis on its first move). **Finding** (decision memories-finding C): a heart in the pile

@@ -1693,24 +1693,20 @@ private struct MemoryCard: View {
 struct PrayerPhotoShareComposer: View {
     let key: String
     @Environment(\.modelContext) private var context
-    @AppStorage(PrayerPhotos.showPlaceKey) private var showPlaceDefault = false
     @State private var images: (back: UIImage?, front: UIImage?) = (nil, nil)
-    @State private var place: String?
-    @State private var city: String?
-    @State private var score: Double?
-    @State private var addPlace = false
-    /// The place as the address (the masjid, else the street) or just the city and state — the city by default (owner).
-    @State private var cityOnly = true
-    @State private var addScore = false
-    @State private var picture: UIImage?
-    @State private var looked = false
+    @State private var options: PrayerShareOptions
+
+    init(key: String) {
+        self.key = key
+        _options = State(initialValue: PrayerShareOptions(key: key))
+    }
 
     var body: some View {
         GeometryReader { geo in
             let width = min(geo.size.width - 48, 420)
             ScrollView {
                 VStack(spacing: 22) {
-                    framed(width: width)
+                    options.framed(images, width: width)
                         .shadow(color: .black.opacity(0.18), radius: 16, y: 8)
                         .onTapGesture {
                             guard images.front != nil else { return }
@@ -1722,23 +1718,7 @@ struct PrayerPhotoShareComposer: View {
                         Text("Tap the photo to choose the main picture")
                             .font(.system(size: 13, design: .rounded)).foregroundStyle(.secondary)
                     }
-                    VStack(spacing: 0) {
-                        option("Location", detail: looked && place == nil ? "Not recorded for this prayer" : shownPlace,
-                               isOn: $addPlace, enabled: place != nil)
-                        if addPlace && city != nil {
-                            Picker("Show", selection: $cityOnly) {
-                                Text("Address").tag(false)
-                                Text("City").tag(true)
-                            }
-                            .pickerStyle(.segmented)
-                            .padding(.horizontal, 16).padding(.bottom, 10)
-                        }
-                        Divider().padding(.leading, 16)
-                        option("Prayer score", detail: score.map { PrayerScoring.summary(for: $0) } ?? (looked ? "Not marked" : nil),
-                               isOn: $addScore, enabled: score != nil)
-                    }
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
-                    .padding(.horizontal, 24)
+                    PrayerShareControls(options: options).padding(.horizontal, 24)
                 }
                 .padding(.top, 12)
                 .frame(maxWidth: .infinity)
@@ -1746,73 +1726,15 @@ struct PrayerPhotoShareComposer: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
-            Group {
-                if let picture {
-                    ShareLink(item: Image(uiImage: picture),
-                              preview: SharePreview(PrayerPhotos.caption(key), image: Image(uiImage: picture))) {
-                        shareLabel
-                    }
-                } else {
-                    shareLabel.opacity(0.5)
-                }
-            }
-            .padding(.horizontal, 24).padding(.bottom, 8)
+            PrayerShareButton(options: options).padding(.horizontal, 24).padding(.bottom, 8)
         }
         .navigationTitle("Share")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             images = await PrayerPhotos.load(key)
-            score = PrayerPhotos.score(for: key, in: context)
-            if let facts = PrayerPhotos.facts(for: key, in: context) {
-                place = await PrayerPhotos.placeText(facts, cityOnly: false)
-                city = await PrayerPhotos.placeText(facts, cityOnly: true)
-            }
-            #if DEBUG
-            // `-demoShareScore 0.86`: a score and a place for the stand-in photos (no prayer rows behind them).
-            let demo = UserDefaults.standard.double(forKey: "demoShareScore")
-            if demo > 0 { score = score ?? demo; place = place ?? "Masjid Al-Noor"; city = city ?? "Cary, NC" }
-            #endif
-            addPlace = showPlaceDefault && place != nil
-            #if DEBUG
-            if demo > 0 { addPlace = true; addScore = true }   // the simulator's taps miss Toggles
-            #endif
-            looked = true
+            await options.load(in: context)
         }
-        // The picture that's sent, made again only when what's on it changes (kept on screen meanwhile).
-        .task(id: "\(addPlace)|\(addScore)|\(cityOnly)|\(images.back?.hash ?? 0)") { render() }
-    }
-
-    private var shownPlace: String? { cityOnly ? city ?? place : place }
-
-    private func framed(width: CGFloat) -> some View {
-        PrayerPhotoFramed(back: images.back, front: images.front, key: key,
-                          place: addPlace ? shownPlace : nil, score: addScore ? score : nil, width: width)
-    }
-
-    private var shareLabel: some View {
-        Label("Share", systemImage: "square.and.arrow.up")
-            .font(.system(size: 17, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity).frame(height: 52)
-            .background(Capsule().fill(Color.sage))
-    }
-
-    private func option(_ title: String, detail: String?, isOn: Binding<Bool>, enabled: Bool) -> some View {
-        Toggle(isOn: isOn) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                if let detail { Text(detail).font(.system(size: 13)).foregroundStyle(.secondary).lineLimit(1) }
-            }
-        }
-        .disabled(!enabled)
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
-
-    @MainActor private func render() {
-        guard images.back != nil else { return }
-        let renderer = ImageRenderer(content: framed(width: 1080 / 3).padding(18))
-        renderer.scale = 3
-        if let image = renderer.uiImage { picture = image }
+        .task(id: "\(options.signature)|\(images.back?.hash ?? 0)") { options.render(images) }
     }
 }
 
