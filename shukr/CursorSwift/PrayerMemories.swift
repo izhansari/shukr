@@ -83,6 +83,8 @@ struct MemoriesPage: View {
     /// Read as the page is made (a directory listing), so its bars are right on the push's first frame — loaded in
     /// `.task`, the bottom bar arrived mid-push and was lost (owner's video).
     @State private var photos: [MemoryPhoto] = PrayerPhotos.all()
+    /// The squares that fly into their day's or month's stack on a level change, and back.
+    @Namespace private var pinch
     /// The pile, open from this photo.
     @State private var deckStart: MemoryPhoto?
     /// The pile fades in over the page and out again (owner: "get rid of zoom in zoom out … just make it fade in to
@@ -188,6 +190,84 @@ struct MemoriesPage: View {
         }
         searchIndex = index
         PrayerPlaceNames.fill(spots) { placeNamesLearned += 1 }
+    }
+
+    // MARK: The bottom bar — Months · Days · Prayers and a magnifying glass; searching, a field and ✕
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        HStack(spacing: 12) {
+            if searching {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Notes, places, prayers, months", text: $query)
+                        .focused($searchFocused)
+                        .submitLabel(.search)
+                        .autocorrectionDisabled()
+                    if !query.isEmpty {
+                        Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Clear text")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .barGlass(Capsule())
+                Button(action: closeSearch) {
+                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold)).frame(width: 48, height: 48)
+                }
+                .buttonStyle(.plain)
+                .barGlass(Circle())
+                .accessibilityLabel("Close search")
+            } else {
+                levelSwitch
+                Spacer(minLength: 0)
+                Button(action: openSearch) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 19, weight: .medium)).frame(width: 48, height: 48)
+                }
+                .buttonStyle(.plain)
+                .barGlass(Circle())
+                .accessibilityLabel("Search")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
+    }
+
+    /// Months · Days · Prayers, through `go` like the pinch, so the squares fly into their stacks; the highlight slides.
+    private var levelSwitch: some View {
+        HStack(spacing: 0) {
+            ForEach(Level.allCases) { l in
+                Button { go(l) } label: {
+                    Text(l.title)
+                        .font(.system(size: 15, weight: level == l ? .semibold : .medium))
+                        .foregroundStyle(level == l ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 40)
+                        .background {
+                            if level == l {
+                                Capsule().fill(Color.primary.opacity(0.12))
+                                    .matchedGeometryEffect(id: "levelPill", in: pinch)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(level == l ? .isSelected : [])
+            }
+        }
+        .padding(4)
+        .barGlass(Capsule())
+    }
+
+    private func openSearch() {
+        withAnimation(.snappy(duration: 0.3)) { searching = true }
+        searchFocused = true
+    }
+
+    private func closeSearch() {
+        searchFocused = false
+        withAnimation(.snappy(duration: 0.3)) { searching = false }
     }
 
     // MARK: Search results, as a list (owner: "display the search results as a list")
@@ -339,77 +419,51 @@ struct MemoriesPage: View {
         }
     }
 
-    /// The tab bar's tabs: the three levels, and search.
-    enum MemoriesTab: Hashable { case level(Level), search }
-
-    private var tabSelection: Binding<MemoriesTab> {
-        Binding(get: { searching ? .search : .level(level) }, set: { new in
-            switch new {
-            case .search: searching = true
-            case .level(let l):
-                searching = false
-                go(l)
-            }
-        })
-    }
-
-    @Environment(\.dismiss) private var dismiss
-
-    /// One tab's page: its own navigation bar — ‹ closes Memories, ⚙ opens its settings.
-    private func tabPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        NavigationStack {
-            content()
-                .navigationTitle("Memories")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { dismiss() } label: { Image(systemName: "chevron.left") }
-                            .accessibilityLabel("Back")
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { showSettings = true } label: { Image(systemName: "gearshape") }
-                            .accessibilityLabel("Photo settings")
-                    }
-                }
-        }
-    }
-
-    @ViewBuilder
-    private func levelPage(_ l: Level) -> some View {
-        if photos.isEmpty {
-            ScrollView {
-                VStack(spacing: 10) {
-                    Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
-                    Text("No photos yet").font(.headline)
-                    Text("After you mark a prayer, take a photo from the pill; it shows up here.")
-                        .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                }
-                .padding(.top, 140).padding(.horizontal, 40)
-            }
-        } else {
-            switch l {
-            case .months: levelScroll(.months) { monthStacks }
-            case .days: levelScroll(.days) { dayStacks }
-            case .prayers: levelScroll(.prayers) { prayerStrips }
-            }
-        }
-    }
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
-        // The iOS 26 tab bar, as in Photos (owner: "3 diff tabs. a search button. ios26 way of doing bottom bar …
-        // however the photos app does it"): the levels are tabs, search is the tab bar's own search tab. Memories is
-        // its own full screen (a tab bar only works as the root of its screen — pushed, search folded into the tabs
-        // and never opened), closed with ‹.
-        TabView(selection: tabSelection) {
-            Tab("Months", systemImage: "square.stack", value: MemoriesTab.level(.months)) { tabPage { levelPage(.months) } }
-            Tab("Days", systemImage: "calendar", value: MemoriesTab.level(.days)) { tabPage { levelPage(.days) } }
-            Tab("Prayers", systemImage: "photo.on.rectangle", value: MemoriesTab.level(.prayers)) { tabPage { levelPage(.prayers) } }
-            // The search tab's own page carries the search (the field lives in the tab bar while it's open).
-            Tab(value: MemoriesTab.search, role: .search) {
-                tabPage { resultsList.searchable(text: $query, prompt: "Notes, places, prayers, months") }
+        // Pushed, so it swipes back (decision swipe-back-pages A). One screen for the three levels, swapped in place,
+        // so a square flies into its day's or month's stack (`pinch`) — on a pinch or from the switch. The bottom bar
+        // is the page's own (`bottomBar`, Apple's glassEffect), not the system toolbar: the toolbar's shared glass left
+        // ghost circles and dead taps on the owner's phone; a tab bar's search only works full screen (no swipe back).
+        Group {
+            if photos.isEmpty {
+                ScrollView {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo.on.rectangle").font(.system(size: 34, weight: .light))
+                        Text("No photos yet").font(.headline)
+                        Text("After you mark a prayer, take a photo from the pill; it shows up here.")
+                            .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    }
+                    .padding(.top, 140).padding(.horizontal, 40)
+                }
+            } else if searching {
+                resultsList
+            } else {
+                switch level {
+                case .months: levelScroll(.months) { monthStacks }
+                case .days: levelScroll(.days) { dayStacks }
+                case .prayers: levelScroll(.prayers) { prayerStrips }
+                }
             }
         }
-        .modifier(TabBarSearchBehaviour())
+        .simultaneousGesture(
+            MagnifyGesture().onEnded { value in
+                guard !searching else { return }
+                if value.magnification < 0.8, let up = Level(rawValue: level.rawValue - 1) { go(up) }
+                if value.magnification > 1.25, let down = Level(rawValue: level.rawValue + 1) { go(down) }
+            }
+        )
+        .safeAreaInset(edge: .bottom) { if hasPhotos { bottomBar } }
+        .sensoryFeedback(.selection, trigger: level)
+        .navigationTitle("Memories")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showSettings = true } label: { Image(systemName: "gearshape") }
+                    .accessibilityLabel("Photo settings")
+            }
+        }
         .onChange(of: searching) { _, on in
             if on {
                 buildIndex()
@@ -475,7 +529,7 @@ struct MemoriesPage: View {
             tops[new] = nil
             pinned.remove(new)
         }
-        level = new
+        withAnimation(.spring(response: 0.55, dampingFraction: 0.86)) { level = new }
     }
 
     /// The pile's card width (`MemoriesDeck` uses the same).
@@ -623,13 +677,14 @@ struct MemoriesPage: View {
         .padding(.vertical, 24)
     }
 
-    /// The newest three, loose, the newest straight on top.
+    /// The newest three, loose, the newest straight on top; the squares fly in and out of it (`pinch`).
     private func stack(_ photos: [MemoryPhoto], side: CGFloat, corner: CGFloat) -> some View {
         let shown = Array(photos.suffix(3))
         return ZStack {
             ForEach(Array(shown.enumerated()), id: \.element.key) { n, photo in
                 let onTop = n == shown.count - 1
                 MemoryThumb(key: photo.key, side: Int(side * 3), corner: corner)
+                    .matchedGeometryEffect(id: photo.key, in: pinch)
                     .frame(width: side, height: side)
                     // Small piles get a small shadow (dozens of 8 pt blurs were the costliest thing to draw mid-switch).
                     .shadow(color: .black.opacity(side < 60 ? 0.12 : 0.16), radius: side < 60 ? 2 : 8, y: side < 60 ? 1 : 4)
@@ -661,6 +716,7 @@ struct MemoriesPage: View {
                     Group {
                         if let photo = dayPhotos.first(where: { $0.slot == slot }) {
                             MemoryThumb(key: photo.key, side: 240)
+                                .matchedGeometryEffect(id: photo.key, in: pinch)
                                 .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 .onTapGesture { openDeck(photo) }
                         } else {
@@ -1789,15 +1845,14 @@ struct PrayerPlaceMapSheet: View {
     }
 }
 
-/// Tapping the search tab opens its field at once, and the tab bar shrinks while scrolling down (iOS 26+).
-private struct TabBarSearchBehaviour: ViewModifier {
-    func body(content: Content) -> some View {
+private extension View {
+    /// The bottom bar's glass: Apple's Liquid Glass on iOS 26+, a material before.
+    @ViewBuilder
+    func barGlass<S: Shape>(_ shape: S) -> some View {
         if #available(iOS 26.0, *) {
-            content
-                .tabViewSearchActivation(.searchTabSelection)
-                .tabBarMinimizeBehavior(.onScrollDown)
+            glassEffect(.regular.interactive(), in: shape)
         } else {
-            content
+            background(.regularMaterial, in: shape)
         }
     }
 }

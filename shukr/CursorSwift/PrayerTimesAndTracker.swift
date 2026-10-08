@@ -1278,10 +1278,10 @@ struct PrayerTimesView: View {
         .navigationDestination(isPresented: $showInsightsPage) { InsightsView() }
         .navigationDestination(isPresented: $showOldInsights) { InsightsView(layout: .old) }
         .navigationDestination(isPresented: $showNamesPage) { NamesOfAllahView() }
-        // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: its own full screen, since its tab
-        // bar (Photos' layout, owner) only works as the root of a screen; ‹ closes it.
-        .fullScreenCover(isPresented: Binding(get: { MemoriesPresenter.shared.open },
-                                              set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
+        // Memories (PrayerMemories.swift), from the ☰ menu or the day page's link: pushed, so it swipes back (decision
+        // swipe-back-pages A).
+        .navigationDestination(isPresented: Binding(get: { MemoriesPresenter.shared.open },
+                                                    set: { MemoriesPresenter.shared.open = $0 })) { MemoriesPage() }
         .onChange(of: chosenMantra) {_, newMantra in
             if let text = newMantra {
                 sharedState.titleForSession = text
